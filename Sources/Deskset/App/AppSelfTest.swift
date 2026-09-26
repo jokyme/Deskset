@@ -35,6 +35,7 @@ enum AppSelfTest {
         wiringTests(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
+        WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         RenderContextSelfTests.run(t)
         MacLookSelfTests.run(t)
