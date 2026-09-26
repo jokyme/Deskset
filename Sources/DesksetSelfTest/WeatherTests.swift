@@ -11,6 +11,7 @@ func runWeatherTests(_ t: TestRunner) {
     runWeatherDerivedTests(t)
     runWeatherUnitTests(t)
     runWeatherLocationTests(t)
+    runWeatherSunTests(t)
 }
 
 // MARK: - Fixtures and helpers
@@ -378,5 +379,112 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         let url = METNorway.url(for: r)
         t.equal(url.absoluteString, "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=59.91&lon=10.75")
         t.check(!url.absoluteString.contains("altitude"))
+    }
+}
+
+// MARK: - Sun and moon
+
+private func date(_ iso: String) -> Date { WeatherFixtures.date(iso) }
+
+private func runWeatherSunTests(_ t: TestRunner) {
+    t.suite("Weather: sun") {
+        func event(_ e: SolarEvent, _ lat: Double, _ lon: Double, _ day: String, _ zone: String) -> SolarEventResult {
+            let z = WeatherFixtures.zone(zone)
+            var c = Calendar(identifier: .gregorian)
+            c.timeZone = z
+            let parts = day.split(separator: "-").compactMap { Int($0) }
+            let start = c.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) ?? Date()
+            return SolarCalculator.event(e, dayStart: start, zone: z, latitude: lat, longitude: lon)
+        }
+        func near(_ r: SolarEventResult, _ iso: String, minutes: Double, _ what: String, line: UInt = #line) {
+            guard let d = r.date else { return t.check(false, "\(what): \(r)", line: line) }
+            let diff = abs(d.timeIntervalSince(WeatherFixtures.date(iso))) / 60
+            t.check(diff <= minutes, "\(what): off by \(String(format: "%.2f", diff)) min", line: line)
+        }
+        // Reference times from an independent ephemeris (VSOP87): sun's centre at 0.833° below the horizon, no
+        // refraction model; civil 6°, nautical 12°, astronomical 18° below; golden hour 6° above.
+        typealias SunCase = (name: String, lat: Double, lon: Double, day: String, zone: String, rise: String, set: String)
+        let cases: [SunCase] = [
+            ("Oslo", 59.91, 10.75, "2026-09-26", "Europe/Oslo", "2026-09-26T05:10:25Z", "2026-09-26T17:04:55Z"),
+            ("Singapore", 1.29, 103.85, "2026-03-20", "Asia/Singapore", "2026-03-19T23:08:53Z", "2026-03-20T11:15:21Z"),
+            ("Beijing", 39.91, 116.40, "2026-06-21", "Asia/Shanghai", "2026-06-20T20:45:56Z", "2026-06-21T11:46:20Z"),
+            ("Sydney", -33.87, 151.21, "2026-12-21", "Australia/Sydney", "2026-12-20T18:40:38Z", "2026-12-21T09:05:24Z"),
+            ("Honolulu", 21.31, -157.86, "2026-01-15", "Pacific/Honolulu", "2026-01-15T17:11:32Z", "2026-01-16T04:10:35Z"),
+            ("Tromsø (March)", 69.65, 18.96, "2026-03-20", "Europe/Oslo", "2026-03-20T04:43:54Z", "2026-03-20T17:01:29Z"),
+        ]
+        for (name, lat, lon, day, zone, rise, set) in cases {
+            let tolerance = abs(lat) <= 65 ? 1.0 : 3.0
+            near(event(.sunrise, lat, lon, day, zone), rise, minutes: tolerance, "\(name) sunrise")
+            near(event(.sunset, lat, lon, day, zone), set, minutes: tolerance, "\(name) sunset")
+        }
+        near(event(.sunrise, 64.14, -21.90, "2026-06-21", "Atlantic/Reykjavik"), "2026-06-21T02:55:12Z", minutes: 3,
+             "Reykjavík sunrise")
+        near(event(.sunset, 64.14, -21.90, "2026-06-21", "Atlantic/Reykjavik"), "2026-06-22T00:03:37Z", minutes: 3,
+             "Reykjavík sunset after midnight")
+        near(event(.civilDawn, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T04:29:01Z", minutes: 1, "civil dawn")
+        near(event(.civilDusk, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T17:46:09Z", minutes: 1, "civil dusk")
+        near(event(.nauticalDusk, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T18:35:13Z", minutes: 1.5, "nautical")
+        near(event(.astronomicalDawn, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T02:46:40Z", minutes: 2,
+             "astronomical")
+        near(event(.goldenHourMorningEnd, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T06:05:33Z", minutes: 1,
+             "golden hour ends")
+        near(event(.goldenHourEveningStart, 59.91, 10.75, "2026-09-26", "Europe/Oslo"), "2026-09-26T16:09:57Z", minutes: 1,
+             "golden hour starts")
+        // Polar day and night.
+        t.equal(event(.sunrise, 69.65, 18.96, "2026-06-21", "Europe/Oslo"), .alwaysAbove, "Tromsø midnight sun")
+        t.equal(event(.sunrise, 69.65, 18.96, "2026-12-21", "Europe/Oslo"), .alwaysBelow, "Tromsø polar night")
+        near(event(.civilDawn, 69.65, 18.96, "2026-12-21", "Europe/Oslo"), "2026-12-21T08:31:15Z", minutes: 3,
+             "Tromsø civil dawn in the polar night")
+        t.equal(event(.sunset, 78.22, 15.65, "2026-04-30", "Arctic/Longyearbyen"), .alwaysAbove)
+        t.equal(event(.goldenHourMorningEnd, 78.22, 15.65, "2026-02-20", "Arctic/Longyearbyen"), .alwaysBelow)
+        near(event(.sunrise, 78.22, 15.65, "2026-02-20", "Arctic/Longyearbyen"), "2026-02-20T09:02:50Z", minutes: 5,
+             "Longyearbyen sunrise")
+        // Solar noon, position, day length and progress.
+        let osloDay = SolarCalculator.day(containing: WeatherFixtures.clock, zone: WeatherFixtures.zone("Europe/Oslo"),
+                                          latitude: 59.91, longitude: 10.75)
+        t.check(abs(osloDay.solarNoon.timeIntervalSince(WeatherFixtures.date("2026-09-26T11:08:20Z"))) < 30, "solar noon")
+        let referenceLength: Double = date("2026-09-26T17:04:55Z").timeIntervalSince(date("2026-09-26T05:10:25Z"))
+        t.close(osloDay.length, referenceLength, accuracy: 120)
+        let sinceSunrise: Double = WeatherFixtures.clock.timeIntervalSince(date("2026-09-26T05:10:25Z"))
+        t.close(osloDay.progress(at: WeatherFixtures.clock), sinceSunrise / referenceLength, accuracy: 0.01)
+        t.equal(osloDay.progress(at: WeatherFixtures.date("2026-09-26T03:00:00Z")), 0)
+        t.equal(osloDay.progress(at: WeatherFixtures.date("2026-09-26T20:00:00Z")), 1)
+        t.equal(osloDay.state, 0)
+        let polar = SolarCalculator.day(containing: WeatherFixtures.date("2026-06-21T12:00:00Z"),
+                                        zone: WeatherFixtures.zone("Europe/Oslo"), latitude: 69.65, longitude: 18.96)
+        t.equal(polar.state, 1)
+        t.close(polar.length, 86_400)
+        t.close(polar.progress(at: WeatherFixtures.date("2026-06-21T10:00:00Z")), 0.5, accuracy: 0.001)
+        let night = SolarCalculator.day(containing: WeatherFixtures.date("2026-12-21T12:00:00Z"),
+                                        zone: WeatherFixtures.zone("Europe/Oslo"), latitude: 69.65, longitude: 18.96)
+        t.equal(night.state, 2)
+        t.equal(night.length, 0)
+        t.equal(night.progress(at: WeatherFixtures.date("2026-12-21T12:00:00Z")), 0)
+        let p = SolarCalculator.position(at: WeatherFixtures.clock, latitude: 59.91, longitude: 10.75)
+        t.close(p.elevation, 27.917, accuracy: 0.1, "elevation")
+        t.close(p.azimuth, 194.513, accuracy: 0.2, "azimuth")
+        let b = SolarCalculator.position(at: WeatherFixtures.date("2026-06-21T04:00:00Z"), latitude: 39.91, longitude: 116.40)
+        t.close(b.elevation, 73.178, accuracy: 0.1)
+        t.close(b.azimuth, 167.106, accuracy: 0.3)
+    }
+
+    t.suite("Weather: moon") {
+        // Published phases (UTC): the mean month is within about a day of them.
+        let cases: [(String, Double)] = [("2024-01-25T17:54:00Z", 0.5), ("2024-04-08T18:21:00Z", 0),
+                                         ("2024-09-18T02:34:00Z", 0.5), ("2025-03-14T06:55:00Z", 0.5),
+                                         ("2025-03-29T10:58:00Z", 0), ("2026-02-17T12:01:00Z", 0)]
+        for (iso, expected) in cases {
+            let phase = MoonPhase.phase(at: WeatherFixtures.date(iso))
+            var diff = abs(phase - expected)
+            diff = min(diff, 1 - diff)
+            t.check(diff * MoonPhase.synodicMonth <= 1, "\(iso): \(phase)")
+        }
+        t.close(MoonPhase.phase(at: MoonPhase.referenceNewMoon), 0)
+        t.close(MoonPhase.illumination(phase: 0.5), 100)
+        t.close(MoonPhase.illumination(phase: 0), 0)
+        t.close(MoonPhase.illumination(phase: 0.25), 50, accuracy: 1e-9)
+        t.equal(MoonPhase.eighth(phase: 0.97), 0)
+        t.equal(MoonPhase.eighth(phase: 0.5), 4)
+        t.equal(MoonPhase.names[MoonPhase.eighth(phase: 0.26)], "First Quarter")
     }
 }
