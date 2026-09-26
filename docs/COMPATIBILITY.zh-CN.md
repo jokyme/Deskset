@@ -669,8 +669,8 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 - **Windows：** 没有对应功能（Rainmeter 忽略这些选项）。
 - **Mac：** 在 `[Rainmeter]` 中写 `MacGlass=None|Regular|Clear`（默认 None）会在整个皮肤背后放一块玻璃；写在任意 meter
   上则放在该 meter 的外框背后（含 Padding）。`MacGlassCornerRadius=` 设置圆角（单位为点，默认 0，最多为短边的一半），
-  `MacGlassTint=` 设置着色（任意颜色写法）。玻璃位于皮肤所绘制的一切内容之下：先是皮肤自身的玻璃，再按文件顺序排列各
-  meter 的玻璃。每个皮肤最多 64 块玻璃。
+  `MacGlassTint=` 设置着色（任意颜色写法）。玻璃位于皮肤所绘制的一切内容之下：先是皮肤自身的玻璃，再按绘制顺序排列各
+  meter 的玻璃（即文件顺序，但容器内容的玻璃紧跟在容器之后，与内容的绘制位置一致）。每个皮肤最多 64 块玻璃。
 - **原因：** Mac 的玻璃外观（macOS 26 上的 Liquid Glass）在 Rainmeter 中没有对应选项。
 - **对皮肤的影响：** 不使用这些选项的皮肤不受影响。
 - **状态：** 仅 Mac

@@ -152,8 +152,10 @@ extension Skin {
     }
 
     /// Where the skin's glass goes as it is laid out now: the skin's own first (behind everything), then the meters'
-    /// in file order (later ones in front), at most `GlassRegion.maxRegions`. Nothing before the first update has
-    /// sized the skin.
+    /// in the order they are drawn (later ones in front), at most `GlassRegion.maxRegions`. That is file order, except
+    /// that content of a container (`Container=`) is drawn where its container is in the file (the renderer draws the
+    /// content in the container's place), so its glass comes right after the container's own, wherever the content is
+    /// written. Nothing before the first update has sized the skin.
     public func currentGlassRegions() -> [GlassRegion] {
         var regions: [GlassRegion] = []
         guard updateCount > 0 else { return regions }
@@ -163,13 +165,25 @@ extension Skin {
                                        cornerRadius: min(max(g.cornerRadius ?? 0, 0), limit), style: g.style,
                                        tint: g.tint))
         }
+        // Content with glass, per container, in file order (containers do not nest).
+        var content: [ObjectIdentifier: [Meter]] = [:]
         for meter in meters where meter.glass != nil {
-            guard let region = meter.glassRegion else { continue }
+            if let container = meter.container { content[ObjectIdentifier(container), default: []].append(meter) }
+        }
+        /// Adds the meter's glass; false once the list is full.
+        func add(_ meter: Meter) -> Bool {
+            guard meter.glass != nil, let region = meter.glassRegion else { return true }
             guard regions.count < GlassRegion.maxRegions else {
                 logOnce("More than \(GlassRegion.maxRegions) meters with MacGlass: the others get none", level: .warning)
-                break
+                return false
             }
             regions.append(region)
+            return true
+        }
+        walk: for meter in meters where meter.container == nil {
+            guard add(meter) else { break walk }
+            guard meter.isContainer, let inside = content[ObjectIdentifier(meter)] else { continue }
+            for m in inside { guard add(m) else { break walk } }
         }
         return regions
     }

@@ -752,9 +752,10 @@ that uses them still loads there, only without the effect.
   skin (its width × height); on any meter it puts glass behind the meter's frame (W × H, Padding included).
   `MacGlassCornerRadius=` rounds it (points, default 0, a number or a formula, at most half the shorter side) and
   `MacGlassTint=` tints it (`R,G,B[,A]` or hex, like any color). The glass is behind everything the skin draws, its
-  background included: the skin's own glass first, then the meters' in file order (later ones in front). Another
-  `MacGlass` value is no glass and is logged once. At most 64 pieces of glass per skin (later meters get none, logged
-  once).
+  background included: the skin's own glass first, then the meters' in the order they are drawn (later ones in
+  front), which is file order except that content of a container comes right after the container's own glass,
+  wherever it is written, as its drawing does. Another `MacGlass` value is no glass and is logged once. At most 64
+  pieces of glass per skin (the ones drawn later get none, logged once).
 - Why: the Mac's glass look (Liquid Glass on macOS 26) has no Rainmeter option.
 - Skin impact: none for skins that do not use it.
 - Status: Deskset extension

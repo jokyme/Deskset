@@ -206,6 +206,75 @@ func runGlassTests(_ t: TestRunner) {
         t.equal(region(skin, "Across"), nil)
     }
 
+    t.suite("Glass: stacked in the order the meters are drawn") {
+        // Content is drawn where its container is in the file, even when it is written before the container.
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        MacGlass=Clear
+        [Chip]
+        Meter=Image
+        Container=Card
+        X=10
+        Y=10
+        W=60
+        H=24
+        MacGlass=Clear
+        [Card]
+        Meter=Shape
+        Shape=Rectangle 0,0,200,100,16
+        MacGlass=Regular
+        [Over]
+        Meter=Image
+        X=20
+        Y=20
+        W=40
+        H=40
+        MacGlass=Regular
+        [Box]
+        Meter=Shape
+        X=150
+        Shape=Rectangle 0,0,100,100 | Fill Color 255,255,255
+        MacGlass=Regular
+        [Cover]
+        Meter=Image
+        X=160
+        W=40
+        H=40
+        MacGlass=Clear
+        [Inner]
+        Meter=Image
+        Container=Box
+        W=30
+        H=30
+        MacGlass=Regular
+        [Plain]
+        Meter=Image
+        Container=Box
+        Y=40
+        W=30
+        H=30
+        """)
+        skin.update()
+        t.equal(skin.glassRegions.map(\.id), ["Rainmeter", "Card", "Chip", "Over", "Box", "Inner", "Cover"],
+                "a container's glass, then its content's, at the container's place; the others in file order")
+        let meters = skin.meters.filter { $0.container == nil }
+        t.equal(meters.map(\.name), ["Card", "Over", "Box", "Cover"], "the meters the renderer walks")
+        skin.execute("[!SetOption Card MacGlass None][!UpdateMeter Card][!Redraw]", from: nil)
+        t.equal(skin.glassRegions.map(\.id), ["Rainmeter", "Chip", "Over", "Box", "Inner", "Cover"],
+                "a container without glass still places its content's")
+        // At most maxRegions, counted in that order.
+        var ini = "[Rainmeter]\nMacGlass=Regular\n"
+        for i in 0..<(GlassRegion.maxRegions - 2) { ini += "[M\(i)]\nMeter=Image\nX=\(i * 2)\nW=10\nH=10\nMacGlass=Clear\n" }
+        ini += "[Late]\nMeter=Image\nContainer=Frame\nW=10\nH=10\nMacGlass=Clear\n"
+        ini += "[Frame]\nMeter=Image\nY=20\nW=40\nH=40\nMacGlass=Clear\n[After]\nMeter=Image\nW=5\nH=5\nMacGlass=Clear\n"
+        let (full, host) = try makeSkin(t, ini)
+        full.update()
+        t.equal(full.glassRegions.count, GlassRegion.maxRegions)
+        t.equal(full.glassRegions.suffix(2).map(\.id), ["M\(GlassRegion.maxRegions - 3)", "Frame"],
+                "the content that comes after its container in the drawing order is the one left out")
+        t.equal(host.logs.filter { $0.contains("meters with MacGlass") }.count, 1)
+    }
+
     t.suite("Glass: Shape rectangles") {
         let (skin, _) = try makeSkin(t, """
         [S1]
