@@ -298,6 +298,108 @@ func runLayerNamingTests(_ t: TestRunner) {
         t.equal(LayerNaming.colorName(RGBA(r: 150, g: 158, b: 175)), "gray")
     }
 
+    t.suite("Editor: layer names — numbers past what the engine reads are read as the engine reads them") {
+        // Any finite number is a valid option value; converted to a whole number as written, 1e20 trapped. Each is read
+        // as its measure reads it: CPU's Processor within 0…4096 and WebParser's StringIndex within 0…1000, where a
+        // number past ±Int.max / 2 is 0 (`SkinSection.int`); AudioLevel's BandIdx and FFTIdx within ±1e9, Bands 0…1024.
+        let (skin, _) = try makeSkin(t, """
+            [Rainmeter]
+            [MeasureCoreHuge]
+            Measure=CPU
+            Processor=1e20
+            [MeasureCoreBelow]
+            Measure=CPU
+            Processor=-1e20
+            [MeasureCoreFar]
+            Measure=CPU
+            Processor=5000
+            [MeasureWeb]
+            Measure=WebParser
+            URL=https://www.example.com/feed
+            [MeasureWebHuge]
+            Measure=WebParser
+            URL=[MeasureWeb]
+            StringIndex=1e20
+            [MeasureWebBelow]
+            Measure=WebParser
+            URL=[MeasureWeb]
+            StringIndex=-1e20
+            [MeasureWebFar]
+            Measure=WebParser
+            URL=[MeasureWeb]
+            StringIndex=5000
+            [MeasureAudio]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Bands=1e20
+            [MeasureMicrophone]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Port=Input
+            Bands=-1e20
+            [MeasureBandHuge]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=Band
+            BandIdx=1e20
+            [MeasureBandBelow]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=Band
+            BandIdx=-1e20
+            [MeasureBinHuge]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=FFT
+            FFTIdx=1e20
+            [MeasureBinFrequencyBelow]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=FFTFreq
+            FFTIdx=-1e20
+            [MeasureTopFrequency]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=BandFreq
+            BandIdx=1023
+            [MeasureMicrophoneFrequency]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureMicrophone
+            Type=BandFreq
+            BandIdx=1023
+            """)
+        // What an item is: a name two items share goes to their second line, under names of their own.
+        func what(_ name: String) -> String? {
+            guard let d = skin.measure(named: name).map({ LayerNaming.data($0, in: skin) }) else { return nil }
+            return d.subtitle.isEmpty ? d.name : d.subtitle
+        }
+        t.equal(what("MeasureCoreHuge"), "CPU usage", "all cores, as CPU reads it")
+        t.equal(what("MeasureCoreBelow"), "CPU usage")
+        t.equal(what("MeasureCoreFar"), "CPU core 4096 usage")
+        // The cores CPU measures there (FakeSystem: 42 for all of them, N for core N).
+        let cores = ["MeasureCoreHuge", "MeasureCoreBelow", "MeasureCoreFar"].compactMap { skin.measure(named: $0) }
+        for m in cores {
+            m.readOptionsIfNeeded()
+            m.performUpdate()
+        }
+        t.equal(cores.map(\.value), [42, 42, 4096], "the cores their names say")
+        t.equal(what("MeasureWebHuge"), "Text from example.com", "piece 0, as WebParser reads it")
+        t.equal(what("MeasureWebBelow"), "Text from example.com")
+        t.equal(what("MeasureWebFar"), "Value 1000 from example.com")
+        t.equal(what("MeasureBandHuge"), "Sound band 1000000001")
+        t.equal(what("MeasureBandBelow"), "Sound band -999999999")
+        t.equal(what("MeasureBinHuge"), "Sound frequency bin 1000000001")
+        t.equal(what("MeasureBinFrequencyBelow"), "Frequency of bin -999999999")
+        t.equal(what("MeasureTopFrequency"), "Highest band frequency", "Bands=1e20 is 1024 bands")
+        t.equal(what("MeasureMicrophoneFrequency"), "Band 1024 frequency", "Bands=-1e20 is none")
+    }
+
     t.suite("Editor: layer names — memory, swap and formulas say what they count") {
         let (skin, _) = try makeSkin(t, """
             [Rainmeter]

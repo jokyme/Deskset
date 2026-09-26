@@ -1173,6 +1173,13 @@ final class LayerNamer {
         (m.rawOption(key) ?? "").trimmingCharacters(in: .whitespaces)
     }
 
+    /// A whole-number option as a measure reads it with `int` and then keeps within `lo…hi`: a number past
+    /// ±Int.max / 2 is the default, 0 (`SkinSection.int`). Converted as written, `Processor=1e20` would trap.
+    private func integer(_ m: Measure, _ key: String, _ lo: Double, _ hi: Double) -> Int {
+        guard let v = OptionValue.number(option(m, key)), abs(v) < Double(Int.max / 2) else { return 0 }
+        return Int(v.clamped(lo, hi))
+    }
+
     private func flag(_ m: Measure, _ key: String) -> Bool {
         (OptionValue.number(skin.resolveStandardVariables(option(m, key), in: m)) ?? 0) != 0
     }
@@ -1198,7 +1205,8 @@ final class LayerNamer {
         let type = typeName(m)
         switch type {
         case "cpu":
-            let p = Int(OptionValue.number(option(m, "Processor")) ?? 0)
+            // 0 (all cores) to 4096, as CPUMeasure reads it.
+            let p = integer(m, "Processor", 0, 4096)
             return p <= 0 ? named("CPU usage", "CPU") : named("CPU core \(p) usage", "Core \(p)")
         case "physicalmemory":
             if flag(m, "Total") { return named("Total memory", "Memory") }
@@ -1244,8 +1252,9 @@ final class LayerNamer {
         case "loop":
             return named("Counting number", "Counter")
         case "webparser":
-            // A child (`URL=[Parent]`, `StringIndex=N`) is one value the parent found.
-            let index = Int(OptionValue.number(option(m, "StringIndex")) ?? 0)
+            // A child (`URL=[Parent]`, `StringIndex=N`) is one value the parent found. N is 0 to 1000, as
+            // WebParserMeasure reads it.
+            let index = integer(m, "StringIndex", 0, 1000)
             let isChild = !LayerReferences.bracketNames(in: option(m, "URL")).isEmpty
             let source = host(of: m, depth: 0)
             return isChild && index > 0 ? named("Value \(index) from \(source)", "Web") : named("Text from \(source)", "Web")
@@ -1311,7 +1320,8 @@ final class LayerNamer {
         let input = parent.map { option($0, "Port").lowercased() == "input" } ?? false
         let channel = option(m, "Channel").lowercased()
         let left = ["l", "left", "0"].contains(channel), right = ["r", "right", "1"].contains(channel)
-        func index(_ key: String) -> Int { Int(OptionValue.number(option(m, key)) ?? 0) }
+        // Within ±1e9, as AudioLevel reads BandIdx and FFTIdx.
+        func index(_ key: String) -> Int { Int((OptionValue.number(option(m, key)) ?? 0).clamped(-1e9, 1e9)) }
         switch option(m, "Type").lowercased() {
         case "band":
             return DataName(name: "Sound band \(index("BandIdx") + 1)", short: "Band \(index("BandIdx") + 1)", subtitle: "")
@@ -1335,7 +1345,8 @@ final class LayerNamer {
             return DataName(name: "Sound format", short: "Format", subtitle: "")
         case "bandfreq":
             let i = index("BandIdx")
-            let bands = parent.map { Int(OptionValue.number(option($0, "Bands")) ?? 0) } ?? 0
+            // 0 to 1024 bands, as AudioLevel reads its parent's Bands.
+            let bands = parent.map { Int((OptionValue.number(option($0, "Bands")) ?? 0).clamped(0, 1024)) } ?? 0
             if i == 0 { return DataName(name: "Lowest band frequency", short: "Frequency", subtitle: "") }
             if bands > 0, i == bands - 1 { return DataName(name: "Highest band frequency", short: "Frequency", subtitle: "") }
             return DataName(name: "Band \(i + 1) frequency", short: "Frequency", subtitle: "")
