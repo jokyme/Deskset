@@ -107,6 +107,8 @@ final class LayerThumbnails {
             if let bar = m as? BarMeter { part += "|\(bar.barColor)" }
             if let text = m as? StringMeter { part += "|" + text.text + "|\(text.style.color)" }
             if let shape = m as? ShapeMeter { part += "|\(shape.revision)" }
+            // The glass stand-in (`MacGlass`), which `!SetOption`, variables and previews turn on, off or change.
+            part += "|\(m.glassRegion.map { "\($0)" } ?? "")"
             parts.append(part)
         }
         return parts.joined(separator: "\u{1F}")

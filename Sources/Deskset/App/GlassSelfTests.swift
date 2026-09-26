@@ -174,6 +174,34 @@ enum GlassSelfTests {
             }
             withExtendedLifetime(host) {}
         }
+
+        t.suite("App: MacGlass: layer tiles follow glass changes") {
+            let ini = "[Rainmeter]\nUpdate=-1\n[Card]\nMeter=Image\nW=100\nH=60\nMacGlass=Regular\nMacGlassCornerRadius=8\n"
+            let (skin, host) = try MediaUITests.bareSkin(t, ini)
+            skin.update()
+            guard let card = skin.meter(named: "Card") else { return t.check(false, "the layer") }
+            // The layer list's tile follows the glass: !SetOption turns it Clear, tints it, then turns it off.
+            let thumbnails = LayerThumbnails()
+            func tile() -> NSImage? {
+                thumbnails.beginPass()
+                return thumbnails.thumbnail(key: "Card", meters: [card], in: skin, panel: .black, dark: true)
+            }
+            let regular = tile()
+            let drawn = thumbnails.renderCount
+            _ = tile()
+            t.equal(thumbnails.renderCount, drawn, "nothing changed: the cached tile")
+            skin.execute("[!SetOption Card MacGlass Clear][!UpdateMeter Card][!Redraw]", from: nil)
+            let clear = tile()
+            t.equal(thumbnails.renderCount, drawn + 1, "the glass changed: drawn again")
+            t.check(clear !== regular)
+            skin.execute("[!SetOption Card MacGlassTint 255,0,0][!UpdateMeter Card][!Redraw]", from: nil)
+            _ = tile()
+            t.equal(thumbnails.renderCount, drawn + 2, "the tint changed")
+            skin.execute("[!SetOption Card MacGlass None][!UpdateMeter Card][!Redraw]", from: nil)
+            _ = tile()
+            t.equal(thumbnails.renderCount, drawn + 3, "the glass is gone")
+            withExtendedLifetime(host) {}
+        }
     }
 
     /// An app whose Skins folder has TestSkins/Mac, with Mac\Glass loaded (headless).
