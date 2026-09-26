@@ -64,6 +64,39 @@ final class FakeDeviceLocation: DeviceLocationSource {
     }
 }
 
+/// Location Services that answer when the test says so (the user answers the question, the fix comes later).
+final class LateDeviceLocation: DeviceLocationSource {
+    private let lock = NSLock()
+    private var _authorization = DeviceLocationAuthorization.authorized
+    private var waiting: [(Result<RoundedCoordinate, DeviceLocationError>) -> Void] = []
+    private var _requests = 0
+
+    var authorization: DeviceLocationAuthorization {
+        get { lock.lock(); defer { lock.unlock() }; return _authorization }
+        set { lock.lock(); _authorization = newValue; lock.unlock() }
+    }
+
+    var requests: Int { lock.lock(); defer { lock.unlock() }; return _requests }
+
+    func cachedFix(maxAge: TimeInterval) -> RoundedCoordinate? { nil }
+
+    func requestFix(_ completion: @escaping (Result<RoundedCoordinate, DeviceLocationError>) -> Void) {
+        lock.lock()
+        _requests += 1
+        waiting.append(completion)
+        lock.unlock()
+    }
+
+    /// Answers every request made so far.
+    func answer(_ result: Result<RoundedCoordinate, DeviceLocationError>) {
+        lock.lock()
+        let pending = waiting
+        waiting = []
+        lock.unlock()
+        for c in pending { c(result) }
+    }
+}
+
 /// Spins the main run loop until `condition` holds (hops to skins arrive there).
 @discardableResult
 func weatherWait(_ timeout: TimeInterval = 10, _ condition: () -> Bool) -> Bool {
@@ -957,6 +990,55 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(value(skin, "S"), 0, "demo")
         t.check(!string(skin, "W").isEmpty && string(skin, "W") != "--")
         _ = host
+    }
+
+    t.suite("Weather: measure: the place and the forecast arrive without another update") {
+        let transport = FakeWeatherTransport.fixture()
+        let clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        var env = weatherTestEnvironment(t, transport: transport, clock: clock)
+        let late = LateDeviceLocation()
+        env.deviceLocation = late
+        WeatherService.install(env)
+        func skin(_ location: String) throws -> (Skin, FakeHost) {
+            try weatherSkin(t, ini: """
+            [Rainmeter]
+            Update=-1
+            [W]
+            Measure=Plugin
+            Plugin=MacWeather
+            Location=\(location)
+            FinishAction=[!Log "finish W"]
+            [Hi]
+            Measure=Plugin
+            Plugin=MacWeather
+            Parent=W
+            Type=High
+            Decimals=1
+            """)
+        }
+        func status(_ s: Skin) -> WeatherStatus? { (s.measure(named: "W") as? MacWeatherMeasure)?.status }
+        // A place name is looked up on the service's queue after the only update the skin makes.
+        let (named, namedHost) = try skin("Oslo, NO")
+        named.update()
+        t.equal(status(named), .loading)
+        t.check(weatherWait { WeatherService.shared.drain(); return status(named) == .ready },
+                "ready without another update: \(String(describing: status(named)))")
+        t.check(weatherWait { namedHost.logs.contains { $0.contains("finish W") } }, "FinishAction")
+        t.equal(named.measure(named: "W")?.value, 16.3)
+        t.equal(named.measure(named: "Hi")?.value, 17.9, "the measures following it too")
+        t.equal(transport.requests.count, 1)
+        // This Mac's location: the fix comes after the update.
+        let (here, hereHost) = try skin("auto")
+        here.update()
+        WeatherService.shared.drain()
+        t.equal(status(here), .loading)
+        t.equal(late.requests, 1)
+        late.answer(.success(oslo))
+        t.check(weatherWait { WeatherService.shared.drain(); return status(here) == .ready },
+                "ready once the fix came: \(String(describing: status(here)))")
+        t.check(weatherWait { hereHost.logs.contains { $0.contains("finish W") } }, "FinishAction")
+        named.close()
+        here.close()
     }
 
     t.suite("Weather: measure: a closed skin with this Mac's location leaves nothing behind") {

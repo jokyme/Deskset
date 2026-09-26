@@ -219,8 +219,9 @@ public final class WeatherService {
         let others = feeds.values.filter { f in f.coordinate != coordinate && !f.subscribers.isEmpty
             && !(f.subscribers.count == 1 && f.subscribers[id] != nil) }
         if feeds[coordinate].map({ $0.subscribers.isEmpty }) ?? true, others.count >= WeatherService.maxPlaces {
+            if let old = s.coordinate, let f = feeds[old] { remove(id, from: f, at: t) }
+            s.coordinate = nil
             lock.unlock()
-            detach(s)
             return false
         }
         if let old = s.coordinate, old != coordinate, let f = feeds[old] {
@@ -237,7 +238,16 @@ public final class WeatherService {
         return true
     }
 
-    /// Detaches the subscription from its feed and from pending lookups (the measure closed or has no place now).
+    /// Takes the subscription off its feed; it stays told about the place lookups and this Mac's location it waits
+    /// for (a measure whose place is not known yet, or not shown now: it hears when the answer comes).
+    public func leaveFeed(_ s: WeatherSubscription) {
+        lock.lock()
+        if let c = s.coordinate, let f = feeds[c] { remove(ObjectIdentifier(s), from: f, at: now) }
+        s.coordinate = nil
+        lock.unlock()
+    }
+
+    /// Detaches the subscription from its feed and from pending lookups (the measure closed).
     public func detach(_ s: WeatherSubscription) {
         let id = ObjectIdentifier(s)
         lock.lock()

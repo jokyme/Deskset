@@ -402,14 +402,15 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         binding.location = location
         setNote(location.note.map { live || !location.fromDevice ? $0 : "" }.flatMap { $0.isEmpty ? nil : $0 })
         guard live, enabled else {
-            detach()
+            leaveFeed()
             binding.snapshot = nil
             binding.status = !enabled ? .turnedOff : (location.status.isLocationError || location.status == .noLocation
                                                       ? location.status : .preview)
             return
         }
+        // No place yet (a lookup or this Mac's location on its way: the subscription stays told about it), or none.
         guard let c = location.coordinate, location.status == .ready, let subscription else {
-            detach()
+            leaveFeed()
             binding.snapshot = nil
             binding.status = location.status
             return
@@ -427,8 +428,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         }
     }
 
-    private func detach() {
-        if let subscription { service?.detach(subscription) }
+    private func leaveFeed() {
+        if let subscription { service?.leaveFeed(subscription) }
     }
 
     private func setNote(_ text: String?) {
