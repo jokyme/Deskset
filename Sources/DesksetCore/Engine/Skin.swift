@@ -208,7 +208,7 @@ public final class Skin {
     private var shownGlass: [String: GlassRegion] = [:]
 
     /// The glass shown behind `meter` now (in `glassRegions`), or nil.
-    func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+    public func shownGlassRegion(of meter: Meter) -> GlassRegion? {
         shownGlass.isEmpty ? nil : shownGlass[meter.name]
     }
     private var sizeComputed = false

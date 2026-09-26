@@ -175,6 +175,24 @@ enum GlassSelfTests {
             withExtendedLifetime(host) {}
         }
 
+        t.suite("App: MacGlass: a meter's tooltip area covers its glass") {
+            guard let (app, c) = try loadGlassSkin(t) else { return }
+            defer { c.stop() }
+            let card = CGRect(x: 142, y: 132, width: 130, height: 104)
+            t.equal(c.view.toolTipRects, [card], "the tinted card: its frame, where its glass is")
+            // Moved by a TransformationMatrix, the glass leaves the frame; the mouse finds the card on all of it.
+            c.skin.execute("[!SetOption TintCard TransformationMatrix \"1;0;0;1;0;20\"][!UpdateMeter TintCard][!Redraw]",
+                           from: nil)
+            t.equal(c.skin.glassRegions.first { $0.id == "TintCard" }?.rect, SkinRect(x: 142, y: 152, width: 130, height: 104))
+            t.equal(c.view.toolTipRects, [CGRect(x: 142, y: 132, width: 130, height: 124)], "the frame and the glass")
+            t.equal(c.view.toolTipText(x: 200, y: 250), "Click to switch between Regular and Clear glass",
+                    "below the frame, on the glass")
+            c.skin.execute("[!SetOption TintCard MacGlass None][!UpdateMeter TintCard][!Redraw]", from: nil)
+            t.equal(c.view.toolTipRects, [card], "without glass: the frame alone")
+            t.equal(c.view.toolTipText(x: 200, y: 250), nil)
+            withExtendedLifetime(app) {}
+        }
+
         t.suite("App: MacGlass: layer tiles follow glass changes") {
             let ini = "[Rainmeter]\nUpdate=-1\n[Card]\nMeter=Image\nW=100\nH=60\nMacGlass=Regular\nMacGlassCornerRadius=8\n"
             let (skin, host) = try MediaUITests.bareSkin(t, ini)

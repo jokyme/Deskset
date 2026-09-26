@@ -438,6 +438,9 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Registers one tooltip area per meter that has a tooltip, so AppKit shows a new tooltip when the pointer moves
     /// from one meter to another (a single view-wide tooltip keeps showing the first text). The text is read when
     /// the tooltip appears. Called after every redraw request; AppKit is only touched when the areas change.
+    ///
+    /// A meter's area includes its glass (`MacGlass`), which is part of the meter for the mouse (`Meter.isOnGlass`)
+    /// also where it lies outside the frame: moved by a TransformationMatrix, or a Shape's Rectangle beyond it.
     func updateToolTips() {
         var rects: [CGRect] = []
         if let c = controller, !c.isStopped, !c.skin.settings.toolTipHidden, !c.state.clickThrough {
@@ -447,6 +450,14 @@ final class SkinView: NSView, NSViewToolTipOwner {
                     // Content of a hidden container "in effect doesn't exist" (no tooltip either).
                     guard !container.hidden else { continue }
                     r = r.intersection(container.frame.cgRect)
+                }
+                if let glass = c.skin.shownGlassRegion(of: m) {
+                    // Already cut off at the container's frame (`clip`), as shown.
+                    var area = glass.rect.cgRect
+                    if let clip = glass.clip { area = area.intersection(clip.cgRect) }
+                    if !area.isNull, area.width > 0, area.height > 0 {
+                        r = r.isNull || r.width <= 0 || r.height <= 0 ? area : r.union(area)
+                    }
                 }
                 guard !r.isNull, r.width > 0, r.height > 0, r.minX.isFinite, r.minY.isFinite else { continue }
                 rects.append(r)

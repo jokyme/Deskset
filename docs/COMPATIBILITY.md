@@ -769,9 +769,9 @@ that uses them still loads there, only without the effect.
   (`NSGlassEffectView`) with the style, corners and tint. macOS 13–15: a blur of what is behind the window
   (`NSVisualEffectView`; Regular = popover material, Clear = HUD material), rounded, the tint laid over it. The glass
   follows the window's alpha, fades, level and moves exactly. It counts as a solid part of the skin: clicks, drags and
-  hover work on it even where the skin draws nothing, and a meter's mouse actions, hover actions and tooltip work on
-  all of its glass (a Button's `ButtonCommand` still needs the image's opaque pixels). FrostedGlass's rounded corners
-  cut it off too.
+  hover work on it even where the skin draws nothing, and a meter's mouse actions, hover actions, tooltip and cursor
+  work on all of its glass, also where the glass lies outside the meter's frame (a Button's `ButtonCommand` still
+  needs the image's opaque pixels). FrostedGlass's rounded corners cut it off too.
   `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15 glass on macOS 26 for comparison.
 - **Why:** Liquid Glass exists only on macOS 26.
 - **Skin impact:** the glass looks different before macOS 26 (a frosted blur without Liquid Glass's lensing and shine).
@@ -780,7 +780,8 @@ that uses them still loads there, only without the effect.
 #### MacGlass where there is no window
 - **Windows:** no counterpart.
 - **Mac:** `--render`, the Skin Studio's canvas and thumbnails draw a stand-in: a translucent white fill (the tint over
-  it) with a hairline edge, in the glass's shape, drawn for `--render`'s `--background` or the Studio's backdrop.
+  it) with a hairline edge, in the glass's shape and behind everything drawn (a Studio picture of several layers too),
+  drawn for `--render`'s `--background` or the Studio's backdrop.
 - **Why:** nothing is behind an image to see through.
 - **Skin impact:** `--render` images do not show real glass.
 - **Status:** Mac-only
