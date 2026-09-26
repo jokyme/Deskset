@@ -1,7 +1,8 @@
 # Skin threading: running every skin off the main thread
 
-> Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, is done
-> (2026-09-26, §15); phase 1, thread-safe shared services, is in progress. Every skin still runs on the main thread.
+> Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, and phase 1,
+> thread-safe shared services and the stress suite, are done (2026-09-26, §15). Every skin still runs on the main
+> thread.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
@@ -837,7 +838,8 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 - A new "threads" stress suite:
   - loads the TestSkins and DefaultSkins with a thread-safe host;
   - updates and draws each skin on its own thread for 60 s, with the fixture from §7.4 and with slideshow- and
-    font-heavy skins;
+    font-heavy skins (as built: a bounded number of loads and updates, so that CI's slower runners only take longer,
+    §15);
   - runs under Main Thread Checker.
 - ThreadSanitizer as well, once the toolchain allows it. On macOS 26.5 with Xcode 26.2, TSan-instrumented binaries,
   even a trivial C program, crash in the TSan runtime at startup. Retry on each Xcode update and on the CI runners.
@@ -1050,10 +1052,11 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 **Left for later phases:** the assertion against `DispatchQueue.main.sync` on a skin thread and the busy-skin watchdog
 (§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5).
 
-### Phase 1: in progress
+### Phase 1: done (2026-09-26)
 
 Skins still run on `MainSkinExecutor`, and nothing they do changes, apart from one case under Fonts and where Lua's
-`os.clock` counts from (Shared services), below. Done so far:
+`os.clock` counts from (Shared services), below. The shared services are ready for skins on threads of their own, and
+a stress suite runs every test and default skin that way (below).
 
 **Render caches per skin** (`Renderers/SkinRenderContext.swift`, §4.3). A `SkinRenderContext` hangs on
 `Skin.renderContext`; like the rest of the skin, only its owner touches it (debug builds check). It holds:
@@ -1133,9 +1136,6 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
 - Audio: Win7Audio `ChangeVolume` and `ToggleMute` and AppVolume `togglemute` are each one step under the lock, with
   the device write queued in the same step, so two skins' changes both count, on the device too.
 
-Still for phase 2: a NowPlaying measure read on demand asks its `SkinController` whether updates are paused
-(`currentSnapshot`), a main-thread object; and the FrostedGlass / InputText companions (§4.6).
-
 **Tests:** "App: skin threading: …"
 - `RenderContextSelfTests`: a context per skin, measuring and drawing share it and drawing one skin leaves another's
   alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the skin that drew them, a context
@@ -1159,3 +1159,54 @@ Still for phase 2: a NowPlaying measure read on demand asks its `SkinController`
   while subscribed; a second skin gets the Registry facts while the first is inside its data source call; eight skins
   writing 25 keys each into one file lose none; `os.clock` on eight threads reads between the main thread's before and
   after. Without the fixes, the sampler, file and volume suites fail.
+
+**The stress suite** (`ThreadStressSelfTests`, "App: threads: …"; §10):
+- `TestThreadExecutor` is the executor §5.3 recommends, for tests for now (phase 3 turns it into `SkinThreadExecutor`):
+  a dedicated `Thread` with an 8 MB stack and a run loop of its own. `async` is a run-loop block (first in, first
+  out, never inline); delayed work and timers are Foundation timers installed and invalidated on the thread, and can be
+  cancelled from any thread; `stop()` ends the thread after the work queued before it. A suite of its own checks that.
+- Every .ini of TestSkins and DefaultSkins (a copy, since skins write files) loads, updates and draws on a thread of
+  its own, all at once, with more copies of the slideshow, font-heavy and deep-nesting fixtures and of the skins that
+  read the services of §4.5–§4.8 (system monitor, process sampler, Wi-Fi, focused window, SysColor and Chameleon,
+  NowPlaying, audio devices, ping, Trash): 108 skins. Each has 3 loads (two refreshes) of 8 updates, 2 ms apart,
+  every update drawn into a bitmap through a plain `CGContext`, with no AppKit graphics context (as a layer's
+  `draw(in:)` will, §7.3).
+- The host (`StressHost`) is thread-safe: it answers from an environment the main thread made beforehand and from the
+  shared services (`SkinRenderer.textSize` with the skin's own layouts, `Images`). Window and app bangs, bangs for
+  other skins and opened files are recorded, not carried out, and the plugins that need a skin window stay idle, as in
+  `--render` (FrostedGlass's backdrop, InputText's prompt, AudioLevel's capture, NowPlaying's Apple Events).
+- Meanwhile the main thread does what the app does, spread over the run by the skins' progress rather than by time
+  (a slow machine does no more of it): it replaces photos under the slideshows (32 times), purges the images (12,
+  Refresh All), removes or restores a skin font and reads the folder again (8; every change reaches every skin's
+  thread as `fontsDidChange`, as `AppController.fontsChanged` does), and publishes the AppKit inputs of SysColor and
+  Chameleon (16).
+- New original fixtures in `TestSkins/Threads`: `DeepNesting` (the §7.4 stack probe's fixture), `Slideshow` (eight
+  photos the suite writes, shown at their own size, fitted, cropped, tinted, turned and grey, tiled, masked,
+  nine-sliced, in a Rotator and a bar image), `Fonts` (Windows and Mac faces, weights, effects, inline styles,
+  wrapping, texts that change at every update, two skin fonts the suite writes) and `Writer` A–D (a new
+  `!WriteKeyValue` key at every update, into one shared file).
+- It checks that every skin finishes (a hang otherwise) with its loads, updates and draws; that no writer key is
+  missing from the shared file; that each slideshow shows its photo at the size of one of the photo's versions; that
+  the font-heavy skin measures with its own font; and that the deep-nesting chain reaches the limit of 16 nested
+  actions using about 290 KB of the 8 MB stack (debug build). Under Main Thread Checker
+  (`scripts/check-main-thread.sh "App: threads"`) nothing is reported.
+- It catches what phase 1 fixed: without `IniWriter`'s per-file lock the writers lose keys in every run, and with one
+  render context shared by all skins (as the static caches were) the run crashes.
+- Cost: about 8 s on an M4 Pro (debug build), 15 s for the x86_64 build under Rosetta, about a minute under
+  `taskpolicy -b`. The work is bounded, so a slower runner only takes longer; the only time limits tell "finishes"
+  from "never". String\Review is drawn at its first update only: its Border around simulated-bold Chalkduster takes
+  CoreGraphics 2.6 s to rasterize into a bitmap. `DESKSET_THREADS_SOAK=N` multiplies the loads and the main thread's
+  churn for a local soak (N = 6: 18 loads per skin, about 45 s).
+- Races it exposed in the phase 1 code: none. It passed every run: repeated runs, runs under `taskpolicy -b`, soaks at
+  N = 6, the x86_64 build under Rosetta, and the Main Thread Checker run.
+
+**Left for phase 2** (the stress suite does none of it yet):
+- the window half (§5.4): window bangs, `execute`, lifecycle, menus and the other host bangs as `SkinRequest`s to the
+  main thread; bangs for other skins through the `SkinDirectory` (the stress host drops them);
+- `environment(for:)` from an `EnvironmentStore` and the window model (the suite hands every skin a fixed
+  environment);
+- mouse, hover, cursor, tooltips, focus and the context menu from the snapshot (the suite sends no input);
+- the skin drawing its own `CALayer` and committing it off the main thread (the suite draws into bitmaps);
+- the FrostedGlass and InputText companions, and AudioLevel capture and live NowPlaying for skins outside
+  `SkinController` (idle in the suite); a NowPlaying measure read on demand still asks its `SkinController` whether
+  updates are paused (`currentSnapshot`), a main-thread object (§4.6).

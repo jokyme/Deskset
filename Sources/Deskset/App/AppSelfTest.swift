@@ -39,6 +39,7 @@ enum AppSelfTest {
         RenderContextSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)
+        ThreadStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
