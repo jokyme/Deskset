@@ -1085,7 +1085,8 @@ final class ShapeEditorView: NSStackView {
         guard let spec = item.spec else { return "Not a shape" }
         if let unknown = spec.unknownType { return "“\(unknown)” is not a type" }
         let r = item.resolved ?? spec
-        func n(_ s: String?) -> Double? { s.flatMap(OptionValue.number) }
+        // Within ±1e6, as the engine reads a shape's numbers (ShapeParser.numbers): `f` would trap on 1e20.
+        func n(_ s: String?) -> Double? { s.flatMap(OptionValue.number).map { min(max($0, -1_000_000), 1_000_000) } }
         func f(_ v: Double?) -> String {
             guard let v = v.map(abs) else { return "ƒ" }
             return v >= 10 ? String(Int(v.rounded())) : GeometryEdit.format((v * 10).rounded() / 10)

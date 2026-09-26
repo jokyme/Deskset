@@ -16,6 +16,7 @@ enum FriendlyWidgetPageSelfTests {
         colorPanelTests(t)
         desktopTests(t)
         widgetOptionsTests(t)
+        numberTests(t)
         sharedFileTests(t)
         suiteTests(t)
         controlTests(t)
@@ -912,6 +913,48 @@ enum FriendlyWidgetPageSelfTests {
             vis.canvasSelectionChanged([])
             t.equal(text(vis, "disclosure-summary:widget/more"), "timing, right-click menu, actions, looks · 1 in use")
             t.equal((find(vis, "widget-DefaultStartHidden") as? NSButton)?.state, .on, "shown where it is counted")
+        }
+    }
+
+    // MARK: Numbers past what the engine reads
+
+    static func numberTests(_ t: AppTestRunner) {
+        t.suite("App: friendly widget page: numbers past what the engine reads") {
+            // Every whole number of the page at 1e20 and -1e20 (converted to Int as written, each trapped). The page shows
+            // what the engine uses: the default past ±Int.max / 2 for the timing (SkinSection.int), and for a new install
+            // the nearest setting there is, as this first load of the widget read them (SkinController.seededState).
+            for (number, stacking, hover, fade) in [("1e20", "Always in front", "Fade out", "10"),
+                                                    ("-1e20", "On desktop", "Do nothing", "0")] {
+                let config = number.hasPrefix("-") ? "HugeNegative" : "HugePositive"
+                guard let (_, editor) = try openScratch(t, files: ["\(config)/\(config).ini": """
+                    [Rainmeter]
+                    Update=\(number)
+                    DefaultUpdateDivider=\(number)
+                    TransitionUpdate=\(number)
+                    DefaultAlwaysOnTop=\(number)
+                    DefaultOnHover=\(number)
+                    DefaultFadeDuration=\(number)
+
+                    [MeterHello]
+                    Meter=String
+                    Text=Hello
+                    """], config: config), let skin = editor.skin, let c = editor.controller else { return }
+                editor.canvasSelectionChanged([])
+                openEverything(editor)
+                t.equal([skin.settings.update, skin.settings.defaultUpdateDivider, skin.settings.transitionUpdate], [1000, 1, 100],
+                        "the engine reads the defaults")
+                t.equal(text(editor, "widget-sentence"), "A widget with 1 layer that updates every second.", number)
+                t.equal((find(editor, "update-speed") as? NSPopUpButton)?.titleOfSelectedItem, "Every second (standard)", number)
+                t.equal((find(editor, "redraw-layers") as? NSPopUpButton)?.titleOfSelectedItem, "Every update", number)
+                t.equal((find(editor, "transition-speed") as? NSPopUpButton)?.titleOfSelectedItem, "10 frames a second", number)
+                t.equal(WidgetPresets.stackingAll.first { $0.value == c.state.alwaysOnTop }?.title, stacking, "installed \(number)")
+                t.equal((find(editor, "default-stacking") as? NSPopUpButton)?.titleOfSelectedItem, stacking, number)
+                t.equal(WidgetPresets.onHover.first { $0.value == c.state.onHover }?.title, hover, "installed \(number)")
+                t.equal((find(editor, "default-on-hover") as? NSPopUpButton)?.titleOfSelectedItem, hover, number)
+                t.equal(WidgetPresets.fadeSeconds(c.state.fadeDuration), fade, "installed \(number)")
+                t.equal((find(editor, "default-fade-time") as? NumberControl)?.field.stringValue, fade, number)
+                editor.window?.close()
+            }
         }
     }
 

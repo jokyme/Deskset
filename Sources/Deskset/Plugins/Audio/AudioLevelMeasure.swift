@@ -104,13 +104,15 @@ struct AudioLevelChildOptions: Equatable {
         } else {
             o.invalidChannel = channel.trimmingCharacters(in: .whitespaces)
         }
-        func index(_ key: String) -> Int {
-            guard let s = option(key), let v = OptionValue.number(s), v.isFinite else { return 0 }
-            return Int(max(min(v, 1e9), -1e9))
-        }
-        o.fftIndex = index("FFTIdx")
-        o.bandIndex = index("BandIdx")
+        o.fftIndex = index(option("FFTIdx"))
+        o.bandIndex = index(option("BandIdx"))
         return o
+    }
+
+    /// `FFTIdx` / `BandIdx` as read from the option's text: within ±1e9, 0 when missing or not a number.
+    static func index(_ text: String?) -> Int {
+        guard let text, let v = OptionValue.number(text), v.isFinite else { return 0 }
+        return Int(max(min(v, 1e9), -1e9))
     }
 }
 

@@ -510,22 +510,24 @@ extension InspectorWindowController {
         }
     }
 
-    /// 48.2 → "48 Hz", 13268 → "13.3 kHz".
+    /// 48.2 → "48 Hz", 13268 → "13.3 kHz". Whole kHz are written with "%.0f": a band's frequency can be past Int's
+    /// range (`FreqMax=1e300`).
     static func frequency(_ hz: Double) -> String {
         guard hz.isFinite else { return "0 Hz" }
         if abs(hz) < 1000 { return "\(Int(hz.rounded())) Hz" }
         let k = (hz / 100).rounded() / 10
-        return (k == k.rounded() ? String(Int(k)) : String(format: "%.1f", k)) + " kHz"
+        return (k == k.rounded() ? String(format: "%.0f", k) : String(format: "%.1f", k)) + " kHz"
     }
 
     /// 3221225472 → "3.2 GB" (powers of 1000, as the Finder counts), or "3.0 GB" in powers of 1024 (`binary`, as
-    /// Activity Monitor counts memory).
+    /// Activity Monitor counts memory). 100 or more of a unit is written with "%.0f": a formula's size can be past
+    /// Int's range.
     static func bytes(_ v: Double, binary: Bool = false) -> String {
         guard v.isFinite else { return "0 B" }
         let a = abs(v), k: Double = binary ? 1024 : 1000
         for (power, unit) in [(4.0, "TB"), (3.0, "GB"), (2.0, "MB"), (1.0, "KB")] where a >= pow(k, power) {
             let x = v / pow(k, power)
-            return (x >= 100 ? String(Int(x.rounded())) : String(format: "%.1f", x)) + " " + unit
+            return (x >= 100 ? String(format: "%.0f", x.rounded()) : String(format: "%.1f", x)) + " " + unit
         }
         return "\(Int(v.rounded())) B"
     }

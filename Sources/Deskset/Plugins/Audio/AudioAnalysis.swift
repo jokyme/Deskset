@@ -198,8 +198,9 @@ struct AudioBandLayout {
         for b in 0..<bands {
             let lo = e[b], hi = e[b + 1]
             var w: [Int: Double] = [:]
-            // The spectrum is taken as linear between bin centres (k·Δ); ∫ over [lo, hi] gives each bin a weight.
-            var k = max(Int((lo / delta).rounded(.down)), 0)
+            // The spectrum is taken as linear between bin centres (k·Δ); ∫ over [lo, hi] gives each bin a weight. A band
+            // above every bin starts at `bins` (no weights): converted as written, a band near FreqMax=1e300 would trap.
+            var k = max(Int(min((lo / delta).rounded(.down), Double(bins))), 0)
             while k < bins - 1 {
                 let fk = Double(k) * delta
                 if fk >= hi { break }
