@@ -387,6 +387,18 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些名称未定义。
 - **状态：** 仅 Mac
 
+#### 时钟、每周首日和温度单位变量（`#MACCLOCKHOURS#`、`#MACFIRSTWEEKDAY#`、`#MACTEMPERATUREUNIT#`）
+- **Windows：** 没有这些变量。
+- **Mac：** `#MACCLOCKHOURS#` 为 `12` 或 `24`（“日期与时间”中的“24 小时制时间”，未设置时按地区习惯）；
+  `#MACFIRSTWEEKDAY#` 为每周第一天，`0`（星期日）…… `6`（星期六），与 `%w` 的计法相同（“语言与地区”）；
+  `#MACTEMPERATUREUNIT#` 为 `C` 或 `F`（“语言与地区”中的“温度”，未设置时按地区的天气单位）。它们的行为与外观变量相同：
+  不能被覆盖，是动态变量；其中任一设置改变时，用到它们的皮肤会执行 `MacOnAppearanceChangeAction`（默认 `[!Refresh]`）。
+  天气插件的默认时间格式和 `Units=Auto` 也跟随同样的设置。`--render` 默认使用 24 小时制、星期日和 °C，除非用
+  `--clock-hours`、`--first-weekday` 或 `--temperature-unit` 另行指定（[§7.5](#75-deskset---render供皮肤作者和测试使用)）。
+- **原因：** Deskset 扩展：皮肤中的“自动”设置需要知道 Mac 自己的选择。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响；请在自己的变量中提供 `Auto` 取值（`ClockHoursAuto=#MACCLOCKHOURS#`）。
+- **状态：** 仅 Mac
+
 #### 公式
 - **Windows：** 使用“公式”页列出的运算符和函数；优先级未写明；`.5` 必须写成 `0.5`；`&&` / `||` 两侧“必须”加括号；`?:`
   最多嵌套 30 层。
@@ -714,7 +726,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
-变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
+变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
 （[§6.5](#65-meter-与绘制)）。Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
@@ -1038,8 +1050,10 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 #### 把皮肤渲染为 PNG
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
-  间隔 1 000 ms），按比例 S（默认 2）以浅色外观（或指定的外观）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
+  [--temperature-unit C|F|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
+  间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac
+  自己的设置）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能

@@ -377,6 +377,27 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   cross-platform skin should give fallbacks in its own variables.
 - Status: Deskset extension
 
+### Clock, week and temperature variables (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`)
+- Windows (Rainmeter): no such built-in variables; skins keep a 12/24-hour option, a week start and a unit of their own.
+- Mac (Deskset): three more dynamic built-in variables follow the Mac's own settings. `#MACCLOCKHOURS#` is `12` or `24`
+  (System Settings → General → Date & Time → 24-hour time; without that switch, the region's clock).
+  `#MACFIRSTWEEKDAY#` is the first day of the week, `0` (Sunday) … `6` (Saturday), counted as the Time measure's `%w`
+  counts (Language & Region → First day of week). `#MACTEMPERATUREUNIT#` is `C` or `F` (Language & Region →
+  Temperature; without it, the region's unit for weather: °F in the United States, the Bahamas, Belize, the Cayman
+  Islands, Palau and Puerto Rico). They work like the appearance variables: `[Variables]` and `!SetVariable` cannot
+  set them, options see changes with `DynamicVariables=1`, and when one of these settings changes every skin that
+  uses one of them runs `MacOnAppearanceChangeAction` (`[!Refresh]` by default), `[Variables]` built from them
+  (`ClockHoursAuto=#MACCLOCKHOURS#`) updated first. The app reads them again when macOS reports a locale change or
+  one of the preferences behind them changes. The weather plugins' defaults use the same settings (their default
+  times follow `#MACCLOCKHOURS#`, `Units=Auto` takes the unit of `#MACTEMPERATUREUNIT#`), so the two always agree.
+  `Deskset --render` uses a 24-hour clock, weeks from Sunday and °C, so renders are the same on every Mac, unless
+  `--clock-hours 12|24|system`, `--first-weekday 0-6|system` or `--temperature-unit C|F|system` say otherwise.
+- Why: Deskset extension — an "Automatic" setting in a skin (a clock that follows the 12/24-hour switch, a calendar
+  that starts the week where the user does, a temperature in the user's unit) needs the Mac's choices.
+- Skin impact: none for Windows skins. On Windows the names are undefined; a cross-platform skin keeps its own
+  setting with an Auto value (`ClockHours=Auto`, `ClockHoursAuto=#MACCLOCKHOURS#`, read as `[#ClockHours[#ClockHours]]`).
+- Status: Deskset extension
+
 ### Formulas
 - Windows (Rainmeter): the operators and functions of /manual/formulas/; precedence is not documented; `.5` must be
   written `0.5`; operands of `&&` / `||` "must" be in parentheses; `?:` nests at most 30 deep.

@@ -193,8 +193,8 @@ public struct WeatherEnvironment {
     /// Offline, with nothing installed (the core default).
     public static let offline = WeatherEnvironment()
 
+    /// The same answer as `#MACCLOCKHOURS#` (`MacRegionalSettings.clockHours`).
     public static func systemUses24HourClock(locale: Locale = .current) -> Bool {
-        let format = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? "H"
-        return !format.contains("a")
+        MacRegionalSettings.clockHours(locale: locale) == 24
     }
 }

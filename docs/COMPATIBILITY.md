@@ -422,6 +422,19 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** none for Windows skins; on Windows these names are undefined.
 - **Status:** Mac-only
 
+#### Clock, week and temperature variables (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`)
+- **Windows:** no such variables.
+- **Mac:** `#MACCLOCKHOURS#` is `12` or `24` (Date & Time → 24-hour time, else the region's clock);
+  `#MACFIRSTWEEKDAY#` is the first day of the week, `0` (Sunday) … `6` (Saturday), as `%w` counts (Language &
+  Region); `#MACTEMPERATUREUNIT#` is `C` or `F` (Language & Region → Temperature, else the region's unit for weather).
+  They behave like the appearance variables: they cannot be overridden, they are dynamic, and when one of these
+  settings changes each skin that uses one runs `MacOnAppearanceChangeAction` (default `[!Refresh]`). The weather
+  plugins' default times and `Units=Auto` follow the same settings. `--render` uses 24-hour, Sunday and °C unless
+  `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise ([§7.5](#75-deskset---render-for-skin-authors-and-testing)).
+- **Why:** Deskset extension: "Automatic" settings in skins need the Mac's own choices.
+- **Skin impact:** none for Windows skins; give an `Auto` value of your own (`ClockHoursAuto=#MACCLOCKHOURS#`).
+- **Status:** Mac-only
+
 #### Formulas
 - **Windows:** the operators and functions of the Formulas page; precedence is not documented; `.5` must be written
   `0.5`; `&&` / `||` operands "must" be in parentheses; `?:` nests at most 30 deep.
@@ -784,8 +797,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 Options Rainmeter does not have. Their names start with `Mac`; Rainmeter ignores options it does not know, so a skin
 that uses them still loads there, only without the effect. The Mac look extensions are listed with the areas they
-belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables with
-`MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
+belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables and the clock, week and
+temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
@@ -1140,9 +1153,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Rendering a skin to a PNG
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` loads the skin without a window, runs N updates
-  (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light appearance (or the one asked for) and prints
-  compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
+  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2,
+  1 000 ms apart), draws it at scale S (default 2) in the Light appearance with a 24-hour clock, weeks from Sunday and
+  °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in

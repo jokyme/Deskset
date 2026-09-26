@@ -3,8 +3,9 @@ import Foundation
 /// The Mac's light or dark appearance and its semantic colors, as skins see them through the appearance variables
 /// (Deskset extension, docs/compat/engine.md "Light and dark mode variables"): `#MACAPPEARANCE#`, `#MACDARKMODE#`,
 /// `#MACACCENTCOLOR#`, `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#`,
-/// `#MACSEPARATORCOLOR#`. The app fills it in from AppKit (`SkinEnvironment.appearance`); the colors are sRGB, resolved
-/// for the appearance.
+/// `#MACSEPARATORCOLOR#`; and the clock, week and temperature settings that follow the Mac the same way
+/// (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`, `MacRegionalSettings`). The app fills it in from
+/// AppKit and Foundation (`SkinEnvironment.appearance`); the colors are sRGB, resolved for the appearance.
 public struct SkinAppearance: Equatable {
     public var isDark: Bool
     /// System Settings → Appearance → Accent color.
@@ -15,18 +16,22 @@ public struct SkinAppearance: Equatable {
     public var tertiaryLabelColor: RGBA
     /// Hairlines between items.
     public var separatorColor: RGBA
+    /// The clock, week and temperature settings (not about light and dark, but they follow the Mac the same way).
+    public var regional: MacRegionalSettings
 
     public init(isDark: Bool, accentColor: RGBA, labelColor: RGBA, secondaryLabelColor: RGBA,
-                tertiaryLabelColor: RGBA, separatorColor: RGBA) {
+                tertiaryLabelColor: RGBA, separatorColor: RGBA, regional: MacRegionalSettings = .standard) {
         self.isDark = isDark
         self.accentColor = accentColor
         self.labelColor = labelColor
         self.secondaryLabelColor = secondaryLabelColor
         self.tertiaryLabelColor = tertiaryLabelColor
         self.separatorColor = separatorColor
+        self.regional = regional
     }
 
-    /// Close to macOS's light appearance with the blue accent (what a host without AppKit reports).
+    /// Close to macOS's light appearance with the blue accent (what a host without AppKit reports), with the standard
+    /// clock, week and temperature settings.
     public static let light = SkinAppearance(isDark: false, accentColor: RGBA(r: 0, g: 122, b: 255),
                                              labelColor: RGBA(r: 0, g: 0, b: 0, a: 217),
                                              secondaryLabelColor: RGBA(r: 0, g: 0, b: 0, a: 128),
@@ -43,7 +48,8 @@ public struct SkinAppearance: Equatable {
 
     /// The value of the appearance variable `key` (lower case, without `#`), nil for any other name.
     /// `MACAPPEARANCE` is `Dark` or `Light` (usable in `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `MACDARKMODE` 1 or 0,
-    /// the colors `R,G,B,A` (0–255).
+    /// the colors `R,G,B,A` (0–255); `MACCLOCKHOURS`, `MACFIRSTWEEKDAY` and `MACTEMPERATUREUNIT` as
+    /// `MacRegionalSettings` gives them.
     public func variableValue(_ key: String) -> String? {
         switch key {
         case "macappearance": return isDark ? "Dark" : "Light"
@@ -53,7 +59,7 @@ public struct SkinAppearance: Equatable {
         case "macsecondarylabelcolor": return SkinAppearance.format(secondaryLabelColor)
         case "mactertiarylabelcolor": return SkinAppearance.format(tertiaryLabelColor)
         case "macseparatorcolor": return SkinAppearance.format(separatorColor)
-        default: return nil
+        default: return regional.variableValue(key)
         }
     }
 

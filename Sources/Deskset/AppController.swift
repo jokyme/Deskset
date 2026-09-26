@@ -40,6 +40,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The appearance the running skins last saw (`appearanceChanged`); nil until the app observes it.
     private var appearanceSeen: SkinAppearance?
     private var appearanceObservation: NSKeyValueObservation?
+    /// Watches the preference keys behind the clock, week and temperature settings (`regionalSettingsChanged`).
+    private var regionalDefaults: RegionalDefaultsObserver?
+    private var regionalRecheck: DispatchWorkItem?
 
     private var systemAsleep = false
     private var screensAsleep = false
@@ -286,19 +289,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Publishes the appearance skins see (`MacAppearance`) and watches it: macOS switching between light and dark
     /// (the app's effective appearance) and the accent color changing (`NSColor.systemColorsDidChangeNotification`)
-    /// run `appearanceChanged`. Set up at launch; the self-tests' apps do without (a suite sets it up itself).
+    /// run `appearanceChanged`; the 12/24-hour clock, the first day of the week and the temperature unit changing run
+    /// `regionalSettingsChanged` (Foundation's locale change, and the preference keys behind them). A new time zone
+    /// drops Foundation's cached one, so `Location=timezone` finds the new zone's city. Set up at launch; the
+    /// self-tests' apps do without (a suite sets it up itself).
     func observeAppearance() {
         appearanceSeen = MacAppearance.current.refresh()
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.appearanceChanged() }
         }
         observe(NotificationCenter.default, NSColor.systemColorsDidChangeNotification) { app in app.appearanceChanged() }
+        observe(NotificationCenter.default, NSLocale.currentLocaleDidChangeNotification) { app in
+            app.regionalSettingsChanged()
+        }
+        regionalDefaults = RegionalDefaultsObserver { [weak self] in self?.regionalSettingsChanged(recheck: true) }
+        observe(NotificationCenter.default, .NSSystemTimeZoneDidChange) { _ in NSTimeZone.resetSystemTimeZone() }
     }
 
-    /// The appearance or the accent color may have changed: the new values are published, and when they differ from
-    /// what the skins last saw, every skin that follows the appearance (it uses an appearance variable or writes an action
-    /// of its own) runs its `MacOnAppearanceChangeAction` (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where
-    /// it is owned. Other skins are left alone.
+    /// The clock, week or temperature setting may have changed (System Settings → General → Date & Time, Language &
+    /// Region): worked out again (`MacRegional`) and passed on like an appearance change, so skins that use
+    /// `#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#` or `#MACTEMPERATUREUNIT#` run their `MacOnAppearanceChangeAction`.
+    /// `recheck`: a preference key changed, which Foundation's current locale may not show yet — look once more a
+    /// second later. Main thread.
+    func regionalSettingsChanged(recheck: Bool = false) {
+        MacRegional.refresh()
+        appearanceChanged()
+        guard recheck else { return }
+        regionalRecheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MacRegional.refresh()
+            self?.appearanceChanged()
+        }
+        regionalRecheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// The appearance, the accent color or a clock, week or temperature setting may have changed: the new values are
+    /// published, and when they differ from what the skins last saw, every skin that follows the appearance (it uses an
+    /// appearance variable or writes an action of its own) runs its `MacOnAppearanceChangeAction`
+    /// (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where it is owned. Other skins are left alone.
     /// Main thread.
     func appearanceChanged() {
         DesktopInputs.appearance.refresh()

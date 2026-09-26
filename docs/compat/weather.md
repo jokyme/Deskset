@@ -40,11 +40,11 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | `Type` | `Temperature` … (table below) | What the measure shows. |
   | `Hour` | empty · 0–47 | The forecast N hours after the current hour. |
   | `Day` | empty · 0–9 | Today (0), tomorrow (1)…; wins over `Hour`. |
-  | `Units` | `Auto` · `Metric` · `Imperial` | Auto follows the Mac: the Temperature setting, then the region (wind in mph for the US and the UK). |
+  | `Units` | `Auto` · `Metric` · `Imperial` | Auto follows the Mac: the temperature in the unit of `#MACTEMPERATUREUNIT#` (the Temperature setting, else the region's unit for weather), the rest by the region's measurement system (wind in mph for the US and the UK). |
   | `TemperatureUnit`, `WindUnit`, `PrecipitationUnit`, `PressureUnit` | `C`/`F`; `kmh`/`ms`/`mph`/`kn`/`bft`; `mm`/`in`; `hPa`/`inHg`/`mmHg` | One quantity in another unit. |
   | `TimeZone` | `Place` · `Local` · an IANA name · hours from UTC | Day boundaries and times. `Place`: the place's own zone (this Mac's for `auto`). |
   | `DaylightSavingTime` | `0` · `1` | With `TimeZone` in hours: `1` adds this Mac's daylight saving offset, as the Time measure does. Off by default, so `TimeZone=9` is UTC+9 all year. |
-  | `Format`, `FormatLocale` | strftime codes, as the Time measure | Times: `%H:%M` or `%#I:%M %p` by the Mac's clock setting; days `%a`. |
+  | `Format`, `FormatLocale` | strftime codes, as the Time measure | Times: `%H:%M` or `%#I:%M %p` by the Mac's clock setting (`#MACCLOCKHOURS#`); days `%a`. |
   | `Decimals` | empty · 0–3 | Rounds the number itself, half away from zero, never `-0`. |
   | `UnavailableText` | empty | The string while there is no value (e.g. `--`). |
   | `NoEventText` | `--:--` | Sunrise and Sunset when the sun does not rise or set that day (midnight sun, polar night), as MacSun; the number is 0. |
