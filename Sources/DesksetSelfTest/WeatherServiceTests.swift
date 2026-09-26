@@ -1535,6 +1535,23 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         Plugin=MacSun
         Parent=Rise
         Type=TimeZone
+        [WeatherRise]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=69.65,18.96
+        Type=Sunrise
+        UnavailableText=no data
+        [WeatherSet]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=WeatherRise
+        Type=Sunset
+        NoEventText=polar night
+        [NowhereRise]
+        Measure=Plugin
+        Plugin=MacWeather
+        Type=Sunrise
+        UnavailableText=no data
         """)
         for _ in 0..<10 {
             WeatherService.shared.drain()
@@ -1545,6 +1562,10 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(value(dark, "State"), 2)
         t.equal(string(dark, "Zone"), "Europe/Oslo")
         t.check(string(dark, "Dawn").hasPrefix("09:"), "civil dawn \(string(dark, "Dawn"))")
+        // MacWeather's sunrise and sunset tell "no sunrise" from "no data" as MacSun does.
+        t.equal(string(dark, "WeatherRise"), "--:--", "no sunrise today")
+        t.equal(string(dark, "WeatherSet"), "polar night", "its own NoEventText")
+        t.equal(string(dark, "NowhereRise"), "no data", "no place: UnavailableText")
         skin.close()
     }
 }

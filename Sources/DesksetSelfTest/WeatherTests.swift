@@ -613,7 +613,8 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         for key in ["location", "parent", "type", "hour", "day", "units", "temperatureunit", "windunit",
                     "precipitationunit", "pressureunit", "format", "timezone", "formatlocale", "decimals",
                     "unavailabletext", "symbolstyle", "hours", "curvewidth", "curveheight", "smooth", "colorof",
-                    "finishaction", "onconnecterroraction", "onlocationerroraction"] {
+                    "finishaction", "onconnecterroraction", "onlocationerroraction", "noeventtext",
+                    "daylightsavingtime"] {
             t.check(keys.contains(key), "MacWeather \(key)")
         }
         t.equal(S.property("Type", in: weather)?.kind.choices?.count, MacWeatherMeasure.ValueType.allCases.count,
@@ -638,8 +639,12 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         t.check(visible("FinishAction", ["parent": "MeasureWeather"]), "but its own actions (they run with the parent's)")
         t.check(visible("SymbolStyle", ["type": "Symbol"]) && !visible("SymbolStyle", ["type": "Temperature"]))
         t.check(visible("Format", ["type": "Sunrise"]) && !visible("Format", ["type": "Humidity"]))
+        t.check(visible("NoEventText", ["type": "Sunset"]) && !visible("NoEventText", ["type": "Temperature"]))
+        t.check(visible("DaylightSavingTime", ["timezone": "9"]), "hours from UTC")
+        t.check(!visible("DaylightSavingTime", [:]) && !visible("DaylightSavingTime", ["timezone": "Place"]))
         let sun = S.measureGroups("Plugin", plugin: "MacSun")
-        t.check(S.keys(sun).isSuperset(of: ["location", "parent", "type", "day", "format", "timezone", "noeventtext"]))
+        t.check(S.keys(sun).isSuperset(of: ["location", "parent", "type", "day", "format", "timezone", "noeventtext",
+                                            "daylightsavingtime"]))
         t.check(!visible("Format", ["type": "MoonPhase"], sun))
         t.check(S.liveDataCatalogue.last?.items.flatMap(\.children).allSatisfy { $0.measureType != nil } == true)
 

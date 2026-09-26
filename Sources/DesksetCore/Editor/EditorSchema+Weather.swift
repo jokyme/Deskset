@@ -113,6 +113,8 @@ extension EditorSchema {
                      help: "Rounds the number itself (no “-0”)"),
             Property("UnavailableText", "Text when there is no data", .text, placeholder: "empty",
                      help: "Shown before the first forecast arrives, e.g. --"),
+            Property("NoEventText", "Text when the sun doesn't rise or set", .text, default: "--:--",
+                     help: "Midnight sun and polar night", visibleWhen: [.equals("Type", "Sunrise", "Sunset")]),
             Property("SymbolStyle", "Icon style", pick([Choice("Fill", "Filled"), Choice("Outline", "Outline")]),
                      default: "Fill", visibleWhen: [.equals("Type", "Symbol")]),
             Property("Hours", "Hours in the curve", num(2, 48, step: 1, unit: "hours"), default: "24",

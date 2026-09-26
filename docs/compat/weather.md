@@ -36,7 +36,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Option | Values (default first) | What it does |
   |---|---|---|
   | `Location` | empty · `City[, Region][, Country]` · `lat,lon` · `auto` | The place (see "Places"). Ignored with `Parent`. |
-  | `Parent` | a MacWeather measure | Uses its place and its `Units`, unit overrides, `TimeZone`, `DaylightSavingTime`, `FormatLocale`, `Decimals`, `UnavailableText`, `SymbolStyle` (followed up to 8 levels). |
+  | `Parent` | a MacWeather measure | Uses its place and its `Units`, unit overrides, `TimeZone`, `DaylightSavingTime`, `FormatLocale`, `Decimals`, `UnavailableText`, `NoEventText`, `SymbolStyle` (followed up to 8 levels). |
   | `Type` | `Temperature` … (table below) | What the measure shows. |
   | `Hour` | empty · 0–47 | The forecast N hours after the current hour. |
   | `Day` | empty · 0–9 | Today (0), tomorrow (1)…; wins over `Hour`. |
@@ -47,6 +47,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | `Format`, `FormatLocale` | strftime codes, as the Time measure | Times: `%H:%M` or `%#I:%M %p` by the Mac's clock setting; days `%a`. |
   | `Decimals` | empty · 0–3 | Rounds the number itself, half away from zero, never `-0`. |
   | `UnavailableText` | empty | The string while there is no value (e.g. `--`). |
+  | `NoEventText` | `--:--` | Sunrise and Sunset when the sun does not rise or set that day (midnight sun, polar night), as MacSun; the number is 0. |
   | `SymbolStyle` | `Fill` · `Outline` | For `Type=Symbol`. |
   | `Hours`, `CurveWidth`, `CurveHeight`, `Smooth` | 24, 200, 40, 1 | For `Type=TemperatureCurve`. |
   | `ColorOf` | `High` · `Low` | For `Type=TemperatureColor` with `Day`. |

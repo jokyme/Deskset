@@ -262,7 +262,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     // MARK: Options
 
     static let inherited = ["Units", "TemperatureUnit", "WindUnit", "PrecipitationUnit", "PressureUnit", "TimeZone",
-                            "FormatLocale", "Decimals", "UnavailableText", "SymbolStyle", "DaylightSavingTime"]
+                            "FormatLocale", "Decimals", "UnavailableText", "NoEventText", "SymbolStyle",
+                            "DaylightSavingTime"]
 
     public override func readMeasureOptions() {
         parentName = string("Parent").trimmingCharacters(in: .whitespaces)
@@ -631,8 +632,12 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             let sun = SolarCalculator.day(containing: b.now, zone: zone, latitude: c.latitude, longitude: c.longitude,
                                           offset: offset)
             switch type {
-            case .sunrise: return time(sun.sunrise.date, zone: zone, defaultFormat: defaultTime)
-            case .sunset: return time(sun.sunset.date, zone: zone, defaultFormat: defaultTime)
+            case .sunrise, .sunset:
+                guard let date = (type == .sunrise ? sun.sunrise : sun.sunset).date else {
+                    // Midnight sun or polar night: MacSun's NoEventText, not the text for "no data".
+                    return Output(number: 0, string: setting("NoEventText") ?? "--:--", available: false, range: nil)
+                }
+                return time(date, zone: zone, defaultFormat: defaultTime)
             case .solarNoon: return time(sun.solarNoon, zone: zone, defaultFormat: defaultTime)
             case .dayLength:
                 return Output(number: sun.length, string: SolarCalculator.durationText(sun.length), available: true,
