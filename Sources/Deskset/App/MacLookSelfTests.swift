@@ -9,6 +9,7 @@ enum MacLookSelfTests {
         fontTests(t)
         symbolTests(t)
         appearanceTests(t)
+        editorTests(t)
     }
 
     // MARK: Helpers
@@ -454,6 +455,28 @@ enum MacLookSelfTests {
             t.check(AppSelfTest.spin(timeout: 5) { app.controller(for: "Mac\\Look")?.skin.variable("MACAPPEARANCE") == "Light" },
                     "and back")
             app.stopAllForTermination()
+        }
+    }
+}
+
+extension MacLookSelfTests {
+    // MARK: Editor
+
+    static func editorTests(_ t: AppTestRunner) {
+        t.suite("App: Mac look: the editor shows a symbol as the widget draws it") {
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Mac\\Look") else { return }
+            // The picture's thumbnail uses the layer's MacSymbolWeight and MacSymbolRendering.
+            for (section, name, weight, rendering) in [("MeterWeather", "cloud.sun.fill", MacSymbol.Weight.regular, MacSymbol.Rendering.multicolor),
+                                                       ("MeterMemory", "memorychip", .semibold, .monochrome),
+                                                       ("MeterWiFi", "wifi", .regular, .hierarchical)] {
+                let path = editor.imagePath(ctxSection: section, key: "ImageName", resolved: "sf:\(name)")
+                let symbol = path.flatMap { MacSymbol(path: $0) }
+                t.equal(symbol?.style.weight, weight, section)
+                t.equal(symbol?.style.rendering, rendering, section)
+            }
+            t.equal(editor.imagePath(ctxSection: "MeterPower", key: "ButtonImage", resolved: "sf:power.circle.fill")
+                .flatMap { MacSymbol(path: $0) }?.style.pointSize, 17, "MacSymbolSize too")
+            editor.window?.close()
         }
     }
 }
