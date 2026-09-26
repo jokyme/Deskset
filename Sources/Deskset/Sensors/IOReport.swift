@@ -242,6 +242,32 @@ enum IOReportMath {
     }
 }
 
+/// Which two samples an IOReport reading measures between. Every sample is stamped when it was taken, and a reading
+/// covers the time from the base sample to a new one. The first sample only becomes the base; one taken less than
+/// `minimum` after the base (two refreshes in quick succession) leaves the base alone, and the last reading stands.
+struct IOReportTimeline<Sample> {
+    static var minimum: TimeInterval { 0.05 }
+
+    enum Step {
+        case first
+        case tooSoon
+        case interval(from: Sample, seconds: TimeInterval)
+    }
+
+    private(set) var base: (sample: Sample, time: TimeInterval)?
+
+    mutating func add(_ sample: Sample, at time: TimeInterval) -> Step {
+        guard let base else {
+            self.base = (sample, time)
+            return .first
+        }
+        let seconds = time - base.time
+        guard seconds > Self.minimum else { return .tooSoon }
+        self.base = (sample, time)
+        return .interval(from: base.sample, seconds: seconds)
+    }
+}
+
 /// A cluster type of a logical CPU.
 enum CoreType: Equatable {
     case performance, efficiency, unknown
@@ -303,12 +329,15 @@ final class IOReportSampler {
     private let functions: Functions
     private let subscription: CFTypeRef
     private let channels: CFMutableDictionary
-    private var previous: (sample: CFDictionary, time: TimeInterval)?
+    private var timeline = IOReportTimeline<CFDictionary>()
+    private var last: SensorGroupReading?
     private let coreTypes: [CoreType]
     private let tables: [String: Data]
+    private let clock: () -> TimeInterval
 
     /// nil when libIOReport, its functions or the channels are missing (Intel Macs, virtual machines, a future macOS).
-    init?(coreTypes: [CoreType]) {
+    /// `clock` stamps the samples.
+    init?(coreTypes: [CoreType], clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         guard let f = Functions.shared,
               let energy = f.copyChannels("Energy Model" as CFString, nil, 0, 0, 0)?.takeRetainedValue() else { return nil }
         for (group, subgroup) in [("CPU Stats", "CPU Core Performance States"), ("GPU Stats", "GPU Performance States")] {
@@ -323,17 +352,28 @@ final class IOReportSampler {
         subscription = sub
         channels = chosen
         self.coreTypes = coreTypes
+        self.clock = clock
         tables = IOReportSampler.pmgrTables()
     }
 
-    /// Takes a sample; the values cover the time since the previous one (none the first time).
-    func sample(now: TimeInterval) -> SensorGroupReading? {
+    /// Takes a sample; the values cover the time since the previous one (none the first time). A sample taken too
+    /// soon after the previous one answers with the last reading; a failed one with the last reading's sensors, without
+    /// values.
+    func sample() -> SensorGroupReading? {
         let f = functions
-        guard let current = f.samples(subscription, channels, nil)?.takeRetainedValue() else { return nil }
-        defer { previous = (current, now) }
-        guard let previous, now - previous.time > 0.05,
-              let delta = f.delta(previous.sample, current, nil)?.takeRetainedValue(),
-              let items = (delta as NSDictionary)["IOReportChannels"] as? [NSDictionary] else { return nil }
+        guard let current = f.samples(subscription, channels, nil)?.takeRetainedValue() else { return unavailable() }
+        let seconds: TimeInterval, delta: CFDictionary
+        switch timeline.add(current, at: clock()) {
+        case .first:
+            return nil
+        case .tooSoon:
+            return last
+        case .interval(let from, let s):
+            guard let d = f.delta(from, current, nil)?.takeRetainedValue() else { return unavailable() }
+            seconds = s
+            delta = d
+        }
+        guard let items = (delta as NSDictionary)["IOReportChannels"] as? [NSDictionary] else { return unavailable() }
         var joules: [String: Double] = [:]
         var cores: [DVFSResidency] = [], gpu: [DVFSResidency] = []
         for item in items {
@@ -356,8 +396,14 @@ final class IOReportSampler {
                 gpu.append(DVFSResidency(name: name, states: states))
             }
         }
-        return IOReportMath.reading(joules: joules, seconds: now - previous.time, cores: cores, gpu: gpu,
-                                    coreTypes: coreTypes, tables: tables)
+        let reading = IOReportMath.reading(joules: joules, seconds: seconds, cores: cores, gpu: gpu,
+                                           coreTypes: coreTypes, tables: tables)
+        last = reading
+        return reading
+    }
+
+    private func unavailable() -> SensorGroupReading? {
+        last.map { SensorGroupReading(infos: $0.infos) }
     }
 
     /// The `voltage-states…` properties of the device tree's power manager.

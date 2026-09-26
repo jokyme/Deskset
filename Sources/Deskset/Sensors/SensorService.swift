@@ -132,7 +132,7 @@ final class SensorService {
             s.waiters.isEmpty ? Set(s.asked.filter { start - $0.value < SensorService.idleAfter }.keys)
                 : Set(SensorGroup.allCases)
         }
-        let fresh = wanted.isEmpty ? [:] : hardware.read(wanted, now: start)
+        let fresh = wanted.isEmpty ? [:] : hardware.read(wanted)
         let idle = Set(SensorGroup.allCases).subtracting(wanted)
         hardware.release(idle)
         let (done, list, again) = state.access { s -> ([([SensorInfo]) -> Void], [SensorInfo], Bool) in

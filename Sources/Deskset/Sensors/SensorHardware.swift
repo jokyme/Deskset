@@ -40,7 +40,7 @@ enum SensorGroup: String, CaseIterable {
 /// What the sensor service reads the hardware with; the self-tests use fakes.
 protocol SensorHardware: AnyObject {
     /// Reads `groups`. Called on the sensor service's queue only, one call at a time; may take a while.
-    func read(_ groups: Set<SensorGroup>, now: TimeInterval) -> [SensorGroup: SensorGroupReading]
+    func read(_ groups: Set<SensorGroup>) -> [SensorGroup: SensorGroupReading]
     /// Lets go of what `groups` hold (the IOReport subscription…) while nothing asks for them. Same queue.
     func release(_ groups: Set<SensorGroup>)
     /// The nominal maximum junction temperature of this Mac's CPU (°C).
@@ -80,14 +80,14 @@ final class LiveSensorHardware: SensorHardware {
     /// sustained load (an M4 Pro briefly read 112 °C). Intel: 100 °C, the limit of most processors Macs used.
     var tjMax: Double { family.isAppleSilicon ? 110 : 100 }
 
-    func read(_ groups: Set<SensorGroup>, now: TimeInterval) -> [SensorGroup: SensorGroupReading] {
+    func read(_ groups: Set<SensorGroup>) -> [SensorGroup: SensorGroupReading] {
         var result: [SensorGroup: SensorGroupReading] = [:]
         for group in SensorGroup.allCases where groups.contains(group) {
             switch group {
             case .temperatures: result[group] = temperatures()
             case .fans: result[group] = SensorReadings.fans { openSMC()?.number($0) }
             case .systemPower: result[group] = SensorReadings.systemPower { openSMC()?.number($0) }
-            case .ioReport: result[group] = ioReportReading(now: now)
+            case .ioReport: result[group] = ioReportReading()
             case .gpu: result[group] = SensorReadings.gpu(IOKitSensorReaders.acceleratorStatistics())
             case .battery: result[group] = IOKitSensorReaders.batteryProperties().map(SensorReadings.battery)
                 ?? SensorGroupReading()
@@ -171,19 +171,19 @@ final class LiveSensorHardware: SensorHardware {
 
     // MARK: IOReport
 
-    private func ioReportReading(now: TimeInterval) -> SensorGroupReading {
+    /// Each sample is stamped by the sampler when it is taken (the groups read before this one take a varying time).
+    private func ioReportReading() -> SensorGroupReading {
         guard family.isAppleSilicon else { return SensorGroupReading() }
         if !ioReportTried {
             ioReportTried = true
             ioReport = IOReportSampler(coreTypes: coreTypes)
             // A first sample to measure from, so that this reading already has values.
             if let sampler = ioReport {
-                _ = sampler.sample(now: now)
+                _ = sampler.sample()
                 Thread.sleep(forTimeInterval: 0.25)
-                return sampler.sample(now: now + 0.25) ?? SensorGroupReading()
             }
         }
-        return ioReport?.sample(now: now) ?? SensorGroupReading()
+        return ioReport?.sample() ?? SensorGroupReading()
     }
 }
 

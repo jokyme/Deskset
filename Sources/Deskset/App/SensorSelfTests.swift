@@ -476,6 +476,21 @@ enum SensorSelfTests {
             let bare = IOReportMath.reading(joules: ["CPU Energy": 1], seconds: 1, cores: cores, gpu: gpu, coreTypes: types,
                                             tables: [:])
             t.equal(bare.infos.map(\.key), ["power.cpu"])
+            // The samples a reading measures between: stamped when taken; one too soon keeps the base.
+            var timeline = IOReportTimeline<Int>()
+            func step(_ sample: Int, _ time: TimeInterval) -> String {
+                switch timeline.add(sample, at: time) {
+                case .first: return "first"
+                case .tooSoon: return "too soon"
+                case .interval(let from, let seconds): return "\(from) \(seconds)"
+                }
+            }
+            t.equal(step(1, 100), "first")
+            t.equal(step(2, 100.25), "1 0.25")
+            t.equal(step(3, 100.28), "too soon", "a sample 30 ms after the base")
+            t.equal(timeline.base?.sample, 2, "leaves the base alone")
+            t.equal(step(4, 101.25), "2 1.0", "the next one measures from the base")
+            t.equal(step(5, 101.25), "too soon")
             t.equal(SensorGroupReading.coreType(clusterType: Data("E\0".utf8)), .efficiency)
             t.equal(SensorGroupReading.coreType(clusterType: Data("P".utf8)), .performance)
             t.equal(SensorGroupReading.coreType(clusterType: Data()), nil)
@@ -540,7 +555,7 @@ enum SensorSelfTests {
             lock.unlock()
         }
 
-        func read(_ groups: Set<SensorGroup>, now: TimeInterval) -> [SensorGroup: SensorGroupReading] {
+        func read(_ groups: Set<SensorGroup>) -> [SensorGroup: SensorGroupReading] {
             lock.lock()
             inside += 1
             if inside > 1 { overlapped = true }
