@@ -795,14 +795,15 @@ that uses them still loads there, only without the effect.
   skin draws nothing). macOS 26 and later: `NSGlassEffectView` (Liquid Glass) in the chosen style, with the corner
   radius and the tint (macOS keeps a tint subtle; its alpha makes it subtler). macOS 13–15: `NSVisualEffectView`
   blurring what is behind the window (Regular: the popover material, Clear: the HUD material, darker and more
-  see-through), rounded with a mask, the tint laid over it at 40 % of its alpha, so the glass leans toward it. Being part of the window, the glass follows the window's alpha, fades, level, Spaces and every move
-  exactly (FrostedGlass, a separate window, fades in steps). Glass counts as a solid part of the skin: the skin's
-  drawing puts a fill no one can see (alpha 1/255) over it, so clicks, drags, hover and mouse actions work on glass
-  even where the skin draws nothing; elsewhere, fully transparent pixels still let clicks through. The glass is also
-  part of its meter for the mouse: the meter's mouse actions, hover actions, tooltip and cursor work on all of the
-  glass shown for it (a Shape with a transparent fill, the corners of the frame around an Ellipse, glass moved by a
-  `TransformationMatrix`, content's glass up to its container's frame), from the redraw that shows it; a Button's
-  `ButtonCommand` and button states still follow only the opaque pixels of its image. With FrostedGlass
+  see-through), rounded with a mask, the tint laid over it at 40 % of its alpha, so the glass leans toward it. Being
+  part of the window, the glass follows the window's alpha, fades, level, Spaces and every move exactly (FrostedGlass,
+  a separate window, fades in steps). Glass counts as a solid part of the skin: the skin's drawing puts a fill no one
+  can see (alpha 1/255) over it, so clicks, drags, hover and mouse actions work on glass even where the skin draws
+  nothing; elsewhere, fully transparent pixels still let clicks through. The glass is also part of its meter for the
+  mouse: the meter's mouse actions, hover actions, tooltip and cursor work on all of the glass shown for it (a Shape
+  with a transparent fill, the corners of the frame around an Ellipse, glass moved by a `TransformationMatrix`, a
+  Shape's Rectangle beyond the frame, content's glass up to its container's frame), from the redraw that shows it; a
+  Button's `ButtonCommand` and button states still follow only the opaque pixels of its image. With FrostedGlass
   rounded corners, the glass is cut off by the same rounded rectangle. `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15
   glass on macOS 26, to compare the two.
 - Why: Liquid Glass exists only on macOS 26; the visual-effect materials are the closest look before it.
@@ -812,9 +813,11 @@ that uses them still loads there, only without the effect.
 ### MacGlass where there is no window
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): real glass shows what is behind a window, so images and previews show a stand-in: a translucent white
-  fill (the tint over it; lighter for Clear) and a hairline edge, in the glass's shape and stacking. `--render` draws
-  it for its `--background` (dark or light; a neutral edge that shows on both without one), the Skin Studio's canvas
-  for its backdrop; layer and widget thumbnails and the component library use the neutral look.
+  fill (the tint over it; lighter for Clear) and a hairline edge, in the glass's shape and stacking, behind everything
+  drawn (a picture of several layers, such as a Skin Studio tile of a run or a selection, draws every stand-in before
+  any layer). `--render` draws it for its `--background` (dark or light; a neutral edge that shows on both without
+  one), the Skin Studio's canvas for its backdrop; layer and widget thumbnails and the component library use the
+  neutral look.
 - Why: nothing is behind an image to see through.
 - Skin impact: none on the desktop; screenshots made with `--render` do not show real glass.
 - Status: Deskset extension
