@@ -226,6 +226,29 @@ private func runWeatherDerivedTests(_ t: TestRunner) {
             t.check(days[1].available && days[1].covered == 24 * 3600, "\(zone): tomorrow is complete")
             t.check(zip(days, days.dropFirst()).allSatisfy { $0.end == $1.start }, "\(zone): consecutive")
         }
+        // Late in the evening fresh data starts at the current hour, so less than 3 hours of today are left: today's
+        // icon is then the period of what is left nearest to noon (22:10 in Oslo; the data from 20:00 UTC).
+        let evening = WeatherForecast(steps: f.steps.filter { $0.time >= WeatherFixtures.date("2026-09-26T20:00:00Z") })
+        let tonight = WeatherTimeline.days(evening, zone: WeatherFixtures.zone("Europe/Oslo"),
+                                           now: WeatherFixtures.date("2026-09-26T20:10:00Z"))
+        t.check(tonight[0].available, "today is still shown")
+        t.equal(tonight[0].symbol?.raw, "clearsky_day", "with an icon (as by day)")
+        t.equal(tonight[1].symbol?.raw, "partlycloudy_day", "tomorrow as before")
+        let auckland = WeatherTimeline.days(f, zone: WeatherFixtures.zone("Pacific/Auckland"), now: now)
+        t.check(auckland[0].symbol != nil, "the last hour of the day in Auckland")
+        func period(_ hours: Int, _ code: String) -> WeatherPeriod {
+            var p = WeatherPeriod(hours: hours)
+            p.symbol = WeatherSymbol.parse(code)
+            return p
+        }
+        let lateSteps = [WeatherStep(time: WeatherFixtures.date("2026-09-26T20:00:00Z"), next1h: period(1, "rain"),
+                                     next6h: period(6, "cloudy")),
+                         WeatherStep(time: WeatherFixtures.date("2026-09-26T21:00:00Z"), next1h: period(1, "fog"),
+                                     next6h: period(6, "snow"))]
+        let lateDays = WeatherTimeline.days(WeatherForecast(steps: lateSteps), zone: WeatherFixtures.zone("Europe/Oslo"),
+                                            now: WeatherFixtures.date("2026-09-26T20:10:00Z"))
+        t.equal(lateDays[0].symbol?.raw, "rain", "the hour nearest to noon of the two left")
+
         // Daily symbols are shown by day; days past the data are not available.
         let oslo = WeatherTimeline.days(f, zone: WeatherFixtures.zone("Europe/Oslo"), now: now)
         t.check(oslo.compactMap(\.symbol).allSatisfy { $0.variant != .night }, "no night symbols")

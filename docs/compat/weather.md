@@ -95,9 +95,11 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   daylight saving changes): its high and low are the extremes of the hourly temperatures in it plus the six-hour
   extremes of the later part of the forecast, today's also the hours already gone (kept from earlier responses);
   rain is the sum of the forecast periods, shared out by how much of each falls in the day; chances, wind, gusts
-  and UV are the highest; the icon is that of the six-hour period nearest to local noon, always shown as by day. A
-  day counts when at least 12 of its hours are covered (today: any). The weather condition is MET's own symbol, which
-  already tells day from night.
+  and UV are the highest; the icon is that of the six-hour period nearest to local noon among those with at least 3
+  hours in the day, always shown as by day. MET's data starts at the current hour, so today's icon follows what is
+  left of today, and once less than 3 hours of it are left (late in the evening) it is the one-hour or six-hour period
+  of what is left nearest to noon. A day counts when at least 12 of its hours are covered (today: any). The weather
+  condition is MET's own symbol, which already tells day from night.
 - Why: the forecast is a list of hourly and six-hourly steps; skins want "now", hours and days.
 - Skin impact: daily values may differ slightly from yr.no's own summaries.
 - Status: Deskset extension

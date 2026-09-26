@@ -163,15 +163,25 @@ public enum WeatherTimeline {
             }
         }
         d.precipitation = precipitation
-        // Symbol: the six-hour period whose middle is nearest to local noon (ties: the earlier one), shown by day.
+        // Symbol: the six-hour period with at least 3 hours in the day whose middle is nearest to local noon (ties: the
+        // earlier one), shown by day. When less of the day is left in the data (MET's series starts at the current
+        // hour, so late in the evening), the nearest to noon of the periods that are left, six-hour or one-hour.
         var best: (distance: TimeInterval, time: Date, symbol: WeatherSymbol)?
-        for s in forecast.steps {
-            guard let p = s.next6h, let symbol = p.symbol else { continue }
-            let span = Span(start: s.time, end: s.time.addingTimeInterval(6 * 3600), period: p)
-            guard span.overlap(start, end) >= 3 * 3600 else { continue }
-            let distance = abs(s.time.addingTimeInterval(3 * 3600).timeIntervalSince(noon))
-            if best.map({ distance < $0.distance || (distance == $0.distance && s.time < $0.time) }) ?? true {
-                best = (distance, s.time, symbol)
+        func consider(_ time: Date, _ p: WeatherPeriod?, minimumOverlap: TimeInterval) {
+            guard let p, let symbol = p.symbol else { return }
+            let span = Span(start: time, end: time.addingTimeInterval(p.length), period: p)
+            let o = span.overlap(start, end)
+            guard o > 0, o >= minimumOverlap else { return }
+            let distance = abs(time.addingTimeInterval(p.length / 2).timeIntervalSince(noon))
+            if best.map({ distance < $0.distance || (distance == $0.distance && time < $0.time) }) ?? true {
+                best = (distance, time, symbol)
+            }
+        }
+        for s in forecast.steps { consider(s.time, s.next6h, minimumOverlap: 3 * 3600) }
+        if best == nil {
+            for s in forecast.steps {
+                consider(s.time, s.next6h, minimumOverlap: 0)
+                consider(s.time, s.next1h, minimumOverlap: 0)
             }
         }
         d.symbol = best?.symbol.asDay
