@@ -156,6 +156,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 # Example skins are plain files, located at runtime via Bundle.main.resourceURL (no SPM resources).
 ditto DefaultSkins "$APP/Contents/Resources/DefaultSkins"
+# The offline place table of the weather plugins (GeoNames, CC BY 4.0; Data/Places/README.md).
+ditto Data/Places "$APP/Contents/Resources/Places"
 
 # License texts travel with the app; the About panel shows Credits.html.
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"

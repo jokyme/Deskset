@@ -44,6 +44,17 @@ THE SOFTWARE.
   Deskset derives values from the data (daily summaries, unit conversions, feels-like temperatures). MET Norway does
   not endorse Deskset.
 
+## GeoNames place names
+
+- Where: `Data/Places/places.tsv` (bundled in the app as `Contents/Resources/Places/places.tsv`) and the small test
+  table `TestSkins/Plugins/@Resources/Weather/places-fixture.tsv`.
+- Source: GeoNames, <https://www.geonames.org/> — `cities15000.txt`, `countryInfo.txt` and `admin1CodesASCII.txt`
+  from <https://download.geonames.org/export/dump/>.
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0,
+  <https://creativecommons.org/licenses/by/4.0/>).
+- Changes: trimmed and reformatted by `scripts/make-places.swift` (coordinates rounded to two decimals, alternate
+  names filtered, see `Data/Places/README.md`).
+
 ## Rainmeter
 
 Deskset runs skins written for [Rainmeter](https://www.rainmeter.net). It is an independent, clean-room

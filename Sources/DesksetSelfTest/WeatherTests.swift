@@ -341,7 +341,7 @@ private func runWeatherUnitTests(_ t: TestRunner) {
     }
 }
 
-// MARK: - Location
+// MARK: - Location and places
 
 private func runWeatherLocationTests(_ t: TestRunner) {
     t.suite("Weather: location") {
@@ -379,6 +379,61 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         let url = METNorway.url(for: r)
         t.equal(url.absoluteString, "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=59.91&lon=10.75")
         t.check(!url.absoluteString.contains("altitude"))
+    }
+
+    t.suite("Weather: places") {
+        guard let d = PlaceDirectory(url: WeatherFixtures.placesFixture) else { return t.check(false, "fixture table") }
+        t.equal(d.search("Oslo")?.place.country, "NO")
+        t.equal(d.search("Oslo")?.detail, "Oslo, Oslo, Norway")
+        t.equal(d.search("oslo")?.displayName, "Oslo")
+        t.equal(d.search("zurich")?.place.name, "Zürich", "diacritics folded")
+        t.equal(d.search("ZÜRICH")?.place.name, "Zürich")
+        t.equal(d.search("sao paulo")?.place.country, "BR")
+        t.equal(d.search("北京")?.place.name, "Beijing")
+        t.equal(d.search("北京")?.displayName, "北京", "the user's spelling is shown")
+        t.equal(d.search("北京市")?.place.name, "Beijing")
+        t.equal(d.search("奥斯陆")?.place.name, "Oslo")
+        t.equal(d.search("苏州市")?.place.name, "Suzhou")
+        t.equal(d.search("广州市")?.displayName, "广州市")
+        t.equal(d.search("Kristiania")?.place.name, "Oslo")
+        // Springfield: the largest by default, qualifiers pick another.
+        t.equal(d.search("Springfield")?.place.admin1, "MO", "largest first")
+        t.equal(d.search("Springfield, IL")?.place.admin1, "IL", "a region code")
+        t.equal(d.search("Springfield, Illinois")?.place.admin1, "IL", "a region name")
+        t.equal(d.search("Springfield, Oregon, US")?.place.admin1, "OR", "two qualifiers")
+        t.equal(d.search("Springfield, Illinois, United States")?.detail, "Springfield, Illinois, United States")
+        t.equal(d.search("Springfield, NO"), nil, "no Springfield in Norway")
+        t.equal(d.search("Sydney")?.place.country, "AU")
+        t.equal(d.search("Sydney, CA")?.place.country, "CA", "a country code")
+        t.equal(d.search("Sydney, Canada")?.place.country, "CA", "a country name")
+        t.equal(d.search("London, ca")?.place.timeZone, "America/Toronto")
+        // Prefix matches (3 characters, 2 for CJK); not found.
+        t.equal(d.search("Reykj")?.place.name, "Reykjavík")
+        t.equal(d.search("Os"), nil, "too short for a prefix")
+        t.equal(d.search("苏州")?.place.name, "Suzhou")
+        t.equal(d.search("Atlantis"), nil)
+        t.equal(d.search(""), nil)
+        // Nearest places.
+        t.equal(d.nearest(to: RoundedCoordinate(latitude: 59.95, longitude: 10.80), within: 50)?.name, "Oslo")
+        t.equal(d.nearest(to: RoundedCoordinate(latitude: 60.39, longitude: 5.32), within: 50)?.name, "Bergen")
+        t.equal(d.nearest(to: RoundedCoordinate(latitude: 0, longitude: -30), within: 200)?.name, nil, "mid-ocean")
+        t.equal(d.nearest(to: RoundedCoordinate(latitude: 1.9, longitude: -157.3), within: 50)?.timeZone,
+                "Pacific/Kiritimati")
+
+        // The bundled table.
+        let data = try Data(contentsOf: WeatherFixtures.bundledPlaces)
+        t.check(data.count <= 4 * 1024 * 1024, "the table is at most 4 MB: \(data.count)")
+        guard let full = PlaceDirectory(url: WeatherFixtures.bundledPlaces) else { return t.check(false, "bundled table") }
+        t.check(full.count >= 20_000, "\(full.count) places")
+        t.equal(full.search("Oslo")?.place.country, "NO")
+        t.equal(full.search("北京")?.place.name, "Beijing")
+        t.equal(full.search("Springfield, IL")?.place.admin1, "IL")
+        t.equal(full.search("東京")?.place.country, "JP")
+        t.equal(full.search("Москва")?.place.country, "RU")
+        t.equal(full.countryName("NO"), "Norway")
+        t.equal(full.meta["license"]?.hasPrefix("CC BY 4.0"), true)
+        t.check(full.places.allSatisfy { TimeZone(identifier: $0.timeZone) != nil || $0.timeZone.isEmpty },
+                "every time zone is known to macOS")
     }
 }
 
