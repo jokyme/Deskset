@@ -175,6 +175,9 @@ public struct WeatherEnvironment {
     public var clock: WeatherClock = SystemWeatherClock()
     /// Uniform in 0..<1 (jitter, backoff spread).
     public var random: () -> Double = { Double.random(in: 0..<1) }
+    /// Place lookups finish before the call returns (`--render`: the image must not depend on how fast the place
+    /// table loads). Never for the app, where skins must not wait for it.
+    public var waitsForLookups = false
     /// Synthetic forecasts for skins that are not live (`DESKSET_WEATHER_DEMO=1`: screenshots, thumbnails).
     public var demo = false
     /// The clock of the demo forecast (nil: the real time).

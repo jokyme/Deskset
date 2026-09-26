@@ -48,11 +48,13 @@ enum WeatherWiring {
         return env
     }
 
-    /// No network and no location, but place names resolve (sun times work): `--render` and other previews.
+    /// No network and no location, but place names resolve (sun times work): `--render` and other previews. Lookups
+    /// finish before the skin's update goes on, so images do not depend on how fast the place table loads.
     /// `demo`: synthetic forecasts (`DESKSET_WEATHER_DEMO=1`, clock from `DESKSET_WEATHER_DEMO_NOW`, ISO 8601).
     static func previewEnvironment(demo: Bool = demoRequested, demoNow: Date? = demoClock) -> WeatherEnvironment {
         var env = WeatherEnvironment()
         env.placesTable = Paths.placesTable
+        env.waitsForLookups = true
         env.preferredUnits = { systemUnits() }
         env.demo = demo
         env.demoNow = demoNow

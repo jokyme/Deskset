@@ -186,6 +186,8 @@ enum WeatherSelfTests {
             let previewEnv = WeatherWiring.previewEnvironment(demo: false, demoNow: nil)
             t.check(previewEnv.transport == nil && previewEnv.deviceLocation == nil)
             t.check(previewEnv.placesTable != nil)
+            t.check(previewEnv.waitsForLookups, "--render has the place before drawing")
+            t.check(!live.waitsForLookups, "skin windows never wait for the place table")
             let demo = WeatherWiring.previewEnvironment(demo: true, demoNow: fixtureClock)
             t.check(demo.demo && demo.clock.now() == fixtureClock)
             t.check(WeatherWiring.credits.contains("MET Norway") && WeatherWiring.credits.contains("GeoNames"))
@@ -444,10 +446,13 @@ enum WeatherSelfTests {
             t.equal(CommandLineTools.validate(["P", "--location", "Oslo"]),
                     V.invalid("--location needs one of --render, --snapshot-ui, --weather-report"))
             guard let fixtures, let binary = Bundle.main.executableURL else { return }
-            func run(_ args: [String]) -> (status: Int32, out: String, err: String) {
+            func run(_ args: [String], environment: [String: String] = [:]) -> (status: Int32, out: String, err: String) {
                 let p = Process()
                 p.executableURL = binary
                 p.arguments = args
+                if !environment.isEmpty {
+                    p.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+                }
                 let out = Pipe(), err = Pipe()
                 p.standardOutput = out
                 p.standardError = err
@@ -467,6 +472,34 @@ enum WeatherSelfTests {
             t.check(offline.out.contains("Now (13:00): 16.3 °C"), offline.out)
             t.check(offline.out.contains("Based on data from MET Norway"), offline.out)
             t.equal(run(["--weather-report", "--units", "kelvin", "--offline", "x"]).status, 2)
+
+            // --render: places are looked up before the update goes on, so one update back to back is enough.
+            let renderRoot = t.temporaryDirectory("weather-render")
+            let sunSkin = renderRoot.appendingPathComponent("Skins/Home/Sun/Sun.ini")
+            try FileManager.default.createDirectory(at: sunSkin.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try """
+                [Rainmeter]
+                OnUpdateAction=[!Log "rise=[MeasureRise] place=[MeasurePlace]"]
+                [MeasureRise]
+                Measure=Plugin
+                Plugin=MacSun
+                Location=Oslo, NO
+                Type=Sunrise
+                Format=%H:%M
+                [MeasurePlace]
+                Measure=Plugin
+                Plugin=MacWeather
+                Location=59.95,10.80
+                Type=Place
+                [MeterRise]
+                Meter=String
+                MeasureName=MeasureRise
+                """.write(to: sunSkin, atomically: true, encoding: .utf8)
+            let rendered = run(["--render", sunSkin.path, "--out", renderRoot.appendingPathComponent("sun.png").path,
+                                "--updates", "1", "--interval", "0"],
+                               environment: ["DESKSET_WEATHER_DEMO_NOW": "2026-09-26T12:00:00Z"])
+            t.equal(rendered.status, 0, rendered.err)
+            t.check(rendered.err.contains("rise=07:10 place=Oslo"), rendered.err)
 
             // The system report's Weather section: only when a place is set up (or Location Services allowed); it
             // never reads the location.

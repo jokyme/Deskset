@@ -1417,6 +1417,46 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Weather: measure: previews that wait for lookups have the place after one update") {
+        // `--render` (waitsForLookups): the image must not depend on how fast the place table loads.
+        var env = WeatherEnvironment.offline
+        env.placesTable = WeatherFixtures.placesFixture
+        env.clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        env.uses24HourClock = { true }
+        env.waitsForLookups = true
+        WeatherService.install(env)
+        let (skin, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [Rise]
+        Measure=Plugin
+        Plugin=MacSun
+        Location=Oslo, NO
+        Type=Sunrise
+        [Near]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.95,10.80
+        Type=Place
+        [Zone]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Near
+        Type=TimeZone
+        [Set]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Near
+        Type=Sunset
+        """)
+        skin.update()
+        t.equal(string(skin, "Rise"), "07:10", "Oslo's sunrise on the first update")
+        t.equal(string(skin, "Near"), "Oslo", "the nearest place")
+        t.equal(string(skin, "Zone"), "Europe/Oslo", "and its time zone")
+        t.equal(string(skin, "Set"), "19:04")
+        t.equal(value(skin, "Near"), 0)
+        skin.close()
+    }
+
     t.suite("Weather: MacSun") {
         var env = WeatherEnvironment.offline
         env.placesTable = WeatherFixtures.placesFixture

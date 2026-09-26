@@ -242,7 +242,9 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
 ### Previews, `--render` and demo data
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): outside skin windows weather measures never request anything and show `Status` 12 (Preview); sun
-  values and place names still work. `DESKSET_WEATHER_DEMO=1 Deskset --render Skin.ini …` draws a made-up,
+  values and place names still work. `--render` looks places up before the skin's update goes on (the first update
+  takes up to about a second longer while the place table loads), so its images never depend on how fast that is,
+  even with `--updates 1 --interval 0`. `DESKSET_WEATHER_DEMO=1 Deskset --render Skin.ini …` draws a made-up,
   deterministic forecast instead (`DESKSET_WEATHER_DEMO_NOW=2026-09-26T12:00:00Z` fixes its clock), for screenshots.
 - Why: repeatable images without network traffic.
 - Skin impact: none (developer tool).

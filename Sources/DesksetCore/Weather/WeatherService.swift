@@ -669,7 +669,7 @@ public final class WeatherService {
     private func queryKey(_ query: String) -> String { PlaceDirectory.fold(query) }
 
     /// Looks a place name up in the offline table. `.pending` starts the lookup; the subscription is told when it
-    /// is done.
+    /// is done. With `waitsForLookups` (`--render`) the answer is there at once (never call it on the service's queue).
     public func lookUpPlace(_ query: String, for s: WeatherSubscription?) -> PlaceLookup {
         let key = queryKey(query)
         lock.lock()
@@ -677,32 +677,41 @@ public final class WeatherService {
             lock.unlock()
             return result
         }
+        if environment.waitsForLookups {
+            lock.unlock()
+            return queue.sync { findPlace(query, key: key) }
+        }
         let start = placeWaiters[key] == nil
         var waiters = placeWaiters[key] ?? []
         if let s, !waiters.contains(where: { $0 === s }) { waiters.append(s) }
         placeWaiters[key] = waiters
         lock.unlock()
-        if start {
-            queue.async {
-                let result: PlaceLookup
-                if let directory = self.directory() {
-                    result = directory.search(query).map { .found($0) } ?? .notFound
-                } else {
-                    result = .unavailable
-                }
-                self.lock.lock()
-                self.placeResults[key] = result
-                self.placeOrder.append(key)
-                if self.placeOrder.count > 64 { self.placeResults[self.placeOrder.removeFirst()] = nil }
-                let waiting = self.placeWaiters.removeValue(forKey: key) ?? []
-                self.lock.unlock()
-                self.notify(waiting)
-            }
-        }
+        if start { queue.async { _ = self.findPlace(query, key: key) } }
         return .pending
     }
 
-    /// The nearest place to a coordinate (offline).
+    /// Searches the table once for `key`, keeps the result and tells the measures waiting for it (queue).
+    private func findPlace(_ query: String, key: String) -> PlaceLookup {
+        lock.lock()
+        let known = placeResults[key]
+        lock.unlock()
+        var result = known ?? .unavailable
+        if known == nil, let directory = directory() {
+            result = directory.search(query).map { .found($0) } ?? .notFound
+        }
+        lock.lock()
+        if known == nil {
+            placeResults[key] = result
+            placeOrder.append(key)
+            if placeOrder.count > 64 { placeResults[placeOrder.removeFirst()] = nil }
+        }
+        let waiting = placeWaiters.removeValue(forKey: key) ?? []
+        lock.unlock()
+        notify(waiting)
+        return result
+    }
+
+    /// The nearest place to a coordinate (offline); with `waitsForLookups`, at once.
     public func nearby(_ c: RoundedCoordinate, for s: WeatherSubscription?) -> NearbyLookup {
         let key = "near:\(c.key)"
         lock.lock()
@@ -710,32 +719,43 @@ public final class WeatherService {
             lock.unlock()
             return .done(result)
         }
+        if environment.waitsForLookups {
+            lock.unlock()
+            return .done(queue.sync { findNearby(c, key: key) })
+        }
         let start = placeWaiters[key] == nil
         var waiters = placeWaiters[key] ?? []
         if let s, !waiters.contains(where: { $0 === s }) { waiters.append(s) }
         placeWaiters[key] = waiters
         lock.unlock()
-        if start {
-            queue.async {
-                var result = NearbyPlace()
-                if let directory = self.directory() {
-                    if let p = directory.nearest(to: c, within: 50) {
-                        result.match = PlaceMatch(place: p, displayName: p.name, detail: directory.detail(for: p),
-                                                  countryName: directory.countryName(p.country))
-                        result.timeZone = p.timeZone
-                    } else {
-                        result.timeZone = directory.nearest(to: c, within: 200)?.timeZone
-                    }
-                }
-                self.lock.lock()
-                if self.nearbyResults.count >= 64 { self.nearbyResults.removeAll() }
-                self.nearbyResults[c] = result
-                let waiting = self.placeWaiters.removeValue(forKey: key) ?? []
-                self.lock.unlock()
-                self.notify(waiting)
+        if start { queue.async { _ = self.findNearby(c, key: key) } }
+        return .pending
+    }
+
+    /// Finds what is near `c` once, keeps it and tells the measures waiting for it (queue).
+    private func findNearby(_ c: RoundedCoordinate, key: String) -> NearbyPlace {
+        lock.lock()
+        let known = nearbyResults[c]
+        lock.unlock()
+        var result = known ?? NearbyPlace()
+        if known == nil, let directory = directory() {
+            if let p = directory.nearest(to: c, within: 50) {
+                result.match = PlaceMatch(place: p, displayName: p.name, detail: directory.detail(for: p),
+                                          countryName: directory.countryName(p.country))
+                result.timeZone = p.timeZone
+            } else {
+                result.timeZone = directory.nearest(to: c, within: 200)?.timeZone
             }
         }
-        return .pending
+        lock.lock()
+        if known == nil {
+            if nearbyResults.count >= 64 { nearbyResults.removeAll() }
+            nearbyResults[c] = result
+        }
+        let waiting = placeWaiters.removeValue(forKey: key) ?? []
+        lock.unlock()
+        notify(waiting)
+        return result
     }
 
     /// The loaded table (queue only): loaded on demand, released after 2 minutes without a lookup.
