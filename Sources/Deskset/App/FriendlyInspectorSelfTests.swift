@@ -21,6 +21,7 @@ enum FriendlyInspectorSelfTests {
         showsTests(t)
         clickTests(t)
         otherPageTests(t)
+        numberTests(t)
         plainWordsTests(t)
     }
 
@@ -788,6 +789,59 @@ enum FriendlyInspectorSelfTests {
             settle()
             t.check(text(editor).contains("MeasureName=MeasureIdle\n"), "a new text shows it")
             t.equal(editor.skin?.meter(named: editor.selectedSection ?? "")?.type.lowercased(), "string", "and is selected")
+            editor.window?.close()
+        }
+    }
+
+    // MARK: Numbers past what the engine reads
+
+    static func numberTests(_ t: AppTestRunner) {
+        t.suite("App: friendly inspector: numbers past what the engine reads") {
+            // Converted to Int as written, each number here trapped while its page was built.
+            FriendlyFixtures.fakeDevice(t)
+            guard let (_, editor) = try FriendlySidebarSelfTests.openWidget(t, """
+                [Rainmeter]
+                Update=1000
+
+                [MeasureSound]
+                Measure=Plugin
+                Plugin=AudioLevel
+                FFTSize=1024
+                Bands=16
+
+                [MeasureAbove]
+                Measure=Plugin
+                Plugin=AudioLevel
+                Parent=MeasureSound
+                Type=Band
+                BandIdx=1e20
+
+                [MeasureBelow]
+                Measure=Plugin
+                Plugin=AudioLevel
+                Parent=MeasureSound
+                Type=Band
+                BandIdx=-1e20
+
+                [MeterAbove]
+                Meter=Bar
+                MeasureName=MeasureAbove
+                W=100
+                H=10
+
+                [MeterBelow]
+                Meter=Bar
+                MeasureName=MeasureBelow
+                Y=12
+                W=100
+                H=10
+                """), let skin = editor.skin else { return }
+            // A sound band: the band AudioLevel reads (within ±1e9), 1-based.
+            for (name, index) in [("MeasureAbove", 1_000_000_000), ("MeasureBelow", -1_000_000_000)] {
+                t.equal((skin.measure(named: name) as? AudioLevelMeasure)?.child.bandIndex, index, "AudioLevel reads \(name)")
+                editor.select(section: name)
+                t.equal((find(editor, "\(name)/BandIdx") as? ValueField)?.stringValue, String(index + 1), name)
+            }
             editor.window?.close()
         }
     }
