@@ -520,6 +520,16 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** D:、E:、F: 都重复显示启动磁盘；其他卷请写 `Drive=/Volumes/Backup`。
 - **状态：** 模拟实现
 
+#### FreeDiskSpace `MacAvailable=1`（访达的“可用”空间）
+- **Windows：** FreeDiskSpace 报告空闲空间，没有其他数值。
+- **Mac：** `MacAvailable=1` 报告访达所说的“可用”空间：空闲空间加上 macOS 会自行释放的可清除空间（缓存、本地快照、
+  iCloud 文件）——在许多 Mac 上要多出几十 GB。此时 `InvertMeasure=1` 得到访达口径的已用空间。磁盘映像、非 APFS 卷和网络卷
+  报告其空闲空间。每次读数保留 30 秒，之后在后台重新读取；某个卷的第一次读数最多等待四分之一秒，在它到达之前 measure 的值为
+  −1、字符串为空。
+- **原因：** 空闲空间不含可清除空间，所以访达显示 88% 已用的磁盘会显示为 99% 已用。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响（Rainmeter 会忽略该选项）；请把 −1 当作“正在加载”。
+- **状态：** 仅 Mac
+
 #### SysInfo
 - **Windows：** 系统、用户、网卡、显示器和时区等信息。
 - **Mac：** 显示器数值以点为单位（显示器 1 = 主屏幕），`SCREEN_SIZE` 形如 “1920 x 1080”，时区数值采用 Windows 的符号约定，
@@ -727,7 +737,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
 变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
-（[§6.5](#65-meter-与绘制)）。Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
+（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)）。
+Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
 

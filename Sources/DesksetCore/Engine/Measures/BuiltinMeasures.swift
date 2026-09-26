@@ -344,12 +344,19 @@ public final class FreeDiskSpaceMeasure: Measure {
     private var labelMode = false
     private var typeMode = false
     private var ignoreRemovable = true
+    /// `MacAvailable=1` (Deskset extension): Finder's "available" space, purgeable space included, instead of the free
+    /// space (`SystemDataSource.availableDiskSpace`).
+    private var availableMode = false
+    /// `MacAvailable=1` before the volume's first reading: the value is −1 and the string empty (loading).
+    private var awaitingReading = false
     private var lastTotal: Double?
 
     public override var automaticMaxValue: Double {
         max(lastTotal ?? skin.system.diskSpace(path: path)?.total ?? 1, 1)
     }
     override var allowsMaxValueOption: Bool { false }
+    /// Before the first reading of `MacAvailable=1` a String meter keeps one line of height, as it will with the value.
+    public override var valueUnavailable: Bool { awaitingReading }
 
     public override func readMeasureOptions() {
         path = FreeDiskSpaceMeasure.volumePath(string("Drive", "C:"))
@@ -357,6 +364,15 @@ public final class FreeDiskSpaceMeasure: Measure {
         labelMode = bool("Label", false)
         typeMode = bool("Type", false)
         ignoreRemovable = bool("IgnoreRemovable", true)
+        availableMode = bool("MacAvailable", false)
+    }
+
+    /// `MacAvailable=1`'s figure from a reading of the volume (`SystemDataSource.availableDiskSpace`): macOS's
+    /// available capacity for important use when it reads more than 0, else the free space (disk images, non-APFS and
+    /// network volumes read 0 or nothing), never more than the volume's size.
+    public static func availableSpace(important: Double?, free: Double, total: Double) -> Double {
+        let value = important.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? free
+        return min(max(value, 0), max(total, 0))
     }
 
     static func volumePath(_ raw: String) -> String {
@@ -371,6 +387,7 @@ public final class FreeDiskSpaceMeasure: Measure {
     }
 
     public override func computeValue() -> Double {
+        awaitingReading = false
         let info = skin.system.volumeInfo(path: path)
         if typeMode {
             let type: (Double, String)
@@ -396,7 +413,17 @@ public final class FreeDiskSpaceMeasure: Measure {
             return 0
         }
         lastTotal = space.total
-        return totalMode ? space.total : space.free
+        if totalMode { return space.total }
+        guard availableMode else { return space.free }
+        guard let available = skin.system.availableDiskSpace(path: path) else {
+            // The first reading is still being made (a network volume, or a local one that took longer than the app
+            // waits): −1 and an empty string, which a skin shows as loading. The number is not inverted or averaged.
+            awaitingReading = true
+            computedPlaceholder = true
+            if !labelMode { rawString = "" }
+            return -1
+        }
+        return min(max(available, 0), max(space.total, 0))
     }
 }
 

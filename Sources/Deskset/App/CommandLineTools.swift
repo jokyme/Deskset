@@ -179,6 +179,8 @@ enum SystemReport {
         }
         if let disk = m.diskSpace(path: "/") {
             print("Disk /: free \(Int64(disk.free / 1024)) KiB of \(Int64(disk.total / 1024)) KiB")
+            let available = SystemMonitor.availableSpace(atPath: "/")
+            print("Disk /: available \(Int64(available / 1024)) KiB (as Finder counts it: FreeDiskSpace MacAvailable=1)")
         }
         print(String(format: "Uptime: %.0f s", m.uptime()))
         if let b = m.battery() {

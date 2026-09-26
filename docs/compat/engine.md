@@ -523,6 +523,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: several drive letters show the same volume; name a volume (`Drive=/Volumes/Backup`) for others.
 - Status: emulated
 
+### FreeDiskSpace `MacAvailable=1` (Finder's available space)
+- Windows (Rainmeter): FreeDiskSpace reports the free space (the used space with `InvertMeasure=1`); there is no
+  other figure.
+- Mac (Deskset): `MacAvailable=1` reports the space Finder calls "available": the free space plus what macOS frees up
+  by itself when an app needs room (purgeable space: caches, local snapshots, iCloud files kept on the Mac), macOS's
+  "available capacity for important usage". The two can differ by tens of gigabytes (measured on one Mac: 13.6 GB
+  free, 103 GB available). With `InvertMeasure=1` the measure reports the used space as Finder counts it; `Total`,
+  `Label`, `Type` and `IgnoreRemovable` work as without the option. Volumes without that figure (disk images and
+  non-APFS volumes read 0; network volumes) report their free space. Asking macOS takes 10–40 ms, so the app keeps a
+  volume's reading for 30 seconds and makes the next one in the background, the old one answering meanwhile; a
+  volume's first reading is waited for up to a quarter of a second. When it takes longer, the measure reads −1 with an
+  empty string until the reading arrives (that −1 is never inverted or averaged), so a skin can show "loading".
+- Why: Deskset extension — the free space leaves purgeable space out, so a disk that Finder shows 88 % full reads
+  99 % full; a skin that shows storage the way the Mac does needs Finder's figure.
+- Skin impact: none for Windows skins (Rainmeter ignores the option and reports the free space). Treat −1 as
+  "loading" when you use the option.
+- Status: Deskset extension
+
 ### SysInfo
 - Windows (Rainmeter): SysInfoType values for OS, user, network adapters, monitors, time zone… (/manual/measures/sysinfo/).
 - Mac (Deskset): monitor values (NUM_MONITORS, SCREEN_*, WORK_AREA*, VIRTUAL_SCREEN_*) in points, monitor 1 = the

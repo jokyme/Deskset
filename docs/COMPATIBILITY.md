@@ -570,6 +570,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** D:, E:, F: repeat the startup disk; write `Drive=/Volumes/Backup` for another volume.
 - **Status:** emulated
 
+#### FreeDiskSpace `MacAvailable=1` (Finder's available space)
+- **Windows:** FreeDiskSpace reports the free space; there is no other figure.
+- **Mac:** `MacAvailable=1` reports Finder's "available" space: the free space plus purgeable space macOS frees by
+  itself (caches, local snapshots, iCloud files) — tens of gigabytes more on many Macs. `InvertMeasure=1` then gives the
+  used space as Finder counts it. Disk images, non-APFS and network volumes report their free space. A reading is kept
+  for 30 s and made again in the background; until a volume's first reading arrives (it is waited for up to a quarter
+  second) the measure reads −1 with an empty string.
+- **Why:** the free space leaves purgeable space out, so a disk Finder shows 88 % full reads 99 % full.
+- **Skin impact:** none for Windows skins (Rainmeter ignores the option); treat −1 as "loading".
+- **Status:** Mac-only
+
 #### SysInfo
 - **Windows:** OS, user, network adapter, monitor and time-zone values.
 - **Mac:** monitor values in points (monitor 1 = the primary screen), `SCREEN_SIZE` as "1920 x 1080", time-zone
@@ -799,7 +810,8 @@ Options Rainmeter does not have. Their names start with `Mac`; Rainmeter ignores
 that uses them still loads there, only without the effect. The Mac look extensions are listed with the areas they
 belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables and the clock, week and
 temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
-the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)). Deskset's own plugins are with the plugins of their area:
+the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
+with the measures ([§6.4](#64-measures)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 

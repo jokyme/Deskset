@@ -515,6 +515,60 @@ enum AppSelfTest {
             t.check(SystemMonitor.productName().hasPrefix("macOS"))
         }
 
+        t.suite("App: available disk space (FreeDiskSpace MacAvailable)") {
+            // The real figure: free space plus purgeable space, within the disk.
+            guard let disk = SystemMonitor.statfsSpace("/") else { return t.check(false, "statfs /") }
+            let available = SystemMonitor.availableSpace(atPath: "/")
+            t.check(available >= disk.free * 0.9 && available <= disk.total, "\(available) of \(disk.total), free \(disk.free)")
+            t.equal(SystemMonitor.availableSpace(atPath: "/no/such/volume"), 0)
+
+            // Kept for 30 s and read again off the caller's thread, the old reading answering meanwhile.
+            let clock = Guarded<TimeInterval>(1000)
+            let reads = Guarded(0)
+            let answer = Guarded(111.0)
+            let monitor = SystemMonitor(clock: { clock.current }, readAvailableSpace: { _ in
+                reads.access { $0 += 1 }
+                return answer.current
+            })
+            t.equal(monitor.availableDiskSpace(path: "/"), 111, "the first reading is waited for")
+            t.equal(monitor.availableDiskSpace(path: "/"), 111)
+            t.equal(reads.current, 1, "then kept")
+            answer.access { $0 = 222 }
+            clock.access { $0 += SystemMonitor.availableSpaceLifetime + 1 }
+            t.equal(monitor.availableDiskSpace(path: "/"), 111, "a stale reading answers while the new one is made")
+            t.check(AppSelfTest.spin(timeout: 2) { monitor.availableDiskSpace(path: "/") == 222 }, "then the new one")
+            t.equal(reads.current, 2, "one reading per lifetime")
+
+            // A first reading slower than the wait: nil (the measure shows −1), and the value once it is there.
+            let slow = SystemMonitor(readAvailableSpace: { _ in
+                Thread.sleep(forTimeInterval: 0.6)
+                return 333
+            })
+            let started = Date()
+            t.equal(slow.availableDiskSpace(path: "/"), nil, "loading")
+            t.check(Date().timeIntervalSince(started) < 0.5, "the caller waits a quarter second at most")
+            t.check(AppSelfTest.spin(timeout: 3) { slow.availableDiskSpace(path: "/") == 333 }, "the reading arrives")
+
+            // Skins on many threads at once: one reading at a time per volume.
+            let busy = Guarded(0)
+            let shared = SystemMonitor(readAvailableSpace: { _ in
+                busy.access { $0 += 1 }
+                Thread.sleep(forTimeInterval: 0.05)
+                return 444
+            })
+            DispatchQueue.concurrentPerform(iterations: 16) { _ in _ = shared.availableDiskSpace(path: "/") }
+            t.equal(busy.current, 1, "concurrent first reads share one reading")
+            t.equal(shared.availableDiskSpace(path: "/"), 444)
+
+            // A skin reads it through the app's monitor.
+            let (skin, _) = try MediaUITests.bareSkin(t, "[Rainmeter]\n[Avail]\nMeasure=FreeDiskSpace\nDrive=/\nMacAvailable=1\n"
+                                                      + "[Free]\nMeasure=FreeDiskSpace\nDrive=/\n")
+            skin.update()
+            let skinAvailable = skin.measure(named: "Avail")?.value ?? -1
+            let skinFree = skin.measure(named: "Free")?.value ?? -1
+            t.check(skinAvailable >= skinFree * 0.9 && skinAvailable > 0, "available \(skinAvailable), free \(skinFree)")
+        }
+
         t.suite("App: live system readings") {
             let m = SystemMonitor.shared
             _ = m.cpuUsage(processor: 0)
