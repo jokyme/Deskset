@@ -10,8 +10,12 @@ judgment call where the manual is silent. Use this format for each entry:
 - Mac (Deskset): <what we do>
 - Why: <macOS limitation / no equivalent API / permission / judgment call>
 - Skin impact: <what a skin author or user will notice; workaround if any>
-- Status: identical | emulated | partial | not supported
+- Status: identical | emulated | partial | not supported | Deskset extension | Mac-only safety limit | Mac-only UI
 ```
+
+The last three have no Rainmeter counterpart: a Deskset extension is a feature Rainmeter does not have (an option
+starting with `Mac` that skins can use, an app or command-line feature), the other two are Deskset's own safety limits
+and interface. The summaries list all three as Mac-only.
 
 Only describe behaviour from the public manual (https://docs.rainmeter.net/manual/) and observed skin files —
 never from Rainmeter's source code.

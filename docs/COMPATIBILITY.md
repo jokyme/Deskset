@@ -48,7 +48,7 @@ Every entry has the same five parts:
 | **emulated** | Same purpose and options, rebuilt on macOS equivalents. Numbers, wording or timing can differ in details. |
 | **partial** | Some options or values work; the entry says which ones do not. |
 | **not supported** | Has no effect. Values read `0` / empty, and the skin's *Compatibility Notes* (menu and Manage window) say so. A skin never crashes because of it. |
-| **Mac-only** | A Deskset-specific safety limit or UI feature with no Rainmeter counterpart. |
+| **Mac-only** | Has no Rainmeter counterpart: a Deskset-specific safety limit or UI feature, or a Deskset extension a skin can use — options starting with `Mac`, `#MAC…#` variables, `sf:` images, the system font designs and `Plugin=MacSensors` ([§6.8](#68-deskset-extensions)). |
 
 "Judgment call" marks places where the manual is silent and Deskset had to choose a behaviour.
 

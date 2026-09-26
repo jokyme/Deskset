@@ -46,7 +46,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | **模拟实现**（emulated） | 目的和选项相同，但基于 macOS 的对应机制重新实现。数值、措辞或时机在细节上可能不同。 |
 | **部分支持**（partial） | 部分选项或数值可用；条目中会写明哪些不可用。 |
 | **不支持**（not supported） | 不起作用。数值为 `0` / 空，皮肤的 *兼容性提示*（菜单和管理窗口中）会说明这一点。皮肤不会因此崩溃。 |
-| **仅 Mac**（Mac-only） | Deskset 特有的安全限制或界面功能，Rainmeter 中没有对应项。 |
+| **仅 Mac**（Mac-only） | Rainmeter 中没有对应项：Deskset 特有的安全限制或界面功能，或者皮肤可以使用的 Deskset 扩展——以 `Mac` 开头的选项、`#MAC…#` 变量、`sf:` 图片、系统字体的设计和 `Plugin=MacSensors`（[§6.8](#68-deskset-扩展)）。 |
 
 “取舍判断”表示手册没有规定、Deskset 必须自行选择行为的地方。
 
