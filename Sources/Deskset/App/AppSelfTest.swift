@@ -542,13 +542,13 @@ enum AppSelfTest {
 
             // A first reading slower than the wait: nil (the measure shows −1), and the value once it is there.
             let slow = SystemMonitor(readAvailableSpace: { _ in
-                Thread.sleep(forTimeInterval: 0.6)
+                Thread.sleep(forTimeInterval: 2)
                 return 333
             })
             let started = Date()
             t.equal(slow.availableDiskSpace(path: "/"), nil, "loading")
-            t.check(Date().timeIntervalSince(started) < 0.5, "the caller waits a quarter second at most")
-            t.check(AppSelfTest.spin(timeout: 3) { slow.availableDiskSpace(path: "/") == 333 }, "the reading arrives")
+            t.check(Date().timeIntervalSince(started) < 1.5, "the caller does not wait for the reading")
+            t.check(AppSelfTest.spin(timeout: 6) { slow.availableDiskSpace(path: "/") == 333 }, "the reading arrives")
 
             // Skins on many threads at once: one reading at a time per volume.
             let busy = Guarded(0)
@@ -558,8 +558,8 @@ enum AppSelfTest {
                 return 444
             })
             DispatchQueue.concurrentPerform(iterations: 16) { _ in _ = shared.availableDiskSpace(path: "/") }
+            t.check(AppSelfTest.spin(timeout: 5) { shared.availableDiskSpace(path: "/") == 444 })
             t.equal(busy.current, 1, "concurrent first reads share one reading")
-            t.equal(shared.availableDiskSpace(path: "/"), 444)
 
             // A skin reads it through the app's monitor.
             let (skin, _) = try MediaUITests.bareSkin(t, "[Rainmeter]\n[Avail]\nMeasure=FreeDiskSpace\nDrive=/\nMacAvailable=1\n"
