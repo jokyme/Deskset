@@ -1405,7 +1405,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 
 #### MSI Afterburner（第三方）
 - **Windows：** 读取 MSI Afterburner 的监控数据；`DataSource=` 为 Afterburner 显示的名称（公开皮肤中见到的有
-  `GPU temperature`、`Fan speed`、`Core clock`、`Memory clock`、`Memory usage`）。
+  `GPU temperature`、`Fan speed`、`Core clock`、`Memory clock`、`Memory usage`；下面的其他名称是 Afterburner 在设置中列出的
+  监控项名称，依据公开的使用指南）。
 - **Mac：** `GPU temperature`、`GPU usage`、`Core clock`（MHz）和 `Memory usage`（MB；Apple 芯片上为 GPU 正在使用的统一内存）
   来自传感器；Apple 芯片上 `Memory clock` 为 0（GPU 没有自己的显存）；`Fan speed` = 独立显卡自己的风扇，否则为最快的 Mac 风扇
   占其最高转速的百分比；还支持 `Fan tachometer`（RPM）、`GPU power` / `CPU power`（W）、`CPU temperature` /
@@ -2318,7 +2319,8 @@ Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两�
 - Rainmeter 手册：<https://docs.rainmeter.net/manual/>（皮肤、变量、公式、meter、measure、插件、bang、分发与安装皮肤），
   以及其技巧页面和版本历史。
 - 第三方插件公开的 README 和使用说明页面（AppVolume、WebNowPlaying、FrostedGlass、Chameleon、SysColor、IsFullScreen、
-  GetActiveTitle、Mouse 以及它的第 2 版 Slider）。
+  GetActiveTitle、Mouse 以及它的第 2 版 Slider）。MSI Afterburner 的插件没有文档：其名称来自公开皮肤，以及 MSI Afterburner
+  列出的监控项名称（公开的使用指南）。
 - Apple 关于 Core Audio、CoreWLAN、AppKit、ScreenCaptureKit 的文档，以及 Music 和 Spotify 的 AppleScript 词典。
 - 对真实皮肤及其作者截图的观察，仅在本地测试。
 

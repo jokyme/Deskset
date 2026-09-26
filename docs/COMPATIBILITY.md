@@ -1541,7 +1541,8 @@ Intel Macs are untested.
 
 #### MSI Afterburner (third-party)
 - **Windows:** reads MSI Afterburner's monitoring; `DataSource=` the name Afterburner shows (seen in public skins:
-  `GPU temperature`, `Fan speed`, `Core clock`, `Memory clock`, `Memory usage`).
+  `GPU temperature`, `Fan speed`, `Core clock`, `Memory clock`, `Memory usage`; the other names below are monitoring
+  names Afterburner lists in its settings, as public guides show them).
 - **Mac:** `GPU temperature`, `GPU usage`, `Core clock` (MHz) and `Memory usage` (MB; on Apple silicon the unified
   memory the GPU has in use) from the sensors; `Memory clock` 0 on Apple silicon (the GPU has no memory of its own);
   `Fan speed` = a discrete GPU's own fan, else the fastest Mac fan as a percentage of its maximum; `Fan tachometer`
@@ -2561,7 +2562,8 @@ Disk Access, PogPack's Garbage skin also notes that its Trash size needs it (§4
 - The Rainmeter manual: <https://docs.rainmeter.net/manual/> (skins, variables, formulas, meters, measures, plugins,
   bangs, distributing and installing skins), its tips pages and the version history.
 - Public READMEs and usage pages of third-party plugins (AppVolume, WebNowPlaying, FrostedGlass, Chameleon, SysColor,
-  IsFullScreen, GetActiveTitle, Mouse and its version 2, Slider).
+  IsFullScreen, GetActiveTitle, Mouse and its version 2, Slider). MSI Afterburner's plugin has none: its names come
+  from public skins and from the monitoring names MSI Afterburner lists (public guides).
 - Apple documentation for Core Audio, CoreWLAN, AppKit, ScreenCaptureKit and AppleScript dictionaries of Music and
   Spotify.
 - Observation of real skins and their authors' screenshots, tested locally only.

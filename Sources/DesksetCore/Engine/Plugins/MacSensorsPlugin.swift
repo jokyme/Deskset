@@ -3,8 +3,11 @@ import Foundation
 // Two plugins over the hardware sensor catalog (HardwareSensors.swift):
 // - MacSensors, Deskset's own plugin for new skins (no Rainmeter counterpart);
 // - MSIAfterburner, a stand-in for the third-party Windows plugin of that name, which reads MSI Afterburner's shared
-//   memory. Only the option and data source names seen in public skin files were used (`DataSource=GPU temperature`,
-//   `Fan speed`, `Core clock`, `Memory clock`, `Memory usage`); nothing was taken from the plugin's code.
+//   memory. The option and the data source names public skin files use come from those files
+//   (`DataSource=GPU temperature`, `Fan speed`, `Core clock`, `Memory clock`, `Memory usage`); the other data source
+//   names are the monitoring names MSI Afterburner itself lists in its settings (`GPU usage`, `Fan tachometer`,
+//   `CPU1 temperature`, `RAM usage`, `Framerate`…), as public guides show them. Nothing was taken from the plugin's
+//   code.
 // Differences from Windows: docs/compat/plugins.md.
 
 // MARK: - MacSensors

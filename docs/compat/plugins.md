@@ -18,8 +18,10 @@ Sources: the manual pages under https://docs.rainmeter.net/manual/plugins/ (and 
 https://docs.rainmeter.net/manual/measures/recyclemanager/ and https://docs.rainmeter.net/manual/measures/ (plugin
 measure ranges). VirtualDesktops is not in the manual; only its option names as seen in public forum posts were used.
 The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mouse](#mouse-third-party) and
-[Slider](#slider-third-party)). For MSIAfterburner only the option and data source names seen in public skins were
-used. Nothing was taken from Rainmeter's or any plugin's source code.
+[Slider](#slider-third-party)). MSIAfterburner has no public documentation: its option name and the data source
+names public skins use come from those skins, and the other data source names from the monitoring names MSI
+Afterburner itself lists in its settings (as public guides show them). Nothing was taken from Rainmeter's or any
+plugin's source code.
 
 ## General
 
@@ -677,8 +679,10 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
 
 ### Data sources
 - Windows (Rainmeter): a third-party plugin that reads MSI Afterburner's monitoring (`DataSource=` the name
-  Afterburner shows). Only its use in public skins was looked at (`DataSource=GPU temperature`, `Fan speed`,
-  `Core clock`, `Memory clock`, `Memory usage`).
+  Afterburner shows). Public skins use `DataSource=GPU temperature`, `Fan speed`, `Core clock`, `Memory clock` and
+  `Memory usage`; the other names below are monitoring names MSI Afterburner lists in its settings (`GPU usage`,
+  `Fan tachometer`, `Power`, `CPU temperature`, `CPU1 usage`, `RAM usage`, `Framerate`…, and the `GPU1 …` forms), as
+  public guides show them. The plugin's own code was not looked at.
 - Mac (Deskset): `GPU temperature` = `gpu`; `GPU usage` = `gpu.usage`; `Core clock` = `frequency.gpu`;
   `Memory clock` = `frequency.gpu.memory` (0 on Apple silicon); `Memory usage` = `gpu.memory` in MB (on Apple silicon
   the unified memory the GPU has in use); `Fan speed` = a discrete GPU's own fan (%), else the fastest Mac fan as a
