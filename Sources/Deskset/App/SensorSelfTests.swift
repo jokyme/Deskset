@@ -678,21 +678,24 @@ enum SensorSelfTests {
                 hardware.open()
             }
             t.equal(service.isPending("gpu"), false)
+            t.equal(hardware.lastRead, [.gpu], "the temperatures are fresh: only the GPU statistics")
+            // Each group is read when it is asked for after its reading went stale, not with every refresh.
             clock.access { $0 += 1 }
             afterRefresh { _ = service.value("fan.1") }
-            t.equal(hardware.lastRead, [.temperatures, .gpu, .fans], "every wanted group in one pass")
+            t.equal(hardware.lastRead, [.fans], "only what was asked for")
             t.equal(service.value("fan.1"), 2000)
             t.equal(service.info("fan.1")?.maximum, 6000)
-            // A group asked for while a refresh runs is read right after it.
-            hardware.delay = 0.2
+            // A group asked for while a refresh runs is read right after it, alone; one being read is not asked again.
             clock.access { $0 += 1 }
+            hardware.close()
             afterRefresh {
                 _ = service.value("cpu")
-                Thread.sleep(forTimeInterval: 0.05)
+                t.check(AppSelfTest.spin(timeout: 30) { hardware.isWaiting }, "the refresh took its groups")
                 t.equal(service.value("battery.cycles"), nil)
+                _ = service.value("cpu")
+                hardware.open()
             }
-            hardware.delay = 0
-            t.check(hardware.lastRead?.contains(.battery) == true, "the battery was read after all")
+            t.equal(Array(hardware.eventLog.suffix(2)), ["read temperatures", "read battery"])
             t.equal(service.isPending("battery.cycles"), false)
             // A value missing from a new reading keeps its last value for up to 10 s.
             hardware.set(.temperatures, [(info("cpu"), nil), (info("cpu.core.1"), 49)])
@@ -703,19 +706,31 @@ enum SensorSelfTests {
             clock.access { $0 += 11 }
             afterRefresh { _ = service.value("cpu") }
             t.equal(service.value("cpu"), nil, "no longer held")
-            // Groups nobody asked for in 30 s are let go.
+            // Groups nobody asked for in 30 s let go of their hardware; their readings stay.
             clock.access { $0 += 31 }
             afterRefresh { _ = service.value("cpu.core.1") }
             t.equal(hardware.lastRead, [.temperatures])
             t.check(hardware.lastReleased?.contains(.fans) == true, "the fans' hardware is let go")
-            t.check(service.isPending("fan.1"), "and their reading dropped")
-            afterRefresh { t.equal(service.value("fan.1"), nil) }
+            t.equal(service.isPending("fan.1"), false, "their reading stays")
+            afterRefresh { t.equal(service.value("fan.1"), 2000, "a question that comes rarely gets the last reading") }
+            // A reading nobody asked for in 10 minutes is forgotten: the next question gets nothing, as after loading;
+            // the hardware kept past its time is let go before it is read again.
+            clock.access { $0 += 601 }
+            hardware.close()
+            afterRefresh {
+                t.equal(service.value("fan.1"), nil, "forgotten")
+                t.check(service.isPending("fan.1"))
+                hardware.open()
+            }
+            let log = hardware.eventLog
+            t.check((log.lastIndex(of: "release fans") ?? .max) < (log.lastIndex(of: "read fans") ?? -1),
+                    "let go, then read: \(log.suffix(4))")
             // Everything: waits until every group was read, then answers once.
             let lists = Collected<[SensorInfo]>()
             service.discover { lists.add($0) }
             service.discover { lists.add($0) }
             t.check(AppSelfTest.spin(timeout: 30) { lists.count == 2 }, "both callers are answered")
-            t.equal(hardware.lastRead, Set(SensorGroup.allCases), "every group")
+            t.equal(hardware.lastRead, Set(SensorGroup.allCases).subtracting([.fans]), "every group not just read")
             t.equal(lists.all.first?.map(\.key), ["cpu", "cpu.core.1", "fan.1", "gpu.usage"])
             t.equal(service.readAll().count, 4, "the report's synchronous read")
             t.check(!hardware.overlapped, "one read at a time")
@@ -723,6 +738,87 @@ enum SensorSelfTests {
             let empty = SensorService(hardware: FakeHardware(), clock: { clock.current })
             t.equal(empty.readAll().count, 0)
             t.equal(empty.tjMax(), nil)
+        }
+
+        t.suite("App: sensors: a measure that updates rarely gets the last reading") {
+            // UpdateDivider=60 beside a measure that reads the CPU temperature every second: the rare questions get
+            // the reading taken at the previous one, the groups are read once per question, and the IOReport
+            // subscription is let go only once (before the time between questions is known).
+            let hardware = FakeHardware()
+            hardware.set(.temperatures, [(info("cpu"), 50)])
+            hardware.set(.battery, [(info("battery.health", .percent), 93)])
+            hardware.set(.ioReport, [(info("power.cpu", .power), 4)])
+            let clock = Guarded(0.0)
+            let service = SensorService(hardware: hardware, clock: { clock.current })
+            var missing: [String] = []
+            for second in 0...300 {
+                clock.access { $0 = Double(second) }
+                _ = service.value("cpu")
+                if second % 60 == 0 {
+                    let health = service.value("battery.health"), power = service.value("power.cpu")
+                    if second > 0, health != 93 || power != 4 {
+                        missing.append("\(second) s: \(String(describing: health)) \(String(describing: power))")
+                    }
+                }
+                guard settle(service) else { return t.check(false, "the refreshes end") }
+            }
+            t.equal(missing, [], "every question after the first gets a reading")
+            t.equal(hardware.readCount(of: .battery), 6, "read once per question")
+            t.equal(hardware.readCount(of: .ioReport), 6)
+            t.equal(hardware.readCount(of: .temperatures), 301)
+            t.equal(hardware.releaseCount(of: .ioReport), 1, "subscribed twice in five minutes")
+        }
+
+        t.suite("App: sensors: with nobody asking, the hardware is let go and the readings forgotten") {
+            let hardware = FakeHardware()
+            hardware.set(.ioReport, [(info("power.cpu", .power), 4)])
+            let clock = Guarded(0.0)
+            let service = SensorService(hardware: hardware, clock: { clock.current })
+            _ = service.value("power.cpu")
+            t.check(AppSelfTest.spin(timeout: 30) { service.refreshCount == 1 && !service.isRefreshing }, "read")
+            clock.access { $0 = 29 }
+            service.cleanUpNow()
+            t.equal(hardware.releaseCount(of: .ioReport), 0, "held for 30 s")
+            clock.access { $0 = 30 }
+            service.cleanUpNow()
+            t.equal(hardware.releaseCount(of: .ioReport), 1, "then let go, without a question")
+            t.equal(service.list().map(\.key), ["power.cpu"], "the reading stays")
+            clock.access { $0 = 599 }
+            service.cleanUpNow()
+            t.equal(service.isPending("power.cpu"), false)
+            clock.access { $0 = 600 }
+            service.cleanUpNow()
+            t.check(service.isPending("power.cpu"), "forgotten after 10 minutes")
+            t.equal(service.list().count, 0)
+            t.equal(service.refreshCount, 1, "no refresh ran for it")
+            t.equal(hardware.readCount, 1)
+
+            // A question an hour after the last, before any cleanup ran (the Mac was busy): no hour-old reading,
+            // and the hardware is let go before it is read again (the IOReport base would cover the whole hour).
+            let late = FakeHardware()
+            late.set(.ioReport, [(info("power.cpu", .power), 4)])
+            let lateClock = Guarded(0.0)
+            let lateService = SensorService(hardware: late, clock: { lateClock.current })
+            _ = lateService.value("power.cpu")
+            t.check(AppSelfTest.spin(timeout: 30) { lateService.refreshCount == 1 && !lateService.isRefreshing })
+            lateClock.access { $0 = 3600 }
+            late.close()
+            t.equal(lateService.value("power.cpu"), nil, "an hour-old reading is not answered")
+            t.check(lateService.isPending("power.cpu"))
+            late.open()
+            t.check(AppSelfTest.spin(timeout: 30) { lateService.refreshCount == 2 && !lateService.isRefreshing })
+            t.equal(late.eventLog, ["read ioReport", "release ioReport", "read ioReport"])
+            t.equal(lateService.value("power.cpu"), 4)
+
+            // The cleanup is scheduled by the service itself (short times, the real clock).
+            let own = FakeHardware()
+            own.set(.ioReport, [(info("power.cpu", .power), 4)])
+            let ownService = SensorService(hardware: own, idleAfter: 0.2, forgetAfter: 0.5)
+            _ = ownService.value("power.cpu")
+            t.check(AppSelfTest.spin(timeout: 30) { own.releaseCount(of: .ioReport) == 1 },
+                    "the hardware is let go without a question")
+            t.check(AppSelfTest.spin(timeout: 30) { ownService.isPending("power.cpu") }, "and the reading forgotten")
+            t.equal(ownService.refreshCount, 1)
         }
     }
 

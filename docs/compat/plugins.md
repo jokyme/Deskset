@@ -616,14 +616,20 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
 ### Reading lazily, in the background, one update late
 - Windows (Rainmeter): the programs sample on their own schedule; plugins read the latest values.
 - Mac (Deskset): only the groups of sensors some skin asks for are read (temperatures, fans, whole-Mac power,
-  IOReport, GPU statistics, battery), on a background queue, at most about once a second; a group nobody asked for
-  in 30 s is no longer read (the IOReport subscription is released). A question is answered from the last reading,
-  so the first update after a skin loads sees no value (0, an empty string, no "missing" note) and the next one sees
-  it. The first reading of the SMC's key list takes about a second; the list is kept in the user's Caches folder per
-  Mac model and macOS build. Reading the temperatures costs about 3 ms of CPU a second.
+  IOReport, GPU statistics, battery), on a background queue. A question is answered from the last reading and, when
+  that is more than 0.9 s old, has the group read again: each group is read as often as its most frequent measure
+  updates, at most about once a second. So the first update after a skin loads sees no value (0, an empty string,
+  no "missing" note) and the next one sees it; a measure that updates less often (a long `UpdateDivider`) sees the
+  value read at its previous update. A group nobody asked for in 30 s (or in twice the time between its questions,
+  at most 10 minutes) lets go of what it holds (the IOReport subscription), also once no skin asks for anything; a
+  reading nobody asked for in 10 minutes (or in twice the time between its questions) is forgotten, so a skin opened
+  again later starts without a value rather than with an old one. The first reading of the SMC's key list takes
+  about a second; the list is kept in the user's Caches folder per Mac model and macOS build. Reading the
+  temperatures costs about 3 ms of CPU a second.
 - Why: sensor reads can take tens of milliseconds; skins must never wait for them.
-- Skin impact: values appear one update after load; a skin with `UpdateDivider=-1` that reads a sensor only once
-  shows 0 (update it again with a bang).
+- Skin impact: values appear one update after load; a measure with a long `UpdateDivider` shows the value read at
+  its previous update; a skin with `UpdateDivider=-1` that reads a sensor only once shows 0 (update it again with a
+  bang).
 - Status: emulated
 
 ### Catalog keys
@@ -656,9 +662,10 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
     reports and are ignored; while every sensor of a CPU cluster or of the GPU reads "powered down" (the GPU does for
     minutes when idle), the unit reports the chip's temperature (`soc`); a sensor that loses its reading keeps its
     last value for up to 10 s;
-  - clocks are averages over the last interval, weighted by the time spent in each clock state while running; a core
-    or GPU that did not run reports its lowest clock (not 0); `voltage.cpu` is the voltage the running cores asked
-    for, on average;
+  - IOReport power and clocks are averages since the group's previous reading (about a second, or the time between
+    a measure's updates when it updates less often); clocks are weighted by the time spent in each clock state while
+    running; a core or GPU that did not run reports its lowest clock (not 0); `voltage.cpu` is the voltage the
+    running cores asked for, on average;
   - `battery.health` = full-charge capacity ÷ design capacity (System Settings rounds differently);
   - TjMax is nominal (110 °C Apple silicon, 100 °C Intel), TDP is not reported.
 - Why: no public documentation; the rules follow how the readings behave at idle and under load on an M4 Pro.

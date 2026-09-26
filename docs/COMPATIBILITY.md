@@ -1387,7 +1387,8 @@ Intel Macs are untested.
   Ultra chips; per-core and GPU clocks), the HID temperature sensors (when the SMC has no CPU temperatures), the
   GPU's statistics (usage, memory in use) and the battery's registry entry (health, cycles, voltage, current). Only
   the groups of sensors some skin asks for are read, in the background, at most about once a second; so the first
-  update after a skin loads shows 0 and the next one the reading. A virtual machine or a future macOS without one of these sources simply lacks those sensors.
+  update after a skin loads shows 0 and the next one the reading, and a measure that updates less often shows the
+  value read at its previous update. A virtual machine or a future macOS without one of these sources simply lacks those sensors.
 - **Why:** macOS has no public API for any of this.
 - **Skin impact:** `Deskset --system-report` lists every sensor of this Mac with its reading and source.
 - **Status:** emulated
