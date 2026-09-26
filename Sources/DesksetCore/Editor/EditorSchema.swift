@@ -584,9 +584,9 @@ public enum EditorSchema {
             Property("SolidColor", "Color", .color, default: "0,0,0,0", placeholder: "none",
                      help: "Without a picture, a block of this color", level: .essential),
             Property("ImageAlpha", "Opacity", .percent255, default: "255", level: .essential),
-            // An SF Symbol keeps its shape by default (ImageMeter.preserveAspectRatio).
+            // An SF Symbol keeps its shape by default, unless its edges are kept (ImageMeter.preserveAspectRatio).
             Property("PreserveAspectRatio", "Fit", pick(aspect), default: "0",
-                     defaultWhen: [ConditionalDefault("1", when: [.contains("ImageName", "sf:")])],
+                     defaultWhen: [ConditionalDefault("1", when: [.contains("ImageName", "sf:"), .isNotSet("ScaleMargins")])],
                      help: "Fit Inside is used when only one of width and height is set",
                      invalidNote: "values are limited to 0–2", level: .essential),
             Property("Tile", "Tile", flag("Repeat the picture"), default: "0"),

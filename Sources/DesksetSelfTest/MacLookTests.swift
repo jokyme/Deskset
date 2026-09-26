@@ -93,6 +93,12 @@ func runMacLookTests(_ t: TestRunner) {
         W=40
         H=40
         PreserveAspectRatio=0
+        [Sliced]
+        Meter=Image
+        ImageName=sf:cpu.fill
+        W=40
+        H=10
+        ScaleMargins=6,3,6,3
         [File]
         Meter=Image
         ImageName=Wide100x50.png
@@ -130,6 +136,7 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(image("Symbol").imageOptions.symbol, MacSymbol.Style())
         t.equal(image("Sized").preserveAspectRatio, 1, "a symbol with W and H keeps its shape by default")
         t.equal(image("Stretched").preserveAspectRatio, 0, "unless the skin says otherwise")
+        t.equal(image("Sliced").preserveAspectRatio, 0, "ScaleMargins nine-slices a symbol (only at 0)")
         t.equal(image("File").preserveAspectRatio, 0, "files keep Rainmeter's default")
         t.equal(image("Styled").imagePath, "sf:cpu.fill?size=32&weight=bold&rendering=hierarchical")
         t.equal(image("Styled").frame.width, 40, "MacSymbolSize (a formula) sets the natural size")
@@ -264,6 +271,9 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(S.defaultValue(of: fit, in: image, values: { $0 == "ImageName" ? "sf:wifi" : nil }), "1",
                 "a symbol fits inside by default, as the engine draws it")
         t.equal(S.defaultValue(of: fit, in: image, values: { $0 == "ImageName" ? "wifi.png" : nil }), "0")
+        let sliced: (String) -> String? = { ["ImageName": "sf:capsule.fill", "ScaleMargins": "10,4,10,4"][$0] }
+        t.equal(S.defaultValue(of: fit, in: image, values: sliced), "0", "with ScaleMargins, as the engine")
+        t.check(S.isVisible(S.property("ScaleMargins", in: image)!, in: image, values: sliced), "ScaleMargins is shown")
         let skin = S.skinGroups
         t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.kind, .action)
         t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.defaultValue, Skin.defaultAppearanceChangeAction)

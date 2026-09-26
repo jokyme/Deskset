@@ -641,10 +641,10 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   Greyscale, ColorMatrix, flip, rotate, crop, Tile and ScaleMargins work; it is rendered at the pixels it covers and
   stays sharp. `MacSymbolSize` (default 16) sets its size without W / H, `MacSymbolWeight` its weight (Ultralight …
   Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths) or Multicolor (the
-  symbol's own colors, plain parts white). With W and H it keeps its shape (PreserveAspectRatio defaults to 1). A
-  Button shows it in every state, at half opacity while pressed. Unknown names give a compatibility note (taken back
-  when a measure's value names a known one; `sf:` alone is no image and no note); Bitmap,
-  Rotator and Histogram cannot use symbols (note, nothing drawn).
+  symbol's own colors, plain parts white). With W and H it keeps its shape (PreserveAspectRatio defaults to 1, or to
+  0 with ScaleMargins, which then nine-slices it). A Button shows it in every state, at half opacity while pressed.
+  Unknown names give a compatibility note (taken back when a measure's value names a known one; `sf:` alone is no
+  image and no note); Bitmap, Rotator and Histogram cannot use symbols (note, nothing drawn).
 - **Why:** Deskset extension: the Mac's icon set, without image files.
 - **Skin impact:** none for Windows skins; on Windows such images are missing.
 - **Status:** Mac-only

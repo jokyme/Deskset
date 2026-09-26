@@ -18,13 +18,15 @@ import Foundation
 /// - Images are cached by the app and reloaded when the file changes on disk, so `DynamicVariables=1` is not
 ///   needed for that (the manual's reason to use it); DynamicVariables still re-reads every option.
 /// - `ImageName=sf:<symbol>` (and `MaskImageName`) draw an SF Symbol (Deskset extension, `MacSymbol`); with both W and
-///   H set, PreserveAspectRatio defaults to 1 for a symbol, so it keeps its shape.
+///   H set, PreserveAspectRatio defaults to 1 for a symbol, so it keeps its shape — unless ScaleMargins is set, which
+///   nine-slices only at 0 (a capsule stretched to any width).
 public final class ImageMeter: Meter {
     /// Absolute path of the image to draw (nil = nothing).
     public private(set) var imagePath: String?
     /// Effective PreserveAspectRatio: 0 stretch, 1 fit keeping aspect, 2 fill keeping aspect (crop).
     public var preserveAspectRatio: Int {
-        preserveAspectRatioOption ?? (onlyOneSide || imagePath.map(MacSymbol.isSymbolPath) == true ? 1 : 0)
+        preserveAspectRatioOption
+            ?? (onlyOneSide || (scaleMargins == nil && imagePath.map(MacSymbol.isSymbolPath) == true) ? 1 : 0)
     }
     /// `PreserveAspectRatio` as written (nil when missing or not a number).
     private var preserveAspectRatioOption: Int?
