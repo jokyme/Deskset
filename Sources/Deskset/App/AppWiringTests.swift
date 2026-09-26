@@ -51,6 +51,12 @@ extension AppSelfTest {
                 t.check(text.count > 40 && !text.contains("Rainmeter"), "\(key): \(text)")
             }
             t.check((plist["NSAudioCaptureUsageDescription"] as? String)?.contains("never recorded") == true)
+            // One Location Services text for both keys: weather and sun skins, and Wi-Fi names.
+            let location = plist["NSLocationWhenInUseUsageDescription"] as? String ?? ""
+            t.equal(plist["NSLocationUsageDescription"] as? String, location, "both location texts are the same")
+            for words in ["weather", "rounded", "MET Norway", "never stored", "Wi-Fi"] {
+                t.check(location.contains(words), "the location text mentions \(words): \(location)")
+            }
             let ats = plist["NSAppTransportSecurity"] as? [String: Any]
             t.equal(ats?["NSAllowsArbitraryLoads"] as? Bool, true)
             t.equal(plist["LSUIElement"] as? Bool, true)

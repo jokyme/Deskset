@@ -74,9 +74,9 @@ write_plist() {
     <key>NSAppleEventsUsageDescription</key>
     <string>Skins ask Music or Spotify what is playing to show the current track and control playback, and ask Finder to empty the Trash or open a Get Info window when you use such a skin.</string>
     <key>NSLocationUsageDescription</key>
-    <string>macOS shares Wi-Fi network names only with apps allowed to use Location Services. ${APP_NAME} uses this only to show network names in Wi-Fi skins; your location is never read or stored.</string>
+    <string>Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>macOS shares Wi-Fi network names only with apps allowed to use Location Services. ${APP_NAME} uses this only to show network names in Wi-Fi skins; your location is never read or stored.</string>
+    <string>Skins you set to use your current location read your approximate location to show local weather and sun times. It is rounded to about 1 km, sent only to the weather service (MET Norway) for forecasts, and never stored. macOS also requires this permission for Wi-Fi skins to show network names.</string>
     <key>NSDesktopFolderUsageDescription</key>
     <string>A skin or its script reads or writes files in your Desktop folder (for example a file list, notes or launcher skin).</string>
     <key>NSDocumentsFolderUsageDescription</key>
@@ -166,6 +166,8 @@ cat > "$APP/Contents/Resources/Credits.html" <<'CREDITS'
 <div style="font: 11px -apple-system; text-align: center">
 <p>Free software under the GNU General Public License v3.</p>
 <p>Includes Lua 5.1.5 &copy; 1994–2012 Lua.org, PUC-Rio (MIT license).</p>
+<p>Weather data: <a href="https://api.met.no/">MET Norway</a> (CC BY 4.0).
+Place names: <a href="https://www.geonames.org/">GeoNames</a> (CC BY 4.0).</p>
 <p>Runs skins made for Rainmeter. Not affiliated with or endorsed by Rainmeter;<br>
 Rainmeter is a trademark of its respective owners.</p>
 </div>

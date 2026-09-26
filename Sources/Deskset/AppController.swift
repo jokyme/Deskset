@@ -74,6 +74,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = MainMenu.make(app: self)
         CodeEditorRouter.install(app: self)
         WebParserAccess.install(settingsFolder: Paths.appSupport)
+        // Weather skins may reach MET Norway from here on (never in the command-line modes or the self-tests).
+        WeatherWiring.install()
         let firstRun = state.data.skins.isEmpty
         installDefaultSkinsIfNeeded()
         setUpStatusItem()
@@ -700,7 +702,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         let credits = NSAttributedString(
             string: "Desktop widgets for your Mac, compatible with Rainmeter skins.\n"
-                + "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.",
+                + "Rainmeter is a trademark of its respective owners; Deskset is not affiliated with it.\n"
+                + WeatherWiring.credits,
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                          .foregroundColor: NSColor.secondaryLabelColor])
         var options: [NSApplication.AboutPanelOptionKey: Any] = [.credits: credits,
@@ -875,6 +878,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 menu.addItem(holder)
             } else if !custom.isEmpty {
                 addCustomItems(custom, for: c, to: menu)
+            }
+            // CC BY 4.0: every skin that shows MET Norway's forecasts credits them, whoever wrote it.
+            for weather in WeatherWiring.menuItems(for: c.skin, target: self, action: #selector(openWeatherSourceAction(_:))) {
+                menu.addItem(weather)
             }
             menu.addItem(.separator())
         }
@@ -1093,6 +1100,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func aboutAction() { showAbout() }
+
+    /// The skin menu's MET Norway credit: opens the data's source.
+    @objc func openWeatherSourceAction(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String, let url = URL(string: text) else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     @objc private func quitAction() { NSApp.terminate(nil) }
 }

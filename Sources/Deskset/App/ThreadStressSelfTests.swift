@@ -169,7 +169,7 @@ enum ThreadStressSelfTests {
                          "Threads/Fonts/Fonts.ini", "Threads/DeepNesting/DeepNesting.ini", "App/SysInfo/SysInfo.ini",
                          "Engine/Compat/Legacy.ini", "MediaUI/WiFi/WiFi.ini", "MediaUI/Desktop/Desktop.ini",
                          "MediaUI/NowPlayingLive/NowPlayingLive.ini", "Audio/Volume/Volume.ini",
-                         "Plugins/System/System.ini"] {
+                         "Plugins/System/System.ini", "Plugins/Weather/Weather.ini", "Plugins/Weather/Weather.ini"] {
                 guard let file = files.first(where: { $0.url.path.hasSuffix("/TestSkins/" + path) }) else {
                     t.check(false, "\(path) found")
                     continue
@@ -177,6 +177,14 @@ enum ThreadStressSelfTests {
                 files.append(file)
             }
             t.check(files.count > 100, "skins found: \(files.count)")
+            // Weather skins are not live here (not skin windows): they look their places up in the real table from
+            // every thread at once, and never reach the network.
+            let forbidden = WeatherSelfTests.ForbiddenTransport()
+            var weather = WeatherWiring.previewEnvironment(demo: false, demoNow: nil)
+            weather.transport = forbidden
+            let previousWeather = WeatherService.shared.environment
+            WeatherService.install(weather)
+            defer { WeatherService.install(previousWeather) }
             let plan = Plan.fromEnvironment()
             // What SkinController would compute on the main thread; the skins get it by value.
             let environment = SkinController.environment(windowFrame: nil)
@@ -258,6 +266,8 @@ enum ThreadStressSelfTests {
             // Background work (a plugin's download, a timer) reaches the host only through the skin's executor.
             let stray = skins.flatMap { skin in skin.host.strayCalls.map { "\(skin.file.config): \($0)" } }
             t.equal(stray, [], "every call the engine made to its host came from the skin's own thread")
+            t.equal(forbidden.count, 0, "no weather request from skins that are not in skin windows")
+            t.equal(WeatherService.shared.requestCount, 0)
             if hasFonts {
                 t.check(skins.contains { $0.report.current.fontsChanges > 0 }, "font changes reached the skins")
             }
