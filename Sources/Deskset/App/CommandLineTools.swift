@@ -179,7 +179,30 @@ enum SystemReport {
         if let power = m.cpuFrequency() { print(String(format: "CPU frequency: %.0f MHz", power / 1_000_000)) }
         if let gpu = m.graphicsAdapterName() { print("Graphics processor: \(gpu)") }
         for (type, text) in sysInfoValues() { print("SysInfo \(type): \(text)") }
+        for line in sensorLines(m) { print(line) }
         return 0
+    }
+
+    /// The hardware sensors skins can read (`Plugin=MacSensors` keys), with labels, readings and sources.
+    static func sensorLines(_ m: SystemMonitor) -> [String] {
+        let started = ProcessInfo.processInfo.systemUptime
+        let list = m.sensors.readAll()
+        let seconds = ProcessInfo.processInfo.systemUptime - started
+        var lines = [String(format: "Sensors (%@, read in %.0f ms): %d", ChipFamily.current.description, seconds * 1000,
+                            list.count)]
+        if list.isEmpty { lines.append("  none: this Mac (or virtual machine) reports no hardware sensors") }
+        let width = min(list.map(\.key.count).max() ?? 0, 28)
+        for info in list {
+            let reading = m.sensorValue(info.key).map { SensorKeys.text($0, kind: info.kind) } ?? "no reading"
+            var range = ""
+            if let lo = info.minimum, let hi = info.maximum {
+                range = " [\(SensorKeys.text(lo, kind: info.kind))–\(SensorKeys.text(hi, kind: info.kind))]"
+            }
+            let key = info.key.padding(toLength: max(width, info.key.count), withPad: " ", startingAt: 0)
+            lines.append("  \(key)  \(reading)\(range)  \(info.label) (\(info.source))")
+        }
+        if let tj = m.cpuTjMax() { lines.append("  CoreTemp TjMax: \(SensorKeys.text(tj, kind: .temperature)) (nominal)") }
+        return lines
     }
 
     /// Every SysInfo type as a skin sees it (the engine answers some types itself, the app the others), with

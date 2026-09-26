@@ -2,9 +2,10 @@ import Darwin
 import Foundation
 
 // Rainmeter's bundled plugins that need no Apple UI / media frameworks (manual: /manual/plugins/ and the
-// deprecated plugins, plus the RecycleManager measure), and third-party plugins that need nothing from the app
-// (Mouse, and Slider, its version 2). Clean-room implementations from the public manual and the plugins' public
-// documentation only; every Mac-vs-Windows difference is listed in docs/compat/plugins.md.
+// deprecated plugins, plus the RecycleManager measure), third-party plugins that need nothing from the app (Mouse,
+// and Slider, its version 2; MSIAfterburner over the hardware sensors) and Deskset's own MacSensors. Clean-room
+// implementations from the public manual and the plugins' public documentation (MSIAfterburner: the option names
+// in public skins) only; every Mac-vs-Windows difference is listed in docs/compat/plugins.md.
 
 /// Registration entry point for the core plugins. The app calls `CorePlugins.register()` once at startup, before
 /// skins load; `Skin.makeMeasure` then finds the types through `MeasureRegistry`.
@@ -34,6 +35,8 @@ public enum CorePlugins {
         ("VirtualDesktops", VirtualDesktopsMeasure.self),
         ("Mouse", MouseMeasure.self),
         ("Slider", SliderMeasure.self),
+        ("MSIAfterburner", MSIAfterburnerMeasure.self),
+        ("MacSensors", MacSensorsMeasure.self),
     ]
 
     /// `Measure=` types provided here (RecycleManager "was previously a plugin measure").
@@ -57,60 +60,7 @@ public protocol PluginLifecycle: AnyObject {
     func skinWillClose()
 }
 
-// MARK: - Hardware sensors
-
-/// Temperatures, fans, voltages and GPU load. macOS has no public API for these (SMC keys change with every Apple
-/// chip and need privileges), so nothing implements this protocol yet: CoreTemp / SpeedFan / thermal counters report 0
-/// until the app provides a source (`skin.system` conforming to it, or `HardwareSensors.source`).
-/// Every requirement has a default (nil / empty), so a source implements only what it can read.
-public protocol HardwareSensorSource: AnyObject {
-    /// °C per CPU core (index 0 = first core).
-    func cpuCoreTemperatures() -> [Double]?
-    /// °C of the hottest core / the CPU package.
-    func cpuPackageTemperature() -> Double?
-    /// °C, maximum junction temperature.
-    func cpuTjMax() -> Double?
-    /// MHz per core.
-    func cpuCoreFrequencies() -> [Double]?
-    /// Watts drawn by the CPU.
-    func cpuPower() -> Double?
-    /// Thermal design power in watts.
-    func cpuTDP() -> Double?
-    /// Core voltage (VID) in volts.
-    func cpuVoltage() -> Double?
-    /// All temperature sensors in °C (SpeedFan `SpeedFanNumber` indexes this list).
-    func temperatures() -> [Double]
-    /// All fans in RPM.
-    func fanSpeeds() -> [Double]
-    /// All voltage sensors in volts.
-    func voltages() -> [Double]
-    /// GPU utilisation 0…100.
-    func gpuUtilization() -> Double?
-}
-
-extension HardwareSensorSource {
-    public func cpuCoreTemperatures() -> [Double]? { nil }
-    public func cpuPackageTemperature() -> Double? { cpuCoreTemperatures()?.max() }
-    public func cpuTjMax() -> Double? { nil }
-    public func cpuCoreFrequencies() -> [Double]? { nil }
-    public func cpuPower() -> Double? { nil }
-    public func cpuTDP() -> Double? { nil }
-    public func cpuVoltage() -> Double? { nil }
-    public func temperatures() -> [Double] { cpuCoreTemperatures() ?? [] }
-    public func fanSpeeds() -> [Double] { [] }
-    public func voltages() -> [Double] { [] }
-    public func gpuUtilization() -> Double? { nil }
-}
-
-/// Where plugins look for hardware sensors: `skin.system` when it conforms to `HardwareSensorSource`, else `source`.
-public enum HardwareSensors {
-    /// Set by the app when it can read sensors (e.g. a Pro sensor helper). Main thread only.
-    public static var source: HardwareSensorSource?
-
-    static func source(for skin: Skin) -> HardwareSensorSource? {
-        (skin.system as? HardwareSensorSource) ?? source
-    }
-}
+// Hardware sensors (`HardwareSensorSource`, the sensor catalog): HardwareSensors.swift.
 
 // MARK: - Paths
 

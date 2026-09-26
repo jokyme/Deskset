@@ -45,12 +45,16 @@ final class SystemMonitor: SystemDataSource {
 
     /// What every cache's age is measured with.
     private let clock: () -> TimeInterval
+    /// The hardware sensors (temperatures, fans, power…), which skins read through `HardwareSensorSource`.
+    let sensors: SensorService
 
     /// The app has one monitor (`shared`). The threading self-tests make their own with a clock that runs an hour
     /// ahead at every look, so every reading is stale for every thread: all threads then take the readings and fill
     /// the caches at the same time, which the caches' short lifetimes otherwise make rare.
-    init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         sensors: SensorService = .shared) {
         self.clock = clock
+        self.sensors = sensors
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
             state.lastSample = clock()

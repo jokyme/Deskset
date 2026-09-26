@@ -64,8 +64,8 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 系统 measure（CPU、内存、网络、磁盘、时间、开机时长、SysInfo、Process、电池） | 模拟实现 | 全部可用，映射到 macOS 数据 | 所有盘符都指启动磁盘；Windows 网卡名会回退到当前活动接口 |
 | 注册表 | 模拟实现（固定集合） | Windows 版本、CPU / GPU 名称、核心数、用户文件夹、壁纸 | 其他所有注册表值均为 `0` / 空 |
 | Lua（`Measure=Script`、内联 Lua） | 完全一致 | Lua 5.1 以及完整的 SKIN / SELF / Measure / Meter API | `os.execute` 只能打开文件和网址；移除了少数不安全的函数 |
-| Rainmeter 自带插件 | 模拟实现 | 除两个以外全部实现（其中 7 个部分支持）：ActionTimer、AudioLevel、NowPlaying、InputText、RunCommand、UsageMonitor…… | WindowMessage 和 VirtualDesktops 在 macOS 上没有对应物；温度 / 风扇读数为 0（没有公开的传感器 API） |
-| 常用第三方插件 | 9 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider | 其他任何 Windows DLL（PowershellRM、ActiveNet、MSI Afterburner、HWiNFO……） |
+| Rainmeter 自带插件 | 模拟实现 | 除两个以外全部实现（其中 6 个部分支持）：ActionTimer、AudioLevel、NowPlaying、InputText、RunCommand、UsageMonitor、CoreTemp 和 SpeedFan（真实的温度、风扇、频率和功耗）…… | WindowMessage 和 VirtualDesktops 在 macOS 上没有对应物 |
+| 常用第三方插件 | 10 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider、MSI Afterburner | 其他任何 Windows DLL（PowershellRM、ActiveNet、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局（layout）会安装但暂不能应用 |
 | 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、所有位置类 bang | 窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup、Aero 模糊和保存的锚点；暂不能加载布局 |
 
@@ -73,8 +73,9 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 
 ## 3. 最容易注意到的差异
 
-1. **温度、风扇转速、电压和 GPU 频率读数为 0。** macOS 没有读取硬件传感器的公开 API（CoreTemp、SpeedFan、HWiNFO、
-   MSI Afterburner 的数值都受影响）。CPU 名称和各核心负载可以正常显示。
+1. **温度、风扇、频率和功耗读自 Mac 本身，晚一次更新。** Deskset 为 CoreTemp、SpeedFan 和 MSI Afterburner 皮肤（以及它自己的
+   `Plugin=MacSensors`）读取 Mac 的传感器，不需要特殊权限。苹果没有公开这些传感器的文档，所以数值是近似值：Apple 芯片上
+   各核心的温度就是其所在簇的温度，皮肤加载后的第一次更新显示 0，HWiNFO 皮肤仍然读不到数据。
 2. **盘符（`C:`、`D:`……）都显示启动磁盘。** 其他卷请写 `Drive=/Volumes/卷名`。
 3. **Windows 专属的插件 DLL 不起作用**，除非 Deskset 重新实现了它（见[插件矩阵](#5-插件支持矩阵)）。皮肤中依赖它的部分
    保持空白，但皮肤本身照常运行。
@@ -135,7 +136,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
 | AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频）或输入设备；RMS、Peak、FFT、Bands；需要权限 |
-| CoreTemp | 部分支持 | `Load`（各核心 CPU）和 `CpuName` 可用；温度、TjMax、电压、功率为 0；Apple 芯片上 CPU 频率为 0 |
+| CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
 | FolderInfo | 模拟实现 | 后台扫描；使用 Mac 的隐藏 / 系统文件规则 |
 | InputText | 模拟实现 | 非激活面板中的原生文本框；在 Stay Topmost 皮肤上也能用 |
@@ -144,7 +145,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | NowPlaying | 模拟实现 | 所有 `PlayerName` 都对应 Music.app 和 Spotify；“谁在播放就显示谁”规则 |
 | PerfMon（已弃用） | 部分支持 | 常用计数器映射到 Darwin 数据；其余为 0 |
 | Ping（`PingPlugin`） | 完全一致 | 在后台线程上发送无需特权的 ICMP echo |
-| PowerPlugin | 模拟实现 | 电池状态；没有电池的 Mac 上 `Percent` 为 100、`ACLine` 为 1；Apple 芯片上 `Hz` / `MHz` 为 0 |
+| PowerPlugin | 模拟实现 | 电池状态；没有电池的 Mac 上 `Percent` 为 100、`ACLine` 为 1；Apple 芯片上 `Hz` / `MHz` 为当前 CPU 频率 |
 | Process | 模拟实现 | Mac 进程名（ProcessName 中的 `.exe` 会被去掉） |
 | QuotePlugin | 完全一致 | 随机取文件中的一行或文件夹中的一个文件；Windows 路径映射到 Mac 文件夹 |
 | RecycleManager | 部分支持 | 废纸篓：`Count` 可用；`Size` 需要完全磁盘访问权限；清空通过访达完成 |
@@ -152,9 +153,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | ResMon | 部分支持 | `Handle` = 打开的文件描述符数；GDI / USER / Window 为 0 |
 | RunCommand | 部分支持 | 通过 `/bin/sh` 运行；Windows 专属命令行在启动前就以错误 103 失败 |
 | Script（Lua） | 完全一致 | Lua 5.1.5，完整 SKIN API；见 [§8](#8-lua-脚本) |
-| SpeedFan | 部分支持 | 在支持硬件传感器之前读数为 0 |
+| SpeedFan | 模拟实现 | 按固定顺序读取 Mac 的温度、风扇和电压（0 CPU、1 GPU、2 芯片、3 电池、4 SSD……） |
 | SysInfo | 模拟实现 | 系统、用户、屏幕、网卡都有 Mac 的对应值；少数 Windows 专属类型为 0 / 空 |
-| UsageMonitor | 部分支持 | 进程的 CPU、内存、IO，各核心负载，内存、分页、网络、磁盘；GPU 和冷门计数器为 0 |
+| UsageMonitor | 部分支持 | 进程的 CPU、内存、IO，各核心负载，内存、分页、网络、磁盘，CPU 温度，整个 GPU 的使用率；按进程的 GPU 和冷门计数器为 0 |
 | VirtualDesktops（旧版 Rainmeter；当前手册中没有） | 不支持 | 只报告一个桌面；命令被忽略（macOS 的“空间”没有公开 API） |
 | WebParser | 完全一致 | PCRE 正则转换为 ICU；见 [§11](#11-webparser-与皮肤安装器) |
 | WiFiStatus | 模拟实现 | CoreWLAN；SSID / LIST 需要定位服务；RXRate 等于 TXRate |
@@ -170,11 +171,18 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | FrostedGlass | 模拟实现 | 在皮肤后面使用 macOS 的毛玻璃效果（NSVisualEffectView）；在 `--render` 生成的图片中看不到 |
 | GetActiveTitle | 部分支持 | 只有在授予辅助功能 / 屏幕录制权限时才读取窗口标题，否则返回 App 名称 |
 | IsFullScreen | 部分支持 | 全屏检测可用；进程名是 Mac 的 App 名称（`Safari`），不会是 `chrome.exe` |
+| MSI Afterburner（`MSIAfterburner`） | 模拟实现 | GPU 温度、使用率、频率和内存（Apple 芯片上为统一内存），风扇转速为最快风扇占其最高转速的百分比；Apple 芯片上 `Memory clock` 为 0；见 §9.3 |
 | Mouse | 模拟实现 | 在皮肤的任意位置响应鼠标（拖动滑块）；在皮肤上按下后一直跟随到松开，指针移出皮肤也一样；RequireDragging 的 Start / Stop；见 §9.8 |
 | Slider（Mouse 插件的第 2 版） | 模拟实现 | 左键、右键或中键的 ClickAction、DragAction、HoldAction、ReleaseAction 和 MoveAction，在皮肤上和屏幕上任何其他位置都响应（不需要权限）；见 §9.9 |
 | SysColor | 模拟实现 | Windows 的系统颜色映射到 macOS 的语义颜色（强调色、高亮、窗口、文字……） |
 | WebNowPlaying | 部分支持 | 显示 Music / Spotify；不支持浏览器扩展（网页播放器） |
-| 其他任何 Windows 插件 DLL（例如 PowershellRM、ActiveNet、MSI Afterburner、HWiNFO） | 不支持 | 数值为 0 / 空，显示一条兼容性提示，皮肤其余部分照常工作 |
+| 其他任何 Windows 插件 DLL（例如 PowershellRM、ActiveNet、HWiNFO） | 不支持 | 数值为 0 / 空，显示一条兼容性提示，皮肤其余部分照常工作 |
+
+### Deskset 自己的插件
+
+| 插件 | 状态 | 说明 |
+| --- | --- | --- |
+| MacSensors | 仅 Mac | 按键名读取任意硬件传感器（`Sensor=cpu`、`gpu`、`fan.1`、`power.system`、`frequency.cpu.performance`、`battery.health`……），带单位和范围；`!CommandMeasure … List`；见 §9.3 |
 
 安装器会列出皮肤包中包含的 DLL，并提醒使用不受支持插件的皮肤会缺少相应数值。
 
@@ -541,8 +549,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
     `IfAboveValue` 的 `IfAboveAction` 永远不会触发。
   - Loop 总是按 |Increment| 从 StartValue 走向 EndValue。
   - Time 的数值是当地时间自 1601 年起的秒数，取整秒。
-  - PowerPlugin：没有电池的 Mac 上 `Percent` 为 100、`ACLine` 为 1；未知时 `Lifetime` 为 -1 / “Unknown”；Apple 芯片上
-    `Hz` / `MHz` 为 0（没有公开的 CPU 频率）。
+  - PowerPlugin：没有电池的 Mac 上 `Percent` 为 100、`ACLine` 为 1；未知时 `Lifetime` 为 -1 / “Unknown”；`Hz` / `MHz`
+    在 Intel Mac 上为额定频率，在 Apple 芯片上为较快 CPU 簇的当前频率（§9.3）。
   - Process：ProcessName 中的 `.exe` 会被去掉；Mac 的进程名往往与 Windows 的可执行文件名不同。
 - **原因：** 手册未作规定时的取舍判断。
 - **对皮肤的影响：** 只涉及边界情况（绑定到 Bar 的常量 Calc 需要 MaxValue，与 Rainmeter 相同）。
@@ -703,7 +711,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
 变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
-（[§6.5](#65-meter-与绘制)）。
+（[§6.5](#65-meter-与绘制)）。Deskset 自己的插件 MacSensors 与硬件传感器写在一起
+（[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)）。
 
 #### MacGlass：皮肤或 meter 背后的玻璃
 - **Windows：** 没有对应功能（Rainmeter 忽略这些选项）。
@@ -1267,15 +1276,16 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 ## 9. 内置插件（核心）
 
 不需要 Apple 界面或媒体框架的 Rainmeter 插件：ActionTimer、CoreTemp、SpeedFan、AdvancedCPU、UsageMonitor、PerfMon、Ping、
-RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMessage 和 VirtualDesktops，以及第三方的 Mouse 插件
-（§9.8）和它的第 2 版 Slider（§9.9）。详细说明：[`compat/plugins.md`](compat/plugins.md)。
+RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMessage 和 VirtualDesktops，第三方的 Mouse 插件
+（§9.8）和它的第 2 版 Slider（§9.9），第三方的 MSI Afterburner 插件，以及 Deskset 自己的 MacSensors（§9.3）。详细说明：
+[`compat/plugins.md`](compat/plugins.md)。
 
 ### 9.1 通用
 
 #### 插件名称与别名
 - **Windows：** `Measure=Plugin` + `Plugin=Name`、`Name.dll` 或 `Plugins\Name.dll`；RecycleManager 也可以作为 measure 使用。
 - **Mac：** 所有写法都接受，不区分大小写，包括 `PingPlugin` / `Ping`、`QuotePlugin` / `Quote`、`PerfMon` /
-  `PerfMonPlugin`、`SpeedFanPlugin` / `SpeedFan`、`WindowMessagePlugin` / `WindowMessage`。
+  `PerfMonPlugin`、`SpeedFanPlugin` / `SpeedFan`、`WindowMessagePlugin` / `WindowMessage`、`MSIAfterburner`、`MacSensors`。
 - **原因：** 老皮肤各种写法都有。
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
@@ -1283,9 +1293,10 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
 #### 插件 measure 的范围（MinValue / MaxValue）
 - **Windows：** 无法得知最大值的 measure 使用出现过的最小值和最大值；CoreTemp 和 SpeedFan 的页面说要显示百分比“必须加上”
   MinValue / MaxValue。
-- **Mac：** 除非设置了 MinValue / MaxValue，每个数值会变化的核心插件 measure（CoreTemp、SpeedFan、AdvancedCPU、
-  UsageMonitor、PerfMon、ResMon、Ping、RunCommand、FolderInfo、FileView、RecycleManager）都会跟踪出现过的范围；ActionTimer、
-  Quote、WindowMessage、VirtualDesktops、Mouse 和 Slider 保持固定的 0…1 范围。
+- **Mac：** 除非设置了 MinValue / MaxValue，每个数值会变化的核心插件 measure（CoreTemp、SpeedFan、MSIAfterburner、
+  AdvancedCPU、UsageMonitor、PerfMon、ResMon、Ping、RunCommand、FolderInfo、FileView、RecycleManager）都会跟踪出现过的范围；
+  ActionTimer、Quote、WindowMessage、VirtualDesktops、Mouse 和 Slider 保持固定的 0…1 范围；MacSensors 按传感器种类有各自的
+  范围（§9.3）。
 - **原因：** 手册对插件 measure 的总体描述。
 - **对皮肤的影响：** 没有 MaxValue 的进度条按出现过的最大值缩放，与 Windows 相同。
 - **状态：** 完全一致
@@ -1344,23 +1355,78 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
 
-### 9.3 硬件传感器：CoreTemp 与 SpeedFan
+### 9.3 硬件传感器：CoreTemp、SpeedFan、MSI Afterburner、MacSensors
+
+Windows 皮肤从其他程序（Core Temp、SpeedFan、MSI Afterburner、HWiNFO）获取温度、风扇转速、频率和功耗。Deskset 直接读取 Mac，
+供这些插件、UsageMonitor / PerfMon 的温度区和 GPU 计数器以及它自己的 MacSensors 插件使用。已在 M4 Pro MacBook Pro 上验证；
+M1–M3 的规则和 Intel Mac 尚未测试。
+
+#### 数据来源
+- **Windows：** 插件读取这些程序的共享内存。
+- **Mac：** 一个传感器服务在没有特权的情况下以严格只读的方式读取：系统管理控制器（SMC：温度、风扇、整机功耗；只能发送三种读取
+  命令，从不写入，因此不会改变风扇或任何设置）、Apple 芯片上的 IOReport（CPU / GPU / 神经网络引擎 / 内存的功耗，Ultra 芯片上
+  两个晶粒相加；各核心和 GPU 的频率）、HID 温度传感器（SMC 没有 CPU 温度时使用）、GPU 统计信息（使用率、已用内存）以及电池的
+  注册表项（健康度、循环次数、电压、电流）。只读取有皮肤请求的那几组传感器，在后台进行，最多约每秒一次；因此皮肤加载后的第一次
+  更新显示 0，下一次才显示读数；更新得更少的 measure 显示的是它上一次更新时读到的值。虚拟机或未来某个缺少这些数据源的 macOS 上，
+  相应传感器就不存在。
+- **原因：** macOS 对这些都没有公开 API。
+- **对皮肤的影响：** `Deskset --system-report` 会列出这台 Mac 的每个传感器、读数和来源。
+- **状态：** 模拟实现
+
+#### 近似处理
+- **Windows：** 各核心的数值来自 CPU 自身的寄存器。
+- **Mac：** 苹果没有公开传感器的名称：键按芯片系列依名称分组，每个数值取该组中有效键的最高值。Apple 芯片上没有对应单个核心的
+  键，所以 `cpu.core.N`（CoreTemp 的 `Temperature`）是该核心所在簇中最热的传感器（M1 / M2 上是整个 CPU）；Intel Mac 的核心键
+  从 1 或从 0 开始编号，第 N 个核心取第 N 个这样的键。断电的簇报告的读数
+  （低于 10 °C，或正好 40.0 °C）会被忽略；当某个 CPU 簇或 GPU 的传感器全部处于断电状态时，报告芯片的温度。频率是上一个间隔内
+  运行时的平均值（没有运行的核心显示其最低频率）；CPU 电压是运行中的核心请求的电压。TjMax 为标称值：Apple 芯片 110 °C（满载时
+  见到过 112 °C），Intel Mac 100 °C；没有 TDP。
+- **原因：** 取舍判断，依据的是空闲和负载时读数的表现。
+- **对皮肤的影响：** 数值随负载变化，可能与其他监控 App 相差几度；同一簇的各核心温度条一起变化。
+- **状态：** 模拟实现
 
 #### CoreTemp
 - **Windows：** 读取必须在运行的 Core Temp 程序。
-- **Mac：** 数值来自 Mac 本身：`Load` = 各核心 CPU 使用率（序号从 0 开始）；`CpuName` = 处理器名称（“Apple M4 Pro”）；
-  `CpuSpeed` / `CoreSpeed` = macOS 报告的 MHz（Intel），否则为 0；`Temperature`、`MaxTemperature`（默认）、`TjMax`、`Vid`、
-  `Tdp`、`Power` 在支持传感器之前为 0；Apple 芯片上总线相关数值为 0。始终使用摄氏度。
-- **原因：** macOS 没有公开的温度 / 电压 API（SMC 键因芯片而异，且需要特权）。
-- **对皮肤的影响：** 负载条和 CPU 名称可用；温度为 0（记录一次日志）。
-- **状态：** 部分支持
+- **Mac：** `Load` = 各核心 CPU 使用率（序号从 0 开始）；`CpuName` = 处理器名称（“Apple M4 Pro”）；`MaxTemperature`（默认）=
+  最热的 CPU 传感器；`Temperature` = 该核心（其所在簇）的温度；`TjMax` 为标称值；Apple 芯片上 `Power`、`Vid`、`CpuSpeed`、
+  `CoreSpeed` 来自 IOReport（Intel：额定频率，没有功耗和电压）；`Tdp` 为 0；频率为实测值时总线速度为 100 MHz，倍频 = 频率 ÷ 100。
+  始终使用摄氏度。这台 Mac 不提供的数值为 0（记录一次日志）。
+- **原因：** Mac 上没有 Core Temp；Apple 芯片没有前端总线，也没有公布 TDP。
+- **对皮肤的影响：** 温度、频率和功耗可用；满载时“距 TjMax”可能略为负数。
+- **状态：** 模拟实现
 
 #### SpeedFan
-- **Windows：** 读取 SpeedFan 程序（温度、风扇、电压）。
-- **Mac：** 选项相同，但在支持硬件传感器之前数值为 0（记录一次日志）。
-- **原因：** 没有 SpeedFan，也没有公开的传感器 API。
-- **对皮肤的影响：** 风扇 / 温度显示为 0。
-- **状态：** 部分支持
+- **Windows：** 读取 SpeedFan 程序（温度、风扇、电压），编号取决于 PC 的芯片。
+- **Mac：** 选项相同，每台 Mac 上顺序固定：温度 0 CPU、1 GPU、2 芯片、3 电池、4 SSD、5 性能核心、6 能效核心，然后是核心 1、2……；
+  风扇 0、1……（RPM）；电压 0 CPU、1 电池。这台 Mac 没有的传感器在其位置读数为 0；按文档转换为 F / K。
+- **原因：** Mac 上没有 SpeedFan（取舍判断：固定顺序）。
+- **对皮肤的影响：** 按 PC 编号设置的皮肤在某个编号上可能显示另一个传感器；请设置 `SpeedFanNumber`。
+- **状态：** 模拟实现
+
+#### MSI Afterburner（第三方）
+- **Windows：** 读取 MSI Afterburner 的监控数据；`DataSource=` 为 Afterburner 显示的名称（公开皮肤中见到的有
+  `GPU temperature`、`Fan speed`、`Core clock`、`Memory clock`、`Memory usage`）。
+- **Mac：** `GPU temperature`、`GPU usage`、`Core clock`（MHz）和 `Memory usage`（MB；Apple 芯片上为 GPU 正在使用的统一内存）
+  来自传感器；Apple 芯片上 `Memory clock` 为 0（GPU 没有自己的显存）；`Fan speed` = 独立显卡自己的风扇，否则为最快的 Mac 风扇
+  占其最高转速的百分比；还支持 `Fan tachometer`（RPM）、`GPU power` / `CPU power`（W）、`CPU temperature` /
+  `CPUn temperature`、`CPU usage`、`CPU clock`、`RAM usage`（MB）；`GPU1 …` 等同于 `GPU …`；其他名称（`GPU2 …`、表示显卡功耗
+  上限百分比的 `Power`、`Framerate`）读数为 0，并记录一次日志。
+- **原因：** Mac 上没有 Afterburner；Apple 芯片的 GPU 与 Mac 共用内存和风扇。
+- **对皮肤的影响：** GPU 面板显示温度、频率、风扇和内存；Apple 芯片上显存频率为 0。
+- **状态：** 模拟实现
+
+#### MacSensors（Deskset）
+- **Windows：** 没有这个插件。
+- **Mac：** `Plugin=MacSensors`，`Sensor=` 为目录中的键：温度 `cpu`、`cpu.performance`、`cpu.efficiency`、`cpu.core.N`、`gpu`、
+  `soc`、`battery`、`ssd`；风扇 `fan.N`（以及 `.min`、`.max`、`.target`）；功耗 `power.system`、`power.adapter`、`power.cpu`、
+  `power.gpu`、`power.ane`、`power.dram`；频率 `frequency.cpu`、`frequency.cpu.performance`、`frequency.cpu.efficiency`、
+  `frequency.cpu.N`、`frequency.gpu`；`voltage.cpu`；`gpu.usage`、`gpu.memory`；`battery.health`、`battery.cycles`、
+  `battery.voltage`、`battery.current`（编号从 1 开始）。温度可用 `Scale=C` / `F` / `K`。数值为读数，字符串为带单位的读数
+  （“52 °C”、“2317 RPM”），没有读数时为空。默认范围：0–100 °C 和 0–100 %，风扇自己的最低和最高转速，簇的最低和最高频率；
+  其他种类按出现过的数值。`!CommandMeasure <measure> List` 会在日志中列出这台 Mac 的所有传感器。
+- **原因：** Deskset 为新皮肤提供的插件；Skin Studio 中作为“Temperature”实时数据提供。
+- **对皮肤的影响：** Rainmeter 中没有；使用它的皮肤只能在 Mac 上运行。
+- **状态：** 仅 Mac
 
 ### 9.4 进程与性能计数器
 
@@ -1380,9 +1446,11 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
   `Thread Count`、`ID Process`、IO 字节 / 秒……）、处理器（各核心时间）、内存（`Available Bytes`、`Committed Bytes`、
   `Commit Limit`……）、分页文件、网络接口（字节 / 秒）、逻辑磁盘 / 物理磁盘（可用空间、字节 / 秒）、系统（进程数、线程数、
   开机时长、负载）。Index、Name、Blacklist / Whitelist、Rollup、Percent、RawValue 和 PIDToName 按手册处理（名称还可以不区分
-  大小写、不带 `.exe` 匹配）。GPU 计数器需要传感器支持；其他计数器为 0，并作为兼容性提示列出。
+  大小写、不带 `.exe` 匹配）。Thermal Zone Information（`\_TZ.CPU`，最热的 CPU 传感器，单位 K）和 GPU Engine（Alias=GPU：
+  一个名为 “GPU” 的实例，即整个 GPU 的使用率）读取硬件传感器（§9.3）；按进程的 GPU 内存和其他计数器为 0，并作为兼容性提示
+  列出。
 - **原因：** macOS 没有性能监视器；这些是 Darwin 上的对应数据。
-- **对皮肤的影响：** 占用排行、各核心负载、网络和内存计数器可用；GPU 和冷门计数器为 0。
+- **对皮肤的影响：** 占用排行、各核心负载、网络、内存、CPU 温度和 GPU 使用率计数器可用；按进程的 GPU 和冷门计数器为 0。
 - **状态：** 部分支持
 
 #### PerfMon（已弃用）
@@ -2211,13 +2279,17 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 MeterStyle 名称（Enigma 的阅读器和便笺标签页）在加载时记录 “MeterStyle … does not exist” 警告，尽管该样式能被正确找到并
 绘制——在合并引擎接线之后已不再出现。
 
+**此后（2026-09-26）：硬件传感器。** CoreTemp、SpeedFan、MSI Afterburner、PowerPlugin 的 CPU 频率以及温度区 / GPU 计数器
+现在读取 Mac 的传感器（§9.3）。在 M4 Pro 上本地重新渲染：EasyInfo 显示 CPU 频率（4.5 GHz）和核心温度，FluentDash11 CPU 显示
+速度和温度，FluentDash11 GPU 显示频率、风扇转速、温度和 GPU 已用内存；其显存频率仍为 0 MHz，显存总量为 0 GB（统一内存）。
+
 ---
 
 ## 13. 已知缺口与计划
 
 | 缺口 | 状态 | 说明 |
 | --- | --- | --- |
-| 硬件传感器（温度、风扇、电压、GPU 频率） | 不支持 | macOS 没有公开 API；计划在后续版本中提供 |
+| 硬件传感器（温度、风扇、功耗、频率） | 模拟实现 | 无需特权直接读取（§9.3）；苹果没有公开文档，数值为近似值；M1–M3 和 Intel Mac 尚未测试；HWiNFO 皮肤仍然读不到数据 |
 | 布局（`!LoadLayout`、应用已安装的布局） | 不支持 | 已安装的布局会保留，等这一功能推出后使用 |
 | Aero 模糊（`Blur`、`BlurRegion`、模糊类 bang）、`!ResetStats` | 不支持 | 模糊效果请用 FrostedGlass |
 | 保存的窗口锚点（`!SetAnchor`；保存的位置记住锚点） | 部分支持 | 锚点只在摆放皮肤时应用一次；改变尺寸的皮肤向右、向下扩展 |

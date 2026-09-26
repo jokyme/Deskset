@@ -824,7 +824,7 @@ public enum EditorSchema {
     }
 
     /// Every measure type and plugin the engine and the app provide (Skin.makeMeasure, CorePlugins, LuaSupport,
-    /// AudioPlugins, MediaUIPlugins) — 50 in all.
+    /// AudioPlugins, MediaUIPlugins) — 52 in all.
     public static let measureTypes: [MeasureType] = [
         type("CPU", "CPU usage", "cpu"),
         type("Memory", "Memory used (Windows-style)", "memorychip"),
@@ -865,6 +865,8 @@ public enum EditorSchema {
         type("VirtualDesktops", "Virtual desktops", "square.split.2x2", plugin: true),
         type("Mouse", "Mouse input", "computermouse", plugin: true),
         type("Slider", "Mouse input (Slider)", "slider.horizontal.3", plugin: true),
+        type("MacSensors", "Temperatures, fans and power", "gauge.with.dots.needle.50percent", plugin: true),
+        type("MSIAfterburner", "Graphics card (MSI Afterburner)", "flame", plugin: true),
         type("AudioLevel", "Sound", "waveform", plugin: true),
         type("Win7AudioPlugin", "Volume", "speaker.wave.2", plugin: true, aliases: ["Win7Audio"]),
         type("AppVolume", "App volume", "speaker.wave.2.circle", plugin: true),
@@ -934,6 +936,8 @@ public enum EditorSchema {
             ]),
             LiveDataChoice("Disk space", "Free or used space on a disk", type: "FreeDiskSpace", options: ["Drive": "/"]),
             LiveDataChoice("Battery", "Charge level and status", type: "PowerPlugin"),
+            LiveDataChoice("Temperature", "How warm the chip is; also fans and power", type: "MacSensors",
+                           options: ["Sensor": "cpu"]),
             LiveDataChoice("Time and date", "The current time or date", type: "Time"),
             LiveDataChoice("Time since startup", "How long your Mac has been on", type: "Uptime"),
             LiveDataChoice("Sound", "Loudness and spectrum of what's playing", type: "AudioLevel", options: ["Port": "Output"]),
@@ -1037,7 +1041,8 @@ public enum EditorSchema {
     /// Memory and FreeDiskSpace, none of them for Loop, no InvertMeasure for String; Memory and FreeDiskSpace list
     /// InvertMeasure under Settings as "free" / "used").
     static func rangeProperties(_ name: String) -> [Property] {
-        let tracking: Set<String> = ["NetIn", "NetOut", "NetTotal", "Calc", "WebParser", "Script", "CoreTemp"]
+        let tracking: Set<String> = ["NetIn", "NetOut", "NetTotal", "Calc", "WebParser", "Script", "CoreTemp",
+                                     "MacSensors", "MSIAfterburner"]
         let automatic: [String: String] = ["CPU": "100", "PowerPlugin": "100", "Win7AudioPlugin": "100"]
         let net = name.hasPrefix("Net")
         var list: [Property] = []
@@ -1308,17 +1313,19 @@ public enum EditorSchema {
                     Property("IgnoreWarnings", "Warnings", flag("Don't warn when a running sequence starts again"),
                              default: "0")]
         case "CoreTemp":
-            let sensors = "needs hardware sensors; 0 on the Mac today"
+            let bus = "no bus on Apple silicon: clock ÷ 100"
             return [Property("CoreTempType", "Shows",
-                             pick([Choice("MaxTemperature", "Hottest core", note: sensors),
-                                   Choice("Temperature", "Core temperature", note: sensors),
-                                   Choice("TjMax", "Maximum temperature", note: sensors), Choice("Load", "Core load"),
+                             pick([Choice("MaxTemperature", "Hottest core"),
+                                   Choice("Temperature", "Core temperature", note: "Apple silicon: the core's cluster"),
+                                   Choice("TjMax", "Maximum temperature", note: "a nominal value; Apple publishes none"),
+                                   Choice("Load", "Core load"),
                                    Choice("CpuSpeed", "Processor speed"), Choice("CoreSpeed", "Core speed"),
-                                   Choice("CpuName", "Processor name"), Choice("Vid", "Core voltage", note: sensors),
-                                   Choice("Tdp", "Thermal design power", note: sensors),
-                                   Choice("Power", "Power", note: sensors), Choice("BusSpeed", "Bus speed", note: sensors),
-                                   Choice("BusMultiplier", "Multiplier", note: sensors),
-                                   Choice("CoreBusMultiplier", "Core multiplier", note: sensors)], style: .popup),
+                                   Choice("CpuName", "Processor name"), Choice("Vid", "Core voltage"),
+                                   Choice("Tdp", "Thermal design power", supportedOnMac: false,
+                                          note: "Apple publishes none: 0"),
+                                   Choice("Power", "Power"), Choice("BusSpeed", "Bus speed", note: bus),
+                                   Choice("BusMultiplier", "Multiplier", note: bus),
+                                   Choice("CoreBusMultiplier", "Core multiplier", note: bus)], style: .popup),
                              default: "MaxTemperature"),
                     Property("CoreTempIndex", "Core", num(0, 4095, step: 1), default: "0", help: "0 = the first core")]
         case "AdvancedCPU":
@@ -1409,11 +1416,32 @@ public enum EditorSchema {
                     Property("ProcessName", "App", .text, placeholder: "whole system")]
         case "SpeedFanPlugin":
             return [Property("SpeedFanType", "Sensor", pick([Choice("Temperature", "Temperature"), Choice("Fan", "Fan"),
-                                                             Choice("Voltage", "Voltage")]), default: "Temperature",
-                             help: "Needs hardware sensors; 0 on the Mac today"),
-                    Property("SpeedFanNumber", "Number", num(0, nil, step: 1), default: "0", help: "0 = the first sensor"),
+                                                             Choice("Voltage", "Voltage")]), default: "Temperature"),
+                    Property("SpeedFanNumber", "Number", num(0, nil, step: 1), default: "0",
+                             help: "Temperatures: 0 CPU, 1 GPU, 2 chip, 3 battery, 4 SSD, 5–6 CPU clusters, 7… cores; "
+                                 + "fans and voltages from 0"),
                     Property("SpeedFanScale", "Unit", pick([Choice("C", "°C"), Choice("F", "°F"), Choice("K", "K")]),
                              default: "C")]
+        case "MacSensors":
+            let nonTemperature = SensorKeys.common.map(\.key).filter { SensorKeys.kind(of: $0) != .temperature }
+            return [Property("Sensor", "Shows", pick(SensorKeys.common.map { Choice($0.key, $0.label) }, style: .popup),
+                             default: SensorKeys.cpu, help: "Or another core or fan, such as cpu.core.4 or fan.2",
+                             otherValues: .any),
+                    Property("Scale", "Unit", pick([Choice("C", "°C"), Choice("F", "°F"), Choice("K", "K")]),
+                             default: "C", visibleWhen: [Condition("Sensor", .notEquals(nonTemperature))])]
+        case "MSIAfterburner":
+            let unified = "0 on Apple silicon: the GPU uses the Mac's memory"
+            return [Property("DataSource", "Shows",
+                             pick([Choice("GPU temperature", "GPU temperature"), Choice("GPU usage", "GPU usage"),
+                                   Choice("Core clock", "GPU clock"),
+                                   Choice("Memory clock", "GPU memory clock", note: unified),
+                                   Choice("Memory usage", "GPU memory used (MB)"),
+                                   Choice("Fan speed", "Fan speed (% of its maximum)"),
+                                   Choice("Fan tachometer", "Fan speed (RPM)"), Choice("GPU power", "GPU power"),
+                                   Choice("CPU temperature", "CPU temperature"), Choice("CPU usage", "CPU usage"),
+                                   Choice("CPU clock", "CPU clock"), Choice("CPU power", "CPU power"),
+                                   Choice("RAM usage", "Memory used (MB)")], style: .popup),
+                             help: "The name MSI Afterburner shows, such as GPU temperature", otherValues: .any)]
         case "WindowMessagePlugin":
             return [Property("WindowName", "Window title", .text, help: "Windows only; always 0 on the Mac"),
                     Property("WindowClass", "Window class", .text)]

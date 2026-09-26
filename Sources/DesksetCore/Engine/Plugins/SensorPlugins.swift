@@ -13,13 +13,16 @@ import Foundation
 /// `Plugin=CoreTemp`: on Windows it reads the Core Temp application. On the Mac:
 /// - `Load` (per core, `CoreTempIndex` 0-based) comes from the CPU data the CPU measure uses (`SystemDataSource`);
 /// - `CpuName` is the processor brand string (e.g. "Apple M2 Pro");
-/// - `CpuSpeed` / `CoreSpeed` are MHz from a `HardwareSensorSource`, else the rated frequency when the system reports
-///   one (Intel Macs), else 0;
-/// - temperatures (`MaxTemperature` — the default —, `Temperature`, `TjMax`), `Vid`, `Tdp`, `Power` need a
-///   `HardwareSensorSource`; without one they are 0 (logged once);
+/// - the rest comes from the hardware sensors (`HardwareSensorSource`, docs/compat/plugins.md): `MaxTemperature` (the
+///   default) = the catalog's `cpu`, `Temperature` = `cpu.core.N` (on Apple silicon the core's cluster), `TjMax` =
+///   the source's nominal value, `Power` = `power.cpu`, `Vid` = `voltage.cpu`, `CpuSpeed` = `frequency.cpu`,
+///   `CoreSpeed` = `frequency.cpu.N`; `Tdp` has no Mac source (0);
+/// - `CpuSpeed` / `CoreSpeed` without a sensor reading are the rated frequency when the system reports one (Intel
+///   Macs), else 0;
 /// - `BusSpeed`, `BusMultiplier`, `CoreBusMultiplier` have no meaning on Apple Silicon: 0 (with a sensor source that
 ///   reports frequencies, BusSpeed is 100 MHz and the multipliers are frequency / 100, like a PC's reference clock).
-/// Temperatures are Celsius (Core Temp's Fahrenheit setting has no counterpart). As the manual says, MinValue /
+/// A value the Mac does not report is 0, logged once (not while the source is still reading that sensor for the first
+/// time). Temperatures are Celsius (Core Temp's Fahrenheit setting has no counterpart). As the manual says, MinValue /
 /// MaxValue must be set for percentages: like every plugin measure the range otherwise tracks the observed values.
 public final class CoreTempMeasure: Measure {
     enum Kind: String, CaseIterable {
@@ -48,9 +51,17 @@ public final class CoreTempMeasure: Measure {
     public override func computeValue() -> Double {
         rawString = nil
         let sensors = HardwareSensors.source(for: skin)
-        func needSensor(_ what: String) {
-            report("sensor", "CoreTemp [\(name)]: \(what) needs hardware sensors, which macOS does not expose to "
-                   + "apps; the value is 0")
+        /// 0, and a note once: no sensors at all, or the Mac does not report this value (not while it is pending).
+        func missing(_ what: String, _ key: String) -> Double {
+            guard let sensors else {
+                report("sensor", "CoreTemp [\(name)]: \(what) needs hardware sensors, which are not available here; "
+                       + "the value is 0")
+                return 0
+            }
+            if !sensors.sensorPending(key) {
+                report("missing:\(what)", "CoreTemp [\(name)]: this Mac reports no \(what); the value is 0")
+            }
+            return 0
         }
         switch kind {
         case .cpuName:
@@ -64,40 +75,31 @@ public final class CoreTempMeasure: Measure {
         case .coreSpeed:
             return coreFrequency(sensors, core: index)
         case .maxTemperature:
-            guard let t = sensors?.cpuPackageTemperature() else { needSensor("MaxTemperature"); return 0 }
-            return t
+            return sensors?.cpuPackageTemperature() ?? missing("MaxTemperature", SensorKeys.cpu)
         case .temperature:
-            guard let list = sensors?.cpuCoreTemperatures() else { needSensor("Temperature"); return 0 }
-            return index < list.count ? list[index] : 0
+            return sensors?.coreTemperature(index) ?? missing("Temperature", SensorKeys.cpuCore(index + 1))
         case .tjMax:
-            guard let t = sensors?.cpuTjMax() else { needSensor("TjMax"); return 0 }
-            return t
+            return sensors?.cpuTjMax() ?? missing("TjMax", SensorKeys.cpu)
         case .vid:
-            guard let v = sensors?.cpuVoltage() else { needSensor("Vid"); return 0 }
-            return v
+            return sensors?.cpuVoltage() ?? missing("Vid", SensorKeys.voltageCPU)
         case .tdp:
-            guard let v = sensors?.cpuTDP() else { needSensor("Tdp"); return 0 }
-            return v
+            return sensors?.cpuTDP() ?? missing("Tdp", "tdp")
         case .power:
-            guard let v = sensors?.cpuPower() else { needSensor("Power"); return 0 }
-            return v
+            return sensors?.cpuPower() ?? missing("Power", SensorKeys.powerCPU)
         case .busSpeed:
-            return sensors?.cpuCoreFrequencies() != nil ? 100 : 0
+            return sensors?.coreFrequency(nil) != nil ? 100 : 0
         case .busMultiplier:
             let f = coreFrequency(sensors, core: nil)
-            return f > 0 && sensors?.cpuCoreFrequencies() != nil ? f / 100 : 0
+            return f > 0 && sensors?.coreFrequency(nil) != nil ? f / 100 : 0
         case .coreBusMultiplier:
             let f = coreFrequency(sensors, core: index)
-            return f > 0 && sensors?.cpuCoreFrequencies() != nil ? f / 100 : 0
+            return f > 0 && sensors?.coreFrequency(index) != nil ? f / 100 : 0
         }
     }
 
-    /// MHz: the sensor source's per-core value (max over cores for the CPU), else the rated frequency.
+    /// MHz: the sensor source's value for the core (the fastest cluster for the CPU), else the rated frequency.
     private func coreFrequency(_ sensors: HardwareSensorSource?, core: Int?) -> Double {
-        if let list = sensors?.cpuCoreFrequencies(), !list.isEmpty {
-            if let core { return core < list.count ? list[core] : 0 }
-            return list.max() ?? 0
-        }
+        if let f = sensors?.coreFrequency(core) { return f }
         return (skin.system.cpuFrequency() ?? 0) / 1_000_000
     }
 
@@ -135,45 +137,58 @@ func sysctlInt(_ name: String) -> Int? {
 
 /// `Plugin=SpeedFanPlugin`: on Windows it reads the SpeedFan application. On the Mac it reads the same kinds of values
 /// from a `HardwareSensorSource` (`SpeedFanType` Temperature / Fan / Voltage, `SpeedFanNumber` indexes the source's
-/// list, `SpeedFanScale` C / F / K for temperatures); without a source every value is 0 (logged once).
+/// list, `SpeedFanScale` C / F / K for temperatures). The lists have a fixed order on every Mac
+/// (`SensorKeys.speedFanTemperatures` then the cores; fans 1, 2…; `SensorKeys.speedFanVoltages`), a sensor the Mac
+/// lacks reading 0 in its place. Without a source, or past the end of a list, the value is 0 (logged once).
 /// Like every plugin measure, the range tracks the observed values unless MinValue / MaxValue are set.
 public final class SpeedFanMeasure: Measure {
     private var sensorType = "temperature"
     private var number = 0
-    private var scale = "c"
-    private var reported = false
+    private var scale = TemperatureScale.celsius
+    private var reported: Set<String> = []
 
     override var tracksValueRange: Bool { true }
 
     public override func readMeasureOptions() {
         sensorType = string("SpeedFanType", "Temperature").trimmingCharacters(in: .whitespaces).lowercased()
         number = min(max(int("SpeedFanNumber", 0), 0), 4095)
-        scale = string("SpeedFanScale", "C").trimmingCharacters(in: .whitespaces).lowercased()
+        scale = TemperatureScale(option: string("SpeedFanScale", "C"))
     }
 
     public override func computeValue() -> Double {
         guard let sensors = HardwareSensors.source(for: skin) else {
-            if !reported {
-                reported = true
-                skin.log("SpeedFan [\(name)]: temperatures, fans and voltages need hardware sensors, which macOS does "
-                         + "not expose to apps; the value is 0", level: .notice)
-            }
+            report("none", "SpeedFan [\(name)]: temperatures, fans and voltages need hardware sensors, which are not "
+                   + "available here; the value is 0")
             return 0
         }
         let list: [Double]
+        let first: String
         switch sensorType {
-        case "fan": list = sensors.fanSpeeds()
-        case "voltage": list = sensors.voltages()
-        default: list = sensors.temperatures()
+        case "fan":
+            list = sensors.fanSpeeds()
+            first = SensorKeys.fan(1)
+        case "voltage":
+            list = sensors.voltages()
+            first = SensorKeys.speedFanVoltages[0]
+        default:
+            list = sensors.temperatures()
+            first = SensorKeys.cpu
         }
-        guard number < list.count else { return 0 }
+        guard number < list.count else {
+            if !sensors.sensorPending(first) {
+                report("index", "SpeedFan [\(name)]: this Mac has no \(sensorType) number \(number) (it has "
+                       + "\(list.count)); the value is 0")
+            }
+            return 0
+        }
         let v = list[number]
         guard sensorType != "fan" && sensorType != "voltage" else { return v }
-        switch scale {
-        case "f": return v * 9 / 5 + 32
-        case "k": return v + 273.15
-        default: return v
-        }
+        return scale.convert(v)
+    }
+
+    private func report(_ key: String, _ message: String) {
+        guard reported.insert(key).inserted else { return }
+        skin.log(message, level: .notice)
     }
 }
 

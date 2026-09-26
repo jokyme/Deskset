@@ -52,6 +52,7 @@ enum AppSelfTest {
         FriendlyWalkthroughSelfTests.run(t)
         ReviewFixesSelfTests.run(t)
         EditorOpeningSelfTests.run(t)
+        SensorSelfTests.run(t)
         return t.finish()
     }
 
