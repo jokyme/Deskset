@@ -32,6 +32,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+## MET Norway weather data
+
+- Where: fetched at run time by the weather plugins (`Plugin=MacWeather`) from MET Norway's Locationforecast 2.0 API;
+  a saved response is used as a test fixture in `TestSkins/Plugins/@Resources/Weather/` (`metno-complete-oslo.json`,
+  `metno-compact-oslo.json`).
+- Source: The Norwegian Meteorological Institute (MET Norway), <https://api.met.no/>
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0,
+  <https://creativecommons.org/licenses/by/4.0/>) and the Norwegian Licence for Open Government Data (NLOD 2.0).
+- Credit shown to users: "Based on data from MET Norway" (in weather skins, the skin menu and the About window).
+  Deskset derives values from the data (daily summaries, unit conversions, feels-like temperatures). MET Norway does
+  not endorse Deskset.
+
 ## Rainmeter
 
 Deskset runs skins written for [Rainmeter](https://www.rainmeter.net). It is an independent, clean-room
