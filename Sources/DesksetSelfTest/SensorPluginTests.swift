@@ -335,6 +335,15 @@ func runSensorPluginTests(_ t: TestRunner) {
         t.equal(value(skin, "VRAM"), 0)
         t.check(!host.logs.contains { $0.contains("GPU usage is not available") }, "GPU usage is available")
         t.check(host.logs.contains { $0.contains("GPU memory per process is not available") })
+        // The Studio says the same: Alias=GPU works, the video memory aliases read 0.
+        guard let alias = EditorSchema.property("Alias", in: EditorSchema.measureGroups("Plugin", plugin: "UsageMonitor"))
+        else { return t.check(false, "UsageMonitor's Alias is in the Studio") }
+        t.equal(EditorSchema.issue(for: "GPU", property: alias), nil, "Graphics works on the Mac")
+        t.equal(EditorSchema.issue(for: "gpu", property: alias), nil)
+        t.equal(EditorSchema.issue(for: "VRAM", property: alias),
+                "“Video memory” has no effect on the Mac — not available per app on the Mac")
+        t.equal(EditorSchema.issue(for: "VRAMSHARED", property: alias),
+                "“Shared video memory” has no effect on the Mac — not available per app on the Mac")
     }
 
     t.suite("Plugin: sensors: MSIAfterburner data sources") {

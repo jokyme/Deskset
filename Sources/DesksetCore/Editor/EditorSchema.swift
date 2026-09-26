@@ -1388,7 +1388,9 @@ public enum EditorSchema {
                              pick([Choice("CPU", "Processor"), Choice("RAM", "Memory"), Choice("RAMSHARED", "Shared memory"),
                                    Choice("IO", "Disk activity"), Choice("IOREAD", "Disk reads"),
                                    Choice("IOWRITE", "Disk writes"),
-                                   Choice("GPU", "Graphics", supportedOnMac: false, note: perApp),
+                                   // The whole GPU's usage from the sensors (macOS counts no GPU time per app).
+                                   Choice("GPU", "Graphics",
+                                          note: "the whole GPU, as one entry named GPU; no per-app GPU on the Mac"),
                                    Choice("VRAM", "Video memory", supportedOnMac: false, note: perApp),
                                    Choice("VRAMSHARED", "Shared video memory", supportedOnMac: false, note: perApp)],
                                   style: .popup)),
