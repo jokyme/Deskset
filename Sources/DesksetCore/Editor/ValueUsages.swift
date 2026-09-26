@@ -374,13 +374,13 @@ public struct ValueUsageIndex: Equatable {
         }.map(\.element)
     }
 
-    /// True for options whose value is a color (by name, as skins use them).
+    /// True for options whose value is a color (by name, as skins use them), the glass tint included.
     public static func isColorKey(_ key: String) -> Bool {
         let k = key.lowercased()
         return k.hasSuffix("color") || k.contains("color2") || k == "solidcolor" || k == "solidcolor2"
             || k.hasPrefix("fontcolor") || k.hasPrefix("barcolor") || k.hasPrefix("linecolor")
             || k.hasPrefix("primarycolor") || k.hasPrefix("secondarycolor") || k.hasPrefix("bothcolor")
-            || k.hasPrefix("fonteffectcolor") || k.hasPrefix("imagetint")
+            || k.hasPrefix("fonteffectcolor") || k.hasPrefix("imagetint") || k == "macglasstint"
     }
 
     /// Option keys that hold a position or a size (the shapes of a Shape meter included).
@@ -1067,6 +1067,7 @@ struct ValueUsageScanner {
             if use.section.caseInsensitiveCompare("Rainmeter") == .orderedSame {
                 if key == "mouseoveraction" { return "Color while you point at the widget" }
                 if key == "mouseleaveaction" { return "Color after the pointer leaves the widget" }
+                if key == "macglasstint" { return "Widget glass" }
                 return key.hasPrefix("solidcolor") ? "Widget background" : "Widget settings"
             }
             if let m = skin.measure(named: use.section) { return "Changes with \(LayerNaming.inSentence(namer.data(m).name))" }
@@ -1091,6 +1092,9 @@ struct ValueUsageScanner {
             return Self.textRole(words)
         case "fonteffectcolor":
             return "\(Self.textRole(use.look.map(ValueUsageIndex.humanizedLook) ?? words)) shadow"
+        case "macglasstint":
+            // The tint of the glass behind the layer (MacGlass, a Deskset extension), as its box is "Box behind …".
+            return isBackground ? "Background glass" : "Glass behind \(Self.lowercasedFirst(title))"
         case "mouseoveraction":
             return "\(Self.lowercasedFirst(words)) when pointed at"
         case "mouseleaveaction":

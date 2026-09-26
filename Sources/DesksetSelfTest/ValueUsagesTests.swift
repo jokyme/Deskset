@@ -217,6 +217,54 @@ func runValueUsagesTests(_ t: TestRunner) {
         t.equal(replace(old, new, "9,9,9", "SolidColor"), nil)
     }
 
+    t.suite("Editor: value usages — a glass tint is one of the widget's colors") {
+        // TestSkins/Mac/Glass: the tinted card's MacGlassTint is a color written directly.
+        let tint = RGBA(r: 70, g: 130, b: 255), red = RGBA(r: 255, g: 0, b: 0)
+        let glass = try load("TestSkins", "Mac\\Glass")
+        let row = glass.valueUsages().colorGroups().first { $0.color == tint }
+        t.equal(row?.members.flatMap(\.uses), [ValueUsageIndex.Use(section: "TintCard", key: "MacGlassTint")])
+        t.equal(row?.name, "Glass behind tint card")
+        t.check(ValueUsageIndex.isColorKey("MacGlassTint") && ValueUsageIndex.isColorKey("macglasstint"))
+        t.equal(ValueUsageIndex.replacingColor(tint, with: red, in: "70,130,255", key: "MacGlassTint"), "255,0,0")
+        t.equal(ValueUsageIndex.replacingColor(tint, with: red, in: "4682FF", key: "MacGlassTint"), "FF0000",
+                "hex stays hex")
+
+        // One literal as a text color and a glass tint: one row whose edit writes both; the widget's own tint; a hex
+        // variable used only as a tint.
+        let (skin, _) = try makeSkin(t, """
+            [Rainmeter]
+            MacGlass=Regular
+            MacGlassTint=200,40,40
+            [Variables]
+            Tint=4682FF80
+            [Card]
+            Meter=Image
+            W=100
+            H=60
+            MacGlass=Clear
+            MacGlassTint=70,130,255
+            [Label]
+            Meter=String
+            Text=Hi
+            FontColor=70,130,255
+            [Other]
+            Meter=Image
+            Y=70
+            W=100
+            H=60
+            MacGlass=Regular
+            MacGlassTint=#Tint#
+            """)
+        skin.update()
+        let index = skin.valueUsages()
+        t.equal(index.literal(tint)?.uses.map { "\($0.section).\($0.key)" }, ["Card.MacGlassTint", "Label.FontColor"])
+        let widgetTint = index.literal(RGBA(r: 200, g: 40, b: 40))
+        t.equal(widgetTint?.uses, [ValueUsageIndex.Use(section: "Rainmeter", key: "MacGlassTint")])
+        t.equal(widgetTint?.role, "Widget glass")
+        t.equal(index.variable("Tint")?.kind, .color, "a hex variable used only as a tint is a color")
+        t.check(index.colorGroups().contains { $0.variables == ["Tint"] }, "and has a row")
+    }
+
     t.suite("Editor: value usages — a widget's own value is written after its includes") {
         let w = { (text: String) throws -> String in
             try IniWriter.writingAfterIncludes(text, value: "1,2,3", key: "CPUColor", section: "Variables")
