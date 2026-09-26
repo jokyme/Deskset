@@ -417,6 +417,16 @@ enum AudioSelfTests {
             let total = layout.weights[0].values.reduce(0, +)
             t.close(Double(total), 1000 / 1000 / log2(2.0), accuracy: 1e-5, "∫ over 1 kHz of 1 kHz bins = 1 bin")
             t.equal(AudioBandLayout(bands: 0, freqMin: 20, freqMax: 200, fftSize: 64, sampleRate: 48000, enbw: 1).count, 0)
+            // FreqMax=1e300: the upper of two bands starts near 4.5e150 Hz, above every bin, so it weighs none (converted
+            // to Int as written, its first bin trapped), and it reads 0 while sound plays.
+            let far = AudioBandLayout(bands: 2, freqMin: 20, freqMax: 1e300, fftSize: 1024, sampleRate: 48000, enbw: 1.5)
+            t.check(!far.weights[0].values.isEmpty && far.weights[1].values.isEmpty, "only the lower band has bins")
+            var wide = s
+            wide.bands = 2
+            wide.freqMax = 1e300
+            let above = AudioAnalyzer(settings: wide)
+            feed(above, sine(1000, amplitude: 0.5, seconds: 0.3))
+            t.equal(above.band(.sum, index: 1), 0, "the band above every bin")
         }
     }
 
