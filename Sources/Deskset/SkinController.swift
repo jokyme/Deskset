@@ -531,10 +531,9 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         window.contentView = view
         window.delegate = self
         view.controller = self
-        let fonts = Fonts.generation
-        Fonts.registerFonts(for: skin)
-        // Skins measured before these fonts existed drew their text with a fallback font.
-        if Fonts.generation != fonts { app.fontsChanged() }
+        // Skins measured before these fonts existed drew their text with a fallback font. (Fonts also announces the
+        // change, later; `fontsChanged` does not pass the same fonts on twice.)
+        if Fonts.registerFonts(for: skin) { app.fontsChanged() }
         for issue in skin.issues { Log.write(issue, level: .warning, source: config) }
     }
 

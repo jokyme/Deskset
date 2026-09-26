@@ -34,6 +34,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Watches the mouse outside the skin windows while a skin asks for it (Plugin=Slider sees clicks anywhere).
     private(set) lazy var outsidePointer = OutsidePointerMonitor(app: self)
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
+    /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
+    private var fontsGenerationSeen = Fonts.generation
 
     private var systemAsleep = false
     private var screensAsleep = false
@@ -72,6 +75,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installDefaultSkinsIfNeeded()
         setUpStatusItem()
         observeSystem()
+        observeFonts()
         loadActiveSkins()
         launched = true
         if !pendingOpenURLs.isEmpty {
@@ -260,6 +264,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         observe(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { app in
             app.screensChanged()
+        }
+    }
+
+    /// Lays the skins out again whenever the fonts change, whoever changed them (docs/skin-threading.md §4.4): also a
+    /// layout that read its skin's font folder for the first time, or a skin loaded for a thumbnail or a dry run. Set
+    /// up at launch; the self-tests' apps do without (a suite sets it up itself).
+    func observeFonts() {
+        observe(NotificationCenter.default, Fonts.didChangeNotification) { app in
+            if Fonts.generation > app.fontsGenerationSeen { app.fontsChanged() }
         }
     }
 
@@ -515,8 +528,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func refreshAll(rescan: Bool) {
         Images.purge()
         Fonts.rescanAllFolders()
+        let fonts = Fonts.generation
         if rescan { cachedLibrary = nil }
         for c in sortedControllers { refresh(c) }
+        // Every skin was just loaded again with these fonts.
+        fontsGenerationSeen = max(fontsGenerationSeen, fonts)
         restack()
         notifyChanged()
     }
@@ -544,8 +560,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A skin registered fonts: skins laid out before may have measured their text with a fallback font, so their
     /// meters are laid out (and drawn) again with the fonts now available.
     func fontsChanged() {
-        // Measure text again and recompute fixed window sizes (skins laid out with a fallback font).
-        for c in controllers.values where !c.isStopped { c.skin.fontsDidChange() }
+        fontsGenerationSeen = max(fontsGenerationSeen, Fonts.generation)
+        // Measure text again and recompute fixed window sizes (skins laid out with a fallback font), each skin where it
+        // is owned: at once when that is here.
+        for c in controllers.values where !c.isStopped {
+            let skin: Skin = c.skin
+            if skin.executor.isCurrent {
+                skin.fontsDidChange()
+            } else {
+                skin.async { skin.fontsDidChange() }
+            }
+        }
     }
 
     private func notifyChanged() {

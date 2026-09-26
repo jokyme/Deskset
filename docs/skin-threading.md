@@ -1052,7 +1052,8 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 
 ### Phase 1: in progress
 
-Skins still run on `MainSkinExecutor`, and nothing they do changes. Done so far:
+Skins still run on `MainSkinExecutor`, and nothing they do changes, apart from one case under Fonts below. Done so
+far:
 
 **Render caches per skin** (`Renderers/SkinRenderContext.swift`, §4.3). A `SkinRenderContext` hangs on
 `Skin.renderContext`; like the rest of the skin, only its owner touches it (debug builds check). It holds:
@@ -1071,7 +1072,41 @@ that keeps showing the same texts builds none of them again; one whose texts kee
 **Colors:** `RGBA.cgColor` is `CGColor(srgbRed:green:blue:alpha:)` instead of going through `NSColor`: the same
 components and color space, also out of range.
 
-**Tests:** "App: skin threading: …" (`RenderContextSelfTests`): a context per skin, measuring and drawing share it and
-drawing one skin leaves another's alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the
-skin that drew them, a context goes with its skin and a refresh, colors match AppKit's. The Core ownership suite also
-covers `renderContext`.
+**Images** (§4.4) stay shared by all skins, behind one lock:
+- lookups and inserts take the lock; decoding a file, making a derived image (orientation, crop and color, flip and
+  rotation, strip frames, masked composites) and sampling an alpha mask happen outside it;
+- one thread makes each of them. Another thread that needs the same file, image or mask meanwhile waits for it rather
+  than decoding it a second time; the maker waits for nothing while it works;
+- a result made from a version of the file that was replaced or purged meanwhile goes to its caller but is not kept;
+- `purge` (Refresh All) takes the lock.
+
+**Fonts** (§4.4):
+- One lock for resolution: the caches, the family index and `generation`. A miss is resolved with the lock held, so
+  that nothing resolved from the fonts as they were before a registration is kept after it.
+- `NSFont(name:size:)` and the system font stay AppKit calls, under that lock. Core Text's lookups give other fonts:
+  an unknown name falls back to Helvetica, PostScript names match in any case, some families get another default
+  member, and a system font built from traits snaps weights and widths differently. Main Thread Checker reports
+  nothing for them.
+- Registration and rescans run on a serial fonts queue, which skins may wait on and which never waits on a skin. A
+  folder already read is answered without the queue. A folder counts as read only once its fonts are registered, so
+  a thread that finds it read also finds its fonts.
+- Every change posts `Fonts.didChangeNotification` on the main thread, a turn later (never in the middle of the layout
+  that registered the fonts). The app then lays out its running skins again, each on its executor
+  (`AppController.fontsChanged`), unless a caller already did that for this change: a skin's load, an installation,
+  Refresh All.
+- One thing is new: a font registered by a layout (a skin's `@Resources/Fonts` that appeared after the skin loaded, or
+  a skin loaded for a thumbnail or a dry run) now also makes the running skins measure their text again, as a load or
+  an installation already did.
+
+**Tests:** "App: skin threading: …"
+- `RenderContextSelfTests`: a context per skin, measuring and drawing share it and drawing one skin leaves another's
+  alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the skin that drew them, a context
+  goes with its skin and a refresh, colors match AppKit's. The Core ownership suite also covers `renderContext`.
+- `SharedServiceThreadingSelfTests` use `Images` and `Fonts` from several dedicated threads (8 MB stacks, as in §5.3),
+  released together. Several threads wanting one file decode it once, and one derived image is made once (the maker
+  is held until the others wait for it). A purge during a decode keeps nothing of it. Files replaced and purged under
+  four drawing threads never hand out an image of the wrong version. Fonts and text sizes come out the same on every
+  thread as on the main thread. A font folder is registered once, and every thread that asked finds its fonts.
+  Rescans under running layouts keep the fonts consistent. A registration is announced on the main thread a turn
+  later, and a running skin measures its text again. They also run under Main Thread Checker
+  (`scripts/check-main-thread.sh "skin threading"`): nothing reported.

@@ -16,6 +16,15 @@ import DesksetCore
 /// (OS/2 usWeightClass); "If the font does not support any additional weights, then 500 and below will use the
 /// font's normal weight, and 600 and above will simulate a bold effect" — simulated with a fill + stroke.
 /// Italic / Oblique use an italic member when the family has one, otherwise a slanted (simulated) font.
+///
+/// Thread-safe (docs/skin-threading.md §4.4): skins measure and draw text on threads of their own.
+/// - Resolution (`resolve`, the family lookups, `generation`) is guarded by one lock, `lock`.
+/// - Registration and rescans run on a serial fonts queue, `queue`: at most one at a time, in order. Skins may wait for
+///   it (a layout registers its skin's font folder the first time), and it never waits for a skin. Whether a folder
+///   is registered already is answered without it (`folderLock`), so a skin whose fonts are in does not wait behind
+///   another skin's registration.
+/// - A registration that changes the fonts clears what resolution kept and moves `generation` on, then posts
+///   `didChangeNotification` on the main thread: the app lays out its skins again (`AppController.fontsChanged`).
 enum Fonts {
     /// Rainmeter FontSize → macOS point size.
     static let sizeScale = 96.0 / 72.0
@@ -64,13 +73,48 @@ enum Fonts {
     /// Shear of simulated italic / oblique text (about 11°).
     static let simulatedSlant: CGFloat = 0.2
 
-    /// Incremented whenever the set of available fonts changes (layout caches key on it).
-    private(set) static var generation = 0
+    /// Incremented whenever the set of available fonts changes (layout caches key on it). Any thread.
+    static var generation: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentGeneration
+    }
 
+    /// Posted on the main thread, after the fact, whenever `generation` moves on: whoever registered the fonts (a skin
+    /// loading, a layout reading its skin's font folder the first time, an installation, Refresh All), skins laid out
+    /// before measured their text with a fallback font. Posted asynchronously, so that no skin is laid out again in the
+    /// middle of the layout that registered the fonts.
+    static let didChangeNotification = Notification.Name("DesksetFontsDidChange")
+
+    /// Guards what resolution keeps (`cache`, `faceCache`, `memberCache`, `familyIndex`) and `currentGeneration`.
+    /// A miss is resolved with the lock held: a font resolved from the fonts as they were before a registration can
+    /// then never be kept after it (the fonts queue takes the lock to clear the caches once Core Text has the new
+    /// fonts), and misses are rare (every skin keeps its layouts, `TextLayoutCache`). It is a leaf: nothing waits for
+    /// anything else while holding it.
+    ///
+    /// The AppKit lookups of resolution (`NSFont(name:size:)`, the system font) are kept under it rather than replaced
+    /// with Core Text's: `CTFontCreateWithName` falls back to Helvetica for an unknown name, matches PostScript names
+    /// in any case and picks another default member of some families, and a system font built from traits snaps
+    /// weights and widths differently, so skins would get other fonts. Main Thread Checker reports nothing for them.
+    private static let lock = NSLock()
+    private static var currentGeneration = 0
     private static var cache: [Request: Resolved] = [:]
     private static var faceCache: [String: FaceMatch] = [:]
     private static var memberCache: [String: [Member]] = [:]
     private static var familyIndex: [String: String]?
+
+    /// The serial fonts queue: registration and rescans, one at a time. `registered` and `copyCounter` are touched
+    /// only on it; `registeredFolders` and `missingFolders` are changed on it, under `folderLock`.
+    private static let queue: DispatchQueue = {
+        let queue = DispatchQueue(label: "app.deskset.fonts")
+        queue.setSpecific(key: onFontsQueue, value: true)
+        return queue
+    }()
+    private static let onFontsQueue = DispatchSpecificKey<Bool>()
+    /// Guards `registeredFolders` and `missingFolders`, so that `registerFolder` can tell a folder already read without
+    /// waiting for the queue. A leaf lock.
+    private static let folderLock = NSLock()
+
     /// A registered font file.
     private struct Registration {
         /// Modification date of the file when it was registered (a replaced file is registered again).
@@ -96,11 +140,22 @@ enum Fonts {
 
     // MARK: Registration
 
+    /// Runs `body` on the fonts queue and waits for it (at once when already there).
+    private static func onQueue<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: onFontsQueue) == true { return body() }
+        return queue.sync(execute: body)
+    }
+
     /// Registers font files for this process (`LocalFont…` options, `@Resources/Fonts`). A file registered before is
     /// skipped unless it changed on disk since then (it is then registered again, so an edited font shows up). The
     /// same font in two skins is registered from both files (Core Text accepts that; unregistering one copy leaves
-    /// the other).
+    /// the other). Any thread; it waits for the fonts queue.
     static func registerLocalFonts(_ paths: [String]) {
+        onQueue { registerFiles(paths) }
+    }
+
+    /// `registerLocalFonts`. Runs on the fonts queue.
+    private static func registerFiles(_ paths: [String]) {
         var changed = false
         for path in paths {
             let modified = modificationDate(path)
@@ -131,7 +186,7 @@ enum Fonts {
         if changed { invalidate() }
     }
 
-    /// Unregisters a registration's copy and deletes it; true when something was registered.
+    /// Unregisters a registration's copy and deletes it; true when something was registered. Runs on the fonts queue.
     @discardableResult
     private static func unregister(_ registration: Registration) -> Bool {
         guard let copy = registration.copy else { return false }
@@ -142,7 +197,7 @@ enum Fonts {
 
     /// A registered copy deleted behind Deskset's back (a cleaning utility emptied the caches) is made again from the
     /// unchanged original, so Core Text can still read the font and unregister it later. When that fails, the copy is
-    /// forgotten (logged once; nothing more can be done for it until the app restarts).
+    /// forgotten (logged once; nothing more can be done for it until the app restarts). Runs on the fonts queue.
     private static func restoreCopyIfMissing(_ registration: Registration, of path: String) {
         guard let copy = registration.copy, !FileManager.default.fileExists(atPath: copy.path) else { return }
         do {
@@ -189,12 +244,15 @@ enum Fonts {
 
     /// Deletes this process's font copies (the app quits; command-line runs leave them to the next start).
     static func removePrivateCopies() {
-        guard copyCounter > 0, let folder = copiesFolder else { return }
-        try? FileManager.default.removeItem(at: folder)
+        onQueue {
+            guard copyCounter > 0, let folder = copiesFolder else { return }
+            try? FileManager.default.removeItem(at: folder)
+        }
     }
 
     /// A copy of the font file to register (a clone on APFS: no extra space), nil when it cannot be made. It is named
-    /// by a counter and the original's extension (a long original name plus a prefix could exceed 255 bytes).
+    /// by a counter and the original's extension (a long original name plus a prefix could exceed 255 bytes). Runs on
+    /// the fonts queue.
     private static func privateCopy(of path: String) -> URL? {
         guard let folder = copiesFolder else { return nil }
         copyCounter += 1
@@ -216,39 +274,79 @@ enum Fonts {
     /// Registers a skin's fonts: `LocalFont…` options and every .ttf / .otf / .ttc / .otc file in the root config's
     /// `@Resources/Fonts` folder ("automatically loaded and can be used with the FontFace option"). The folder is
     /// read again every time (the app calls this whenever a skin is loaded or refreshed), so fonts added to it or
-    /// replaced since the last load are picked up by a refresh.
-    static func registerFonts(for skin: Skin) {
-        registerLocalFonts(skin.settings.localFonts)
-        rescanFolder(skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true).path)
+    /// replaced since the last load are picked up by a refresh. Call it where the skin is owned (it reads the skin's
+    /// settings); it waits for the fonts queue. True when this changed the fonts (`generation` moved on).
+    @discardableResult
+    static func registerFonts(for skin: Skin) -> Bool {
+        let files = skin.settings.localFonts
+        let folder = skin.resourcesDirectory.appendingPathComponent("Fonts", isDirectory: true).path
+        return onQueue {
+            let before = generation
+            registerFiles(files)
+            if !folder.isEmpty { _ = rescan(folder) }
+            return generation != before
+        }
     }
 
-    /// Registers the fonts in a `@Resources/Fonts` folder once (cheap to call for every layout — `TextLayout.make`
+    /// Registers the fonts in a `@Resources/Fonts` folder once (cheap to call for every layout — `TextLayoutCache`
     /// does, from `TextStyle.fontFolder`). A missing folder is looked for again after `missingFolderRecheck`
-    /// seconds, not remembered for good.
+    /// seconds, not remembered for good. Any thread: a folder already read is answered without the fonts queue;
+    /// otherwise the caller waits for the queue, and returns once the folder's fonts are registered.
     static func registerFolder(_ folder: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
-        guard !folder.isEmpty, !registeredFolders.contains(folder) else { return }
-        if let checked = missingFolders[folder], now - checked < missingFolderRecheck { return }
-        guard let files = fontFiles(in: folder) else {
-            noteMissing(folder, now: now)
-            return
+        guard !folder.isEmpty, needsReading(folder, now: now) else { return }
+        onQueue {
+            // Another skin may have read it while this one waited for the queue.
+            guard needsReading(folder, now: now) else { return }
+            guard let files = fontFiles(in: folder) else {
+                noteMissing(folder, now: now)
+                return
+            }
+            registerFiles(files)
+            // Only now: a skin that finds the folder read must also find its fonts registered.
+            noteRead(folder)
         }
+    }
+
+    /// Whether `registerFolder` has to read `folder`: it was not read yet, and was not found missing in the last
+    /// `missingFolderRecheck` seconds.
+    private static func needsReading(_ folder: String, now: TimeInterval) -> Bool {
+        folderLock.lock()
+        defer { folderLock.unlock() }
+        if registeredFolders.contains(folder) { return false }
+        if let checked = missingFolders[folder], now - checked < missingFolderRecheck { return false }
+        return true
+    }
+
+    /// Runs on the fonts queue.
+    private static func noteRead(_ folder: String) {
+        folderLock.lock()
         missingFolders[folder] = nil
         registeredFolders.insert(folder)
-        registerLocalFonts(files)
+        folderLock.unlock()
     }
 
+    /// Runs on the fonts queue.
     private static func noteMissing(_ folder: String, now: TimeInterval) {
+        folderLock.lock()
+        registeredFolders.remove(folder)
         // Bounded: skins can name many folders over a long session.
         if missingFolders.count >= 1024 { missingFolders.removeAll() }
         missingFolders[folder] = now
+        folderLock.unlock()
     }
 
     /// Reads a `@Resources/Fonts` folder again: fonts added or replaced since the last scan are registered, fonts
     /// whose file was removed (or whose folder is gone) are unregistered. Returns true when the set of fonts changed
     /// (`generation` moved on; skins already laid out should then be laid out again, see `Skin.fontsDidChange()`).
+    /// Any thread; it waits for the fonts queue.
     @discardableResult
     static func rescanFolder(_ folder: String) -> Bool {
         guard !folder.isEmpty else { return false }
+        return onQueue { rescan(folder) }
+    }
+
+    /// `rescanFolder`. Runs on the fonts queue.
+    private static func rescan(_ folder: String) -> Bool {
         let before = generation
         let prefix = folder.hasSuffix("/") ? folder : folder + "/"
         var removed = false
@@ -258,32 +356,38 @@ enum Fonts {
             registered[path] = nil
         }
         if let files = fontFiles(in: folder) {
-            missingFolders[folder] = nil
-            registeredFolders.insert(folder)
-            registerLocalFonts(files)
+            registerFiles(files)
+            noteRead(folder)
         } else {
-            registeredFolders.remove(folder)
             noteMissing(folder, now: ProcessInfo.processInfo.systemUptime)
         }
         if removed && generation == before { invalidate() }
         return generation != before
     }
 
-    /// `rescanFolder` for several folders; true when any of them changed the fonts.
+    /// `rescanFolder` for several folders, in one go on the fonts queue; true when any of them changed the fonts.
     @discardableResult
     static func rescanFolders(_ folders: [String]) -> Bool {
-        var changed = false
-        for folder in Set(folders) where rescanFolder(folder) { changed = true }
-        return changed
+        onQueue {
+            var changed = false
+            for folder in Set(folders) where !folder.isEmpty && rescan(folder) { changed = true }
+            return changed
+        }
     }
 
     /// Refresh All: every font folder seen so far is read again, and folders that were missing are looked for again
     /// the next time a skin uses them.
     @discardableResult
     static func rescanAllFolders() -> Bool {
-        let folders = Array(registeredFolders)
-        missingFolders.removeAll()
-        return rescanFolders(folders)
+        onQueue {
+            folderLock.lock()
+            let known = registeredFolders
+            missingFolders.removeAll()
+            folderLock.unlock()
+            var changed = false
+            for folder in known where rescan(folder) { changed = true }
+            return changed
+        }
     }
 
     /// Font files in a folder (sorted, at most 256), or nil when the folder cannot be read (missing).
@@ -296,17 +400,26 @@ enum Fonts {
     }
 
     /// Whether `folder` is known to be missing right now (tests).
-    static func isRememberedAsMissing(_ folder: String) -> Bool { missingFolders[folder] != nil }
+    static func isRememberedAsMissing(_ folder: String) -> Bool {
+        folderLock.lock()
+        defer { folderLock.unlock() }
+        return missingFolders[folder] != nil
+    }
 
     /// The private copy registered for the font file at `path`, nil when none is (tests).
-    static func registeredCopy(ofFile path: String) -> URL? { registered[path]?.copy }
+    static func registeredCopy(ofFile path: String) -> URL? { onQueue { registered[path]?.copy } }
 
+    /// Forgets what resolution kept and moves `generation` on, then tells the app (`didChangeNotification`). Runs on
+    /// the fonts queue, once Core Text has the new set of fonts.
     private static func invalidate() {
+        lock.lock()
         cache.removeAll()
         faceCache.removeAll()
         memberCache.removeAll()
         familyIndex = nil
-        generation += 1
+        currentGeneration += 1
+        lock.unlock()
+        DispatchQueue.main.async { NotificationCenter.default.post(name: didChangeNotification, object: nil) }
     }
 
     // MARK: Resolution
@@ -321,7 +434,10 @@ enum Fonts {
                 weight: style.fontWeight, bold: style.bold, italic: style.italic)
     }
 
+    /// The font for `request`, cached until the fonts change. Any thread.
     static func resolve(_ request: Request) -> Resolved {
+        lock.lock()
+        defer { lock.unlock() }
         if let hit = cache[request] { return hit }
         if cache.count > 512 { cache.removeAll() }
         let match = faceMatch(request.face)
@@ -369,6 +485,7 @@ enum Fonts {
         var emMetrics: LineMetrics?
     }
 
+    /// Call with `lock` held (so for everything below that keeps or reads what resolution keeps).
     private static func faceMatch(_ face: String) -> FaceMatch {
         let key = face.lowercased()
         if let hit = faceCache[key] { return hit }
@@ -414,15 +531,20 @@ enum Fonts {
     /// The installed family called `name` (in any case), spelled as the font system spells it; nil when no such family
     /// is installed (hidden families, whose names start with a dot, count as not installed).
     static func installedFamily(named name: String) -> String? {
-        installedFamily(name.lowercased())
+        lock.lock()
+        defer { lock.unlock() }
+        return installedFamily(name.lowercased())
     }
 
     /// The installed families (hidden ones left out), in no particular order.
     static var installedFamilyNames: [String] {
+        lock.lock()
+        defer { lock.unlock() }
         _ = installedFamily("")
         return familyIndex.map { Array($0.values) } ?? []
     }
 
+    /// Call with `lock` held.
     private static func installedFamily(_ lowercased: String) -> String? {
         if familyIndex == nil {
             var index: [String: String] = [:]
@@ -558,6 +680,7 @@ enum Fonts {
         var oblique: Bool
     }
 
+    /// Call with `lock` held.
     private static func members(_ family: String) -> [Member] {
         if let hit = memberCache[family] { return hit }
         let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: family] as CFDictionary)
@@ -613,6 +736,7 @@ enum Fonts {
         return chosen.map { ($0, needsSlant) }
     }
 
+    /// Call with `lock` held (see `lock` for why these stay AppKit calls).
     private static func systemFont(size: CGFloat, weight: Int, italic: Bool, stretch: Int?) -> CTFont {
         let w = NSFont.Weight(rawValue: nsWeight(css: weight))
         var font: NSFont

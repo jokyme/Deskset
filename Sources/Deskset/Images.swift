@@ -9,7 +9,18 @@ import DesksetCore
 /// version of the file.
 ///
 /// Formats: whatever ImageIO decodes — the manual's .png, .jpg, .bmp, .gif (first frame only, "no animation
-/// supported"), .tif, .webp and .ico (the largest icon in the file). Everything runs on the main thread.
+/// supported"), .tif, .webp and .ico (the largest icon in the file).
+///
+/// Thread-safe (docs/skin-threading.md §4.4): skins measure and draw on threads of their own, and the caches stay
+/// shared by all of them (decoded photos are big, and two skins showing the same file share one copy).
+/// - One lock, `condition`, guards every cache; the lookups and inserts under it are short.
+/// - Decoding a file, making a derived image and sampling an alpha mask happen outside it, so a skin decoding a large
+///   photo does not hold up the others.
+/// - Each of these is made by one thread at a time: whoever needs a file (or derived image, or mask) that another
+///   thread is making right now waits for that one (`inFlight`) instead of decoding it a second time. The maker never
+///   waits for anything while it makes it.
+/// - A result made from a version of the file that was replaced (or purged) meanwhile is handed to its caller but not
+///   kept.
 enum Images {
     /// Decoded files are limited to this many pixels per side (larger files are downsampled while decoding).
     static let maxDecodeSide = 8192
@@ -24,7 +35,7 @@ enum Images {
     static let entryCostLimit = 512 << 20
     static let entryKeepAlive: TimeInterval = 5
 
-    /// One decoded version of a file.
+    /// One decoded version of a file. Immutable apart from `lastUse`, which is touched under the lock.
     final class Entry {
         let image: CGImage
         let exifOrientation: Int
@@ -59,44 +70,126 @@ enum Images {
         }
     }
 
+    /// Guards everything below that is `static var`, and `Entry.lastUse` / `DerivedEntry.lastUse`. Its condition
+    /// wakes the threads waiting for something another thread was making (`inFlight`).
+    private static let condition = NSCondition()
     private static var entries: [String: Entry] = [:]
     private static var entriesCost = 0
     private static var failures: [String: FileStamp] = [:]
     private static var nextGeneration = 1
 
-    // MARK: Files
-
-    /// The current decoded version of the file, or nil when it is missing or cannot be decoded.
-    static func entry(atPath path: String) -> Entry? {
-        guard let stamp = FileStamp(path: path) else {
-            removeEntry(path)
-            failures[path] = nil
-            return nil
-        }
-        let now = ProcessInfo.processInfo.systemUptime
-        if let e = entries[path], e.stamp == stamp {
-            e.lastUse = now
-            return e
-        }
-        if failures[path] == stamp { return nil }
-        removeEntry(path)
-        guard let decoded = decode(path) else {
-            // Bounded: a measure can name a new undecodable file on every update.
-            if failures.count >= 1024 { failures.removeAll() }
-            failures[path] = stamp
-            return nil
-        }
-        failures[path] = nil
-        let e = Entry(image: decoded.image, exifOrientation: decoded.orientation, generation: nextGeneration,
-                      stamp: stamp, now: now)
-        nextGeneration += 1
-        entries[path] = e
-        entriesCost += e.cost
-        if entriesCost > entryCostLimit { evictEntries(now: now) }
-        return e
+    /// What one thread is making right now, outside the lock: others that need the same wait for it.
+    private enum Work: Hashable {
+        case file(String)
+        case derived(DerivedKey)
+        case alphaMask(DerivedKey)
     }
 
-    /// Forgets the decoded file and everything derived from it.
+    private static var inFlight: Set<Work> = []
+    /// Counts `purge()`s: what was being made when the caches were purged is not kept.
+    private static var purges = 0
+    private static var waiting = 0
+    private static var decodeHook: ((String) -> Void)?
+
+    /// Threads waiting right now for something another thread is making (self-tests).
+    static var waitingCount: Int { locked { waiting } }
+    /// Called on the decoding thread, outside the lock, just before a file is decoded (self-tests: counts decodes, and
+    /// holds one up until other threads wait for it).
+    static var willDecode: ((String) -> Void)? {
+        get { locked { decodeHook } }
+        set { locked { decodeHook = newValue } }
+    }
+
+    private static func locked<T>(_ body: () -> T) -> T {
+        condition.lock()
+        defer { condition.unlock() }
+        return body()
+    }
+
+    /// Waits (with the lock held) for another thread to finish `work`; true when it was in flight at all.
+    private static func waitIfInFlight(_ work: Work) -> Bool {
+        guard inFlight.contains(work) else { return false }
+        waiting += 1
+        while inFlight.contains(work) { condition.wait() }
+        waiting -= 1
+        return true
+    }
+
+    /// Marks `work` done (with the lock held) and wakes whoever waits for it.
+    private static func finish(_ work: Work) {
+        inFlight.remove(work)
+        condition.broadcast()
+    }
+
+    // MARK: Files
+
+    /// The current decoded version of the file, or nil when it is missing or cannot be decoded. Any thread.
+    static func entry(atPath path: String) -> Entry? {
+        while true {
+            let stamp = FileStamp(path: path)
+            condition.lock()
+            guard let stamp else {
+                removeEntry(path)
+                failures[path] = nil
+                condition.unlock()
+                return nil
+            }
+            let now = ProcessInfo.processInfo.systemUptime
+            if let e = entries[path], e.stamp == stamp {
+                e.lastUse = now
+                condition.unlock()
+                return e
+            }
+            if failures[path] == stamp {
+                condition.unlock()
+                return nil
+            }
+            // Another thread is decoding this file: wait for it, then look again (the file may have changed since).
+            if waitIfInFlight(.file(path)) {
+                condition.unlock()
+                continue
+            }
+            inFlight.insert(.file(path))
+            removeEntry(path)
+            let purged = purges
+            let hook = decodeHook
+            condition.unlock()
+
+            hook?(path)
+            let decoded = decode(path)
+
+            condition.lock()
+            defer { condition.unlock() }
+            finish(.file(path))
+            // Purged meanwhile (Refresh All): hand the result over, keep nothing.
+            let keep = purges == purged
+            guard let decoded else {
+                if keep {
+                    // Bounded: a measure can name a new undecodable file on every update.
+                    if failures.count >= 1024 { failures.removeAll() }
+                    failures[path] = stamp
+                }
+                return nil
+            }
+            let e = Entry(image: decoded.image, exifOrientation: decoded.orientation, generation: nextGeneration,
+                          stamp: stamp, now: now)
+            nextGeneration += 1
+            guard keep else { return e }
+            failures[path] = nil
+            entries[path] = e
+            entriesCost += e.cost
+            if entriesCost > entryCostLimit { evictEntries(now: now) }
+            return e
+        }
+    }
+
+    /// Whether `key` was made from the file as it is cached now (with the lock held): a derived image or mask made
+    /// from a version replaced or purged meanwhile is not kept (nothing would ever ask for it again).
+    private static func isCurrent(_ key: DerivedKey) -> Bool {
+        entries[key.path]?.generation == key.generation
+    }
+
+    /// Forgets the decoded file and everything derived from it (with the lock held).
     private static func removeEntry(_ path: String) {
         guard let old = entries.removeValue(forKey: path) else { return }
         entriesCost -= old.cost
@@ -104,7 +197,7 @@ enum Images {
     }
 
     /// Drops least recently used decoded files until the cache is back under 3/4 of its budget, keeping files used
-    /// within `entryKeepAlive`.
+    /// within `entryKeepAlive` (with the lock held).
     private static func evictEntries(now: TimeInterval) {
         let target = entryCostLimit / 4 * 3
         for (path, e) in entries.sorted(by: { $0.value.lastUse < $1.value.lastUse }) {
@@ -135,7 +228,12 @@ enum Images {
         entry(atPath: path)?.exifOrientation ?? 1
     }
 
+    /// Refresh All: every file is decoded again (a skin author may have edited it). What another thread is decoding or
+    /// making right now is handed to its caller but not kept. Any thread.
     static func purge() {
+        condition.lock()
+        defer { condition.unlock() }
+        purges += 1
         entries.removeAll()
         entriesCost = 0
         failures.removeAll()
@@ -230,15 +328,32 @@ enum Images {
     private static let derivedCostLimit = 256 << 20
     private static let derivedCountLimit = 2048
 
-    /// Cached derived image for `key`, made with `make` on a miss. A failed `make` is remembered too.
+    /// Cached derived image for `key`, made with `make` on a miss. A failed `make` is remembered too. Any thread;
+    /// `make` runs outside the lock, and must not ask for `key` itself.
     static func derived(_ key: DerivedKey, _ make: () -> CGImage?) -> CGImage? {
+        condition.lock()
         useCounter += 1
-        if let hit = derived[key] {
-            hit.lastUse = useCounter
-            return hit.image
-        }
-        if derivedFailures.contains(key) { return nil }
-        guard let image = make() else {
+        repeat {
+            if let hit = derived[key] {
+                hit.lastUse = useCounter
+                condition.unlock()
+                return hit.image
+            }
+            if derivedFailures.contains(key) {
+                condition.unlock()
+                return nil
+            }
+        } while waitIfInFlight(.derived(key))
+        inFlight.insert(.derived(key))
+        condition.unlock()
+
+        let image = make()
+
+        condition.lock()
+        defer { condition.unlock() }
+        finish(.derived(key))
+        guard isCurrent(key) else { return image }
+        guard let image else {
             if derivedFailures.count > 4096 { derivedFailures.removeAll() }
             derivedFailures.insert(key)
             return nil
@@ -250,6 +365,7 @@ enum Images {
         return image
     }
 
+    /// With the lock held.
     private static func evict() {
         let byAge = derived.sorted { $0.value.lastUse < $1.value.lastUse }
         for (key, entry) in byAge {
@@ -259,6 +375,7 @@ enum Images {
         }
     }
 
+    /// With the lock held.
     private static func dropDerived(_ path: String) {
         for (key, entry) in derived where key.path == path {
             derived[key] = nil
@@ -268,7 +385,7 @@ enum Images {
         alphaMasks = alphaMasks.filter { $0.key.path != path }
     }
 
-    /// The file image with its EXIF orientation applied (the stored image when the orientation is 1).
+    /// The file image with its EXIF orientation applied (the stored image when the orientation is 1). Any thread.
     static func oriented(_ path: String, _ e: Entry) -> CGImage {
         guard e.exifOrientation != 1 else { return e.image }
         return derived(DerivedKey(path: path, generation: e.generation, recipe: .oriented)) {
@@ -398,18 +515,42 @@ enum Images {
         else { return 255 }
         let key = DerivedKey(path: path, generation: e.generation, recipe: useOriented ? .oriented : .prepared(
             oriented: false, crop: nil, matrix: nil))
-        if alphaMasks[key] == nil {
-            guard w * h <= maxAlphaMaskPixels, let ctx = bitmapContext(width: w, height: h), let data = ctx.data
-            else { return nil }
+        guard let mask = alphaMask(key, of: image), y * w + x < mask.count else { return nil }
+        return Double(mask[y * w + x])
+    }
+
+    /// The alpha channel of `image` (the file image `key` names), sampled once and cached; nil when the image is too
+    /// large to sample. Sampled outside the lock, by one thread at a time.
+    private static func alphaMask(_ key: DerivedKey, of image: CGImage) -> [UInt8]? {
+        let w = image.width, h = image.height
+        guard w * h <= maxAlphaMaskPixels else { return nil }
+        condition.lock()
+        repeat {
+            if let mask = alphaMasks[key] {
+                condition.unlock()
+                return mask
+            }
+        } while waitIfInFlight(.alphaMask(key))
+        inFlight.insert(.alphaMask(key))
+        condition.unlock()
+
+        var mask: [UInt8]?
+        if let ctx = bitmapContext(width: w, height: h), let data = ctx.data {
             ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
             let bytes = data.assumingMemoryBound(to: UInt8.self)
-            var mask = [UInt8](repeating: 0, count: w * h)
-            for i in 0..<(w * h) { mask[i] = bytes[i * 4 + 3] }
+            var alpha = [UInt8](repeating: 0, count: w * h)
+            for i in 0..<(w * h) { alpha[i] = bytes[i * 4 + 3] }
+            mask = alpha
+        }
+
+        condition.lock()
+        defer { condition.unlock() }
+        finish(.alphaMask(key))
+        if let mask, isCurrent(key) {
             if alphaMasks.count >= 64 { alphaMasks.removeAll() }
             alphaMasks[key] = mask
         }
-        guard let mask = alphaMasks[key], y * w + x < mask.count else { return nil }
-        return Double(mask[y * w + x])
+        return mask
     }
 }
 
