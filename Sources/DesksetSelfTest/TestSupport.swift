@@ -15,6 +15,8 @@ class FakeHost: SkinHost {
     var logs: [String] = []
     /// `skinWindowTakesPointer`: false stands for a hidden or click-through skin window.
     var windowTakesPointer = true
+    /// Every `skinGlassRegionsChanged` call, in order.
+    var glassChanges: [[GlassRegion]] = []
 
     func skinNeedsDisplay(_ skin: Skin) { redraws += 1 }
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
@@ -35,6 +37,7 @@ class FakeHost: SkinHost {
     }
     func environment(for skin: Skin) -> SkinEnvironment { SkinEnvironment() }
     func skinWindowTakesPointer(_ skin: Skin) -> Bool { windowTakesPointer }
+    func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) { glassChanges.append(regions) }
 }
 
 class FakeSystem: SystemDataSource {

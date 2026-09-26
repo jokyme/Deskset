@@ -197,6 +197,9 @@ public final class Skin {
     /// is not empty. Recomputed after every update, every top-level action and when the skin closes; the host hears
     /// of every change (`SkinHost.skinOutsidePointerNeedsChanged`).
     public private(set) var outsidePointerNeeds = OutsidePointerNeeds()
+    /// Where the host puts glass (`MacGlass`, see Glass.swift), as of the last redraw request; the host hears of every
+    /// change (`SkinHost.skinGlassRegionsChanged`).
+    public private(set) var glassRegions: [GlassRegion] = []
     private var sizeComputed = false
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []
@@ -640,7 +643,7 @@ public final class Skin {
             if !settings.onWakeAction.isEmpty { execute(settings.onWakeAction, from: rainmeterSection) }
         }
         if closed { return }
-        host?.skinNeedsDisplay(self)
+        needsDisplay()
     }
 
     /// Re-reads (when needed) and updates one meter, then runs its OnUpdateAction.
@@ -843,7 +846,22 @@ public final class Skin {
     public func redraw() {
         assertOwned()
         layout()
+        needsDisplay()
+    }
+
+    /// Asks the host to draw the skin as it is laid out now, after telling it where the glass goes when that changed.
+    private func needsDisplay() {
+        refreshGlassRegions()
         host?.skinNeedsDisplay(self)
+    }
+
+    /// Recomputes `glassRegions` and tells the host when they changed (a skin without glass costs a look at each
+    /// meter).
+    private func refreshGlassRegions() {
+        let regions = currentGlassRegions()
+        guard regions != glassRegions else { return }
+        glassRegions = regions
+        host?.skinGlassRegionsChanged(self, regions: regions)
     }
 
     /// The host calls this when the fonts available to the skin changed after it was laid out — a font registered
@@ -856,7 +874,7 @@ public final class Skin {
         guard !closed, updateCount > 0 else { return }
         layout()
         updateSize(force: true)
-        host?.skinNeedsDisplay(self)
+        needsDisplay()
     }
 
     /// Runs OnCloseAction; call before the skin is unloaded. Afterwards the skin no longer updates and pending
@@ -1445,7 +1463,7 @@ public final class Skin {
                 layout()
                 // "The size of the skin window is re-evaluated after the meter is moved."
                 updateSize(force: true)
-                host?.skinNeedsDisplay(self)
+                needsDisplay()
             } else {
                 log("!MoveMeter: meter [\(arg(2))] not found", level: .warning)
             }
@@ -1533,8 +1551,14 @@ public final class Skin {
         let lower = key.trimmingCharacters(in: .whitespaces).lowercased()
         guard !lower.isEmpty, lower != "meter", lower != "measure" else { return }
         if section is RainmeterSection {
+            // The Mac-only glass options are read again at every redraw (`skinGlassOptions`).
+            if Skin.skinGlassKeys.contains(lower) {
+                section.overrides[lower] = value
+                return
+            }
             guard lower.hasPrefix("contexttitle") || lower.hasPrefix("contextaction") else {
-                log("!SetOption cannot change \(key) in [Rainmeter] (only ContextTitle/ContextAction)", level: .warning)
+                log("!SetOption cannot change \(key) in [Rainmeter] (only ContextTitle/ContextAction and MacGlass…)",
+                    level: .warning)
                 return
             }
             section.overrides[lower] = value
@@ -1552,6 +1576,9 @@ public final class Skin {
         default: break
         }
     }
+
+    /// The `[Rainmeter]` options `!SetOption` may change besides the context menu (lowercased).
+    static let skinGlassKeys: Set<String> = ["macglass", "macglasscornerradius", "macglasstint"]
 
     /// Options whose formulas use measure names themselves, "always dynamic" (Calc `Formula`, `IfCondition`N):
     /// `!SetOption` stores them as written — evaluating `(MeasureCPU * 2)` at bang time would freeze the Calc at

@@ -81,6 +81,9 @@ open class Meter: SkinSection {
     /// True when some other meter uses this meter as its container: the host must not draw it, only use it to
     /// clip / mask its content.
     public internal(set) var isContainer = false
+    /// `MacGlass`, `MacGlassCornerRadius`, `MacGlassTint` (a Deskset extension; see Glass.swift): nil for no glass.
+    /// Read like any option, so DynamicVariables and `!SetOption` turn the glass on, off or change it.
+    public internal(set) var glass: GlassOptions?
 
     var xPosition = PositionValue(value: 0)
     var yPosition = PositionValue(value: 0)
@@ -255,6 +258,7 @@ open class Meter: SkinSection {
         let matrix = parts.compactMap { OptionValue.number(String($0).trimmingCharacters(in: .whitespaces)) }
         transformationMatrix = parts.count == 6 && matrix.count == 6 && matrix.allSatisfy({ $0.isFinite })
             ? matrix : nil
+        glass = readGlassOptions()
 
         readMeterOptions()
     }
