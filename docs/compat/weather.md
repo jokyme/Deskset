@@ -79,9 +79,12 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Attribution, AttributionShort, AttributionURL, LicenseURL | — | 0 | "Based on data from MET Norway", "Data: MET Norway", the links |
   | TemperatureUnit, WindUnit, PrecipitationUnit, PressureUnit | — | 0 | "°C", "km/h", "mm", "hPa" |
 
-  Automatic MinValue / MaxValue (the skin's own win): temperatures over the next 24 hours; High and Low over the week
-  (the same for every day, so range bars line up); percentages 0–100; UV 0–11; wind 0 to the strongest of the next
-  24 hours; pressure 950–1050 hPa; directions 0–360; the curve over its hours.
+  Automatic MinValue / MaxValue (the skin's own win): temperatures over the next 24 hours; High and Low (and
+  TemperatureColor with `Day`) over all the forecast's days, 0–9 (the same for every day, so range bars line up);
+  percentages 0–100; UV 0–11; wind 0 to the strongest of the next 24 hours, with `Day` 0 to the strongest of any day;
+  rain 0 to the largest hourly amount of the next 24 hours, with `Day` 0 to the largest daily total (at least 1 mm or
+  0.04 in); pressure 950–1050 hPa; directions 0–360; DayLength 0–86,400 seconds; DaylightProgress 0–1; the curve
+  over its hours.
 - Why: Deskset extension. The weather services Windows skins scraped (weather.com's XML feed, Yahoo) are gone, and
   MET Norway's forecasts are free for any use, need no key or account and cover the whole world.
 - Skin impact: skins written for Deskset get weather without scraping; Windows skins cannot use these measures.

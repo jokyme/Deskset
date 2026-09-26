@@ -625,7 +625,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             case .sunset: return time(sun.sunset.date, zone: zone, defaultFormat: defaultTime)
             case .solarNoon: return time(sun.solarNoon, zone: zone, defaultFormat: defaultTime)
             case .dayLength:
-                return Output(number: sun.length, string: SolarCalculator.durationText(sun.length))
+                return Output(number: sun.length, string: SolarCalculator.durationText(sun.length), available: true,
+                              range: (0, 86_400))
             default:
                 return Output(number: sun.progress(at: b.now), string: nil, available: true, range: (0, 1))
             }
@@ -661,12 +662,16 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             return (u.temperature.convert(celsius: r.min), max(u.temperature.convert(celsius: r.max),
                                                                u.temperature.convert(celsius: r.min) + 1))
         }
+        // Ranges of daily values span every day the forecast has (0–9), so the bars of a forecast strip line up.
         func weekRange() -> (min: Double, max: Double)? {
-            let days = snapshot.days(zone: zone, now: b.now).prefix(7).filter(\.available)
+            let days = snapshot.days(zone: zone, now: b.now).filter(\.available)
             let lows = days.compactMap(\.low), highs = days.compactMap(\.high)
             guard let lo = lows.min(), let hi = highs.max() else { return nil }
             return (u.temperature.convert(celsius: lo), max(u.temperature.convert(celsius: hi),
                                                             u.temperature.convert(celsius: lo) + 1))
+        }
+        func largestOfDays(_ value: (WeatherDay) -> Double?) -> Double? {
+            snapshot.days(zone: zone, now: b.now).filter(\.available).compactMap(value).max()
         }
 
         switch type {
@@ -725,8 +730,10 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             let raw = type == .windSpeed ? (daySummary != nil ? daySummary?.windMax : step?.instant.windSpeed)
                 : (daySummary != nil ? daySummary?.gustMax : step?.instant.windGust)
             out = number(wind(raw))
-            let r = WeatherTimeline.range(forecast, now: b.now) { type == .windSpeed ? $0.instant.windSpeed : $0.instant.windGust }
-            out.range = (0, max(wind(r?.max) ?? 1, u.wind == .bft ? 12 : 1))
+            // A day's highest against the highest of any day; the next hours against the next 24 hours.
+            let largest = daySummary != nil ? largestOfDays { type == .windSpeed ? $0.windMax : $0.gustMax }
+                : WeatherTimeline.range(forecast, now: b.now) { type == .windSpeed ? $0.instant.windSpeed : $0.instant.windGust }?.max
+            out.range = (0, max(wind(largest) ?? 1, u.wind == .bft ? 12 : 1))
         case .windDirection, .windCardinal:
             guard let d = step?.instant.windDirection else { return none() }
             out = number(d)
@@ -739,9 +746,11 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         case .precipitation:
             let mm = daySummary != nil ? daySummary?.precipitation : period?.precipitation
             out = number(mm.map { u.precipitation.convert(millimeters: $0) })
-            let hourly = WeatherTimeline.range(forecast, now: b.now) { $0.next1h?.precipitation }
+            // A day's total against the largest daily total; an hour's amount against the next 24 hours'.
+            let largest = daySummary != nil ? largestOfDays { $0.precipitation }
+                : WeatherTimeline.range(forecast, now: b.now) { $0.next1h?.precipitation }?.max
             let floor = u.precipitation == .mm ? 1 : 0.04
-            out.range = (0, max(u.precipitation.convert(millimeters: hourly?.max ?? 0), floor))
+            out.range = (0, max(u.precipitation.convert(millimeters: largest ?? 0), floor))
         case .precipitationChance:
             out = number(daySummary != nil ? daySummary?.precipitationChance : period?.precipitationChance)
             out.range = (0, 100)

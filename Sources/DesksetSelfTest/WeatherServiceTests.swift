@@ -979,6 +979,121 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Weather: measure: automatic ranges of daily values") {
+        WeatherService.install(weatherTestEnvironment(t, clock: VirtualWeatherClock(now: WeatherFixtures.clock)))
+        let (skin, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91, 10.75
+        Units=Metric
+        [Rain6]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=Precipitation
+        Day=6
+        [RainNow]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=Precipitation
+        [Wind1]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=WindSpeed
+        Day=1
+        [Gust1]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=WindGust
+        Day=1
+        [WindNow]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=WindSpeed
+        [High0]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        Day=0
+        [High9]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        Day=9
+        [Low8]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=Low
+        Day=8
+        [Length]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=DayLength
+        """)
+        t.check(updateUntilReady(skin, root: "W"), "ready")
+        func range(_ name: String) -> (value: Double, min: Double, max: Double) {
+            let m = skin.measure(named: name)
+            return (m?.value ?? .nan, m?.minValue ?? .nan, m?.maxValue ?? .nan)
+        }
+        func inside(_ name: String, line: UInt = #line) {
+            let r = range(name)
+            t.check(r.min <= r.value && r.value <= r.max, "\(name): \(r.value) in \(r.min)…\(r.max)", line: line)
+        }
+        t.close(range("Rain6").value, 3.1, accuracy: 0.051, "day 6's rain")
+        inside("Rain6")
+        t.check(range("Rain6").max < 10, "the largest daily total: \(range("Rain6").max)")
+        t.equal(range("RainNow").max, 1, "a dry day ahead: hourly amounts, at least 1 mm")
+        inside("Wind1")
+        inside("Gust1")
+        t.check(range("Wind1").max > range("WindNow").max, "days against days, hours against hours")
+        inside("WindNow")
+        for name in ["High0", "High9", "Low8"] { inside(name) }
+        t.equal(range("High9").min, range("High0").min, "the same range for every day")
+        t.equal(range("High9").max, range("High0").max)
+        t.equal(range("Length").max, 86_400)
+        inside("Length")
+        skin.close()
+        // The demo forecast's warmest and coldest days are 7 and 8: High and Low span all ten days.
+        var demo = weatherTestEnvironment(t)
+        demo.isLive = { _ in false }
+        demo.demo = true
+        demo.demoNow = date("2026-09-26T12:00:00Z")
+        WeatherService.install(demo)
+        let (days, _) = try weatherSkin(t, ini: (0..<10).map { n in """
+            [High\(n)]
+            Measure=Plugin
+            Plugin=MacWeather
+            Location=59.91,10.75
+            Type=High
+            Day=\(n)
+            [Low\(n)]
+            Measure=Plugin
+            Plugin=MacWeather
+            Location=59.91,10.75
+            Type=Low
+            Day=\(n)
+            """ }.joined(separator: "\n"))
+        days.update()
+        for n in 0..<10 {
+            for name in ["High\(n)", "Low\(n)"] {
+                let m = days.measure(named: name)
+                let v = m?.value ?? .nan, lo = m?.minValue ?? .nan, hi = m?.maxValue ?? .nan
+                t.check(lo <= v && v <= hi, "\(name): \(v) in \(lo)…\(hi)")
+            }
+        }
+        days.close()
+    }
+
     t.suite("Weather: measure: states without data") {
         func status(_ ini: String, env: (inout WeatherEnvironment) -> Void = { _ in }) throws -> (Skin, FakeHost) {
             var e = weatherTestEnvironment(t)
