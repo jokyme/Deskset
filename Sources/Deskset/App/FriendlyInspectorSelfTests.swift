@@ -835,6 +835,13 @@ enum FriendlyInspectorSelfTests {
                 Y=12
                 W=100
                 H=10
+
+                [MeterShape]
+                Meter=Shape
+                Y=24
+                Shape=Rectangle 0,0,1e20,48
+                Shape2=Ellipse 10,10,-1e20
+                Shape3=Line 0,0,1e200,-1e200
                 """), let skin = editor.skin else { return }
             // A sound band: the band AudioLevel reads (within ±1e9), 1-based.
             for (name, index) in [("MeasureAbove", 1_000_000_000), ("MeasureBelow", -1_000_000_000)] {
@@ -842,6 +849,11 @@ enum FriendlyInspectorSelfTests {
                 editor.select(section: name)
                 t.equal((find(editor, "\(name)/BandIdx") as? ValueField)?.stringValue, String(index + 1), name)
             }
+            // A shape's parts: the sizes the engine draws (its numbers within ±1e6).
+            editor.select(section: "MeterShape")
+            t.equal((find(editor, "part-Shape") as? NSButton)?.title, "1  Rectangle 1000000 × 48")
+            t.equal((find(editor, "part-Shape2") as? NSButton)?.title, "2  Circle ⌀ 2000000")
+            t.equal((find(editor, "part-Shape3") as? NSButton)?.title, "3  Line 1414214 long", "from 0,0 to 1e6,-1e6")
             editor.window?.close()
         }
     }
