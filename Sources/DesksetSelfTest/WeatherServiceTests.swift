@@ -639,6 +639,27 @@ func runWeatherFetchTests(_ t: TestRunner) {
         t.equal(lost.requests, 2, "then five")
         lost.authorization = .denied
         t.equal(h2.service.deviceLocation(for: h2.subscription), .denied)
+        // Failures before the permission was given do not hold the first fix back once it is.
+        let asking = LateDeviceLocation()
+        asking.authorization = .notDetermined
+        let h4 = try ServiceHarness(t) { $0.deviceLocation = asking }
+        _ = h4.service.deviceLocation(for: h4.subscription)
+        asking.answer(.failure(.unavailable))
+        h4.settle()
+        h4.clock.advance(by: 61)
+        _ = h4.service.deviceLocation(for: h4.subscription)
+        asking.answer(.failure(.unavailable))
+        h4.settle()
+        t.equal(asking.requests, 2)
+        t.equal(h4.service.deviceLocation(for: h4.subscription), .unavailable, "the next try in 5 minutes")
+        t.equal(asking.requests, 2)
+        h4.clock.advance(by: 30)
+        asking.authorization = .authorized
+        t.equal(h4.service.deviceLocation(for: h4.subscription), .pending, "allowed: asked at once")
+        t.equal(asking.requests, 3)
+        asking.answer(.success(oslo))
+        h4.settle()
+        t.equal(h4.service.deviceLocation(for: h4.subscription), .fix(oslo))
         // Places: offline, memoized, the table released when unused.
         t.equal(h.service.lookUpPlace("Oslo, NO", for: h.subscription), .pending)
         h.settle()

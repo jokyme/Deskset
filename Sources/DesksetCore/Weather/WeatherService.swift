@@ -153,6 +153,8 @@ public final class WeatherService {
     private var deviceFailures = 0
     private var deviceRetryAt: Date?
     private var deviceDenied = false
+    /// The permission as the last call saw it (a new permission clears the waits of earlier failures).
+    private var deviceAuthorization: DeviceLocationAuthorization?
     private var lastLocate: Date?
     private var deviceWaiters: [ObjectIdentifier: WeatherSubscription] = [:]
 
@@ -791,6 +793,14 @@ public final class WeatherService {
     public func deviceLocation(for s: WeatherSubscription?, locate: Bool = false) -> DeviceLookup {
         guard let source = environment.deviceLocation else { return .unavailable }
         let authorization = source.authorization
+        lock.lock()
+        if authorization == .authorized, deviceAuthorization != .authorized {
+            // Just allowed (the answer to the question, or System Settings): ask at once, whatever failed before.
+            deviceFailures = 0
+            deviceRetryAt = nil
+        }
+        deviceAuthorization = authorization
+        lock.unlock()
         switch authorization {
         case .denied, .restricted: return .denied
         default: break

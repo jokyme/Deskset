@@ -136,7 +136,9 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   location"), and its forecast is never cached on disk, not even after the skin closes or the Mac moves on. The
   place name comes from the offline table (no reverse geocoding). When Location Services are off, the skin gets a
   compatibility note (removed once they are allowed) and `Status` 5; without a fix (Wi-Fi off) `Status` 6 and new
-  tries after 1, 5, 15 and then every 30 minutes. The same permission serves WiFiStatus's network names.
+  tries after 1, 5, 15 and then every 30 minutes. While macOS's question waits for an answer the skin shows Loading
+  (`Status` 1), however long that takes; once Deskset is allowed (the answer, or later in System Settings) it asks
+  for a fix at once, whatever failed before. The same permission serves WiFiStatus's network names.
 - Why: privacy; only the rounded coordinate is needed.
 - Skin impact: a one-time prompt; skins that should work without it use a place name.
 - Status: Deskset extension

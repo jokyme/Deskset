@@ -26,10 +26,10 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
 
     /// Makes the manager (main thread). The self-tests pass a fake.
     private let makeManager: () -> LocationManaging
-    /// How long a fix may take once asked for (then `.unavailable`: Wi-Fi off, no known networks).
+    /// How long a fix may take once asked for (then `.unavailable`: Wi-Fi off, no known networks). The permission
+    /// question has no time limit: macOS keeps it up until the user answers, and requests wait for that answer (the
+    /// skins show Loading), however late it comes.
     let fixTimeout: TimeInterval
-    /// How long to wait for the user's answer to the permission question before giving up for now.
-    let authorizationTimeout: TimeInterval
     /// Log lines ("Location: fix ok"); never coordinates.
     var log: (String) -> Void = { Log.write($0) }
 
@@ -49,11 +49,9 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
     /// Requests sent to Location Services (tests).
     private let counters = Guarded((questions: 0, fixes: 0))
 
-    init(makeManager: @escaping () -> LocationManaging = { CLLocationManager() }, fixTimeout: TimeInterval = 30,
-         authorizationTimeout: TimeInterval = 120) {
+    init(makeManager: @escaping () -> LocationManaging = { CLLocationManager() }, fixTimeout: TimeInterval = 30) {
         self.makeManager = makeManager
         self.fixTimeout = fixTimeout
-        self.authorizationTimeout = authorizationTimeout
         super.init()
         published.compute = { [unowned self] in self.managerOnMain().authorizationStatus }
     }
@@ -126,8 +124,8 @@ final class LocationCenter: NSObject, CLLocationManagerDelegate, DeviceLocationS
         waiting.append(completion)
         if status == .notDetermined {
             askOnMain()
-            // The answer arrives in `locationManagerDidChangeAuthorization`.
-            if timeout == nil { scheduleTimeout(authorizationTimeout) }
+            // The answer arrives in `locationManagerDidChangeAuthorization`, whenever the user gives it: not having
+            // answered yet is not a failure (it would hold the next try back for up to 30 minutes).
             return
         }
         startLocating()

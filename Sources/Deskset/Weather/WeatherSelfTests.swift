@@ -197,7 +197,7 @@ enum WeatherSelfTests {
     static func locationCenterTests(_ t: AppTestRunner) {
         t.suite("App: Weather: LocationCenter asks once and shares one request") {
             let fake = FakeLocationManager()
-            let center = LocationCenter(makeManager: { fake }, fixTimeout: 0.3, authorizationTimeout: 0.4)
+            let center = LocationCenter(makeManager: { fake }, fixTimeout: 0.3)
             let logs = SharedServiceThreadingSelfTests.Collected<String>()
             center.log = { logs.add($0) }
             let results = SharedServiceThreadingSelfTests.Collected<Result<RoundedCoordinate, DeviceLocationError>>()
@@ -242,14 +242,32 @@ enum WeatherSelfTests {
             t.equal(fake.requests, 3, "nothing asked when refused")
             t.equal(center.authorization, .denied)
             t.check(center.isDenied)
-            // The user never answers: after the time limit, "unavailable" (asked again later by the service).
+            // The user answers late: the request waits for the answer (not a failure that holds the next try back),
+            // then locates at once.
             let undecided = FakeLocationManager()
-            let quiet = LocationCenter(makeManager: { undecided }, fixTimeout: 0.3, authorizationTimeout: 0.3)
+            let quiet = LocationCenter(makeManager: { undecided }, fixTimeout: 0.3)
             quiet.log = { _ in }
             let waited = SharedServiceThreadingSelfTests.Collected<Result<RoundedCoordinate, DeviceLocationError>>()
             quiet.requestFix { waited.add($0) }
-            t.check(AppSelfTest.spin(timeout: 5) { waited.count == 1 }, "no answer is not a hang")
             t.equal(undecided.questions, 1)
+            _ = AppSelfTest.spin(timeout: 0.6) { false }
+            t.equal(waited.count, 0, "still waiting for the answer")
+            t.equal(undecided.requests, 0)
+            undecided.authorizationStatus = .authorizedAlways
+            quiet.authorizationChanged(.authorizedAlways)
+            t.equal(undecided.requests, 1, "the answer starts the request")
+            quiet.received([CLLocation(latitude: 59.9139, longitude: 10.7522)])
+            t.equal(waited.all.first.map { if case .success(let c) = $0 { return c == oslo } else { return false } }, true)
+            // Refused instead: the waiting request is refused at once.
+            let no = FakeLocationManager()
+            let refusing = LocationCenter(makeManager: { no }, fixTimeout: 0.3)
+            refusing.log = { _ in }
+            let answered = SharedServiceThreadingSelfTests.Collected<Result<RoundedCoordinate, DeviceLocationError>>()
+            refusing.requestFix { answered.add($0) }
+            no.authorizationStatus = .denied
+            refusing.authorizationChanged(.denied)
+            t.equal(answered.all.first.map { if case .failure(.denied) = $0 { return true } else { return false } }, true)
+            t.equal(no.requests, 0)
         }
     }
 
@@ -265,7 +283,7 @@ enum WeatherSelfTests {
             let transport = FixtureTransport(body: body)
             let fake = FakeLocationManager()
             fake.authorizationStatus = .denied
-            let center = LocationCenter(makeManager: { fake }, fixTimeout: 5, authorizationTimeout: 5)
+            let center = LocationCenter(makeManager: { fake }, fixTimeout: 5)
             center.log = { _ in }
             guard let env = environment(transport: transport, location: center,
                                         cache: t.temporaryDirectory("weather-cache")) else { return }
