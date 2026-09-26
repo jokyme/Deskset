@@ -6,9 +6,9 @@ import DesksetCore
 /// A symbol image is rendered into a bitmap like a decoded file, and `Images` keeps it under its path (the symbol, its
 /// size, weight and rendering, and the pixels per point it is rendered at). Its size in points is the symbol's own at
 /// `MacSymbolSize`, rounded up to whole points with the symbol centered. It is drawn white — the whole symbol, with
-/// the parts a template symbol knocks out left transparent (Monochrome), the layers in their hierarchy's opacities (Hierarchical), or the parts without colors of their own
-/// (Multicolor, drawn as in Dark Mode) — so the general image options (ImageTint, ColorMatrix, Greyscale, ImageAlpha)
-/// color it as they color a white picture.
+/// the parts a template symbol knocks out left transparent (Monochrome), the layers in their hierarchy's opacities
+/// (Hierarchical), or the parts without colors of their own (Multicolor, drawn as in Dark Mode) — so the general image
+/// options (ImageTint, ColorMatrix, Greyscale, ImageAlpha) color it as they color a white picture.
 ///
 /// Any thread: each render makes its own `NSImage` and graphics context (`Images` renders a path once at a time).
 enum SymbolImages {
@@ -44,6 +44,30 @@ enum SymbolImages {
         return (cg, points)
     }
 
+    /// The symbol for the editor's picture thumbnail: in the label color of the view it is shown in (its own colors for
+    /// Multicolor), at 16 points. Main thread.
+    static func preview(_ symbol: MacSymbol) -> NSImage? {
+        guard !symbol.name.isEmpty, let base = NSImage(systemSymbolName: symbol.name, accessibilityDescription: nil)
+        else { return nil }
+        var configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: weight(symbol.style.weight))
+        switch symbol.style.rendering {
+        case .monochrome:
+            // The template in the label color, resolved when drawn (knocked-out parts stay transparent).
+            guard let template = base.withSymbolConfiguration(configuration) else { return nil }
+            return NSImage(size: template.size, flipped: false) { rect in
+                template.draw(in: rect)
+                NSColor.labelColor.set()
+                rect.fill(using: .sourceIn)
+                return true
+            }
+        case .hierarchical:
+            configuration = configuration.applying(NSImage.SymbolConfiguration(hierarchicalColor: .labelColor))
+        case .multicolor:
+            configuration = configuration.applying(.preferringMulticolor())
+        }
+        return base.withSymbolConfiguration(configuration)
+    }
+
     /// Whether macOS has a symbol of that name (the editor asks before it says a picture is missing).
     static func exists(_ name: String) -> Bool {
         !name.isEmpty && NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
@@ -55,7 +79,8 @@ enum SymbolImages {
                                                         weight: weight(symbol.style.weight))
         switch symbol.style.rendering {
         case .monochrome: break  // drawn as a template, then made white (`render`)
-        case .hierarchical: configuration = configuration.applying(NSImage.SymbolConfiguration(hierarchicalColor: .white))
+        case .hierarchical:
+            configuration = configuration.applying(NSImage.SymbolConfiguration(hierarchicalColor: .white))
         case .multicolor: configuration = configuration.applying(.preferringMulticolor())
         }
         return base.withSymbolConfiguration(configuration)

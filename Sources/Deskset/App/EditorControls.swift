@@ -1655,6 +1655,8 @@ extension InspectorWindowController {
     /// in words), a color written directly by the role of its uses when the page lists it ("Background panel");
     /// nil when the page has no name for it (the control says "Custom").
     func colorRoleName(variable: String?, color: RGBA?) -> String? {
+        // The Mac's own colors (`#MACACCENTCOLOR#`…, built in: they follow the appearance) by what they are.
+        if let variable, let name = Self.macColorNames[variable.lowercased()] { return name }
         guard let skin else { return variable.map(ValueUsageIndex.humanizedVariable) }
         let groups = valueUsages(skin).colorGroups(separate: inspectorState.separateColors,
                                                     includeInternal: app.state.editor.showIniNames)
@@ -1667,6 +1669,13 @@ extension InspectorWindowController {
         guard let color, let group = groups.first(where: { $0.variables.isEmpty && $0.color == color }) else { return nil }
         return group.name
     }
+
+    /// Names of the Mac appearance color variables (Deskset extension, `SkinAppearance`).
+    static let macColorNames: [String: String] = [
+        "macaccentcolor": "Mac accent color", "maclabelcolor": "Mac text color",
+        "macsecondarylabelcolor": "Mac secondary text color", "mactertiarylabelcolor": "Mac tertiary text color",
+        "macseparatorcolor": "Mac separator color",
+    ]
 
     /// "#78C8FF · 100% opacity"; with Rainmeter Details "Accent · 120,200,255,255".
     func colorTooltip(_ color: RGBA?, ctx: PropertyContext?) -> String {

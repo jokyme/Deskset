@@ -110,8 +110,8 @@ public struct MacSymbol: Hashable {
     /// the app's image caches key the image by. The name is percent-encoded, so no name can reach into the options.
     public var path: String {
         let encoded = name.addingPercentEncoding(withAllowedCharacters: MacSymbol.nameCharacters) ?? ""
-        var p = "\(MacSymbol.prefix)\(encoded)?size=\(MacSymbol.format(style.pointSize))&weight=\(style.weight.rawValue)"
-            + "&rendering=\(style.rendering.rawValue)"
+        var p = "\(MacSymbol.prefix)\(encoded)?size=\(MacSymbol.format(style.pointSize))"
+            + "&weight=\(style.weight.rawValue)&rendering=\(style.rendering.rawValue)"
         if density != 1 { p += "&density=\(MacSymbol.format(density))" }
         return p
     }
@@ -182,8 +182,9 @@ extension Meter {
     /// True when `written` names a symbol.
     func rejectSymbol(_ written: String, option: String) -> Bool {
         guard MacSymbol.isSymbolName(written) else { return false }
-        skin.addIssue("[\(name)] \(option)=\(written.trimmingCharacters(in: .whitespaces)): SF Symbols (sf:) are drawn by "
-                      + "Image, Button and Bar meters and the skin background only")
+        let value = written.trimmingCharacters(in: .whitespaces)
+        skin.addIssue("[\(name)] \(option)=\(value): SF Symbols (sf:) are drawn by Image, Button and Bar meters and the "
+                      + "skin background only")
         return true
     }
 }

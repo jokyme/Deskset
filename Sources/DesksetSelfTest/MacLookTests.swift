@@ -220,6 +220,10 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(S.property("MacSymbolRendering", in: S.meterGroups("Image"))?.kind.choices?.map(\.value),
                 ["Monochrome", "Hierarchical", "Multicolor"])
         t.equal(S.property("MacSymbolSize", in: S.meterGroups("Image"))?.defaultValue, "16")
+        let image = S.meterGroups("Image"), fit = S.property("PreserveAspectRatio", in: image)!
+        t.equal(S.defaultValue(of: fit, in: image, values: { $0 == "ImageName" ? "sf:wifi" : nil }), "1",
+                "a symbol fits inside by default, as the engine draws it")
+        t.equal(S.defaultValue(of: fit, in: image, values: { $0 == "ImageName" ? "wifi.png" : nil }), "0")
         let skin = S.skinGroups
         t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.kind, .action)
         t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.defaultValue, Skin.defaultAppearanceChangeAction)

@@ -982,6 +982,9 @@ extension InspectorWindowController {
     // MARK: Picture
 
     func pictureCard(_ m: Meter, group: EditorSchema.Group, groups: [EditorSchema.Group], skin: Skin) -> NSView {
+        // A default that depends on the other options is marked as in effect (an SF Symbol fits inside).
+        let groups = EditorSchema.resolvingDefaults(groups, values: valueLookup(rows))
+        let group = groups.first { $0.title == group.title } ?? group
         var o = CardOptions(section: m.name)
         let file = (m.rawOption("ImageName") ?? "").trimmingCharacters(in: .whitespaces)
         let fromData = !(m.rawOption("MeasureName") ?? "").trimmingCharacters(in: .whitespaces).isEmpty

@@ -203,7 +203,8 @@ extension SkinRenderer {
     static func drawNineSlice(_ image: CGImage, margins: SkinInsets, in rect: CGRect, _ ctx: CGContext,
                               alpha: CGFloat = 1, density: Images.Density = .one) {
         let dx = Double(density.x), dy = Double(density.y)
-        let pieces = ImageGeometry.nineSlice(imageWidth: Double(image.width) / dx, imageHeight: Double(image.height) / dy,
+        let pieces = ImageGeometry.nineSlice(imageWidth: Double(image.width) / dx,
+                                             imageHeight: Double(image.height) / dy,
                                              margins: margins,
                                              into: SkinRect(x: Double(rect.minX), y: Double(rect.minY),
                                                             width: Double(rect.width), height: Double(rect.height)))

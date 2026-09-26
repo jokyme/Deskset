@@ -1091,7 +1091,8 @@ public final class Skin {
     }
 
     /// The built-in variables the manual calls dynamic: `CURRENTCONFIGX/Y/WIDTH/HEIGHT`, `CURRENTCONFIGZPOS`,
-    /// `CONFIGEDITOR` and all monitor variables. nil for every other name.
+    /// `CONFIGEDITOR` and all monitor variables, and Deskset's Mac appearance variables (reading one marks the skin
+    /// as using them). nil for every other name.
     private func dynamicBuiltIn(_ key: String) -> String? {
         if key.hasPrefix("mac"), BuiltInVariables.isMacAppearanceKey(key) {
             usesMacAppearance = true

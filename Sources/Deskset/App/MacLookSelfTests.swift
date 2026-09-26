@@ -109,6 +109,9 @@ enum MacLookSelfTests {
             t.equal(Fonts.systemDesign(named: "Helvetica"), nil)
             t.check(Fonts.systemFont(design: .serif, size: 13).fontName.contains("NewYork"))
             t.equal(InspectorWindowController.systemDesignFaces.map(\.faceName), ["System Rounded", "System Mono", "System Serif"])
+            t.equal(Set(InspectorWindowController.macColorNames.keys),
+                    Set(BuiltInVariables.macAppearanceNames.map { $0.lowercased() }.filter { $0.hasSuffix("color") }),
+                    "every Mac color has a name in the editor")
 
             // Measuring uses the design (it is what drawing uses): in the monospaced design every character is as wide.
             guard let (skin, host) = try loadSkin(t, """
@@ -166,6 +169,12 @@ enum MacLookSelfTests {
             t.close(Double(Images.cgImage(atPath: dense.path)?.width ?? 0), natural.width * 3, accuracy: 1)
             t.equal(Images.size(atPath: MacSymbol(name: "no.such.symbol.here").path) == nil, true)
             t.check(!SymbolImages.exists("no.such.symbol.here") && SymbolImages.exists("wifi"))
+            // The editor's thumbnail: the symbol itself, for every rendering.
+            for rendering in MacSymbol.Rendering.allCases {
+                let preview = SymbolImages.preview(MacSymbol(name: "wifi", style: MacSymbol.Style(rendering: rendering)))
+                t.check((preview?.size.width ?? 0) > 10, "preview \(rendering)")
+            }
+            t.equal(SymbolImages.preview(MacSymbol(name: "no.such.symbol.here")) == nil, true)
 
             // Monochrome: white, with the parts the symbol knocks out left transparent.
             let xmark = MacSymbol(name: "xmark.circle.fill", style: MacSymbol.Style(pointSize: 40))

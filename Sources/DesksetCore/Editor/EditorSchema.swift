@@ -419,7 +419,7 @@ public enum EditorSchema {
             Property("MacSymbolSize", "Symbol size", num(1, MacSymbol.maxPointSize, step: 1, unit: "pt"),
                      default: "16", help: "Its size when no width or height is set", visibleWhen: when),
             Property("MacSymbolWeight", "Symbol weight", pick(symbolWeights), default: "Regular", visibleWhen: when),
-            Property("MacSymbolRendering", "Symbol colors", pick(symbolRenderings), default: "Monochrome",
+            Property("MacSymbolRendering", "Colors", pick(symbolRenderings), default: "Monochrome",
                      help: "Tint colors the white parts", visibleWhen: when),
         ]
     }
@@ -584,7 +584,9 @@ public enum EditorSchema {
             Property("SolidColor", "Color", .color, default: "0,0,0,0", placeholder: "none",
                      help: "Without a picture, a block of this color", level: .essential),
             Property("ImageAlpha", "Opacity", .percent255, default: "255", level: .essential),
+            // An SF Symbol keeps its shape by default (ImageMeter.preserveAspectRatio).
             Property("PreserveAspectRatio", "Fit", pick(aspect), default: "0",
+                     defaultWhen: [ConditionalDefault("1", when: [.contains("ImageName", "sf:")])],
                      help: "Fit Inside is used when only one of width and height is set",
                      invalidNote: "values are limited to 0–2", level: .essential),
             Property("Tile", "Tile", flag("Repeat the picture"), default: "0"),

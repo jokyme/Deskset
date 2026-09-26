@@ -1243,10 +1243,8 @@ extension InspectorWindowController {
         let current = (ctx.variable != nil ? ctx.resolved : ctx.raw).trimmingCharacters(in: .whitespaces)
         let path = ctx.isSet ? imagePath(ctxSection: ctx.section, key: ctx.key, resolved: ctx.resolved) : nil
         var image = path.flatMap { FileManager.default.fileExists(atPath: $0) ? NSImage(contentsOfFile: $0) : nil }
-        // An SF Symbol (`sf:…`) is shown as the engine draws it (white: on the thumbnail's own background).
-        if let path, let symbol = MacSymbol(path: path), let cg = Images.cgImage(atPath: symbol.withDensity(2).path) {
-            image = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / 2, height: CGFloat(cg.height) / 2))
-        }
+        // An SF Symbol (`sf:…`): the symbol itself, in the label color (the skin draws it white and tints it).
+        if let path, let symbol = MacSymbol(path: path) { image = SymbolImages.preview(symbol) }
         let control = ImageControl(image: image)
         control.identifier = NSUserInterfaceItemIdentifier(ctx.property.key)
         let popup = control.popup
@@ -1283,11 +1281,13 @@ extension InspectorWindowController {
         if selected == nil, !current.isEmpty {
             // The file's value (a missing file, a name with a data source, a file elsewhere) stays selected, named by its
             // file ("needle.png", never "#CURRENTPATH#…"), the whole path in its tooltip; not greyed out, as it is in use.
-            let shown = showsDetails ? current : LayerNaming.fileName(path ?? current)
+            // A symbol is shown as written (`sf:wifi`), not by its image path.
+            let symbol = MacSymbol.isSymbolName(current)
+            let shown = showsDetails || symbol ? current : LayerNaming.fileName(path ?? current)
             let item = NSMenuItem(title: shown.isEmpty ? current : shown, action: nil, keyEquivalent: "")
             item.representedObject = current
-            item.toolTip = path ?? current
-            popup.toolTip = path ?? current
+            item.toolTip = symbol ? current : path ?? current
+            popup.toolTip = symbol ? current : path ?? current
             menu.insertItem(item, at: 0)
             menu.insertItem(.separator(), at: 1)
             selected = item

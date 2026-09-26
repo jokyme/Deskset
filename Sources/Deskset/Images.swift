@@ -532,7 +532,8 @@ enum Images {
         guard let image else {
             // Too large to process (see maxDerivedPixels): an uncropped image is still drawn, without its color
             // transform, rather than not at all.
-            return crop == nil ? (base, e.generation, .prepared(oriented: orientedFlag, crop: nil, matrix: nil), d) : nil
+            guard crop == nil else { return nil }
+            return (base, e.generation, .prepared(oriented: orientedFlag, crop: nil, matrix: nil), d)
         }
         return (image, e.generation, recipe, d)
     }
