@@ -583,6 +583,7 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         t.check(visible("Day", ["type": "Wind"]), "Wind is WindSpeed")
         t.check(!visible("Day", ["type": "Humidity"]))
         t.check(!visible("Location", ["parent": "MeasureWeather"]), "a child has no place of its own")
+        t.check(visible("FinishAction", ["parent": "MeasureWeather"]), "but its own actions (they run with the parent's)")
         t.check(visible("SymbolStyle", ["type": "Symbol"]) && !visible("SymbolStyle", ["type": "Temperature"]))
         t.check(visible("Format", ["type": "Sunrise"]) && !visible("Format", ["type": "Humidity"]))
         let sun = S.measureGroups("Plugin", plugin: "MacSun")

@@ -221,10 +221,11 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     private weak var service: WeatherService?
     private(set) var binding = Binding()
     private var seenVersion = 0
+    /// The place whose failure streak `seenStreak` counts (nil: none seen yet, or none now).
+    private var streakCoordinate: RoundedCoordinate?
     private var seenStreak = 0
     private var seenCoordinate: RoundedCoordinate?
     private var lastLocationError = false
-    private var actionsQueued = false
     private var note: String?
     private var closed = false
 
@@ -373,6 +374,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         if service !== self.service {
             if let subscription { self.service?.detach(subscription) }
             self.service = service
+            streakCoordinate = nil
         }
         let env = service.environment
         let now = WeatherLocationResolver.now(env)
@@ -439,35 +441,55 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         if let text { skin.addIssue(text) }
     }
 
-    /// FinishAction for new data (or a place newly resolved), OnConnectErrorAction for a new failure streak,
-    /// OnLocationErrorAction when the place cannot be found. During an update they run after it.
+    /// FinishAction for new data (or a place newly resolved); OnConnectErrorAction when a request failed, once per run
+    /// of failures (a place this measure sees for the first time — a new skin, a refresh, another Location — counts
+    /// only while its last request failed, not for failures already over); OnLocationErrorAction when the place cannot
+    /// be found. The measures that follow this one (`Parent=`) run theirs with it, after it. During an update they
+    /// run after it.
     private func checkActions(queue: Bool) {
-        var actions: [String] = []
+        var finished = false, connectFailed = false
         let b = binding
         if let s = b.snapshot {
             if s.version != seenVersion, s.forecast != nil {
                 seenVersion = s.version
-                if !finishAction.isEmpty { actions.append(finishAction) }
+                finished = true
             } else if b.location.coordinate != seenCoordinate, b.location.coordinate != nil, s.forecast != nil {
-                if !finishAction.isEmpty { actions.append(finishAction) }
+                finished = true
             }
-            if s.failureStreak != seenStreak {
+            if b.location.coordinate != streakCoordinate {
+                streakCoordinate = b.location.coordinate
                 seenStreak = s.failureStreak
-                if !connectErrorAction.isEmpty { actions.append(connectErrorAction) }
+                connectFailed = s.lastFailure != nil
+            } else if s.failureStreak > seenStreak {
+                seenStreak = s.failureStreak
+                connectFailed = true
             }
+        } else {
+            streakCoordinate = nil
         }
         seenCoordinate = b.location.coordinate
         let locationError = b.status.isLocationError
-        if locationError && !lastLocationError, !locationErrorAction.isEmpty { actions.append(locationErrorAction) }
+        let locationFailed = locationError && !lastLocationError
         lastLocationError = locationError
-        guard !actions.isEmpty else { return }
+        guard finished || connectFailed || locationFailed else { return }
+        let measures = [self] + skin.measures.compactMap { m -> MacWeatherMeasure? in
+            guard let w = m as? MacWeatherMeasure, w !== self, !w.disabled, !w.paused, w.root === self else { return nil }
+            return w
+        }
+        var runs: [(action: String, measure: MacWeatherMeasure)] = []
+        for (happened, action) in [(finished, \MacWeatherMeasure.finishAction),
+                                   (connectFailed, \MacWeatherMeasure.connectErrorAction),
+                                   (locationFailed, \MacWeatherMeasure.locationErrorAction)] where happened {
+            for m in measures where !m[keyPath: action].isEmpty { runs.append((m[keyPath: action], m)) }
+        }
+        guard !runs.isEmpty else { return }
         if queue {
             skin.async { [weak self] in
                 guard let self, !self.closed else { return }
-                for a in actions { self.skin.execute(a, from: self) }
+                for r in runs { self.skin.execute(r.action, from: r.measure) }
             }
         } else {
-            for a in actions { skin.execute(a, from: self) }
+            for r in runs { skin.execute(r.action, from: r.measure) }
         }
     }
 

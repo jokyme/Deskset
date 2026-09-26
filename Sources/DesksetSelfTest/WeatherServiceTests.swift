@@ -1051,6 +1051,112 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         _ = host
     }
 
+    t.suite("Weather: measure: OnConnectErrorAction once per run of failures; the measures following run theirs") {
+        var online = false
+        let transport = FakeWeatherTransport { _ in
+            online ? .success(WeatherHTTPResponse(status: 200, headers: WeatherFixtures.headers, body: WeatherFixtures.complete))
+                : .failure(.network("offline"))
+        }
+        let clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        WeatherService.install(weatherTestEnvironment(t, transport: transport, clock: clock))
+        let ini = """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91, 10.75
+        FinishAction=[!Log "finish W"]
+        OnConnectErrorAction=[!Log "connect error W"]
+        [C]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        FinishAction=[!Log "finish C"]
+        OnConnectErrorAction=[!Log "connect error C"]
+        [Off]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=C
+        Disabled=1
+        FinishAction=[!Log "finish Off"]
+        """
+        func count(_ host: FakeHost, _ text: String) -> Int { host.logs.filter { $0.contains(text) }.count }
+        func settle(_ skin: Skin) {
+            for _ in 0..<3 {
+                WeatherService.shared.drain()
+                skin.update()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+            }
+        }
+        let (a, aHost) = try weatherSkin(t, ini: ini)
+        settle(a)
+        t.check(weatherWait { WeatherService.shared.drain(); return count(aHost, "connect error W") == 1 },
+                "the failure: \(aHost.logs)")
+        // Back online: the retry succeeds.
+        online = true
+        clock.advance(by: 61)
+        t.check(updateUntilReady(a, root: "W"), "ready")
+        settle(a)
+        t.equal(count(aHost, "connect error W"), 1, "once for the run of failures")
+        t.equal(count(aHost, "connect error C"), 1, "the measure following it too")
+        t.equal(count(aHost, "finish W"), 1)
+        t.equal(count(aHost, "finish C"), 1, "after it")
+        t.equal(count(aHost, "finish Off"), 0, "not a disabled one")
+        if let w = aHost.logs.firstIndex(where: { $0.contains("finish W") }),
+           let c = aHost.logs.firstIndex(where: { $0.contains("finish C") }) {
+            t.check(w < c, "the parent first: \(aHost.logs)")
+        }
+        // A refresh (a new skin from the same file) or a second skin with the place: the failure is over.
+        a.close()
+        let (b, bHost) = try weatherSkin(t, ini: ini)
+        t.check(updateUntilReady(b, root: "W"), "ready")
+        settle(b)
+        t.equal(count(bHost, "connect error"), 0, "an old failure is not new: \(bHost.logs)")
+        t.equal(count(bHost, "finish W"), 1)
+        // Another place (a new feed, no failures): nothing either; its own failure later: once.
+        b.execute("[!SetOption W Location \"60.39, 5.32\"][!UpdateMeasure W]", from: nil)
+        t.check(weatherWait {
+            WeatherService.shared.drain()
+            b.update()
+            return transport.requests.contains { $0.url.query == "lat=60.39&lon=5.32" }
+                && (b.measure(named: "W") as? MacWeatherMeasure)?.status == .ready
+        }, "moved to Bergen")
+        settle(b)
+        t.equal(count(bHost, "connect error"), 0, "\(bHost.logs)")
+        online = false
+        let limit = clock.now().addingTimeInterval(45 * 60)
+        while count(bHost, "connect error W") == 0 && clock.now() < limit {
+            clock.advance(by: 60)
+            settle(b)
+        }
+        t.equal(count(bHost, "connect error W"), 1, "Bergen's own failure")
+        t.equal(count(bHost, "connect error C"), 1)
+        b.close()
+
+        // OnLocationErrorAction of a measure following one whose place cannot be found.
+        let (lost, lostHost) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=Atlantis
+        [C]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        OnLocationErrorAction=[!Log "location error C"]
+        """)
+        t.check(weatherWait {
+            WeatherService.shared.drain()
+            lost.update()
+            return (lost.measure(named: "W") as? MacWeatherMeasure)?.status == .placeNotFound
+        }, "not found")
+        settle(lost)
+        t.equal(count(lostHost, "location error C"), 1)
+        lost.close()
+    }
+
     t.suite("Weather: measure: the place and the forecast arrive without another update") {
         let transport = FakeWeatherTransport.fixture()
         let clock = VirtualWeatherClock(now: WeatherFixtures.clock)

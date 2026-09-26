@@ -49,7 +49,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | `SymbolStyle` | `Fill` · `Outline` | For `Type=Symbol`. |
   | `Hours`, `CurveWidth`, `CurveHeight`, `Smooth` | 24, 200, 40, 1 | For `Type=TemperatureCurve`. |
   | `ColorOf` | `High` · `Low` | For `Type=TemperatureColor` with `Day`. |
-  | `FinishAction`, `OnConnectErrorAction`, `OnLocationErrorAction` | bangs | New data (or the place found); a failed request (once per run of failures); a place that cannot be found, Location Services off or no fix. |
+  | `FinishAction`, `OnConnectErrorAction`, `OnLocationErrorAction` | bangs | New data (or the place found); a failed request (once per run of failures: a skin that loads or refreshes during one gets it once, failures already over never run it); a place that cannot be found, Location Services off or no fix. On a measure with `Parent` they run when those of the measure with the place do, after them. |
   | `!CommandMeasure … "Refresh"` / `"Locate"` | | Refresh: after a network failure (offline), try again now (at most once a minute); otherwise it only reads again, and the server's waits (429 and `Retry-After`, server errors, refusals) and the schedule stand. Locate (`auto`): ask for a new fix. |
 
   Types (N = now, H = with `Hour`, D = with `Day`; without either, daily-only types use today):
