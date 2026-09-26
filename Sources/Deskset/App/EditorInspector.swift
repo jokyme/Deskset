@@ -1578,6 +1578,9 @@ extension InspectorWindowController {
 
     // MARK: Fonts
 
+    /// The designs of the system font the font menu offers after System Font (`Fonts.systemDesigns`).
+    static let systemDesignFaces: [Fonts.SystemDesign] = [.rounded, .monospaced, .serif]
+
     /// Font families for the font menu, each shown in its own face (`FontFamilies.all`).
     static var fontFamilies: [(name: String, title: NSAttributedString)] { FontFamilies.all }
 
@@ -1607,7 +1610,9 @@ extension InspectorWindowController {
         }
         // Only the pop-up's own family is looked up: the menu lists the others when it opens (`FontFamilies`).
         let installed = FontFamilies.installed(current)
-        let isSystem = current.caseInsensitiveCompare("System Font") == .orderedSame
+        // The system font and its designs (Deskset: System Rounded, System Mono, System Serif) have items of their own.
+        let systemFaces = ["System Font"] + Self.systemDesignFaces.map(\.faceName)
+        let isSystem = systemFaces.contains { $0.caseInsensitiveCompare(current) == .orderedSame }
         if !isSystem, installed == nil, !skinFonts.contains(where: { $0.caseInsensitiveCompare(current) == .orderedSame }) {
             let title: String
             if current.isEmpty {
@@ -1621,6 +1626,10 @@ extension InspectorWindowController {
             menu.addItem(.separator())
         }
         add(NSAttributedString(string: "System Font", attributes: [.font: NSFont.systemFont(ofSize: 13)]), value: "System Font")
+        for design in Self.systemDesignFaces {
+            add(NSAttributedString(string: design.faceName, attributes: [.font: Fonts.systemFont(design: design, size: 13)]),
+                value: design.faceName)
+        }
         menu.addItem(.separator())
         if !skinFonts.isEmpty {
             let header = NSMenuItem(title: "Included with the Widget", action: nil, keyEquivalent: "")

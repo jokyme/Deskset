@@ -6,11 +6,13 @@ import DesksetCore
 ///
 /// `FontFace` is a family name (manual: String meter, Fonts guide). Resolution order for a face:
 /// 1. an installed or registered family with that name (case-insensitive);
-/// 2. the Windows → Mac substitution table (Segoe UI → system font, Consolas → Menlo, CJK fonts…);
-/// 3. a full or PostScript font name ("Fira Sans Bold", "Arial-BoldMT"): its family, with its weight / italic as
+/// 2. the Mac system font designs (Deskset extension): `System` (the system font), `SF Pro Rounded` / `System Rounded`,
+///    `SF Mono` / `System Mono`, `New York` / `System Serif` (`systemDesigns`);
+/// 3. the Windows → Mac substitution table (Segoe UI → system font, Consolas → Menlo, CJK fonts…);
+/// 4. a full or PostScript font name ("Fira Sans Bold", "Arial-BoldMT"): its family, with its weight / italic as
 ///    the implied style ("Rainmeter will figure out the actual family name when the font is loaded");
-/// 4. the same again after removing trailing style words ("Roboto Light Italic" → "Roboto", 300, italic);
-/// 5. Arial ("Arial is now the default font when FontFace is not specified or errors occur").
+/// 5. the same again after removing trailing style words ("Roboto Light Italic" → "Roboto", 300, italic);
+/// 6. Arial ("Arial is now the default font when FontFace is not specified or errors occur").
 ///
 /// Weight: `FontWeight` (1–999) or StringStyle Bold (700) picks the family member with the closest weight
 /// (OS/2 usWeightClass); "If the font does not support any additional weights, then 500 and below will use the
@@ -496,7 +498,8 @@ enum Fonts {
             syntheticBold = weight >= 600 && chosen.member.weight < 600
             slant = chosen.needsSlant
         } else {
-            font = systemFont(size: size, weight: weight, italic: italic && !request.oblique, stretch: request.stretch)
+            font = systemFont(size: size, weight: weight, italic: italic && !request.oblique, stretch: request.stretch,
+                              design: match.design)
             slant = request.oblique || (italic && !CTFontGetSymbolicTraits(font).contains(.traitItalic))
         }
         if !request.features.isEmpty {
@@ -525,6 +528,59 @@ enum Fonts {
         var characterMap: [UInt16: UInt16]?
         /// Vertical metrics in em of the substituted Windows font.
         var emMetrics: LineMetrics?
+        /// With `family` nil: which design of the system font.
+        var design = SystemDesign.standard
+    }
+
+    /// The designs of the Mac system font (`NSFontDescriptor.SystemDesign`).
+    enum SystemDesign: CaseIterable {
+        case standard, rounded, monospaced, serif
+
+        var descriptorDesign: NSFontDescriptor.SystemDesign {
+            switch self {
+            case .standard: return .default
+            case .rounded: return .rounded
+            case .monospaced: return .monospaced
+            case .serif: return .serif
+            }
+        }
+
+        /// The FontFace name the editor writes for it.
+        var faceName: String {
+            switch self {
+            case .standard: return "System"
+            case .rounded: return "System Rounded"
+            case .monospaced: return "System Mono"
+            case .serif: return "System Serif"
+            }
+        }
+    }
+
+    /// FontFace names of the system font's designs (Deskset extension; lower case). Apple's own family names (SF Pro
+    /// Rounded, SF Mono, New York) name them too: those families are not installed on a Mac by default, and when a
+    /// user installed them, the installed family wins (resolution looks for installed families first). `System` is
+    /// the system font: on Windows it names an old bitmap font, which skins hardly use.
+    static let systemDesigns: [String: SystemDesign] = [
+        "system": .standard,
+        "system rounded": .rounded, "sf pro rounded": .rounded, "sf rounded": .rounded, "ui-rounded": .rounded,
+        "system mono": .monospaced, "system monospaced": .monospaced, "sf mono": .monospaced,
+        "ui-monospace": .monospaced,
+        "system serif": .serif, "new york": .serif, "ui-serif": .serif,
+    ]
+
+    /// The design of the system font a FontFace name stands for (nil for any other name). Installed families are not
+    /// looked at: resolution does that first.
+    static func systemDesign(named face: String) -> SystemDesign? {
+        systemDesigns[face.trimmingCharacters(in: .whitespaces).lowercased()]
+    }
+
+    /// The system font of `design` at `size` points, regular weight (the editor's font menu shows each in its face).
+    static func systemFont(design: SystemDesign, size: CGFloat) -> NSFont {
+        let font = NSFont.systemFont(ofSize: size)
+        guard design != .standard, let descriptor = font.fontDescriptor.withDesign(design.descriptorDesign) else {
+            return font
+        }
+        return NSFont(descriptor: descriptor, size: size) ?? font
     }
 
     /// Call with `lock` held (so for everything below that keeps or reads what resolution keeps).
@@ -547,6 +603,9 @@ enum Fonts {
             let lower = name.lowercased()
             if let family = installedFamily(lower) {
                 return FaceMatch(family: family, weight: impliedWeight, italic: impliedItalic)
+            }
+            if let design = systemDesigns[lower] {
+                return FaceMatch(family: nil, weight: impliedWeight, italic: impliedItalic, design: design)
             }
             if let sub = substitutes[lower] {
                 var match = FaceMatch(family: nil, weight: impliedWeight ?? sub.weight, italic: impliedItalic,
@@ -620,7 +679,9 @@ enum Fonts {
     /// How a FontFace name is shown on the Mac, for the editor: nil when no substitution applies (an installed
     /// family, or an unknown name); otherwise the family used instead, "System Font" for the system font.
     static func substitution(for name: String) -> String? {
-        guard let sub = substitutes[name.trimmingCharacters(in: .whitespaces).lowercased()] else { return nil }
+        let key = name.trimmingCharacters(in: .whitespaces).lowercased()
+        if let design = systemDesigns[key] { return design == .standard ? "System Font" : design.faceName }
+        guard let sub = substitutes[key] else { return nil }
         return sub.family ?? "System Font"
     }
 
@@ -647,8 +708,9 @@ enum Fonts {
              "segoe ui variable small", "segoe", "selawik"], nil, metrics: segoeMetrics)
         add(["segoe ui historic", "segoe ui symbol", "segoe mdl2 assets", "segoe fluent icons"], nil)
         // Names Mac skin authors use for the system font.
+        // (SF Pro Rounded, SF Mono and New York are designs of the system font: `systemDesigns`.)
         add(["system font", "system-ui", "-apple-system", "san francisco", "sf pro", "sf pro text",
-             "sf pro display", "sf pro rounded", ".sf ns"], nil)
+             "sf pro display", ".sf ns"], nil)
         add(["segoe ui light", "segoe ui variable light"], nil, weight: 300, metrics: segoeMetrics)
         add(["segoe ui semilight", "segoe ui variable semilight"], nil, weight: 350, metrics: segoeMetrics)
         add(["segoe ui semibold", "segoe ui variable semibold"], nil, weight: 600, metrics: segoeMetrics)
@@ -778,11 +840,19 @@ enum Fonts {
         return chosen.map { ($0, needsSlant) }
     }
 
-    /// Call with `lock` held (see `lock` for why these stay AppKit calls).
-    private static func systemFont(size: CGFloat, weight: Int, italic: Bool, stretch: Int?) -> CTFont {
+    /// Call with `lock` held (see `lock` for why these stay AppKit calls). `stretch` applies to the standard design
+    /// only (the rounded, monospaced and serif designs have one width). Italic keeps the weight; the rounded design
+    /// has no italic (the caller slants it).
+    private static func systemFont(size: CGFloat, weight: Int, italic: Bool, stretch: Int?,
+                                   design: SystemDesign = .standard) -> CTFont {
         let w = NSFont.Weight(rawValue: nsWeight(css: weight))
         var font: NSFont
-        if let stretch, stretch != 5 {
+        if design != .standard {
+            font = NSFont.systemFont(ofSize: size, weight: w)
+            if let descriptor = font.fontDescriptor.withDesign(design.descriptorDesign) {
+                font = NSFont(descriptor: descriptor, size: size) ?? font
+            }
+        } else if let stretch, stretch != 5 {
             let width: NSFont.Width
             switch stretch {
             case ...2: width = .compressed
@@ -794,7 +864,8 @@ enum Fonts {
             font = NSFont.systemFont(ofSize: size, weight: w)
         }
         if italic {
-            let descriptor = font.fontDescriptor.withSymbolicTraits(.italic)
+            // Added to the font's own traits: `.italic` alone would drop `.bold` and give the regular italic.
+            let descriptor = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.italic))
             font = NSFont(descriptor: descriptor, size: size) ?? font
         }
         return font as CTFont
