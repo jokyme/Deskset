@@ -549,7 +549,7 @@ private func runWeatherSunTests(_ t: TestRunner) {
     }
 }
 
-// MARK: - Editor
+// MARK: - Editor and reports
 
 private func runWeatherEditorTests(_ t: TestRunner) {
     typealias S = EditorSchema
@@ -633,4 +633,59 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Weather: reports") {
+        // The places written in a skin, found without loading it (variables and @Include resolved).
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        @Include=#@#Place.inc
+        [Variables]
+        Where=Oslo, NO
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=#Where#
+        [Child]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Location=ignored
+        [S]
+        Measure=Plugin
+        Plugin=Plugins\\MacSun.dll
+        Location=#Home#
+        [Empty]
+        Measure=Plugin
+        Plugin=MacSun
+        [Other]
+        Measure=Calc
+        Location=Paris
+        """, files: ["Root/@Resources/Place.inc": "[Variables]\nHome=59.91,10.75\n"])
+        let found = WeatherReport.locations(inSkin: skin.fileURL, config: "Root\\Sub", skinsDirectory: skin.skinsDirectory)
+        t.equal(found.map(\.section), ["W", "S"])
+        t.equal(found.map(\.location), ["Oslo, NO", "59.91,10.75"])
+        t.equal(found.map(\.plugin), ["MacWeather", "MacSun"])
+        skin.close()
+        let d = PlaceDirectory(url: WeatherFixtures.placesFixture)
+        t.equal(WeatherReport.describe("Oslo, NO", directory: d), "Oslo, Oslo, Norway · 59.91, 10.75 · Europe/Oslo")
+        t.equal(WeatherReport.describe("auto", directory: d), "this Mac's location (not read by this report)")
+        t.check(WeatherReport.describe("59.95,10.8", directory: d).hasPrefix("near Oslo, Oslo, Norway · 59.95, 10.80"))
+        t.equal(WeatherReport.describe("Atlantis", directory: d), "not found in the place table")
+        t.equal(WeatherReport.describe("Oslo", directory: nil), "place search unavailable (no place table)")
+        guard let f = WeatherFixtures.forecast() else { return t.check(false, "fixture") }
+        let lines = WeatherReport.forecastLines(f, place: "Oslo", coordinate: WeatherFixtures.oslo,
+                                                zone: WeatherFixtures.zone("Europe/Oslo"), units: .metric,
+                                                now: WeatherFixtures.clock)
+        t.equal(lines.first, "Place:      Oslo (59.91, 10.75), Europe/Oslo")
+        t.check(lines.contains { $0.hasPrefix("Now (13:00): 16.3 °C, feels like 16.3 °C, Mostly clear") }, "\(lines)")
+        t.check(lines.contains("  Today       17.9 / 12.5 °C  Clear  0.0 mm  0 %"), "\(lines)")
+        t.check(lines.contains { $0.hasPrefix("Sun today:  sunrise 07:10, sunset 19:04") }, "\(lines)")
+        t.equal(lines.last?.hasPrefix("Source:     Based on data from MET Norway"), true)
+        let imperial = WeatherReport.forecastLines(f, place: "Oslo", coordinate: WeatherFixtures.oslo,
+                                                   zone: WeatherFixtures.zone("Europe/Oslo"), units: .imperial,
+                                                   now: WeatherFixtures.clock, hours: 0, days: 0)
+        t.check(imperial.contains { $0.contains("61.3 °F") && $0.contains("mph") }, "\(imperial)")
+        t.equal(WeatherReport.sunLine(latitude: 69.65, longitude: 18.96, zone: WeatherFixtures.zone("Europe/Oslo"),
+                                      now: WeatherFixtures.date("2026-06-21T12:00:00Z")),
+                "sunrise none (the sun stays up), sunset none (the sun stays up), daylight 24:00")
+    }
 }

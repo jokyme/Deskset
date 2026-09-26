@@ -4,7 +4,7 @@ import DesksetCore
 
 /// `Deskset --self-test Weather`: the app side of the weather plugins (docs/compat/weather.md) — the wiring, Location
 /// Services through `LocationCenter` (with a fake manager: nothing here asks macOS), the skin menu's credit, the SF
-/// Symbols the plugins name and several threads reading one place. No test reaches the
+/// Symbols the plugins name, several threads reading one place, and the command-line reports. No test reaches the
 /// network: forecasts come from the fixture in TestSkins/Plugins/@Resources/Weather through a fake transport.
 enum WeatherSelfTests {
     static func run(_ t: AppTestRunner) {
@@ -13,6 +13,7 @@ enum WeatherSelfTests {
         skinTests(t)
         symbolTests(t)
         threadTests(t)
+        commandLineTests(t)
     }
 
     // MARK: Fixtures
@@ -411,6 +412,69 @@ enum WeatherSelfTests {
             t.equal(service.peek(oslo)?.forecast?.steps.count, 86)
             for s in subscriptions { service.detach(s) }
             for skin in skins { skin.close() }
+        }
+    }
+
+    // MARK: Command line
+
+    static func commandLineTests(_ t: AppTestRunner) {
+        t.suite("App: Weather: --weather-report and the system report") {
+            typealias V = CommandLineTools.Validation
+            t.equal(CommandLineTools.validate(["P", "--weather-report"]), V.mode)
+            t.equal(CommandLineTools.validate(["P", "--weather-report", "--location", "Bergen", "--units", "metric"]), V.mode)
+            t.equal(CommandLineTools.validate(["P", "--weather-report", "--offline", "a.json", "--now", "x"]), V.mode)
+            t.equal(CommandLineTools.validate(["P", "--location", "Oslo"]),
+                    V.invalid("--location needs one of --render, --snapshot-ui, --weather-report"))
+            guard let fixtures, let binary = Bundle.main.executableURL else { return }
+            func run(_ args: [String]) -> (status: Int32, out: String, err: String) {
+                let p = Process()
+                p.executableURL = binary
+                p.arguments = args
+                let out = Pipe(), err = Pipe()
+                p.standardOutput = out
+                p.standardError = err
+                do { try p.run() } catch { return (-1, "", "\(error)") }
+                let o = out.fileHandleForReading.readDataToEndOfFile()
+                let e = err.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                return (p.terminationStatus, String(decoding: o, as: UTF8.self), String(decoding: e, as: UTF8.self))
+            }
+            let refused = run(["--weather-report", "--location", "auto"])
+            t.equal(refused.status, 2)
+            t.check(refused.err.contains("never reads this Mac's location"), refused.err)
+            let offline = run(["--weather-report", "--offline", fixtures.appendingPathComponent("metno-complete-oslo.json").path,
+                               "--now", "2026-09-26T11:59:31Z", "--units", "metric", "--location", "59.91,10.75"])
+            t.equal(offline.status, 0, offline.err)
+            t.check(offline.out.contains("(no request)"), offline.out)
+            t.check(offline.out.contains("Now (13:00): 16.3 °C"), offline.out)
+            t.check(offline.out.contains("Based on data from MET Norway"), offline.out)
+            t.equal(run(["--weather-report", "--units", "kelvin", "--offline", "x"]).status, 2)
+
+            // The system report's Weather section: only when a place is set up (or Location Services allowed); it
+            // never reads the location.
+            let root = t.temporaryDirectory("weather-report")
+            let skins = root.appendingPathComponent("Skins")
+            let config = skins.appendingPathComponent("Home/Weather")
+            try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+            try weatherSkin.write(to: config.appendingPathComponent("W.ini"), atomically: true, encoding: .utf8)
+            let state = root.appendingPathComponent("state.json")
+            try #"{"skins":{"Home\\Weather":{"file":"W.ini","active":true}}}"#.write(to: state, atomically: true,
+                                                                                    encoding: .utf8)
+            let table = fixtures.appendingPathComponent("places-fixture.tsv")
+            let lines = SystemReport.weatherLines(stateFile: state, skinsDirectory: skins, authorization: .notDetermined,
+                                                  placesTable: table, now: fixtureClock)
+            t.equal(lines.first, "Weather")
+            t.check(lines.contains { $0.contains("Home\\Weather [MeasureWeather] MacWeather: Location=Oslo, NO") }, "\(lines)")
+            t.check(lines.contains("    → Oslo, Oslo, Norway · 59.91, 10.75 · Europe/Oslo"), "\(lines)")
+            t.check(lines.contains { $0.hasPrefix("    → sunrise 07:10, sunset 19:04") }, "\(lines)")
+            t.check(lines.contains { $0.contains("Location Services:  not asked yet") }, "\(lines)")
+            let none = SystemReport.weatherLines(stateFile: root.appendingPathComponent("missing.json"),
+                                                 skinsDirectory: skins, authorization: .denied, placesTable: table)
+            t.equal(none, ["Weather: not set up (no active skin sets a weather location; Location Services: denied)"])
+            let allowed = SystemReport.weatherLines(stateFile: root.appendingPathComponent("missing.json"),
+                                                    skinsDirectory: skins, authorization: .authorizedAlways,
+                                                    placesTable: table)
+            t.equal(allowed.first, "Weather", "Location Services allowed: the section shows")
         }
     }
 }
