@@ -874,6 +874,12 @@ final class LayerNamer {
                 return LayerName(title: title, subtitle: "Picture · \(LayerNaming.inSentence(d.name))",
                                  sentence: "Picture showing the \(LayerNaming.inSentence(d.name)), \(size).", symbol: symbol)
             }
+            // An SF Symbol (`sf:cpu.fill`, Deskset extension): named by the symbol's words ("Cpu fill").
+            if let name = MacSymbol.symbolName(in: file), !name.isEmpty {
+                let words = LayerNaming.words(name.replacingOccurrences(of: ".", with: " "))
+                return LayerName(title: words.isEmpty ? name : LayerNaming.sentence(words), subtitle: "Picture · symbol",
+                                 sentence: "Symbol “\(name)”, \(size).", symbol: symbol)
+            }
             if !file.isEmpty {
                 let written = LayerNaming.fileName(file)
                 return LayerName(title: LayerNaming.humanizedFile(file), subtitle: "Picture",

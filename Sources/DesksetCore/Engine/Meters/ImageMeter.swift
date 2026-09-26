@@ -94,10 +94,13 @@ public final class ImageMeter: Meter {
         // Log a missing file once per path (only here: before the first update, bound measures are still empty).
         if imagePath != lastCheckedPath {
             lastCheckedPath = imagePath
-            // A symbol macOS does not have is noted as an issue when the meter is measured (`noteMissingSymbol`).
-            if let imagePath, !MacSymbol.isSymbolPath(imagePath), let host = skin.host,
-               host.imageSize(atPath: imagePath) == nil {
-                skin.log("[\(name)] Unable to open image: \(imagePath)", level: .warning)
+            if let imagePath, let host = skin.host, host.imageSize(atPath: imagePath) == nil {
+                // A symbol macOS does not have is a compatibility note, not a missing file.
+                if MacSymbol.isSymbolPath(imagePath) {
+                    noteMissingSymbol(imagePath)
+                } else {
+                    skin.log("[\(name)] Unable to open image: \(imagePath)", level: .warning)
+                }
             }
         }
     }
