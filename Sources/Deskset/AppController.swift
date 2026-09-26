@@ -7,6 +7,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let skinsDirectory: URL
     let layoutsDirectory: URL
     let backupsDirectory: URL
+    /// The bundled default skins (`DefaultSkins`, see `DefaultSkins`); nil when the app has none.
+    let defaultSkinsSource: URL?
+    /// `#SETTINGSPATH#`: where `Stationery.inc` is kept.
+    let settingsDirectory: URL
     /// False for headless use (`--self-test`, `--snapshot-ui`): skin windows are created but never shown.
     let presentsWindows: Bool
     /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
@@ -49,15 +53,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var sessionInactive = false
     private var updatesPaused: Bool { systemAsleep || screensAsleep || sessionInactive }
 
-    /// Bump when the bundled example skins change so they are re-copied.
-    private static let defaultSkinsVersion = 2
+    /// The config the Manage window shows on a first launch (the first one the first-run layout loaded).
+    private(set) var firstRunSelection = "Deskset\\Clock"
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
-         backupsDirectory: URL = Paths.backups, presentsWindows: Bool = true) {
+         backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true) {
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
         self.backupsDirectory = backupsDirectory
+        self.defaultSkinsSource = defaultSkinsSource
+        self.settingsDirectory = settingsDirectory
         self.presentsWindows = presentsWindows
         opensEditorInSteps = presentsWindows
         super.init()
@@ -81,6 +88,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         WeatherWiring.install()
         let firstRun = state.data.skins.isEmpty
         installDefaultSkinsIfNeeded()
+        ensureStationeryFile()
         setUpStatusItem()
         observeSystem()
         observeFonts()
@@ -94,7 +102,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pendingOpenURLs = []
         } else if firstRun {
             // First launch: show where things are (the menu bar icon can be hidden by macOS).
-            showManageWindow(selecting: "Deskset\\Clock", file: nil)
+            showManageWindow(selecting: firstRunSelection, file: nil)
         }
     }
 
@@ -202,42 +210,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if launched { installer.open(CodeEditorRouter.routeOpenedFiles(urls, app: self)) } else { pendingOpenURLs += urls }
     }
 
-    private func installDefaultSkinsIfNeeded() {
-        guard state.data.defaultSkinsInstalled < AppController.defaultSkinsVersion,
-              let source = Paths.defaultSkins,
-              let roots = try? FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil,
-                                                                        options: [.skipsHiddenFiles]) else { return }
-        let fm = FileManager.default
-        for root in roots {
-            let target = skinsDirectory.appendingPathComponent(root.lastPathComponent)
-            var previous: URL?
-            if fm.fileExists(atPath: target.path) {
-                // Keep the old copy (users may have edited it) next to the new one.
-                let backup = backupsDirectory.appendingPathComponent("\(root.lastPathComponent)-examples-v\(state.data.defaultSkinsInstalled)")
-                try? fm.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
-                try? fm.removeItem(at: backup)
-                if (try? fm.moveItem(at: target, to: backup)) != nil { previous = backup } else { try? fm.removeItem(at: target) }
-            }
-            do {
-                try fm.copyItem(at: root, to: target)
-            } catch {
-                Log.write("Could not install example skin \(root.lastPathComponent): \(error)", level: .error)
-                continue
-            }
-            // Carry over the user's choices (Theme, ClockHours, Volume…) for keys that still exist.
-            if let previous {
-                let inc = "@Resources/Variables.inc"
-                AppController.carryOverVariables(from: previous.appendingPathComponent(inc),
-                                                 to: target.appendingPathComponent(inc))
-            }
-        }
-        state.setDefaultSkinsInstalled(AppController.defaultSkinsVersion)
-        cachedLibrary = nil
-    }
-
-    private func loadActiveSkins() {
+    /// Loads the skins of the last session. On the very first launch (no skin has any state yet) the first-run
+    /// layout's skins at their places (`loadFirstRunLayout`); without one, the Clock alone.
+    func loadActiveSkins() {
         var active = state.activeConfigs
         if active.isEmpty && state.data.skins.isEmpty {
+            let loaded = loadFirstRunLayout()
+            if let first = loaded.first {
+                firstRunSelection = first
+                restack()
+                return
+            }
             state.update("Deskset\\Clock") { $0.file = "Clock.ini"; $0.active = true }
             active = state.activeConfigs
         }
@@ -1148,19 +1131,5 @@ final class CustomMenuAction: NSObject {
     init(controller: SkinController, action: String) {
         self.controller = controller
         self.action = action
-    }
-}
-
-extension AppController {
-    /// Copies [Variables] values of `old` into `new` for keys present in both (new keys and comments stay).
-    static func carryOverVariables(from old: URL, to new: URL) {
-        guard let oldText = try? TextDecoding.readFile(at: old),
-              let oldVars = IniDocument.parse(oldText).section(named: "Variables"),
-              let newText = try? TextDecoding.readFile(at: new),
-              let newVars = IniDocument.parse(newText).section(named: "Variables") else { return }
-        for entry in newVars.entries where !entry.key.lowercased().hasPrefix("@include") {
-            guard let value = oldVars.value(forKey: entry.key), value != entry.value else { continue }
-            try? IniWriter.writeValue(value, key: entry.key, section: "Variables", fileURL: new)
-        }
     }
 }

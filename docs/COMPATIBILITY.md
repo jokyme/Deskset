@@ -1096,6 +1096,18 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** none.
 - **Status:** emulated
 
+#### The default skins and the first launch
+- **Windows:** Rainmeter comes with its illustro skins, loaded when it is first installed.
+- **Mac:** Deskset's own original skins are copied into the Skins folder at the first launch and again when a newer
+  Deskset brings new ones (the old copy goes to `Backups`; settings the user changed in `@Resources/Variables.inc`
+  are carried over, while values the old version shipped give way to the new defaults). On the very first launch the
+  skins listed in `FirstRun.ini` beside the default skins load at their places (points from the top-left of the main
+  display's visible area); without it, the Clock alone. `#SETTINGSPATH#Stationery.inc` is made when missing, so the
+  default widgets can save what the user types (`!WriteKeyValue` writes only into a file that exists).
+- **Why:** a first desktop without permission prompts; settings and content that survive upgrades.
+- **Skin impact:** none; any skin may include and write `#SETTINGSPATH#Stationery.inc`.
+- **Status:** emulated
+
 ### 7.4 Config and app bangs
 
 #### When `!Refresh`, `!ActivateConfig`, `!DeactivateConfig` and `!ToggleConfig` happen

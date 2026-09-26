@@ -312,6 +312,27 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none.
 - Status: emulated
 
+### The default skins and the first launch
+- Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed
+  (<https://docs.rainmeter.net/manual/getting-started/>).
+- Mac (Deskset): Deskset comes with its own original skins (the folders in `DefaultSkins`, root config `Deskset`).
+  They are copied into the Skins folder at the first launch and again when a newer Deskset brings new ones (a version
+  number in the app): the old copy moves to `Backups/<Root>-examples-v<N>`, and the settings the user changed in its
+  `@Resources/Variables.inc` are written into the new one. A value the old version shipped and the user never changed
+  gives way to the new default (an old fixed 24-hour clock does not hold back a new "Automatic"); the app records what
+  each version ships for the next upgrade and knows what Deskset 0.1 shipped. On the very first launch (no skin has any
+  saved settings yet) the skins listed in `FirstRun.ini` next to the default skins load, in the order written, each
+  at `X`, `Y` points from the top-left corner of the main display's visible area (below the menu bar, beside the
+  Dock) and with the .ini named by `File`; without that file, or when none of its configs exists, the Clock loads
+  alone. The Manage window then opens on the first of them. `~/Library/Application Support/Deskset/Stationery.inc`
+  (`#SETTINGSPATH#Stationery.inc`) is made at every launch when it is missing (never overwritten): `!WriteKeyValue`
+  writes only into a file that exists, and the default widgets keep what the user types into them there (to-do items,
+  cities…), outside the skins that upgrades replace.
+- Why: product decision — a first desktop that asks for no permission, and settings and user content that survive
+  upgrades.
+- Skin impact: none for other skins; any skin may include `#SETTINGSPATH#Stationery.inc` and write into it.
+- Status: emulated (`FirstRun.ini` and `Stationery.inc`: Deskset extensions)
+
 ### Compatibility notes
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): things that work differently on the Mac (Windows-only measures and plugins, unsupported bangs, refused

@@ -30,6 +30,7 @@ enum AppSelfTest {
         componentLibraryTests(t)
         manageWindowTests(t)
         installTests(t)
+        DefaultSkinsSelfTests.run(t)
         reviewTests(t)
         mousePluginTests(t)
         sliderPluginTests(t)
