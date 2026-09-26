@@ -163,6 +163,7 @@ Also: content dragged outside the widget must not silently vanish.
 | Group | Group names |
 | ContextTitle / ContextAction | Right-click menu item |
 | OnRefreshAction / OnUpdateAction / OnCloseAction / OnFocusAction / OnUnfocusAction / OnWakeAction | When the widget opens / updates / closes / gets focus / loses focus / wakes from sleep |
+| MacOnAppearanceChangeAction (Deskset extension) | When the widget switches light / dark |
 | Default* keys | When someone else installs it |
 | AlwaysOnTop | Stacking |
 | Draggable | Lock position (inverted) |
@@ -187,6 +188,8 @@ Also: content dragged outside the widget must not silently vanish.
 | InlineSetting / InlinePattern | Styled parts |
 | Angle | Rotation |
 | SolidColor / SolidColor2 on a meter | Box behind it (colour / fades to) |
+| MacGlass / MacGlassCornerRadius / MacGlassTint (Deskset extension) | Glass / Glass corner radius / Glass tint |
+| `sf:` picture + MacSymbolSize / MacSymbolWeight / MacSymbolRendering (Deskset extension) | symbol + Symbol size / Symbol weight / Colors |
 | Padding | Space around it |
 | BevelType | Raised edge |
 | BarColor | Fill |
@@ -420,6 +423,7 @@ Where the numbers and words in your widget come from.          ← always shown,
 | | Network speed ▸ Download · Upload · Both | Download or upload speed |
 | | Disk space | Free or used space on a disk |
 | | Battery | Charge level and status |
+| | Temperature | How warm the chip is; also fans and power |
 | | Time and date | The current time or date |
 | | Time since startup | How long your Mac has been on |
 | | Sound | Loudness and spectrum of what's playing |
@@ -435,6 +439,10 @@ Where the numbers and words in your widget come from.          ← always shown,
 
 "Memory in use (Windows-style)" is hidden. Windows-only types appear only with Rainmeter Details on, marked "Doesn't work on a Mac".
 
+"Temperature" (added with the hardware sensors) is Deskset's own sensor data (`Plugin=MacSensors`, `Sensor=cpu`: the
+hottest CPU sensor). Its "Shows" menu picks any other sensor this catalogue knows: a core, the GPU, a fan, power, a
+clock, the battery.
+
 ---
 
 ## 6. Naming rules (Core `LayerNaming`)
@@ -449,8 +457,9 @@ The same name is used everywhere: rows, canvas tags, identity strip, breadcrumbs
 | Text with data | the rendered text ("“48 Hz”"); if empty, "{data name} (empty)" | "Text · {data name}" | "Text showing the lowest band frequency, written as “48 Hz”." |
 | Bar / Line graph / Bar graph / Gauge / Dial | "{data short} {kind noun}": "Left channel bar", "CPU graph", "CPU gauge". With no data, the kind ("Bar"). | "{Kind} · {data name}", or "{Kind} · not showing anything yet" | "Bar showing the left channel level, filling to the right." |
 | Picture with a file | the file name, humanised ("clock face") | "Picture" | "Picture “clock face.png”, 120 × 120." |
+| Picture of a symbol (`ImageName=sf:cpu.fill`, a Deskset extension) | the symbol's words ("Cpu fill") | "Picture · symbol" | "Symbol “cpu.fill”, 20 × 18." |
 | Picture from live data (`MeasureName`, or `%1` in ImageName) | the data's name when it names a picture ("Album cover"), else "{data short} picture" | "Picture · {data name}" | "Picture showing the album cover, 72 × 72." |
-| Colour block (Image, no file) | "{data short} marker" when X/Y follows data, else "Color block" | "Color block · moves with {data}" | "A 2 × 27 white block that moves with the peak level." |
+| Colour block (Image, no file) | "{data short} marker" when X/Y follows data, else "Color block" | "Color block · moves with {data}" | "A 2 × 27 white block that moves with the peak level." A see-through block with glass behind it (MacGlass) is a glass block: "A 130 × 104 glass block." |
 | Shape | "Background" (see §5.2); when a formula uses data, "{data short} bar" for a rectangle ("Memory bar"), "{data short} progress line" when it is at most 4 px tall, else "{data short} shape"; else the kind ("Rounded rectangle", "3 shapes") | "{kind} · whole widget" / "Shape" | "Rounded rectangle, 217 × 196, behind everything." |
 | Gauge / dial with no data that draws anyway (Solid=1, a line, a picture: a clock face, rim, tick) | the kind | "{Kind} · fixed shape" | "Gauge drawn as a fixed shape, 200 × 200." |
 | Group | "{N} {kind plural}" | "{Kind} · {data} {first}–{last}" | "16 bars showing sound bands 1–16, low to high." |
@@ -660,6 +669,7 @@ ON YOUR DESKTOP                                         Applies right away on th
 SIZE AND SPACING
   Size         [ Fits Its Content | Fixed Size ]    217 × 196 px now
   Behind everything   Nothing — the dark panel is the layer “Background”.  [Select It]
+  Glass        [None ▾]                          ← Mac only; corner radius and tint appear once it has glass
   Bar width    [  9 ] px          16 bars
   Bar gap      [  3 ] px          15 bars
   Bar height   [ 96 ] px          16 bars and “48 Hz”
@@ -757,6 +767,14 @@ This card is bound to the running widget's `SkinState` through `AppController.ch
 - **Behind everything.**
   - With a detected Background layer: the sentence plus [Select It].
   - Otherwise a pop-up: Nothing · A Color · A Picture (BackgroundMode 1 / 2 / 0 with its existing rows).
+  - A picture that is a symbol (`Background=sf:…`) adds its rows: Symbol size · Symbol weight · Colors.
+- **Glass** (MacGlass, Mac only; each label above its control, like Behind everything).
+  - A pop-up: None · Regular · Clear. Help: "Mac only: see-through glass behind the whole widget; the desktop shows
+    through, blurred".
+  - Once the widget has glass: "Glass corner radius [ 0 ] px" and "Glass tint", a colour control (placeholder "none",
+    help "A color the glass leans toward").
+  - Layers have the same three rows: in Box Behind It for texts, pictures and shapes, under More for bars and graphs.
+  - A literal tint is one of the widget's colours (§8.1.1): "Widget glass", or "Glass behind {layer}" for a layer's.
 - **Shared sizes** list every non-colour, non-font variable this widget's layers use in X/Y/W/H/sizes.
   - Humanised names: camelCase split, "W"/"H" expanded ("BarW" → "Bar width").
   - The usage caption comes from ValueUsages.
@@ -775,7 +793,11 @@ This card is bound to the running widget's `SkinState` through `AppController.ch
     - "☑ Tight text boxes", caption "Text boxes hug the letters. Recommended."
   - **Dragging:** "Edges that don't drag the widget   Left [0] Top [0] Right [0] Bottom [0] px"
   - **Right-click menu:** "Extra items in the widget's right-click menu" [+ Add Menu Item]. Each existing item reads as a sentence: "“Open Activity Monitor” → Opens “Activity Monitor”", with Edit.
-  - **When the widget…:** Opens · Updates · Closes · Gets focus · Loses focus · Wakes from sleep, each "[No action ▾]", or the action summary with "Edit in Code ›" when it can't be shown as a choice.
+  - **When the widget…:** Opens · Updates · Closes · Gets focus · Loses focus · Wakes from sleep · Switches light / dark, each "[No action ▾]", or the action summary with "Edit in Code ›" when it can't be shown as a choice.
+    - **Switches light / dark** (`MacOnAppearanceChangeAction`, a Deskset extension; tooltip "When macOS switches between light and dark mode or the accent color changes"). Its pop-up says what the widget does now:
+      - Not written, in a widget that follows the Mac's appearance (it uses a `#MAC…#` appearance variable): "Reload the widget", with "No action" (writes it empty).
+      - Not written, in any other widget: "No action (it doesn't use Mac colors)", with "Reload the widget" (writes `[!Refresh]`).
+      - Written empty: "No action", with "Reload the widget" (removes the option in a widget that reloads anyway, else writes `[!Refresh]`).
   - **Looks:** "Band look · 16 bars ›", "Level look · 2 bars ›", "Small text look · 5 texts ›". Clicking one selects its users.
   - **When someone else installs it** (the Default* keys):
     - Caption: "Used the first time someone installs this widget. To change it on this Mac, use On Your Desktop."
