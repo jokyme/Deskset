@@ -879,7 +879,8 @@ final class LayerNamer {
                 return LayerName(title: LayerNaming.humanizedFile(file), subtitle: "Picture",
                                  sentence: "Picture “\(written)”, \(size).", symbol: symbol)
             }
-            let color = LayerNaming.colorName(m.solidColor)
+            // A see-through block with MacGlass is glass ("A 130 × 104 glass block").
+            let color = m.glass != nil && m.solidColor.a == 0 ? "glass" : LayerNaming.colorName(m.solidColor)
             if let followed = followedData(of: m) {
                 if isCalc(followed), formulaReferences(followed).isEmpty {
                     // Placed by a formula that reads no other data: a counter (it reads itself) moves the block on

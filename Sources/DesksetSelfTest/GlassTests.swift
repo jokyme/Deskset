@@ -362,6 +362,52 @@ func runGlassTests(_ t: TestRunner) {
         t.equal(host.logs.filter { $0.contains("meters with MacGlass") }.count, 1)
     }
 
+    t.suite("Glass: the editor lists the options the engine reads") {
+        typealias S = EditorSchema
+        for type in S.meterTypes {
+            let groups = S.meterGroups(type)
+            guard let style = S.property("MacGlass", in: groups) else {
+                t.check(false, "\(type): MacGlass")
+                continue
+            }
+            t.equal(style.label, "Glass")
+            t.equal(style.defaultValue, "None")
+            if case .choice(let choices, let kind) = style.kind {
+                t.equal(choices.map(\.value), ["None"] + GlassStyle.allCases.map(\.rawValue), "\(type): every style")
+                t.equal(kind, .popup)
+            } else {
+                t.check(false, "\(type): a menu")
+            }
+            t.equal(S.property("MacGlassCornerRadius", in: groups)?.label, "Glass corner radius")
+            t.equal(S.property("MacGlassTint", in: groups)?.kind, .color)
+            t.equal(S.property("MacGlassTint", in: groups)?.label, "Glass tint")
+            let radius = S.property("MacGlassCornerRadius", in: groups)!
+            t.check(!S.isVisible(radius, in: groups, values: { _ in nil }), "\(type): the radius only with glass")
+            t.check(S.isVisible(radius, in: groups, values: { $0 == "MacGlass" ? "clear" : nil }), "\(type): any case")
+            // The engine reads what the editor writes.
+            let (skin, _) = try makeSkin(t, "[M]\nMeter=\(type)\nW=40\nH=30\nMacGlass=Clear\nMacGlassCornerRadius=7\n"
+                                        + "MacGlassTint=1,2,3,4\n")
+            skin.update()
+            t.equal(skin.meter(named: "M")?.glass, GlassOptions(style: .clear, cornerRadius: 7, tint: RGBA(r: 1, g: 2, b: 3, a: 4)),
+                    "\(type): read by the engine")
+        }
+        t.equal(S.property("MacGlass", in: S.meterGroups("String"))?.level, .essential, "shown in Box Behind It")
+        t.equal(S.property("MacGlassCornerRadius", in: S.meterGroups("Shape"))?.placeholder, "the rectangle's corners")
+        let widget = S.skinGroups
+        t.equal(S.property("MacGlass", in: widget)?.label, "Glass")
+        t.check(S.keys(widget).isSuperset(of: ["macglass", "macglasscornerradius", "macglasstint"]))
+        let (skin, _) = try makeSkin(t, "[Rainmeter]\nMacGlass=Regular\nMacGlassTint=10,20,30\n[M]\nMeter=Image\nW=10\nH=10\n")
+        skin.update()
+        t.equal(skin.glassRegions.first?.tint, RGBA(r: 10, g: 20, b: 30, a: 255), "read by the engine in [Rainmeter]")
+        // The layer list calls a see-through block with glass what it is.
+        let (named, _) = try makeSkin(t, "[T]\nMeter=String\nX=200\nText=Hi\n[G]\nMeter=Image\nX=10\nY=10\nW=130\nH=104\n"
+                                     + "MacGlass=Clear\n[C]\nMeter=Image\nW=4\nH=4\nSolidColor=255,255,255\nMacGlass=Clear\n")
+        named.update()
+        t.equal(named.meter(named: "G").map { LayerNaming.layer($0, in: named).sentence }, "A 130 × 104 glass block.")
+        t.equal(named.meter(named: "C").map { LayerNaming.layer($0, in: named).sentence }, "A 4 × 4 white block.",
+                "a colored block keeps its color's name")
+    }
+
     t.suite("Glass: skins without glass never tell the host") {
         let (skin, host) = try makeSkin(t, "[A]\nMeter=String\nText=Hi\n[B]\nMeter=Shape\nShape=Rectangle 0,0,10,10,2\n")
         skin.update()

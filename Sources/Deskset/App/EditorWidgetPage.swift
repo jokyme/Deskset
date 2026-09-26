@@ -1194,6 +1194,7 @@ extension InspectorWindowController {
                                              EditorStyle.spacer()], spacing: 5))
         }
         views.append(behindEverything(skin, rows: rainmeter))
+        views.append(widgetGlass(rows: rainmeter))
         // Shared sizes: one row each, its name and who uses it over its value.
         let sizes = index.sharedSizes().filter { $0.variableName != nil }
         var note = "A shared size changes every layer that uses it."
@@ -1304,6 +1305,24 @@ extension InspectorWindowController {
             views.append(item.control)
         }
         let stack = EditorStyle.vstack(views, spacing: 4)
+        for v in views { v.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true }
+        return stack
+    }
+
+    /// "Glass" (MacGlass, Mac only): glass behind the whole widget, then its corners and tint once it has glass —
+    /// each label above its control, like "Behind everything".
+    func widgetGlass(rows rainmeter: [Row]) -> NSView {
+        let groups = EditorSchema.skinGroups
+        let lookup = valueLookup(rainmeter)
+        var views: [NSView] = []
+        for p in EditorSchema.visibleGroups(groups, values: lookup).flatMap(\.properties)
+            where ["MacGlass", "MacGlassCornerRadius", "MacGlassTint"].contains(p.key) {
+            let item = propertyRow(p, section: "Rainmeter", row: row(for: p, in: rainmeter), groups: groups)
+            views.append(stackedLabel(p.label, key: p.key))
+            views.append(item.control)
+        }
+        let stack = EditorStyle.vstack(views, spacing: 4)
+        stack.identifier = NSUserInterfaceItemIdentifier("widget-glass")
         for v in views { v.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true }
         return stack
     }
