@@ -687,7 +687,8 @@ public final class SysInfoMeasure: Measure {
 /// - `Lifetime`: seconds of battery time left, the string formatted with `Format` (default `%H:%M`, Time measure
 ///   syntax); -1 / "Unknown" while unknown or on AC power.
 /// - `Percent` (default): battery charge 0…100 (100 without a battery).
-/// - `Hz` / `MHz`: rated CPU frequency when the system reports one, else 0.
+/// - `Hz` / `MHz`: rated CPU frequency when the system reports one (Intel Macs), else the CPU's current clock from the
+///   hardware sensors (`frequency.cpu`, Apple silicon), else 0.
 public final class PowerPluginMeasure: Measure {
     private var state = "PERCENT"
     private var format = "%H:%M"
@@ -736,12 +737,21 @@ public final class PowerPluginMeasure: Measure {
             rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current)
             return seconds
         case "HZ":
-            return skin.system.cpuFrequency() ?? 0
+            return cpuHertz()
         case "MHZ":
-            return (skin.system.cpuFrequency() ?? 0) / 1_000_000
+            return cpuHertz() / 1_000_000
         default:
             return battery?.percent ?? 100
         }
+    }
+}
+
+extension PowerPluginMeasure {
+    /// The rated frequency, else the sensors' current clock of the faster CPU cluster; 0 when neither is known.
+    func cpuHertz() -> Double {
+        if let rated = skin.system.cpuFrequency() { return rated }
+        if let mhz = HardwareSensors.source(for: skin)?.sensorValue(SensorKeys.frequencyCPU) { return mhz * 1_000_000 }
+        return 0
     }
 }
 

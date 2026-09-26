@@ -65,7 +65,8 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 ## 已知限制
 
 - 只有 Windows 版的插件（DLL）和皮肤要启动的 Windows 程序无法在 Mac 上运行。皮肤照样能载入，Compatibility Notes 会列出缺了什么。
-- 暂不支持硬件传感器（温度、风扇转速）。
+- 硬件传感器（温度、风扇、功耗、频率）无需特殊权限即可读取，但苹果没有公开文档：数值是近似值，目前只在 Apple 芯片（M4）上
+  测试过。在“终端”里运行 `/Applications/Deskset.app/Contents/MacOS/Deskset --system-report` 可列出你的 Mac 报告的所有传感器。
 - Windows 字体会换成相近的 Mac 字体，文字宽度可能略有差别。
 - Deskset 暂未经过 Apple 公证（见「安装」）。
 

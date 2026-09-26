@@ -182,11 +182,11 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Windows (Rainmeter): version history 3.0: "Fixed an issue with Direct2D where a string meter with an empty string
   would still have a width and height" — an empty string has no size.
 - Mac (Deskset): an empty text has no size — except when it is empty only because a bound measure has no data on the
-  Mac (a Windows plugin DLL no module provides, such as MSI Afterburner, a registry value that is not emulated, a
-  SysInfoType without a Mac answer; `Measure.valueUnavailable`):
+  Mac (a Windows plugin DLL no module provides, such as HWiNFO, a registry value that is not emulated, a SysInfoType
+  without a Mac answer, a MacSensors sensor without a reading; `Measure.valueUnavailable`):
   then the meter keeps the height of one line of its font (width 0), because on Windows the value would be there.
-  Evidence: FluentDash11 CPU / GPU panels, where rows stacked with `Y=5R` below a value from MSI Afterburner (and,
-  before the core plugins existed, CoreTemp) collapsed onto each other. Measures of other modules keep the
+  Evidence: FluentDash11 CPU / GPU panels, where rows stacked with `Y=5R` below a value from MSI Afterburner and
+  CoreTemp (before Deskset provided them) collapsed onto each other. Measures of other modules keep the
   Rainmeter rule unless they report `valueUnavailable`.
 - Judgment: the round's brief said DirectWrite measures an empty layout as one line; the manual's history entry says
   Rainmeter gives an empty string no size, so that rule is kept for real empty strings.
@@ -544,7 +544,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   fire (no default documented).
 - Loop: always moves from StartValue towards EndValue by |Increment|.
 - Time: numbers are local wall-clock seconds since 1601 in whole seconds.
-- PowerPlugin: Percent 100 and ACLine 1 on Macs without a battery; Lifetime -1 / "Unknown" while unknown.
+- PowerPlugin: Percent 100 and ACLine 1 on Macs without a battery; Lifetime -1 / "Unknown" while unknown; Hz / MHz
+  are the rated clock on Intel Macs and the faster CPU cluster's current clock on Apple silicon (the hardware
+  sensors' `frequency.cpu`, plugins.md "Hardware sensors").
 - Process: `.exe` is dropped from ProcessName (`Firefox.exe` → Firefox); Mac process names often differ from the
   Windows executable names.
 - Why: judgment calls where the manual is silent.
@@ -731,8 +733,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   folder its variables (fonts, sizes) are undefined. Installer's business, not the engine's.
 - FluentDash11 Network: `SysInfoData=#Adapter0#` names a variable the skin never defines; on the Mac the adapter
   rows are empty and the rows below them overlap (a SysInfo value that is empty is not "unavailable data").
-- FluentDash11 CPU / GPU: temperatures, clocks and fan speeds come from CoreTemp (0 until sensor support, see
-  plugins.md) and from the third-party MSI Afterburner DLL (not provided: empty rows that keep their height, §2);
-  total VRAM reads 0 (Registry, §4). The FrostedGlass blur is media-ui.md's.
+- FluentDash11 CPU / GPU: temperatures, clocks and fan speeds come from CoreTemp and from the third-party MSI
+  Afterburner DLL, both read from the Mac's hardware sensors now (plugins.md "Hardware sensors", "MSIAfterburner");
+  "VRAM Speed" is 0 on Apple silicon and total VRAM reads 0 (Registry, §4). The FrostedGlass blur is media-ui.md's.
 - Lua-driven layouts (Enigma's Taskbar skin widths, calendars, notes, readers) run their scripts now (lua.md); their
   first update sees provisional meter geometry (§1).

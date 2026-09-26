@@ -2,8 +2,11 @@
 
 Rainmeter's bundled plugins that need no Apple UI or media framework, implemented in `DesksetCore`
 (`Sources/DesksetCore/Engine/Plugins/`): ActionTimer, CoreTemp, AdvancedCPU, Ping, RunCommand, Quote, FileView,
-FolderInfo, RecycleManager, UsageMonitor, PerfMon, ResMon, SpeedFan, WindowMessage and VirtualDesktops, and the
-third-party Mouse plugin with Slider, its version 2. AudioLevel, Win7Audio, AppVolume (audio.md) and NowPlaying,
+FolderInfo, RecycleManager, UsageMonitor, PerfMon, ResMon, SpeedFan, WindowMessage and VirtualDesktops, the
+third-party Mouse plugin with Slider, its version 2, a stand-in for the third-party MSIAfterburner plugin, and
+Deskset's own MacSensors. The hardware sensors CoreTemp, SpeedFan, MSIAfterburner, MacSensors and some Performance
+Monitor counters read come from the app (`Sources/Deskset/Sensors/`, see [Hardware sensors](#hardware-sensors)).
+AudioLevel, Win7Audio, AppVolume (audio.md) and NowPlaying,
 iTunes, WebNowPlaying, MediaKey, WiFiStatus, InputText, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor
 (media-ui.md) need AppKit / Core Audio / CoreWLAN: the app implements and registers them at startup. The core plugins
 here are registered by DesksetCore itself (`Skin.registerBuiltInExtensions` → `CorePlugins.register()`), so they load
@@ -15,7 +18,8 @@ Sources: the manual pages under https://docs.rainmeter.net/manual/plugins/ (and 
 https://docs.rainmeter.net/manual/measures/recyclemanager/ and https://docs.rainmeter.net/manual/measures/ (plugin
 measure ranges). VirtualDesktops is not in the manual; only its option names as seen in public forum posts were used.
 The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mouse](#mouse-third-party) and
-[Slider](#slider-third-party)). Nothing was taken from Rainmeter's or any plugin's source code.
+[Slider](#slider-third-party)). For MSIAfterburner only the option and data source names seen in public skins were
+used. Nothing was taken from Rainmeter's or any plugin's source code.
 
 ## General
 
@@ -26,7 +30,7 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
 - Mac (Deskset): every form is accepted, case-insensitively: ActionTimer, CoreTemp, AdvancedCPU, PingPlugin / Ping,
   RunCommand, QuotePlugin / Quote, FileView, FolderInfo, RecycleManager (plugin and measure), UsageMonitor,
   PerfMon / PerfMonPlugin, ResMon, SpeedFanPlugin / SpeedFan, WindowMessagePlugin / WindowMessage, VirtualDesktops,
-  Mouse, Slider. The plugin forms of the engine's own measures — `Plugin=SysInfo`, `Process`, `WebParser` (former
+  Mouse, Slider, MSIAfterburner, MacSensors. The plugin forms of the engine's own measures — `Plugin=SysInfo`, `Process`, `WebParser` (former
   plugins) and `PowerPlugin` — are those built-in measures (engine.md §4). A name no module provides is a Windows
   plugin: 0 / "" with a compatibility note; the app's plugin names get a neutral "provided by the Deskset app" note
   instead when DesksetCore runs without the app (engine.md §3).
@@ -39,11 +43,11 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
   MaxValue "dynamically, to the smallest and largest values the measure has been since the skin was loaded"
   (https://docs.rainmeter.net/manual/measures/ "Percentage"); CoreTemp and SpeedFan say MinValue / MaxValue "must be
   added" for percentages.
-- Mac (Deskset): every core plugin measure whose number changes — CoreTemp, SpeedFan, AdvancedCPU, UsageMonitor,
-  PerfMon, ResMon, Ping, RunCommand, FolderInfo, FileView, RecycleManager — tracks its observed range unless MinValue /
-  MaxValue are set (the range starts at 0…1 and only widens, like the engine's Calc / Net / WebParser / Script
-  measures). ActionTimer, Quote, WindowMessage, Mouse and Slider (always 0) and VirtualDesktops keep the fixed 0…1
-  range.
+- Mac (Deskset): every core plugin measure whose number changes — CoreTemp, SpeedFan, MSIAfterburner, AdvancedCPU,
+  UsageMonitor, PerfMon, ResMon, Ping, RunCommand, FolderInfo, FileView, RecycleManager — tracks its observed range
+  unless MinValue / MaxValue are set (the range starts at 0…1 and only widens, like the engine's Calc / Net /
+  WebParser / Script measures). ActionTimer, Quote, WindowMessage, Mouse and Slider (always 0) and VirtualDesktops
+  keep the fixed 0…1 range. MacSensors has a range per kind of sensor (see [MacSensors](#macsensors-deskset)).
 - Why: judgment — the manual describes this for plugin measures in general.
 - Skin impact: bars bound to e.g. CoreTemp Load without MaxValue=100 scale to the largest value seen, as on Windows.
 - Status: identical
@@ -141,16 +145,19 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
   (https://docs.rainmeter.net/manual/plugins/coretemp/).
 - Mac (Deskset): no Core Temp app exists; values come from the Mac itself:
   `Load` (CoreTempIndex 0-based) = per-core CPU usage (same source as `Measure=CPU Processor=N+1`);
-  `CpuName` = the processor brand string ("Apple M4 Pro"); `CpuSpeed` / `CoreSpeed` = MHz from a sensor source, else
-  the rated frequency when macOS reports one (Intel), else 0;
-  `MaxTemperature` (default), `Temperature`, `TjMax`, `Vid`, `Tdp`, `Power` = from a `HardwareSensorSource`;
-  `BusSpeed` = 100 and `BusMultiplier` / `CoreBusMultiplier` = MHz / 100 only when a sensor source reports
-  frequencies, else 0.
-- Why: macOS has no public temperature / voltage API (SMC keys differ per chip and need privileges); Apple Silicon has
-  no front-side bus.
-- Skin impact: load bars and the CPU name work; temperatures read 0 (logged once) until sensor support ships (Pro).
-  An unknown CoreTempType is read as MaxTemperature (logged once).
-- Status: partial
+  `CpuName` = the processor brand string ("Apple M4 Pro"); the rest from the [hardware sensors](#hardware-sensors):
+  `MaxTemperature` (default) = `cpu` (the hottest CPU sensor), `Temperature` = `cpu.core.N+1` (on Apple silicon the
+  core's cluster, see below), `TjMax` = a nominal 110 °C on Apple silicon and 100 °C on Intel Macs, `Power` =
+  `power.cpu` (Apple silicon), `Vid` = `voltage.cpu` (Apple silicon), `CpuSpeed` = `frequency.cpu` and `CoreSpeed` =
+  `frequency.cpu.N+1` (Apple silicon; on Intel Macs the rated frequency), `Tdp` = 0 (Apple publishes none);
+  `BusSpeed` = 100 and `BusMultiplier` / `CoreBusMultiplier` = MHz / 100 when the clock comes from the sensors, else 0.
+  A value this Mac does not report is 0, logged once (not while the sensors are still being read for the first time).
+- Why: Apple silicon has no front-side bus, publishes no junction limit and no TDP; the rest has Mac equivalents.
+- Skin impact: temperatures, clocks and power show real values, one update after the skin loads. Per-core
+  temperatures on Apple silicon repeat their cluster's value. Skins that show "distance to TjMax" can go slightly
+  negative on Apple silicon under full load (111 °C was seen on an M4 Pro). An unknown CoreTempType is read as
+  MaxTemperature (logged once).
+- Status: emulated
 
 ### Units
 - Windows (Rainmeter): Celsius unless Core Temp is set to Fahrenheit.
@@ -164,11 +171,15 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
 ### Data source
 - Windows (Rainmeter): reads the SpeedFan application: `SpeedFanType` Temperature / Fan / Voltage, `SpeedFanNumber`,
   `SpeedFanScale` C / F / K (https://docs.rainmeter.net/manual/plugins/speedfan/).
-- Mac (Deskset): the same options index the lists of a `HardwareSensorSource` (temperatures °C converted to F / K,
-  fans in RPM, voltages in V); without a sensor source the value is 0 (logged once).
-- Why: no SpeedFan on the Mac; no public sensor API.
-- Skin impact: 0 until sensor support ships.
-- Status: partial
+- Mac (Deskset): the same options read the [hardware sensors](#hardware-sensors) in a fixed order, so a number means
+  the same on every Mac: temperatures 0 `cpu`, 1 `gpu`, 2 `soc`, 3 `battery`, 4 `ssd`, 5 `cpu.performance`,
+  6 `cpu.efficiency`, then the cores (7 = core 1…); fans 0, 1… = fan 1, 2… (RPM); voltages 0 `voltage.cpu`,
+  1 `battery.voltage`. A sensor the Mac lacks reads 0 in its place; a number past the end of the list is 0 (logged
+  once). Temperatures are converted to F / K.
+- Why: no SpeedFan on the Mac; SpeedFan's own numbering depends on the PC's chips (judgment: a fixed Mac order).
+- Skin impact: fan and temperature displays work; a skin set up for a PC's sensor numbers may show a different sensor
+  at a given number (set `SpeedFanNumber` to the order above).
+- Status: emulated
 
 ## AdvancedCPU (deprecated)
 
@@ -220,8 +231,9 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
     `IO … Operations/sec`, `IO Other Bytes/sec`, `Creating Process ID` = 0. Instances: process names plus `Idle`,
     `System` (other users' processes, see AdvancedCPU) and `_Total`.
   - Processor / Processor Information: `% Processor Time` / `% Processor Utility`, `% Idle Time`, `% User Time`,
-    `% Privileged Time` from per-core ticks (instances `0`…`N-1` / `0,0`…, `_Total`); `Processor Frequency` (MHz, 0 on
-    Apple Silicon without a sensor source); `% Processor Performance` / `% of Maximum Frequency` = 100; interrupt / DPC /
+    `% Privileged Time` from per-core ticks (instances `0`…`N-1` / `0,0`…, `_Total`); `Processor Frequency` (MHz, the
+    fastest cluster's clock on Apple silicon, the rated clock on Intel); `% Processor Performance` /
+    `% of Maximum Frequency` = 100; interrupt / DPC /
     C-state counters = 0.
   - Memory: `Available Bytes / KBytes / MBytes` (total − used, as the Memory measures count used), `Committed Bytes`
     (used + swap used), `Commit Limit` (RAM + swap), `% Committed Bytes In Use`, `Page Faults/sec` (visible
@@ -234,14 +246,16 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
     time / transfer counters = 0.
   - System: `Processes`, `Threads`, `System Up Time`, `Processor Queue Length` (1-minute load average),
     `Context Switches/sec`, `System Calls/sec`, `File Read / Write Bytes/sec`.
-  - Thermal Zone Information: `Temperature` (K), `High Precision Temperature` (0.1 K) from a sensor source.
-  - GPU Engine `Utilization Percentage` (Alias=GPU): one instance "GPU" from a sensor source; GPU Process / Adapter
-    Memory (Alias=VRAM, VRAMSHARED): no instances → 0.
+  - Thermal Zone Information: `Temperature` (K), `High Precision Temperature` (0.1 K): one instance `\_TZ.CPU`, the
+    hardware sensors' `cpu`.
+  - GPU Engine `Utilization Percentage` (Alias=GPU): one instance "GPU", the whole GPU's usage (`gpu.usage`; macOS
+    does not count GPU time per process); GPU Process / Adapter Memory (Alias=VRAM, VRAMSHARED): no instances → 0.
   - Anything else → 0, logged once and listed as a compatibility issue.
 - Why: macOS has no Performance Monitor; these are the Darwin equivalents (host_processor_info, proc_pidinfo,
   proc_pid_rusage, sysctl, the app's memory / network / disk readings).
-- Skin impact: CPU / RAM / IO top-process lists, per-core loads, network and memory counters work; GPU needs sensor
-  support; exotic counters read 0.
+- Skin impact: CPU / RAM / IO top-process lists, per-core loads, network, memory, CPU temperature and GPU usage
+  counters work (a "top GPU process" list shows one entry, "GPU"); a thermal zone other than `\_TZ.CPU` and exotic
+  counters read 0.
 - Status: partial
 
 ### Index, Name, lists, Rollup, Percent, RawValue, PIDToName
@@ -573,6 +587,116 @@ The Mouse plugin is documented on its own wiki pages, and so is Slider (see [Mou
 - Why: macOS Spaces have no public API.
 - Skin impact: desktop pagers show one desktop.
 - Status: not supported
+
+## Hardware sensors
+
+These notes cover what CoreTemp, SpeedFan, MSIAfterburner, MacSensors and the thermal / GPU counters of UsageMonitor
+and PerfMon read. Windows skins get these values from other programs (Core Temp, SpeedFan, MSI Afterburner, HWiNFO);
+Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 rules and Intel Macs are untested.
+
+### Where the values come from
+- Windows (Rainmeter): the plugins read the programs' shared memory; the manual documents only the plugin options.
+- Mac (Deskset): one sensor service in the app reads, without privileges and strictly read-only:
+  - the System Management Controller (SMC): temperatures, fans, whole-Mac power. Only three read commands (read a
+    key, read the key at an index, read a key's type) can be sent; there is no code that writes a key, so no fan or
+    other setting can change;
+  - IOReport (Apple silicon): CPU, GPU, Neural Engine and memory power from their energy counters, and clocks from how
+    long each core and the GPU spent in each clock state (the states' clocks and voltages come from the device
+    tree's power manager tables);
+  - the HID temperature sensors, when the SMC has no CPU temperatures;
+  - the graphics accelerators' statistics (GPU usage, GPU memory in use) and the battery's registry entry (health,
+    cycles, voltage, current, temperature).
+  Private functions are looked up at run time; when one is missing (a future macOS, a virtual machine) that sensor
+  is simply absent.
+- Why: macOS has no public API for any of this. Monitoring apps read the same sources.
+- Skin impact: none; `Deskset --system-report` lists every sensor of this Mac with its reading and source, and
+  `!CommandMeasure <MacSensors measure> List` logs them.
+- Status: emulated
+
+### Reading lazily, in the background, one update late
+- Windows (Rainmeter): the programs sample on their own schedule; plugins read the latest values.
+- Mac (Deskset): only the groups of sensors some skin asks for are read (temperatures, fans, whole-Mac power,
+  IOReport, GPU statistics, battery), on a background queue, at most about once a second; a group nobody asked for
+  in 30 s is no longer read (the IOReport subscription is released). A question is answered from the last reading,
+  so the first update after a skin loads sees no value (0, an empty string, no "missing" note) and the next one sees
+  it. The first reading of the SMC's key list takes about a second; the list is kept in the user's Caches folder per
+  Mac model and macOS build. Reading the temperatures costs about 3 ms of CPU a second.
+- Why: sensor reads can take tens of milliseconds; skins must never wait for them.
+- Skin impact: values appear one update after load; a skin with `UpdateDivider=-1` that reads a sensor only once
+  shows 0 (update it again with a bang).
+- Status: emulated
+
+### Catalog keys
+- Windows (Rainmeter): each program has its own names and numbers.
+- Mac (Deskset): one catalog with stable keys, numbered from 1: temperatures `cpu` (hottest CPU sensor),
+  `cpu.performance`, `cpu.efficiency`, `cpu.core.N`, `gpu`, `soc` (the rest of the chip; the chipset on Intel),
+  `battery`, `ssd`; fans `fan.N`, `fan.N.min`, `fan.N.max`, `fan.N.target` (RPM); power `power.system` (whole Mac),
+  `power.adapter`, `power.cpu`, `power.gpu`, `power.ane` (Neural Engine), `power.dram` (W); clocks `frequency.cpu`
+  (the faster cluster), `frequency.cpu.performance`, `frequency.cpu.efficiency`, `frequency.cpu.N`, `frequency.gpu`,
+  `frequency.gpu.memory` (MHz); `voltage.cpu` (V); `gpu.usage`, `gpu.usage.renderer`, `gpu.usage.tiler` (%),
+  `gpu.memory` (bytes), `gpu.fan` (%); `battery.health` (%), `battery.cycles`, `battery.voltage` (V),
+  `battery.current` (A, negative while discharging). A Mac has only some of them (a MacBook Air has no fans, a Mac
+  mini no battery, an Intel Mac no IOReport power or clocks).
+- Why: judgment — one vocabulary for every plugin and for new skins.
+- Skin impact: see MacSensors.
+- Status: Deskset extension
+
+### Approximations
+- Windows (Rainmeter): per-core temperatures, package power and clocks come from the CPU's own registers.
+- Mac (Deskset):
+  - Apple does not document which SMC key is which: keys are grouped by name (on an M4: `Tp…` performance cores,
+    `Te…` efficiency cores, `Tg…` GPU, `Ts…` chip, `TB…` battery, `TH…` SSD; M1 / M2 share one CPU prefix, M3 uses
+    `Tf…`; Intel `TC…`, `TG…`, `TPCD`) and each value is the hottest valid key of its group;
+  - no key names a single core on Apple silicon: `cpu.core.N` is the hottest sensor of the core's cluster (the core's
+    type comes from the device tree); where the clusters share a prefix (M1, M2), it is `cpu`;
+  - readings outside 10–130 °C, and exactly 40.0 °C on Apple silicon CPU keys, are what a powered-down cluster
+    reports and are ignored; while every sensor of a CPU cluster or of the GPU reads "powered down" (the GPU does for
+    minutes when idle), the unit reports the chip's temperature (`soc`); a sensor that loses its reading keeps its
+    last value for up to 10 s;
+  - clocks are averages over the last interval, weighted by the time spent in each clock state while running; a core
+    or GPU that did not run reports its lowest clock (not 0); `voltage.cpu` is the voltage the running cores asked
+    for, on average;
+  - `battery.health` = full-charge capacity ÷ design capacity (System Settings rounds differently);
+  - TjMax is nominal (110 °C Apple silicon, 100 °C Intel), TDP is not reported.
+- Why: no public documentation; the rules follow how the readings behave at idle and under load on an M4 Pro.
+- Skin impact: values follow the load; they can differ by a few degrees from other monitoring apps, which choose
+  their own keys. Per-core temperature bars of one cluster move together.
+- Status: emulated
+
+## MSIAfterburner (third-party)
+
+### Data sources
+- Windows (Rainmeter): a third-party plugin that reads MSI Afterburner's monitoring (`DataSource=` the name
+  Afterburner shows). Only its use in public skins was looked at (`DataSource=GPU temperature`, `Fan speed`,
+  `Core clock`, `Memory clock`, `Memory usage`).
+- Mac (Deskset): `GPU temperature` = `gpu`; `GPU usage` = `gpu.usage`; `Core clock` = `frequency.gpu`;
+  `Memory clock` = `frequency.gpu.memory` (0 on Apple silicon); `Memory usage` = `gpu.memory` in MB (on Apple silicon
+  the unified memory the GPU has in use); `Fan speed` = a discrete GPU's own fan (%), else the fastest Mac fan as a
+  percentage of its maximum speed (0 while the fans stand still); `Fan tachometer` = the fastest fan in RPM;
+  `GPU power` / `CPU power` = `power.gpu` / `power.cpu` (W); `CPU temperature` / `CPUn temperature` = `cpu` /
+  `cpu.core.n`; `CPU usage` / `CPUn usage` = the CPU measure; `CPU clock` / `CPUn clock` = `frequency.cpu` /
+  `frequency.cpu.n`; `RAM usage` = memory used in MB. `GPU1 …` means `GPU …`; `GPU2 …`, `Power` (a percentage of the
+  card's power limit), `Framerate` and other names read 0, logged once. Names are case-insensitive.
+- Why: Macs have no Afterburner; Apple silicon's GPU has no memory or fan of its own.
+- Skin impact: GPU panels (FluentDash11 GPU) show temperature, clock, fan and memory; "VRAM clock" reads 0 on Apple
+  silicon and "VRAM usage" is shared memory. The range tracks the values seen (MaxValue in skins works as before).
+- Status: emulated
+
+## MacSensors (Deskset)
+
+### Options, values and ranges
+- Windows (Rainmeter): no such plugin; Deskset's own, for new skins.
+- Mac (Deskset): `Plugin=MacSensors`, `Sensor=` a [catalog key](#catalog-keys) (default `cpu`; case-insensitive;
+  aliases such as `battery.temperature`, `cpu.package`, `fan` = `fan.1`), `Scale=C` (default) / `F` / `K` for
+  temperatures. Number = the reading in the kind's unit; string = the reading with its unit ("52 °C", "2317 RPM",
+  "12.4 W", "3504 MHz", "24 %", "11.89 V", "683.8 MB"), empty while there is no reading. Without MinValue / MaxValue:
+  temperatures 0–100 °C (in the scale's unit), percentages 0–100, fans and clocks the lowest and highest value the
+  hardware reports (a fan's minimum and maximum speed, a cluster's lowest and highest clock); power, voltages,
+  currents, counts and bytes track the values seen. `!CommandMeasure <measure> List` logs every sensor this Mac has
+  with its key, label and reading. A key that is not a sensor name, or a sensor this Mac lacks, reads 0 (logged once).
+- Why: judgment — one plugin for every sensor, with ranges that make bars work without options.
+- Skin impact: the Skin Studio offers it as "Temperature" (live data) with a menu of the common keys.
+- Status: Deskset extension
 
 ## Mouse (third-party)
 

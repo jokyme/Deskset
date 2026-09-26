@@ -26,6 +26,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
     private var info: SensorInfo?
     private var reported: Set<String> = []
     private var closed = false
+    private var noReading = true
 
     /// The canonical key being read (tests).
     var sensorKey: String { key }
@@ -35,6 +36,10 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
     }
 
     override var tracksValueRange: Bool { fixedRange == nil }
+
+    /// Without a reading the string is empty: a String meter showing it keeps one line of height, as it would with
+    /// the value (the sensor may simply not have been read yet).
+    public override var valueUnavailable: Bool { noReading }
 
     /// The kind's own range, or the sensor's minimum / maximum when it reports both.
     private var fixedRange: ClosedRange<Double>? {
@@ -63,6 +68,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
 
     public override func computeValue() -> Double {
         rawString = ""
+        noReading = true
         guard let kind else { return 0 }
         guard let sensors = HardwareSensors.source(for: skin) else {
             report("none", "MacSensors [\(name)]: hardware sensors are not available here; the value is 0")
@@ -76,6 +82,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
             }
             return 0
         }
+        noReading = false
         rawString = SensorKeys.text(v, kind: info?.kind ?? kind, scale: scale)
         return (info?.kind ?? kind) == .temperature ? scale.convert(v) : v
     }

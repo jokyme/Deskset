@@ -518,11 +518,13 @@ func runSensorPluginTests(_ t: TestRunner) {
                                               + "[T]\nMeter=String\n", s)
         late.update()
         t.equal(string(late, "M"), "")
+        t.equal(late.measure(named: "M")?.valueUnavailable, true, "a text showing it keeps its line")
         t.check(!lateHost.logs.contains { $0.contains("has no sensor") }, "pending: no note")
         s.values["frequency.gpu.memory"] = 1500
         s.pending = []
         late.update()
         t.equal(string(late, "M"), "1500 MHz")
+        t.equal(late.measure(named: "M")?.valueUnavailable, false)
 
         // List: every sensor with its key, label and reading, logged back on the skin's thread.
         skin.measure(named: "CPU")?.execute(command: "List")
@@ -536,6 +538,28 @@ func runSensorPluginTests(_ t: TestRunner) {
         t.equal(MacSensorsMeasure.listLines([SensorInfo(key: "gpu", label: "GPU temperature", kind: .temperature)],
                                             values: { _ in nil }, scale: .celsius),
                 ["1 sensors:", "gpu — GPU temperature: no reading yet"])
+    }
+
+    t.suite("Plugin: sensors: PowerPlugin's CPU speed is the sensors' clock without a rated frequency") {
+        let s = CatalogSystem.mac()
+        let (skin, _) = try sensorSkin(t, """
+        [Hz]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Hz
+        [MHz]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=MHz
+        [T]
+        Meter=String
+        """, s)
+        skin.update()
+        t.equal(value(skin, "Hz"), 3_504_000_000)
+        t.equal(value(skin, "MHz"), 3504)
+        s.values["frequency.cpu"] = nil
+        skin.update()
+        t.equal(value(skin, "MHz"), 0)
     }
 
     t.suite("Plugin: sensors: without a sensor source everything is 0, noted once") {

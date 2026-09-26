@@ -76,7 +76,9 @@ trust (see [SECURITY.md](SECURITY.md)).
 
 - Windows-only plugins (DLLs) and Windows programs that a skin launches cannot run on the Mac. The skin still loads,
   and its Compatibility Notes list what is missing.
-- Hardware sensors (temperatures, fan speeds) are not available yet.
+- Hardware sensors (temperatures, fans, power, clocks) are read without special permissions, but Apple does not
+  document them: values are close approximations, tested on Apple silicon (M4) only so far. Running
+  `/Applications/Deskset.app/Contents/MacOS/Deskset --system-report` in Terminal lists what your Mac reports.
 - Windows fonts are replaced by similar Mac fonts, so text can be a little wider or narrower.
 - Deskset is not notarized by Apple yet (see Install).
 
