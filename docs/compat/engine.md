@@ -765,7 +765,8 @@ that uses them still loads there, only without the effect.
 - Mac (Deskset): on a Shape meter whose first shape (`Shape`) is a `Rectangle`, the glass takes that rectangle
   (from the meter's content origin, after Padding) and its corners: the smaller of RadiusX and RadiusY when they
   differ, square corners when either is 0, as drawn. An `Offset` moves it along; `Rotate`, `Scale` or `Skew`, another
-  first shape or a Combine use the meter's frame. `MacGlassCornerRadius` still wins over the shape's corners. No glass
+  first shape, and a `Shape` that is missing, cannot be read, is a Combine or is consumed by one (even when a later
+  shape is a Rectangle) use the meter's frame. `MacGlassCornerRadius` still wins over the shape's corners. No glass
   for hidden meters, meters of zero width or height, meters inside a hidden container, and meters whose
   `TransformationMatrix` turns, scales or skews them (a matrix that only moves them moves the glass). Content of a
   container (`Container=`) has its glass cut off at the container's frame, a rectangle: the container's pixels do not

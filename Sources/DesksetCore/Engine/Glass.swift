@@ -6,9 +6,9 @@ import Foundation
 //
 // - `[Rainmeter]`: `MacGlass=None|Regular|Clear` puts glass behind the whole skin (its width × height),
 //   `MacGlassCornerRadius=` rounds it (points, default 0), `MacGlassTint=` tints it (a color, optional).
-// - Any meter: the same three options put glass behind the meter's frame. A Shape meter whose first shape is a
-//   Rectangle that is not rotated, scaled or skewed uses that rectangle and its corner radius instead
-//   (`MacGlassCornerRadius` still wins when given).
+// - Any meter: the same three options put glass behind the meter's frame. A Shape meter whose first shape (`Shape`,
+//   drawn: not consumed by a Combine) is a Rectangle that is not rotated, scaled or skewed uses that rectangle and its
+//   corner radius instead (`MacGlassCornerRadius` still wins when given).
 //
 // The engine only works out where the glass goes (`GlassRegion` values, in skin points) after each layout and tells
 // the host when the list changed (`SkinHost.skinGlassRegionsChanged`); the host makes the glass. Hidden meters,
@@ -102,7 +102,9 @@ extension Meter {
         guard let glass, !hidden else { return nil }
         var rect = frame
         var radius = glass.cornerRadius
-        if let shape = self as? ShapeMeter, let first = shape.shapes.first, let r = first.rectangle {
+        // Only `Shape` itself: when it is consumed by a Combine or could not be read, the first shape drawn is a later
+        // one, and the glass would shrink to it.
+        if let shape = self as? ShapeMeter, let first = shape.shapes.first, first.index == 1, let r = first.rectangle {
             let origin = contentFrame
             rect = SkinRect(x: origin.x + r.x, y: origin.y + r.y, width: r.width, height: r.height)
             if radius == nil { radius = r.cornerRadius }

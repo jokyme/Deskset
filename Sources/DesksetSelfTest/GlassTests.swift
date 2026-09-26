@@ -351,6 +351,47 @@ func runGlassTests(_ t: TestRunner) {
         t.equal(ShapeRectangle(x: 0, y: 0, width: 10, height: 30, radiusX: 20).radiusX, 5, "limited like the drawing")
     }
 
+    t.suite("Glass: only Shape itself gives its rectangle") {
+        let (skin, _) = try makeSkin(t, """
+        [Consumed]
+        Meter=Shape
+        Shape=Arc 10,50,90,50 | StrokeWidth 6
+        Shape2=Rectangle 45,40,10,40,2
+        Shape3=Combine Shape | Union Shape4
+        Shape4=Ellipse 50,50,5
+        MacGlass=Regular
+        [Kept]
+        Meter=Shape
+        X=150
+        Shape=Rectangle 0,0,60,40,8
+        Shape2=Rectangle 5,5,10,10
+        Shape3=Combine Shape | Union Shape2 | Consume 0
+        MacGlass=Regular
+        [Unreadable]
+        Meter=Shape
+        Y=150
+        Shape=Bogus 1,2,3
+        Shape2=Rectangle 45,40,10,40,2
+        MacGlass=Regular
+        [Missing]
+        Meter=Shape
+        X=150
+        Y=150
+        Shape2=Rectangle 5,6,10,40,2
+        Shape3=Ellipse 50,50,20
+        MacGlass=Regular
+        """)
+        skin.update()
+        let consumed = skin.meter(named: "Consumed") as? ShapeMeter
+        t.equal(consumed?.shapes.first?.index, 2, "Shape is consumed: Shape2 is the first drawn")
+        t.equal(region(skin, "Consumed")?.rect, consumed?.frame, "the meter's frame, not the needle")
+        t.equal(region(skin, "Consumed")?.cornerRadius, 0)
+        t.equal(region(skin, "Kept")?.rect, SkinRect(x: 150, y: 0, width: 60, height: 40), "Consume 0 keeps Shape")
+        t.equal(region(skin, "Kept")?.cornerRadius, 8)
+        t.equal(region(skin, "Unreadable")?.rect, skin.meter(named: "Unreadable")?.frame, "Shape cannot be read")
+        t.equal(region(skin, "Missing")?.rect, skin.meter(named: "Missing")?.frame, "no Shape at all")
+    }
+
     t.suite("Glass: follows DynamicVariables and !SetOption") {
         let (skin, host) = try makeSkin(t, """
         [Variables]

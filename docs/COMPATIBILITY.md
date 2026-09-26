@@ -742,9 +742,9 @@ that uses them still loads there, only without the effect.
 
 #### MacGlass on Shape meters, containers, hidden and transformed meters
 - **Windows:** no counterpart.
-- **Mac:** a Shape meter whose first shape is a `Rectangle` gets glass in that rectangle, with its corners (the smaller
-  radius when RadiusX and RadiusY differ); an `Offset` moves it along, while `Rotate`, `Scale`, `Skew`, another first
-  shape or a Combine use the meter's frame. `MacGlassCornerRadius` wins over the shape's corners. Hidden meters, meters
+- **Mac:** a Shape meter whose first shape (`Shape`) is a `Rectangle` gets glass in that rectangle, with its corners
+  (the smaller radius when RadiusX and RadiusY differ); an `Offset` moves it along, while `Rotate`, `Scale`, `Skew`,
+  another first shape, or a `Shape` that is missing, unreadable, a Combine or consumed by one, use the meter's frame. `MacGlassCornerRadius` wins over the shape's corners. Hidden meters, meters
   of zero size, meters in a hidden container and meters turned, scaled or skewed by a `TransformationMatrix` have no
   glass. Content of a container has its glass cut off at the container's frame (a rectangle, not the container's
   pixels); a container's own glass is shown.

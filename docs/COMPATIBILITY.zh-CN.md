@@ -677,8 +677,9 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 
 #### Shape meter、容器、隐藏和变换过的 meter 上的 MacGlass
 - **Windows：** 没有对应功能。
-- **Mac：** 如果 Shape meter 的第一个形状是 `Rectangle`，玻璃就取这个矩形及其圆角（RadiusX 与 RadiusY 不同时取较小者）；
-  `Offset` 会带着玻璃一起移动，而 `Rotate`、`Scale`、`Skew`、其他类型的第一个形状或 Combine 则使用 meter 的外框。
+- **Mac：** 如果 Shape meter 的第一个形状（`Shape`）是 `Rectangle`，玻璃就取这个矩形及其圆角（RadiusX 与 RadiusY 不同时取
+  较小者）；`Offset` 会带着玻璃一起移动，而 `Rotate`、`Scale`、`Skew`、其他类型的第一个形状，以及缺失、无法解析、本身是
+  Combine 或被 Combine 用掉的 `Shape`，则使用 meter 的外框。
   `MacGlassCornerRadius` 优先于形状自身的圆角。隐藏的 meter、宽或高为零的 meter、位于隐藏容器中的 meter，以及被
   `TransformationMatrix` 旋转、缩放或倾斜的 meter 都没有玻璃。容器内容的玻璃会在容器的外框处被裁掉（按矩形裁剪，而不是按
   容器的像素）；容器自身的玻璃会显示出来。
