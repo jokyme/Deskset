@@ -172,6 +172,8 @@ public struct WeatherEnvironment {
     public var preferredUnits: () -> WeatherUnits = { .metric }
     /// Whether the Mac shows 24-hour time (default time formats).
     public var uses24HourClock: () -> Bool = { WeatherEnvironment.systemUses24HourClock() }
+    /// This Mac's time zone (`Location=timezone` looks up its city).
+    public var localTimeZone: () -> TimeZone = { TimeZone.current }
     public var clock: WeatherClock = SystemWeatherClock()
     /// Uniform in 0..<1 (jitter, backoff spread).
     public var random: () -> Double = { Double.random(in: 0..<1) }

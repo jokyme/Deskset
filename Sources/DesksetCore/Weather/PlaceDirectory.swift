@@ -49,9 +49,12 @@ public final class PlaceDirectory {
     public private(set) var countries: [String: String] = [:]
     public private(set) var regions: [String: String] = [:]
     public private(set) var meta: [String: String] = [:]
-    /// Folded name → row indices (by population, largest first).
+    /// Folded name → row indices (by population, largest first). Names in Traditional Chinese are also indexed in
+    /// Simplified Chinese (`simplifiedChinese`), so either spelling finds a town the table lists in one of them.
     private var index: [String: [Int]] = [:]
     private var foldedCountries: [String: String] = [:]
+    /// Time zone → the row of its largest town.
+    private var zoneLeaders: [String: Int] = [:]
 
     /// Loads a table; nil when the file is missing or has no place rows.
     public convenience init?(url: URL) {
@@ -84,7 +87,11 @@ public final class PlaceDirectory {
         for (i, p) in places.enumerated() {
             var keys = Set([PlaceDirectory.fold(p.name), PlaceDirectory.fold(p.asciiName)])
             for a in p.alternates { keys.insert(PlaceDirectory.fold(a)) }
+            for k in keys {
+                if let simplified = PlaceDirectory.simplifiedChinese(k) { keys.insert(simplified) }
+            }
             for k in keys where !k.isEmpty { index[k, default: []].append(i) }
+            if zoneLeaders[p.timeZone] == nil, !p.timeZone.isEmpty { zoneLeaders[p.timeZone] = i }
         }
         for (code, name) in countries { foldedCountries[PlaceDirectory.fold(name)] = code }
     }
@@ -95,6 +102,15 @@ public final class PlaceDirectory {
     public static func fold(_ s: String) -> String {
         s.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
             .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    /// `s` in Simplified Chinese when it has Traditional characters (臺北 → 台北, 紐約 → 纽约), else nil. GeoNames lists
+    /// many towns under only one of the two spellings.
+    static func simplifiedChinese(_ s: String) -> String? {
+        guard s.unicodeScalars.contains(where: { (0x3400...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value) }),
+              let simplified = s.applyingTransform(StringTransform("Hant-Hans"), reverse: false), simplified != s
+        else { return nil }
+        return simplified
     }
 
     static func isCJK(_ s: String) -> Bool {
@@ -123,15 +139,19 @@ public final class PlaceDirectory {
 
     /// Finds a place: exact name matches first (name, ASCII name or an alternate), filtered by up to two qualifiers
     /// after commas (a country code or English name, a region code or name), the largest place winning; then prefix
-    /// matches (3 characters or more, 2 for CJK). CJK queries are tried again without a trailing 市 / 县 / 縣 / 區 / 区.
+    /// matches (3 characters or more, 2 for CJK). CJK queries are tried again without a trailing 市 / 县 / 縣 / 區 / 区,
+    /// and Traditional Chinese ones in Simplified Chinese.
     public func search(_ query: String) -> PlaceMatch? {
         let parts = query.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard let first = parts.first else { return nil }
         let name = String(first)
         let qualifiers = Array(parts.dropFirst().suffix(2))
         var candidates = [name]
-        if PlaceDirectory.isCJK(name), let last = name.last, "市县縣區区".contains(last), name.count > 1 {
-            candidates.append(String(name.dropLast()))
+        if let simplified = PlaceDirectory.simplifiedChinese(name) { candidates.append(simplified) }
+        for candidate in candidates where PlaceDirectory.isCJK(candidate) {
+            if let last = candidate.last, "市县縣區区".contains(last), candidate.count > 1 {
+                candidates.append(String(candidate.dropLast()))
+            }
         }
         for candidate in candidates {
             let key = PlaceDirectory.fold(candidate)
@@ -177,6 +197,43 @@ public final class PlaceDirectory {
             if let region = regionName(country: place.country, admin1: place.admin1),
                PlaceDirectory.fold(region) == folded { return true }
             return false
+        }
+    }
+
+    // MARK: Time zones
+
+    /// The town of a time zone (`Location=timezone`: the city of this Mac's time zone), from the zone's name and the
+    /// table:
+    /// 1. the town the zone is named after, in that zone (Asia/Shanghai → Shanghai, America/New_York → New York City,
+    ///    America/Argentina/Buenos_Aires → Buenos Aires);
+    /// 2. else the zone's largest town (zones named after a small town or an island: Europe/Isle_of_Man → Douglas);
+    /// 3. else, for an older name of a zone that the table lists under its new name (Asia/Calcutta, Europe/Kiev,
+    ///    Asia/Saigon), the town of that name whose own zone keeps the same time in January and July.
+    /// nil for zones without a place (UTC, GMT, Etc/GMT-8, Factory) and zones whose towns are all smaller than the
+    /// table's (a few in Antarctica, Alaska and the Pacific).
+    public func place(forTimeZone identifier: String, near date: Date = Date()) -> PlaceMatch? {
+        let id = identifier.trimmingCharacters(in: .whitespaces)
+        let parts = id.split(separator: "/").map(String.init)
+        guard parts.count >= 2, let city = parts.last, parts[0].lowercased() != "etc" else { return nil }
+        let named = index[PlaceDirectory.fold(city.replacingOccurrences(of: "_", with: " "))] ?? []
+        if let row = named.first(where: { places[$0].timeZone == id }) ?? zoneLeaders[id] {
+            return match(places[row], typed: nil)
+        }
+        guard let zone = TimeZone(identifier: id) else { return nil }
+        let row = named.first { row in
+            TimeZone(identifier: places[row].timeZone).map { PlaceDirectory.keepsSameTime(zone, $0, near: date) } ?? false
+        }
+        return row.map { match(places[$0], typed: nil) }
+    }
+
+    /// Whether two zones are the same distance from UTC in the middle of January and of July of `date`'s year.
+    static func keepsSameTime(_ a: TimeZone, _ b: TimeZone, near date: Date) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? a
+        let year = calendar.component(.year, from: date)
+        return [1, 7].allSatisfy { month in
+            guard let d = calendar.date(from: DateComponents(year: year, month: month, day: 15, hour: 12)) else { return false }
+            return a.secondsFromGMT(for: d) == b.secondsFromGMT(for: d)
         }
     }
 

@@ -57,6 +57,8 @@ public enum WeatherLocationSpec: Equatable {
     case none
     /// `auto` / `current` / `here`: this Mac's location (Location Services).
     case device
+    /// `timezone`: the city of this Mac's time zone, from the offline place table (no Location Services).
+    case timeZone
     case coordinate(RoundedCoordinate)
     /// A place name: `Name`, `Name, Country`, `Name, Region`, `Name, Region, Country`.
     case place(String)
@@ -72,6 +74,7 @@ public enum WeatherLocationSpec: Equatable {
         if text.isEmpty { return .none }
         switch text.lowercased() {
         case "auto", "current", "here": return .device
+        case "timezone", "time zone": return .timeZone
         default: break
         }
         if let coordinate = coordinates(text) { return coordinate }
@@ -131,5 +134,40 @@ public enum WeatherLocationSpec: Equatable {
             return .invalid("Latitude must be between -90 and 90 and longitude between -180 and 180")
         }
         return .coordinate(RoundedCoordinate(latitude: lat, longitude: lon))
+    }
+}
+
+/// Where a measure's place comes from (`Type=LocationSource` of MacWeather and MacSun): its number and its word.
+public enum WeatherLocationSource: Int, Equatable {
+    /// No `Location` (or one that could not be read).
+    case none = 0
+    /// A place name.
+    case place = 1
+    /// `latitude,longitude`.
+    case coordinates = 2
+    /// `auto`: this Mac's location.
+    case device = 3
+    /// `timezone`: the city of this Mac's time zone, a guess the user may want to change.
+    case timeZone = 4
+
+    public init(_ spec: WeatherLocationSpec) {
+        switch spec {
+        case .none: self = .none
+        case .place: self = .place
+        case .coordinate, .invalid: self = .coordinates
+        case .device: self = .device
+        case .timeZone: self = .timeZone
+        }
+    }
+
+    /// "None", "Place", "Coordinates", "Auto", "TimeZone".
+    public var name: String {
+        switch self {
+        case .none: return "None"
+        case .place: return "Place"
+        case .coordinates: return "Coordinates"
+        case .device: return "Auto"
+        case .timeZone: return "TimeZone"
+        }
     }
 }

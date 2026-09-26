@@ -2232,10 +2232,10 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 #### `Plugin=MacWeather`
 - **Windows:** no counterpart; skins read weather web sites with WebParser (most of those services have shut down).
 - **Mac:** forecasts from MET Norway's Locationforecast 2.0 for any place: one measure with `Location=` (a town such as
-  `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, or `auto`), others with `Parent=` and `Type=` (Temperature,
+  `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, `auto`, or `timezone`), others with `Parent=` and `Type=` (Temperature,
   FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
   Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
-  UpdatedAt, Status, Attribution…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
+  UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
   region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone` (hours from UTC
   without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`; FinishAction,
   OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable functions
@@ -2245,15 +2245,19 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Skin impact:** skins written for Deskset get weather; Windows skins cannot use it.
 - **Status:** Mac-only
 
-#### Places and `Location=auto`
+#### Places, `Location=auto` and `Location=timezone`
 - **Windows:** n/a.
-- **Mac:** place names are looked up **on the Mac** in a bundled table of towns of 15,000 people or more (GeoNames);
-  a country or region after a comma narrows the search; smaller places use coordinates. Every coordinate is rounded
-  to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced accuracy),
-  only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused: `Status` 5
-  and a compatibility note that goes away once allowed.
-- **Why:** privacy; no online geocoder fits.
-- **Skin impact:** a one-time prompt for `auto`; small villages need coordinates.
+- **Mac:** place names are looked up **on the Mac** in a bundled table of towns of 15,000 people or more (GeoNames),
+  also by their other names (older and other-language names, other scripts; Chinese in Traditional and Simplified
+  alike); a country or region after a comma narrows the search; smaller places use coordinates. Every coordinate is
+  rounded to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced
+  accuracy), only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused:
+  `Status` 5 and a compatibility note that goes away once allowed. `timezone` is the city of this Mac's time zone
+  from the same table (Asia/Shanghai → Shanghai, Asia/Kolkata → Kolkata), without Location Services; zones without a
+  city (UTC, `Etc/…`) give `Status` 3. `Type=LocationSource` says where the place came from (4, "TimeZone"), so a skin
+  can ask "Not your city?".
+- **Why:** privacy; no online geocoder fits; weather on a first run without a prompt.
+- **Skin impact:** a one-time prompt for `auto`; small villages need coordinates; the time zone's city is only a guess.
 - **Status:** Mac-only
 
 #### Requests, cache, states and credit

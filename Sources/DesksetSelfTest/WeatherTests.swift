@@ -392,6 +392,19 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(WeatherLocationSpec.parse("Oslo"), .place("Oslo"))
         t.equal(WeatherLocationSpec.parse("  Springfield ,  IL "), .place("Springfield , IL"))
         t.equal(WeatherLocationSpec.parse("北京"), .place("北京"))
+        for s in ["timezone", "TimeZone", "time zone", "\"timezone\"", " TIMEZONE "] {
+            t.equal(WeatherLocationSpec.parse(s), .timeZone, s)
+        }
+        t.equal(WeatherLocationSpec.parse("Timezone Springs"), .place("Timezone Springs"), "only the word itself")
+        // Where the place comes from (Type=LocationSource): a number and a word.
+        let sources: [(String, WeatherLocationSource, String)] = [("", .none, "None"), ("Oslo", .place, "Place"),
+            ("59.91,10.75", .coordinates, "Coordinates"), ("91,10", .coordinates, "Coordinates"), ("auto", .device, "Auto"),
+            ("timezone", .timeZone, "TimeZone")]
+        for (location, source, name) in sources {
+            t.equal(WeatherLocationSource(WeatherLocationSpec.parse(location)), source, location)
+            t.equal(source.name, name)
+        }
+        t.equal(WeatherLocationSource.timeZone.rawValue, 4)
         // Rounding and formatting: two decimals, a point, no -0.00 — whatever the current locale.
         let r = RoundedCoordinate(latitude: 59.9139, longitude: 10.7522)
         t.equal(r.latitudeText, "59.91")
@@ -458,6 +471,39 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(d.search("苏州")?.place.name, "Suzhou")
         t.equal(d.search("Atlantis"), nil)
         t.equal(d.search(""), nil)
+        // Traditional and Simplified Chinese find each other's spellings.
+        t.equal(d.search("纽约")?.place.name, "New York City", "the table has only 紐約")
+        t.equal(d.search("纽约")?.displayName, "纽约", "the user's spelling is shown")
+        t.equal(d.search("纽约市")?.place.name, "New York City")
+        t.equal(d.search("洛杉磯")?.place.name, "Los Angeles", "the table has only 洛杉矶")
+        t.equal(d.search("奧斯陸")?.place.name, "Oslo")
+        t.equal(PlaceDirectory.simplifiedChinese("臺北"), "台北")
+        t.equal(PlaceDirectory.simplifiedChinese("北京"), nil, "already simplified")
+        t.equal(PlaceDirectory.simplifiedChinese("Oslo"), nil)
+
+        // The city of a time zone (Location=timezone): the town the zone is named after, else the zone's largest
+        // town, else (an older name of the zone) the town of that name keeping the same time.
+        func city(_ zone: String) -> String? { d.place(forTimeZone: zone)?.place.name }
+        t.equal(city("Asia/Shanghai"), "Shanghai", "the whole of China is Asia/Shanghai")
+        t.equal(city("Asia/Kolkata"), "Kolkata", "the zone's own town, though Mumbai is larger")
+        t.equal(city("Asia/Calcutta"), "Kolkata", "an older name of the zone")
+        t.equal(city("America/New_York"), "New York City", "by an alternate name")
+        t.equal(city("Europe/Oslo"), "Oslo")
+        t.equal(city("Europe/Zurich"), "Zürich")
+        t.equal(city("America/St_Johns"), "St. John's", "the zone's largest town when the name is spelled differently")
+        t.equal(city("America/Toronto"), "London", "the zone's largest town in the table")
+        t.equal(d.place(forTimeZone: "America/Toronto")?.place.country, "CA")
+        t.equal(city("Pacific/Honolulu"), "Honolulu")
+        for zone in ["UTC", "GMT", "Etc/UTC", "Etc/GMT-8", "Etc/GMT+5", "Factory", "", "Asia", "America/Indiana/Tell_City",
+                     "Nowhere/Atlantis"] {
+            t.equal(city(zone), nil, "no city: \(zone)")
+        }
+        t.equal(d.place(forTimeZone: "Asia/Shanghai")?.detail, "Shanghai, Shanghai, China")
+        t.equal(PlaceDirectory.keepsSameTime(TimeZone(identifier: "Asia/Calcutta")!, TimeZone(identifier: "Asia/Kolkata")!,
+                                             near: WeatherFixtures.clock), true)
+        t.equal(PlaceDirectory.keepsSameTime(TimeZone(identifier: "Europe/London")!, TimeZone(identifier: "Africa/Accra")!,
+                                             near: WeatherFixtures.clock), false, "the same in winter, not in summer")
+
         // Nearest places.
         t.equal(d.nearest(to: RoundedCoordinate(latitude: 59.95, longitude: 10.80), within: 50)?.name, "Oslo")
         t.equal(d.nearest(to: RoundedCoordinate(latitude: 60.39, longitude: 5.32), within: 50)?.name, "Bergen")
@@ -479,6 +525,40 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(full.meta["license"]?.hasPrefix("CC BY 4.0"), true)
         t.check(full.places.allSatisfy { TimeZone(identifier: $0.timeZone) != nil || $0.timeZone.isEmpty },
                 "every time zone is known to macOS")
+        // Chinese names in both spellings.
+        t.equal(full.search("纽约")?.place.name, "New York City")
+        t.equal(full.search("紐約")?.place.name, "New York City")
+        t.equal(full.search("温哥华")?.place.country, "CA")
+        t.equal(full.search("臺北")?.place.name, "Taipei")
+        t.equal(full.search("香港")?.place.name, "Hong Kong")
+        t.equal(full.search("Bombay")?.place.name, "Mumbai", "old names")
+        t.equal(full.search("Peking")?.place.name, "Beijing")
+        // The cities of time zones: the design's examples, older zone names, and every zone macOS knows either has none
+        // or a town that keeps the zone's time.
+        func fullCity(_ zone: String) -> String? { full.place(forTimeZone: zone)?.place.name }
+        t.equal(fullCity("Asia/Shanghai"), "Shanghai")
+        t.equal(fullCity("Asia/Kolkata"), "Kolkata")
+        t.equal(fullCity("Asia/Calcutta"), "Kolkata")
+        t.equal(fullCity("America/New_York"), "New York City")
+        t.equal(fullCity("Europe/Kiev"), "Kyiv")
+        t.equal(fullCity("Asia/Saigon"), "Ho Chi Minh City")
+        t.equal(fullCity("Asia/Hong_Kong"), "Hong Kong")
+        t.equal(fullCity("America/Argentina/Buenos_Aires"), "Buenos Aires")
+        t.equal(fullCity("Europe/Isle_of_Man"), "Douglas")
+        t.equal(fullCity("Europe/Oslo"), "Oslo")
+        t.equal(fullCity("Etc/UTC"), nil)
+        var found = 0
+        var wrongTime: [String] = []
+        for zone in TimeZone.knownTimeZoneIdentifiers {
+            guard let m = full.place(forTimeZone: zone) else { continue }
+            found += 1
+            if let a = TimeZone(identifier: zone), let b = TimeZone(identifier: m.place.timeZone),
+               !PlaceDirectory.keepsSameTime(a, b, near: WeatherFixtures.clock) {
+                wrongTime.append("\(zone) → \(m.place.name)")
+            }
+        }
+        t.check(found * 10 >= TimeZone.knownTimeZoneIdentifiers.count * 8, "most zones have a city: \(found)")
+        t.equal(wrongTime, [], "each city keeps its zone's time")
     }
 }
 
@@ -749,6 +829,11 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         t.check(WeatherReport.describe("59.95,10.8", directory: d).hasPrefix("near Oslo, Oslo, Norway · 59.95, 10.80"))
         t.equal(WeatherReport.describe("Atlantis", directory: d), "not found in the place table")
         t.equal(WeatherReport.describe("Oslo", directory: nil), "place search unavailable (no place table)")
+        let shanghai = TimeZone(identifier: "Asia/Shanghai")!
+        t.equal(WeatherReport.describe("timezone", directory: d, zone: shanghai),
+                "the city of this Mac's time zone (Asia/Shanghai): Shanghai, Shanghai, China · 31.22, 121.46 · Asia/Shanghai")
+        t.equal(WeatherReport.describe("timezone", directory: d, zone: TimeZone(identifier: "Etc/UTC")!),
+                "the city of this Mac's time zone (Etc/UTC): none known")
         guard let f = WeatherFixtures.forecast() else { return t.check(false, "fixture") }
         let lines = WeatherReport.forecastLines(f, place: "Oslo", coordinate: WeatherFixtures.oslo,
                                                 zone: WeatherFixtures.zone("Europe/Oslo"), units: .metric,

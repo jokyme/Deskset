@@ -2025,9 +2025,10 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 #### `Plugin=MacWeather`
 - **Windows：** 没有对应物；皮肤用 WebParser 读取天气网站（其中大多数服务已停止）。
 - **Mac：** 来自 MET Norway Locationforecast 2.0 的任意地点天气预报：一个 measure 写 `Location=`（城镇名，如 `Oslo, NO`、
-  `Springfield, IL`；`纬度,经度`；或 `auto`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
+  `Springfield, IL`；`纬度,经度`；`auto`；或 `timezone`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
   Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
-  ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution……），
+  ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution、
+  LocationSource……），
   配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
   单位。另有 `Decimals`、`UnavailableText`、`TimeZone`（按小时写时就是相对 UTC 的小时数，与 Time measure 不同，不加本机的夏令时，
   除非 `DaylightSavingTime=1`）、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
@@ -2037,13 +2038,16 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **对皮肤的影响：** 为 Deskset 编写的皮肤可以显示天气；Windows 皮肤不能使用。
 - **状态：** 仅 Mac
 
-#### 地点与 `Location=auto`
+#### 地点、`Location=auto` 与 `Location=timezone`
 - **Windows：** 不适用。
-- **Mac：** 地名在**本机**随附的城镇表（人口 1.5 万以上，来自 GeoNames）中查找；逗号后面的国家或地区可以缩小范围；更小的地方请用
-  坐标。每个坐标在使用或发送之前都取整到两位小数（约 1 公里）。`auto` 只为皮肤窗口中的皮肤请求一次定位服务（降低精度）；得到的
-  位置会先取整，只保存在内存中，从不写入日志或缓存。被拒绝时 `Status` 为 5 并显示一条兼容性提示，允许后提示自动消失。
-- **原因：** 隐私；没有合适的在线地理编码服务。
-- **对皮肤的影响：** `auto` 会弹出一次权限请求；很小的村镇需要用坐标。
+- **Mac：** 地名在**本机**随附的城镇表（人口 1.5 万以上，来自 GeoNames）中查找，也可以用城镇的其他名称（旧名和其他语言的名称、
+  其他文字；中文的繁体和简体可以互相匹配）；逗号后面的国家或地区可以缩小范围；更小的地方请用坐标。每个坐标在使用或发送之前都取整到
+  两位小数（约 1 公里）。`auto` 只为皮肤窗口中的皮肤请求一次定位服务（降低精度）；得到的位置会先取整，只保存在内存中，从不写入日志或
+  缓存。被拒绝时 `Status` 为 5 并显示一条兼容性提示，允许后提示自动消失。`timezone` 是这台 Mac 所在时区对应的城市，从同一张表中
+  查找（Asia/Shanghai → 上海，Asia/Kolkata → 加尔各答），不需要定位服务；没有城市的时区（UTC、`Etc/…`）给出 `Status` 3。
+  `Type=LocationSource` 说明地点的来源（4，“TimeZone”），皮肤可以据此询问“不是这个城市？”。
+- **原因：** 隐私；没有合适的在线地理编码服务；首次运行时无需权限提示就能显示天气。
+- **对皮肤的影响：** `auto` 会弹出一次权限请求；很小的村镇需要用坐标；时区对应的城市只是猜测。
 - **状态：** 仅 Mac
 
 #### 请求、缓存、状态与署名

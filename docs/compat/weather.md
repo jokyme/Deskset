@@ -35,7 +35,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
 
   | Option | Values (default first) | What it does |
   |---|---|---|
-  | `Location` | empty · `City[, Region][, Country]` · `lat,lon` · `auto` | The place (see "Places"). Ignored with `Parent`. |
+  | `Location` | empty · `City[, Region][, Country]` · `lat,lon` · `auto` · `timezone` | The place (see "Places"). Ignored with `Parent`. |
   | `Parent` | a MacWeather measure | Uses its place and its `Units`, unit overrides, `TimeZone`, `DaylightSavingTime`, `FormatLocale`, `Decimals`, `UnavailableText`, `NoEventText`, `SymbolStyle` (followed up to 8 levels). |
   | `Type` | `Temperature` … (table below) | What the measure shows. |
   | `Hour` | empty · 0–47 | The forecast N hours after the current hour. |
@@ -80,6 +80,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Status, StatusSymbol | — | 0–13 (see "States") | "Updated 12:05" / SF Symbol name |
   | Attribution, AttributionShort, AttributionURL, LicenseURL | — | 0 | "Based on data from MET Norway", "Data: MET Norway", the links |
   | TemperatureUnit, WindUnit, PrecipitationUnit, PressureUnit | — | 0 | "°C", "km/h", "mm", "hPa" |
+  | LocationSource | — | 0 none, 1 a place name, 2 coordinates, 3 `auto`, 4 `timezone` | "None", "Place", "Coordinates", "Auto", "TimeZone" |
 
   Automatic MinValue / MaxValue (the skin's own win): temperatures over the next 24 hours; High and Low (and
   TemperatureColor with `Day`) over all the forecast's days, 0–9 (the same for every day, so range bars line up);
@@ -116,15 +117,36 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
 - Mac (Deskset): `Location` is a place name — `Oslo`, `Oslo, NO`, `Springfield, IL`, `Springfield, Illinois, US`,
   `北京`, `zurich` (case, accents and width ignored; CJK names also without a trailing 市 / 县 / 区) — or
   `latitude,longitude` (`59.91,10.75`, `59.91 10.75`, `59.91N 10.75E`; a point for decimals, so `59,91, 10,75` is
-  refused with a note), or `auto` (this Mac's location, next entry). Names are looked up **on the Mac** in a table of
-  the world's towns of 15,000 people or more (GeoNames, bundled): the most populous match wins, a country or region
-  after a comma narrows it, and a prefix of three letters or more finds a town when nothing matches exactly. Smaller
-  places: use coordinates. The name shown (`Type=Place`) is the table's, or the user's own spelling when an
-  alternate name matched ("北京"); coordinates show the nearest town within 50 km. Every coordinate is **rounded to
-  two decimals** (about 1 km) before it is used or sent; places that round to the same point share one forecast.
+  refused with a note), or `auto` (this Mac's location, next entry), or `timezone` (the city of this Mac's time
+  zone, see below). Names are looked up **on the Mac** in a table of the world's towns of 15,000 people or more
+  (GeoNames, bundled): the most populous match wins, a country or region after a comma narrows it, and a prefix of
+  three letters or more finds a town when nothing matches exactly. Besides its name, a town is found by the other
+  names GeoNames lists for it: older and other-language names (`Bombay`, `Peking`, `Saigon`, `Kristiania`) and names
+  in other scripts (`Москва`, `東京`, `서울`, `北京`). Chinese names are matched in Traditional and Simplified
+  characters alike (`紐約` and `纽约`, `臺北` and `台北`), since the table often has only one. Gaps: abbreviations
+  (`NYC`, `LA`, airport codes) and names GeoNames does not list are not found. Smaller places: use coordinates. The
+  name shown (`Type=Place`) is the table's, or the user's own spelling when an alternate name matched ("北京");
+  coordinates show the nearest town within 50 km. Every coordinate is **rounded to two decimals** (about 1 km) before
+  it is used or sent; places that round to the same point share one forecast.
 - Why: no online geocoder fits (terms that forbid commercial use or storing results, or wrong answers for foreign
   names from some regions), and an offline table keeps place names private.
 - Skin impact: small villages need coordinates; the table is updated with Deskset.
+- Status: Deskset extension
+
+### `Location=timezone` (the city of this Mac's time zone)
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): `timezone` is the city this Mac's time zone is named after, found in the same offline table: the town
+  of the zone's name in that zone (Asia/Shanghai → Shanghai, America/New_York → New York City, Asia/Kolkata → Kolkata
+  although Mumbai is larger); else the zone's largest town (Europe/Isle_of_Man → Douglas); else, for an older name of a
+  zone (Asia/Calcutta, Europe/Kiev, Asia/Saigon), the town of that name whose zone keeps the same time. It needs no
+  Location Services and works in previews and `--render` too (`TZ=Europe/Oslo` picks a zone for a render). Zones
+  without a city (UTC, GMT, `Etc/…`) and the few whose towns are all smaller than the table's give `Status` 3
+  (NoLocation) and a line in the skin's log. `Type=LocationSource` is 4 ("TimeZone") for it (1 a place name,
+  2 coordinates, 3 `auto`, 0 none), whatever the state, so a skin can ask "Not your city? Change…": a zone covers whole
+  countries (all of China is Asia/Shanghai, all of India Asia/Kolkata). The zone is looked at again at every update of
+  the measure with the place, so the city follows the Mac to another zone.
+- Why: weather and sun times on a first run without a Location Services prompt.
+- Skin impact: a good first guess for most people, wrong for many in large zones; let the user confirm or change it.
 - Status: Deskset extension
 
 ### `Location=auto` and Location Services
@@ -211,7 +233,8 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   value and `Format`), `DayLength`, `DaylightProgress` (0 before sunrise, 1 after sunset; midnight sun: the share of
   the day gone), `SunElevation`, `SunAzimuth`, `IsDaylight`, `SunState` (0, 1 midnight sun, 2 polar night),
   `MoonPhase` (0 new, 0.5 full), `MoonIllumination`, `MoonPhaseName`, `MoonSymbol` (an SF Symbol name), `Place`,
-  `TimeZone`. MacWeather's sun types use the same code for the forecast's place. It works in `--render` and previews.
+  `TimeZone`, `LocationSource` (as MacWeather's). MacWeather's sun types use the same code for the forecast's place.
+  It works in `--render` and previews.
 - Why: clock skins want sunrise and sunset without a network or an account.
 - Skin impact: none for Windows skins.
 - Status: Deskset extension
