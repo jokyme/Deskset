@@ -1622,7 +1622,11 @@ extension InspectorWindowController {
         views.append(caption("Used the first time someone installs this widget. To change it on this Mac, use On Your Desktop.",
                              color: .tertiaryLabelColor))
         var defaults: [InspectorRow] = []
-        let defaultStacking = Int(value("DefaultAlwaysOnTop").flatMap { OptionValue.number($0.resolved) } ?? -2)
+        // What a new install starts with: the Default… options read as its first load reads them, each kept within its
+        // range. Converted as written, `DefaultAlwaysOnTop=1e20` would trap.
+        let installed = SkinController.seededState(SkinState(file: ""), defaults: ["AlwaysOnTop", "OnHover", "FadeDuration"]
+            .reduce(into: [:]) { $0[$1] = value("Default" + $1)?.resolved })
+        let defaultStacking = installed.alwaysOnTop
         let stacking = choices(WidgetPresets.stackingAll.map { WidgetPresets.Preset($0.title, $0.value) }, current: defaultStacking,
                                title: WidgetPresets.stackingName, identifier: "default-stacking") { [weak self] v in
             self?.writeWidgetSetting("DefaultAlwaysOnTop", value: String(v), undoName: "Change Stacking for New Installs",
@@ -1667,7 +1671,7 @@ extension InspectorWindowController {
             defaults.append(defaultFlag("DefaultStartHidden", "Start hidden", inverted: false, default: false))
         }
         if value("DefaultOnHover") != nil {
-            let current = Int(value("DefaultOnHover").flatMap { OptionValue.number($0.resolved) } ?? 0)
+            let current = installed.onHover
             let hover = choices(WidgetPresets.onHover, current: current, title: { "\($0)" }, identifier: "default-on-hover") { [weak self] v in
                 let title = WidgetPresets.onHover.first { $0.value == v }?.title.lowercased() ?? ""
                 self?.writeWidgetSetting("DefaultOnHover", value: String(v), undoName: "Change Pointer Behavior for New Installs",
@@ -1675,8 +1679,8 @@ extension InspectorWindowController {
             }
             defaults.append(InspectorRow(label: pageLabel("When the pointer is over it", key: "DefaultOnHover"), control: hover))
         }
-        if let written = value("DefaultFadeDuration") {
-            let ms = Int(OptionValue.number(written.resolved) ?? 250)
+        if value("DefaultFadeDuration") != nil {
+            let ms = installed.fadeDuration
             let fade = NumberControl(value: WidgetPresets.fadeSeconds(ms), placeholder: "0.25", min: 0, max: 10, step: nil,
                                      unit: "seconds", fallback: 0.25, fieldWidth: 44)
             fade.identifier = NSUserInterfaceItemIdentifier("default-fade-time")
