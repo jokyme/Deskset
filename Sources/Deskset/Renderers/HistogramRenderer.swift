@@ -4,24 +4,20 @@ import DesksetCore
 extension SkinRenderer {
     // MARK: Histogram
 
-    /// Scratch buffers for the column rectangles (reused between frames; drawing happens on the main thread).
-    private static var histogramParts: [[CGRect]] = [[], [], []]
-    /// Cropped images by path, reused while the decoded source image and the crop rectangle stay the same.
-    private static var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] = [:]
-
     /// Collects the primary-only / secondary-only / overlap rectangles of every column (from `HistogramMeter`)
-    /// and paints each part with its image (revealed through the rectangles) or its color.
-    static func drawHistogram(_ meter: HistogramMeter, _ ctx: CGContext) {
+    /// and paints each part with its image (revealed through the rectangles) or its color. The rectangles go into
+    /// the skin's scratch buffers (`SkinRenderContext.histogramParts`), reused from frame to frame.
+    static func drawHistogram(_ meter: HistogramMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
         let area = meter.contentFrame.cgRect
         let count = meter.historyLength
         guard area.width > 0, area.height > 0, count > 0 else { return }
 
-        for i in histogramParts.indices { histogramParts[i].removeAll(keepingCapacity: true) }
+        for i in context.histogramParts.indices { context.histogramParts[i].removeAll(keepingCapacity: true) }
         for age in 0..<count {
             let c = meter.columnRects(age: age)
-            if c.primary.width > 0, c.primary.height > 0 { histogramParts[0].append(c.primary.cgRect) }
-            if c.secondary.width > 0, c.secondary.height > 0 { histogramParts[1].append(c.secondary.cgRect) }
-            if c.both.width > 0, c.both.height > 0 { histogramParts[2].append(c.both.cgRect) }
+            if c.primary.width > 0, c.primary.height > 0 { context.histogramParts[0].append(c.primary.cgRect) }
+            if c.secondary.width > 0, c.secondary.height > 0 { context.histogramParts[1].append(c.secondary.cgRect) }
+            if c.both.width > 0, c.both.height > 0 { context.histogramParts[2].append(c.both.cgRect) }
         }
 
         ctx.saveGState()
@@ -30,13 +26,14 @@ extension SkinRenderer {
         if !meter.antiAlias { alignGraphToDevicePixels(graphAnchor(area, meter.direction), ctx) }
         ctx.setShouldAntialias(meter.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
         ctx.clip(to: area)
-        drawHistogramPart(histogramParts[0], meter.primaryColor, meter.primaryImage, area, ctx)
-        drawHistogramPart(histogramParts[1], meter.secondaryColor, meter.secondaryImage, area, ctx)
-        drawHistogramPart(histogramParts[2], meter.bothColor, meter.bothImage, area, ctx)
+        let parts = context.histogramParts
+        drawHistogramPart(parts[0], meter.primaryColor, meter.primaryImage, area, ctx, context)
+        drawHistogramPart(parts[1], meter.secondaryColor, meter.secondaryImage, area, ctx, context)
+        drawHistogramPart(parts[2], meter.bothColor, meter.bothImage, area, ctx, context)
     }
 
     private static func drawHistogramPart(_ rects: [CGRect], _ color: RGBA, _ image: HistogramMeter.HistogramImage?,
-                                          _ area: CGRect, _ ctx: CGContext) {
+                                          _ area: CGRect, _ ctx: CGContext, _ context: SkinRenderContext) {
         guard !rects.isEmpty else { return }
         guard let image, var cg = Images.cgImage(atPath: image.path) else {
             guard color.a > 0 else { return }
@@ -46,11 +43,13 @@ extension SkinRenderer {
         }
         if let crop = image.cropRect(imageWidth: Double(cg.width), imageHeight: Double(cg.height)) {
             let rect = crop.cgRect
-            if let hit = histogramCrops[image.path], hit.source === cg, hit.rect == rect {
+            if let hit = context.histogramCrops[image.path], hit.source === cg, hit.rect == rect {
                 cg = hit.cropped
             } else if let cropped = cg.cropping(to: rect) {
-                if histogramCrops.count >= 64 { histogramCrops.removeAll() }  // skins come and go: stay bounded
-                histogramCrops[image.path] = (cg, rect, cropped)
+                if context.histogramCrops.count >= SkinRenderContext.maxHistogramCrops {
+                    context.histogramCrops.removeAll()
+                }
+                context.histogramCrops[image.path] = (cg, rect, cropped)
                 cg = cropped
             } else {
                 return  // the crop lies outside the image: nothing to reveal (not the whole, uncropped image)

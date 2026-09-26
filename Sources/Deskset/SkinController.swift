@@ -1151,8 +1151,8 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         Log.write(message, level: level, source: config)
     }
 
-    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double) {
-        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth)
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
+        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
     }
 
     func imageSize(atPath path: String) -> (width: Double, height: Double)? {

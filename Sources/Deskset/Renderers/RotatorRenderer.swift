@@ -9,11 +9,11 @@ extension SkinRenderer {
     /// always drawn with smooth interpolation, like the Image meter; it is not clipped to the meter box.
     /// A plain opacity (ImageAlpha / ImageTint alpha) is applied while drawing, not baked into the cached image.
     /// `UseExifOrientation=1` turns the image upright first (OffsetX / OffsetY are then upright image pixels).
-    static func drawRotator(_ meter: RotatorMeter, _ ctx: CGContext) {
+    static func drawRotator(_ meter: RotatorMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
         let (processing, opacity) = meter.imageProcessing.opacitySplit
         guard opacity > 0, let path = meter.imagePath,
               let source = Images.cgImage(atPath: path, exifOriented: processing.useExifOrientation),
-              let image = RotatorImages.image(for: source, path: path, processing: processing)
+              let image = context.rotatorImages.image(for: source, path: path, processing: processing)
         else { return }
         let t = meter.imageTransform
         guard t.a.isFinite, t.b.isFinite, t.c.isFinite, t.d.isFinite, t.tx.isFinite, t.ty.isFinite else { return }
@@ -25,12 +25,13 @@ extension SkinRenderer {
     }
 }
 
-/// Rotator images with the general image options applied (crop → flip → ImageRotate → color matrix), computed once
-/// per image and option set. An entry is rebuilt when `Images` hands out a new decode (file changed on disk).
+/// A skin's Rotator images with the general image options applied (crop → flip → ImageRotate → color matrix), computed
+/// once per image and option set (`SkinRenderContext.rotatorImages`; a Rotator's processed images belong to its skin).
+/// An entry is rebuilt when `Images` hands out a new decode (file changed on disk).
 /// The cache is bounded by bytes and evicts the least recently used entries, so a skin that keeps changing an
 /// option (a tint animation…) cannot pile up dozens of full-size bitmaps, and a working set of many small
 /// processed images is not thrown away all at once.
-enum RotatorImages {
+final class RotatorImageCache {
     private struct Key: Hashable {
         let path: String
         let processing: RotatorMeter.ImageProcessing
@@ -44,15 +45,18 @@ enum RotatorImages {
         var lastUse: UInt64
     }
 
-    private static var entries: [Key: Entry] = [:]
-    private static var totalBytes = 0
-    private static var useClock: UInt64 = 0
+    private var entries: [Key: Entry] = [:]
+    private var totalBytes = 0
+    private var useClock: UInt64 = 0
     private static let maxBytes = 64 << 20
     private static let maxEntries = 256
     /// Processed canvases larger than this many pixels are not built (the unprocessed image is drawn instead).
     private static let maxPixels = 4096 * 4096
 
-    static func image(for source: CGImage, path: String, processing: RotatorMeter.ImageProcessing) -> CGImage? {
+    /// How many processed images the cache holds (self-tests).
+    var count: Int { entries.count }
+
+    func image(for source: CGImage, path: String, processing: RotatorMeter.ImageProcessing) -> CGImage? {
         if processing.isIdentity { return source }
         useClock &+= 1
         let key = Key(path: path, processing: processing)
@@ -62,11 +66,11 @@ enum RotatorImages {
             return hit.image
         }
         if let stale = entries.removeValue(forKey: key) { totalBytes -= stale.bytes }
-        let image = process(source, processing)
+        let image = Self.process(source, processing)
         let bytes = image.map { $0 === source ? 0 : $0.bytesPerRow * $0.height } ?? 0
         // The new entry is always kept (even one bigger than the budget, which then evicts everything else), so
         // a large processed image is not rebuilt on every frame.
-        while !entries.isEmpty, totalBytes + bytes > maxBytes || entries.count >= maxEntries {
+        while !entries.isEmpty, totalBytes + bytes > Self.maxBytes || entries.count >= Self.maxEntries {
             guard let oldest = entries.min(by: { $0.value.lastUse < $1.value.lastUse }) else { break }
             totalBytes -= oldest.value.bytes
             entries.removeValue(forKey: oldest.key)
@@ -74,11 +78,6 @@ enum RotatorImages {
         entries[key] = Entry(source: source, image: image, bytes: bytes, lastUse: useClock)
         totalBytes += bytes
         return image
-    }
-
-    static func purge() {
-        entries.removeAll()
-        totalBytes = 0
     }
 
     private static func process(_ source: CGImage, _ p: RotatorMeter.ImageProcessing) -> CGImage? {

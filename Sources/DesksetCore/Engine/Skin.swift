@@ -122,6 +122,22 @@ public final class Skin {
     /// and the results of its background work (docs/skin-threading.md §5.3; see `SkinExecutor`). The main thread
     /// unless the host picks another executor before `load()`. Work already scheduled stays where it was scheduled.
     public var executor: SkinExecutor = MainSkinExecutor.shared
+    /// What the host's renderer keeps for this skin from frame to frame (the app's `SkinRenderContext`: text layouts,
+    /// processed Rotator images, Histogram scratch space). It belongs to the skin rather than to the app so that skins
+    /// drawn on threads of their own never share a cache (docs/skin-threading.md §4.3): like everything reachable from
+    /// the skin, only its owner touches it (checked in debug builds), and it is released with the skin. The engine never
+    /// looks inside.
+    public var renderContext: AnyObject? {
+        get {
+            assertOwned()
+            return storedRenderContext
+        }
+        set {
+            assertOwned()
+            storedRenderContext = newValue
+        }
+    }
+    private var storedRenderContext: AnyObject?
 
     public private(set) var measures: [Measure] = []
     public private(set) var meters: [Meter] = []

@@ -190,7 +190,9 @@ extension RGBA {
     var nsColor: NSColor {
         NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a / 255)
     }
-    var cgColor: CGColor { nsColor.cgColor }
+    /// The same sRGB color as `nsColor.cgColor`, made by CoreGraphics without going through AppKit: cheaper, and fine
+    /// on any thread (skins drawing on threads of their own, docs/skin-threading.md §4.3).
+    var cgColor: CGColor { CGColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a / 255) }
 }
 
 extension SkinRect {

@@ -1004,6 +1004,9 @@ private func runOwnershipTests(_ t: TestRunner) {
         _ = skin.contextMenuItems()
         skin.preview(section: "M", ["X": "5"])
         skin.endPreview()
+        // The renderer's per-skin caches (the app's SkinRenderContext).
+        skin.renderContext = NSObject()
+        t.check(skin.renderContext != nil)
         skin.close()
         t.equal(violations, [], "the main executor owns the skin on the main thread")
 
@@ -1020,10 +1023,11 @@ private func runOwnershipTests(_ t: TestRunner) {
         other.preview(section: "M", ["X": "5"])
         other.setVariable("B", "2")
         other.measure(named: "C")?.readOptionsIfNeeded()
+        _ = other.renderContext
         other.close()
         for entry in ["update()", "execute(_:from:)", "perform(_:from:)", "mouseEvent(_:x:y:)",
                       "pointerEvent(_:x:y:)", "preview(section:_:)", "setVariable(_:_:)", "readOptionsIfNeeded()",
-                      "close()"] {
+                      "renderContext", "close()"] {
             t.check(violations.contains(entry), "\(entry) is checked (\(violations.count) reports)")
         }
 

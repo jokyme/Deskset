@@ -385,13 +385,13 @@ public final class StringMeter: Meter {
         switch style.clip {
         case 2:
             let maxWidth = widthOption ?? clipStringW
-            var size = host.textSize(text, style: style, wrapWidth: maxWidth)
+            var size = host.textSize(text, style: style, wrapWidth: maxWidth, for: skin)
             // A word longer than the (maximum) width is clipped, the meter does not grow past it.
             if let maxWidth { size.width = min(size.width, maxWidth) }
             if heightOption == nil, let maxHeight = clipStringH { size.height = min(size.height, maxHeight) }
             return size
         default:
-            return host.textSize(text, style: style, wrapWidth: nil)
+            return host.textSize(text, style: style, wrapWidth: nil, for: skin)
         }
     }
 
@@ -410,7 +410,7 @@ public final class StringMeter: Meter {
         var probe = style
         probe.inlineSpans = []
         // Any one-line text has the line height of the font; its width is not used.
-        return (0, host.textSize("X", style: probe, wrapWidth: nil).height)
+        return (0, host.textSize("X", style: probe, wrapWidth: nil, for: skin).height)
     }
 
     public override func anchorOffset(width: Double, height: Double) -> (dx: Double, dy: Double) {

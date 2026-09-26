@@ -1,7 +1,8 @@
 # Skin threading: running every skin off the main thread
 
 > Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, is done
-> (2026-09-26, §15); every skin still runs on the main thread. The spike is in `scripts/spikes/skin-threading/`.
+> (2026-09-26, §15); phase 1, thread-safe shared services, is in progress. Every skin still runs on the main thread.
+> The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
 
@@ -1048,3 +1049,29 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 
 **Left for later phases:** the assertion against `DispatchQueue.main.sync` on a skin thread and the busy-skin watchdog
 (§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5).
+
+### Phase 1: in progress
+
+Skins still run on `MainSkinExecutor`, and nothing they do changes. Done so far:
+
+**Render caches per skin** (`Renderers/SkinRenderContext.swift`, §4.3). A `SkinRenderContext` hangs on
+`Skin.renderContext`; like the rest of the skin, only its owner touches it (debug builds check). It holds:
+- the skin's text layouts (`TextLayoutCache`). `SkinHost.textSize` now names the skin, so a host that serves several
+  skins (`RenderHost` in some self-tests) measures with that skin's layouts, and the String meter is still drawn with
+  the layout it was measured with;
+- its Rotator images with the image options applied (`RotatorImageCache`, the same 64 MB LRU, now per skin);
+- the Histogram's scratch space and cropped images.
+
+What it keeps goes with the skin. Refresh All no longer purges the Rotator images: they go with the skins it replaces.
+
+The text cache still keeps two generations, but they no longer turn over when 1024 layouts from all skins filled them.
+They turn over at the skin's next update once the current one holds 64 layouts, and at 1024 in one update. A skin
+that keeps showing the same texts builds none of them again; one whose texts keep changing keeps a few dozen layouts.
+
+**Colors:** `RGBA.cgColor` is `CGColor(srgbRed:green:blue:alpha:)` instead of going through `NSColor`: the same
+components and color space, also out of range.
+
+**Tests:** "App: skin threading: …" (`RenderContextSelfTests`): a context per skin, measuring and drawing share it and
+drawing one skin leaves another's alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the
+skin that drew them, a context goes with its skin and a refresh, colors match AppKit's. The Core ownership suite also
+covers `renderContext`.

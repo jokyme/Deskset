@@ -3,7 +3,7 @@ import CoreText
 import DesksetCore
 
 // String meter measuring and drawing with CoreText. `textSize` (the host's SkinHost.textSize) and `drawString`
-// both go through `TextLayout.make`, so the measured size is exactly what gets drawn.
+// both go through the skin's `TextLayoutCache`, so the measured size is exactly what gets drawn.
 //
 // Rules (manual: String meter, Inline Options, [Rainmeter] AccurateText; judgment calls marked):
 // - Sizes: FontSize is in points at 96 DPI → pixels = points × 96/72 (1 skin pixel = 1 macOS point).
@@ -32,36 +32,24 @@ import DesksetCore
 extension SkinRenderer {
     // MARK: String
 
-    /// AppKit attributes approximating `style` (compatibility helper; the String meter itself uses `TextLayout`).
-    static func attributes(for style: TextStyle, color: RGBA? = nil) -> [NSAttributedString.Key: Any] {
-        let paragraph = NSMutableParagraphStyle()
-        switch style.horizontalAlign {
-        case .left: paragraph.alignment = .left
-        case .center: paragraph.alignment = .center
-        case .right: paragraph.alignment = .right
-        }
-        switch style.clip {
-        case 1: paragraph.lineBreakMode = .byTruncatingTail
-        case 2: paragraph.lineBreakMode = .byWordWrapping
-        default: paragraph.lineBreakMode = .byClipping
-        }
-        return [.font: Fonts.font(for: style), .foregroundColor: (color ?? style.color).nsColor,
-                .paragraphStyle: paragraph]
-    }
-
-    static func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double) {
+    /// The host's `SkinHost.textSize`: measured with `skin`'s own text layouts, the ones `drawString` then draws. Only
+    /// the skin's owner may call this.
+    static func textSize(_ text: String, style: TextStyle, wrapWidth: Double?,
+                         for skin: Skin) -> (width: Double, height: Double) {
         guard !text.isEmpty, style.fontSize > 0 else { return (0, 0) }
-        return TextLayout.make(text, style: style, wrapWidth: wrapWidth.map { CGFloat($0) }).size
+        return SkinRenderContext.of(skin).text.layout(text, style: style, wrapWidth: wrapWidth.map { CGFloat($0) },
+                                                      cycle: skin.updateCount).size
     }
 
-    static func drawString(_ meter: StringMeter, _ ctx: CGContext) {
+    static func drawString(_ meter: StringMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
         let text = meter.text
         let style = meter.style
         guard !text.isEmpty, style.fontSize > 0 else { return }
         let box = meter.contentFrame.cgRect
         // Clipped text in an empty box shows nothing (and must not be wrapped one character per line).
         if style.clip != 0, box.width <= 0 || box.height <= 0 { return }
-        let layout = TextLayout.make(text, style: style, wrapWidth: style.wrap ? box.width : nil)
+        let layout = context.text.layout(text, style: style, wrapWidth: style.wrap ? box.width : nil,
+                                         cycle: meter.skin.updateCount)
         guard !layout.lines.isEmpty else { return }
 
         // The text matrix is not part of the graphics state: restore it for whoever draws next.
@@ -121,7 +109,70 @@ private enum RunKey {
     static let metricsFont = "deskset.metricsFont" as CFString
 }
 
-/// A String meter text laid out into lines (immutable; cached by text, style and wrap width).
+/// A skin's text layouts (`SkinRenderContext.text`), by text, style, wrap width and font generation. Measuring
+/// (`SkinRenderer.textSize`) and drawing ask the same cache, so a String meter is drawn with the layout it was measured
+/// with.
+///
+/// Two generations: the layouts used in the skin's current update cycle, and those used before. A layout found among
+/// the older ones moves to the current generation; the older generation is dropped when the generations turn over:
+/// - at the first layout asked for in a new cycle (the skin's update count changed), once the current generation holds
+///   `turnoverFloor` layouts;
+/// - and whenever it reaches `cacheLimit`.
+///
+/// So a skin that keeps showing the same texts never builds them again, however many it shows (up to `cacheLimit` in
+/// one cycle: a plain "clear when full" cache would rebuild every layout on every redraw once a redraw needs more than
+/// its limit). A skin whose texts keep changing (a clock with seconds) keeps a few dozen layouts, not thousands, and a
+/// small skin also keeps the texts it shows only now and then.
+final class TextLayoutCache {
+    private struct Key: Hashable {
+        var text: String
+        var style: TextStyle
+        var wrapWidth: CGFloat?
+        var generation: Int
+    }
+
+    private var current: [Key: TextLayout] = [:]
+    private var previous: [Key: TextLayout] = [:]
+    /// The update cycle `current` was last asked in.
+    private var cycle = Int.min
+    static let cacheLimit = 1024
+    static let turnoverFloor = 64
+    /// How many layouts were built (self-tests).
+    private(set) var builds = 0
+    /// How many layouts both generations hold (self-tests; a layout that moved on is counted twice).
+    var storedCount: Int { current.count + previous.count }
+
+    /// The layout of `text` in `style`, wrapped to `wrapWidth` when given. `cycle` is the skin's update count.
+    func layout(_ text: String, style: TextStyle, wrapWidth: CGFloat?, cycle: Int) -> TextLayout {
+        // The skin's @Resources/Fonts must be loaded before FontFace is resolved (a no-op after the first time).
+        if let folder = style.fontFolder { Fonts.registerFolder(folder) }
+        if cycle != self.cycle {
+            self.cycle = cycle
+            if current.count >= Self.turnoverFloor { turnOver() }
+        }
+        let key = Key(text: text, style: style, wrapWidth: wrapWidth, generation: Fonts.generation)
+        if let hit = current[key] { return hit }
+        let layout: TextLayout
+        if let kept = previous[key] {
+            layout = kept
+        } else {
+            layout = TextLayout.build(text, style: style, wrapWidth: wrapWidth)
+            builds += 1
+        }
+        if current.count >= Self.cacheLimit { turnOver() }
+        current[key] = layout
+        return layout
+    }
+
+    private func turnOver() {
+        previous = current
+        current = [:]
+        current.reserveCapacity(previous.count)
+    }
+}
+
+/// A String meter text laid out into lines. Its lines never change; the lines it last drew clipped and its gradients
+/// are kept inside it, so, like the `TextLayoutCache` it lives in, it belongs to one skin's owner.
 final class TextLayout {
     struct Line {
         var line: CTLine
@@ -175,42 +226,12 @@ final class TextLayout {
         return (Double(ceil(max(textWidth + 2 * pad, 0) - 0.001)), Double(ceil(textHeight - 0.001)))
     }
 
-    // MARK: Cache
-
-    private struct Key: Hashable {
-        var text: String
-        var style: TextStyle
-        var wrapWidth: CGFloat?
-        var generation: Int
-    }
-    /// Two-generation cache: layouts used since the last rotation live in `cache`, the ones before in `previous`.
-    /// Every layout a redraw needs survives a rotation as long as one redraw uses fewer than `cacheLimit` of them
-    /// (a plain "clear when full" cache would rebuild every layout on every redraw once all the loaded skins
-    /// together show more strings than the limit).
-    private static var cache: [Key: TextLayout] = [:]
-    private static var previous: [Key: TextLayout] = [:]
-    static let cacheLimit = 1024
     /// Judgment: lines beyond this are dropped (bounds the work for runaway texts).
     static let maximumLines = 5_000
 
-    static func make(_ text: String, style: TextStyle, wrapWidth: CGFloat?) -> TextLayout {
-        // The skin's @Resources/Fonts must be loaded before FontFace is resolved (a no-op after the first time).
-        if let folder = style.fontFolder { Fonts.registerFolder(folder) }
-        let key = Key(text: text, style: style, wrapWidth: wrapWidth, generation: Fonts.generation)
-        if let hit = cache[key] { return hit }
-        let layout = previous[key] ?? build(text, style: style, wrapWidth: wrapWidth)
-        if cache.count >= cacheLimit {
-            previous = cache
-            cache = [:]
-            cache.reserveCapacity(cacheLimit)
-        }
-        cache[key] = layout
-        return layout
-    }
-
     // MARK: Building
 
-    private static func build(_ text: String, style: TextStyle, wrapWidth: CGFloat?) -> TextLayout {
+    fileprivate static func build(_ text: String, style: TextStyle, wrapWidth: CGFloat?) -> TextLayout {
         let built = attributedString(text, style: style)
         let attributed = built.string
         let units = built.units

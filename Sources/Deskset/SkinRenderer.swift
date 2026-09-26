@@ -7,32 +7,40 @@ enum SkinRenderer {
     /// to the container's W×H and "only drawn on solid pixels of the container"; "the container meter itself is not
     /// drawn, just the content", and "any transparency of both the container and the content is cumulative"
     /// (manual: Container). Content of a hidden container is not drawn.
+    ///
+    /// Only the skin's owner may draw it: drawing uses and fills the skin's `SkinRenderContext`.
     static func draw(_ skin: Skin, in ctx: CGContext) {
+        let context = SkinRenderContext.of(skin)
         drawBackground(skin, ctx)
         for meter in skin.meters where !meter.hidden && meter.container == nil {
             if meter.isContainer {
-                drawContainer(meter, content: skin.meters.filter { $0.container === meter }, ctx)
+                drawContainer(meter, content: skin.meters.filter { $0.container === meter }, ctx, context)
             } else {
-                drawMeter(meter, ctx)
+                drawMeter(meter, ctx, context)
             }
         }
     }
 
-    /// One meter with its background, bevel and TransformationMatrix.
+    /// One meter with its background, bevel and TransformationMatrix (the Skin Studio's thumbnails of single layers).
+    /// Only the owner of the meter's skin may draw it.
     static func drawMeter(_ meter: Meter, _ ctx: CGContext) {
+        drawMeter(meter, ctx, SkinRenderContext.of(meter.skin))
+    }
+
+    private static func drawMeter(_ meter: Meter, _ ctx: CGContext, _ context: SkinRenderContext) {
         ctx.saveGState()
         if let m = meter.transformationMatrix {
             ctx.concatenate(CGAffineTransform(a: m[0], b: m[1], c: m[2], d: m[3], tx: m[4], ty: m[5]))
         }
         drawMeterBackground(meter, ctx)
         switch meter {
-        case let m as StringMeter: drawString(m, ctx)
+        case let m as StringMeter: drawString(m, ctx, context)
         case let m as ImageMeter: drawImage(m, ctx)
         case let m as BarMeter: drawBar(m, ctx)
         case let m as LineMeter: drawLine(m, ctx)
-        case let m as HistogramMeter: drawHistogram(m, ctx)
+        case let m as HistogramMeter: drawHistogram(m, ctx, context)
         case let m as RoundlineMeter: drawRoundline(m, ctx)
-        case let m as RotatorMeter: drawRotator(m, ctx)
+        case let m as RotatorMeter: drawRotator(m, ctx, context)
         case let m as ShapeMeter: drawShape(m, ctx)
         case let m as ButtonMeter: drawButton(m, ctx)
         case let m as BitmapMeter: drawBitmap(m, ctx)
@@ -43,19 +51,20 @@ enum SkinRenderer {
 
     /// The content of `container`: drawn into a layer clipped to the container's frame, then kept only where the
     /// container's own drawing (background, image, shape… as one layer) is opaque, scaled by its alpha.
-    static func drawContainer(_ container: Meter, content: [Meter], _ ctx: CGContext) {
+    private static func drawContainer(_ container: Meter, content: [Meter], _ ctx: CGContext,
+                                      _ context: SkinRenderContext) {
         let visible = content.filter { !$0.hidden }
         let clip = container.frame.cgRect
         guard !visible.isEmpty, clip.width > 0, clip.height > 0, clip.minX.isFinite, clip.minY.isFinite else { return }
         ctx.saveGState()
         ctx.clip(to: clip)
         ctx.beginTransparencyLayer(in: clip, auxiliaryInfo: nil)
-        for meter in visible { drawMeter(meter, ctx) }
+        for meter in visible { drawMeter(meter, ctx, context) }
         // The container's drawing is one layer composited with destination-in: only its alpha matters, and several
         // drawing operations (fill, bevel, image…) act as one mask.
         ctx.setBlendMode(.destinationIn)
         ctx.beginTransparencyLayer(in: clip, auxiliaryInfo: nil)
-        drawMeter(container, ctx)
+        drawMeter(container, ctx, context)
         ctx.endTransparencyLayer()
         ctx.endTransparencyLayer()
         ctx.restoreGState()

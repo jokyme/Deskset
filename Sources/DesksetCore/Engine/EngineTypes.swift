@@ -275,8 +275,10 @@ public protocol SkinHost: AnyObject {
     /// `["https://…"]`, `["file.txt"]`, `[program args]`.
     func skin(_ skin: Skin, execute target: String, arguments: [String])
     func skin(_ skin: Skin, log message: String, level: SkinLogLevel)
-    /// Size of `text` drawn with `style` (in skin points), wrapped to `wrapWidth` when given.
-    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double)
+    /// Size of `text` drawn with `style` in `skin` (in skin points), wrapped to `wrapWidth` when given. Asked on the
+    /// skin's owner while it lays out its meters; the skin is named so that the host can measure with that skin's
+    /// own text layouts, the ones it then draws (a host may serve several skins).
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double)
     /// Pixel size of the image file at `path`, or nil when it cannot be loaded.
     func imageSize(atPath path: String) -> (width: Double, height: Double)?
     func environment(for skin: Skin) -> SkinEnvironment

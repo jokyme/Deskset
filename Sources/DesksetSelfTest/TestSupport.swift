@@ -25,7 +25,7 @@ class FakeHost: SkinHost {
     func skin(_ skin: Skin, execute target: String, arguments: [String]) { executed.append(target) }
     func skin(_ skin: Skin, log message: String, level: SkinLogLevel) { logs.append("\(level.rawValue): \(message)") }
     /// Deterministic metrics: 7 points per character, 14 points per line.
-    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double) {
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
         if let textSizer { return textSizer(text, style, wrapWidth) }
         return text.isEmpty ? (0, 0) : (Double(text.count) * 7, 14)
     }

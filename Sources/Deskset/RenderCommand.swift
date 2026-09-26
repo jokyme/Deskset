@@ -203,8 +203,8 @@ final class RenderHost: SkinHost {
     func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {
         if logs.count < 10_000 { logs.append("[\(level.rawValue)] \(message)") }
     }
-    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double) {
-        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth)
+    func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
+        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
     }
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {

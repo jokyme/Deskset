@@ -110,13 +110,14 @@ extension AppSelfTest {
                                       skins: testSkins) else { return }
             skin.update()
             for case let m as StringMeter in skin.meters where !m.hidden {
-                let drawn = TextLayout.make(m.text, style: m.style, wrapWidth: nil)
+                let drawn = SkinRenderContext.of(skin).text.layout(m.text, style: m.style, wrapWidth: nil,
+                                                                   cycle: skin.updateCount)
                 let needed = drawn.textWidth + 2 * drawn.pad
                 t.check(Double(needed) <= m.contentFrame.width + 0.001,
                         "[\(m.name)] \(needed) fits in \(m.contentFrame.width)")
                 t.check(m.frame.maxX <= skin.width && m.frame.maxY <= skin.height,
                         "[\(m.name)] inside the DynamicWindowSize skin")
-                t.equal(SkinRenderer.textSize(m.text, style: m.style, wrapWidth: nil).width,
+                t.equal(SkinRenderer.textSize(m.text, style: m.style, wrapWidth: nil, for: skin).width,
                         Double(ceil(needed - 0.001)), "[\(m.name)] measured = drawn")
             }
             t.equal((skin.meter(named: "Info") as? StringMeter)?.text,

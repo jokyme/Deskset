@@ -36,6 +36,7 @@ enum AppSelfTest {
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         SkinThreadingSelfTests.run(t)
+        RenderContextSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.

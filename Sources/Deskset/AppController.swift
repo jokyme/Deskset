@@ -510,10 +510,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// "Refresh all": image files are decoded again (a skin author may have edited them), font folders are read
-    /// again (fonts added, replaced or removed in `@Resources/Fonts`) and every skin reloads.
+    /// again (fonts added, replaced or removed in `@Resources/Fonts`) and every skin reloads. What each skin's renderer
+    /// kept (text layouts, processed Rotator images: `SkinRenderContext`) goes with the skin it replaces.
     func refreshAll(rescan: Bool) {
         Images.purge()
-        RotatorImages.purge()
         Fonts.rescanAllFolders()
         if rescan { cachedLibrary = nil }
         for c in sortedControllers { refresh(c) }
