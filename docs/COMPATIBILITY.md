@@ -1583,7 +1583,8 @@ Intel Macs are untested.
 #### UsageMonitor
 - **Windows:** any Performance Monitor Category / Counter / Instance, or an Alias (CPU, RAM, IO, GPU, VRAM…).
 - **Mac:** the common counters are emulated: Process (`% Processor Time`, `Working Set - Private`, `Private Bytes`,
-  `Virtual Bytes`, `Thread Count`, `ID Process`, IO bytes/sec…), Processor (per-core times), Memory (`Available
+  `Virtual Bytes`, `Thread Count`, `ID Process`, IO bytes/sec…), Processor (per-core times, and
+  `Processor Frequency`: the fastest cluster's clock for every core, as CoreTemp's `CpuSpeed`), Memory (`Available
   Bytes`, `Committed Bytes`, `Commit Limit`…), Paging File, Network Interface (bytes/sec), LogicalDisk / PhysicalDisk
   (free space, bytes/sec), System (processes, threads, uptime, load). Index, Name, Blacklist / Whitelist, Rollup,
   Percent, RawValue and PIDToName follow the manual (names also match case-insensitively and without `.exe`).

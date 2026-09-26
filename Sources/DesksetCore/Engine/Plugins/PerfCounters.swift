@@ -344,7 +344,9 @@ enum PerfCounters {
         case .coreSystem: return c.system
         case .coreBusyPercent: return c.total > 0 ? c.busy / c.total * 100 : 0
         case .coreFrequency:
-            if let list = ctx.sensors?.cpuCoreFrequencies(), let max = list.max() { return max }
+            // The same for every instance, as CoreTemp's CpuSpeed: the sensors' clock of the fastest cluster (else the
+            // fastest core's), else the rated clock (Intel).
+            if let mhz = ctx.sensors?.coreFrequency(nil) { return mhz }
             return (ctx.system.cpuFrequency() ?? 0) / 1_000_000
         case .constant(let v): return v
         default: return 0

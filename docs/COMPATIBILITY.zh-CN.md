@@ -1443,7 +1443,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 #### UsageMonitor
 - **Windows：** 任意性能监视器的类别 / 计数器 / 实例，或别名（CPU、RAM、IO、GPU、VRAM……）。
 - **Mac：** 模拟了常用计数器：进程（`% Processor Time`、`Working Set - Private`、`Private Bytes`、`Virtual Bytes`、
-  `Thread Count`、`ID Process`、IO 字节 / 秒……）、处理器（各核心时间）、内存（`Available Bytes`、`Committed Bytes`、
+  `Thread Count`、`ID Process`、IO 字节 / 秒……）、处理器（各核心时间；`Processor Frequency`
+  对每个核心都是最快簇的频率，与 CoreTemp 的 `CpuSpeed` 相同）、内存（`Available Bytes`、`Committed Bytes`、
   `Commit Limit`……）、分页文件、网络接口（字节 / 秒）、逻辑磁盘 / 物理磁盘（可用空间、字节 / 秒）、系统（进程数、线程数、
   开机时长、负载）。Index、Name、Blacklist / Whitelist、Rollup、Percent、RawValue 和 PIDToName 按手册处理（名称还可以不区分
   大小写、不带 `.exe` 匹配）。Thermal Zone Information（`\_TZ.CPU`，最热的 CPU 传感器，单位 K）和 GPU Engine（Alias=GPU：

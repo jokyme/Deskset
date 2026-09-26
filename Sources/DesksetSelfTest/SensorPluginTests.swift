@@ -346,6 +346,62 @@ func runSensorPluginTests(_ t: TestRunner) {
                 "“Shared video memory” has no effect on the Mac — not available per app on the Mac")
     }
 
+    t.suite("Plugin: sensors: Processor Frequency is the fastest cluster's clock, as CoreTemp's CpuSpeed") {
+        let ini = """
+        [Core0]
+        Measure=Plugin
+        Plugin=PerfMon
+        PerfMonObject=Processor
+        PerfMonCounter=Processor Frequency
+        PerfMonInstance=0
+        PerfMonDifference=0
+        [Total]
+        Measure=Plugin
+        Plugin=PerfMon
+        PerfMonObject=Processor Information
+        PerfMonCounter=Processor Frequency
+        PerfMonInstance=_Total
+        PerfMonDifference=0
+        [CpuSpeed]
+        Measure=Plugin
+        Plugin=CoreTemp
+        CoreTempType=CpuSpeed
+        """
+        func read(_ system: CatalogSystem) throws -> (core0: Double, total: Double, cpuSpeed: Double) {
+            let (skin, _) = try sensorSkin(t, ini, system)
+            skin.update()
+            return (value(skin, "Core0"), value(skin, "Total"), value(skin, "CpuSpeed"))
+        }
+        // The performance cluster runs at 3504 MHz on average, its fastest core at 4512.
+        let mac = try read(CatalogSystem.mac())
+        t.equal(mac.cpuSpeed, 3504)
+        t.equal(mac.core0, 3504, "the cluster's clock, not the fastest core's")
+        t.equal(mac.total, 3504, "the same for every instance")
+        // Without per-core clocks (the per-core channels did not match the chip): still the cluster's clock, not 0.
+        let clusters = CatalogSystem.mac()
+        for n in 1...4 { clusters.values["frequency.cpu.\(n)"] = nil }
+        t.equal(try read(clusters).core0, 3504)
+        // Only per-core clocks: the fastest core's; no clock at all (and no rated clock): 0.
+        let cores = CatalogSystem.mac()
+        cores.values["frequency.cpu"] = nil
+        t.equal(try read(cores).core0, 4512)
+        t.equal(try read(CatalogSystem()).core0, 0)
+
+        // UsageMonitor reads the same counter; its processor instances come with the process sampler's samples.
+        let (usage, _) = try sensorSkin(t, """
+        [Usage]
+        Measure=Plugin
+        Plugin=UsageMonitor
+        Category=Processor
+        Counter=Processor Frequency
+        Name=0
+        """, CatalogSystem.mac())
+        usage.update()
+        t.check(spinUntil(30) { ProcessSampler.shared.samples().latest != nil }, "a process sample")
+        usage.update()
+        t.equal(value(usage, "Usage"), 3504)
+    }
+
     t.suite("Plugin: sensors: MSIAfterburner data sources") {
         typealias M = MSIAfterburnerMeasure
         t.equal(M.source(for: "GPU temperature"), .sensor("gpu"))

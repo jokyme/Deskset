@@ -232,9 +232,9 @@ used. Nothing was taken from Rainmeter's or any plugin's source code.
     `System` (other users' processes, see AdvancedCPU) and `_Total`.
   - Processor / Processor Information: `% Processor Time` / `% Processor Utility`, `% Idle Time`, `% User Time`,
     `% Privileged Time` from per-core ticks (instances `0`…`N-1` / `0,0`…, `_Total`); `Processor Frequency` (MHz, the
-    fastest cluster's clock on Apple silicon, the rated clock on Intel); `% Processor Performance` /
-    `% of Maximum Frequency` = 100; interrupt / DPC /
-    C-state counters = 0.
+    same for every instance, as CoreTemp's `CpuSpeed`: the sensors' clock of the fastest cluster on Apple silicon, or
+    the fastest core's when there is no cluster clock; the rated clock on Intel); `% Processor Performance` /
+    `% of Maximum Frequency` = 100; interrupt / DPC / C-state counters = 0.
   - Memory: `Available Bytes / KBytes / MBytes` (total − used, as the Memory measures count used), `Committed Bytes`
     (used + swap used), `Commit Limit` (RAM + swap), `% Committed Bytes In Use`, `Page Faults/sec` (visible
     processes); cache / pool / paging-rate counters = 0.
