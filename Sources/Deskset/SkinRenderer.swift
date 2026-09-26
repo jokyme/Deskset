@@ -8,9 +8,21 @@ enum SkinRenderer {
     /// drawn, just the content", and "any transparency of both the container and the content is cumulative"
     /// (manual: Container). Content of a hidden container is not drawn.
     ///
+    /// Glass (`MacGlass`) is behind everything the skin draws: the skin window has the real thing behind its drawing
+    /// (`glass: .window`), every other drawing shows a stand-in (`GlassPlaceholder`).
+    ///
     /// Only the skin's owner may draw it: drawing uses and fills the skin's `SkinRenderContext`.
-    static func draw(_ skin: Skin, in ctx: CGContext) {
+    static func draw(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing = .placeholder(dark: nil)) {
         let context = SkinRenderContext.of(skin)
+        switch glass {
+        case .window:
+            GlassPlaceholder.drawHitArea(skin.glassRegions, in: ctx)
+        case .placeholder(let dark):
+            // Worked out now rather than taken from the last redraw: the Studio draws its live previews without one.
+            GlassPlaceholder.draw(skin.currentGlassRegions(), in: ctx, dark: dark)
+        case .none:
+            break
+        }
         drawBackground(skin, ctx)
         for meter in skin.meters where !meter.hidden && meter.container == nil {
             if meter.isContainer {
@@ -21,10 +33,30 @@ enum SkinRenderer {
         }
     }
 
-    /// One meter with its background, bevel and TransformationMatrix (the Skin Studio's thumbnails of single layers).
-    /// Only the owner of the meter's skin may draw it.
-    static func drawMeter(_ meter: Meter, _ ctx: CGContext) {
-        drawMeter(meter, ctx, SkinRenderContext.of(meter.skin))
+    /// How glass appears in a drawing (see `draw`).
+    enum GlassDrawing: Equatable {
+        /// A stand-in for the glass (`GlassPlaceholder`); `dark`: over a dark background, a light one, or unknown.
+        case placeholder(dark: Bool?)
+        /// The skin window: the real glass is behind the drawing, which only makes it catch the mouse.
+        case window
+        /// No glass at all.
+        case none
+    }
+
+    /// One meter with its background, bevel and TransformationMatrix (the Skin Studio's thumbnails of single layers),
+    /// its glass as a stand-in. Only the owner of the meter's skin may draw it.
+    static func drawMeter(_ meter: Meter, _ ctx: CGContext, glassDark: Bool? = nil) {
+        drawMeters([meter], ctx, glassDark: glassDark)
+    }
+
+    /// Several meters into one picture, in the given order (the Skin Studio's thumbnails of runs and selections):
+    /// first the glass stand-ins of all of them, then the meters, so the glass stays behind everything drawn, as in
+    /// the skin window. Only the owner of the meters' skin may draw them.
+    static func drawMeters(_ meters: [Meter], _ ctx: CGContext, glassDark: Bool? = nil) {
+        for meter in meters {
+            if let region = meter.glassRegion { GlassPlaceholder.draw(region, in: ctx, dark: glassDark) }
+        }
+        for meter in meters { drawMeter(meter, ctx, SkinRenderContext.of(meter.skin)) }
     }
 
     private static func drawMeter(_ meter: Meter, _ ctx: CGContext, _ context: SkinRenderContext) {

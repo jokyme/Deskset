@@ -300,10 +300,16 @@ public protocol SkinHost: AnyObject {
     /// move, so a window hidden or made click-through in the middle of a hover never keeps such moves away. Default
     /// true.
     func skinWindowTakesPointer(_ skin: Skin) -> Bool
+    /// Where the skin's glass goes changed (`MacGlass`, a Deskset extension; see Glass.swift): `regions` is the new
+    /// list, back to front, in skin points; also `skin.glassRegions`. Asked right before the redraw that shows the
+    /// new layout (`skinNeedsDisplay`), and only when the list changed. Hosts that draw skins off screen (the default)
+    /// show a stand-in instead (the renderer draws one for each region).
+    func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion])
 }
 
 extension SkinHost {
     public func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool { false }
     public func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
     public func skinWindowTakesPointer(_ skin: Skin) -> Bool { true }
+    public func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {}
 }

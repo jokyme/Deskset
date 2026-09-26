@@ -427,7 +427,11 @@ contents:
   - its tooltip text and title;
   - a hit shape: a rectangle, the shape's `CGPath`, or an image path plus transform for a Button's pixel test through
     the thread-safe `Images`;
+  - its glass (`MacGlass`), which is part of the meter for the mouse (`Meter.isOnGlass`) but not for a Button's own
+    pixel test;
 - `DragMargins`;
+- the glass regions (`MacGlass`: `Skin.glassRegions`, plain `GlassRegion` values in skin points), which the main
+  thread turns into the window's glass views;
 - the `[Rainmeter]` actions;
 - `wantsFocus`, `toolTipHidden`;
 - the context-menu items as of the last update;
@@ -438,7 +442,8 @@ The snapshot describes the frame that is on screen. A click is tested against wh
 only nearly true: the skin can have changed since its last draw.
 
 The skin posts one "snapshot changed" note to the main thread, and only when something the main thread uses has
-changed (size, hit map, tooltips, window model, issues). A 60 Hz skin whose layout is stable posts nothing.
+changed (size, hit map, tooltips, glass regions, window model, issues). A 60 Hz skin whose layout is stable posts
+nothing.
 
 ### 5.6 What stays synchronous
 

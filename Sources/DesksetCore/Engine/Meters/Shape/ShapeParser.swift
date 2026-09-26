@@ -69,6 +69,8 @@ struct ShapeParser {
         var kind: Kind
         var modifiers: ShapeModifiers
         var closed: Bool
+        /// A `Rectangle` as written (before its transforms).
+        var rectangle: ShapeRectangle? = nil
     }
 
     private mutating func parseShape(index: Int, _ value: String) -> RawShape? {
@@ -94,11 +96,13 @@ struct ShapeParser {
 
         var subpath: ShapeSubpath
         var fillRule = ShapeFillRule.evenOdd
+        var rectangle: ShapeRectangle?
         switch type.lowercased() {
         case "rectangle":
             guard need(4) else { return nil }
             subpath = ShapeGeometryBuilder.rectangle(x: r(0), y: r(1), width: r(2), height: r(3),
                                                      radiusX: v(4) ?? 0, radiusY: v(5))
+            rectangle = ShapeRectangle(x: r(0), y: r(1), width: r(2), height: r(3), radiusX: v(4) ?? 0, radiusY: v(5))
         case "ellipse":
             guard need(3) else { return nil }
             subpath = ShapeGeometryBuilder.ellipse(centerX: r(0), centerY: r(1), radiusX: r(2), radiusY: v(3))
@@ -158,7 +162,8 @@ struct ShapeParser {
             return nil
         }
         let path = ShapePath(subpaths: [subpath], fillRule: fillRule)
-        return RawShape(kind: .path(path), modifiers: parseModifiers(parts, label: label), closed: subpath.closed)
+        return RawShape(kind: .path(path), modifiers: parseModifiers(parts, label: label), closed: subpath.closed,
+                        rectangle: rectangle)
     }
 
     /// `StartX, StartY | LineTo … | ArcTo … | CurveTo … | SetRoundJoin 0|1 | SetNoStroke 0|1 | ClosePath 0|1`.
@@ -398,11 +403,19 @@ struct ShapeParser {
             }
         }
         let strokeGrow = style.placement == .center ? style.width / 2 : style.placement == .outer ? style.width : 0
+        // A rectangle whose transforms only move it (Offset, or none) stays a rectangle.
+        var rectangle: ShapeRectangle?
+        let t = b.transform
+        if var r = b.rectangle, t.a == 1, t.b == 0, t.c == 0, t.d == 1, t.tx.isFinite, t.ty.isFinite {
+            r.x += t.tx
+            r.y += t.ty
+            rectangle = r
+        }
         return ShapeItem(index: index, geometry: b.geometry, closed: b.closed,
                          fill: b.fill.resolve(in: b.localBounds),
                          stroke: style.width > 0 ? b.stroke.resolve(in: b.localBounds.insetBy(-strokeGrow)) : .none,
                          strokeStyle: style, strokePlan: plan, paintTransform: b.transform,
-                         bounds: bounds, visualBounds: visual)
+                         bounds: bounds, visualBounds: visual, rectangle: rectangle)
     }
 
     struct Built {
@@ -416,6 +429,8 @@ struct ShapeParser {
         var style: ShapeStrokeStyle
         /// Basic shapes in `geometry` (1 for a plain shape; repeats counted).
         var operands = 1
+        /// A plain `Rectangle` shape as written (before `transform`); nil for every other shape and for Combine.
+        var rectangle: ShapeRectangle? = nil
     }
 
     /// Builds shapes in any order (Combine may name shapes defined after it), detecting cycles.
@@ -446,7 +461,7 @@ struct ShapeParser {
                 let m = raw.modifiers
                 result = Built(geometry: .path(path.transformed(t)), localBounds: local, transform: t, closed: raw.closed,
                                fill: m.fill ?? (raw.closed ? .color(.white) : .none),
-                               stroke: m.stroke ?? .color(.black), style: m.style)
+                               stroke: m.stroke ?? .color(.black), style: m.style, rectangle: raw.rectangle)
             case .combine(let parentName, let steps, let consume):
                 result = buildCombine(index, raw, parentName, steps, consume, depth: depth)
             }

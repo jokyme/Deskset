@@ -264,10 +264,12 @@ extension InspectorWindowController {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: true)
         let wanted = Set(meters.map { ObjectIdentifier($0) })
+        var drawn = meters
         if let background = backgroundLayer(in: skin).flatMap({ skin.meter(named: $0) }), !wanted.contains(ObjectIdentifier(background)) {
-            SkinRenderer.drawMeter(background, cg)
+            drawn.insert(background, at: 0)
         }
-        for m in meters { SkinRenderer.drawMeter(m, cg) }
+        // Every glass stand-in behind every layer, the Background's fill included, as in the skin window.
+        SkinRenderer.drawMeters(drawn, cg)
         NSGraphicsContext.restoreGraphicsState()
         let image = NSImage(size: size)
         image.addRepresentation(rep)

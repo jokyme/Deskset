@@ -482,8 +482,9 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 - Windows: Corner Round (8 px) / RoundWs / RoundSmall (4 px) round the window (Windows 11) and draw a 1 px border
   (BorderVisible, BorderColor or `Backdrop`); Border=Top|Left|Right|Bottom|All draws square borders with a small shadow,
   only without a Corner; Backdrop `R,G,B,A` or hex (`#` ignored), alpha default 0; deprecated named backdrops.
-- Mac (Deskset): corners 8 / 8 / 4 points; the skin's own drawing is clipped to the rounded rectangle too (the skin
-  view's layer), as Windows 11 rounds the whole window; the rounded 1-point border uses BorderColor (alpha forced
+- Mac (Deskset): corners 8 / 8 / 4 points; the skin's own drawing is clipped to the rounded rectangle too (the layer
+  of the skin window's content view, which holds the skin's MacGlass as well, see engine.md §9), as Windows 11 rounds
+  the whole window; the rounded 1-point border uses BorderColor (alpha forced
   opaque) or a subtle default (white 16 % in dark mode, black 16 % in light); square borders are 1-point lines on the
   requested sides (no shadow). Backdrop as documented; deprecated names (Dark…, Light…, [BWC]…) map to greys at 50 %
   alpha.

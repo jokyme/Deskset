@@ -153,7 +153,8 @@ enum RenderCommand {
         let flipped = NSGraphicsContext(cgContext: cg, flipped: true)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = flipped
-        SkinRenderer.draw(skin, in: cg)
+        // No window, so MacGlass shows as a stand-in, drawn for the background when one is given.
+        SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
         NSGraphicsContext.restoreGraphicsState()
 
         guard let png = rep.representation(using: .png, properties: [:]) else { return 1 }

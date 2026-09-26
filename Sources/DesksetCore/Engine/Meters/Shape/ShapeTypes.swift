@@ -414,4 +414,32 @@ public struct ShapeItem: Equatable {
     public var bounds: ShapeRect
     /// Bounds including the stroke.
     public var visualBounds: ShapeRect
+    /// The rectangle of a `Rectangle` shape whose transform only moves it (in meter coordinates, moved), nil for
+    /// every other shape: where `MacGlass` puts the glass behind a Shape meter.
+    public var rectangle: ShapeRectangle? = nil
+}
+
+/// A `Rectangle` shape as drawn: `X, Y, Width, Height` with a negative width or height turned around, and the corner
+/// radii as `ShapeGeometryBuilder.rectangle` uses them (both 0 when either is).
+public struct ShapeRectangle: Equatable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+    public var radiusX: Double
+    public var radiusY: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double, radiusX: Double = 0, radiusY: Double? = nil) {
+        self.x = min(x, x + width)
+        self.y = min(y, y + height)
+        self.width = abs(width)
+        self.height = abs(height)
+        let rx = min(max(radiusX, 0), self.width / 2)
+        let ry = min(max(radiusY ?? radiusX, 0), self.height / 2)
+        self.radiusX = rx > 0 && ry > 0 ? rx : 0
+        self.radiusY = rx > 0 && ry > 0 ? ry : 0
+    }
+
+    /// One radius for all corners (the smaller one when they differ, so the corners stay inside the shape).
+    public var cornerRadius: Double { min(radiusX, radiusY) }
 }

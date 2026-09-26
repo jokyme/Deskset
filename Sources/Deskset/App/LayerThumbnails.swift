@@ -2,7 +2,7 @@ import AppKit
 import DesksetCore
 
 /// The small pictures of the layer list (docs/editor-friendly.md §5.2 "Row anatomy"): each layer's real pixels, drawn
-/// by the real renderer (`SkinRenderer.drawMeter`), cropped to the layer and scaled to fit a 36 × 26 point tile at 2x,
+/// by the real renderer (`SkinRenderer.drawMeters`), cropped to the layer and scaled to fit a 36 × 26 point tile at 2x,
 /// on the widget's own panel color (the Background's fill, else the canvas backdrop) so light text on a dark widget
 /// reads as it does on the desktop. A layer thinner or flatter than 6 points (a 2-point marker, a hairline) would be a
 /// speck: it gets a symbol of its kind in its own color instead.
@@ -10,7 +10,7 @@ import DesksetCore
 /// Thumbnails are cached per layer with a signature of what they show (frame, visibility, values, text, colors, the
 /// loaded skin): a row asks again on every refresh, and only a layer that changed is drawn again — at most once per
 /// pass (`beginPass`), which the sidebar starts once per live tick, and only for rows on screen. The whole widget's
-/// picture follows each update of the widget (still at most once per pass).
+/// picture follows each update of the widget and each change of its glass (still at most once per pass).
 ///
 /// A hidden layer has no size (Hidden sets W and H to 0), so it has nothing to draw: its row keeps the picture the
 /// layer had while it was shown (the row dims it), else shows its kind's symbol in its own color.
@@ -70,7 +70,10 @@ final class LayerThumbnails {
     /// The whole widget, scaled to fit the tile.
     func widgetThumbnail(of skin: Skin, panel: NSColor, dark: Bool) -> NSImage? {
         let key = "\u{1F}widget"
+        // The glass as of the last redraw too: a `!SetOption` and `!Redraw` from a mouse action changes it between
+        // updates (a skin with `Update=-1` has no further update).
         let signature = "\(ObjectIdentifier(skin).hashValue)|\(skin.width)x\(skin.height)|\(skin.updateCount)|\(dark)|\(panel)"
+            + "|\(skin.glassRegions)"
         if let entry = cache[key], entry.signature == signature || drawnThisPass.contains(key) { return entry.image }
         let area = SkinRect(x: 0, y: 0, width: skin.width, height: skin.height)
         guard let image = Self.draw(area: area, panel: panel, { cg in SkinRenderer.draw(skin, in: cg) }) else { return nil }
@@ -107,6 +110,8 @@ final class LayerThumbnails {
             if let bar = m as? BarMeter { part += "|\(bar.barColor)" }
             if let text = m as? StringMeter { part += "|" + text.text + "|\(text.style.color)" }
             if let shape = m as? ShapeMeter { part += "|\(shape.revision)" }
+            // The glass stand-in (`MacGlass`), which `!SetOption`, variables and previews turn on, off or change.
+            part += "|\(m.glassRegion.map { "\($0)" } ?? "")"
             parts.append(part)
         }
         return parts.joined(separator: "\u{1F}")
@@ -131,9 +136,7 @@ final class LayerThumbnails {
         guard let area = bounds(of: meters), area.width >= minimumSide, area.height >= minimumSide else {
             return glyph(for: meters.first, panel: panel)
         }
-        return draw(area: area, panel: panel) { cg in
-            for m in meters { SkinRenderer.drawMeter(m, cg) }
-        }
+        return draw(area: area, panel: panel) { cg in SkinRenderer.drawMeters(meters, cg) }
     }
 
     /// A tile with `area` of the skin scaled to fit (never enlarged more than 4 times), centered on the panel color.

@@ -442,17 +442,41 @@ public enum EditorSchema {
     static let padding = Property("Padding", "Space around it", .insets, default: "0,0,0,0",
                                   help: "Left, top, right and bottom, in px")
 
+    // MARK: - Glass (MacGlass, Mac only)
+
+    /// `MacGlass`: None, or the two looks of macOS glass (Engine/Glass.swift reads them, any case).
+    public static let glassStyles: [Choice] = [Choice("None", "None"), Choice("Regular", "Regular"),
+                                               Choice("Clear", "Clear")]
+
+    /// `MacGlass`, `MacGlassCornerRadius` and `MacGlassTint`: glass behind a layer or the whole widget, a Deskset
+    /// extension (the options start with Mac, so other apps skip them). On a shape whose first shape is a rectangle,
+    /// the glass takes the rectangle and its corners unless a radius is given.
+    static func glass(level: Level, forShape: Bool = false, widget: Bool = false) -> [Property] {
+        let behind = widget ? "the whole widget" : "this layer"
+        return [
+            Property("MacGlass", "Glass", pick(glassStyles, style: .popup), default: "None",
+                     help: "Mac only: see-through glass behind \(behind); the desktop shows through, blurred", level: level),
+            Property("MacGlassCornerRadius", "Glass corner radius", num(0, nil, step: 1, unit: "px"), default: "0",
+                     placeholder: forShape ? "the rectangle's corners" : nil,
+                     help: forShape ? "Without it, glass behind a rectangle takes its corners" : "",
+                     visibleWhen: [.notEquals("MacGlass", "None")], level: level),
+            Property("MacGlassTint", "Glass tint", .color, placeholder: "none", help: "A color the glass leans toward",
+                     visibleWhen: [.notEquals("MacGlass", "None")], level: level),
+        ]
+    }
+
     /// "Box Behind It" (the layer's SolidColor, Padding, fade and raised edge). `color`: SolidColor is the box's
     /// color here (a picture keeps it in its own card).
-    static func boxGroup(color: Bool = true) -> Group {
+    static func boxGroup(color: Bool = true, forShape: Bool = false) -> Group {
         var list: [Property] = []
         if color {
             list.append(Property("SolidColor", "Color", .color, default: "0,0,0,0", placeholder: "none",
                                  help: "A box of color behind the layer", level: .essential))
         }
         list.append(padding.essential())
+        list += glass(level: .essential, forShape: forShape)
         return Group(title: "Box Behind It", properties: list + boxExtras,
-                     summary: "A box of color behind the layer, and the space around it.",
+                     summary: "A box of color or glass behind the layer, and the space around it.",
                      moreSummary: "fades, raised edge", moreTitle: "More Box Options")
     }
 
@@ -527,7 +551,7 @@ public enum EditorSchema {
         case "rotator": groups = rotatorGroups + [boxGroup()]
         case "button": groups = buttonGroups + [boxGroup()]
         case "bitmap": groups = bitmapGroups + [boxGroup()]
-        case "shape": groups = shapeGroups + [boxGroup()]
+        case "shape": groups = shapeGroups + [boxGroup(forShape: true)]
         default: return []
         }
         groups += [interaction, behavior]
@@ -610,8 +634,10 @@ public enum EditorSchema {
         return [Group(title: "Picture", properties: picture, moreSummary: "tint, crop, rotation, flip, tile, grayscale")]
     }()
 
-    static let barGroups: [Group] = [
-        Group(title: "Bar", properties: [
+    static let barGroups: [Group] = {
+        // Built step by step: as one expression, the picture, symbol, box and glass parts are more than the type
+        // checker takes in reasonable time.
+        var bar: [Property] = [
             measureName,
             Property("BarColor", "Fill", .color, default: "0,128,0,255", level: .essential),
             Property("SolidColor", "Empty part", .color, default: "0,0,0,0", placeholder: "none", level: .essential),
@@ -622,13 +648,21 @@ public enum EditorSchema {
             Property("BarImage", "Picture instead of a color", .image, help: "Revealed instead of the color, at its own size"),
             Property("BarBorder", "Fixed ends", num(0, 32768, step: 1, unit: "px"), default: "0",
                      visibleWhen: [.isSet("BarImage")]),
-        ] + imageOptions(when: [.isSet("BarImage")]) + symbolOptions(for: "BarImage") + [
+        ]
+        bar += imageOptions(when: [.isSet("BarImage")])
+        bar += symbolOptions(for: "BarImage")
+        bar += [
             Property("SolidColor2", "Empty part fades to", .color, placeholder: "none"),
             Property("GradientAngle", "Fade direction", .angle(unit: .degrees, orientation: true), default: "0",
                      visibleWhen: [.isSet("SolidColor2")]),
-        ] + boxExtras.dropFirst(2) + [padding],
-              moreSummary: "picture instead of a color, raised edge, space around it", moreTitle: "More Bar Options"),
-    ]
+        ]
+        bar += boxExtras.dropFirst(2)
+        bar.append(padding)
+        bar += glass(level: .more)
+        return [Group(title: "Bar", properties: bar,
+                      moreSummary: "picture instead of a color, raised edge, space around it, glass",
+                      moreTitle: "More Bar Options")]
+    }()
 
     static let graphDirection: [Property] = [
         Property("GraphOrientation", "Direction", pick(orientation), default: "Vertical",
@@ -637,7 +671,7 @@ public enum EditorSchema {
     ]
 
     /// Behind a graph: the box options, SolidColor first as "Behind the graph".
-    static let graphBox: [Property] = boxExtras + [padding]
+    static let graphBox: [Property] = boxExtras + [padding] + glass(level: .more)
     static let graphBackground = Property("SolidColor", "Behind the graph", .color, default: "0,0,0,0",
                                           placeholder: "none", level: .essential)
 

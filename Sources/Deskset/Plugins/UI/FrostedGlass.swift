@@ -9,7 +9,7 @@ import DesksetCore
 // (same frame, same level, ordered just below it, ignoring the mouse). A child window moves with its parent; its
 // size, level, visibility and alpha are synced on every update of the measure and whenever the skin window moves,
 // resizes, is ordered in or closes. Rounded corners also clip the skin's own content (Windows 11 rounds the whole
-// window), through the skin view's layer.
+// window), through the layer of the skin window's content view (the skin's drawing and its MacGlass).
 
 /// The plugin's options, parsed (pure, tested).
 struct FrostedGlassStyle: Equatable {
@@ -323,7 +323,7 @@ final class FrostedGlassBackdrop: NSObject {
         }
         let radius = style.effectiveRadius
         if let layer = window.contentView?.layer, layer.cornerRadius != radius { layer.cornerRadius = radius }
-        roundSkinView(controller.view, radius: radius)
+        roundSkinView(controller.contentView, radius: radius)
         let visible = parent.isVisible && controller.app.presentsWindows
         let wanted = visible && (style.drawsBackground || (style.borderVisible && radius > 0)
                                  || (style.bordersEnabled && !style.borders.isEmpty))
@@ -345,7 +345,8 @@ final class FrostedGlassBackdrop: NSObject {
         if !window.isVisible { window.order(.below, relativeTo: parent.windowNumber) }
     }
 
-    /// Rounds (and clips) the skin's own drawing like Windows 11 rounds the whole window.
+    /// Rounds (and clips) the skin's own drawing like Windows 11 rounds the whole window, and its MacGlass with it
+    /// (the window's content view holds both).
     private func roundSkinView(_ view: NSView, radius: CGFloat) {
         view.wantsLayer = true
         guard let layer = view.layer else { return }

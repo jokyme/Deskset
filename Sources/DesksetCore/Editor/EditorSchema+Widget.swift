@@ -40,7 +40,7 @@ extension EditorSchema {
                      visibleWhen: [.equals("BackgroundMode", "2"), .isSet("SolidColor2")]),
             Property("Background", "Picture", .image, visibleWhen: [.equals("BackgroundMode", "0", "3", "4")]),
             Property("BackgroundMargins", "Edges that don't stretch", .insets, visibleWhen: [.equals("BackgroundMode", "3")]),
-        ] + symbolOptions(for: "Background")),
+        ] + symbolOptions(for: "Background") + glass(level: .essential, widget: true)),
         Group(title: "Timing", properties: [
             Property("DefaultUpdateDivider", "Redraw layers", num(-1, nil, step: 1, unit: "updates"), default: "1",
                      help: "Layers redraw on every update, every 2nd…; -1: only once"),

@@ -10,7 +10,8 @@ history) and from observing real skins and their authors' screenshots — never 
 locally only, not distributed).
 
 Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin language and compatibility notes ·
-4. Measures · 5. Meters and drawing · 6. Mouse, bangs and actions · 7. Limits · 8. Known differences not fixed.
+4. Measures · 5. Meters and drawing · 6. Mouse, bangs and actions · 7. Limits · 8. Known differences not fixed ·
+9. Deskset extensions.
 
 ---
 
@@ -708,7 +709,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Mac (Deskset): inside the skin, meter rectangles (Shape: its solid parts; Button: its opaque pixels) catch the
   mouse; clicks on fully transparent pixels of the window are left to macOS, which passes them to what is behind.
 - Why: AppKit hit-tests borderless transparent windows by pixel alpha.
-- Skin impact: a meter with an invisible SolidColor=0,0,0,1 background catches clicks, as on Windows.
+- Skin impact: a meter with an invisible SolidColor=0,0,0,1 background catches clicks, as on Windows. Glass
+  (`MacGlass`, §9) catches clicks too, for its meter's own mouse actions.
 - Status: identical
 
 ---
@@ -804,3 +806,88 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   total VRAM reads 0 (Registry, §4). The FrostedGlass blur is media-ui.md's.
 - Lua-driven layouts (Enigma's Taskbar skin widths, calendars, notes, readers) run their scripts now (lua.md); their
   first update sees provisional meter geometry (§1).
+
+---
+
+## 9. Deskset extensions
+
+Options Rainmeter does not have. Their names start with `Mac`: Rainmeter ignores options it does not know, so a skin
+that uses them still loads there, only without the effect. The Mac look extensions are described with the areas they
+belong to: the system font designs (§2), the light and dark mode variables with `MacOnAppearanceChangeAction` (§3),
+and SF Symbols as images with the `MacSymbol…` options (§5).
+
+### MacGlass: glass behind a skin or behind a meter
+- Windows (Rainmeter): n/a (a Deskset option; Rainmeter ignores it).
+- Mac (Deskset): `MacGlass=None|Regular|Clear` (default None, any case) in `[Rainmeter]` puts glass behind the whole
+  skin (its width × height); on any meter it puts glass behind the meter's frame (W × H, Padding included).
+  `MacGlassCornerRadius=` rounds it (points, default 0, a number or a formula, at most half the shorter side) and
+  `MacGlassTint=` tints it (`R,G,B[,A]` or hex, like any color). The glass is behind everything the skin draws, its
+  background included: the skin's own glass first, then the meters' in the order they are drawn (later ones in
+  front), which is file order except that content of a container comes right after the container's own glass,
+  wherever it is written, as its drawing does. Another `MacGlass` value is no glass and is logged once. At most 64
+  pieces of glass per skin (the ones drawn later get none, logged once).
+- Why: the Mac's glass look (Liquid Glass on macOS 26) has no Rainmeter option.
+- Skin impact: none for skins that do not use it.
+- Status: Deskset extension
+
+### MacGlass on Shape meters, containers, hidden and transformed meters
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): on a Shape meter whose first shape (`Shape`) is a `Rectangle`, the glass takes that rectangle
+  (from the meter's content origin, after Padding) and its corners: the smaller of RadiusX and RadiusY when they
+  differ, square corners when either is 0, as drawn. An `Offset` moves it along; `Rotate`, `Scale` or `Skew`, another
+  first shape, and a `Shape` that is missing, cannot be read, is a Combine or is consumed by one (even when a later
+  shape is a Rectangle) use the meter's frame. `MacGlassCornerRadius` still wins over the shape's corners. No glass
+  for hidden meters, meters of zero width or height, meters inside a hidden container, and meters whose
+  `TransformationMatrix` turns, scales or skews them (a matrix that only moves them moves the glass). Content of a
+  container (`Container=`) has its glass cut off at the container's frame, a rectangle: the container's pixels do not
+  mask the glass the way they mask the content's drawing; glass entirely outside the container is none. A container's
+  own `MacGlass` is shown, although the container itself is not drawn: its area is where its content shows. String
+  `Angle` and Rotator images turn only what they draw, so the glass stays the meter's frame.
+- Why: a piece of glass is a rounded rectangle; it cannot follow a path or a pixel mask.
+- Skin impact: put glass behind a Rectangle shape, or give a meter its own `MacGlassCornerRadius`.
+- Status: Deskset extension
+
+### MacGlass follows variables, `!SetOption` and redraws
+- Windows (Rainmeter): n/a (`[Rainmeter]` options are otherwise fixed: "does not support Dynamic Variables or changes
+  using the !SetOption bang, with the exception of custom Context menu items").
+- Mac (Deskset): on meters the options are read like any option: with `DynamicVariables=1` at every update of the
+  meter, after `!SetOption` at its next update (or `!UpdateMeter`), so glass can be turned on, off or changed while the
+  skin runs. The `[Rainmeter]` options are read again at every redraw, with variables and section variables resolved
+  (like `ContextTitle`), and `!SetOption Rainmeter MacGlass…` is accepted. A change shows at the next redraw (an
+  update, `!Redraw`, `!MoveMeter`…), like `!HideMeter`.
+- Why: glass that reacts to the skin (a clicked card, a theme switch) without a refresh.
+- Skin impact: none.
+- Status: Deskset extension
+
+### How the glass is shown, clicks and FrostedGlass
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): the glass is part of the skin window, under the skin's drawing (which is transparent wherever the
+  skin draws nothing). macOS 26 and later: `NSGlassEffectView` (Liquid Glass) in the chosen style, with the corner
+  radius and the tint (macOS keeps a tint subtle; its alpha makes it subtler). macOS 13–15: `NSVisualEffectView`
+  blurring what is behind the window (Regular: the popover material, Clear: the HUD material, darker and more
+  see-through), rounded with a mask, the tint laid over it at 40 % of its alpha, so the glass leans toward it. Being
+  part of the window, the glass follows the window's alpha, fades, level, Spaces and every move exactly (FrostedGlass,
+  a separate window, fades in steps). Glass counts as a solid part of the skin: the skin's drawing puts a fill no one
+  can see (alpha 1/255) over it, so clicks, drags, hover and mouse actions work on glass even where the skin draws
+  nothing; elsewhere, fully transparent pixels still let clicks through. The glass is also part of its meter for the
+  mouse: the meter's mouse actions, hover actions, tooltip and cursor work on all of the glass shown for it (a Shape
+  with a transparent fill, the corners of the frame around an Ellipse, glass moved by a `TransformationMatrix`, a
+  Shape's Rectangle beyond the frame, content's glass up to its container's frame), from the redraw that shows it; a
+  Button's `ButtonCommand` and button states still follow only the opaque pixels of its image. With FrostedGlass
+  rounded corners, the glass is cut off by the same rounded rectangle. `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15
+  glass on macOS 26, to compare the two.
+- Why: Liquid Glass exists only on macOS 26; the visual-effect materials are the closest look before it.
+- Skin impact: the glass looks different on macOS 13–15 (a frosted blur without Liquid Glass's lensing and shine).
+- Status: Deskset extension
+
+### MacGlass where there is no window
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): real glass shows what is behind a window, so images and previews show a stand-in: a translucent white
+  fill (the tint over it; lighter for Clear) and a hairline edge, in the glass's shape and stacking, behind everything
+  drawn (a picture of several layers, such as a Skin Studio tile of a run or a selection, draws every stand-in before
+  any layer). `--render` draws it for its `--background` (dark or light; a neutral edge that shows on both without
+  one), the Skin Studio's canvas for its backdrop; layer and widget thumbnails and the component library use the
+  neutral look.
+- Why: nothing is behind an image to see through.
+- Skin impact: none on the desktop; screenshots made with `--render` do not show real glass.
+- Status: Deskset extension

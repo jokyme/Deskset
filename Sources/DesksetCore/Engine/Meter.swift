@@ -81,6 +81,9 @@ open class Meter: SkinSection {
     /// True when some other meter uses this meter as its container: the host must not draw it, only use it to
     /// clip / mask its content.
     public internal(set) var isContainer = false
+    /// `MacGlass`, `MacGlassCornerRadius`, `MacGlassTint` (a Deskset extension; see Glass.swift): nil for no glass.
+    /// Read like any option, so DynamicVariables and `!SetOption` turn the glass on, off or change it.
+    public internal(set) var glass: GlassOptions?
 
     var xPosition = PositionValue(value: 0)
     var yPosition = PositionValue(value: 0)
@@ -142,13 +145,19 @@ open class Meter: SkinSection {
     /// transparent areas if there is not some other meter behind the image" (the window itself lets clicks on fully
     /// transparent pixels through). Content outside its container "in effect doesn't exist", also for the mouse: the
     /// container must be visible and hit (`hitTest`) there too.
+    ///
+    /// The meter's glass (`MacGlass`, a Deskset extension; `isOnGlass`) is hit too: the skin window catches the mouse
+    /// there, so it is part of the meter wherever it is shown (already cut off at a container's frame), except for a
+    /// Button's own reaction, which follows the pixels of its image "at all times".
     public func isHit(x: Double, y: Double) -> Bool {
         isHit(x: x, y: y, precise: !handlesMouseItself)
     }
 
     /// `isHit` with the meter's own area: `hitTest` when `precise`, otherwise the frame rectangle.
     public func isHit(x: Double, y: Double, precise: Bool) -> Bool {
-        guard !hidden, precise ? hitTest(x: x, y: y) : frame.contains(x: x, y: y) else { return false }
+        guard !hidden else { return false }
+        if !(precise && handlesMouseItself), isOnGlass(x: x, y: y) { return true }
+        guard precise ? hitTest(x: x, y: y) : frame.contains(x: x, y: y) else { return false }
         if let container {
             return !container.hidden && container.hitTest(x: x, y: y)
         }
@@ -255,6 +264,7 @@ open class Meter: SkinSection {
         let matrix = parts.compactMap { OptionValue.number(String($0).trimmingCharacters(in: .whitespaces)) }
         transformationMatrix = parts.count == 6 && matrix.count == 6 && matrix.allSatisfy({ $0.isFinite })
             ? matrix : nil
+        glass = readGlassOptions()
 
         readMeterOptions()
     }

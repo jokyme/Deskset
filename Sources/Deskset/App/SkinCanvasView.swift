@@ -855,7 +855,8 @@ final class SkinCanvasView: NSView {
         ctx.saveGState()
         ctx.clip(to: rect)
         ctx.translateBy(x: origin.x, y: origin.y)
-        SkinRenderer.draw(skin, in: ctx)
+        // MacGlass cannot be shown off the desktop: a stand-in for the card's light or dark backdrop.
+        SkinRenderer.draw(skin, in: ctx, glass: .placeholder(dark: backdropIsDark))
         ctx.restoreGState()
         drawOutside(skin, card: rect, ctx)
         drawCutOffOutlines(skin, card: rect, zoom: z, ctx)
@@ -887,6 +888,15 @@ final class SkinCanvasView: NSView {
                 x += spacing
             }
             y += spacing
+        }
+    }
+
+    /// Whether the card's backdrop is dark (MacGlass stand-ins are drawn for it).
+    private var backdropIsDark: Bool {
+        switch backdrop {
+        case .dark: return true
+        case .light: return false
+        case .checkerboard: return isDark
         }
     }
 
@@ -947,7 +957,7 @@ final class SkinCanvasView: NSView {
         ctx.setAlpha(Self.ghostAlpha)
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.translateBy(x: origin.x, y: origin.y)
-        SkinRenderer.draw(skin, in: ctx)
+        SkinRenderer.draw(skin, in: ctx, glass: .placeholder(dark: backdropIsDark))
         ctx.endTransparencyLayer()
         ctx.restoreGState()
     }
