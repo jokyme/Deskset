@@ -649,6 +649,9 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
     `Tf…`; Intel `TC…`, `TG…`, `TPCD`) and each value is the hottest valid key of its group;
   - no key names a single core on Apple silicon: `cpu.core.N` is the hottest sensor of the core's cluster (the core's
     type comes from the device tree); where the clusters share a prefix (M1, M2), it is `cpu`;
+  - Intel Macs number their core keys from 1 (`TC1C`…`TC4C` on a 4-core MacBook Pro) or from 0: `cpu.core.N` is
+    the N-th `TC…C` key the Mac has; where there is one more such key than cores, `TC0C` counts for the whole CPU;
+    a core without a key of its own reads `cpu`;
   - readings outside 10–130 °C, and exactly 40.0 °C on Apple silicon CPU keys, are what a powered-down cluster
     reports and are ignored; while every sensor of a CPU cluster or of the GPU reads "powered down" (the GPU does for
     minutes when idle), the unit reports the chip's temperature (`soc`); a sensor that loses its reading keeps its

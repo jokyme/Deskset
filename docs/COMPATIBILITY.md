@@ -1396,7 +1396,8 @@ Intel Macs are untested.
 - **Windows:** per-core values come from the CPU's registers.
 - **Mac:** Apple documents no sensor names: keys are grouped by name per chip family, and each value is the hottest
   valid key of its group. On Apple silicon no key names one core, so `cpu.core.N` (CoreTemp `Temperature`) is the
-  hottest sensor of the core's cluster (the whole CPU on M1 / M2). Readings a powered-down cluster reports (below
+  hottest sensor of the core's cluster (the whole CPU on M1 / M2); Intel Macs number their core keys from 1 or 0,
+  and core N is the N-th such key. Readings a powered-down cluster reports (below
   10 °C, or exactly 40.0 °C) are ignored; while every sensor of a CPU cluster or the GPU is powered down, it reports
   the chip's temperature. Clocks are averages over the last interval while running (a core that did not run shows
   its lowest clock); the CPU voltage is the voltage the running cores asked for. TjMax is nominal: 110 °C on Apple

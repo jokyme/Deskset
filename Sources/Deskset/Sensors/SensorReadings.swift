@@ -56,7 +56,7 @@ enum SensorReadings {
     /// have sensors even when none of them read validly this time, so their catalog entries stay):
     /// - `cpu` the hottest CPU reading, `cpu.performance` / `cpu.efficiency` the hottest of each cluster;
     /// - `cpu.core.N`: on Apple silicon the hottest reading of the core's cluster (`coreTypes`, from the device tree),
-    ///   `cpu` when the clusters share their sensors; on Intel the core's own sensor, else `cpu`;
+    ///   `cpu` when the clusters share their sensors; on Intel the core's own sensor (`intelCoreKeys`), else `cpu`;
     /// - `gpu`, `soc`, `battery`, `ssd`: the hottest reading of each.
     /// On Apple silicon a CPU cluster or the GPU whose sensors all read "powered down" (the GPU's do for minutes while
     /// it is idle) sits at the rest of the chip's temperature: it reports `soc` then.
@@ -107,12 +107,14 @@ enum SensorReadings {
                                            kind: .temperature, source: "\(source): \(from)"), value)
                 }
             } else {
+                let coreKeys = intelCoreKeys(present, physicalCores: physicalCores)
                 for i in 0..<max(physicalCores, 0) {
-                    let own = hottest { $0 == .cpuCore(i) }
+                    let role = i < coreKeys.count ? TemperatureRole.cpuCore(coreKeys[i]) : nil
+                    let own = role.flatMap { r in hottest { $0 == r } }
                     reading.add(SensorInfo(key: SensorKeys.cpuCore(i + 1), label: "CPU core \(i + 1) temperature",
                                            kind: .temperature,
-                                           source: own != nil || present.contains(.cpuCore(i)) ? names { $0 == .cpuCore(i) }
-                                               : "\(source): the whole CPU"), own ?? cpu)
+                                           source: role.map { r in names { $0 == r } } ?? "\(source): the whole CPU"),
+                                own ?? cpu)
                 }
             }
         }
@@ -126,6 +128,18 @@ enum SensorReadings {
                         role == .gpu ? hottestOrChip { $0 == role } : hottest { $0 == role })
         }
         return reading
+    }
+
+    /// Intel: the digits of the core keys (`TC<d>C`) in core order. Macs number them from 1 (TC1C…TC4C on a
+    /// 4-core MacBook Pro) or from 0, so core N is the N-th key present; where there is one key more than cores and
+    /// it is TC0C (TC0C and TC1C…TC4C on a 4-core Mac), TC0C describes the whole CPU and the cores are TC1C….
+    static func intelCoreKeys(_ present: Set<TemperatureRole>, physicalCores: Int) -> [Int] {
+        var digits = present.compactMap { role -> Int? in
+            if case .cpuCore(let d) = role { return d }
+            return nil
+        }.sorted()
+        if digits.count > physicalCores, digits.first == 0 { digits.removeFirst() }
+        return digits
     }
 
     /// Classifies and filters SMC readings (`values`: key → °C) into the temperature group.

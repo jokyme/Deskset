@@ -52,7 +52,8 @@ enum TemperatureRole: Hashable {
     case cpuEfficiency
     /// A CPU sensor whose cluster is not known (M1, M2: one prefix for both clusters; Intel: the package).
     case cpu
-    /// An Intel core (0-based).
+    /// An Intel core's own sensor, by the digit of its key (`TC<d>C`). Macs number these keys from 0 or from 1;
+    /// `SensorReadings.intelCoreKeys` decides which core each one is.
     case cpuCore(Int)
     case gpu
     /// The rest of the chip (Apple silicon) or the chipset (Intel).
@@ -107,8 +108,8 @@ enum SensorClassification {
         case .intel:
             switch prefix {
             case "TC":
-                // TC0C, TC1C…: one core each; TCGC: the integrated GPU; TCSA / TCSC: the system agent; the rest
-                // (TC0P proximity, TC0D / TC0E / TC0F die, TCXC PECI…) describe the whole CPU.
+                // TC1C, TC2C… (TC0C, TC1C… on some Macs): one core each; TCGC: the integrated GPU; TCSA / TCSC: the
+                // system agent; the rest (TC0P proximity, TC0D / TC0E / TC0F die, TCXC PECI…) describe the whole CPU.
                 if isDigit(c[2]), c[3] == UInt8(ascii: "C") { return .cpuCore(Int(c[2] - UInt8(ascii: "0"))) }
                 if c[2] == UInt8(ascii: "G") { return .gpu }
                 if c[2] == UInt8(ascii: "S") { return .soc }

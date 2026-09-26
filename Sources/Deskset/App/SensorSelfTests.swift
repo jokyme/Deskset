@@ -238,15 +238,32 @@ enum SensorSelfTests {
                                                     coreTypes: [.efficiency, .performance], physicalCores: 2)
             t.equal([m3.values["cpu"], m3.values["cpu.performance"], m3.values["cpu.efficiency"], m3.values["gpu"]],
                     [55, 55, 44, 41])
-            // Intel: per-core keys, the package, the integrated GPU, the chipset.
-            let intel = SensorReadings.smcTemperatures(["TC0P": 55, "TC0D": 60, "TC1C": 58, "TC2C": 62, "TC3C": 0,
-                                                        "TCGC": 50, "TCSA": 57, "TG0P": 48, "TPCD": 52, "TB0T": 30,
-                                                        "TH0P": 36, "TA0P": 25, "Ts0P": 31],
+            // Intel: per-core keys, the package, the integrated GPU, the chipset. A 4-core MacBook Pro numbers its
+            // core keys TC1C…TC4C (no TC0C): core 1 is TC1C, and TC4C is core 4.
+            let intel = SensorReadings.smcTemperatures(["TC0P": 55, "TC0D": 63, "TC1C": 58, "TC2C": 61, "TC3C": 0,
+                                                        "TC4C": 59, "TCGC": 50, "TCSA": 57, "TG0P": 48, "TPCD": 52,
+                                                        "TB0T": 30, "TH0P": 36, "TA0P": 25, "Ts0P": 31],
                                                        family: .intel, coreTypes: [], physicalCores: 4)
             let iv = intel.values
-            t.equal(iv["cpu"], 62)
-            t.equal((1...4).map { iv["cpu.core.\($0)"] }, [62, 58, 62, 62], "own sensor, else the package")
+            t.equal(iv["cpu"], 63)
+            t.equal((1...4).map { iv["cpu.core.\($0)"] }, [58, 61, 63, 59], "own sensor (TC3C reads 0: the package)")
             t.equal(iv["cpu.core.5"], nil, "physical cores only")
+            t.equal(intel.infos.first { $0.key == "cpu.core.1" }?.source, "SMC TC1C")
+            t.equal(intel.infos.first { $0.key == "cpu.core.4" }?.source, "SMC TC4C")
+            // Numbered from 0 (TC0C, TC1C on a 2-core Mac).
+            let fromZero = SensorReadings.smcTemperatures(["TC0C": 51, "TC1C": 53, "TC0P": 50], family: .intel,
+                                                          coreTypes: [], physicalCores: 2)
+            t.equal([fromZero.values["cpu.core.1"], fromZero.values["cpu.core.2"]], [51, 53])
+            // TC0C besides TC1C…TC4C on a 4-core Mac: TC0C is the whole CPU's, the cores are TC1C….
+            let extra = SensorReadings.smcTemperatures(["TC0C": 70, "TC1C": 61, "TC2C": 62, "TC3C": 63, "TC4C": 64],
+                                                       family: .intel, coreTypes: [], physicalCores: 4)
+            t.equal((1...4).map { extra.values["cpu.core.\($0)"] }, [61, 62, 63, 64])
+            t.equal(extra.values["cpu"], 70, "TC0C still counts for the whole CPU")
+            // Fewer core keys than cores: the rest read the whole CPU.
+            let fewer = SensorReadings.smcTemperatures(["TC1C": 45, "TC0P": 48], family: .intel, coreTypes: [],
+                                                       physicalCores: 2)
+            t.equal([fewer.values["cpu.core.1"], fewer.values["cpu.core.2"]], [45, 48])
+            t.equal(fewer.infos.first { $0.key == "cpu.core.2" }?.source, "SMC: the whole CPU")
             t.equal(iv["cpu.performance"], nil)
             t.equal([iv["gpu"], iv["soc"], iv["battery"], iv["ssd"]], [50, 57, 30, 36])
             t.equal(intel.infos.first { $0.key == "soc" }?.label, "Chipset temperature (PCH)")
