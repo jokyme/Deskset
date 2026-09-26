@@ -12,6 +12,8 @@ func runWeatherTests(_ t: TestRunner) {
     runWeatherUnitTests(t)
     runWeatherLocationTests(t)
     runWeatherSunTests(t)
+    runWeatherFetchTests(t)
+    runWeatherTransportTests(t)
 }
 
 // MARK: - Fixtures and helpers
