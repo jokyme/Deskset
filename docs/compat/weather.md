@@ -123,7 +123,8 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
 - Mac (Deskset): `auto` (also `current`, `here`) uses this Mac's approximate location. macOS asks for Location
   Services once, the first time a skin in a skin window uses it (never for previews, `--render` or the Manage
   window); the accuracy is reduced (about 5 km) and the fix is rounded to two decimals before anything keeps it. It is
-  kept in memory for an hour, never written to disk and never logged, and its forecast is not cached on disk. The
+  kept in memory for an hour, never written to disk and never logged (`WeatherDebug` too names it only "this Mac's
+  location"), and its forecast is never cached on disk, not even after the skin closes or the Mac moves on. The
   place name comes from the offline table (no reverse geocoding). When Location Services are off, the skin gets a
   compatibility note (removed once they are allowed) and `Status` 5; without a fix (Wi-Fi off) `Status` 6 and new
   tries after 1, 5, 15 and then every 30 minutes. The same permission serves WiFiStatus's network names.
@@ -139,7 +140,8 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   plus a random 1–10 minutes, and asks "if modified since" with the previous `Last-Modified`. Failures back off: 429
   from 10 minutes doubling to 2 hours (or `Retry-After`), server errors from 5 minutes to an hour, no network from 1
   minute to 15; 400 / 403 stop until Refresh, a relaunch or a day; 404 / 422 ("no forecast here") retry after a day.
-  Only skins in skin windows request anything; a place nothing has read for 30 minutes (hidden, paused or disabled
+  Only skins in skin windows request anything; a place no measure shows any more (its skin closed, or the measure
+  moved to another place) stops at once, a place nothing has read for 30 minutes (hidden, paused or disabled
   measures) sleeps, and nothing is requested while the Mac sleeps (after waking, a random 10–60 s first). At most 8
   places are live at once (the 9th shows `Status` 13). Forecasts of places written in a skin are cached in
   `~/Library/Caches/Deskset/Weather` (at most 32 files, 7 days) so they show at once after a relaunch. Values keep
@@ -179,8 +181,8 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   no place name, no identifier). Nothing is requested until a skin in a skin window has a place. `defaults write
   app.deskset.Deskset WeatherEnabled -bool NO` turns all requests off (skins show "Weather is turned off", `Status`
   11); `defaults delete app.deskset.Deskset WeatherEnabled` turns them on again. The log says "Weather: fetched (200)"
-  and never a coordinate (`defaults write app.deskset.Deskset WeatherDebug -bool YES` adds the rounded coordinates and
-  timings, for debugging).
+  and never a coordinate (`defaults write app.deskset.Deskset WeatherDebug -bool YES` adds the rounded coordinates of
+  places written in skins and timings, for debugging; this Mac's location still shows only as "this Mac's location").
 - Why: forecasts need a place; the rounding and the offline place table keep the rest on the Mac.
 - Skin impact: none.
 - Status: Deskset extension

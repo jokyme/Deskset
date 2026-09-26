@@ -554,7 +554,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): the right-click menu of every skin with a MacWeather measure has "Weather: Based on data from MET
   Norway ↗" (opens api.met.no) and "Updated 12:05", after the skin's own items; the About window names MET Norway and
   GeoNames. `defaults write app.deskset.Deskset WeatherEnabled -bool NO` turns weather requests off (read at every
-  use); `WeatherDebug -bool YES` adds rounded coordinates and timings to the log. See `weather.md`.
+  use); `WeatherDebug -bool YES` adds the rounded coordinates of places written in skins (never this Mac's location)
+  and timings to the log. See `weather.md`.
 - Why: MET Norway's data is CC BY 4.0, and third-party skins may not credit it themselves.
 - Skin impact: none.
 - Status: Deskset extension

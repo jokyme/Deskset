@@ -427,6 +427,95 @@ func runWeatherFetchTests(_ t: TestRunner) {
         t.equal(h.service.diskCacheSummary().places, 1)
     }
 
+    t.suite("Weather: fetch: a place nobody shows stops; this Mac's location never reaches the disk or the log") {
+        func files(_ folder: URL) -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("v1").path)) ?? []).sorted()
+        }
+        let bergen = RoundedCoordinate(latitude: 60.39, longitude: 5.32)
+        // A skin with this Mac's location closes 10 minutes after the fetch: no further request, nothing on disk.
+        let closed = t.temporaryDirectory("weather-closed")
+        let h = try ServiceHarness(t) { $0.cacheDirectory = closed }
+        _ = h.service.attach(h.subscription, to: oslo, persistent: false)
+        h.read()
+        h.advanceReading(to: date("2026-09-26T12:10:00Z"))
+        h.service.detach(h.subscription)
+        h.clock.advance(to: date("2026-09-26T13:00:00Z"))
+        h.settle()
+        t.equal(h.requests, 1, "a closed skin's place is not asked again")
+        t.equal(h.clock.pendingCount, 0, "its timer is gone")
+        t.equal(files(closed), [], "and nothing was written")
+        // The same for a place written in a skin (its file stays from the first fetch).
+        let typed = t.temporaryDirectory("weather-typed")
+        let hTyped = try ServiceHarness(t) { $0.cacheDirectory = typed }
+        _ = hTyped.service.attach(hTyped.subscription, to: oslo, persistent: true)
+        hTyped.read()
+        hTyped.advanceReading(to: date("2026-09-26T12:10:00Z"))
+        hTyped.service.detach(hTyped.subscription)
+        hTyped.clock.advance(to: date("2026-09-26T13:00:00Z"))
+        hTyped.settle()
+        t.equal(hTyped.requests, 1)
+        t.equal(files(typed), ["59.91_10.75.json", "59.91_10.75.meta.json"])
+        // Back within 10 minutes: the data is still there and the schedule goes on.
+        let back = try ServiceHarness(t)
+        _ = back.service.attach(back.subscription, to: oslo, persistent: true)
+        back.read()
+        back.advanceReading(to: date("2026-09-26T12:10:00Z"))
+        back.service.detach(back.subscription)
+        back.clock.advance(to: date("2026-09-26T12:15:00Z"))
+        _ = back.service.attach(back.subscription, to: oslo, persistent: true)
+        t.check(back.read()?.forecast != nil, "the data is kept")
+        t.equal(back.requests, 1)
+        back.advanceReading(to: date("2026-09-26T12:31:00Z"), step: 60)
+        t.equal(back.requests, 2, "the next request at its time")
+
+        // This Mac's location moves to another rounded point: the old one is not asked again nor written.
+        let moved = t.temporaryDirectory("weather-moved")
+        let hMove = try ServiceHarness(t) { $0.cacheDirectory = moved }
+        _ = hMove.service.attach(hMove.subscription, to: oslo, persistent: false)
+        hMove.read()
+        hMove.advanceReading(to: date("2026-09-26T12:10:00Z"))
+        _ = hMove.service.attach(hMove.subscription, to: bergen, persistent: false)
+        hMove.read(bergen)
+        hMove.advanceReading(to: date("2026-09-26T13:00:00Z"), bergen)
+        let asked = hMove.transport.requests.map { $0.url.query ?? "" }
+        t.equal(asked.filter { $0.contains("lat=59.91") }.count, 1, "\(asked)")
+        t.equal(files(moved), [], "no file for either point")
+
+        // A request under way when the skin closes: its answer is kept in memory only.
+        let flight = t.temporaryDirectory("weather-flight")
+        let held = FakeWeatherTransport.fixture()
+        held.hold = true
+        let hFlight = try ServiceHarness(t, transport: held) { $0.cacheDirectory = flight }
+        _ = hFlight.service.attach(hFlight.subscription, to: oslo, persistent: false)
+        hFlight.read()
+        t.equal(held.requests.count, 1)
+        hFlight.service.detach(hFlight.subscription)
+        held.release()
+        hFlight.settle()
+        t.check(hFlight.snapshot?.forecast != nil, "the answer arrived")
+        t.equal(files(flight), [], "not written")
+        t.equal(hFlight.clock.pendingCount, 0, "and nothing scheduled")
+
+        // Offline backoff stops with the skin too.
+        let offline = try ServiceHarness(t, transport: FakeWeatherTransport { _ in .failure(.network("offline")) })
+        _ = offline.service.attach(offline.subscription, to: oslo, persistent: true)
+        offline.read()
+        offline.service.detach(offline.subscription)
+        offline.clock.advance(to: date("2026-09-26T12:30:00Z"))
+        offline.settle()
+        t.equal(offline.requests, 1, "no retries for a closed skin")
+
+        // WeatherDebug names places written in skins, never this Mac's location.
+        let debug = try ServiceHarness(t) { $0.debug = true }
+        _ = debug.service.attach(debug.subscription, to: oslo, persistent: false)
+        debug.read()
+        t.equal(debug.logs.all, ["Weather: requesting this Mac's location", "Weather: fetched (200) this Mac's location"])
+        let debugTyped = try ServiceHarness(t) { $0.debug = true }
+        _ = debugTyped.service.attach(debugTyped.subscription, to: oslo, persistent: true)
+        debugTyped.read()
+        t.equal(debugTyped.logs.all, ["Weather: requesting 59.91, 10.75", "Weather: fetched (200) 59.91, 10.75"])
+    }
+
     t.suite("Weather: device location and places through the service") {
         let device = FakeDeviceLocation()
         let h = try ServiceHarness(t) { $0.deviceLocation = device }
@@ -868,6 +957,34 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(value(skin, "S"), 0, "demo")
         t.check(!string(skin, "W").isEmpty && string(skin, "W") != "--")
         _ = host
+    }
+
+    t.suite("Weather: measure: a closed skin with this Mac's location leaves nothing behind") {
+        let folder = t.temporaryDirectory("weather-auto-skin")
+        let transport = FakeWeatherTransport.fixture()
+        let clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        var env = weatherTestEnvironment(t, transport: transport, clock: clock)
+        env.cacheDirectory = folder
+        env.deviceLocation = FakeDeviceLocation()
+        WeatherService.install(env)
+        let (skin, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=auto
+        """)
+        t.check(updateUntilReady(skin, root: "W"), "ready")
+        while clock.now() < date("2026-09-26T12:10:00Z") {
+            clock.advance(by: 60)
+            WeatherService.shared.drain()
+            skin.update()
+        }
+        skin.close()
+        clock.advance(to: date("2026-09-26T13:30:00Z"))
+        WeatherService.shared.drain()
+        t.equal(transport.requests.count, 1, "nothing asked after the skin closed")
+        t.equal((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? ["?"], [], "nothing written")
     }
 
     t.suite("Weather: measure: the offline default in the fixture skin") {

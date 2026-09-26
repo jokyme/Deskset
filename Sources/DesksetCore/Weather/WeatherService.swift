@@ -18,7 +18,6 @@ public final class WeatherSubscription {
     let notify: () -> Void
     // Guarded by the service's lock.
     fileprivate var coordinate: RoundedCoordinate?
-    fileprivate var persistent = true
     fileprivate var notifyPending = false
     fileprivate var waitsForDevice = false
 
@@ -114,11 +113,20 @@ public final class WeatherService {
         var backoffStep = 0
         var lastUserRefresh: Date?
 
+        /// A measure showing this Mac's location has used this feed: from then on nothing about it is written to
+        /// disk and its coordinate is never logged, even after that measure left (the feed keeps its data in memory
+        /// until it is dropped).
+        var fromDevice = false
+
         init(coordinate: RoundedCoordinate) {
             self.coordinate = coordinate
         }
 
-        var persistent: Bool { subscribers.values.allSatisfy(\.persistent) }
+        /// Whether the forecast may be cached on disk: a place written in a skin that a measure still shows.
+        var persistent: Bool { !fromDevice && !subscribers.isEmpty }
+
+        /// How the log names the place (`WeatherDebug`): never the coordinate of this Mac's location.
+        var logName: String { fromDevice ? "this Mac's location" : coordinate.description }
     }
 
     private var feeds: [RoundedCoordinate: Feed] = [:]
@@ -197,14 +205,14 @@ public final class WeatherService {
     // MARK: Subscriptions and reads
 
     /// Attaches the subscription to the feed of `coordinate` (made when needed) and detaches it from any other.
-    /// `persistent`: false for this Mac's location (nothing about that feed is written to disk). False when 8 other
-    /// places are live (`TooManyPlaces`).
+    /// `persistent`: false for this Mac's location (nothing about that feed is ever written to disk or logged, even
+    /// after the measure left it). False when 8 other places are live (`TooManyPlaces`).
     public func attach(_ s: WeatherSubscription, to coordinate: RoundedCoordinate, persistent: Bool) -> Bool {
         let id = ObjectIdentifier(s)
         lock.lock()
         let t = now
         if s.coordinate == coordinate, let feed = feeds[coordinate], feed.subscribers[id] != nil {
-            s.persistent = persistent
+            if !persistent { feed.fromDevice = true }
             lock.unlock()
             return true
         }
@@ -216,15 +224,14 @@ public final class WeatherService {
             return false
         }
         if let old = s.coordinate, old != coordinate, let f = feeds[old] {
-            f.subscribers[id] = nil
-            if f.subscribers.isEmpty { f.unusedSince = t }
+            remove(id, from: f, at: t)
         }
         let feed = feeds[coordinate] ?? Feed(coordinate: coordinate)
         feeds[coordinate] = feed
         feed.subscribers[id] = s
         feed.unusedSince = nil
+        if !persistent { feed.fromDevice = true }
         s.coordinate = coordinate
-        s.persistent = persistent
         dropUnusedFeeds(now: t)
         lock.unlock()
         return true
@@ -234,15 +241,23 @@ public final class WeatherService {
     public func detach(_ s: WeatherSubscription) {
         let id = ObjectIdentifier(s)
         lock.lock()
-        if let c = s.coordinate, let f = feeds[c] {
-            f.subscribers[id] = nil
-            if f.subscribers.isEmpty { f.unusedSince = now }
-        }
+        if let c = s.coordinate, let f = feeds[c] { remove(id, from: f, at: now) }
         s.coordinate = nil
         deviceWaiters[id] = nil
         s.waitsForDevice = false
         for key in placeWaiters.keys { placeWaiters[key]?.removeAll { $0 === s } }
         lock.unlock()
+    }
+
+    /// Takes a subscriber off a feed. The last one leaving stops the feed: its timer is cancelled and nothing is
+    /// requested for it any more (a request under way still lands in memory, for a measure that comes back within
+    /// 10 minutes). With the lock held.
+    private func remove(_ id: ObjectIdentifier, from f: Feed, at t: Date) {
+        f.subscribers[id] = nil
+        guard f.subscribers.isEmpty else { return }
+        f.unusedSince = t
+        f.timer?.cancel()
+        f.timer = nil
     }
 
     /// Feeds without a measure for 10 minutes are forgotten (their disk cache stays). With the lock held.
@@ -350,8 +365,9 @@ public final class WeatherService {
             return
         }
         let t = now
+        // Only a place a measure shows and read in the last 30 minutes is fetched.
         let active = feed.lastRead.map { t.timeIntervalSince($0) < WeatherService.activeWindow } ?? false
-        guard active, environment.isEnabled(), environment.transport != nil else {
+        guard active, !feed.subscribers.isEmpty, environment.isEnabled(), environment.transport != nil else {
             feed.timer?.cancel()
             feed.timer = nil
             lock.unlock()
@@ -393,8 +409,9 @@ public final class WeatherService {
         let request = METNorway.request(endpoint: environment.endpoint, for: feed.coordinate,
                                         userAgent: environment.userAgent, lastModified: feed.lastModified)
         feed.snapshot = feed.snapshot.with(isFetching: true)
+        let place = feed.logName
         lock.unlock()
-        if environment.debug { environment.log("Weather: requesting \(feed.coordinate)") }
+        if environment.debug { environment.log("Weather: requesting \(place)") }
         guard let transport = environment.transport else {
             handle(.failure(.network("no transport")), feed: feed)
             return
@@ -513,12 +530,14 @@ public final class WeatherService {
         }
         feed.snapshot = snapshot
         let subscribers = Array(feed.subscribers.values)
+        // Only for a place written in a skin that a measure still shows (never this Mac's location).
         let meta = succeeded && feed.persistent ? diskMeta(feed) : nil
+        let place = feed.logName
         lock.unlock()
 
         if let refusal { log("Weather: request refused by Deskset: \(refusal)", once: "refused " + refusal) }
         if let logLine {
-            environment.log(environment.debug ? "\(logLine) \(feed.coordinate)" : logLine)
+            environment.log(environment.debug ? "\(logLine) \(place)" : logLine)
         }
         if let meta { writeToDisk(feed.coordinate, body: wroteBody, meta: meta) }
         notify(subscribers)

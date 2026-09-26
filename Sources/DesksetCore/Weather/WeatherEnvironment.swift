@@ -181,7 +181,8 @@ public struct WeatherEnvironment {
     public var demoNow: Date?
     /// Log lines of the service ("Weather: fetched (200)"); never coordinates, unless `debug`.
     public var log: (String) -> Void = { _ in }
-    /// `defaults WeatherDebug`: rounded coordinates and timings in the log.
+    /// `defaults WeatherDebug`: the rounded coordinates of places written in skins in the log (this Mac's location only
+    /// as "this Mac's location").
     public var debug = false
 
     public init() {}

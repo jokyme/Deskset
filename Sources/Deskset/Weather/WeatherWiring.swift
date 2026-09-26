@@ -9,7 +9,8 @@ enum WeatherWiring {
     /// `defaults write app.deskset.Deskset WeatherEnabled -bool NO` turns weather downloads off (skins show
     /// "Weather is turned off"); read at every use.
     static let enabledKey = "WeatherEnabled"
-    /// `defaults write app.deskset.Deskset WeatherDebug -bool YES`: rounded coordinates and timings in the log.
+    /// `defaults write app.deskset.Deskset WeatherDebug -bool YES`: rounded coordinates of places written in skins
+    /// (never this Mac's location) and timings in the log.
     static let debugKey = "WeatherDebug"
 
     static var isEnabled: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
