@@ -7,7 +7,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 本文档由 [`docs/compat/`](compat/) 中各领域的说明（引擎、Lua、插件、音频、媒体与界面、安装器、App）以及对 15 个真实
 皮肤包的重新测试（见[真实皮肤测试结果](#12-真实皮肤测试结果)）汇编而成。所有内容都基于公开的 Rainmeter 手册
 （<https://docs.rainmeter.net/manual/>）、公开的插件 README 以及对皮肤实际表现的观察。Deskset 是独立的净室实现，不包含
-任何 Rainmeter 代码。本文档描述的是 2026-09-24 时的 Deskset。
+任何 Rainmeter 代码。本文档描述的是 2026-09-27 时的 Deskset。
 
 **目录**
 
@@ -2249,11 +2249,11 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 
 | 皮肤包（皮肤数） | 现在的结果 | 仍有的差异及原因 |
 | --- | --- | --- |
-| **CoreLoads**（1） | 各核心负载和图表可用（以前为空） | 温度为 0（没有传感器 API）。下半部分空白是皮肤本身的设计（作者注释掉了第 3–6 核）。 |
+| **CoreLoads**（1） | 各核心负载和图表可用（以前为空） | 下半部分空白是皮肤本身的设计（作者注释掉了第 3–6 核）。它的温度 measure（没有 meter 显示它）当时为 0（那时还没有传感器；自 2026-09-26 起读取 Mac 的传感器，见下文）。 |
 | **Elegant Watch**（1） | 时间正确（以前指针停在 12 点）；其字体随包一起安装 | 无 |
-| **EasyInfo**（1） | 完整布局和配色（以前是灰色且颜色错误）：LED 时钟、CPU 条形图和曲线、内存、磁盘 | CPU 频率显示 0.000 GHz（Apple 芯片没有公开的频率 API）；核心温度为 0（没有传感器 API）；包中没有其使用的 “Digital-7 Mono” 字体，所以 LED 数字使用后备字体（没有安装该字体的 Windows 上也一样）。 |
+| **EasyInfo**（1） | 完整布局和配色（以前是灰色且颜色错误）：LED 时钟、CPU 条形图和曲线、内存、磁盘 | CPU 频率当时显示 0.000 GHz、核心温度为 0（那时还没有传感器；自 2026-09-26 起两者都可用，见下文）；包中没有其使用的 “Digital-7 Mono” 字体，所以 LED 数字使用后备字体（没有安装该字体的 Windows 上也一样）。 |
 | **Enigma**（308） | 由 Lua 驱动的部分现在可用：月历和周历、便笺、订阅阅读器的状态、任务栏宽度和对齐、时钟、音量、正在播放、废纸篓数量、Wi-Fi 质量、占用最高的进程、图片相册（来自 `~/Pictures`） | 天气、位置、日出 / 日落和世界城市数据保持为空，因为皮肤使用的雅虎天气服务已不存在（Windows 上也一样）。订阅阅读器需要用户填写自己的订阅地址。启动器指向 Windows 程序。外网 IP 在网络请求返回后（约 2 秒）才出现。 |
-| **FluentDash11**（17） | CPU 和 GPU 名称（“Apple M4 Pro”）、不再塌陷的行、设置按钮、网络、内存、磁盘、系统信息；毛玻璃 | CPU 速度 0.0 GHz、温度 0 °C（没有公开 API）；GPU 频率、显存和风扇为空（MSI Afterburner 插件）；GPU 使用率 0 %；2 网卡和 3 网卡网络皮肤的网卡行重叠（它们依赖 PowershellRM 插件，并且皮肤把文字设置到一个不存在的 meter 名称上）；D:、E:、F: 重复显示启动磁盘。 |
+| **FluentDash11**（17） | CPU 和 GPU 名称（“Apple M4 Pro”）、不再塌陷的行、设置按钮、网络、内存、磁盘、系统信息；毛玻璃 | CPU 速度当时为 0.0 GHz、温度 0 °C，GPU 频率和风扇为空（MSI Afterburner 插件），GPU 使用率 0 %（那时还没有传感器；自 2026-09-26 起都读取 Mac 的数据，见下文；显存仍为 0）；2 网卡和 3 网卡网络皮肤的网卡行重叠（它们依赖 PowershellRM 插件，并且皮肤把文字设置到一个不存在的 meter 名称上）；D:、E:、F: 重复显示启动磁盘。 |
 | **HDD Usage Bars**（4） | 三硬盘版本现在在正确位置显示三个硬盘；通过安装器安装后其像素字体也会装好，效果与作者截图一致 | 所有盘符都显示启动磁盘。 |
 | **HMNmeter2 / Network Meter**（3） | 实时速率、峰值和总量（以前为空）、ping、外网 IP（约 2 秒后） | ActiveNet（Windows 插件）→ MAC 地址和网卡详情一直显示 “Asking Hardware”；`Current Bandwidth` 为 0；IP 定位服务不返回数据；皮肤中的 Windows 网卡名回退到当前活动接口。 |
 | **Mini Weather**（1） | 没有变化 | 没有天气：它使用的 weather.com XML 服务已关闭（Windows 上也一样）。 |
@@ -2269,8 +2269,8 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 
 | 原因 | 例子 |
 | --- | --- |
-| Windows 专属的插件 DLL | PowershellRM、ActiveNet、MSI Afterburner（FluentDash11、HMNmeter2） |
-| macOS 不提供的数据 | 温度、Apple 芯片的 CPU 频率、GPU 使用率和频率、显存 |
+| Windows 专属的插件 DLL | PowershellRM、ActiveNet（FluentDash11、HMNmeter2）。MSI Afterburner（FluentDash11 GPU）在 2026-09-26 Deskset 开始模拟它之前也属于此类 |
+| macOS 不提供的数据 | 显存：容量（FluentDash11 GPU 从 Windows 注册表读取）和频率（Apple 芯片的 GPU 使用统一内存）。温度、Apple 芯片的 CPU 频率、GPU 使用率和频率在 2026-09-26 之前也属于此类，现在来自 Mac 的传感器 |
 | 已不存在的网络服务 | 雅虎天气（Enigma）、weather.com XML 服务（Mini Weather、Nelamint、PogPack、Simple Clean） |
 | 皮肤自身错误（Windows 上也一样） | 公式引用了 meter（PogPack）、开机时长文字中 “mm” 重复（Enigma）、把文字设置到不存在的 meter 上（FluentDash11） |
 | 需要用户自行配置的内容 | 订阅地址、启动器目标、天气位置代码 |
@@ -2282,7 +2282,13 @@ MeterStyle 名称（Enigma 的阅读器和便笺标签页）在加载时记录 �
 
 **此后（2026-09-26）：硬件传感器。** CoreTemp、SpeedFan、MSI Afterburner、PowerPlugin 的 CPU 频率以及温度区 / GPU 计数器
 现在读取 Mac 的传感器（§9.3）。在 M4 Pro 上本地重新渲染：EasyInfo 显示 CPU 频率（4.5 GHz）和核心温度，FluentDash11 CPU 显示
-速度和温度，FluentDash11 GPU 显示频率、风扇转速、温度和 GPU 已用内存；其显存频率仍为 0 MHz，显存总量为 0 GB（统一内存）。
+速度和温度，FluentDash11 GPU 显示频率、风扇转速、温度和 GPU 已用内存，其 GPU 使用率就是 Mac 的 GPU 使用率（GPU 空闲时为
+0 %）；其显存频率仍为 0 MHz，显存总量为 0 GB（统一内存）。CoreLoads 的核心温度也有了读数，不过皮肤里没有 meter 显示它。
+
+**2026-09-27 重新渲染**，方法相同（不含演示音频和安装器两轮）：390 个中 390 个渲染成功，0 崩溃 / 超时；8 个皮肤共 10 条
+提示——PowershellRM（FluentDash11 的 3 个皮肤）、ActiveNet（HMNmeter2 的 2 个皮肤，其中一个还有 `Current Bandwidth`）、
+Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两个 Windows 注册表显存值。MSI Afterburner 的提示已经
+消失。在 Deskset 没有完全磁盘访问权限时，PogPack 的 Garbage 皮肤还会提示其废纸篓大小需要该权限（§4）。
 
 ---
 

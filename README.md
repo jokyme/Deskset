@@ -35,8 +35,9 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 - **Skin Studio.** A visual editor with a canvas, layers, a component library, a property inspector and a code editor
   side by side. Edits are written back into the skin's own files, keeping their formatting.
 - **Honest compatibility.** Every place where a skin behaves differently than on Windows is documented in
-  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Tested against 390 real skins: no crashes, and 6 skins left with
-  compatibility notes (all use Windows-only plugin DLLs).
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Tested against 390 real skins: no crashes, and 8 skins left with
+  compatibility notes (five use Windows-only plugin DLLs, two name the Winamp player, which has no Mac version, and one
+  reads its video memory size from the Windows registry).
 
 ## Requirements
 

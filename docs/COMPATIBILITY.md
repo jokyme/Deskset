@@ -9,7 +9,7 @@ installer, app) and from a re-test of 15 real skin packages (see
 [Real-world test results](#12-real-world-test-results)). Everything is based on the public Rainmeter manual
 (<https://docs.rainmeter.net/manual/>), public plugin READMEs, and observation of how skins behave. Deskset is an
 independent clean-room implementation and does not contain Rainmeter code. The document describes Deskset as of
-2026-09-24.
+2026-09-27.
 
 **Contents**
 
@@ -2488,11 +2488,11 @@ Compatibility notes by cause:
 
 | Package (skins) | Result now | What still differs, and why |
 | --- | --- | --- |
-| **CoreLoads** (1) | Per-core loads and graphs work (were empty) | Temperature reads 0 (no sensor API). The empty lower half is the skin's own design (cores 3–6 are commented out). |
+| **CoreLoads** (1) | Per-core loads and graphs work (were empty) | The empty lower half is the skin's own design (cores 3–6 are commented out). Its temperature measure, which no meter shows, read 0 (no sensors then; it reads the Mac's since 2026-09-26, see below). |
 | **Elegant Watch** (1) | Correct time (hands were stuck at 12); its font installs with the package | None |
-| **EasyInfo** (1) | Full layout with its colors (was grey with wrong colors): LED clock, CPU bars and graphs, memory, disk | CPU frequency reads 0.000 GHz (Apple silicon has no public frequency API); core temperatures 0 (no sensor API); its "Digital-7 Mono" font is not in the package, so the LED digits use a fallback font (also on Windows without that font). |
+| **EasyInfo** (1) | Full layout with its colors (was grey with wrong colors): LED clock, CPU bars and graphs, memory, disk | CPU frequency read 0.000 GHz and core temperatures 0 (no sensors then; both work since 2026-09-26, see below); its "Digital-7 Mono" font is not in the package, so the LED digits use a fallback font (also on Windows without that font). |
 | **Enigma** (308) | Lua-driven parts now work: month and week calendars, notes, feed readers' status, taskbar widths and alignments, clocks, volume, now playing, Trash count, Wi-Fi quality, top processes, picture gallery (from `~/Pictures`) | Weather, location, sunrise / sunset and world-city data stay empty because the Yahoo weather service the skins use no longer exists (same on Windows). Feed readers need the user's feed URLs. Launchers point at Windows programs. The external IP appears once its web request returns (~2 s). |
-| **FluentDash11** (17) | CPU and GPU name ("Apple M4 Pro"), no more collapsed rows, settings buttons, network, RAM, disks, system info; frosted glass | CPU speed 0.0 GHz and temperatures 0 °C (no public API); GPU clock, VRAM and fan empty (MSI Afterburner plugin); GPU usage 0 %; adapter rows of the 2- and 3-adapter network skins overlap (they rely on the PowershellRM plugin, and the skin sets text on a meter name that does not exist); D:, E:, F: repeat the startup disk. |
+| **FluentDash11** (17) | CPU and GPU name ("Apple M4 Pro"), no more collapsed rows, settings buttons, network, RAM, disks, system info; frosted glass | CPU speed read 0.0 GHz and temperatures 0 °C, GPU clock and fan were empty (MSI Afterburner plugin) and GPU usage 0 % (no sensors then; all read the Mac since 2026-09-26, see below; VRAM stays 0); adapter rows of the 2- and 3-adapter network skins overlap (they rely on the PowershellRM plugin, and the skin sets text on a meter name that does not exist); D:, E:, F: repeat the startup disk. |
 | **HDD Usage Bars** (4) | The three-drive variant now shows three drives in the right places; with the installer its pixel font installs and the result matches the author's screenshot | Every drive letter shows the startup disk. |
 | **HMNmeter2 / Network Meter** (3) | Live rates, peaks and totals (were empty), ping, external IP (after ~2 s) | ActiveNet (Windows plugin) → MAC address and adapter details stay "Asking Hardware"; `Current Bandwidth` reads 0; the IP-location service returns nothing; the skin's Windows adapter name falls back to the active interface. |
 | **Mini Weather** (1) | Unchanged | No weather: the weather.com XML service it uses was shut down (same on Windows). |
@@ -2508,8 +2508,8 @@ Compatibility notes by cause:
 
 | Cause | Examples |
 | --- | --- |
-| Windows-only plugin DLLs | PowershellRM, ActiveNet, MSI Afterburner (FluentDash11, HMNmeter2) |
-| Data macOS does not expose | Temperatures, CPU frequency on Apple silicon, GPU usage and clocks, video memory |
+| Windows-only plugin DLLs | PowershellRM, ActiveNet (FluentDash11, HMNmeter2). MSI Afterburner (FluentDash11 GPU) was one until Deskset began to emulate it on 2026-09-26 |
+| Data macOS does not expose | Video memory: its size, which FluentDash11 GPU reads from the Windows registry, and its clock (Apple silicon's GPU uses the unified memory). Temperatures, the CPU clock on Apple silicon and GPU usage and clocks were here too until 2026-09-26; they now come from the Mac's sensors |
 | Web services that no longer exist | Yahoo weather (Enigma), the weather.com XML service (Mini Weather, Nelamint, PogPack, Simple Clean) |
 | Skin mistakes (same on Windows) | A formula naming a meter (PogPack), "mm" printed twice in an uptime text (Enigma), text set on a missing meter (FluentDash11) |
 | Things the user configures | Feed URLs, launcher targets, weather location codes |
@@ -2523,7 +2523,15 @@ with the engine wiring merged.
 **Since then (2026-09-26): hardware sensors.** CoreTemp, SpeedFan, MSI Afterburner, PowerPlugin's CPU speed and the
 thermal / GPU counters now read the Mac's sensors (§9.3). Rendered again locally on an M4 Pro: EasyInfo shows its CPU
 clock (4.5 GHz) and core temperatures, FluentDash11 CPU its speed and temperature, FluentDash11 GPU its clock, fan
-speed, temperature and GPU memory in use; its VRAM clock stays 0 MHz and its total VRAM 0 GB (unified memory).
+speed, temperature and GPU memory in use, and its GPU usage is the Mac's (0 % while the GPU is idle); its VRAM clock
+stays 0 MHz and its total VRAM 0 GB (unified memory). CoreLoads' core temperature has a reading too, though no meter of
+the skin shows it.
+
+**Re-rendered on 2026-09-27** with the same method (without the demo-audio and installer passes): 390 of 390
+rendered, 0 crashes / timeouts, 10 notes in 8 skins — PowershellRM (three FluentDash11 skins), ActiveNet (two
+HMNmeter2 skins, one of them also `Current Bandwidth`), the Winamp player of Nelamint and Simple Clean, and the two
+Windows registry video-memory values of FluentDash11 GPU. The MSI Afterburner note is gone. Where Deskset has no Full
+Disk Access, PogPack's Garbage skin also notes that its Trash size needs it (§4).
 
 ---
 
