@@ -34,6 +34,9 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
   snapping, fading and saved positions included.
 - **Skin Studio.** A visual editor with a canvas, layers, a component library, a property inspector and a code editor
   side by side. Edits are written back into the skin's own files, keeping their formatting.
+- **Weather and sun.** Deskset's own `Plugin=MacWeather` shows forecasts for any place (now, hourly, daily, with
+  SF Symbols icons) from [MET Norway](https://api.met.no/), and `Plugin=MacSun` works out sunrise, sunset and the moon
+  on your Mac. See [Weather](#weather).
 - **Honest compatibility.** Every place where a skin behaves differently than on Windows is documented in
   [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Tested against 390 real skins: no crashes, and 6 skins left with
   compatibility notes (all use Windows-only plugin DLLs).
@@ -44,7 +47,8 @@ objects you glance at while you work. Deskset brings that set to your Mac's desk
 - Apple silicon or Intel — there is a separate download for each.
 - Some skins ask for permissions: audio visualizers need System Audio Recording (macOS 14.2+; Screen Recording on
   13–14.1), now-playing skins need to control Music or Spotify, Wi-Fi skins need Location Services to read network
-  names. macOS asks only when a loaded skin uses the feature.
+  names, and weather skins set to your current location need Location Services. macOS asks only when a loaded skin
+  uses the feature.
 
 ## Install
 
@@ -71,6 +75,22 @@ items), open Deskset again from Applications to show the **Manage Skins** window
 
 Skins are programs: they can run Lua scripts, fetch web pages and run commands. Only install skins from sources you
 trust (see [SECURITY.md](SECURITY.md)).
+
+## Weather
+
+Skins can show weather with `Plugin=MacWeather` (a Deskset extension; Windows weather skins read web services that
+have since shut down). Forecasts are **based on data from MET Norway** (the Norwegian Meteorological Institute,
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); place names come from
+[GeoNames](https://www.geonames.org/) (CC BY 4.0) and are looked up on your Mac. Every weather skin's right-click menu
+credits MET Norway and shows when the data was updated.
+
+- **Privacy:** only a skin running on the desktop with a place set makes requests. MET Norway receives your IP address
+  and the place's coordinates rounded to about 1 km — nothing else. `Location=auto` asks for Location Services once;
+  that location is rounded, kept in memory only and never saved or logged. Sun and moon times (`Plugin=MacSun`) never
+  use the network.
+- **Turn it off:** `defaults write app.deskset.Deskset WeatherEnabled -bool NO` (undo with
+  `defaults delete app.deskset.Deskset WeatherEnabled`).
+- Options, values and details: [docs/compat/weather.md](docs/compat/weather.md).
 
 ## Limitations
 
@@ -129,6 +149,7 @@ reading skins can use, and `Deskset --help` lists the rest.
 | `Sources/CLua` | Lua 5.1.5 |
 | `DefaultSkins` | The example skins shipped with the app |
 | `TestSkins` | Skins used by the tests and for checking features by eye |
+| `Data/Places` | The offline place table of the weather plugins (GeoNames, CC BY 4.0) |
 | `docs` | Compatibility documentation and design notes |
 
 ## Contributing

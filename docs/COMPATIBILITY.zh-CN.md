@@ -4,7 +4,7 @@ Deskset 在 macOS 上原生运行 Rainmeter 皮肤（`.ini`、`.rmskin`）。大
 Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 上表现不同的每一处地方**，说明原因，以及皮肤作者或
 用户可以怎么应对。
 
-本文档由 [`docs/compat/`](compat/) 中各领域的说明（引擎、Lua、插件、音频、媒体与界面、安装器、App）以及对 15 个真实
+本文档由 [`docs/compat/`](compat/) 中各领域的说明（引擎、Lua、插件、音频、媒体与界面、天气、安装器、App）以及对 15 个真实
 皮肤包的重新测试（见[真实皮肤测试结果](#12-真实皮肤测试结果)）汇编而成。所有内容都基于公开的 Rainmeter 手册
 （<https://docs.rainmeter.net/manual/>）、公开的插件 README 以及对皮肤实际表现的观察。Deskset 是独立的净室实现，不包含
 任何 Rainmeter 代码。本文档描述的是 2026-09-24 时的 Deskset。
@@ -46,7 +46,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | **模拟实现**（emulated） | 目的和选项相同，但基于 macOS 的对应机制重新实现。数值、措辞或时机在细节上可能不同。 |
 | **部分支持**（partial） | 部分选项或数值可用；条目中会写明哪些不可用。 |
 | **不支持**（not supported） | 不起作用。数值为 `0` / 空，皮肤的 *兼容性提示*（菜单和管理窗口中）会说明这一点。皮肤不会因此崩溃。 |
-| **仅 Mac**（Mac-only） | Deskset 特有的安全限制或界面功能，Rainmeter 中没有对应项。 |
+| **仅 Mac**（Mac-only） | Deskset 特有的安全限制、界面功能或扩展（例如天气插件），Rainmeter 中没有对应项。 |
 
 “取舍判断”表示手册没有规定、Deskset 必须自行选择行为的地方。
 
@@ -65,6 +65,7 @@ Windows。本文档列出了**皮肤在 Deskset 上与在 Windows 版 Rainmeter 
 | 注册表 | 模拟实现（固定集合） | Windows 版本、CPU / GPU 名称、核心数、用户文件夹、壁纸 | 其他所有注册表值均为 `0` / 空 |
 | Lua（`Measure=Script`、内联 Lua） | 完全一致 | Lua 5.1 以及完整的 SKIN / SELF / Measure / Meter API | `os.execute` 只能打开文件和网址；移除了少数不安全的函数 |
 | Rainmeter 自带插件 | 模拟实现 | 除两个以外全部实现（其中 7 个部分支持）：ActionTimer、AudioLevel、NowPlaying、InputText、RunCommand、UsageMonitor…… | WindowMessage 和 VirtualDesktops 在 macOS 上没有对应物；温度 / 风扇读数为 0（没有公开的传感器 API） |
+| 天气与日出日落（Deskset 自己的插件） | 仅 Mac | `Plugin=MacWeather`（任意地点的 MET Norway 天气预报）、`Plugin=MacSun`（日月信息，离线计算）、以 SF Symbols 显示的天气图标 | 抓取已停服网站的 Windows 天气皮肤仍然为空；使用新插件的皮肤只能在 Deskset 上运行 |
 | 常用第三方插件 | 9 个模拟或部分支持 | WebNowPlaying、FrostedGlass、Chameleon、IsFullScreen、GetActiveTitle、SysColor、AppVolume、Mouse、Slider | 其他任何 Windows DLL（PowershellRM、ActiveNet、MSI Afterburner、HWiNFO……） |
 | 安装器 | 模拟实现 | `.rmskin`、旧版 Rainstaller 包、普通 ZIP、已解压的文件夹、内含 `.rmskin` 的下载 ZIP；字体 | `.rar` / `.7z`；Windows 插件和附加程序从不安装；布局（layout）会安装但暂不能应用 |
 | 窗口与窗口设置 | 模拟实现 | 拖动、贴边、点击穿透、透明度、淡入淡出、所有位置类 bang | 窗口层级是 macOS 的层级；用 ⌘ 代替 Ctrl；没有 DragGroup、Aero 模糊和保存的锚点；暂不能加载布局 |
@@ -107,6 +108,7 @@ Deskset 从不主动请求“辅助功能”权限（只在你已经授予时才
 | AppVolume `NumberType=Peak`、AppVolume 静音 | 系统录音 | 第一次使用峰值 / 静音时 | 峰值为 0；静音无效 |
 | NowPlaying、iTunes、WebNowPlaying 的数据与命令；未授予辅助功能时 MediaKey 的切歌键 | 自动化 → Music / Spotify | 第一次轮询*正在运行*的播放器，或第一次向它发送命令时 | 播放器显示为已关闭；命令不起作用。每 30 秒重新检查一次，之后再授权无需重启 |
 | WiFiStatus `SSID`、`LIST` | 定位服务（macOS 只把 Wi-Fi 名称提供给这类 App） | 第一次加载含 SSID / LIST measure 的皮肤时 | SSID 和网络列表为空；信号质量、速率、加密方式仍可用 |
+| MacWeather / MacSun `Location=auto`（Deskset 扩展） | 定位服务（降低精度；取整到约 1 公里，只保存在内存中） | 含 `Location=auto` 的皮肤第一次在皮肤窗口中运行时 | `Status` 为 5 并显示一条提示；可改用地名 |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`、FileView `Properties` | 自动化 → 访达 | 第一次使用时 | 不清空废纸篓 / 不打开“显示简介”窗口 |
 | RecycleManager `RecycleType=Size` | 完全磁盘访问权限（没有弹窗；需在“系统设置 → 隐私与安全性”中手动开启） | — | 大小读数为 0；兼容性提示和日志会说明在哪里授权。`Count` 不需要权限 |
 | 皮肤使用桌面、文稿、下载、可移除卷或网络卷中的任何文件（Quote、FolderInfo、FileView、Lua `io`、图片以及皮肤指定的其他文件） | 文件与文件夹 | 第一次访问该文件夹时 | 数值为空、图片不显示；Lua 的 `io.open` 返回 nil 和错误信息 |
@@ -175,6 +177,13 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | SysColor | 模拟实现 | Windows 的系统颜色映射到 macOS 的语义颜色（强调色、高亮、窗口、文字……） |
 | WebNowPlaying | 部分支持 | 显示 Music / Spotify；不支持浏览器扩展（网页播放器） |
 | 其他任何 Windows 插件 DLL（例如 PowershellRM、ActiveNet、MSI Afterburner、HWiNFO） | 不支持 | 数值为 0 / 空，显示一条兼容性提示，皮肤其余部分照常工作 |
+
+### Deskset 自己的插件（仅 Mac）
+
+| 插件 | 状态 | 说明 |
+| --- | --- | --- |
+| MacWeather | 仅 Mac | 来自 MET Norway 的天气预报（免费、任意地点、9 天）：当前、逐小时、逐日、SF Symbols 图标、日出日落；地名在本机离线查找；见 [§10.8](#108-天气与日出日落deskset-扩展) |
+| MacSun | 仅 Mac | 日出、日落、晨昏蒙影、黄金时刻、昼长、太阳位置、月相；在 Mac 上计算；见 §10.8 |
 
 安装器会列出皮肤包中包含的 DLL，并提醒使用不受支持插件的皮肤会缺少相应数值。
 
@@ -1536,7 +1545,8 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
 ## 10. 音频、媒体、网络与界面插件
 
 这些插件基于 Core Audio、AppleScript（Music / Spotify）、CoreWLAN 和 AppKit 重新实现。详细说明：
-[`compat/audio.md`](compat/audio.md) 和 [`compat/media-ui.md`](compat/media-ui.md)。权限汇总见 [§4](#4-macos-权限)。
+[`compat/audio.md`](compat/audio.md) 和 [`compat/media-ui.md`](compat/media-ui.md)；Deskset 自己的天气与日出日落插件（§10.8）见
+[`compat/weather.md`](compat/weather.md)。权限汇总见 [§4](#4-macos-权限)。
 
 ### 10.1 AudioLevel（频谱与电平表）
 
@@ -1851,6 +1861,64 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
 - **对皮肤的影响：** 使用强调色的皮肤会跟随 Mac 的强调色。
 - **状态：** 模拟实现
 
+### 10.8 天气与日出日落（Deskset 扩展）
+
+Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。Deskset 增加了两个自己的插件。详细说明、全部选项和 Type：
+[`compat/weather.md`](compat/weather.md)。
+
+#### `Plugin=MacWeather`
+- **Windows：** 没有对应物；皮肤用 WebParser 读取天气网站（其中大多数服务已停止）。
+- **Mac：** 来自 MET Norway Locationforecast 2.0 的任意地点天气预报：一个 measure 写 `Location=`（城镇名，如 `Oslo, NO`、
+  `Springfield, IL`；`纬度,经度`；或 `auto`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
+  Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
+  ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution……），
+  配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
+  单位。另有 `Decimals`、`UnavailableText`、`TimeZone`、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
+  `!CommandMeasure … Refresh` / `Locate`；节变量函数 `[&M:Now(Humidity)]`、`[&M:Hour(3, Temperature)]`、`[&M:Day(1, High)]`。
+  “一天”按该地点时区从午夜到午夜计算。
+- **原因：** Deskset 扩展：被抓取的服务都已消失；MET Norway 的数据可用于任何用途，无需密钥。
+- **对皮肤的影响：** 为 Deskset 编写的皮肤可以显示天气；Windows 皮肤不能使用。
+- **状态：** 仅 Mac
+
+#### 地点与 `Location=auto`
+- **Windows：** 不适用。
+- **Mac：** 地名在**本机**随附的城镇表（人口 1.5 万以上，来自 GeoNames）中查找；逗号后面的国家或地区可以缩小范围；更小的地方请用
+  坐标。每个坐标在使用或发送之前都取整到两位小数（约 1 公里）。`auto` 只为皮肤窗口中的皮肤请求一次定位服务（降低精度）；得到的
+  位置会先取整，只保存在内存中，从不写入日志或缓存。被拒绝时 `Status` 为 5 并显示一条兼容性提示，允许后提示自动消失。
+- **原因：** 隐私；没有合适的在线地理编码服务。
+- **对皮肤的影响：** `auto` 会弹出一次权限请求；很小的村镇需要用坐标。
+- **状态：** 仅 Mac
+
+#### 请求、缓存、状态与署名
+- **Windows：** 不适用。
+- **Mac：** 每个地点只发一个 HTTPS 请求，所有皮肤共用，并遵守 MET Norway 的使用条款：User-Agent 中写明 App 名称和联系方式；在数据的
+  `Expires` 之前不请求（且最多每 30 分钟一次，另加 1–10 分钟随机延迟）；使用条件请求；出错后退避；Mac 睡眠时、或没有皮肤窗口显示
+  该地点时不请求；最多 8 个地点。手动填写的地点缓存在 `~/Library/Caches/Deskset/Weather`。`Type=Status` 区分 Ready、Loading、
+  Stale（显示旧数据）、NoLocation、PlaceNotFound、LocationDenied、LocationUnavailable、NotCovered、Refused、RateLimited、Offline、
+  TurnedOff、Preview（预览和 `--render` 从不请求）以及 TooManyPlaces。MET Norway 的数据采用 CC BY 4.0 许可：`Type=Attribution`
+  给出 “Based on data from MET Norway”，并且每个含 MacWeather measure 的皮肤右键菜单里都有这条署名（点击打开 api.met.no）和数据的
+  时间。MET Norway 会收到 Mac 的 IP 地址和取整后的坐标；`defaults write app.deskset.Deskset WeatherEnabled -bool NO` 可关闭所有请求。
+- **原因：** 免费的共享服务有公开的规则；许可证要求署名。
+- **对皮肤的影响：** 数据大约每 30–40 分钟更新一次；`Refresh` 可以在失败后重试，但不能更频繁地轮询。
+- **状态：** 仅 Mac
+
+#### `Plugin=MacSun`
+- **Windows：** 不适用。
+- **Mac：** 日出、日落、正午、民用 / 航海 / 天文晨昏蒙影、黄金时刻、昼长、白天已过的比例、太阳高度和方位、极昼和极夜，以及月相——
+  在 Mac 上计算（NOAA 太阳公式、平均朔望月），地点写法同上，`Day=` −1…30。不联网。在预览和 `--render` 中同样可用。
+- **原因：** 时钟皮肤需要日出日落时间，而不必注册账号或联网。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响。
+- **状态：** 仅 Mac
+
+#### 天气图标
+- **Windows：** 皮肤自带图标图片，按所用服务的代码命名。
+- **Mac：** `Type=Symbol` 为 MET 的 83 个天气代码各给出一个 SF Symbol 名称（分白天和夜晚，macOS 13 上都有）：用 `ImageName=sf:%1`
+  绘制（见[把 SF Symbols 用作图片](#把-sf-symbols-用作图片imagenamesfcpufill)），`MacSymbolRendering=Multicolor` 为彩色。
+  `Type=SymbolCode` 给出 MET 自己的代码，供自带图片的皮肤使用。
+- **原因：** 不需要附带图片文件。
+- **对皮肤的影响：** 无。
+- **状态：** 仅 Mac
+
 ---
 
 ## 11. WebParser 与皮肤安装器
@@ -2137,7 +2205,7 @@ Deskset 能安装的包比 Rainmeter 更多，因此老皮肤也能一步安装�
 | --- | --- |
 | Windows 专属的插件 DLL | PowershellRM、ActiveNet、MSI Afterburner（FluentDash11、HMNmeter2） |
 | macOS 不提供的数据 | 温度、Apple 芯片的 CPU 频率、GPU 使用率和频率、显存 |
-| 已不存在的网络服务 | 雅虎天气（Enigma）、weather.com XML 服务（Mini Weather、Nelamint、PogPack、Simple Clean） |
+| 已不存在的网络服务 | 雅虎天气（Enigma）、weather.com XML 服务（Mini Weather、Nelamint、PogPack、Simple Clean）；改用 `Plugin=MacWeather`（§10.8）重写的皮肤可以重新显示天气 |
 | 皮肤自身错误（Windows 上也一样） | 公式引用了 meter（PogPack）、开机时长文字中 “mm” 重复（Enigma）、把文字设置到不存在的 meter 上（FluentDash11） |
 | 需要用户自行配置的内容 | 订阅地址、启动器目标、天气位置代码 |
 | 仅与测试时长有关 | 较慢的网络请求（外网 IP）和较大的 `UpdateDivider` 在 App 中几秒后就会显示 |

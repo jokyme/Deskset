@@ -472,6 +472,8 @@ changed (size, hit map, tooltips, window model, issues). A 60 Hz skin whose layo
 | `RGBA.cgColor`, `NSFont` lookups | **Replace** with CoreGraphics / CoreText, or keep under the lock after a Main Thread Checker run | 1 |
 | `SystemMonitor` | **Lock** each cache; eager `dynamicStore`; serialized utmpx; **snapshot** of the desktop picture | 1 |
 | `NowPlayingCenter`, `WiFiCenter`, `FrontmostAppInfo`, location permission, SysColor / Chameleon inputs | **Snapshot** under a lock; commands **hop** to the center or to main | 1 |
+| `WeatherService` (DesksetCore: MET Norway feeds, place table, disk cache) | Readers take the feed's immutable **snapshot** under a short lock and never wait; fetches, timers, parsing, disk and the place table run on its serial **queue**; changes reach each measure through its skin's **hop** (one pending notification per subscription) | 1 |
+| `LocationCenter` (Location Services for Wi-Fi names and weather `auto`) | Manager and requests on **main**; status (`MainPublished`) and the rounded fix (`Guarded`) **published** for any thread; `requestFix` from any thread **hops** to main, completions go back through the weather queue and skin hops | 1 |
 | `ProcessSampler`, `TrashMonitor`, `RegistryMeasure.Facts`, `WebParserAccess` | **Fix** the start/stop race; per-waiter executor; compute outside the lock; lock the set | 1 |
 | `IniWriter` read-modify-write | **Per-file lock** | 1 |
 | Lua `clock_origin` (and, optionally, a per-state `math.random`) | **Initialize once** at registration | 1 |

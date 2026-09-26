@@ -5,7 +5,7 @@ not Windows. This document lists **every place where a skin behaves differently 
 Windows**, why, and what a skin author or user can do about it.
 
 It is compiled from the per-area notes in [`docs/compat/`](compat/) (engine, Lua, plugins, audio, media and UI,
-installer, app) and from a re-test of 15 real skin packages (see
+weather, installer, app) and from a re-test of 15 real skin packages (see
 [Real-world test results](#12-real-world-test-results)). Everything is based on the public Rainmeter manual
 (<https://docs.rainmeter.net/manual/>), public plugin READMEs, and observation of how skins behave. Deskset is an
 independent clean-room implementation and does not contain Rainmeter code. The document describes Deskset as of
@@ -48,7 +48,7 @@ Every entry has the same five parts:
 | **emulated** | Same purpose and options, rebuilt on macOS equivalents. Numbers, wording or timing can differ in details. |
 | **partial** | Some options or values work; the entry says which ones do not. |
 | **not supported** | Has no effect. Values read `0` / empty, and the skin's *Compatibility Notes* (menu and Manage window) say so. A skin never crashes because of it. |
-| **Mac-only** | A Deskset-specific safety limit or UI feature with no Rainmeter counterpart. |
+| **Mac-only** | A Deskset-specific safety limit, UI feature or extension (such as the weather plugins) with no Rainmeter counterpart. |
 
 "Judgment call" marks places where the manual is silent and Deskset had to choose a behaviour.
 
@@ -68,6 +68,7 @@ shipped with Deskset.
 | Registry | emulated (a fixed set) | Windows version, CPU / GPU name, core count, user folders, the wallpaper | Every other registry value reads `0` / empty |
 | Lua (`Measure=Script`, inline Lua) | identical | Lua 5.1 and the whole SKIN / SELF / Measure / Meter API | `os.execute` only opens files and URLs; a few unsafe functions are removed |
 | Rainmeter's bundled plugins | emulated | Every one except two (seven of them partly): ActionTimer, AudioLevel, NowPlaying, InputText, RunCommand, UsageMonitor, … | WindowMessage and VirtualDesktops have no macOS counterpart; temperatures / fans read 0 (no public sensor API) |
+| Weather and sun (Deskset's own plugins) | Mac-only | `Plugin=MacWeather` (MET Norway forecasts for any place), `Plugin=MacSun` (sun and moon, offline), weather icons as SF Symbols | Windows weather skins scraping dead services stay empty; skins using the new plugins work only on Deskset |
 | Popular third-party plugins | 9 emulated or partial | WebNowPlaying, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor, AppVolume, Mouse, Slider | Any other Windows DLL (PowershellRM, ActiveNet, MSI Afterburner, HWiNFO, …) |
 | Installer | emulated | `.rmskin`, legacy Rainstaller packages, plain ZIPs, extracted folders, download ZIPs that wrap a `.rmskin`; fonts | `.rar` / `.7z`; Windows plugins and add-on programs are never installed; layouts are installed but not applied yet |
 | Windows and window settings | emulated | Dragging, snapping, click-through, transparency, fades, all position bangs | Window levels are macOS levels; ⌘ instead of Ctrl; no DragGroup, no Aero blur, no stored anchors; layouts cannot be loaded yet |
@@ -113,6 +114,7 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 | AppVolume `NumberType=Peak`, AppVolume mute | System Audio Recording | First peak / mute use | Peak 0; mute has no effect |
 | NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing. Re-checked every 30 s, so granting it later works without a restart |
 | WiFiStatus `SSID`, `LIST` | Location Services (macOS shares Wi-Fi names only with such apps) | First time a skin with an SSID / LIST measure loads | SSID is empty and the list is empty; quality, rates and security still work |
+| MacWeather / MacSun `Location=auto` (Deskset extension) | Location Services (reduced accuracy; rounded to about 1 km, kept in memory only) | First time a skin with `Location=auto` runs in a skin window | `Status` 5 and a note; use a place name instead |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`, FileView `Properties` | Automation → Finder | First use | Nothing is emptied / no Get Info window |
 | RecycleManager `RecycleType=Size` | Full Disk Access (no prompt; set it in System Settings → Privacy & Security) | — | Size reads 0; a compatibility note and the log say where to grant it. `Count` needs no permission |
 | Any skin file in Desktop, Documents, Downloads, removable or network volumes (Quote, FolderInfo, FileView, Lua `io`, images and other files a skin names) | Files and Folders | First access to that folder | Empty values, missing images; Lua's `io.open` returns nil and an error |
@@ -184,6 +186,13 @@ by the 15 tested packages.
 | SysColor | emulated | Windows color slots mapped to macOS semantic colors (accent, highlight, window, text…) |
 | WebNowPlaying | partial | Shows Music / Spotify; the browser extension (web players) is not supported |
 | Any other Windows plugin DLL (e.g. PowershellRM, ActiveNet, MSI Afterburner, HWiNFO) | not supported | Value 0 / empty, a compatibility note, the rest of the skin keeps working |
+
+### Deskset's own plugins (Mac only)
+
+| Plugin | Status | Notes |
+| --- | --- | --- |
+| MacWeather | Mac-only | Forecasts from MET Norway (free, any place, 9 days): now, hours, days, icons as SF Symbols, sun times; places looked up offline; see [§10.8](#108-weather-and-sun-deskset-extensions) |
+| MacSun | Mac-only | Sunrise, sunset, twilights, golden hour, day length, sun position, moon phase; worked out on the Mac; see §10.8 |
 
 The installer lists the DLLs a package contains and warns that skins using unsupported ones will show missing
 values.
@@ -1684,8 +1693,8 @@ VirtualDesktops, and the third-party Mouse plugin (§9.8) with Slider, its versi
 ## 10. Audio, media, network and UI plugins
 
 These plugins are rebuilt on Core Audio, AppleScript (Music / Spotify), CoreWLAN and AppKit. Details:
-[`compat/audio.md`](compat/audio.md) and [`compat/media-ui.md`](compat/media-ui.md). Permissions are summarised in
-[§4](#4-macos-permissions).
+[`compat/audio.md`](compat/audio.md) and [`compat/media-ui.md`](compat/media-ui.md); Deskset's own weather and sun
+plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summarised in [§4](#4-macos-permissions).
 
 ### 10.1 AudioLevel (visualizers and level meters)
 
@@ -2039,6 +2048,72 @@ These plugins are rebuilt on Core Audio, AppleScript (Music / Spotify), CoreWLAN
 - **Skin impact:** accent-colored skins follow the Mac accent color.
 - **Status:** emulated
 
+### 10.8 Weather and sun (Deskset extensions)
+
+Rainmeter has no weather plugin; Windows skins scrape weather sites with WebParser. Deskset adds two plugins of its
+own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
+
+#### `Plugin=MacWeather`
+- **Windows:** no counterpart; skins read weather web sites with WebParser (most of those services have shut down).
+- **Mac:** forecasts from MET Norway's Locationforecast 2.0 for any place: one measure with `Location=` (a town such as
+  `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, or `auto`), others with `Parent=` and `Type=` (Temperature,
+  FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
+  Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
+  UpdatedAt, Status, Attribution…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
+  region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone`, `Format`;
+  FinishAction, OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable
+  functions `[&M:Now(Humidity)]`, `[&M:Hour(3, Temperature)]`, `[&M:Day(1, High)]`. Days run midnight to midnight in
+  the place's time zone.
+- **Why:** Deskset extension: the scraped services are gone; MET Norway's data is free for any use, without a key.
+- **Skin impact:** skins written for Deskset get weather; Windows skins cannot use it.
+- **Status:** Mac-only
+
+#### Places and `Location=auto`
+- **Windows:** n/a.
+- **Mac:** place names are looked up **on the Mac** in a bundled table of towns of 15,000 people or more (GeoNames);
+  a country or region after a comma narrows the search; smaller places use coordinates. Every coordinate is rounded
+  to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced accuracy),
+  only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused: `Status` 5
+  and a compatibility note that goes away once allowed.
+- **Why:** privacy; no online geocoder fits.
+- **Skin impact:** a one-time prompt for `auto`; small villages need coordinates.
+- **Status:** Mac-only
+
+#### Requests, cache, states and credit
+- **Windows:** n/a.
+- **Mac:** one HTTPS request per place for all skins, as MET Norway's terms ask: the app's name and contact in the
+  User-Agent, no request before the data's `Expires` (and never more often than every 30 minutes, plus a random 1–10
+  minutes), conditional requests, backoff after errors, nothing while the Mac sleeps or while no skin in a skin window
+  shows the place; at most 8 places. Typed places are cached in `~/Library/Caches/Deskset/Weather`. `Type=Status`
+  tells Ready, Loading, Stale (old data shown), NoLocation, PlaceNotFound, LocationDenied, LocationUnavailable,
+  NotCovered, Refused, RateLimited, Offline, TurnedOff, Preview (previews and `--render` never request anything) and
+  TooManyPlaces. MET Norway's data is CC BY 4.0: `Type=Attribution` gives "Based on data from MET Norway", and the
+  right-click menu of every skin with a MacWeather measure has that credit (it opens api.met.no) and the time of the
+  data. MET Norway receives the Mac's IP address and the rounded coordinates; `defaults write app.deskset.Deskset
+  WeatherEnabled -bool NO` turns all requests off.
+- **Why:** a free shared service with published rules; the licence asks for credit.
+- **Skin impact:** data is refreshed about every 30–40 minutes; `Refresh` retries after a failure but cannot poll faster.
+- **Status:** Mac-only
+
+#### `Plugin=MacSun`
+- **Windows:** n/a.
+- **Mac:** sunrise, sunset, solar noon, civil / nautical / astronomical dawn and dusk, golden hour, day length, how far
+  the day has gone, the sun's height and direction, midnight sun and polar night, and the moon's phase — worked out
+  on the Mac (NOAA's solar equations, the mean lunar month), for `Location=` as above, `Day=` −1…30. No network. It
+  also works in previews and `--render`.
+- **Why:** clock skins want sun times without an account or a network.
+- **Skin impact:** none for Windows skins.
+- **Status:** Mac-only
+
+#### Weather icons
+- **Windows:** skins ship their own icon images, named after their service's codes.
+- **Mac:** `Type=Symbol` gives an SF Symbol name for each of MET's 83 weather codes (day and night forms, all on
+  macOS 13): `ImageName=sf:%1` draws it (see [SF Symbols as images](#sf-symbols-as-images-imagenamesfcpufill)),
+  `MacSymbolRendering=Multicolor` in color. `Type=SymbolCode` gives MET's own code for skins with their own images.
+- **Why:** no image files to ship.
+- **Skin impact:** none.
+- **Status:** Mac-only
+
 ---
 
 ## 11. WebParser and the skin installer
@@ -2358,7 +2433,7 @@ Compatibility notes by cause:
 | --- | --- |
 | Windows-only plugin DLLs | PowershellRM, ActiveNet, MSI Afterburner (FluentDash11, HMNmeter2) |
 | Data macOS does not expose | Temperatures, CPU frequency on Apple silicon, GPU usage and clocks, video memory |
-| Web services that no longer exist | Yahoo weather (Enigma), the weather.com XML service (Mini Weather, Nelamint, PogPack, Simple Clean) |
+| Web services that no longer exist | Yahoo weather (Enigma), the weather.com XML service (Mini Weather, Nelamint, PogPack, Simple Clean); a skin rewritten with `Plugin=MacWeather` (§10.8) gets weather again |
 | Skin mistakes (same on Windows) | A formula naming a meter (PogPack), "mm" printed twice in an uptime text (Enigma), text set on a missing meter (FluentDash11) |
 | Things the user configures | Feed URLs, launcher targets, weather location codes |
 | Test-window timing only | Slow web requests (external IP) and large `UpdateDivider` values fill in after a few seconds in the app |
