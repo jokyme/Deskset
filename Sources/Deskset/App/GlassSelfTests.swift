@@ -202,6 +202,34 @@ enum GlassSelfTests {
             t.equal(thumbnails.renderCount, drawn + 3, "the glass is gone")
             withExtendedLifetime(host) {}
         }
+
+        t.suite("App: MacGlass: pictures of several layers keep the glass behind them") {
+            let ini = "[Rainmeter]\nUpdate=-1\n[Label]\nMeter=Image\nW=100\nH=60\nSolidColor=0,0,0,255\n"
+                + "[Card]\nMeter=Image\nW=100\nH=60\nMacGlass=Regular\nMacGlassCornerRadius=8\n"
+            let (skin, host) = try MediaUITests.bareSkin(t, ini)
+            skin.update()
+            guard let label = skin.meter(named: "Label"), let card = skin.meter(named: "Card") else {
+                return t.check(false, "the layers")
+            }
+            // A later glass meter over an earlier layer: its stand-in goes behind the layer, as the window's glass does.
+            func center(_ draw: (CGContext) -> Void) -> NSColor? {
+                guard let r = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 60, bitsPerSample: 8,
+                                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                               colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+                      let context = NSGraphicsContext(bitmapImageRep: r) else { return nil }
+                let cg = context.cgContext
+                cg.translateBy(x: 0, y: 60)
+                cg.scaleBy(x: 1, y: -1)
+                draw(cg)
+                return r.colorAt(x: 50, y: 30)
+            }
+            let both = center { SkinRenderer.drawMeters([label, card], $0) }
+            t.check((both?.redComponent ?? 1) < 0.02 && (both?.alphaComponent ?? 0) > 0.98,
+                    "the black layer is not washed out by the glass drawn after it: \(String(describing: both))")
+            let alone = center { SkinRenderer.drawMeters([card], $0) }
+            t.check((alone?.alphaComponent ?? 0) > 0.2, "the glass alone still shows its stand-in")
+            withExtendedLifetime(host) {}
+        }
     }
 
     /// An app whose Skins folder has TestSkins/Mac, with Mac\Glass loaded (headless).

@@ -46,8 +46,17 @@ enum SkinRenderer {
     /// One meter with its background, bevel and TransformationMatrix (the Skin Studio's thumbnails of single layers),
     /// its glass as a stand-in. Only the owner of the meter's skin may draw it.
     static func drawMeter(_ meter: Meter, _ ctx: CGContext, glassDark: Bool? = nil) {
-        if let region = meter.glassRegion { GlassPlaceholder.draw(region, in: ctx, dark: glassDark) }
-        drawMeter(meter, ctx, SkinRenderContext.of(meter.skin))
+        drawMeters([meter], ctx, glassDark: glassDark)
+    }
+
+    /// Several meters into one picture, in the given order (the Skin Studio's thumbnails of runs and selections):
+    /// first the glass stand-ins of all of them, then the meters, so the glass stays behind everything drawn, as in
+    /// the skin window. Only the owner of the meters' skin may draw them.
+    static func drawMeters(_ meters: [Meter], _ ctx: CGContext, glassDark: Bool? = nil) {
+        for meter in meters {
+            if let region = meter.glassRegion { GlassPlaceholder.draw(region, in: ctx, dark: glassDark) }
+        }
+        for meter in meters { drawMeter(meter, ctx, SkinRenderContext.of(meter.skin)) }
     }
 
     private static func drawMeter(_ meter: Meter, _ ctx: CGContext, _ context: SkinRenderContext) {

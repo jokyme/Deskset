@@ -2,7 +2,7 @@ import AppKit
 import DesksetCore
 
 /// The small pictures of the layer list (docs/editor-friendly.md §5.2 "Row anatomy"): each layer's real pixels, drawn
-/// by the real renderer (`SkinRenderer.drawMeter`), cropped to the layer and scaled to fit a 36 × 26 point tile at 2x,
+/// by the real renderer (`SkinRenderer.drawMeters`), cropped to the layer and scaled to fit a 36 × 26 point tile at 2x,
 /// on the widget's own panel color (the Background's fill, else the canvas backdrop) so light text on a dark widget
 /// reads as it does on the desktop. A layer thinner or flatter than 6 points (a 2-point marker, a hairline) would be a
 /// speck: it gets a symbol of its kind in its own color instead.
@@ -133,9 +133,7 @@ final class LayerThumbnails {
         guard let area = bounds(of: meters), area.width >= minimumSide, area.height >= minimumSide else {
             return glyph(for: meters.first, panel: panel)
         }
-        return draw(area: area, panel: panel) { cg in
-            for m in meters { SkinRenderer.drawMeter(m, cg) }
-        }
+        return draw(area: area, panel: panel) { cg in SkinRenderer.drawMeters(meters, cg) }
     }
 
     /// A tile with `area` of the skin scaled to fit (never enlarged more than 4 times), centered on the panel color.
