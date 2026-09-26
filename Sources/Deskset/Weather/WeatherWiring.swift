@@ -35,10 +35,10 @@ enum WeatherWiring {
         return units
     }
 
-    /// `Units=Auto` as skins get it: `systemUnits()` with the temperature unit skins see (`#MACTEMPERATUREUNIT#`, which
-    /// `--render` fixes).
-    static func skinUnits() -> WeatherUnits {
-        var units = systemUnits()
+    /// `Units=Auto` as skins get it (asked for at every weather value): the region's measurement system, with the
+    /// temperature unit skins see (`#MACTEMPERATUREUNIT#`, kept by `MacRegional`, which `--render` fixes).
+    static func skinUnits(locale: Locale = .current) -> WeatherUnits {
+        var units = WeatherUnits.automatic(temperatureSetting: nil, measurementSystem: locale.measurementSystem.identifier)
         units.temperature = MacRegional.current.temperatureUnit
         return units
     }
