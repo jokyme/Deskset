@@ -55,8 +55,10 @@ public final class BitmapMeter: Meter, PluginLifecycle {
         widthOption = nil
         heightOption = nil
         imageOptions = ImageOptions.read(from: self, crop: false, rotate: false)
-        bitmapImagePath = ImageOptions.filePath(string("BitmapImage"), imagePath: ImageOptions.imagePathOption(self),
-                                                skin: skin)
+        // A strip of frames cannot be an SF Symbol (`sf:` is noted and draws nothing).
+        let image = string("BitmapImage")
+        bitmapImagePath = rejectSymbol(image, option: "BitmapImage") ? nil
+            : ImageOptions.filePath(image, imagePath: ImageOptions.imagePathOption(self), skin: skin)
         frames = clampInt(int("BitmapFrames", 1), 1, 100_000)
         transitionFrames = clampInt(int("BitmapTransitionFrames", 0), 0, frames - 1)
         zeroFrame = bool("BitmapZeroFrame", false)

@@ -1117,8 +1117,10 @@ extension InspectorWindowController {
         let raw = row.raw.trimmingCharacters(in: .whitespaces)
         switch p.kind {
         case .image where !raw.isEmpty && !raw.contains("%") && !raw.contains("["):
-            if let path = imagePath(ctxSection: section, key: p.key, resolved: row.resolved),
-               !FileManager.default.fileExists(atPath: path) {
+            if let name = MacSymbol.symbolName(in: row.resolved) {
+                if !SymbolImages.exists(name) { return "There is no SF Symbol called “\(name)” — nothing is drawn" }
+            } else if let path = imagePath(ctxSection: section, key: p.key, resolved: row.resolved),
+                      !FileManager.default.fileExists(atPath: path) {
                 return "“\(row.resolved)” was not found — nothing is drawn"
             }
         case .sectionRef where !raw.isEmpty && !EditorSchema.isDynamicValue(raw):
@@ -1240,7 +1242,11 @@ extension InspectorWindowController {
     func imageControl(_ ctx: PropertyContext, lines: inout [NSView]) -> NSView {
         let current = (ctx.variable != nil ? ctx.resolved : ctx.raw).trimmingCharacters(in: .whitespaces)
         let path = ctx.isSet ? imagePath(ctxSection: ctx.section, key: ctx.key, resolved: ctx.resolved) : nil
-        let image = path.flatMap { FileManager.default.fileExists(atPath: $0) ? NSImage(contentsOfFile: $0) : nil }
+        var image = path.flatMap { FileManager.default.fileExists(atPath: $0) ? NSImage(contentsOfFile: $0) : nil }
+        // An SF Symbol (`sf:…`) is shown as the engine draws it (white: on the thumbnail's own background).
+        if let path, let symbol = MacSymbol(path: path), let cg = Images.cgImage(atPath: symbol.withDensity(2).path) {
+            image = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / 2, height: CGFloat(cg.height) / 2))
+        }
         let control = ImageControl(image: image)
         control.identifier = NSUserInterfaceItemIdentifier(ctx.property.key)
         let popup = control.popup

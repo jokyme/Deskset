@@ -1298,7 +1298,8 @@ extension InspectorWindowController {
         let lookup = valueLookup(rainmeter)
         var views: [NSView] = []
         for p in EditorSchema.visibleGroups(groups, values: lookup).flatMap(\.properties)
-            where ["BackgroundMode", "SolidColor", "SolidColor2", "GradientAngle", "Background", "BackgroundMargins"].contains(p.key) {
+            where ["BackgroundMode", "SolidColor", "SolidColor2", "GradientAngle", "Background", "BackgroundMargins",
+                   "MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering"].contains(p.key) {
             let item = propertyRow(p, section: "Rainmeter", row: row(for: p, in: rainmeter), groups: groups)
             views.append(stackedLabel(p.label, key: p.key))
             views.append(item.control)

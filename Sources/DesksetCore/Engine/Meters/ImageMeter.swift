@@ -17,11 +17,19 @@ import Foundation
 ///   transparent alpha of image and mask. Tile and ScaleMargins do not apply. ImagePath is not used for the mask.
 /// - Images are cached by the app and reloaded when the file changes on disk, so `DynamicVariables=1` is not
 ///   needed for that (the manual's reason to use it); DynamicVariables still re-reads every option.
+/// - `ImageName=sf:<symbol>` (and `MaskImageName`) draw an SF Symbol (Deskset extension, `MacSymbol`); with both W and
+///   H set, PreserveAspectRatio defaults to 1 for a symbol, so it keeps its shape.
 public final class ImageMeter: Meter {
     /// Absolute path of the image to draw (nil = nothing).
     public private(set) var imagePath: String?
     /// Effective PreserveAspectRatio: 0 stretch, 1 fit keeping aspect, 2 fill keeping aspect (crop).
-    public private(set) var preserveAspectRatio = 0
+    public var preserveAspectRatio: Int {
+        preserveAspectRatioOption ?? (onlyOneSide || imagePath.map(MacSymbol.isSymbolPath) == true ? 1 : 0)
+    }
+    /// `PreserveAspectRatio` as written (nil when missing or not a number).
+    private var preserveAspectRatioOption: Int?
+    /// Only one of W / H is set.
+    private var onlyOneSide = false
     public private(set) var imageOptions = ImageOptions()
     public private(set) var tile = false
     /// `ScaleMargins=L,T,R,B` (nine-slice scaling).
@@ -55,11 +63,11 @@ public final class ImageMeter: Meter {
         if imagePathOption.isEmpty { imagePathOption = string("Path").trimmingCharacters(in: .whitespaces) }
         imageOptions = ImageOptions.read(from: self)
 
-        let onlyOneSide = (widthOption == nil) != (heightOption == nil)
+        onlyOneSide = (widthOption == nil) != (heightOption == nil)
         if let par = optionalDouble("PreserveAspectRatio"), par.isFinite {
-            preserveAspectRatio = Int(par.clamped(0, 2))
+            preserveAspectRatioOption = Int(par.clamped(0, 2))
         } else {
-            preserveAspectRatio = onlyOneSide ? 1 : 0
+            preserveAspectRatioOption = nil
         }
         tile = bool("Tile", false)
         let margins = OptionValue.numbers(string("ScaleMargins"))
@@ -71,7 +79,8 @@ public final class ImageMeter: Meter {
         }
 
         let maskName = string("MaskImageName")
-        maskImagePath = ImageOptions.filePath(maskName, imagePath: string("MaskImagePath"), skin: skin)
+        maskImagePath = ImageOptions.filePath(maskName, imagePath: string("MaskImagePath"), skin: skin,
+                                              symbol: imageOptions.symbol)
         var mask = ImageOptions()
         mask.flip = ImageOptions.Flip.parse(string("MaskImageFlip", "None"))
         let maskRotate = double("MaskImageRotate", 0)
@@ -85,7 +94,9 @@ public final class ImageMeter: Meter {
         // Log a missing file once per path (only here: before the first update, bound measures are still empty).
         if imagePath != lastCheckedPath {
             lastCheckedPath = imagePath
-            if let imagePath, let host = skin.host, host.imageSize(atPath: imagePath) == nil {
+            // A symbol macOS does not have is noted as an issue when the meter is measured (`noteMissingSymbol`).
+            if let imagePath, !MacSymbol.isSymbolPath(imagePath), let host = skin.host,
+               host.imageSize(atPath: imagePath) == nil {
                 skin.log("[\(name)] Unable to open image: \(imagePath)", level: .warning)
             }
         }
@@ -117,7 +128,7 @@ public final class ImageMeter: Meter {
     }
 
     private func resolveImagePath() {
-        imagePath = ImageOptions.filePath(imageName(), imagePath: imagePathOption, skin: skin)
+        imagePath = ImageOptions.filePath(imageName(), imagePath: imagePathOption, skin: skin, symbol: imageOptions.symbol)
     }
 
     /// Size of the image after EXIF orientation, crop and rotation (nil when it cannot be loaded).

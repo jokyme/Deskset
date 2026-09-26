@@ -16,6 +16,8 @@ import Foundation
 /// - ImageFlip flips every frame in place (judgment call; flipping the whole strip would reorder the states).
 /// - Hover updates arrive only while no mouse button is held, so a hover update also ends a press whose release
 ///   was not delivered (e.g. the window was dragged).
+/// - `ButtonImage=sf:<symbol>` (Deskset extension, `MacSymbol`): the symbol is one frame used for all three states;
+///   the app draws it at half opacity while pressed (`isSymbol`).
 public final class ButtonMeter: Meter {
     public enum State: Int { case normal = 0, pressed = 1, hover = 2 }
 
@@ -31,17 +33,23 @@ public final class ButtonMeter: Meter {
         heightOption = nil
         imageOptions = ImageOptions.read(from: self, crop: false, rotate: false)
         buttonImagePath = ImageOptions.filePath(string("ButtonImage"), imagePath: ImageOptions.imagePathOption(self),
-                                                skin: skin)
+                                                skin: skin, symbol: imageOptions.symbol)
         buttonCommand = actionOption("ButtonCommand")
     }
 
     // MARK: Geometry
 
+    /// Whether ButtonImage is an SF Symbol: one frame for every state.
+    public var isSymbol: Bool { buttonImagePath.map(MacSymbol.isSymbolPath) ?? false }
+
     /// Frame size and strip orientation; nil without a loadable image.
     public var frameLayout: (width: Double, height: Double, horizontal: Bool)? {
         guard let size = imageDisplaySize(buttonImagePath, imageOptions) else { return nil }
-        return ImageGeometry.stripFrames(imageWidth: size.width, imageHeight: size.height, count: 3)
+        return ImageGeometry.stripFrames(imageWidth: size.width, imageHeight: size.height, count: isSymbol ? 1 : 3)
     }
+
+    /// The strip frame that shows `state` (a symbol has one frame for all of them).
+    private func frameIndex(_ state: State) -> Int { isSymbol ? 0 : state.rawValue }
 
     public override func naturalSize() -> (width: Double, height: Double) {
         guard let f = frameLayout else { return (0, 0) }
@@ -51,7 +59,7 @@ public final class ButtonMeter: Meter {
     /// Source rectangle (image pixels) of the frame for `state`; nil without a loadable image.
     public func sourceRect(for state: State) -> SkinRect? {
         guard let f = frameLayout, f.width > 0, f.height > 0 else { return nil }
-        return ImageGeometry.stripFrameRect(index: state.rawValue, frameWidth: f.width, frameHeight: f.height,
+        return ImageGeometry.stripFrameRect(index: frameIndex(state), frameWidth: f.width, frameHeight: f.height,
                                             horizontal: f.horizontal)
     }
 
@@ -77,7 +85,7 @@ public final class ButtonMeter: Meter {
         if imageOptions.flip.horizontal { lx = f.width - 1 - lx }
         if imageOptions.flip.vertical { ly = f.height - 1 - ly }
         func opaque(_ s: State) -> Bool {
-            let source = ImageGeometry.stripFrameRect(index: s.rawValue, frameWidth: f.width, frameHeight: f.height,
+            let source = ImageGeometry.stripFrameRect(index: frameIndex(s), frameWidth: f.width, frameHeight: f.height,
                                                       horizontal: f.horizontal)
             let px = Int((source.x + lx).clamped(0, ImageOptions.maxSide))
             let py = Int((source.y + ly).clamped(0, ImageOptions.maxSide))

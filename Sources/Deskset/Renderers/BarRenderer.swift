@@ -11,7 +11,7 @@ extension SkinRenderer {
         guard !rects.isEmpty else { return }
         if let path = meter.barImagePath {
             guard let imageRect = meter.barImageRect(),
-                  let prepared = PreparedImage(path: path, options: meter.imageOptions) else { return }
+                  let prepared = PreparedImage(path: path, options: meter.imageOptions, drawn: nil, in: ctx) else { return }
             ctx.saveGState()
             ctx.clip(to: rects)
             prepared.draw(in: imageRect.cgRect, ctx)

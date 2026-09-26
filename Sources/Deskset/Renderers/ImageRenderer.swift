@@ -11,7 +11,10 @@ struct PreparedImage {
     let image: CGImage
     let generation: Int
     let recipe: Images.Recipe
-    /// Natural size after ImageRotate (1 image pixel = 1 point).
+    /// Pixels of `image` per point (1 for files: 1 image pixel = 1 point; an SF Symbol is rendered at the scale it is
+    /// drawn at). Every rectangle below is in points.
+    let density: Images.Density
+    /// Natural size after ImageRotate, in points.
     let size: CGSize
     /// Opacity 0…1 (ImageAlpha, else ImageTint's alpha; 1 with a ColorMatrix).
     let alpha: CGFloat
@@ -23,10 +26,17 @@ struct PreparedImage {
         image = p.image
         generation = p.generation
         recipe = p.recipe
-        let rotated = ImageOptions.rotatedSize(width: Double(p.image.width), height: Double(p.image.height),
+        density = p.density
+        let rotated = ImageOptions.rotatedSize(width: Double(p.image.width) / Double(p.density.x),
+                                               height: Double(p.image.height) / Double(p.density.y),
                                                degrees: options.rotate)
         size = CGSize(width: rotated.width, height: rotated.height)
         alpha = CGFloat(options.drawAlpha / 255)
+    }
+
+    /// The prepared image's size in points before ImageRotate.
+    var unrotatedSize: CGSize {
+        CGSize(width: CGFloat(image.width) / density.x, height: CGFloat(image.height) / density.y)
     }
 
     var hasTransform: Bool { options.flip != .none || options.rotate != 0 }
@@ -43,7 +53,7 @@ struct PreparedImage {
         if options.flip != .none {
             ctx.scaleBy(x: options.flip.horizontal ? -1 : 1, y: options.flip.vertical ? -1 : 1)
         }
-        let w = CGFloat(image.width), h = CGFloat(image.height)
+        let w = unrotatedSize.width, h = unrotatedSize.height
         SkinRenderer.drawCGImage(image, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h), ctx, alpha: a)
         ctx.restoreGState()
     }
@@ -61,26 +71,32 @@ struct PreparedImage {
     }
 
     /// The image with flip and rotation baked in (for tiling and nine-slice scaling); the prepared image itself
-    /// when there is nothing to bake. Cached.
+    /// when there is nothing to bake. Cached. Its density is `density` (a symbol's flattened image keeps its pixels).
     func flattened() -> CGImage? {
         guard hasTransform else { return image }
         let recipe = Images.Recipe.flattened(recipe, flipH: options.flip.horizontal, flipV: options.flip.vertical,
                                              rotate: options.rotate)
         return Images.derived(Images.DerivedKey(path: path, generation: generation, recipe: recipe)) {
-            let w = Int(size.width.rounded(.up)), h = Int(size.height.rounded(.up))
+            let w = Int((size.width * density.x).rounded(.up)), h = Int((size.height * density.y).rounded(.up))
             guard let ctx = Images.bitmapContext(width: w, height: h) else { return nil }
             // Draw in y-down skin coordinates.
             ctx.translateBy(x: 0, y: CGFloat(h))
-            ctx.scaleBy(x: 1, y: -1)
+            ctx.scaleBy(x: density.x, y: -density.y)
             draw(in: CGRect(x: 0, y: 0, width: size.width, height: size.height), ctx, alpha: 1)
             return ctx.makeImage()
         }
     }
 
-    /// A sub-rectangle (image pixels, top-left origin) of the prepared image, cached (strip frames).
-    func region(_ r: SkinRect) -> CGImage? {
+    /// A sub-rectangle (points, top-left origin) of the prepared image, cached (strip frames).
+    func region(_ points: SkinRect) -> CGImage? {
+        var r = points
+        if density != .one {
+            let dx = Double(density.x), dy = Double(density.y)
+            r = SkinRect(x: r.x * dx, y: r.y * dy, width: r.width * dx, height: r.height * dy)
+        }
         // Callers pass frame rectangles derived from the image, but this is a shared helper: never trap in Int().
-        func ok(_ v: Double) -> Bool { v.isFinite && abs(v) <= ImageOptions.maxSide }
+        let limit = ImageOptions.maxSide * Double(max(density.x, density.y, 1))
+        func ok(_ v: Double) -> Bool { v.isFinite && abs(v) <= limit }
         guard ok(r.x), ok(r.y), ok(r.width), ok(r.height) else { return nil }
         let x = Int(r.x.rounded()), y = Int(r.y.rounded()), w = Int(r.width.rounded()), h = Int(r.height.rounded())
         guard w > 0, h > 0 else { return nil }
@@ -99,9 +115,13 @@ extension SkinRenderer {
     // MARK: Image
 
     static func drawImage(_ meter: ImageMeter, _ ctx: CGContext) {
-        guard let path = meter.imagePath, let prepared = PreparedImage(path: path, options: meter.imageOptions)
-        else { return }
         let area = meter.contentFrame.cgRect
+        // An SF Symbol is rendered for the area it covers (tiled: at its own size).
+        let fit = meter.maskImagePath == nil && meter.preserveAspectRatio == 1
+        guard let path = meter.imagePath,
+              let prepared = PreparedImage(path: path, options: meter.imageOptions, drawn: meter.tile ? nil : area.size,
+                                           fit: fit, in: ctx)
+        else { return }
         guard area.width > 0, area.height > 0 else { return }
         if let maskPath = meter.maskImagePath {
             drawMasked(prepared, maskPath: maskPath, maskOptions: meter.maskOptions, in: area, ctx)
@@ -131,12 +151,12 @@ extension SkinRenderer {
         if tile {
             guard let image = prepared.flattened() else { return }
             ctx.setAlpha(prepared.alpha)
-            tileImage(image, in: rect, ctx)
+            tileImage(image, in: rect, ctx, density: prepared.density)
             return
         }
         if preserveAspectRatio == 0, let margins = scaleMargins {
             guard let image = prepared.flattened() else { return }
-            drawNineSlice(image, margins: margins, in: rect, ctx, alpha: prepared.alpha)
+            drawNineSlice(image, margins: margins, in: rect, ctx, alpha: prepared.alpha, density: prepared.density)
             return
         }
         let target = ImageGeometry.placement(imageWidth: Double(prepared.size.width),
@@ -147,9 +167,10 @@ extension SkinRenderer {
         prepared.draw(in: target.cgRect, ctx)
     }
 
-    /// Draws one frame of a strip image (Bitmap, Button): `source` in prepared-image pixels, scaled into `dest`;
-    /// ImageFlip flips the frame in place.
-    static func drawImageFrame(_ prepared: PreparedImage, source: SkinRect, in dest: CGRect, _ ctx: CGContext) {
+    /// Draws one frame of a strip image (Bitmap, Button): `source` in prepared-image points, scaled into `dest`;
+    /// ImageFlip flips the frame in place. `opacity` scales the image's own alpha.
+    static func drawImageFrame(_ prepared: PreparedImage, source: SkinRect, in dest: CGRect, _ ctx: CGContext,
+                               opacity: CGFloat = 1) {
         guard dest.width > 0, dest.height > 0, prepared.alpha > 0, let frame = prepared.region(source) else { return }
         ctx.saveGState()
         defer { ctx.restoreGState() }
@@ -158,11 +179,12 @@ extension SkinRenderer {
             ctx.scaleBy(x: prepared.options.flip.horizontal ? -1 : 1, y: prepared.options.flip.vertical ? -1 : 1)
             ctx.translateBy(x: -dest.midX, y: -dest.midY)
         }
-        drawCGImage(frame, in: dest, ctx, alpha: prepared.alpha)
+        drawCGImage(frame, in: dest, ctx, alpha: prepared.alpha * opacity)
     }
 
-    /// Repeats `image` at its pixel size over `rect`, starting at the top-left corner (one CoreGraphics call).
-    static func tileImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext) {
+    /// Repeats `image` at its size (pixels / `density` points) over `rect`, starting at the top-left corner (one
+    /// CoreGraphics call).
+    static func tileImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: Images.Density = .one) {
         guard image.width > 0, image.height > 0, rect.width > 0, rect.height > 0 else { return }
         ctx.saveGState()
         ctx.clip(to: rect)
@@ -171,22 +193,24 @@ extension SkinRenderer {
         ctx.translateBy(x: rect.minX, y: rect.minY)
         ctx.scaleBy(x: 1, y: -1)
         ctx.interpolationQuality = .high
-        let h = CGFloat(image.height)
-        ctx.draw(image, in: CGRect(x: 0, y: -h, width: CGFloat(image.width), height: h), byTiling: true)
+        let h = CGFloat(image.height) / density.y
+        ctx.draw(image, in: CGRect(x: 0, y: -h, width: CGFloat(image.width) / density.x, height: h), byTiling: true)
         ctx.restoreGState()
     }
 
     /// ScaleMargins: corners unscaled, edges stretched along one axis, center in both, drawn with `alpha`
     /// (every piece sets it: `drawCGImage` replaces the context alpha, it does not multiply it).
     static func drawNineSlice(_ image: CGImage, margins: SkinInsets, in rect: CGRect, _ ctx: CGContext,
-                              alpha: CGFloat = 1) {
-        let pieces = ImageGeometry.nineSlice(imageWidth: Double(image.width), imageHeight: Double(image.height),
+                              alpha: CGFloat = 1, density: Images.Density = .one) {
+        let dx = Double(density.x), dy = Double(density.y)
+        let pieces = ImageGeometry.nineSlice(imageWidth: Double(image.width) / dx, imageHeight: Double(image.height) / dy,
                                              margins: margins,
                                              into: SkinRect(x: Double(rect.minX), y: Double(rect.minY),
                                                             width: Double(rect.width), height: Double(rect.height)))
         for piece in pieces {
             let s = piece.source
-            let src = CGRect(x: s.x.rounded(), y: s.y.rounded(), width: s.width.rounded(), height: s.height.rounded())
+            let src = CGRect(x: (s.x * dx).rounded(), y: (s.y * dy).rounded(), width: (s.width * dx).rounded(),
+                             height: (s.height * dy).rounded())
             guard src.width >= 1, src.height >= 1, let part = image.cropping(to: src) else { continue }
             drawCGImage(part, in: piece.destination.cgRect, ctx, alpha: alpha)
         }
@@ -197,7 +221,7 @@ extension SkinRenderer {
     /// composite is rendered at the context's device scale and cached.
     static func drawMasked(_ prepared: PreparedImage, maskPath: String, maskOptions: ImageOptions, in area: CGRect,
                            _ ctx: CGContext) {
-        guard let mask = PreparedImage(path: maskPath, options: maskOptions) else { return }
+        guard let mask = PreparedImage(path: maskPath, options: maskOptions, drawn: area.size, in: ctx) else { return }
         let t = ctx.userSpaceToDeviceSpaceTransform
         // Device pixels per point, 1…4 (clamped before converting: TransformationMatrix can scale by anything).
         let deviceScale = Double(hypot(t.a, t.b))
