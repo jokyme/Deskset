@@ -291,7 +291,12 @@ public final class Skin {
             let table = builtins.merging(readSoFar) { _, new in new }
             return VariableResolver(variableLookup: { name in
                 let key = name.lowercased()
-                if BuiltInVariables.isMacAppearanceKey(key) { includesAppearance = true }
+                // The appearance variables are the Mac's here too, as in options: a skin's own `MACAPPEARANCE=Light`
+                // (a fallback for Windows) must not choose the theme file.
+                if BuiltInVariables.isMacAppearanceKey(key) {
+                    includesAppearance = true
+                    return builtins[key]
+                }
                 return table[key]
             }).resolve(raw)
         }

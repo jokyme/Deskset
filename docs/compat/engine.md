@@ -356,9 +356,10 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   `Light`, also in `@Include` paths: `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 or 0), and as
   `R,G,B,A` colors resolved for the appearance `#MACACCENTCOLOR#` (System Settings → Appearance → Accent color),
   `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` (text) and `#MACSEPARATORCOLOR#`
-  (hairlines). Like every built-in they cannot be set by `[Variables]` or `!SetVariable`, and options see changes
-  only with `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin
-  that uses one of them — in its files, an `@Include` path, or read by an option, bang or script — runs `[Rainmeter]
+  (hairlines). Like every built-in they cannot be set by `[Variables]` or `!SetVariable` — in `@Include` paths too, so
+  a fallback `MACAPPEARANCE=Light` never picks the theme file — and options see changes only with
+  `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin that uses
+  one of them — in its files, an `@Include` path, or read by an option, bang or script — runs `[Rainmeter]
   MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write `MacOnAppearanceChangeAction=` to turn
   it off); skins that use none are left alone by that implicit refresh, but an action a skin writes itself runs in any
   skin (one may follow the appearance through SysColor or a script). The action's own variables are resolved when it

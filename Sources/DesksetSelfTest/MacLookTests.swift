@@ -426,4 +426,31 @@ func runMacLookTests(_ t: TestRunner) {
             t.equal(quietHost.handled.count, 0, ini)
         }
     }
+
+    t.suite("Mac look: @Include paths use the Mac's appearance, not a [Variables] fallback") {
+        let files = ["Root/@Resources/Theme-Dark.inc": "[Variables]\nPanel=night\n",
+                     "Root/@Resources/Theme-Light.inc": "[Variables]\nPanel=day\n"]
+        for fallbackFirst in [true, false] {
+            let host = MacLookHost()
+            host.appearance = .dark
+            let fallback = "MACAPPEARANCE=Light\nMACDARKMODE=0\n"
+            let include = "@Include=#@#Theme-#MACAPPEARANCE#.inc\n"
+            let (skin, _) = try makeSkin(t, "[Variables]\n" + (fallbackFirst ? fallback + include : include + fallback)
+                                         + "[M]\nMeter=String\nText=#Panel# #MACDARKMODE# #MACAPPEARANCE#\n",
+                                         files: files, host: host)
+            skin.update()
+            t.equal(text(skin, "M"), "night 1 Dark", "the theme of the Mac's appearance (fallback first: \(fallbackFirst))")
+        }
+
+        // The editor's map of who reads which file: both theme files, for every config including them this way.
+        let (skin, _) = try makeSkin(t, "[Variables]\n@Include=#@#Theme-#MACAPPEARANCE#.inc\n[M]\nMeter=String\n",
+                                     files: files.merging(["Root/Other/Other.ini":
+                                        "[Variables]\n@Include=#@#Theme-#MACAPPEARANCE#.inc\n[M]\nMeter=String\n",
+                                        "Root/Plain/Plain.ini": "[M]\nMeter=String\n"]) { a, _ in a },
+                                     host: MacLookHost())
+        for theme in ["Theme-Light.inc", "Theme-Dark.inc"] {
+            t.equal(skin.configsIncluding(skin.resourcesDirectory.appendingPathComponent(theme)), ["root\\other", "root\\sub"],
+                    theme)
+        }
+    }
 }
