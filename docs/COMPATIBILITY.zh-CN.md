@@ -1873,7 +1873,8 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
   Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
   ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution……），
   配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
-  单位。另有 `Decimals`、`UnavailableText`、`TimeZone`、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
+  单位。另有 `Decimals`、`UnavailableText`、`TimeZone`（按小时写时就是相对 UTC 的小时数，与 Time measure 不同，不加本机的夏令时，
+  除非 `DaylightSavingTime=1`）、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
   `!CommandMeasure … Refresh` / `Locate`；节变量函数 `[&M:Now(Humidity)]`、`[&M:Hour(3, Temperature)]`、`[&M:Day(1, High)]`。
   “一天”按该地点时区从午夜到午夜计算。
 - **原因：** Deskset 扩展：被抓取的服务都已消失；MET Norway 的数据可用于任何用途，无需密钥。

@@ -2060,10 +2060,11 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
   FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
   Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
   UpdatedAt, Status, Attribution…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
-  region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone`, `Format`;
-  FinishAction, OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable
-  functions `[&M:Now(Humidity)]`, `[&M:Hour(3, Temperature)]`, `[&M:Day(1, High)]`. Days run midnight to midnight in
-  the place's time zone.
+  region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone` (hours from UTC
+  without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`; FinishAction,
+  OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable functions
+  `[&M:Now(Humidity)]`, `[&M:Hour(3, Temperature)]`, `[&M:Day(1, High)]`. Days run midnight to midnight in the
+  place's time zone.
 - **Why:** Deskset extension: the scraped services are gone; MET Norway's data is free for any use, without a key.
 - **Skin impact:** skins written for Deskset get weather; Windows skins cannot use it.
 - **Status:** Mac-only

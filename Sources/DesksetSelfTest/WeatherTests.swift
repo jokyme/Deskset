@@ -407,6 +407,23 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         let url = METNorway.url(for: r)
         t.equal(url.absoluteString, "https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=59.91&lon=10.75")
         t.check(!url.absoluteString.contains("altitude"))
+        // TimeZone= in hours is hours from UTC, even on a Mac whose own zone is on summer time; DaylightSavingTime=1
+        // adds that offset, as the Time measure does.
+        let berlin = WeatherFixtures.zone("Europe/Berlin")
+        let summer = WeatherFixtures.date("2026-07-01T12:00:00Z"), winter = WeatherFixtures.date("2026-01-15T12:00:00Z")
+        func offset(_ option: String, dst: Bool, at date: Date = summer) -> Int {
+            WeatherLocationResolver.zone(option: option, place: nil, daylightSavingTime: dst, at: date,
+                                         localTimeZone: berlin).secondsFromGMT(for: date) / 3600
+        }
+        t.equal(offset("9", dst: WeatherLocationResolver.daylightSavingTime(nil)), 9, "Tokyo is UTC+9")
+        t.equal(offset("0", dst: false), 0)
+        t.equal(offset("9", dst: true), 10, "DaylightSavingTime=1 in a Berlin summer")
+        t.equal(offset("9", dst: true, at: winter), 9)
+        t.equal(WeatherLocationResolver.daylightSavingTime("1"), true)
+        t.equal(WeatherLocationResolver.daylightSavingTime("0"), false)
+        t.equal(offset("Local", dst: false), 2, "Local is this Mac's zone")
+        t.equal(WeatherLocationResolver.zone(option: "Asia/Tokyo", place: nil, daylightSavingTime: true,
+                                             localTimeZone: berlin).identifier, "Asia/Tokyo")
     }
 
     t.suite("Weather: places") {

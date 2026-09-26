@@ -1433,6 +1433,29 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         Plugin=MacSun
         Type=Sunrise
         UnavailableText=?
+        [Tokyo]
+        Measure=Plugin
+        Plugin=MacSun
+        Location=35.68,139.69
+        Type=TimeZone
+        TimeZone=9
+        [TokyoRise]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Tokyo
+        Type=Sunrise
+        [TokyoSummer]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Tokyo
+        Type=TimeZone
+        DaylightSavingTime=1
+        [TokyoWeather]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=35.68,139.69
+        Type=TimeZone
+        TimeZone=9
         """)
         for _ in 0..<10 {
             WeatherService.shared.drain()
@@ -1450,6 +1473,12 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.check(string(skin, "Length").contains(":"))
         t.check(MoonPhase.names.contains(string(skin, "Moon")))
         t.equal(string(skin, "Nowhere"), "?")
+        // TimeZone=9 is UTC+9 whatever this Mac's zone does (Tokyo's sunrise on 26 September: 05:32 local).
+        t.equal(value(skin, "Tokyo"), 9)
+        t.equal(value(skin, "TokyoWeather"), 9)
+        t.check(string(skin, "TokyoRise").hasPrefix("05:3"), "Tokyo sunrise \(string(skin, "TokyoRise"))")
+        let summerTime = Double(TimeZone.current.daylightSavingTimeOffset(for: WeatherFixtures.clock)) / 3600
+        t.equal(value(skin, "TokyoSummer"), 9 + summerTime, "DaylightSavingTime=1: this Mac's summer time added")
         // Polar night: no sunrise (and the place's own time zone once the nearest place is known).
         env.clock = VirtualWeatherClock(now: date("2026-12-21T11:00:00Z"))
         WeatherService.install(env)

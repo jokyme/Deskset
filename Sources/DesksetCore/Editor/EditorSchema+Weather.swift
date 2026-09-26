@@ -67,6 +67,14 @@ extension EditorSchema {
     static let weatherLocationHelp = "A town (Oslo, or Springfield, IL), latitude,longitude, or auto for this Mac's "
         + "approximate location. Places are looked up on this Mac; only the rounded coordinates go to MET Norway."
 
+    static let weatherTimeZoneHelp = "Place (default), Local (this Mac's), a name such as Europe/Oslo, or hours from UTC"
+
+    /// `DaylightSavingTime` of both plugins: off, so hours from UTC are just that.
+    static let weatherDaylightSaving = Property("DaylightSavingTime", "Daylight saving",
+                                                flag("Add this Mac's daylight saving time to the hours"), default: "0",
+                                                help: "Only for hours from UTC, as the Time measure does it",
+                                                visibleWhen: [.isSet("TimeZone"), .notEquals("TimeZone", "Place", "Local")])
+
     static let weatherSettings: [Property] = {
         let own: [Condition] = [.isNotSet("Parent")]
         return [
@@ -97,8 +105,8 @@ extension EditorSchema {
             Property("Format", "Time format", .format(presets: timeFormats, preview: .time),
                      help: "%H hours, %M minutes, %a weekday…; the default follows this Mac's 12- or 24-hour clock",
                      visibleWhen: [Condition("Type", .equals(weatherTimeTypes))]),
-            Property("TimeZone", "Time zone", .text, placeholder: "the place's",
-                     help: "Place (default), Local (this Mac's), a name such as Europe/Oslo, or hours from UTC"),
+            Property("TimeZone", "Time zone", .text, placeholder: "the place's", help: weatherTimeZoneHelp),
+            weatherDaylightSaving,
             Property("FormatLocale", "Language", .text, placeholder: "English",
                      help: "Local, en-US, de-DE, zh-CN…: language of day and month names"),
             Property("Decimals", "Round to", num(0, 3, step: 1, unit: "decimals"), placeholder: "not rounded",
@@ -140,8 +148,8 @@ extension EditorSchema {
             Property("Format", "Time format", .format(presets: timeFormats, preview: .time),
                      help: "The default follows this Mac's 12- or 24-hour clock",
                      visibleWhen: [Condition("Type", .equals(sunTimeTypes))], level: .essential),
-            Property("TimeZone", "Time zone", .text, placeholder: "the place's",
-                     help: "Place (default), Local (this Mac's), a name such as Europe/Oslo, or hours from UTC"),
+            Property("TimeZone", "Time zone", .text, placeholder: "the place's", help: weatherTimeZoneHelp),
+            weatherDaylightSaving,
             Property("FormatLocale", "Language", .text, placeholder: "English"),
             Property("NoEventText", "Text when the sun doesn't rise or set", .text, default: "--:--",
                      help: "Midnight sun and polar night"),

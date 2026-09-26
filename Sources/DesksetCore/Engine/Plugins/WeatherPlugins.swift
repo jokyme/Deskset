@@ -102,19 +102,28 @@ enum WeatherLocationResolver {
         if keepZone, let id = near.timeZone { r.zone = TimeZone(identifier: id) }
     }
 
-    /// `TimeZone=`: `Place` (default), `Local`, an IANA name or an hour offset (as the Time measure).
-    static func zone(option: String?, place: TimeZone?, daylightSavingTime: Bool) -> TimeZone {
+    /// `TimeZone=`: `Place` (default), `Local`, an IANA name or hours from UTC. `DaylightSavingTime=1` adds this Mac's
+    /// daylight saving offset at `date` to the hours, as the Time measure does (off by default here: hours from UTC
+    /// are hours from UTC, whatever this Mac's own zone does).
+    static func zone(option: String?, place: TimeZone?, daylightSavingTime: Bool, at date: Date = Date(),
+                     localTimeZone: TimeZone = .current) -> TimeZone {
         let raw = option?.trimmingCharacters(in: .whitespaces) ?? ""
         switch raw.lowercased() {
-        case "", "place": return place ?? .current
-        case "local": return .current
+        case "", "place": return place ?? localTimeZone
+        case "local": return localTimeZone
         default:
             if let z = TimeZone(identifier: raw) { return z }
             if let hours = OptionValue.number(raw) {
-                return TimeFormatting.timeZone(offsetHours: hours, daylightSavingTime: daylightSavingTime)
+                return TimeFormatting.timeZone(offsetHours: hours, daylightSavingTime: daylightSavingTime, at: date,
+                                               localTimeZone: localTimeZone)
             }
-            return place ?? .current
+            return place ?? localTimeZone
         }
+    }
+
+    /// `DaylightSavingTime=` of a weather or sun measure (inherited through `Parent`): off unless set.
+    static func daylightSavingTime(_ option: String?) -> Bool {
+        option.flatMap { OptionValue.bool($0) } ?? false
     }
 
     /// The clock the plugins use (the demo's fixed clock when set).
@@ -548,7 +557,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
 
     private func displayZone(_ b: Binding) -> TimeZone {
         WeatherLocationResolver.zone(option: setting("TimeZone"), place: b.location.fromDevice ? nil : b.location.zone,
-                                     daylightSavingTime: OptionValue.bool(setting("DaylightSavingTime") ?? "1") ?? true)
+                                     daylightSavingTime: WeatherLocationResolver.daylightSavingTime(setting("DaylightSavingTime")),
+                                     at: b.now)
     }
 
     private var locale: Locale {
@@ -1043,6 +1053,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         let now = WeatherLocationResolver.now(env)
         let unavailableText = setting("UnavailableText") ?? ""
         let noEventText = setting("NoEventText") ?? "--:--"
+        let daylightSavingTime = WeatherLocationResolver.daylightSavingTime(setting("DaylightSavingTime"))
         autoMin = 0
         autoMax = 1
         unavailable = false
@@ -1054,7 +1065,8 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         // The moon does not need a place.
         switch valueType {
         case .moonPhase, .moonIllumination, .moonPhaseName, .moonSymbol:
-            let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: nil, daylightSavingTime: true)
+            let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: nil,
+                                                    daylightSavingTime: daylightSavingTime, at: now)
             var at = now
             if dayOffset != 0 {
                 var c = Calendar(identifier: .gregorian)
@@ -1077,7 +1089,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         let loc = r.location
         guard let c = loc.coordinate else { return none(unavailableText) }
         let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: loc.fromDevice ? nil : loc.zone,
-                                                daylightSavingTime: OptionValue.bool(setting("DaylightSavingTime") ?? "1") ?? true)
+                                                daylightSavingTime: daylightSavingTime, at: now)
         let locale = TimeFormatting.locale(fromOption: setting("FormatLocale")) ?? TimeFormatting.defaultLocale
         func time(_ date: Date) -> (Double, String?) {
             let f = format ?? WeatherLocationResolver.defaultTimeFormat(env)
