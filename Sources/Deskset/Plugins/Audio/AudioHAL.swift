@@ -205,10 +205,11 @@ enum AudioHAL {
 
     // MARK: Formatting
 
-    /// `Type=Format`: e.g. "48000 Hz, 32-bit float, 2 channels".
+    /// `Type=Format`: e.g. "48000 Hz, 32-bit float, 2 channels". A whole rate past Int's range, which only a
+    /// misbehaving driver would report, gets one decimal like a fraction: converting it to Int would trap.
     static func describe(sampleRate: Double, bitsPerChannel: Int, isFloat: Bool, channels: Int) -> String {
         guard sampleRate > 0, channels > 0 else { return "" }
-        let rate = sampleRate == sampleRate.rounded() ? String(Int(sampleRate)) : String(format: "%.1f", sampleRate)
+        let rate = Int(exactly: sampleRate).map(String.init) ?? String(format: "%.1f", sampleRate)
         let bits = bitsPerChannel > 0 ? "\(bitsPerChannel)-bit \(isFloat ? "float" : "integer"), " : ""
         return "\(rate) Hz, \(bits)\(channels) channel\(channels == 1 ? "" : "s")"
     }

@@ -941,6 +941,9 @@ enum AudioSelfTests {
                 t.equal(AudioHAL.describe(sampleRate: 44100, bitsPerChannel: 24, isFloat: false, channels: 1),
                         "44100 Hz, 24-bit integer, 1 channel")
                 t.equal(AudioHAL.describe(sampleRate: 0, bitsPerChannel: 32, isFloat: true, channels: 2), "")
+                // A whole rate past Int's range (only a misbehaving driver would report one) trapped when converted.
+                t.equal(AudioHAL.describe(sampleRate: 1e20, bitsPerChannel: 32, isFloat: true, channels: 2),
+                        "100000000000000000000.0 Hz, 32-bit float, 2 channels")
             }
         }
     }
@@ -1377,6 +1380,9 @@ enum AudioSelfTests {
             t.check(AppVolumeMeasure.parseCall("GetVolumeFromIndex(2)")! == ("GetVolumeFromIndex", "2"))
             t.check(AppVolumeMeasure.parseCall("GetPeakFromAppName( 'spotify.exe' )")! == ("GetPeakFromAppName", "spotify.exe"))
             t.check(AppVolumeMeasure.parseCall("Nope") == nil)
+            // Peaks: whole numbers without decimals, negative zero as "0"; a whole number past Int's range trapped.
+            t.equal([1, 0.25, -0.0, 1e20].map(AppVolumeMeasure.plain),
+                    ["1", "0.250000", "0", "100000000000000000000.000000"])
 
             // Mute bookkeeping (fake taps): a list refresh queued just before a Mute must not forget the app, or the
             // next ToggleMute would mute it again instead of unmuting it.

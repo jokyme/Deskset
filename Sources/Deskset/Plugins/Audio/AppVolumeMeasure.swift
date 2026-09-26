@@ -368,8 +368,10 @@ final class AppVolumeMeasure: Measure, SectionVariableFunctions {
         return function.isEmpty ? nil : (function, argument)
     }
 
+    /// "1", "0.250000": whole numbers without decimals. One past Int's range (never a peak, which is 0…1) gets six
+    /// decimals like a fraction: converting it to Int would trap.
     static func plain(_ v: Double) -> String {
-        v == v.rounded() ? String(Int(v)) : String(format: "%.6f", v)
+        Int(exactly: v).map(String.init) ?? String(format: "%.6f", v)
     }
 
     private func logOnce(_ message: String) {
