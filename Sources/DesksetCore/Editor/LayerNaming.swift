@@ -1269,8 +1269,9 @@ final class LayerNamer {
             default: return named("Wi-Fi", "Wi-Fi")
             }
         case "macweather", "macsun":
-            let hour = OptionValue.number(option(m, "Hour")).map { Int($0) }
-            let day = OptionValue.number(option(m, "Day")).map { Int($0) }
+            // Clamped as the plugins clamp them (a skin may say Day=1e20).
+            let hour = OptionValue.number(option(m, "Hour")).map { Int($0.clamped(0, 47)) }
+            let day = OptionValue.number(option(m, "Day")).map { Int(type == "macsun" ? $0.clamped(-1, 30) : $0.clamped(0, 9)) }
             let n = EditorSchema.weatherDataName(plugin: type, type: option(m, "Type"), hour: hour, day: day)
             return named(n.name, n.short)
         case "nowplaying":

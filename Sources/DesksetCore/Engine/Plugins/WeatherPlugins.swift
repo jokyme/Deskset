@@ -622,7 +622,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         }
         let daySummary: WeatherDay? = useDay.flatMap { n in
             let days = snapshot.days(zone: zone, now: b.now)
-            guard n < days.count, days[n].available else { return nil }
+            guard n >= 0, n < days.count, days[n].available else { return nil }
             return days[n]
         }
         if useDay != nil && daySummary == nil { return none() }
@@ -815,7 +815,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     // MARK: Section variables
 
     /// `[&MeasureWeather:Now(Humidity, 0)]`, `[&MeasureWeather:Hour(3, Temperature, 0)]`,
-    /// `[&MeasureWeather:Day(1, High, 0)]`: the string, or the number with those decimals.
+    /// `[&MeasureWeather:Day(1, High, 0)]`: the string, or the number with those decimals. The index and the decimals
+    /// are clamped as the options are (hour 0–47, day 0–9, decimals 0–6): they come from the skin.
     public func sectionVariableFunction(_ call: String) -> String? {
         let trimmed = call.trimmingCharacters(in: .whitespaces)
         guard let open = trimmed.firstIndex(of: "("), trimmed.hasSuffix(")") else { return nil }
@@ -827,13 +828,14 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         switch function {
         case "now": break
         case "hour", "day":
-            guard let first = rest.first, let v = OptionValue.number(first) else { return nil }
-            index = Int(v)
+            guard let first = rest.first, let v = OptionValue.number(first), v.isFinite else { return nil }
+            index = function == "hour" ? Int(v.clamped(0, 47)) : Int(v.clamped(0, 9))
             rest.removeFirst()
         default: return nil
         }
         guard let typeName = rest.first, let type = ValueType.parse(typeName) else { return nil }
-        let places = rest.count > 1 ? OptionValue.number(rest[1]).map { Int($0) } : nil
+        let places = rest.count > 1
+            ? OptionValue.number(rest[1]).flatMap { $0.isFinite ? Int($0.clamped(0, 6)) : nil } : nil
         let out = output(type: type, hour: function == "hour" ? index : nil, day: function == "day" ? index : nil,
                          decimalsOverride: places)
         if let s = out.string { return s }

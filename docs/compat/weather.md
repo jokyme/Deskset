@@ -217,7 +217,9 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   (<https://docs.rainmeter.net/manual/variables/section-variables/>).
 - Mac (Deskset): a MacWeather measure answers `[&MeasureWeather:Now(Humidity, 0)]`,
   `[&MeasureWeather:Hour(3, Temperature, 0)]` and `[&MeasureWeather:Day(1, High, 0)]` (index, Type, optional
-  decimals): the string, or the number with those decimals (meters need `DynamicVariables=1`).
+  decimals): the string, or the number with those decimals (meters need `DynamicVariables=1`). The index and the
+  decimals are clamped as the options are (hours 0–47, days 0–9, at most 6 decimals), so `Day(-1, High)` is today's
+  high and `Day(10, High)` day 9's.
 - Why: a forecast strip would otherwise need dozens of child measures.
 - Skin impact: none.
 - Status: Deskset extension

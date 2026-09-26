@@ -622,6 +622,22 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         Measure=Plugin
         Plugin=MacSun
         Type=MoonPhase
+        [Far]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        Day=1e20
+        [Late]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Hour=1e20
+        [Before]
+        Measure=Plugin
+        Plugin=MacSun
+        Type=Sunset
+        Day=-1e20
         """)
         func name(_ m: String) -> String { skin.measure(named: m).map { LayerNaming.data($0, in: skin).name } ?? "?" }
         t.equal(name("W"), "Temperature (weather)")
@@ -630,6 +646,10 @@ private func runWeatherEditorTests(_ t: TestRunner) {
         t.equal(name("High3"), "High, in 3 days")
         t.equal(name("Rise"), "Sunrise")
         t.equal(name("Moon"), "Moon phase")
+        // Numbers too large for an Int are clamped as the plugins clamp them.
+        t.equal(name("Far"), "High, in 9 days")
+        t.equal(name("Late"), "Temperature in 47 hours")
+        t.equal(name("Before"), "Yesterday's sunset")
         skin.close()
     }
 

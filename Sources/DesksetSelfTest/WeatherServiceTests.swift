@@ -784,6 +784,17 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(skin.resolve("[&W:Now(Humidity, 0)]", in: nil, sectionVariables: true), "54")
         t.equal(skin.resolve("[&W:Day(1, High, 1)]", in: nil, sectionVariables: true), "61.7")
         t.equal(skin.resolve("[&W:Hour(3, Symbol)]", in: nil, sectionVariables: true), "sun.max.fill")
+        // The index and the decimals come from the skin: clamped as the options are, never used as they are.
+        func call(_ f: String) -> String { skin.resolve("[&W:\(f)]", in: nil, sectionVariables: true) }
+        t.equal(call("Day(-1, High, 1)"), call("Day(0, High, 1)"), "Day(-1): today")
+        t.equal(call("Day(-1, Condition)"), call("Day(0, Condition)"))
+        t.equal(call("Day(10, High, 1)"), call("Day(9, High, 1)"), "Day(10): day 9")
+        t.check(!call("Day(9, High, 1)").isEmpty, "day 9 has a high")
+        t.equal(call("Day(1e20, Symbol)"), call("Day(9, Symbol)"))
+        t.equal(call("Hour(1e19, Temperature, 1)"), call("Hour(47, Temperature, 1)"), "Hour(1e19): hour 47")
+        t.equal(call("Hour(-3, Temperature, 1)"), call("Hour(0, Temperature, 1)"))
+        t.equal(call("Now(Temperature, 1e19)"), call("Now(Temperature, 6)"), "decimals 0–6")
+        t.equal(call("Now(Temperature, -1e19)"), call("Now(Temperature, 0)"))
         skin.close()
     }
 
