@@ -841,8 +841,9 @@ enum Fonts {
     }
 
     /// Call with `lock` held (see `lock` for why these stay AppKit calls). `stretch` applies to the standard design
-    /// only (the rounded, monospaced and serif designs have one width). Italic keeps the weight; the rounded design
-    /// has no italic (the caller slants it).
+    /// only (the rounded, monospaced and serif designs have one width). Italic keeps the weight and the width: the
+    /// design's italic of the same weight, or — where there is none (the rounded design, a condensed, compressed or
+    /// expanded width) — the upright font, which the caller slants.
     private static func systemFont(size: CGFloat, weight: Int, italic: Bool, stretch: Int?,
                                    design: SystemDesign = .standard) -> CTFont {
         let w = NSFont.Weight(rawValue: nsWeight(css: weight))
@@ -863,12 +864,24 @@ enum Fonts {
         } else {
             font = NSFont.systemFont(ofSize: size, weight: w)
         }
-        if italic {
-            // Added to the font's own traits: `.italic` alone would drop `.bold` and give the regular italic.
-            let descriptor = font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.italic))
-            font = NSFont(descriptor: descriptor, size: size) ?? font
-        }
-        return font as CTFont
+        return italic ? italicFont(of: font as CTFont, size: size) : font as CTFont
+    }
+
+    /// The true italic of a system font at its weight and width, else the font itself (upright; the caller slants it).
+    /// CoreText finds the italic of every weight (NSFontDescriptor's symbolic traits lose Medium in the monospaced and
+    /// serif designs, and give an upright regular for a condensed width). For a width without italics it returns the
+    /// upright face marked italic — the same face, drawn upright — so a result is taken only when it is another face,
+    /// italic, at the same weight.
+    private static func italicFont(of upright: CTFont, size: CGFloat) -> CTFont {
+        guard let copy = CTFontCreateCopyWithSymbolicTraits(upright, size, nil, .traitItalic, .traitItalic),
+              CTFontGetSymbolicTraits(copy).contains(.traitItalic),
+              (CTFontCopyPostScriptName(copy) as String) != (CTFontCopyPostScriptName(upright) as String),
+              abs(weightTrait(of: copy) - weightTrait(of: upright)) < 0.05 else { return upright }
+        return copy
+    }
+
+    private static func weightTrait(of font: CTFont) -> Double {
+        ((CTFontCopyTraits(font) as? [CFString: Any])?[kCTFontWeightTrait] as? NSNumber)?.doubleValue ?? 0
     }
 
     /// CSS-style weight (100…950) → NSFont.Weight / kCTFontWeightTrait, piecewise linear.

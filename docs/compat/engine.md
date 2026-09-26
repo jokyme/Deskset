@@ -146,10 +146,12 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   font; `System Font`, `SF Pro`, `-apple-system` already did), `System Rounded` / `SF Pro Rounded` / `SF Rounded` /
   `ui-rounded` (rounded), `System Mono` / `System Monospaced` / `SF Mono` / `ui-monospace` (monospaced) and
   `System Serif` / `New York` / `ui-serif` (New York). FontWeight, StringStyle, trailing style words ("System Rounded
-  Semibold"), inline `Face`, `Weight` and `Italic` work as for any family: italic keeps the weight; the rounded design
-  has no italic and is slanted. `Stretch` applies to the standard design only. The editor's font menu offers System
-  Rounded, System Mono and System Serif after System Font. (Italic system text now keeps its weight in every design;
-  before, bold italic Segoe UI substitutes drew as regular italic.)
+  Semibold"), inline `Face`, `Weight` and `Italic` work as for any family: italic keeps the weight (every weight,
+  Medium included); the rounded design has no italic and is slanted. `Stretch` applies to the standard design only;
+  the system font has no condensed or expanded italics, so stretched italic text is the stretched face at its weight,
+  slanted. The editor's font menu offers System Rounded, System Mono and System Serif after System Font. (Italic
+  system text now keeps its weight and width in every design; before, bold italic Segoe UI substitutes drew as regular
+  italic, and stretched italic text as regular-width italic.)
 - Why: Deskset extension — the designs are part of macOS but have no installable family name, so skins could not ask
   for them. `System` meaning the system font follows what Mac skin authors expect; Windows skins hardly use the old
   bitmap font.

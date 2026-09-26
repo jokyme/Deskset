@@ -62,6 +62,14 @@ enum MacLookSelfTests {
         return result
     }
 
+    private static func weightTrait(_ font: CTFont) -> Double {
+        ((CTFontCopyTraits(font) as? [CFString: Any])?[kCTFontWeightTrait] as? NSNumber)?.doubleValue ?? 0
+    }
+
+    private static func widthTrait(_ font: CTFont) -> Double {
+        ((CTFontCopyTraits(font) as? [CFString: Any])?[kCTFontWidthTrait] as? NSNumber)?.doubleValue ?? 0
+    }
+
     private static func fontName(_ face: String, weight: Int? = nil, bold: Bool = false, italic: Bool = false)
         -> (name: String, resolved: Fonts.Resolved) {
         let resolved = Fonts.resolve(Fonts.Request(face: face, size: 20, weight: weight, bold: bold, italic: italic))
@@ -102,6 +110,25 @@ enum MacLookSelfTests {
             let systemBoldItalic = fontName("System", bold: true, italic: true)
             let traits = CTFontGetSymbolicTraits(systemBoldItalic.resolved.font)
             t.check(traits.contains(.traitItalic) && traits.contains(.traitBold), "bold italic keeps the weight: \(systemBoldItalic.name)")
+            // Every weight, Medium too, in every design with italics.
+            for face in ["System", "System Mono", "New York"] where Fonts.installedFamily(named: face) == nil {
+                for weight in [300, 400, 500, 600, 700, 900] {
+                    let upright = fontName(face, weight: weight), italic = fontName(face, weight: weight, italic: true)
+                    t.close(weightTrait(italic.resolved.font), weightTrait(upright.resolved.font), accuracy: 0.01,
+                            "\(face) \(weight): \(upright.name) → \(italic.name)")
+                    t.check(CTFontGetSymbolicTraits(italic.resolved.font).contains(.traitItalic) && italic.resolved.slant == 0,
+                            "\(face) \(weight): a true italic \(italic.name)")
+                }
+            }
+            // A condensed width has no italic: the condensed face at its weight, slanted (not a regular-width upright).
+            for weight in [400, 700] {
+                let upright = Fonts.resolve(Fonts.Request(face: "System", size: 20, weight: weight, stretch: 3))
+                let italic = Fonts.resolve(Fonts.Request(face: "System", size: 20, weight: weight, italic: true, stretch: 3))
+                let name = CTFontCopyPostScriptName(italic.font) as String
+                t.check(widthTrait(italic.font) < -0.05, "condensed \(weight) keeps its width: \(name)")
+                t.close(weightTrait(italic.font), weightTrait(upright.font), accuracy: 0.01, "condensed \(weight) keeps its weight: \(name)")
+                t.check(italic.slant > 0, "condensed \(weight) is slanted: \(name)")
+            }
             // The editor's words.
             t.equal(Fonts.substitution(for: "SF Mono"), "System Mono")
             t.equal(Fonts.substitution(for: "new york"), "System Serif")

@@ -271,8 +271,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Windows：** FontFace 指定已安装的字体家族；`System` 是一种老式点阵字体，苹果的字体名找不到时使用 Arial。
 - **Mac：** 在已安装字体和皮肤字体之后（同名的已安装字体家族仍然优先），`System` 使用 Mac 系统字体，`System Rounded` /
   `SF Pro Rounded` 使用其圆角设计，`System Mono` / `SF Mono` 使用其等宽设计，`System Serif` / `New York` 使用其衬线设计
-  （也接受 `ui-rounded`、`ui-monospace`、`ui-serif`）。字重、斜体（保留字重；圆角设计没有斜体，改为倾斜绘制）、样式词
-  （“System Rounded Semibold”）和内联 `Face` 与其他字体一样生效。编辑器的字体菜单在“System Font”之后列出它们。
+  （也接受 `ui-rounded`、`ui-monospace`、`ui-serif`）。字重、斜体（保留字重；圆角设计和 `Stretch` 宽度没有斜体，改为倾斜
+  绘制）、样式词（“System Rounded Semibold”）和内联 `Face` 与其他字体一样生效。编辑器的字体菜单在“System Font”之后列出它们。
 - **原因：** Deskset 扩展：macOS 自带的这几种字体设计没有可安装的字体家族名。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响，只有 `FontFace=System` 改用 Mac 系统字体而不是 Arial。
 - **状态：** 仅 Mac

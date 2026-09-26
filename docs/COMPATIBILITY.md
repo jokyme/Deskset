@@ -290,8 +290,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** after installed and skin fonts (an installed family of the same name still wins), `System` draws the Mac
   system font, `System Rounded` / `SF Pro Rounded` its rounded design, `System Mono` / `SF Mono` its monospaced
   design and `System Serif` / `New York` its serif design (also `ui-rounded`, `ui-monospace`, `ui-serif`). Weights,
-  italic (keeping the weight; the rounded design is slanted), style words ("System Rounded Semibold") and inline
-  `Face` work as for any font. The editor's font menu lists them after System Font.
+  italic (keeping the weight; the rounded design and `Stretch` widths are slanted), style words ("System Rounded
+  Semibold") and inline `Face` work as for any font. The editor's font menu lists them after System Font.
 - **Why:** Deskset extension: macOS's own font designs have no installable family name.
 - **Skin impact:** none for Windows skins except `FontFace=System`, drawn in the Mac system font instead of Arial.
 - **Status:** Mac-only
