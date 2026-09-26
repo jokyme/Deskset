@@ -865,6 +865,25 @@ extension InspectorWindowController {
                            toast: "Now updates \(WidgetPresets.updateWords(for: milliseconds))")
     }
 
+    /// A "When the widget…" choice that removes the option, so the widget does what it does without it.
+    static let removesTheSetting = "\u{1}default"
+
+    /// The pop-up of a "When the widget…" row whose option is empty or not written: what it does now (the first item)
+    /// and the other choices (title, value to write; `removesTheSetting` removes it).
+    /// `MacOnAppearanceChangeAction` (Deskset extension): not written, a widget that uses the Mac's appearance
+    /// variables reloads (`followsAppearance`, `Skin.usesMacAppearance`) and any other does nothing; "No action" writes
+    /// it empty, "Reload the widget" writes `[!Refresh]` — or, for a widget that reloads anyway, removes the option.
+    static func whenTheWidgetChoices(_ key: String, written: Bool, followsAppearance: Bool)
+        -> (current: String, others: [(title: String, action: String)]) {
+        guard key.caseInsensitiveCompare("MacOnAppearanceChangeAction") == .orderedSame else {
+            return ("No action", WidgetPresets.whenTheWidgetChoices(key))
+        }
+        let reload = Skin.defaultAppearanceChangeAction
+        if written { return ("No action", [("Reload the widget", followsAppearance ? removesTheSetting : reload)]) }
+        if followsAppearance { return ("Reload the widget", [("No action", "")]) }
+        return ("No action (it doesn't use Mac colors)", [("Reload the widget", reload)])
+    }
+
     /// Writes (or removes, nil) an option of `[Rainmeter]` (or `section`) where it is defined, as one undo step with a
     /// toast.
     @discardableResult
@@ -1560,17 +1579,20 @@ extension InspectorWindowController {
             let control: NSView
             if raw.isEmpty {
                 let popup = NSPopUpButton()
-                // Switching light / dark reloads a widget that uses the Mac's colors unless the widget says otherwise.
-                let reloadsByDefault = key == "MacOnAppearanceChangeAction" && value(key) == nil
-                popup.addItem(withTitle: reloadsByDefault ? "Reload the widget" : "No action")
-                for preset in WidgetPresets.whenTheWidgetChoices(key) {
-                    popup.addItem(withTitle: preset.title)
-                    popup.lastItem?.representedObject = preset.action
+                let choices = Self.whenTheWidgetChoices(key, written: value(key) != nil,
+                                                        followsAppearance: skin.usesMacAppearance)
+                popup.addItem(withTitle: choices.current)
+                for choice in choices.others {
+                    popup.addItem(withTitle: choice.title)
+                    popup.lastItem?.representedObject = choice.action
                 }
                 popup.menu?.addItem(.separator())
                 popup.addItem(withTitle: "Edit in Code…")
                 popup.lastItem?.representedObject = "code"
                 popup.identifier = NSUserInterfaceItemIdentifier("when-\(key)")
+                if key == "MacOnAppearanceChangeAction" {
+                    popup.toolTip = "When macOS switches between light and dark mode or the accent color changes"
+                }
                 popup.onAction { [weak self] c in
                     guard let popup = c as? NSPopUpButton, let v = popup.selectedItem?.representedObject as? String else { return }
                     if v == "code" {
@@ -1579,7 +1601,8 @@ extension InspectorWindowController {
                         return
                     }
                     let title = popup.selectedItem?.title.lowercased() ?? ""
-                    self?.writeWidgetSetting(key, value: v, undoName: "Change What Happens When It \(Self.titleCase(label))",
+                    self?.writeWidgetSetting(key, value: v == Self.removesTheSetting ? nil : v,
+                                             undoName: "Change What Happens When It \(Self.titleCase(label))",
                                              toast: "When it \(label.lowercased()): \(title)")
                 }
                 control = popup

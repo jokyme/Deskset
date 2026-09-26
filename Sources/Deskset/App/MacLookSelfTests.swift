@@ -505,6 +505,48 @@ extension MacLookSelfTests {
                 .flatMap { MacSymbol(path: $0) }?.style.pointSize, 17, "MacSymbolSize too")
             editor.window?.close()
         }
+
+        t.suite("App: Mac look: the widget page says what switching light / dark does") {
+            typealias P = FriendlyWidgetPageSelfTests
+            let key = "MacOnAppearanceChangeAction"
+            for (written, follows) in [(false, false), (false, true), (true, false), (true, true)] {
+                let choices = InspectorWindowController.whenTheWidgetChoices(key, written: written, followsAppearance: follows)
+                t.check(!choices.others.isEmpty, "a choice besides the current one (\(written), \(follows))")
+                for title in [choices.current] + choices.others.map(\.title) {
+                    t.equal(EditorSchema.engineWord(in: title), nil, title)
+                }
+            }
+            func row(_ editor: InspectorWindowController) -> NSPopUpButton? {
+                P.openEverything(editor)
+                return P.find(editor, "when-\(key)") as? NSPopUpButton
+            }
+
+            // A widget without the Mac's colors does nothing when macOS switches; it can be made to reload.
+            guard let (_, plain) = try P.openScratch(t, files: ["Look/Plain/Plain.ini": "[Rainmeter]\nUpdate=1000\n\n[M]\nMeter=String\nText=Hi\n"],
+                                                     config: "Look\\Plain"),
+                  let plainIni = plain.skin?.fileURL else { return }
+            plain.canvasSelectionChanged([])
+            t.equal(row(plain)?.titleOfSelectedItem, "No action (it doesn't use Mac colors)")
+            t.check(P.choose(row(plain), "Reload the widget"))
+            t.check(P.section("Rainmeter", in: P.read(plainIni)).contains("\(key)=[!Refresh]\n"), P.read(plainIni))
+            t.equal(plain.skin?.usesMacAppearance, true, "written, it reloads")
+            t.check(row(plain) == nil, "a written action is shown as a sentence")
+            plain.window?.close()
+
+            // A widget that uses them reloads; "No action" writes the option empty, "Reload the widget" removes it again.
+            guard let (_, mac) = try P.openScratch(t, files: ["Look/Mac/Mac.ini":
+                "[Rainmeter]\nUpdate=1000\n\n[M]\nMeter=String\nText=Hi\nFontColor=#MACLABELCOLOR#\n"], config: "Look\\Mac"),
+                  let macIni = mac.skin?.fileURL else { return }
+            mac.canvasSelectionChanged([])
+            t.equal(row(mac)?.titleOfSelectedItem, "Reload the widget")
+            t.check(P.choose(row(mac), "No action"))
+            t.check(P.section("Rainmeter", in: P.read(macIni)).contains("\(key)=\n"), P.read(macIni))
+            t.equal(row(mac)?.titleOfSelectedItem, "No action")
+            t.check(P.choose(row(mac), "Reload the widget"))
+            t.check(!P.read(macIni).contains(key), "back to the default: \(P.read(macIni))")
+            t.equal(row(mac)?.titleOfSelectedItem, "Reload the widget")
+            mac.window?.close()
+        }
     }
 }
 
