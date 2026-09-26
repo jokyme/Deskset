@@ -360,9 +360,13 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   only with `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin
   that uses one of them — in its files, an `@Include` path, or read by an option, bang or script — runs
   `[Rainmeter] MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write
-  `MacOnAppearanceChangeAction=` to turn it off, or e.g. `[!UpdateMeter *][!Redraw]` for DynamicVariables meters);
-  skins that use none are left alone. `Deskset --render` uses the Light appearance unless `--appearance dark` (or
-  `--dark`) or `--appearance system`.
+  `MacOnAppearanceChangeAction=` to turn it off); skins that use none are left alone. The action's own variables are resolved when it
+  runs, so `#MACLABELCOLOR#` in it is the new color (other actions keep the `#Var#` values of when they were read), and
+  `[Variables]` built from the appearance variables (`Fg=#MACLABELCOLOR#`, and variables built from those) take the
+  new values before it runs, unless `!SetVariable` changed them: `[!UpdateMeter *][!Redraw]` recolors
+  DynamicVariables meters without a reload. An `@Include` chosen by `#MACAPPEARANCE#` is read again only by a
+  refresh. `Deskset --render` uses the Light appearance unless `--appearance dark` (or `--dark`) or
+  `--appearance system`.
 - Why: Deskset extension — Mac widgets are expected to follow light and dark mode and the accent color.
 - Skin impact: none for Windows skins (the names are not Rainmeter's). On Windows the variables are undefined, so a
   cross-platform skin should give fallbacks in its own variables.

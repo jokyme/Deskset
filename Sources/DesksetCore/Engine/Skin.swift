@@ -42,9 +42,9 @@ public struct SkinSettings {
     public var onUnfocusAction = ""
     /// Run at the end of the first update after the system wakes (see `Skin.systemDidWake()`).
     public var onWakeAction = ""
-    /// `MacOnAppearanceChangeAction` (Deskset extension): run when the Mac switches between light and dark or the
-    /// accent color changes, in skins that use an appearance variable (`Skin.appearanceDidChange()`). `[!Refresh]` when
-    /// the option is missing; empty when it is written empty (nothing runs).
+    /// `MacOnAppearanceChangeAction` (Deskset extension) as written: run when the Mac switches between light and dark
+    /// or the accent color changes (`Skin.appearanceDidChange()`), its variables resolved then, so `#MACLABELCOLOR#` in
+    /// it is the new color. `[!Refresh]` when the option is missing; empty when it is written empty (nothing runs).
     public var macOnAppearanceChangeAction = Skin.defaultAppearanceChangeAction
     /// `TransitionUpdate` (ms, default 100): update rate while a meter transition runs (Bitmap meters).
     public var transitionUpdate = 100
@@ -181,6 +181,10 @@ public final class Skin {
     public private(set) var loadWarnings: [String] = []
 
     private var variables: [String: String] = [:]
+    /// The `[Variables]` definitions as last resolved (at load, and when the appearance changes), and the built-in
+    /// values they were resolved with: `refreshAppearanceVariables()` updates the ones built from appearance variables.
+    private var definedVariables: [String: String] = [:]
+    private var definitionBuiltins: [String: String] = [:]
     private var measureIndex: [String: Measure] = [:]
     private var meterIndex: [String: Meter] = [:]
     private var sectionIndex: [String: IniSection] = [:]
@@ -308,6 +312,8 @@ public final class Skin {
 
         variables = VariableResolver.resolveDefinitions(document.section(named: "Variables")?.entries ?? [],
                                                         builtins: builtins)
+        definedVariables = variables
+        definitionBuiltins = builtins
         metadata = [:]
         for e in document.section(named: "Metadata")?.entries ?? [] { metadata[e.key] = e.value }
 
@@ -408,9 +414,8 @@ public final class Skin {
         st.onFocusAction = s.actionOption("OnFocusAction")
         st.onUnfocusAction = s.actionOption("OnUnfocusAction")
         st.onWakeAction = s.actionOption("OnWakeAction")
-        if s.rawOption("MacOnAppearanceChangeAction") != nil {
-            st.macOnAppearanceChangeAction = s.actionOption("MacOnAppearanceChangeAction")
-        }
+        // Kept as written: resolved when it runs (`appearanceDidChange()`), with the appearance of that moment.
+        if let raw = s.rawOption("MacOnAppearanceChangeAction") { st.macOnAppearanceChangeAction = raw }
         st.transitionUpdate = min(max(s.int("TransitionUpdate", 100), 16), 86_400_000)
         st.toolTipHidden = s.bool("ToolTipHidden", false)
         st.mouseActionCursor = s.bool("MouseActionCursor", true)
@@ -925,15 +930,34 @@ public final class Skin {
     public static let defaultAppearanceChangeAction = "[!Refresh]"
 
     /// The host calls this when the Mac switches between light and dark or the accent color changes (Deskset
-    /// extension): a skin that uses an appearance variable (`usesMacAppearance`) runs `MacOnAppearanceChangeAction`
-    /// (`[!Refresh]` unless the skin says otherwise), with the new values; other skins are left alone. Nothing happens
+    /// extension): a skin that follows the appearance (`usesMacAppearance`) runs `MacOnAppearanceChangeAction`
+    /// (`[!Refresh]` unless the skin says otherwise) with the new values — its `#MAC…#` variables resolved now, and
+    /// `[Variables]` built from them (`Fg=#MACLABELCOLOR#`) updated first; other skins are left alone. Nothing happens
     /// once the skin is closed.
     public func appearanceDidChange() {
         assertOwned()
         guard !closed, usesMacAppearance else { return }
         environmentValid = false
-        let action = settings.macOnAppearanceChangeAction
-        if !action.trimmingCharacters(in: .whitespaces).isEmpty { execute(action, from: rainmeterSection) }
+        refreshAppearanceVariables()
+        let written = settings.macOnAppearanceChangeAction
+        guard !written.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        execute(resolveStandardVariables(written, in: rainmeterSection), from: rainmeterSection)
+    }
+
+    /// Resolves the `[Variables]` definitions again with the current appearance (the other built-ins keep their
+    /// load-time values, as `[Variables]` always has them): a definition built from an appearance variable takes the
+    /// new value, unless a bang (`!SetVariable`) changed that variable since. Only skins whose `[Variables]` mention
+    /// an appearance variable resolve anything.
+    private func refreshAppearanceVariables() {
+        guard let entries = document.section(named: "Variables")?.entries,
+              entries.contains(where: { SkinAppearance.mentioned(in: $0.value) }) else { return }
+        let appearance = currentEnvironment().appearance.variables
+        let fresh = VariableResolver.resolveDefinitions(entries,
+                                                        builtins: definitionBuiltins.merging(appearance) { _, new in new })
+        for (key, value) in fresh where definedVariables[key] != value {
+            if variables[key] == definedVariables[key] { variables[key] = value }
+            definedVariables[key] = value
+        }
     }
 
     /// Whether dragging may start at the point (skin coordinates): outside the `DragMargins` (a negative margin is

@@ -401,7 +401,10 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `#MACACCENTCOLOR#`, `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` and
   `#MACSEPARATORCOLOR#`. They cannot be overridden in `[Variables]` or by `!SetVariable`. When the Mac switches
   between light and dark or the accent color changes, each skin that uses one runs `[Rainmeter]
-  MacOnAppearanceChangeAction` (default `[!Refresh]`; written empty, nothing runs); other skins are left alone.
+  MacOnAppearanceChangeAction` (default `[!Refresh]`; written empty, nothing runs); other skins are left alone. The
+  action's variables are resolved when it runs (the new colors),
+  and `[Variables]` built from the appearance variables are updated first, so `[!UpdateMeter *][!Redraw]` recolors
+  DynamicVariables meters without a reload; an `@Include` chosen by `#MACAPPEARANCE#` changes only with a refresh.
 - **Why:** Deskset extension: Mac widgets are expected to follow the appearance and the accent color.
 - **Skin impact:** none for Windows skins; on Windows these names are undefined.
 - **Status:** Mac-only

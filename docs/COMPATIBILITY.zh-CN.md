@@ -367,7 +367,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `@Include=#@#Theme-#MACAPPEARANCE#.inc`）、`#MACDARKMODE#`（1 / 0），以及按当前外观给出的 `R,G,B,A` 颜色
   `#MACACCENTCOLOR#`、`#MACLABELCOLOR#`、`#MACSECONDARYLABELCOLOR#`、`#MACTERTIARYLABELCOLOR#` 和 `#MACSEPARATORCOLOR#`。
   它们不能被 `[Variables]` 或 `!SetVariable` 覆盖。Mac 在浅色与深色之间切换或强调色改变时，用到其中任何一个的皮肤会执行
-  `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做），其他皮肤不受影响。
+  `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做），其他皮肤不受影响。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
+  所以 `[!UpdateMeter *][!Redraw]` 无需重新加载就能为 DynamicVariables 的 meter 换色；由 `#MACAPPEARANCE#` 选择的 `@Include`
+  只有刷新后才会改变。
 - **原因：** Deskset 扩展：Mac 上的小组件应当跟随外观和强调色。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些名称未定义。
 - **状态：** 仅 Mac

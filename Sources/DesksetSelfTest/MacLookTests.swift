@@ -342,4 +342,61 @@ func runMacLookTests(_ t: TestRunner) {
         closed.appearanceDidChange()
         t.equal(refreshes(closedHost), 0)
     }
+
+    t.suite("Mac look: MacOnAppearanceChangeAction sees the new values") {
+        // The action's own variables are resolved when it runs, and [Variables] built from the appearance variables
+        // follow: a skin that recolors itself without a refresh gets the new colors, not the ones it loaded with.
+        let host = MacLookHost()
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        MacOnAppearanceChangeAction=[!SetOption Title Text "#MACAPPEARANCE# [#MACDARKMODE]"][!SetOption Title FontColor #MACLABELCOLOR#][!UpdateMeter *][!Redraw]
+        [Variables]
+        Fg=#MACLABELCOLOR#
+        Muted=#Fg#
+        Other=#MACAPPEARANCE#
+        Fixed=12
+        [Title]
+        Meter=String
+        Text=start
+        [Dyn]
+        Meter=String
+        DynamicVariables=1
+        Text=#Fg# | #Muted#
+        FontColor=#Fg#
+        """, host: host)
+        skin.update()
+        t.check(skin.settings.macOnAppearanceChangeAction.contains("#MACAPPEARANCE#"), "kept as written")
+        t.equal(text(skin, "Dyn"), "0,0,0,217 | 0,0,0,217")
+        host.appearance = .dark
+        skin.appearanceDidChange()
+        t.equal(text(skin, "Title"), "Dark 1", "the new appearance, not the one the skin loaded with")
+        t.equal((skin.meter(named: "Title") as? StringMeter)?.style.color, RGBA(r: 255, g: 255, b: 255, a: 217))
+        t.equal(text(skin, "Dyn"), "255,255,255,217 | 255,255,255,217", "[Variables] built from them, through others too")
+        t.equal((skin.meter(named: "Dyn") as? StringMeter)?.style.color, RGBA(r: 255, g: 255, b: 255, a: 217))
+        t.equal(skin.variable("Fixed"), "12")
+        // A value a bang set stays until the skin is refreshed; the others keep following.
+        skin.execute("[!SetVariable Fg 1,2,3]", from: nil)
+        host.appearance = .light
+        skin.appearanceDidChange()
+        t.equal(skin.variable("Fg"), "1,2,3", "!SetVariable wins")
+        t.equal(skin.variable("Other"), "Light")
+        t.equal(text(skin, "Title"), "Light 0", "every switch, not one behind")
+
+        // The usual Rainmeter pattern: write the theme, then refresh.
+        let themeHost = MacLookHost()
+        let (theme, _) = try makeSkin(t, """
+        [Rainmeter]
+        MacOnAppearanceChangeAction=[!WriteKeyValue Variables Theme #MACAPPEARANCE#][!Refresh]
+        [Variables]
+        Theme=Light
+        [M]
+        Meter=String
+        Text=#Theme#
+        """, host: themeHost)
+        themeHost.appearance = .dark
+        theme.appearanceDidChange()
+        let written = try String(contentsOf: theme.fileURL, encoding: .utf8)
+        t.check(written.contains("Theme=Dark"), written)
+        t.equal(themeHost.handled.filter { $0.name == "refresh" }.count, 1)
+    }
 }
