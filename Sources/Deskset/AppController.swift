@@ -37,6 +37,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The fonts generation the running skins were last laid out again for (`fontsChanged`). Fonts announces every
     /// change a turn later (`Fonts.didChangeNotification`); a change a caller already passed on is not passed on twice.
     private var fontsGenerationSeen = Fonts.generation
+    /// The appearance the running skins last saw (`appearanceChanged`); nil until the app observes it.
+    private var appearanceSeen: SkinAppearance?
+    private var appearanceObservation: NSKeyValueObservation?
 
     private var systemAsleep = false
     private var screensAsleep = false
@@ -78,6 +81,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         observeFonts()
         // What SysColor and Chameleon ask AppKit, published for skins that update on threads of their own.
         DesktopInputs.publishAll()
+        observeAppearance()
         loadActiveSkins()
         launched = true
         if !pendingOpenURLs.isEmpty {
@@ -275,6 +279,36 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func observeFonts() {
         observe(NotificationCenter.default, Fonts.didChangeNotification) { app in
             if Fonts.generation > app.fontsGenerationSeen { app.fontsChanged() }
+        }
+    }
+
+    /// Publishes the appearance skins see (`MacAppearance`) and watches it: macOS switching between light and dark
+    /// (the app's effective appearance) and the accent color changing (`NSColor.systemColorsDidChangeNotification`)
+    /// run `appearanceChanged`. Set up at launch; the self-tests' apps do without (a suite sets it up itself).
+    func observeAppearance() {
+        appearanceSeen = MacAppearance.current.refresh()
+        appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.appearanceChanged() }
+        }
+        observe(NotificationCenter.default, NSColor.systemColorsDidChangeNotification) { app in app.appearanceChanged() }
+    }
+
+    /// The appearance or the accent color may have changed: the new values are published, and when they differ from
+    /// what the skins last saw, every skin that uses an appearance variable runs its `MacOnAppearanceChangeAction`
+    /// (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where it is owned. Skins that use none are left alone.
+    /// Main thread.
+    func appearanceChanged() {
+        DesktopInputs.appearance.refresh()
+        let now = MacAppearance.current.refresh()
+        guard now != appearanceSeen else { return }
+        appearanceSeen = now
+        for c in sortedControllers where !c.isStopped {
+            let skin: Skin = c.skin
+            if skin.executor.isCurrent {
+                skin.appearanceDidChange()
+            } else {
+                skin.async { skin.appearanceDidChange() }
+            }
         }
     }
 

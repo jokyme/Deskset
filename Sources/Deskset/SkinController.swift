@@ -1183,7 +1183,8 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
                                screens: list.isEmpty ? SkinEnvironment().screens : list,
                                settingsPath: Paths.appSupport.path + "/",
                                programPath: Bundle.main.bundleURL.path + "/",
-                               configEditor: Workspace.configEditorPath)
+                               configEditor: Workspace.configEditorPath,
+                               appearance: MacAppearance.current.value())
     }
 }
 

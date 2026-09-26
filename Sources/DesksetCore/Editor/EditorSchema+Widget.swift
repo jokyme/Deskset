@@ -67,6 +67,9 @@ extension EditorSchema {
             Property("OnFocusAction", "Gets focus", .action),
             Property("OnUnfocusAction", "Loses focus", .action),
             Property("OnWakeAction", "Wakes from sleep", .action),
+            // Deskset extension: runs in widgets that use the Mac's light / dark colors (Skin.appearanceDidChange).
+            Property("MacOnAppearanceChangeAction", "Switches light / dark", .action, default: "[!Refresh]",
+                     placeholder: "reload it, if it uses Mac colors"),
         ]),
         // The page always shows the first four rows (stacking, dragging, clicks, opacity) and every other one once the
         // widget sets it, so each key here is either a control or unset (never counted without showing).

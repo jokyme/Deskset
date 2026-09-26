@@ -1554,12 +1554,15 @@ extension InspectorWindowController {
         var actions: [InspectorRow] = []
         let rainmeterLocation = skin.sources.location(section: "Rainmeter")
         for (key, label) in [("OnRefreshAction", "Opens"), ("OnUpdateAction", "Updates"), ("OnCloseAction", "Closes"),
-                             ("OnFocusAction", "Gets focus"), ("OnUnfocusAction", "Loses focus"), ("OnWakeAction", "Wakes from sleep")] {
+                             ("OnFocusAction", "Gets focus"), ("OnUnfocusAction", "Loses focus"), ("OnWakeAction", "Wakes from sleep"),
+                             ("MacOnAppearanceChangeAction", "Switches light / dark")] {
             let raw = value(key)?.resolved ?? ""
             let control: NSView
             if raw.isEmpty {
                 let popup = NSPopUpButton()
-                popup.addItem(withTitle: "No action")
+                // Switching light / dark reloads a widget that uses the Mac's colors unless the widget says otherwise.
+                let reloadsByDefault = key == "MacOnAppearanceChangeAction" && value(key) == nil
+                popup.addItem(withTitle: reloadsByDefault ? "Reload the widget" : "No action")
                 for preset in WidgetPresets.whenTheWidgetChoices(key) {
                     popup.addItem(withTitle: preset.title)
                     popup.lastItem?.representedObject = preset.action

@@ -13,7 +13,14 @@ struct RenderOptions: Equatable {
     var scale = 2.0
     var background: RGBA?
     var skinsDirectory: String?
+    /// The appearance the skin is drawn in (`#MACAPPEARANCE#`…, SysColor): Light unless `--appearance dark` / `--dark`,
+    /// so renders are the same on every Mac; `--appearance system` follows the Mac's setting.
+    var appearance = Appearance.light
     var warnings: [String] = []
+
+    enum Appearance: String, Equatable {
+        case light, dark, system
+    }
 
     static let maxUpdates = 100_000
     static let maxInterval = 60_000.0
@@ -22,7 +29,7 @@ struct RenderOptions: Equatable {
     static let maxPixels = 16_384
 
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
-        + "[--background R,G,B[,A]] [--skins-dir DIR]"
+        + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -62,6 +69,14 @@ struct RenderOptions: Equatable {
                 o.warnings.append("--background \"\(raw)\" is not a color; using transparent")
             }
         }
+        if arguments.contains("--dark") { o.appearance = .dark }
+        if let raw = value("--appearance") {
+            if let a = Appearance(rawValue: raw.trimmingCharacters(in: .whitespaces).lowercased()) { o.appearance = a } else {
+                o.warnings.append("--appearance \"\(raw)\" is not light, dark or system; using \(o.appearance.rawValue)")
+            }
+        } else if arguments.contains("--appearance") {
+            o.warnings.append("--appearance needs a value; using \(o.appearance.rawValue)")
+        }
         return o
     }
 
@@ -71,10 +86,11 @@ struct RenderOptions: Equatable {
 /// Headless rendering for development and compatibility testing:
 ///
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
-///            [--scale 2] [--background 30,30,30] [--skins-dir path/to/Skins]
+///            [--scale 2] [--background 30,30,30] [--appearance dark] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
-/// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr.
+/// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
+/// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise.
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -83,6 +99,7 @@ enum RenderCommand {
         }
         Log.fileLoggingEnabled = false
         for w in o.warnings { fputs("warning: \(w)\n", stderr) }
+        applyAppearance(o.appearance)
         let fileURL = URL(fileURLWithPath: o.input).standardizedFileURL
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             fputs("error: no such file: \(fileURL.path)\n", stderr)
@@ -152,6 +169,18 @@ enum RenderCommand {
         for issue in skin.issues { fputs("issue: \(issue)\n", stderr) }
         for line in host.logs { fputs("log: \(line)\n", stderr) }
         return 0
+    }
+
+    /// Makes the app's appearance the one asked for, and publishes it for the skin (`MacAppearance`, SysColor).
+    static func applyAppearance(_ appearance: RenderOptions.Appearance) {
+        _ = NSApplication.shared
+        switch appearance {
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .system: NSApp.appearance = nil
+        }
+        MacAppearance.current.refresh()
+        DesktopInputs.appearance.refresh()
     }
 
     /// Waits between updates while letting queued main-thread work run (!Delay, asynchronous results). The run
