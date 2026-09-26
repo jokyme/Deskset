@@ -76,8 +76,8 @@ final class LiveSensorHardware: SensorHardware {
         return caches.appendingPathComponent("Deskset/Sensors/smc-keys.json")
     }())
 
-    /// Apple publishes no junction limit for its chips: 110 °C is about the highest core temperature reported under
-    /// sustained load. Intel: 100 °C, the limit of most processors Macs used.
+    /// Apple publishes no junction limit for its chips: 110 °C is about where the hottest cores level off under
+    /// sustained load (an M4 Pro briefly read 112 °C). Intel: 100 °C, the limit of most processors Macs used.
     var tjMax: Double { family.isAppleSilicon ? 110 : 100 }
 
     func read(_ groups: Set<SensorGroup>, now: TimeInterval) -> [SensorGroup: SensorGroupReading] {

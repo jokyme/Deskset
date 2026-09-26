@@ -1400,7 +1400,7 @@ Intel Macs are untested.
   10 °C, or exactly 40.0 °C) are ignored; while every sensor of a CPU cluster or the GPU is powered down, it reports
   the chip's temperature. Clocks are averages over the last interval while running (a core that did not run shows
   its lowest clock); the CPU voltage is the voltage the running cores asked for. TjMax is nominal: 110 °C on Apple
-  silicon (111 °C was seen under full load), 100 °C on Intel Macs; there is no TDP.
+  silicon (112 °C was seen under full load), 100 °C on Intel Macs; there is no TDP.
 - **Why:** judgment calls, following how the readings behave at idle and under load.
 - **Skin impact:** values follow the load and can differ by a few degrees from other monitoring apps; per-core
   temperature bars of one cluster move together.

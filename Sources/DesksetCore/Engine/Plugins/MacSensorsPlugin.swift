@@ -182,8 +182,7 @@ public final class MSIAfterburnerMeasure: Measure {
         case "ram usage": return .ramUsage
         default: break
         }
-        if let match = name.range(of: #"^cpu(\d+) (temperature|usage|clock)$"#, options: .regularExpression),
-           match.lowerBound == name.startIndex {
+        if name.range(of: #"^cpu(\d+) (temperature|usage|clock)$"#, options: .regularExpression) != nil {
             let parts = name.dropFirst(3).split(separator: " ")
             guard let n = Int(parts[0]), n >= 1, n <= 4096 else { return .unsupported }
             switch parts[1] {

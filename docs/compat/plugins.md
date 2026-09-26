@@ -155,7 +155,7 @@ used. Nothing was taken from Rainmeter's or any plugin's source code.
 - Why: Apple silicon has no front-side bus, publishes no junction limit and no TDP; the rest has Mac equivalents.
 - Skin impact: temperatures, clocks and power show real values, one update after the skin loads. Per-core
   temperatures on Apple silicon repeat their cluster's value. Skins that show "distance to TjMax" can go slightly
-  negative on Apple silicon under full load (111 °C was seen on an M4 Pro). An unknown CoreTempType is read as
+  negative on Apple silicon under full load (112 °C was seen on an M4 Pro). An unknown CoreTempType is read as
   MaxTemperature (logged once).
 - Status: emulated
 
