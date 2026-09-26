@@ -581,8 +581,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   裁剪、Tile 和 ScaleMargins 都有效；它按实际覆盖的像素渲染，始终清晰。`MacSymbolSize`（默认 16）决定没有 W / H 时的尺寸，
   `MacSymbolWeight` 决定字重（Ultralight … Black），`MacSymbolRendering` 为 Monochrome（默认）、Hierarchical（同一种颜色的
   不同深浅）或 Multicolor（符号自带的颜色，无色部分为白色）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1）。
-  Button 在所有状态下都显示该符号，按下时为半透明。未知的名称会给出兼容性提示；Bitmap、Rotator 和 Histogram 不能使用符号
-  （给出提示，不绘制任何内容）。
+  Button 在所有状态下都显示该符号，按下时为半透明。未知的名称会给出兼容性提示；没有名称的 `sf:`（measure 还没有值时的
+  `sf:%1`）不是图片，不绘制。Bitmap、Rotator 和 Histogram 不能使用符号（给出提示，不绘制任何内容）。
 - **原因：** Deskset 扩展：Mac 自带的图标集，无需图片文件。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
 - **状态：** 仅 Mac

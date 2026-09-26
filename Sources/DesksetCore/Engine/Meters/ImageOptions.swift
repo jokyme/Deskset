@@ -156,13 +156,14 @@ public struct ImageOptions: Hashable {
     /// `.png` unless a file with the exact name exists. Nil for an empty name.
     ///
     /// A name written `sf:<symbol>` is an SF Symbol drawn with `symbol` (Deskset extension): its path is the symbol's
-    /// (`MacSymbol.path`), and `imagePath` does not apply.
+    /// (`MacSymbol.path`), and `imagePath` does not apply. `sf:` without a name is no image.
     public static func filePath(_ name: String, imagePath: String, skin: Skin,
                                 symbol: MacSymbol.Style = MacSymbol.Style()) -> String? {
         var n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if n.count >= 2, n.hasPrefix("\""), n.hasSuffix("\"") { n = String(n.dropFirst().dropLast()) }
         guard !n.isEmpty else { return nil }
-        if let symbolPath = MacSymbol.path(for: n, style: symbol) { return symbolPath }
+        // `sf:` with no name (`sf:%1` while the measure has no value yet) is no image, like an empty name.
+        if let name = MacSymbol.symbolName(in: n) { return name.isEmpty ? nil : MacSymbol(name: name, style: symbol).path }
         let path = skin.imageFilePath(n, imagePath: imagePath)
         let last = (path as NSString).lastPathComponent
         let ext = (last as NSString).pathExtension.lowercased()
