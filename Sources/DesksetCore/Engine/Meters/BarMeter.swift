@@ -23,7 +23,9 @@ public final class BarMeter: Meter {
         barColor = color("BarColor", RGBA(r: 0, g: 128, b: 0))
         imageOptions = ImageOptions.read(from: self)
         barImagePath = ImageOptions.filePath(string("BarImage"), imagePath: ImageOptions.imagePathOption(self),
-                                             skin: skin)
+                                             skin: skin, symbol: imageOptions.symbol)
+        // A symbol macOS does not have is noted now, even when W and H spare the meter measuring it.
+        if let barImagePath, MacSymbol.isSymbolPath(barImagePath) { _ = barImageSize }
         vertical = string("BarOrientation", "Vertical").trimmingCharacters(in: .whitespaces)
             .caseInsensitiveCompare("Horizontal") != .orderedSame
         flip = bool("Flip", false)

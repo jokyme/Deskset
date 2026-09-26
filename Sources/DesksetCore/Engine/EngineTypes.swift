@@ -241,6 +241,8 @@ public struct SkinEnvironment: Equatable {
     /// Index into `screens` of the monitor the skin is on, for `#SCREENAREAX#`-style variables without `@N`
     /// (manual: the primary monitor unless the skin auto-selects its screen). 0 = primary.
     public var currentScreen: Int
+    /// The Mac's light / dark appearance and colors (`#MACAPPEARANCE#`… variables, Deskset extension).
+    public var appearance: SkinAppearance
 
     public init(windowFrame: SkinRect = SkinRect(),
                 screens: [SkinScreen] = [SkinScreen(area: SkinRect(width: 1920, height: 1080),
@@ -249,7 +251,8 @@ public struct SkinEnvironment: Equatable {
                 programPath: String = "/Applications/Deskset.app/",
                 zPosition: Int = 0,
                 configEditor: String = "/System/Applications/TextEdit.app",
-                currentScreen: Int = 0) {
+                currentScreen: Int = 0,
+                appearance: SkinAppearance = .light) {
         self.windowFrame = windowFrame
         self.screens = screens
         self.settingsPath = settingsPath
@@ -257,6 +260,7 @@ public struct SkinEnvironment: Equatable {
         self.zPosition = zPosition
         self.configEditor = configEditor
         self.currentScreen = currentScreen
+        self.appearance = appearance
     }
 }
 

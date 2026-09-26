@@ -130,7 +130,7 @@ public final class HistogramMeter: Meter {
         // Windows skins write `Images\Graph`: check the extension of the last path component only.
         var name = string("\(prefix)Image").trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "\\", with: "/")
-        guard !name.isEmpty else { return nil }
+        guard !name.isEmpty, !rejectSymbol(name, option: "\(prefix)Image") else { return nil }
         if (name as NSString).pathExtension.isEmpty { name += ".png" }
         let path = skin.imageFilePath(name, imagePath: string("\(prefix)ImagePath"))
         let crop = OptionValue.numbers(string("\(prefix)ImageCrop"))

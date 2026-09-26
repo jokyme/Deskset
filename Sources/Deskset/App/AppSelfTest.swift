@@ -37,6 +37,7 @@ enum AppSelfTest {
         MediaUITests.run(t)
         SkinThreadingSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        MacLookSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)
         ThreadStressSelfTests.run(t)

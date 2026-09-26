@@ -516,9 +516,10 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### What differs from the app
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S
-  (default 2, at most 16 384 pixels a side) on a transparent or given background and prints compatibility notes and
-  skin log lines. There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
+  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` loads the skin without a window, runs N updates
+  (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given
+  background and prints compatibility notes and skin log lines. The skin sees the Light appearance (the appearance
+  variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting). There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
@@ -533,7 +534,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): the binary's development modes are `--render`, `--self-test [filter]`, `--snapshot-ui`,
   `--system-report` and `--make-icon`; `--help` / `-h` prints them (exit status 0). An argument starting with `--` that
   is none of these flags or their options (`--out`, `--updates`, `--interval`, `--scale`, `--background`,
-  `--skins-dir`, `--dark`, `--select`, `--size`, `--zoom`), or such an option without a mode, prints the usage to
+  `--skins-dir`, `--dark`, `--appearance`, `--select`, `--size`, `--zoom`), or such an option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to
   `scripts/build-app.sh`, not to the binary.)

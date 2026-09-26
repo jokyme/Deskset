@@ -84,14 +84,16 @@ enum SkinRenderer {
             drawBevel(rect, s.bevelType, light: s.bevelColor, dark: s.bevelColor2, ctx)
         case 0, 3, 4:
             guard let path = s.backgroundImage else { return }
-            guard let prepared = PreparedImage(path: path, options: s.backgroundImageOptions) else { return }
+            // An SF Symbol is rendered for the skin's size when stretched (mode 3), else for its own size.
+            guard let prepared = PreparedImage(path: path, options: s.backgroundImageOptions,
+                                               drawn: s.backgroundMode == 3 ? rect.size : nil, in: ctx) else { return }
             switch s.backgroundMode {
             case 4:
                 // One tiled draw with whole-pixel tiles (see `tile`), with the image options baked in.
                 guard let image = prepared.flattened(), prepared.alpha > 0 else { return }
                 ctx.saveGState()
                 ctx.setAlpha(prepared.alpha)
-                tile(image, in: rect, ctx)
+                tile(image, in: rect, ctx, density: prepared.density)
                 ctx.restoreGState()
             case 3:
                 let m = s.backgroundMargins
@@ -169,7 +171,7 @@ enum SkinRenderer {
     /// Tiles `image` over `rect`, the first tile at its top-left corner, tiles upright. CoreGraphics does the tiling
     /// in one call and only for the visible (clipped) area: drawing tile by tile took one draw call per tile, i.e. a
     /// million calls per frame for a 1×1 image on a 1000×1000 skin, and practically forever for huge skin sizes.
-    static func tile(_ image: CGImage, in rect: CGRect, _ ctx: CGContext) {
+    static func tile(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: Images.Density = .one) {
         guard image.width > 0, image.height > 0, rect.width > 0, rect.height > 0,
               rect.minX.isFinite, rect.minY.isFinite, rect.maxX.isFinite, rect.maxY.isFinite else { return }
         let area = rect.intersection(ctx.boundingBoxOfClipPath)
@@ -180,10 +182,10 @@ enum SkinRenderer {
         // whose top edge is the rect's top edge anchors the pattern.
         ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
         ctx.scaleBy(x: 1, y: -1)
-        let w = CGFloat(image.width), h = CGFloat(image.height)
+        let w = CGFloat(image.width) / density.x, h = CGFloat(image.height) / density.y
         // Integer tiles at the backing scale: `.none` gives exactly what drawing each tile did (checked pixel by
-        // pixel at 4x); smoothing would blur the pattern.
-        ctx.interpolationQuality = .none
+        // pixel at 4x); smoothing would blur the pattern. (A symbol, rendered at the backing scale, is smoothed.)
+        ctx.interpolationQuality = density == .one ? .none : .high
         ctx.draw(image, in: CGRect(x: rect.minX, y: rect.maxY - h, width: w, height: h), byTiling: true)
         ctx.restoreGState()
     }

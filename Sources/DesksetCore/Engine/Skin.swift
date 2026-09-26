@@ -42,6 +42,10 @@ public struct SkinSettings {
     public var onUnfocusAction = ""
     /// Run at the end of the first update after the system wakes (see `Skin.systemDidWake()`).
     public var onWakeAction = ""
+    /// `MacOnAppearanceChangeAction` (Deskset extension) as written: run when the Mac switches between light and dark
+    /// or the accent color changes (`Skin.appearanceDidChange()`), its variables resolved then, so `#MACLABELCOLOR#` in
+    /// it is the new color. `[!Refresh]` when the option is missing; empty when it is written empty (nothing runs).
+    public var macOnAppearanceChangeAction = Skin.defaultAppearanceChangeAction
     /// `TransitionUpdate` (ms, default 100): update rate while a meter transition runs (Bitmap meters).
     public var transitionUpdate = 100
     /// `ToolTipHidden=1` in `[Rainmeter]`: no tooltips in the whole skin.
@@ -168,11 +172,20 @@ public final class Skin {
     /// here…). Mistakes in the skin itself that Rainmeter treats the same way (a missing MeterStyle, an invalid
     /// Container, an unknown bang, measure or meter type) are log lines, not issues.
     public private(set) var issues: [String] = []
+    /// Whether the skin follows the Mac's appearance: it uses one of the appearance variables (`#MACDARKMODE#`…: its
+    /// files mention one, or an option, include, bang or script read one), or its `[Rainmeter]` writes a
+    /// `MacOnAppearanceChangeAction` of its own that is not empty. Such a skin runs that action when the appearance
+    /// changes (`appearanceDidChange()`); the implicit `[!Refresh]` does not reload skins that use no variable.
+    public private(set) var usesMacAppearance = false
     /// What loading the files ran into (a missing `@Include` file, an include cycle…): mistakes of the skin's files, not
     /// Mac differences (`SkinFileLoader`'s warnings); the editor says them in plain words.
     public private(set) var loadWarnings: [String] = []
 
     private var variables: [String: String] = [:]
+    /// The `[Variables]` definitions as last resolved (at load, and when the appearance changes), and the built-in
+    /// values they were resolved with: `refreshAppearanceVariables()` updates the ones built from appearance variables.
+    private var definedVariables: [String: String] = [:]
+    private var definitionBuiltins: [String: String] = [:]
     private var measureIndex: [String: Measure] = [:]
     private var meterIndex: [String: Meter] = [:]
     private var sectionIndex: [String: IniSection] = [:]
@@ -273,10 +286,28 @@ public final class Skin {
         assertOwned()
         environmentValid = false
         let builtins = builtInVariables()
+        var includesAppearance = false
         let loaded = try SkinFileLoader.load(url: fileURL) { raw, readSoFar in
             let table = builtins.merging(readSoFar) { _, new in new }
-            return VariableResolver(variableLookup: { table[$0.lowercased()] }).resolve(raw)
+            return VariableResolver(variableLookup: { name in
+                let key = name.lowercased()
+                // The appearance variables are the Mac's here too, as in options: a skin's own `MACAPPEARANCE=Light`
+                // (a fallback for Windows) must not choose the theme file.
+                if BuiltInVariables.isMacAppearanceKey(key) {
+                    includesAppearance = true
+                    return builtins[key]
+                }
+                return table[key]
+            }).resolve(raw)
         }
+        // An action the skin writes itself runs whatever the skin uses (it may follow the appearance through SysColor
+        // or a script); only the implicit [!Refresh] waits for an appearance variable.
+        let ownAction = loaded.document.section(named: "Rainmeter")?.value(forKey: "MacOnAppearanceChangeAction")
+        usesMacAppearance = includesAppearance
+            || !(ownAction?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+            || loaded.document.sections.contains { section in
+                section.entries.contains { SkinAppearance.mentioned(in: $0.value) }
+            }
         document = loaded.document
         includedFiles = loaded.includedFiles
         sources = loaded.sources
@@ -292,6 +323,8 @@ public final class Skin {
 
         variables = VariableResolver.resolveDefinitions(document.section(named: "Variables")?.entries ?? [],
                                                         builtins: builtins)
+        definedVariables = variables
+        definitionBuiltins = builtins
         metadata = [:]
         for e in document.section(named: "Metadata")?.entries ?? [] { metadata[e.key] = e.value }
 
@@ -372,7 +405,9 @@ public final class Skin {
         st.skinHeight = s.optionalDouble("SkinHeight").flatMap { $0.isFinite && $0 > 0 ? min($0, Skin.maxSide) : nil }
         st.dragMargins = insets(s.string("DragMargins"))
         let background = s.string("Background").trimmingCharacters(in: .whitespaces)
-        st.backgroundImage = background.isEmpty ? nil : imageFilePath(background, imagePath: "")
+        // `sf:` alone names no symbol: no background, as for an empty name (`ImageOptions.filePath`).
+        st.backgroundImage = background.isEmpty || MacSymbol.symbolName(in: background)?.isEmpty == true ? nil
+            : MacSymbol.path(for: background, style: MacSymbol.Style.read(from: s)) ?? imageFilePath(background, imagePath: "")
         // Manual default is 1 (transparent). Judgment: a skin that sets Background= without BackgroundMode shows the
         // image (mode 0) — otherwise the Background option would have no effect at all.
         st.backgroundMode = s.int("BackgroundMode", st.backgroundImage == nil ? 1 : 0)
@@ -391,6 +426,8 @@ public final class Skin {
         st.onFocusAction = s.actionOption("OnFocusAction")
         st.onUnfocusAction = s.actionOption("OnUnfocusAction")
         st.onWakeAction = s.actionOption("OnWakeAction")
+        // Kept as written: resolved when it runs (`appearanceDidChange()`), with the appearance of that moment.
+        if let raw = s.rawOption("MacOnAppearanceChangeAction") { st.macOnAppearanceChangeAction = raw }
         st.transitionUpdate = min(max(s.int("TransitionUpdate", 100), 16), 86_400_000)
         st.toolTipHidden = s.bool("ToolTipHidden", false)
         st.mouseActionCursor = s.bool("MouseActionCursor", true)
@@ -412,6 +449,7 @@ public final class Skin {
         st.groups = OptionValue.list(s.string("Group"))
         settings = st
         settings.contextItems = contextMenuItems().filter { !$0.isSeparator }.map { ($0.title, $0.action) }
+        noteMissingBackgroundSymbol()
     }
 
     /// `L,T,R,B` (missing values 0).
@@ -900,6 +938,40 @@ public final class Skin {
         }
     }
 
+    /// What `MacOnAppearanceChangeAction` does when a skin does not set it: the skin loads again with the new values.
+    public static let defaultAppearanceChangeAction = "[!Refresh]"
+
+    /// The host calls this when the Mac switches between light and dark or the accent color changes (Deskset
+    /// extension): a skin that follows the appearance (`usesMacAppearance`) runs `MacOnAppearanceChangeAction`
+    /// (`[!Refresh]` unless the skin says otherwise) with the new values — its `#MAC…#` variables resolved now, and
+    /// `[Variables]` built from them (`Fg=#MACLABELCOLOR#`) updated first; other skins are left alone. Nothing happens
+    /// once the skin is closed.
+    public func appearanceDidChange() {
+        assertOwned()
+        guard !closed, usesMacAppearance else { return }
+        environmentValid = false
+        refreshAppearanceVariables()
+        let written = settings.macOnAppearanceChangeAction
+        guard !written.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        execute(resolveStandardVariables(written, in: rainmeterSection), from: rainmeterSection)
+    }
+
+    /// Resolves the `[Variables]` definitions again with the current appearance (the other built-ins keep their
+    /// load-time values, as `[Variables]` always has them): a definition built from an appearance variable takes the
+    /// new value, unless a bang (`!SetVariable`) changed that variable since. Only skins whose `[Variables]` mention
+    /// an appearance variable resolve anything.
+    private func refreshAppearanceVariables() {
+        guard let entries = document.section(named: "Variables")?.entries,
+              entries.contains(where: { SkinAppearance.mentioned(in: $0.value) }) else { return }
+        let appearance = currentEnvironment().appearance.variables
+        let fresh = VariableResolver.resolveDefinitions(entries,
+                                                        builtins: definitionBuiltins.merging(appearance) { _, new in new })
+        for (key, value) in fresh where definedVariables[key] != value {
+            if variables[key] == definedVariables[key] { variables[key] = value }
+            definedVariables[key] = value
+        }
+    }
+
     /// Whether dragging may start at the point (skin coordinates): outside the `DragMargins` (a negative margin is
     /// measured from the opposite side, e.g. `DragMargins=0,-100,0,0` leaves only the bottom 100 points draggable).
     public func isInDragArea(x: Double, y: Double) -> Bool {
@@ -1055,8 +1127,13 @@ public final class Skin {
     }
 
     /// The built-in variables the manual calls dynamic: `CURRENTCONFIGX/Y/WIDTH/HEIGHT`, `CURRENTCONFIGZPOS`,
-    /// `CONFIGEDITOR` and all monitor variables. nil for every other name.
+    /// `CONFIGEDITOR` and all monitor variables, and Deskset's Mac appearance variables (reading one marks the skin
+    /// as using them). nil for every other name.
     private func dynamicBuiltIn(_ key: String) -> String? {
+        if key.hasPrefix("mac"), BuiltInVariables.isMacAppearanceKey(key) {
+            usesMacAppearance = true
+            return currentEnvironment().appearance.variableValue(key)
+        }
         let isConfigVariable = key.hasPrefix("currentconfig") && key.utf8.count > 13
         let isMonitorVariable = key.hasPrefix("workarea") || key.hasPrefix("screenarea") || key.hasPrefix("pworkarea")
             || key.hasPrefix("pscreenarea") || key.hasPrefix("vscreenarea")
@@ -1203,6 +1280,7 @@ public final class Skin {
             "configeditor": env.configEditor,
             "currentconfigzpos": String(env.zPosition),
         ]
+        b.merge(env.appearance.variables) { _, mac in mac }
         // Monitor values as of load time (for [Variables] and @Include); options resolve them dynamically.
         for name in BuiltInVariables.names where name.hasSuffix("AREAX") || name.hasSuffix("AREAY")
             || name.hasSuffix("AREAWIDTH") || name.hasSuffix("AREAHEIGHT") {

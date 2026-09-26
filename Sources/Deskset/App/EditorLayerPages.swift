@@ -982,6 +982,9 @@ extension InspectorWindowController {
     // MARK: Picture
 
     func pictureCard(_ m: Meter, group: EditorSchema.Group, groups: [EditorSchema.Group], skin: Skin) -> NSView {
+        // A default that depends on the other options is marked as in effect (an SF Symbol fits inside).
+        let groups = EditorSchema.resolvingDefaults(groups, values: valueLookup(rows))
+        let group = groups.first { $0.title == group.title } ?? group
         var o = CardOptions(section: m.name)
         let file = (m.rawOption("ImageName") ?? "").trimmingCharacters(in: .whitespaces)
         let fromData = !(m.rawOption("MeasureName") ?? "").trimmingCharacters(in: .whitespaces).isEmpty
@@ -1409,7 +1412,8 @@ extension InspectorWindowController {
         var result: [(String, String)] = []
         var titles: Set<String> = []
         for v in skin.inspectedVariables() where OptionValue.color(v.current) != nil && v.raw.contains(",") || EditorStyle.isColorKey(v.name) {
-            guard OptionValue.color(v.current) != nil else { continue }
+            // A fallback for a built-in (`MACLABELCOLOR=…` for Windows) is no theme color here: macOS sets it.
+            guard OptionValue.color(v.current) != nil, !BuiltInVariables.isBuiltIn(v.name) else { continue }
             // Named as the widget page names it (one name per color, §7.4); same-value colors are one choice.
             let title = colorRoleName(variable: v.name, color: nil).flatMap { $0 == "Shared color" ? nil : $0 }
                 ?? Self.sharedValueName(v.name)
@@ -1780,14 +1784,20 @@ extension InspectorWindowController {
                 menu.addItem(entry)
             }
         }
+        // A Mac color (`#MACACCENTCOLOR#`) follows macOS: nothing shared to change, a color of the shape's own instead.
+        let followsMac = Self.followsSystem(variable)
+        if followsMac {
+            head.title += " · follows macOS"
+            head.identifier = NSUserInterfaceItemIdentifier("follows-mac")
+        }
         menu.addItem(.separator())
-        let custom = ClosureMenuItem("Custom Color…") { [weak swatch] in
+        let custom = ClosureMenuItem(followsMac ? "Use a Fixed Color…" : "Custom Color…") { [weak swatch] in
             guard let swatch else { return }
             ShapeColorPicker.shared.swatchClicked(swatch)
         }
         custom.identifier = NSUserInterfaceItemIdentifier("custom-color")
         menu.addItem(custom)
-        if let variable {
+        if let variable, !followsMac {
             // The shared color itself (as the Shape editor always did): every layer using it follows. Named as its
             // widget-page row is.
             let role = colorRoleName(variable: variable, color: nil) ?? Self.sharedValueName(variable)

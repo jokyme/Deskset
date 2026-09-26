@@ -84,6 +84,8 @@ public struct ImageOptions: Hashable {
     /// Degrees, clockwise (negative = counter-clockwise).
     public var rotate = 0.0
     public var useExifOrientation = false
+    /// `MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`: how an `sf:` image is drawn (see `MacSymbol`).
+    public var symbol = MacSymbol.Style()
 
     public init() {}
 
@@ -115,6 +117,7 @@ public struct ImageOptions: Hashable {
         }
         o.useExifOrientation = section.bool(prefix + "UseExifOrientation", false)
         o.colorMatrix = readColorMatrix(section, stem: colorMatrixKey ?? prefix + "ColorMatrix")
+        o.symbol = MacSymbol.Style.read(from: section, prefix: prefix)
         return o
     }
 
@@ -151,10 +154,18 @@ public struct ImageOptions: Hashable {
     /// `.png` to a name without an extension unless a file of exactly that name exists (that file is used as is).
     /// A name with some other, non-image extension (a measure value such as `12.5`, or `sunny.day`) also gets
     /// `.png` unless a file with the exact name exists. Nil for an empty name.
-    public static func filePath(_ name: String, imagePath: String, skin: Skin) -> String? {
+    ///
+    /// A name written `sf:<symbol>` is an SF Symbol drawn with `symbol` (Deskset extension): its path is the symbol's
+    /// (`MacSymbol.path`), and `imagePath` does not apply. `sf:` with no name after it — `sf:[MeasureIcon]` before the
+    /// measure has a value — is nil like an empty name: nothing is drawn, and it is not a missing symbol.
+    public static func filePath(_ name: String, imagePath: String, skin: Skin,
+                                symbol: MacSymbol.Style = MacSymbol.Style()) -> String? {
         var n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if n.count >= 2, n.hasPrefix("\""), n.hasSuffix("\"") { n = String(n.dropFirst().dropLast()) }
         guard !n.isEmpty else { return nil }
+        if let symbolName = MacSymbol.symbolName(in: n) {
+            return symbolName.isEmpty ? nil : MacSymbol(name: symbolName, style: symbol).path
+        }
         let path = skin.imageFilePath(n, imagePath: imagePath)
         let last = (path as NSString).lastPathComponent
         let ext = (last as NSString).pathExtension.lowercased()
@@ -356,7 +367,11 @@ extension Meter {
     /// Raw pixel size of an image file from the host, after EXIF orientation when `options` asks for it, crop and
     /// rotation (`ImageOptions.displaySize`). Nil when the host cannot load it.
     func imageDisplaySize(_ path: String?, _ options: ImageOptions) -> (width: Double, height: Double)? {
-        guard let path, let host = skin.host, let raw = host.imageSize(atPath: path) else { return nil }
+        guard let path, let host = skin.host else { return nil }
+        guard let raw = host.imageSize(atPath: path) else {
+            noteMissingSymbol(path)
+            return nil
+        }
         let orientation = options.useExifOrientation
             ? ((host as? SkinImageQueries)?.imageExifOrientation(atPath: path) ?? 1) : 1
         return options.displaySize(imageWidth: raw.width, imageHeight: raw.height, exifOrientation: orientation)

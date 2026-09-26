@@ -113,6 +113,23 @@ public enum BuiltInVariables {
     /// `#VSCREENAREAHEIGHT#` — height of the virtual screen.
     public static let virtualScreenAreaHeight = "VSCREENAREAHEIGHT"
 
+    // MARK: Mac appearance variables (Deskset extension, all dynamic)
+
+    /// `#MACAPPEARANCE#` — `Dark` or `Light` (see `SkinAppearance`).
+    public static let macAppearance = "MACAPPEARANCE"
+    /// `#MACDARKMODE#` — 1 in Dark Mode, else 0.
+    public static let macDarkMode = "MACDARKMODE"
+    /// `#MACACCENTCOLOR#` — the accent color, `R,G,B,A`.
+    public static let macAccentColor = "MACACCENTCOLOR"
+    /// `#MACLABELCOLOR#` — the primary text color for the appearance, `R,G,B,A`.
+    public static let macLabelColor = "MACLABELCOLOR"
+    /// `#MACSECONDARYLABELCOLOR#` — the secondary text color, `R,G,B,A`.
+    public static let macSecondaryLabelColor = "MACSECONDARYLABELCOLOR"
+    /// `#MACTERTIARYLABELCOLOR#` — the tertiary text color, `R,G,B,A`.
+    public static let macTertiaryLabelColor = "MACTERTIARYLABELCOLOR"
+    /// `#MACSEPARATORCOLOR#` — the separator color, `R,G,B,A`.
+    public static let macSeparatorColor = "MACSEPARATORCOLOR"
+
     /// The value of `#CRLF#` ("Creates a \n newline control character").
     public static let crlfValue = "\n"
 
@@ -128,6 +145,17 @@ public enum BuiltInVariables {
         primaryScreenAreaX, primaryScreenAreaY, primaryScreenAreaWidth, primaryScreenAreaHeight,
         virtualScreenAreaX, virtualScreenAreaY, virtualScreenAreaWidth, virtualScreenAreaHeight,
     ]
+
+    /// The appearance variables Deskset adds on the Mac (not in the manual). Like every built-in they cannot be set by
+    /// `[Variables]` or `!SetVariable`; all are dynamic, and skins that use them are refreshed when the appearance or
+    /// the accent color changes (`[Rainmeter] MacOnAppearanceChangeAction`).
+    public static let macAppearanceNames: [String] = [
+        macAppearance, macDarkMode, macAccentColor, macLabelColor, macSecondaryLabelColor, macTertiaryLabelColor,
+        macSeparatorColor,
+    ]
+
+    /// Whether `key` (lower case, without `#`) is one of `macAppearanceNames`.
+    public static func isMacAppearanceKey(_ key: String) -> Bool { macAppearanceKeys.contains(key) }
 
     /// The names that also exist as `NAME@N` for monitor N (manual: `#WORKAREAX@N#` … `#SCREENAREAHEIGHT@N#`).
     public static let monitorIndexedNames: [String] = [
@@ -150,7 +178,7 @@ public enum BuiltInVariables {
     /// True when the built-in variable `name` is dynamic (see `dynamicNames`; all monitor variables).
     public static func isDynamic(_ name: String) -> Bool {
         let key = name.lowercased()
-        if dynamicKeys.contains(key) || monitorKeys.contains(key) { return true }
+        if dynamicKeys.contains(key) || monitorKeys.contains(key) || macAppearanceKeys.contains(key) { return true }
         return monitorVariable(name) != nil
     }
 
@@ -167,7 +195,8 @@ public enum BuiltInVariables {
 
     // MARK: Internal
 
-    private static let keys: Set<String> = Set(names.map { $0.lowercased() })
+    private static let keys: Set<String> = Set((names + macAppearanceNames).map { $0.lowercased() })
+    private static let macAppearanceKeys: Set<String> = Set(macAppearanceNames.map { $0.lowercased() })
     private static let monitorIndexedKeys: Set<String> = Set(monitorIndexedNames.map { $0.lowercased() })
     private static let dynamicKeys: Set<String> = Set(dynamicNames.map { $0.lowercased() })
     private static let monitorKeys: Set<String> = Set(names.filter {

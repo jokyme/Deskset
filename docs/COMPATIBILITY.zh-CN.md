@@ -267,6 +267,16 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   放进 `@Resources\Fonts` 即可得到完全相同的文字。
 - **状态：** 模拟实现（Windows 图标字体：不支持）
 
+#### 系统字体的设计（`System Rounded`、`SF Mono`、`New York`……）
+- **Windows：** FontFace 指定已安装的字体家族；`System` 是一种老式点阵字体，苹果的字体名找不到时使用 Arial。
+- **Mac：** 在已安装字体和皮肤字体之后（同名的已安装字体家族仍然优先），`System` 使用 Mac 系统字体，`System Rounded` /
+  `SF Pro Rounded` 使用其圆角设计，`System Mono` / `SF Mono` 使用其等宽设计，`System Serif` / `New York` 使用其衬线设计
+  （也接受 `ui-rounded`、`ui-monospace`、`ui-serif`）。字重、斜体（保留字重；圆角设计和 `Stretch` 宽度没有斜体，改为倾斜
+  绘制）、样式词（“System Rounded Semibold”）和内联 `Face` 与其他字体一样生效。编辑器的字体菜单在“System Font”之后列出它们。
+- **原因：** Deskset 扩展：macOS 自带的这几种字体设计没有可安装的字体家族名。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响，只有 `FontFace=System` 改用 Mac 系统字体而不是 Arial。
+- **状态：** 仅 Mac
+
 #### 皮肤字体（`@Resources\Fonts`、`LocalFont`）
 - **Windows：** 根配置 `@Resources\Fonts` 中的字体“会自动加载”；`LocalFontN=` 可加载更多字体。皮肤包中其他位置的字体
   需要用户自行安装。
@@ -350,6 +360,20 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **原因：** 手册未作规定时的取舍判断；macOS 能绘制所有 Unicode 平面。
 - **对皮肤的影响：** 对有效的皮肤没有影响。
 - **状态：** 完全一致（外加宽松处理）
+
+#### 浅色 / 深色模式变量（`#MACAPPEARANCE#`、`#MACDARKMODE#`、`#MACACCENTCOLOR#`……）
+- **Windows：** 没有这些变量。
+- **Mac：** 描述 Mac 外观的动态内置变量：`#MACAPPEARANCE#`（`Dark` / `Light`，可用于
+  `@Include=#@#Theme-#MACAPPEARANCE#.inc`）、`#MACDARKMODE#`（1 / 0），以及按当前外观给出的 `R,G,B,A` 颜色
+  `#MACACCENTCOLOR#`、`#MACLABELCOLOR#`、`#MACSECONDARYLABELCOLOR#`、`#MACTERTIARYLABELCOLOR#` 和 `#MACSEPARATORCOLOR#`。
+  它们不能被 `[Variables]` 或 `!SetVariable` 覆盖，在 `@Include` 路径中也一样。Mac 在浅色与深色之间切换或强调色改变时，用到
+  其中任何一个的皮肤会执行 `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做）；其他皮肤
+  不受影响，除非皮肤自己写了这个动作。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
+  所以 `[!UpdateMeter *][!Redraw]` 无需重新加载就能为 DynamicVariables 的 meter 换色；由 `#MACAPPEARANCE#` 选择的 `@Include`
+  只有刷新后才会改变。
+- **原因：** Deskset 扩展：Mac 上的小组件应当跟随外观和强调色。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些名称未定义。
+- **状态：** 仅 Mac
 
 #### 公式
 - **Windows：** 使用“公式”页列出的运算符和函数；优先级未写明；`.5` 必须写成 `0.5`；`&&` / `||` 两侧“必须”加括号；`?:`
@@ -552,6 +576,20 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **原因：** 手册未作规定时的取舍判断；CoreGraphics 的缩放方式。
 - **对皮肤的影响：** 着色或灰度处理后的图片色调可能略有差别。
 - **状态：** 模拟实现 / 部分支持
+
+#### 把 SF Symbols 用作图片（`ImageName=sf:cpu.fill`）
+- **Windows：** `sf:cpu.fill` 只是一个找不到的文件。
+- **Mac：** `sf:<符号名>` 绘制对应的 SF Symbol，可用于 Image meter（也可以是 `MaskImageName` 或 measure 的值）、`ButtonImage`、
+  `BarImage` 和皮肤的 `Background`。符号是白色的，因此 ImageTint 为它上色，ImageAlpha、Greyscale、ColorMatrix、翻转、旋转、
+  裁剪、Tile 和 ScaleMargins 都有效；它按实际覆盖的像素渲染，始终清晰。`MacSymbolSize`（默认 16）决定没有 W / H 时的尺寸，
+  `MacSymbolWeight` 决定字重（Ultralight … Black），`MacSymbolRendering` 为 Monochrome（默认）、Hierarchical（同一种颜色的
+  不同深浅）或 Multicolor（符号自带的颜色，无色部分为白色）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1；
+  设置了 ScaleMargins 时默认为 0，此时按 ScaleMargins 九宫格拉伸）。Button 在所有状态下都显示该符号，按下时为半透明。未知的
+  名称会给出兼容性提示（measure 的值改为已知名称后提示随之撤回；只写 `sf:` 表示没有图片，也不提示）；Bitmap、Rotator 和
+  Histogram 不能使用符号（给出提示，不绘制任何内容）。
+- **原因：** Deskset 扩展：Mac 自带的图标集，无需图片文件。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
+- **状态：** 仅 Mac
 
 #### Bar、Bitmap、Button
 - **Windows：** 见 Bar、Bitmap 和 Button 页面。
@@ -926,8 +964,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 #### 把皮肤渲染为 PNG
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）绘制，并输出
-  兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
+  间隔 1 000 ms），按比例 S（默认 2）以浅色外观（或指定的外观）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；

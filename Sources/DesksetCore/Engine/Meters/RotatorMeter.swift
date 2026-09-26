@@ -119,7 +119,9 @@ public final class RotatorMeter: Meter {
 
     public override func readMeterOptions() {
         let name = string("ImageName").trimmingCharacters(in: .whitespaces)
-        imagePath = name.isEmpty ? nil : Self.withDefaultExtension(skin.imageFilePath(name, imagePath: string("ImagePath")))
+        // Rotator draws the image at its pixel size around OffsetX / OffsetY: no SF Symbols (`sf:` is noted).
+        imagePath = name.isEmpty || rejectSymbol(name, option: "ImageName") ? nil
+            : Self.withDefaultExtension(skin.imageFilePath(name, imagePath: string("ImagePath")))
         offsetX = RoundMeterMath.extent(double("OffsetX", 0))
         offsetY = RoundMeterMath.extent(double("OffsetY", 0))
         startAngle = finite(double("StartAngle", 0), 0)

@@ -22,7 +22,7 @@ enum CommandLineTools {
                             "--cover-lookup"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
-                                           "--dark", "--select", "--size", "--zoom",
+                                           "--dark", "--appearance", "--select", "--size", "--zoom",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
@@ -32,7 +32,7 @@ enum CommandLineTools {
     static let usage = """
         usage: Deskset                   start the menu bar app
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
-                      [--background R,G,B[,A]] [--skins-dir DIR]
+                      [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
                                         draw a skin without a window into a PNG
                Deskset --self-test [filter]
                                         run the app's self-tests

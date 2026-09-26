@@ -411,6 +411,24 @@ public enum EditorSchema {
         return list
     }
 
+    /// How an SF Symbol picture is drawn (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`; Deskset extension,
+    /// Engine/Meters/MacSymbol.swift), shown when the picture option `key` names a symbol (`sf:…`).
+    static func symbolOptions(for key: String) -> [Property] {
+        let when: [Condition] = [.contains(key, "sf:")]
+        return [
+            Property("MacSymbolSize", "Symbol size", num(1, MacSymbol.maxPointSize, step: 1, unit: "pt"),
+                     default: "16", help: "Its size when no width or height is set", visibleWhen: when),
+            Property("MacSymbolWeight", "Symbol weight", pick(symbolWeights), default: "Regular", visibleWhen: when),
+            Property("MacSymbolRendering", "Colors", pick(symbolRenderings), default: "Monochrome",
+                     help: "Tint colors the white parts", visibleWhen: when),
+        ]
+    }
+
+    static let symbolWeights: [Choice] = MacSymbol.Weight.allCases.map { Choice($0.optionValue, $0.optionValue) }
+    static let symbolRenderings: [Choice] = [Choice("Monochrome", "One color"),
+                                             Choice("Hierarchical", "Shades of one color"),
+                                             Choice("Multicolor", "Its own colors")]
+
     /// The fading and edge options of a layer's box (SolidColor2, GradientAngle, BevelType…), for "More" sections.
     static let boxExtras: [Property] = [
         Property("SolidColor2", "Fades to", .color, placeholder: "none", help: "The box fades from its color to this one"),
@@ -566,7 +584,9 @@ public enum EditorSchema {
             Property("SolidColor", "Color", .color, default: "0,0,0,0", placeholder: "none",
                      help: "Without a picture, a block of this color", level: .essential),
             Property("ImageAlpha", "Opacity", .percent255, default: "255", level: .essential),
+            // An SF Symbol keeps its shape by default, unless its edges are kept (ImageMeter.preserveAspectRatio).
             Property("PreserveAspectRatio", "Fit", pick(aspect), default: "0",
+                     defaultWhen: [ConditionalDefault("1", when: [.contains("ImageName", "sf:"), .isNotSet("ScaleMargins")])],
                      help: "Fit Inside is used when only one of width and height is set",
                      invalidNote: "values are limited to 0–2", level: .essential),
             Property("Tile", "Tile", flag("Repeat the picture"), default: "0"),
@@ -578,6 +598,7 @@ public enum EditorSchema {
             if p.key == "ImagePath" { p.legacyKeys = ["Path"] }
             picture.append(p)
         }
+        picture += symbolOptions(for: "ImageName")
         picture += [
             measureName.labelled("Shows", help: "Live data whose value names the picture (%1)").with(level: .more),
             Property("MaskImageName", "Mask", .image, help: "Its shape cuts out the picture"),
@@ -601,7 +622,7 @@ public enum EditorSchema {
             Property("BarImage", "Picture instead of a color", .image, help: "Revealed instead of the color, at its own size"),
             Property("BarBorder", "Fixed ends", num(0, 32768, step: 1, unit: "px"), default: "0",
                      visibleWhen: [.isSet("BarImage")]),
-        ] + imageOptions(when: [.isSet("BarImage")]) + [
+        ] + imageOptions(when: [.isSet("BarImage")]) + symbolOptions(for: "BarImage") + [
             Property("SolidColor2", "Empty part fades to", .color, placeholder: "none"),
             Property("GradientAngle", "Fade direction", .angle(unit: .degrees, orientation: true), default: "0",
                      visibleWhen: [.isSet("SolidColor2")]),
@@ -716,7 +737,8 @@ public enum EditorSchema {
             Property("ButtonImage", "Picture", .image, help: "Three frames side by side or stacked: normal, pressed, hover",
                      level: .essential),
             Property("ButtonCommand", "When clicked", .action, level: .essential),
-        ] + imageOptions(crop: false, rotate: false), moreSummary: "tint, flip, grayscale"),
+        ] + imageOptions(crop: false, rotate: false) + symbolOptions(for: "ButtonImage"),
+              moreSummary: "tint, flip, grayscale"),
     ]
 
     static let bitmapGroups: [Group] = [

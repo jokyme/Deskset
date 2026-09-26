@@ -549,6 +549,8 @@ extension Skin {
     /// every config folder is loaded once, the way the engine loads it (include paths expanded with the built-in path
     /// variables and the variables read so far); a config counts once, whichever of its files includes a file.
     /// One walk answers `configsIncluding` for every shared file (a suite of 300 skins took a second per file).
+    /// A file whose include paths use the Mac appearance variables (`@Include=#@#Theme-#MACAPPEARANCE#.inc`) is loaded
+    /// once in the light and once in the dark appearance: its config reads both theme files, whichever the Mac shows now.
     public func includeMap() -> IncludeMap {
         let root = rootConfigDirectory.standardizedFileURL
         guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey],
@@ -570,11 +572,26 @@ extension Skin {
                 "currentconfig": config, "rootconfig": rootConfig, "rootconfigpath": dir(rootConfigDirectory),
                 "skinspath": dir(skinsDirectory),
             ]
-            guard let loaded = try? SkinFileLoader.load(url: url, expandVariables: { raw, readSoFar in
-                VariableResolver(variableLookup: { readSoFar[$0.lowercased()] ?? builtins[$0.lowercased()] }).resolve(raw)
-            }) else { continue }
-            for included in loaded.includedFiles {
-                map.readers[IncludeMap.key(included), default: []].insert(config.lowercased())
+            var usesAppearance = false
+            func load(_ appearance: SkinAppearance) -> LoadedIniFile? {
+                let mac = appearance.variables
+                return try? SkinFileLoader.load(url: url, expandVariables: { raw, readSoFar in
+                    VariableResolver(variableLookup: { name in
+                        let key = name.lowercased()
+                        // As the engine resolves them (`Skin.load`): the Mac's, whatever [Variables] says.
+                        if let value = mac[key] {
+                            usesAppearance = true
+                            return value
+                        }
+                        return readSoFar[key] ?? builtins[key]
+                    }).resolve(raw)
+                })
+            }
+            guard let loaded = load(.light) else { continue }
+            var included = loaded.includedFiles
+            if usesAppearance, let dark = load(.dark) { included += dark.includedFiles }
+            for file in included {
+                map.readers[IncludeMap.key(file), default: []].insert(config.lowercased())
             }
         }
         return map
@@ -675,7 +692,8 @@ struct ValueUsageScanner {
         var order: [String] = []
         for v in skin.inspectedVariables() {
             let key = v.name.lowercased()
-            guard definitions[key] == nil else { continue }
+            // A same-named entry cannot set a built-in (`MACLABELCOLOR=…` is a fallback for Windows): no shared value.
+            guard definitions[key] == nil, !BuiltInVariables.isBuiltIn(key) else { continue }
             definitions[key] = Definition(name: v.name, raw: v.raw, current: v.current, file: v.location?.file)
             order.append(key)
         }

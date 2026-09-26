@@ -11,6 +11,11 @@ import DesksetCore
 /// Formats: whatever ImageIO decodes — the manual's .png, .jpg, .bmp, .gif (first frame only, "no animation
 /// supported"), .tif, .webp and .ico (the largest icon in the file).
 ///
+/// SF Symbols (`sf:` paths, `MacSymbol`; Deskset extension) are kept here too: rendered by `SymbolImages` rather than
+/// decoded, never checked on disk, and at a density of their own — an entry's `density` is its pixels per point
+/// (1 for files: "1 image pixel = 1 point"). Sizes the engine sees (`size(atPath:)`), crop rectangles and hit tests
+/// are in points; `PreparedImage` draws with the density.
+///
 /// Thread-safe (docs/skin-threading.md §4.4): skins measure and draw on threads of their own, and the caches stay
 /// shared by all of them (decoded photos are big, and two skins showing the same file share one copy).
 /// - One lock, `condition`, guards every cache; the lookups and inserts under it are short.
@@ -35,22 +40,41 @@ enum Images {
     static let entryCostLimit = 512 << 20
     static let entryKeepAlive: TimeInterval = 5
 
-    /// One decoded version of a file. Immutable apart from `lastUse`, which is touched under the lock.
+    /// Pixels per point of an image, per axis (files: 1).
+    struct Density: Hashable {
+        var x: CGFloat
+        var y: CGFloat
+
+        static let one = Density(x: 1, y: 1)
+    }
+
+    /// One decoded version of a file (or one rendered symbol). Immutable apart from `lastUse`, which is touched under
+    /// the lock.
     final class Entry {
         let image: CGImage
         let exifOrientation: Int
         let generation: Int
-        fileprivate let stamp: FileStamp
+        /// Pixels per point (1 for files).
+        let density: Density
+        /// nil for a symbol.
+        fileprivate let stamp: FileStamp?
         fileprivate let cost: Int
         fileprivate var lastUse: TimeInterval
 
-        fileprivate init(image: CGImage, exifOrientation: Int, generation: Int, stamp: FileStamp, now: TimeInterval) {
+        fileprivate init(image: CGImage, exifOrientation: Int, generation: Int, stamp: FileStamp?, now: TimeInterval,
+                         density: Density = .one) {
             self.image = image
             self.exifOrientation = exifOrientation
             self.generation = generation
             self.stamp = stamp
+            self.density = density
             cost = image.bytesPerRow * image.height
             lastUse = now
+        }
+
+        /// Size in points (the engine's size of the image).
+        var pointSize: (width: Double, height: Double) {
+            (Double(image.width) / Double(density.x), Double(image.height) / Double(density.y))
         }
     }
 
@@ -76,6 +100,8 @@ enum Images {
     private static var entries: [String: Entry] = [:]
     private static var entriesCost = 0
     private static var failures: [String: FileStamp] = [:]
+    /// Symbol paths macOS has no symbol for (or too large to render).
+    private static var symbolFailures: Set<String> = []
     private static var nextGeneration = 1
 
     /// What one thread is making right now, outside the lock: others that need the same wait for it.
@@ -125,6 +151,7 @@ enum Images {
 
     /// The current decoded version of the file, or nil when it is missing or cannot be decoded. Any thread.
     static func entry(atPath path: String) -> Entry? {
+        if MacSymbol.isSymbolPath(path) { return symbolEntry(path) }
         while true {
             let stamp = FileStamp(path: path)
             condition.lock()
@@ -183,6 +210,55 @@ enum Images {
         }
     }
 
+    /// The rendered symbol of a symbol path (`MacSymbol.path`), nil when macOS has no such symbol. Rendered once, by one
+    /// thread at a time, like a file is decoded; kept until evicted or purged (a symbol never changes).
+    private static func symbolEntry(_ path: String) -> Entry? {
+        while true {
+            condition.lock()
+            let now = ProcessInfo.processInfo.systemUptime
+            if let e = entries[path] {
+                e.lastUse = now
+                condition.unlock()
+                return e
+            }
+            if symbolFailures.contains(path) {
+                condition.unlock()
+                return nil
+            }
+            if waitIfInFlight(.file(path)) {
+                condition.unlock()
+                continue
+            }
+            inFlight.insert(.file(path))
+            let purged = purges
+            condition.unlock()
+
+            let rendered = MacSymbol(path: path).flatMap(SymbolImages.render)
+
+            condition.lock()
+            defer { condition.unlock() }
+            finish(.file(path))
+            let keep = purges == purged
+            guard let rendered else {
+                if keep {
+                    if symbolFailures.count >= 1024 { symbolFailures.removeAll() }
+                    symbolFailures.insert(path)
+                }
+                return nil
+            }
+            let density = Density(x: CGFloat(rendered.image.width) / rendered.pointSize.width,
+                                  y: CGFloat(rendered.image.height) / rendered.pointSize.height)
+            let e = Entry(image: rendered.image, exifOrientation: 1, generation: nextGeneration, stamp: nil, now: now,
+                          density: density)
+            nextGeneration += 1
+            guard keep else { return e }
+            entries[path] = e
+            entriesCost += e.cost
+            if entriesCost > entryCostLimit { evictEntries(now: now) }
+            return e
+        }
+    }
+
     /// Whether `key` was made from the file as it is cached now (with the lock held): a derived image or mask made
     /// from a version replaced or purged meanwhile is not kept (nothing would ever ask for it again).
     private static func isCurrent(_ key: DerivedKey) -> Bool {
@@ -217,10 +293,10 @@ enum Images {
         return exifOriented ? oriented(path, e) : e.image
     }
 
-    /// Size in pixels (Rainmeter works in pixels; 1 image pixel = 1 point), as stored in the file.
+    /// Size in pixels (Rainmeter works in pixels; 1 image pixel = 1 point), as stored in the file. A symbol's size in
+    /// points.
     static func size(atPath path: String) -> (width: Double, height: Double)? {
-        guard let e = entry(atPath: path) else { return nil }
-        return (Double(e.image.width), Double(e.image.height))
+        entry(atPath: path)?.pointSize
     }
 
     /// EXIF orientation (1…8) of the file; 1 when it has none.
@@ -237,6 +313,7 @@ enum Images {
         entries.removeAll()
         entriesCost = 0
         failures.removeAll()
+        symbolFailures.removeAll()
         derived.removeAll()
         derivedFailures.removeAll()
         derivedCost = 0
@@ -418,24 +495,31 @@ enum Images {
     }
 
     /// The file image after `UseExifOrientation`, `ImageCrop` and the color transform of `options` (Greyscale,
-    /// ImageTint RGB or ColorMatrix, see `ImageOptions.processingMatrix`), plus the recipe identifying it. Flip,
-    /// rotation and alpha are applied when drawing. Crop areas outside the image are transparent.
+    /// ImageTint RGB or ColorMatrix, see `ImageOptions.processingMatrix`), plus the recipe identifying it and its
+    /// density. Flip, rotation and alpha are applied when drawing. Crop areas outside the image are transparent.
+    /// ImageCrop is in points (pixels of a file).
     static func prepared(atPath path: String, options: ImageOptions)
-        -> (image: CGImage, generation: Int, recipe: Recipe)? {
+        -> (image: CGImage, generation: Int, recipe: Recipe, density: Density)? {
         guard let e = entry(atPath: path) else { return nil }
         let orientedFlag = options.useExifOrientation && e.exifOrientation != 1
         let base = orientedFlag ? oriented(path, e) : e.image
         let iw = base.width, ih = base.height
+        let d = e.density
         var crop: [Int]?
         if let c = options.crop {
-            let r = c.rect(imageWidth: Double(iw), imageHeight: Double(ih))
-            crop = [Int(r.x), Int(r.y), Int(r.width), Int(r.height)]
+            let r = c.rect(imageWidth: Double(iw) / Double(d.x), imageHeight: Double(ih) / Double(d.y))
+            if d == .one {
+                crop = [Int(r.x), Int(r.y), Int(r.width), Int(r.height)]
+            } else {
+                func px(_ v: Double, _ scale: CGFloat) -> Int { Int((v * Double(scale)).rounded()) }
+                crop = [px(r.x, d.x), px(r.y, d.y), px(r.width, d.x), px(r.height, d.y)]
+            }
             if r.width < 1 || r.height < 1 { return nil }
             if crop == [0, 0, iw, ih] { crop = nil }
         }
         let matrix = options.processingMatrix
         let recipe = Recipe.prepared(oriented: orientedFlag, crop: crop, matrix: matrix)
-        guard crop != nil || matrix != nil else { return (base, e.generation, recipe) }
+        guard crop != nil || matrix != nil else { return (base, e.generation, recipe, d) }
         let key = DerivedKey(path: path, generation: e.generation, recipe: recipe)
         let rect = crop.map { CGRect(x: $0[0], y: $0[1], width: $0[2], height: $0[3]) }
             ?? CGRect(x: 0, y: 0, width: iw, height: ih)
@@ -448,9 +532,10 @@ enum Images {
         guard let image else {
             // Too large to process (see maxDerivedPixels): an uncropped image is still drawn, without its color
             // transform, rather than not at all.
-            return crop == nil ? (base, e.generation, .prepared(oriented: orientedFlag, crop: nil, matrix: nil)) : nil
+            guard crop == nil else { return nil }
+            return (base, e.generation, .prepared(oriented: orientedFlag, crop: nil, matrix: nil), d)
         }
-        return (image, e.generation, recipe)
+        return (image, e.generation, recipe, d)
     }
 
     /// Copies the `crop` rectangle (top-left pixel coordinates; may extend past the image) of `image` into a new
@@ -504,9 +589,15 @@ enum Images {
     private static let maxAlphaMaskPixels = 4_194_304
 
     /// Alpha (0…255) of pixel (x, y) (top-left origin) of the file image — EXIF-oriented when `oriented` — or nil
-    /// when the file cannot be loaded or is too large to sample. Pixels outside the image are transparent.
-    static func pixelAlpha(atPath path: String, x: Int, y: Int, oriented orientedFlag: Bool) -> Double? {
+    /// when the file cannot be loaded or is too large to sample. Pixels outside the image are transparent. (x, y) are
+    /// points: for a symbol, the pixel under that point.
+    static func pixelAlpha(atPath path: String, x px: Int, y py: Int, oriented orientedFlag: Bool) -> Double? {
         guard let e = entry(atPath: path) else { return nil }
+        var x = px, y = py
+        if e.density != .one {
+            x = Int(((Double(px) + 0.5) * Double(e.density.x)).rounded(.down))
+            y = Int(((Double(py) + 0.5) * Double(e.density.y)).rounded(.down))
+        }
         let useOriented = orientedFlag && e.exifOrientation != 1
         let image = useOriented ? oriented(path, e) : e.image
         let w = image.width, h = image.height
