@@ -14,6 +14,7 @@ func runWeatherTests(_ t: TestRunner) {
     runWeatherSunTests(t)
     runWeatherFetchTests(t)
     runWeatherTransportTests(t)
+    runWeatherEditorTests(t)
 }
 
 // MARK: - Fixtures and helpers
@@ -544,4 +545,82 @@ private func runWeatherSunTests(_ t: TestRunner) {
         t.equal(MoonPhase.eighth(phase: 0.5), 4)
         t.equal(MoonPhase.names[MoonPhase.eighth(phase: 0.26)], "First Quarter")
     }
+}
+
+// MARK: - Editor
+
+private func runWeatherEditorTests(_ t: TestRunner) {
+    typealias S = EditorSchema
+    t.suite("Weather: editor schema and names") {
+        t.equal(S.describeMeasure(type: "Plugin", plugin: "MacWeather").title, "Weather")
+        t.equal(S.describeMeasure(type: "plugin", plugin: "macsun").symbol, "sunrise")
+        let weather = S.measureGroups("Plugin", plugin: "MacWeather")
+        let keys = S.keys(weather)
+        for key in ["location", "parent", "type", "hour", "day", "units", "temperatureunit", "windunit",
+                    "precipitationunit", "pressureunit", "format", "timezone", "formatlocale", "decimals",
+                    "unavailabletext", "symbolstyle", "hours", "curvewidth", "curveheight", "smooth", "colorof",
+                    "finishaction", "onconnecterroraction", "onlocationerroraction"] {
+            t.check(keys.contains(key), "MacWeather \(key)")
+        }
+        t.check(weather.allSatisfy { $0.essentialRows.count <= 5 }, "at most five essentials")
+        func visible(_ key: String, _ values: [String: String], _ groups: [S.Group] = weather) -> Bool {
+            guard let p = S.property(key, in: groups) else { return false }
+            return S.isVisible(p, in: groups, values: { values[$0.lowercased()] })
+        }
+        t.check(visible("Hour", ["type": "Temperature"]))
+        t.check(!visible("Hour", ["type": "High"]), "no hours for the high")
+        t.check(visible("Day", ["type": "high"]))
+        t.check(visible("Day", ["type": "Wind"]), "Wind is WindSpeed")
+        t.check(!visible("Day", ["type": "Humidity"]))
+        t.check(!visible("Location", ["parent": "MeasureWeather"]), "a child has no place of its own")
+        t.check(visible("SymbolStyle", ["type": "Symbol"]) && !visible("SymbolStyle", ["type": "Temperature"]))
+        t.check(visible("Format", ["type": "Sunrise"]) && !visible("Format", ["type": "Humidity"]))
+        let sun = S.measureGroups("Plugin", plugin: "MacSun")
+        t.check(S.keys(sun).isSuperset(of: ["location", "parent", "type", "day", "format", "timezone", "noeventtext"]))
+        t.check(!visible("Format", ["type": "MoonPhase"], sun))
+        t.check(S.liveDataCatalogue.last?.items.flatMap(\.children).allSatisfy { $0.measureType != nil } == true)
+
+        // Names in the layer list and the data page.
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Type=Temperature
+        [H3]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Hour=3
+        [Tomorrow]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        Day=1
+        [High3]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=High
+        Day=3
+        [Rise]
+        Measure=Plugin
+        Plugin=MacSun
+        Type=Sunrise
+        [Moon]
+        Measure=Plugin
+        Plugin=MacSun
+        Type=MoonPhase
+        """)
+        func name(_ m: String) -> String { skin.measure(named: m).map { LayerNaming.data($0, in: skin).name } ?? "?" }
+        t.equal(name("W"), "Temperature (weather)")
+        t.equal(name("H3"), "Temperature in 3 hours")
+        t.equal(name("Tomorrow"), "Tomorrow's high")
+        t.equal(name("High3"), "High, in 3 days")
+        t.equal(name("Rise"), "Sunrise")
+        t.equal(name("Moon"), "Moon phase")
+        skin.close()
+    }
+
 }

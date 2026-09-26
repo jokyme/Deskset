@@ -132,7 +132,7 @@ func runFormatPresetsTests(_ t: TestRunner) {
 
     t.suite("Editor: live data catalogue") {
         let titles = S.liveDataCatalogue.map(\.title)
-        t.equal(titles, ["On This Mac", "Calculate", "From the Web"])
+        t.equal(titles, ["On This Mac", "Calculate", "From the Web", "Weather and Sun"])
         func all(_ items: [S.LiveDataChoice]) -> [S.LiveDataChoice] { items.flatMap { [$0] + all($0.children) } }
         for item in all(S.liveDataCatalogue.flatMap(\.items)) where item.children.isEmpty {
             t.check(item.measureType != nil, "\(item.title) creates a known type")
