@@ -1899,7 +1899,7 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
   给出 “Based on data from MET Norway”，并且每个含 MacWeather measure 的皮肤右键菜单里都有这条署名（点击打开 api.met.no）和数据的
   时间。MET Norway 会收到 Mac 的 IP 地址和取整后的坐标；`defaults write app.deskset.Deskset WeatherEnabled -bool NO` 可关闭所有请求。
 - **原因：** 免费的共享服务有公开的规则；许可证要求署名。
-- **对皮肤的影响：** 数据大约每 30–40 分钟更新一次；`Refresh` 可以在失败后重试，但不能更频繁地轮询。
+- **对皮肤的影响：** 数据大约每 30–40 分钟更新一次；`Refresh` 只在网络故障后立即重试，不能更频繁地轮询。
 - **状态：** 仅 Mac
 
 #### `Plugin=MacSun`

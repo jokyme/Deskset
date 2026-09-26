@@ -2092,7 +2092,8 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
   data. MET Norway receives the Mac's IP address and the rounded coordinates; `defaults write app.deskset.Deskset
   WeatherEnabled -bool NO` turns all requests off.
 - **Why:** a free shared service with published rules; the licence asks for credit.
-- **Skin impact:** data is refreshed about every 30–40 minutes; `Refresh` retries after a failure but cannot poll faster.
+- **Skin impact:** data is refreshed about every 30–40 minutes; `Refresh` retries at once only after a network failure
+  and cannot poll faster.
 - **Status:** Mac-only
 
 #### `Plugin=MacSun`

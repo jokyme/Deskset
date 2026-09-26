@@ -424,7 +424,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         binding.snapshot = snapshot
         binding.status = WeatherService.status(of: snapshot, now: now)
         if binding.status == .refused {
-            setNote("Weather: MET Norway refused the request; Deskset tries again tomorrow, or use Refresh weather")
+            setNote("Weather: MET Norway refused the request; Deskset tries again in a day, or when it is opened again")
         }
     }
 

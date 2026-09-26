@@ -304,8 +304,11 @@ public final class WeatherService {
         return feeds[coordinate]?.snapshot
     }
 
-    /// `!CommandMeasure … Refresh`: after a failure, clears the backoff and fetches now; with fresh data, only tells
-    /// the measures to read again. At most once a minute per place.
+    /// `!CommandMeasure … Refresh` (at most once a minute per place): after a network failure the request is tried
+    /// again at once (the network may be back); otherwise the measures only read again. It never brings a request
+    /// forward that the server put off or the schedule set: the backoff after 429 (and its `Retry-After`) and server
+    /// errors, the day after 400 / 403 / 404 / 422, and `Expires`, 30 minutes and the random delay after a success.
+    /// Skins can run it in a loop, and MET Norway blocks clients that ignore its answers.
     public func refresh(_ coordinate: RoundedCoordinate) {
         lock.lock()
         guard let feed = feeds[coordinate], !stopped else {
@@ -319,17 +322,17 @@ public final class WeatherService {
         }
         feed.lastUserRefresh = t
         feed.lastRead = t
-        let fresh = feed.snapshot.lastFailure == nil && (feed.snapshot.expiresLocal.map { t < $0 } ?? false)
-        if !fresh {
+        let retry = feed.snapshot.lastFailure == .offline && !feed.inFlight
+        if retry {
             feed.nextFetch = t
             feed.backoffStep = 0
         }
         let subscribers = Array(feed.subscribers.values)
         lock.unlock()
-        if fresh {
-            notify(subscribers)
-        } else {
+        if retry {
             queue.async { self.evaluate(feed) }
+        } else {
+            notify(subscribers)
         }
     }
 

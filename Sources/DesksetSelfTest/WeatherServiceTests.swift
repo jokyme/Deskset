@@ -269,7 +269,7 @@ func runWeatherFetchTests(_ t: TestRunner) {
         t.equal(h203.requests, 2)
         t.equal(h203.logs.all.filter { $0.contains("deprecated") }.count, 1, "\(h203.logs.all)")
 
-        // 403: automatic requests stop until Refresh (or 24 hours).
+        // 403: requests stop for a day (or until a relaunch); Refresh does not ask a server that refused.
         let h403 = try ServiceHarness(t, transport: .fixture(status: 403, headers: [:], body: Data()))
         _ = h403.service.attach(h403.subscription, to: oslo, persistent: true)
         h403.read()
@@ -279,10 +279,9 @@ func runWeatherFetchTests(_ t: TestRunner) {
         t.equal(h403.requests, 1, "no automatic retry")
         h403.service.refresh(oslo)
         h403.settle()
-        t.equal(h403.requests, 2, "Refresh asks again")
-        h403.service.refresh(oslo)
-        h403.settle()
-        t.equal(h403.requests, 2, "at most one Refresh a minute")
+        t.equal(h403.requests, 1, "not even with Refresh")
+        h403.advanceReading(to: WeatherFixtures.clock.addingTimeInterval(86_401), step: 1800)
+        t.equal(h403.requests, 2, "a day later")
         t.check(h403.logs.all.contains { $0.contains("refused") && $0.contains("User-Agent") }, "\(h403.logs.all)")
 
         // 404 / 422: no forecast here, retried after a day.
@@ -356,6 +355,66 @@ func runWeatherFetchTests(_ t: TestRunner) {
                                   expiresLocal: WeatherFixtures.clock)
         t.equal(WeatherService.status(of: old, now: WeatherFixtures.clock.addingTimeInterval(7199)), .ready)
         t.equal(WeatherService.status(of: old, now: WeatherFixtures.clock.addingTimeInterval(7200)), .stale)
+    }
+
+    t.suite("Weather: fetch: Refresh retries a network failure and nothing else") {
+        // 429 with Retry-After: an hour, however often a skin runs Refresh.
+        let busy = try ServiceHarness(t, transport: .fixture(status: 429, headers: ["Retry-After": "3600"], body: Data()))
+        _ = busy.service.attach(busy.subscription, to: oslo, persistent: true)
+        busy.read()
+        for _ in 0..<10 {
+            busy.clock.advance(by: 61)
+            busy.service.refresh(oslo)
+            busy.settle()
+        }
+        t.equal(busy.requests, 1, "Retry-After stands")
+        t.check(busy.notified >= 1, "the measures read again")
+        busy.advanceReading(to: WeatherFixtures.clock.addingTimeInterval(3601), step: 60)
+        t.equal(busy.requests, 2, "after the hour")
+        // Server errors: their backoff stands too (5 minutes × 0.8 with random 0).
+        let broken = try ServiceHarness(t, transport: .fixture(status: 503, headers: [:], body: Data()))
+        _ = broken.service.attach(broken.subscription, to: oslo, persistent: true)
+        broken.read()
+        broken.clock.advance(by: 61)
+        broken.service.refresh(oslo)
+        broken.settle()
+        t.equal(broken.requests, 1)
+        broken.advanceReading(to: WeatherFixtures.clock.addingTimeInterval(241), step: 30)
+        t.equal(broken.requests, 2)
+        // A network failure: tried again at once (the network may be back), at most once a minute.
+        var online = false
+        let net = try ServiceHarness(t, transport: FakeWeatherTransport { _ in
+            online ? .success(WeatherHTTPResponse(status: 200, headers: WeatherFixtures.headers, body: WeatherFixtures.complete))
+                : .failure(.network("offline"))
+        })
+        _ = net.service.attach(net.subscription, to: oslo, persistent: true)
+        net.read()
+        t.equal(WeatherService.status(of: net.snapshot, now: net.clock.now()), .offline)
+        net.clock.advance(by: 5)
+        net.service.refresh(oslo)
+        net.settle()
+        t.equal(net.requests, 2, "at once")
+        net.clock.advance(by: 5)
+        online = true
+        net.service.refresh(oslo)
+        net.settle()
+        t.equal(net.requests, 2, "once a minute")
+        net.clock.advance(by: 60)
+        net.service.refresh(oslo)
+        net.settle()
+        t.equal(net.requests, 3)
+        t.equal(WeatherService.status(of: net.snapshot, now: net.clock.now()), .ready)
+        // Data past Expires after a success: the schedule stands (30 minutes after the last request, plus the random
+        // delay: 12:30:31), so Refresh loops do not line up on MET's expiry times.
+        let expired = try ServiceHarness(t)
+        _ = expired.service.attach(expired.subscription, to: oslo, persistent: true)
+        expired.read()
+        expired.advanceReading(to: date("2026-09-26T12:21:00Z"), step: 60)
+        expired.service.refresh(oslo)
+        expired.settle()
+        t.equal(expired.requests, 1, "not before its time")
+        expired.advanceReading(to: date("2026-09-26T12:30:31Z"), step: 30)
+        t.equal(expired.requests, 2)
     }
 
     t.suite("Weather: fetch: sleep, dormant feeds, one request at a time") {

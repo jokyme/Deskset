@@ -50,7 +50,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | `Hours`, `CurveWidth`, `CurveHeight`, `Smooth` | 24, 200, 40, 1 | For `Type=TemperatureCurve`. |
   | `ColorOf` | `High` · `Low` | For `Type=TemperatureColor` with `Day`. |
   | `FinishAction`, `OnConnectErrorAction`, `OnLocationErrorAction` | bangs | New data (or the place found); a failed request (once per run of failures); a place that cannot be found, Location Services off or no fix. |
-  | `!CommandMeasure … "Refresh"` / `"Locate"` | | Refresh: after a failure, try again now (at most once a minute); with fresh data it only reads again. Locate (`auto`): ask for a new fix. |
+  | `!CommandMeasure … "Refresh"` / `"Locate"` | | Refresh: after a network failure (offline), try again now (at most once a minute); otherwise it only reads again, and the server's waits (429 and `Retry-After`, server errors, refusals) and the schedule stand. Locate (`auto`): ask for a new fix. |
 
   Types (N = now, H = with `Hour`, D = with `Day`; without either, daily-only types use today):
 
@@ -139,7 +139,8 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   The next request waits for the response's `Expires` time (corrected for the server's clock) and at least 30 minutes,
   plus a random 1–10 minutes, and asks "if modified since" with the previous `Last-Modified`. Failures back off: 429
   from 10 minutes doubling to 2 hours (or `Retry-After`), server errors from 5 minutes to an hour, no network from 1
-  minute to 15; 400 / 403 stop until Refresh, a relaunch or a day; 404 / 422 ("no forecast here") retry after a day.
+  minute to 15; 400 / 403 stop until a relaunch or a day; 404 / 422 ("no forecast here") retry after a day. `Refresh`
+  brings a request forward only after a network failure (at most once a minute), never past one of these waits.
   Only skins in skin windows request anything; a place no measure shows any more (its skin closed, or the measure
   moved to another place) stops at once, a place nothing has read for 30 minutes (hidden, paused or disabled
   measures) sleeps, and nothing is requested while the Mac sleeps (after waking, a random 10–60 s first). At most 8
