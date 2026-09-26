@@ -17,7 +17,8 @@ import Foundation
 ///   returns the stored counter value; `PIDToName=1` shows the process name for "ID Process" values.
 /// - Values come from a sample taken once a second (independent of Update), as the manual describes.
 /// Mac differences (docs/compat/plugins.md): process names are Mac executable names; other users' processes are
-/// summed up as "System"; GPU needs a sensor source; names are matched case-insensitively.
+/// summed up as "System"; GPU usage is the whole GPU's (one instance "GPU", from the hardware sensors), GPU memory per
+/// process does not exist; names are matched case-insensitively.
 public final class UsageMonitorMeasure: Measure, PluginLifecycle {
     private var spec: PerfCounterSpec?
     private var index = 0
@@ -80,9 +81,14 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         } else {
             report("none", "UsageMonitor [\(name)]: no Alias or Category/Counter; the value is 0")
         }
-        if let s = newSpec, s.field == .gpuUtilization || s.field == .unavailable,
-           HardwareSensors.source(for: skin)?.gpuUtilization() == nil {
-            report("gpu", "UsageMonitor [\(name)]: GPU usage per process is not available on macOS; the value is 0")
+        if let s = newSpec, s.field == .unavailable {
+            report("gpu", "UsageMonitor [\(name)]: GPU memory per process is not available on macOS; the value is 0")
+        } else if let s = newSpec, s.field == .gpuUtilization {
+            // The whole GPU's usage is one instance, "GPU" (no per-process GPU time on macOS).
+            let sensors = HardwareSensors.source(for: skin)
+            if sensors == nil || (sensors?.gpuUtilization() == nil && sensors?.sensorPending(SensorKeys.gpuUsage) == false) {
+                report("gpu", "UsageMonitor [\(name)]: GPU usage is not available here; the value is 0")
+            }
         }
         if newSpec != spec {
             spec = newSpec
