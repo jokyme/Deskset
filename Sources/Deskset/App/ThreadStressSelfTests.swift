@@ -134,6 +134,8 @@ enum ThreadStressSelfTests {
 
     static func stressTests(_ t: AppTestRunner) {
         t.suite("App: threads: every test and default skin updates and draws on a thread of its own, all at once") {
+            // TestSkins/Plugins/Sensors reads the app's own sensor service, whose SMC key list must stay off disk.
+            t.equal(LiveSensorHardware.keyCacheURL.current, nil, "no SMC key list is kept on disk")
             guard let testSkins = Paths.repositoryFolder("TestSkins"),
                   let defaultSkins = Paths.repositoryFolder("DefaultSkins") else {
                 print("    (skipped: TestSkins not found; run from the repository)")

@@ -10,8 +10,7 @@ enum SensorSelfTests {
     typealias Collected = SharedServiceThreadingSelfTests.Collected
 
     static func run(_ t: AppTestRunner) {
-        // No SMC key list is kept on disk during the self-tests.
-        LiveSensorHardware.keyCacheURL.access { $0 = nil }
+        // No SMC key list is kept on disk during the self-tests: `AppSelfTest.run` turns the list off before any suite.
         smcTests(t)
         classificationTests(t)
         dictionaryTests(t)
@@ -531,6 +530,8 @@ enum SensorSelfTests {
             try? Data("{\"version\":2}".utf8).write(to: url)
             t.equal(SMCKeyList.load(url), nil, "another format")
             t.equal(SMCKeyList.load(url.deletingLastPathComponent().appendingPathComponent("none.json")), nil)
+            // Not while the self-tests run: the app's own hardware walks the keys every time.
+            t.equal(LiveSensorHardware.keyCacheURL.current, nil, "no key list on disk during the self-tests")
         }
     }
 
