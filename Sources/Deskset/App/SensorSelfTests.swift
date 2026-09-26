@@ -536,14 +536,19 @@ enum SensorSelfTests {
 
     // MARK: Service
 
-    /// Readings by group; counts reads, releases and whether two reads ever overlapped.
+    /// Readings by group; counts reads, releases and whether two reads ever overlapped. `close()` holds every read
+    /// until `open()`, so that a test can look at the service while a refresh runs.
     final class FakeHardware: SensorHardware {
-        private let lock = NSLock()
+        private let lock = NSCondition()
         private var readings: [SensorGroup: SensorGroupReading] = [:]
         private var inside = 0
+        private var closed = false
+        private var waitingReads = 0
         private(set) var overlapped = false
         private(set) var reads: [Set<SensorGroup>] = []
         private(set) var released: [Set<SensorGroup>] = []
+        /// Reads and releases in order: "read fans,temperatures", "release ioReport".
+        private(set) var events: [String] = []
         var delay: TimeInterval = 0
         var tjMax: Double { 110 }
 
@@ -555,11 +560,30 @@ enum SensorSelfTests {
             lock.unlock()
         }
 
+        func close() {
+            lock.lock()
+            closed = true
+            lock.unlock()
+        }
+
+        func open() {
+            lock.lock()
+            closed = false
+            lock.broadcast()
+            lock.unlock()
+        }
+
         func read(_ groups: Set<SensorGroup>) -> [SensorGroup: SensorGroupReading] {
             lock.lock()
+            waitingReads += 1
+            while closed { lock.wait() }
+            waitingReads -= 1
             inside += 1
             if inside > 1 { overlapped = true }
-            if reads.count < 100_000 { reads.append(groups) }
+            if reads.count < 100_000 {
+                reads.append(groups)
+                events.append("read " + groups.map(\.rawValue).sorted().joined(separator: ","))
+            }
             let out = readings.filter { groups.contains($0.key) }
             lock.unlock()
             if delay > 0 { Thread.sleep(forTimeInterval: delay) }
@@ -571,31 +595,41 @@ enum SensorSelfTests {
 
         func release(_ groups: Set<SensorGroup>) {
             lock.lock()
-            if !groups.isEmpty, released.count < 100_000 { released.append(groups) }
+            if !groups.isEmpty, released.count < 100_000 {
+                released.append(groups)
+                events.append("release " + groups.map(\.rawValue).sorted().joined(separator: ","))
+            }
             lock.unlock()
         }
 
-        var readCount: Int {
+        private func locked<T>(_ body: () -> T) -> T {
             lock.lock()
             defer { lock.unlock() }
-            return reads.count
+            return body()
         }
 
-        var lastRead: Set<SensorGroup>? {
-            lock.lock()
-            defer { lock.unlock() }
-            return reads.last
-        }
-
-        var lastReleased: Set<SensorGroup>? {
-            lock.lock()
-            defer { lock.unlock() }
-            return released.last
-        }
+        /// Whether a read waits at the closed gate (its refresh has taken the groups it reads).
+        var isWaiting: Bool { locked { waitingReads > 0 } }
+        var readCount: Int { locked { reads.count } }
+        var lastRead: Set<SensorGroup>? { locked { reads.last } }
+        var lastReleased: Set<SensorGroup>? { locked { released.last } }
+        var eventLog: [String] { locked { events } }
+        func readCount(of group: SensorGroup) -> Int { locked { reads.filter { $0.contains(group) }.count } }
+        func releaseCount(of group: SensorGroup) -> Int { locked { released.filter { $0.contains(group) }.count } }
     }
 
     static func info(_ key: String, _ kind: SensorKind = .temperature, min: Double? = nil, max: Double? = nil) -> SensorInfo {
         SensorInfo(key: key, label: key, kind: kind, minimum: min, maximum: max, source: "fake")
+    }
+
+    /// Waits until no refresh is claimed or running (polls often: some tests do this hundreds of times).
+    static func settle(_ service: SensorService, timeout: TimeInterval = 30) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while service.isRefreshing {
+            if Date() > end { return false }
+            usleep(200)
+        }
+        return true
     }
 
     static func serviceTests(_ t: AppTestRunner) {
@@ -613,9 +647,12 @@ enum SensorSelfTests {
                 t.check(AppSelfTest.spin(timeout: 30) { service.refreshCount > before && !service.isRefreshing },
                         "a refresh ran")
             }
+            // The refresh a question starts is held at the gate while the test looks.
+            hardware.close()
             afterRefresh {
                 t.equal(service.value("cpu"), nil, "nothing read yet")
                 t.check(service.isPending("cpu"))
+                hardware.open()
             }
             t.equal(service.refreshCount, 1, "one refresh")
             t.equal(hardware.lastRead, [.temperatures], "only the group asked for")
@@ -634,9 +671,11 @@ enum SensorSelfTests {
             afterRefresh { t.equal(service.value("cpu"), 50) }
             t.equal(service.value("cpu"), 55)
             // "gpu": the temperatures answer; the GPU statistics are read too (never read yet: a refresh at once).
+            hardware.close()
             afterRefresh {
                 t.equal(service.value("gpu"), 40)
                 t.check(service.isPending("gpu"), "until the GPU statistics were read once")
+                hardware.open()
             }
             t.equal(service.isPending("gpu"), false)
             clock.access { $0 += 1 }
@@ -713,6 +752,12 @@ enum SensorSelfTests {
                 for round in 0..<2000 {
                     // Now and then a pause, as between a skin's updates: refreshes finish and new ones are claimed.
                     if round % 100 == 99 { usleep(500) }
+                    // Halfway, a refresh has run (a busy machine can hold the service's queue back for the whole
+                    // first half); the second half keeps asking while later ones run.
+                    if round == 1000 {
+                        let end = Date().addingTimeInterval(60)
+                        while service.refreshCount == 0, Date() < end { usleep(1000) }
+                    }
                     let key = keys[(round + i) % keys.count]
                     if let v = service.value(key), v != expected[key] { problems.add("\(key) = \(v)") }
                     _ = service.isPending(key)
@@ -733,7 +778,7 @@ enum SensorSelfTests {
             t.check(!hardware.overlapped, "the hardware is read by one thread at a time")
             t.check(hardware.readCount > 1, "refreshes ran: \(hardware.readCount), \(service.refreshCount)")
             // After the storm nothing runs while nobody asks (no refresh keeps claiming another).
-            RenderCommand.wait(milliseconds: 300)
+            t.check(settle(service, timeout: 60), "the last refreshes end")
             let before = service.refreshCount
             RenderCommand.wait(milliseconds: 300)
             t.equal(service.refreshCount, before, "idle")
@@ -791,10 +836,15 @@ enum SensorSelfTests {
             """.write(to: file, atomically: true, encoding: .utf8)
             let host = RenderHost()
             let skin = Skin(config: "Sensors", fileURL: file, skinsDirectory: folder, system: monitor, host: host)
+            // The reads wait at the gate while the skin loads and updates once (the fake reads in an instant).
+            hardware.close()
+            defer { hardware.open() }
             try skin.load()
             skin.update()
             t.equal(skin.measure(named: "Max")?.value, 0, "the first update asks; the readings come later")
-            t.check(!host.logs.contains { $0.contains("reports no") || $0.contains("has no sensor") }, "pending: no notes")
+            t.check(!host.logs.contains { $0.contains("reports no") || $0.contains("has no sensor")
+                || $0.contains("not available") }, "pending: no notes \(host.logs)")
+            hardware.open()
             t.check(AppSelfTest.spin(timeout: 30) { !monitor.sensorPending("gpu.usage") && !monitor.sensorPending("cpu")
                 && !monitor.sensorPending("fan.1") }, "read in the background")
             skin.update()
