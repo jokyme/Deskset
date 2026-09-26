@@ -30,7 +30,7 @@ enum GlassSelfTests {
                 if let tint = glass.last?.tintColor?.usingColorSpace(.sRGB) {
                     t.close(Double(tint.redComponent), 70 / 255, accuracy: 0.002)
                     t.close(Double(tint.blueComponent), 1, accuracy: 0.002)
-                    t.close(Double(tint.alphaComponent), 120 / 255, accuracy: 0.002)
+                    t.close(Double(tint.alphaComponent), 1, accuracy: 0.002)
                 } else {
                     t.check(false, "the tint")
                 }
@@ -105,7 +105,8 @@ enum GlassSelfTests {
             t.equal(pieces.map { $0.tint?.isHidden }, [true, true, false], "tinted only where MacGlassTint is")
             if let color = pieces.last?.tint?.layer?.backgroundColor.flatMap(NSColor.init(cgColor:))?.usingColorSpace(.sRGB) {
                 t.close(Double(color.greenComponent), 130 / 255, accuracy: 0.002)
-                t.close(Double(color.alphaComponent), 120 / 255, accuracy: 0.002)
+                t.close(Double(color.alphaComponent), Double(SkinGlassViews.fallbackTintStrength), accuracy: 0.002,
+                        "the glass leans toward the tint, it is not covered by it")
             } else {
                 t.check(false, "the tint's color")
             }

@@ -127,7 +127,7 @@ final class SkinGlassViews {
             if let tint = piece.tint {
                 tint.frame = effect.bounds
                 tint.isHidden = region.tint == nil
-                tint.layer?.backgroundColor = region.tint?.cgColor
+                tint.layer?.backgroundColor = region.tint.map(SkinGlassViews.fallbackTint)
                 tint.layer?.cornerRadius = radius
             }
         }
@@ -137,6 +137,15 @@ final class SkinGlassViews {
     static func fallbackMaterial(_ style: GlassStyle) -> NSVisualEffectView.Material {
         style == .clear ? .hudWindow : .popover
     }
+
+    /// The fallback's tint layer: the color at `fallbackTintStrength` of its alpha, so the glass leans toward it (as
+    /// Liquid Glass does with `tintColor`) rather than being covered by it.
+    static func fallbackTint(_ color: RGBA) -> CGColor {
+        CGColor(srgbRed: color.r / 255, green: color.g / 255, blue: color.b / 255,
+                alpha: min(max(color.a / 255, 0), 1) * fallbackTintStrength)
+    }
+
+    static let fallbackTintStrength: CGFloat = 0.4
 
     /// A stretchable rounded rectangle: the fallback's corners (`NSVisualEffectView.maskImage`).
     static func roundedMask(_ radius: CGFloat) -> NSImage {
@@ -178,7 +187,7 @@ enum GlassPlaceholder {
         if let tint = region.tint, tint.a > 0 {
             ctx.addPath(path)
             ctx.setFillColor(CGColor(srgbRed: tint.r / 255, green: tint.g / 255, blue: tint.b / 255,
-                                     alpha: min(tint.a / 255, 1) * 0.6))
+                                     alpha: min(tint.a / 255, 1) * 0.5))
             ctx.fillPath()
         }
         // The edge: a light rim, and on light (or unknown) backgrounds a faint dark line around it.

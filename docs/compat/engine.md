@@ -791,9 +791,9 @@ that uses them still loads there, only without the effect.
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): the glass is part of the skin window, under the skin's drawing (which is transparent wherever the
   skin draws nothing). macOS 26 and later: `NSGlassEffectView` (Liquid Glass) in the chosen style, with the corner
-  radius and the tint. macOS 13–15: `NSVisualEffectView` blurring what is behind the window (Regular: the popover
-  material, Clear: the HUD material, darker and more see-through), rounded with a mask, the tint drawn over it as a
-  color layer. Being part of the window, the glass follows the window's alpha, fades, level, Spaces and every move
+  radius and the tint (macOS keeps a tint subtle; its alpha makes it subtler). macOS 13–15: `NSVisualEffectView`
+  blurring what is behind the window (Regular: the popover material, Clear: the HUD material, darker and more
+  see-through), rounded with a mask, the tint laid over it at 40 % of its alpha, so the glass leans toward it. Being part of the window, the glass follows the window's alpha, fades, level, Spaces and every move
   exactly (FrostedGlass, a separate window, fades in steps). Glass counts as a solid part of the skin: the skin's
   drawing puts a fill no one can see (alpha 1/255) over it, so clicks, drags, hover and mouse actions work on glass
   even where the skin draws nothing; elsewhere, fully transparent pixels still let clicks through. With FrostedGlass
