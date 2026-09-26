@@ -218,6 +218,18 @@ enum GlassSelfTests {
             skin.execute("[!SetOption Card MacGlass None][!UpdateMeter Card][!Redraw]", from: nil)
             _ = tile()
             t.equal(thumbnails.renderCount, drawn + 3, "the glass is gone")
+            // The whole widget's tile too, although there is no further update (Update=-1).
+            func widget() -> NSImage? {
+                thumbnails.beginPass()
+                return thumbnails.widgetThumbnail(of: skin, panel: .black, dark: true)
+            }
+            _ = widget()
+            let widgetDrawn = thumbnails.renderCount
+            _ = widget()
+            t.equal(thumbnails.renderCount, widgetDrawn, "the widget: nothing changed")
+            skin.execute("[!SetOption Rainmeter MacGlass Clear][!Redraw]", from: nil)
+            _ = widget()
+            t.equal(thumbnails.renderCount, widgetDrawn + 1, "the skin's glass changed: the widget is drawn again")
             withExtendedLifetime(host) {}
         }
 

@@ -10,7 +10,7 @@ import DesksetCore
 /// Thumbnails are cached per layer with a signature of what they show (frame, visibility, values, text, colors, the
 /// loaded skin): a row asks again on every refresh, and only a layer that changed is drawn again — at most once per
 /// pass (`beginPass`), which the sidebar starts once per live tick, and only for rows on screen. The whole widget's
-/// picture follows each update of the widget (still at most once per pass).
+/// picture follows each update of the widget and each change of its glass (still at most once per pass).
 ///
 /// A hidden layer has no size (Hidden sets W and H to 0), so it has nothing to draw: its row keeps the picture the
 /// layer had while it was shown (the row dims it), else shows its kind's symbol in its own color.
@@ -70,7 +70,10 @@ final class LayerThumbnails {
     /// The whole widget, scaled to fit the tile.
     func widgetThumbnail(of skin: Skin, panel: NSColor, dark: Bool) -> NSImage? {
         let key = "\u{1F}widget"
+        // The glass as of the last redraw too: a `!SetOption` and `!Redraw` from a mouse action changes it between
+        // updates (a skin with `Update=-1` has no further update).
         let signature = "\(ObjectIdentifier(skin).hashValue)|\(skin.width)x\(skin.height)|\(skin.updateCount)|\(dark)|\(panel)"
+            + "|\(skin.glassRegions)"
         if let entry = cache[key], entry.signature == signature || drawnThisPass.contains(key) { return entry.image }
         let area = SkinRect(x: 0, y: 0, width: skin.width, height: skin.height)
         guard let image = Self.draw(area: area, panel: panel, { cg in SkinRenderer.draw(skin, in: cg) }) else { return nil }
