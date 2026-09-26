@@ -461,7 +461,6 @@ extension InspectorWindowController {
         func option(_ key: String) -> String { (m.rawOption(key) ?? "").trimmingCharacters(in: .whitespaces).lowercased() }
         let measureType = option("Measure")
         let type = measureType == "plugin" ? MeasureRegistry.normalizedPluginName(m.rawOption("Plugin") ?? "") : measureType
-        func percent(_ v: Double) -> String { "\(Int((v.isFinite ? v : 0).rounded()))%" }
         if m.disabled { return "Turned off" }
         // A picture's file (an album cover in a temporary folder) is shown as what it is, never as a path.
         let text = m.stringValue.trimmingCharacters(in: .whitespaces)
@@ -481,15 +480,15 @@ extension InspectorWindowController {
                 return levels.allSatisfy { $0.value == 0 } ? "Silent" : "Playing"
             }
             switch option("Type") {
-            case "band", "rms", "peak", "fft": return percent(m.value * 100)
+            case "band", "rms", "peak", "fft": return Self.percent(m.value * 100)
             case "bandfreq", "fftfreq": return Self.frequency(m.value)
             case "devicestatus": return m.value > 0 ? "On" : "Off"
             default: return m.stringValue
             }
         case "cpu":
-            return percent(m.value)
+            return Self.percent(m.value)
         case "powerplugin":
-            return ["", "percent"].contains(option("PowerState")) ? percent(m.value) : m.stringValue
+            return ["", "percent"].contains(option("PowerState")) ? Self.percent(m.value) : m.stringValue
         case "physicalmemory", "memory", "swapmemory":
             return Self.bytes(m.value, binary: Self.countsInBinary(m, in: skin, otherwise: true))
         case "freediskspace":
@@ -508,6 +507,13 @@ extension InspectorWindowController {
             if m.rawString != nil { return m.stringValue }
             return EditorStyle.number(m.value)
         }
+    }
+
+    /// 42.4 → "42%". Past Int's range, where converting to Int would trap, written with "%.0f" (a CPU usage with
+    /// `InvertMeasure=1` and `MaxValue=1e20` reads 1e20); within it as before, so -0.3 still reads "0%", not "-0%".
+    static func percent(_ v: Double) -> String {
+        let r = (v.isFinite ? v : 0).rounded()
+        return (Int(exactly: r).map(String.init) ?? String(format: "%.0f", r)) + "%"
     }
 
     /// 48.2 → "48 Hz", 13268 → "13.3 kHz". Whole kHz are written with "%.0f": a band's frequency can be past Int's

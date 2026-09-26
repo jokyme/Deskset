@@ -1082,6 +1082,55 @@ enum FriendlySidebarSelfTests {
                     "the centre of one band from 20 Hz to 1e300 Hz: \(value("MeasureFrequency") ?? "")")
         }
 
+        t.suite("App: friendly sidebar: live percentages past Int's range") {
+            // InvertMeasure=1 reads MaxValue minus the value plus MinValue, so a huge MaxValue or MinValue puts a CPU
+            // usage, a sound level or a battery charge past Int's range: converted to Int, each trapped as soon as the
+            // Live Data tab showed it. Values Int can hold read as before, negative zero too.
+            t.equal([42.4, 99.5, -0.3, .nan, 1e20].map(InspectorWindowController.percent),
+                    ["42%", "100%", "0%", "0%", "100000000000000000000%"])
+            FriendlyFixtures.fakeDevice(t)
+            guard let (_, editor) = try openWidget(t, """
+                [Rainmeter]
+                [MeasureCPU]
+                Measure=CPU
+                InvertMeasure=1
+                MaxValue=1e20
+                [MeasureBattery]
+                Measure=Plugin
+                Plugin=PowerPlugin
+                InvertMeasure=1
+                MinValue=-1e20
+                [MeasureSound]
+                Measure=Plugin
+                Plugin=AudioLevel
+                [MeasureLevel]
+                Measure=Plugin
+                Plugin=AudioLevel
+                Parent=MeasureSound
+                Type=RMS
+                InvertMeasure=1
+                MaxValue=1e20
+                [MeterCPU]
+                Meter=String
+                MeasureName=MeasureCPU
+                [MeterBattery]
+                Meter=String
+                MeasureName=MeasureBattery
+                Y=20
+                [MeterLevel]
+                Meter=String
+                MeasureName=MeasureLevel
+                Y=40
+                """) else { return }
+            editor.selectSidebarTab(.data)
+            func value(_ name: String) -> String? {
+                editor.sidebarItem(forSection: name).flatMap { cell(editor, $0)?.detail.stringValue }
+            }
+            t.equal(value("MeasureCPU"), "100000000000000000000%", "1e20 minus the CPU usage")
+            t.equal(value("MeasureBattery"), "-100000000000000000000%", "100 minus the charge minus 1e20")
+            t.equal(value("MeasureLevel"), "10000000000000000000000%", "1e20 minus the level, in %")
+        }
+
         t.suite("App: friendly sidebar: menus and rows follow Show Rainmeter Details") {
             guard let (app, editor) = try visualizer(t) else { return }
             editor.selectSidebarTab(.data)
