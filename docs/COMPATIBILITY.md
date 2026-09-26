@@ -654,7 +654,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   transparent pixels pass to what is behind.
 - **Why:** AppKit hit-tests borderless transparent windows by pixel alpha.
 - **Skin impact:** a meter with an invisible `SolidColor=0,0,0,1` catches clicks, as on Windows. Glass (`MacGlass`,
-  [§6.8](#68-deskset-extensions)) catches clicks too.
+  [§6.8](#68-deskset-extensions)) catches clicks too, for its meter's own mouse actions.
 - **Status:** identical
 
 ### 6.6 Actions and mouse
@@ -768,7 +768,9 @@ that uses them still loads there, only without the effect.
   (`NSGlassEffectView`) with the style, corners and tint. macOS 13–15: a blur of what is behind the window
   (`NSVisualEffectView`; Regular = popover material, Clear = HUD material), rounded, the tint laid over it. The glass
   follows the window's alpha, fades, level and moves exactly. It counts as a solid part of the skin: clicks, drags and
-  hover work on it even where the skin draws nothing. FrostedGlass's rounded corners cut it off too.
+  hover work on it even where the skin draws nothing, and a meter's mouse actions, hover actions and tooltip work on
+  all of its glass (a Button's `ButtonCommand` still needs the image's opaque pixels). FrostedGlass's rounded corners
+  cut it off too.
   `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15 glass on macOS 26 for comparison.
 - **Why:** Liquid Glass exists only on macOS 26.
 - **Skin impact:** the glass looks different before macOS 26 (a frosted blur without Liquid Glass's lensing and shine).

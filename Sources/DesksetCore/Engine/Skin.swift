@@ -199,7 +199,18 @@ public final class Skin {
     public private(set) var outsidePointerNeeds = OutsidePointerNeeds()
     /// Where the host puts glass (`MacGlass`, see Glass.swift), as of the last redraw request; the host hears of every
     /// change (`SkinHost.skinGlassRegionsChanged`).
-    public private(set) var glassRegions: [GlassRegion] = []
+    public private(set) var glassRegions: [GlassRegion] = [] {
+        didSet {
+            shownGlass = Dictionary(glassRegions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+    /// `glassRegions` by id (a meter's name): the mouse lookups ask it for every meter (`Meter.isOnGlass`).
+    private var shownGlass: [String: GlassRegion] = [:]
+
+    /// The glass shown behind `meter` now (in `glassRegions`), or nil.
+    func shownGlassRegion(of meter: Meter) -> GlassRegion? {
+        shownGlass.isEmpty ? nil : shownGlass[meter.name]
+    }
     private var sizeComputed = false
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []

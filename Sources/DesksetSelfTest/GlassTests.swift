@@ -392,6 +392,120 @@ func runGlassTests(_ t: TestRunner) {
         t.equal(region(skin, "Missing")?.rect, skin.meter(named: "Missing")?.frame, "no Shape at all")
     }
 
+    t.suite("Glass: a region's shape for the mouse") {
+        let r = GlassRegion(id: "A", rect: SkinRect(x: 0, y: 0, width: 100, height: 50), cornerRadius: 10)
+        t.check(r.contains(x: 50, y: 25))
+        t.check(r.contains(x: 10, y: 10) && r.contains(x: 3, y: 3), "inside the corner's circle")
+        t.check(!r.contains(x: 2, y: 2) && !r.contains(x: 98, y: 48), "outside it")
+        t.check(r.contains(x: 0, y: 25) && r.contains(x: 50, y: 0), "the straight edges")
+        t.check(!r.contains(x: 100, y: 25) && !r.contains(x: 50, y: 50), "the far edges are outside, like a frame's")
+        t.check(!r.contains(x: -1, y: 25))
+        let square = GlassRegion(id: "B", rect: SkinRect(x: 10, y: 10, width: 20, height: 20))
+        t.check(square.contains(x: 10, y: 10) && square.contains(x: 29.9, y: 29.9))
+        var cut = r
+        cut.clip = SkinRect(x: 0, y: 0, width: 40, height: 50)
+        t.check(cut.contains(x: 30, y: 25) && !cut.contains(x: 60, y: 25), "cut off at the clip")
+    }
+
+    t.suite("Glass: the glass is part of its meter for the mouse") {
+        // The skin window catches the mouse wherever glass is shown, so the meter's own mouse actions, hover, tooltip
+        // and cursor must work there too, even where the meter draws nothing.
+        let host = GlassAlphaHost()
+        host.imageSizes = ["Btn.png": (60, 20)]
+        host.alpha = { _, x, _ in x % 20 >= 10 ? 0 : 255 }  // the right half of every frame is transparent
+        let (skin, _) = try makeSkin(t, """
+        [Variables]
+        Clicked=-
+        Over=-
+        [Card]
+        Meter=Shape
+        Shape=Rectangle 0,0,200,100,20 | Fill Color 255,255,255,0 | StrokeWidth 0
+        MacGlass=Regular
+        LeftMouseUpAction=[!SetVariable Clicked card]
+        MouseOverAction=[!SetVariable Over card]
+        ToolTipText=Card tip
+        [Oval]
+        Meter=Shape
+        Y=120
+        Shape=Ellipse 50,25,50,25 | Fill Color 255,0,0 | StrokeWidth 0
+        MacGlass=Regular
+        LeftMouseUpAction=[!SetVariable Clicked oval]
+        [Moved]
+        Meter=Image
+        Y=200
+        W=50
+        H=50
+        TransformationMatrix=1;0;0;1;100;0
+        MacGlass=Clear
+        LeftMouseUpAction=[!SetVariable Clicked moved]
+        [Box]
+        Meter=Shape
+        X=300
+        Shape=Rectangle 0,0,100,100 | Fill Color 255,255,255,0 | StrokeWidth 0
+        [Inner]
+        Meter=Image
+        Container=Box
+        X=80
+        Y=10
+        W=40
+        H=20
+        MacGlass=Regular
+        LeftMouseUpAction=[!SetVariable Clicked inner]
+        [Btn]
+        Meter=Button
+        X=300
+        Y=200
+        ButtonImage=Btn.png
+        ButtonCommand=[!SetVariable Clicked command]
+        MacGlass=Regular
+        """, host: host)
+        skin.update()
+        func click(_ x: Double, _ y: Double) -> String? {
+            skin.setVariable("Clicked", "-")
+            skin.mouseEvent(.leftDown, x: x, y: y)
+            skin.mouseEvent(.leftUp, x: x, y: y)
+            return skin.variable("Clicked")
+        }
+        let card = skin.meter(named: "Card")!
+        t.check(!card.hitTest(x: 100, y: 50), "a transparent fill: the shape itself is not hit")
+        t.check(card.isOnGlass(x: 100, y: 50) && card.isHit(x: 100, y: 50), "its glass is")
+        t.equal(click(100, 50), "card", "the card's action runs on its glass")
+        t.check(skin.hasAction(.leftUp, x: 100, y: 50))
+        t.equal(skin.toolTipInfo(at: 100, 50)?.text, "Card tip")
+        t.equal(skin.mouseCursorName(at: 100, 50), "HAND")
+        skin.mouseMoved(x: 100, y: 50)
+        t.equal(skin.variable("Over"), "card", "MouseOverAction")
+        t.check(!card.isHit(x: 2, y: 2), "outside the glass's rounded corner")
+        t.equal(click(2, 2), "-")
+        t.equal(click(80, 110), "-", "between the pieces of glass")
+
+        let oval = skin.meter(named: "Oval")!
+        t.check(!oval.hitTest(x: 2, y: 122), "the frame's corner is outside the ellipse")
+        t.equal(click(2, 122), "oval", "but on the glass, which covers the frame")
+        t.equal(click(50, 145), "oval")
+
+        t.equal(click(125, 225), "moved", "glass moved by the matrix")
+        t.equal(click(25, 225), "moved", "the untransformed frame still counts, as without glass")
+
+        t.equal(click(390, 20), "inner", "content: on its glass inside the container, although the container is not hit")
+        t.equal(click(410, 20), "-", "the glass is cut off at the container's frame, and so is the content")
+
+        t.equal(click(315, 205), "-", "a Button's command still ignores its transparent pixels, glass or not")
+        t.equal(click(305, 205), "command")
+
+        // The glass shown counts: turned off, it no longer catches the mouse; turned on, from the next redraw.
+        skin.execute("[!SetOption Card MacGlass None][!UpdateMeter Card][!Redraw]", from: nil)
+        t.check(!card.isHit(x: 100, y: 50))
+        t.equal(click(100, 50), "-")
+        t.equal(skin.toolTipInfo(at: 100, 50)?.text, nil)
+        skin.execute("[!SetOption Card MacGlass Regular][!UpdateMeter Card]", from: nil)
+        t.check(!card.isHit(x: 100, y: 50), "not shown before the redraw")
+        skin.execute("[!Redraw]", from: nil)
+        t.equal(click(100, 50), "card")
+        skin.execute("[!HideMeter Card][!Redraw]", from: nil)
+        t.equal(click(100, 50), "-", "a hidden meter has no glass")
+    }
+
     t.suite("Glass: follows DynamicVariables and !SetOption") {
         let (skin, host) = try makeSkin(t, """
         [Variables]
@@ -525,5 +639,15 @@ func runGlassTests(_ t: TestRunner) {
         skin.update()
         t.equal(host.glassChanges.count, 0)
         t.equal(skin.glassRegions, [])
+    }
+}
+
+/// A host that answers pixel alpha (Button images).
+private final class GlassAlphaHost: FakeHost, SkinImageQueries {
+    /// Alpha by (file name, x, y); nil = unknown (opaque).
+    var alpha: ((String, Int, Int) -> Double?)?
+    func imageExifOrientation(atPath path: String) -> Int { 1 }
+    func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
+        alpha?((path as NSString).lastPathComponent, x, y)
     }
 }

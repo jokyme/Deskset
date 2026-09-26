@@ -94,6 +94,19 @@ public struct GlassRegion: Equatable {
     /// The most regions one skin gets (judgment: every piece of glass is a view the window server renders on every
     /// frame; a skin with thousands of glass meters must not bring the Mac to a crawl). Later meters get none.
     public static let maxRegions = 64
+
+    /// Whether the point (skin coordinates) is on the glass: inside its rectangle with the rounded corners (the shape
+    /// the host shows) and inside `clip`.
+    public func contains(x px: Double, y py: Double) -> Bool {
+        guard rect.contains(x: px, y: py), clip?.contains(x: px, y: py) ?? true else { return false }
+        let r = min(cornerRadius, rect.width / 2, rect.height / 2)
+        guard r > 0 else { return true }
+        // Outside the corner squares the rectangle holds; inside one, the corner's circle does.
+        let cx = min(max(px, rect.x + r), rect.maxX - r)
+        let cy = min(max(py, rect.y + r), rect.maxY - r)
+        let dx = px - cx, dy = py - cy
+        return dx * dx + dy * dy <= r * r
+    }
 }
 
 extension Meter {
@@ -129,6 +142,14 @@ extension Meter {
         let limit = min(rect.width, rect.height) / 2
         return GlassRegion(id: name, rect: rect, cornerRadius: min(max(radius ?? 0, 0), limit), style: glass.style,
                            tint: glass.tint, clip: clip)
+    }
+
+    /// Whether the point (skin coordinates) is on the glass shown behind this meter (`Skin.glassRegions`, as of the
+    /// last redraw: what the skin window shows). The window catches the mouse on glass, so the glass is part of the
+    /// meter for its mouse actions, hover, tooltip and cursor (`Meter.isHit`), even where the meter draws nothing (a
+    /// Shape with a transparent fill, the corners around an Ellipse, a meter moved by a TransformationMatrix).
+    public func isOnGlass(x: Double, y: Double) -> Bool {
+        skin.shownGlassRegion(of: self)?.contains(x: x, y: y) ?? false
     }
 
     /// Reads the meter's `MacGlass…` options (see `Meter.readOptions`).

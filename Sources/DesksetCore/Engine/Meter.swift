@@ -145,13 +145,19 @@ open class Meter: SkinSection {
     /// transparent areas if there is not some other meter behind the image" (the window itself lets clicks on fully
     /// transparent pixels through). Content outside its container "in effect doesn't exist", also for the mouse: the
     /// container must be visible and hit (`hitTest`) there too.
+    ///
+    /// The meter's glass (`MacGlass`, a Deskset extension; `isOnGlass`) is hit too: the skin window catches the mouse
+    /// there, so it is part of the meter wherever it is shown (already cut off at a container's frame), except for a
+    /// Button's own reaction, which follows the pixels of its image "at all times".
     public func isHit(x: Double, y: Double) -> Bool {
         isHit(x: x, y: y, precise: !handlesMouseItself)
     }
 
     /// `isHit` with the meter's own area: `hitTest` when `precise`, otherwise the frame rectangle.
     public func isHit(x: Double, y: Double, precise: Bool) -> Bool {
-        guard !hidden, precise ? hitTest(x: x, y: y) : frame.contains(x: x, y: y) else { return false }
+        guard !hidden else { return false }
+        if !(precise && handlesMouseItself), isOnGlass(x: x, y: y) { return true }
+        guard precise ? hitTest(x: x, y: y) : frame.contains(x: x, y: y) else { return false }
         if let container {
             return !container.hidden && container.hitTest(x: x, y: y)
         }

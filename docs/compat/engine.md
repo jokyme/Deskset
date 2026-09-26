@@ -642,7 +642,7 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   mouse; clicks on fully transparent pixels of the window are left to macOS, which passes them to what is behind.
 - Why: AppKit hit-tests borderless transparent windows by pixel alpha.
 - Skin impact: a meter with an invisible SolidColor=0,0,0,1 background catches clicks, as on Windows. Glass
-  (`MacGlass`, §9) catches clicks too.
+  (`MacGlass`, §9) catches clicks too, for its meter's own mouse actions.
 - Status: identical
 
 ---
@@ -798,7 +798,11 @@ that uses them still loads there, only without the effect.
   see-through), rounded with a mask, the tint laid over it at 40 % of its alpha, so the glass leans toward it. Being part of the window, the glass follows the window's alpha, fades, level, Spaces and every move
   exactly (FrostedGlass, a separate window, fades in steps). Glass counts as a solid part of the skin: the skin's
   drawing puts a fill no one can see (alpha 1/255) over it, so clicks, drags, hover and mouse actions work on glass
-  even where the skin draws nothing; elsewhere, fully transparent pixels still let clicks through. With FrostedGlass
+  even where the skin draws nothing; elsewhere, fully transparent pixels still let clicks through. The glass is also
+  part of its meter for the mouse: the meter's mouse actions, hover actions, tooltip and cursor work on all of the
+  glass shown for it (a Shape with a transparent fill, the corners of the frame around an Ellipse, glass moved by a
+  `TransformationMatrix`, content's glass up to its container's frame), from the redraw that shows it; a Button's
+  `ButtonCommand` and button states still follow only the opaque pixels of its image. With FrostedGlass
   rounded corners, the glass is cut off by the same rounded rectangle. `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15
   glass on macOS 26, to compare the two.
 - Why: Liquid Glass exists only on macOS 26; the visual-effect materials are the closest look before it.

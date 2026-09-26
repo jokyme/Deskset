@@ -595,7 +595,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Mac：** meter 的矩形区域接收鼠标（Shape：其实心部分；Button：其不透明像素）；点击完全透明的像素会传给后面的窗口。
 - **原因：** AppKit 对无边框透明窗口按像素 alpha 做点击检测。
 - **对皮肤的影响：** 带有不可见 `SolidColor=0,0,0,1` 的 meter 可以接收点击，与 Windows 相同。玻璃（`MacGlass`，
-  [§6.8](#68-deskset-扩展)）也能接收点击。
+  [§6.8](#68-deskset-扩展)）也能接收点击，并交给它所属 meter 的鼠标动作。
 - **状态：** 完全一致
 
 ### 6.6 动作与鼠标
@@ -701,7 +701,8 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 - **Mac：** 玻璃是皮肤窗口的一部分，位于皮肤所绘内容之下。macOS 26 及以上：Liquid Glass（`NSGlassEffectView`），带样式、
   圆角和着色。macOS 13–15：对窗口后方内容的模糊（`NSVisualEffectView`；Regular = 弹出框材质，Clear = HUD 材质），带圆角，
   着色叠加在上面。玻璃会精确跟随窗口的透明度、淡入淡出、层级和移动。它算作皮肤的实心部分：即使皮肤在那里什么也没画，
-  点击、拖动和悬停也都有效。FrostedGlass 的圆角同样会裁剪玻璃。设置 `DESKSET_LEGACY_GLASS=1` 可以在 macOS 26 上显示
+  点击、拖动和悬停也都有效；meter 的鼠标动作、悬停动作和提示在它的整块玻璃上都有效（Button 的 `ButtonCommand` 仍只响应
+  图片的不透明像素）。FrostedGlass 的圆角同样会裁剪玻璃。设置 `DESKSET_LEGACY_GLASS=1` 可以在 macOS 26 上显示
   macOS 13–15 的玻璃，便于比较。
 - **原因：** Liquid Glass 只存在于 macOS 26。
 - **对皮肤的影响：** macOS 26 之前玻璃的外观不同（只有磨砂模糊，没有 Liquid Glass 的折射和高光）。
