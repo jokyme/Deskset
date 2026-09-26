@@ -594,7 +594,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Windows：** 皮肤中完全透明的像素不响应点击。
 - **Mac：** meter 的矩形区域接收鼠标（Shape：其实心部分；Button：其不透明像素）；点击完全透明的像素会传给后面的窗口。
 - **原因：** AppKit 对无边框透明窗口按像素 alpha 做点击检测。
-- **对皮肤的影响：** 带有不可见 `SolidColor=0,0,0,1` 的 meter 可以接收点击，与 Windows 相同。
+- **对皮肤的影响：** 带有不可见 `SolidColor=0,0,0,1` 的 meter 可以接收点击，与 Windows 相同。玻璃（`MacGlass`，
+  [§6.8](#68-deskset-扩展)）也能接收点击。
 - **状态：** 完全一致
 
 ### 6.6 动作与鼠标
@@ -657,6 +658,60 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   500 条不同的“只记录一次”消息和提示，最多 256 个待执行的 `!Delay`。
 - **原因：** 恶意或错误的公式不能耗尽内存或让 App 崩溃。
 - **对皮肤的影响：** 对真实的皮肤没有影响。
+- **状态：** 仅 Mac
+
+### 6.8 Deskset 扩展
+
+Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
+加载，只是没有这些效果。
+
+#### MacGlass：皮肤或 meter 背后的玻璃
+- **Windows：** 没有对应功能（Rainmeter 忽略这些选项）。
+- **Mac：** 在 `[Rainmeter]` 中写 `MacGlass=None|Regular|Clear`（默认 None）会在整个皮肤背后放一块玻璃；写在任意 meter
+  上则放在该 meter 的外框背后（含 Padding）。`MacGlassCornerRadius=` 设置圆角（单位为点，默认 0，最多为短边的一半），
+  `MacGlassTint=` 设置着色（任意颜色写法）。玻璃位于皮肤所绘制的一切内容之下：先是皮肤自身的玻璃，再按文件顺序排列各
+  meter 的玻璃。每个皮肤最多 64 块玻璃。
+- **原因：** Mac 的玻璃外观（macOS 26 上的 Liquid Glass）在 Rainmeter 中没有对应选项。
+- **对皮肤的影响：** 不使用这些选项的皮肤不受影响。
+- **状态：** 仅 Mac
+
+#### Shape meter、容器、隐藏和变换过的 meter 上的 MacGlass
+- **Windows：** 没有对应功能。
+- **Mac：** 如果 Shape meter 的第一个形状是 `Rectangle`，玻璃就取这个矩形及其圆角（RadiusX 与 RadiusY 不同时取较小者）；
+  `Offset` 会带着玻璃一起移动，而 `Rotate`、`Scale`、`Skew`、其他类型的第一个形状或 Combine 则使用 meter 的外框。
+  `MacGlassCornerRadius` 优先于形状自身的圆角。隐藏的 meter、宽或高为零的 meter、位于隐藏容器中的 meter，以及被
+  `TransformationMatrix` 旋转、缩放或倾斜的 meter 都没有玻璃。容器内容的玻璃会在容器的外框处被裁掉（按矩形裁剪，而不是按
+  容器的像素）；容器自身的玻璃会显示出来。
+- **原因：** 每块玻璃都是一个圆角矩形，无法沿路径或像素遮罩裁剪。
+- **对皮肤的影响：** 可以把玻璃放在 Rectangle 形状背后，或给 meter 单独设置 `MacGlassCornerRadius`。
+- **状态：** 仅 Mac
+
+#### MacGlass 跟随变量、`!SetOption` 和重绘
+- **Windows：** 除右键菜单外，`[Rainmeter]` 的选项都是固定的。
+- **Mac：** meter 上的这些选项与其他选项一样读取（DynamicVariables、`!SetOption`），因此皮肤运行时可以打开、关闭或修改
+  玻璃。`[Rainmeter]` 中的这些选项在每次重绘时都会重新读取并解析变量（与 `ContextTitle` 相同），并且支持
+  `!SetOption Rainmeter MacGlass…`。修改在下一次重绘（一次更新、`!Redraw`……）时生效，与 `!HideMeter` 相同。
+- **原因：** 让玻璃无需刷新就能随皮肤变化。
+- **对皮肤的影响：** 无。
+- **状态：** 仅 Mac
+
+#### 玻璃的显示方式、点击与 FrostedGlass
+- **Windows：** 没有对应功能。
+- **Mac：** 玻璃是皮肤窗口的一部分，位于皮肤所绘内容之下。macOS 26 及以上：Liquid Glass（`NSGlassEffectView`），带样式、
+  圆角和着色。macOS 13–15：对窗口后方内容的模糊（`NSVisualEffectView`；Regular = 弹出框材质，Clear = HUD 材质），带圆角，
+  着色叠加在上面。玻璃会精确跟随窗口的透明度、淡入淡出、层级和移动。它算作皮肤的实心部分：即使皮肤在那里什么也没画，
+  点击、拖动和悬停也都有效。FrostedGlass 的圆角同样会裁剪玻璃。设置 `DESKSET_LEGACY_GLASS=1` 可以在 macOS 26 上显示
+  macOS 13–15 的玻璃，便于比较。
+- **原因：** Liquid Glass 只存在于 macOS 26。
+- **对皮肤的影响：** macOS 26 之前玻璃的外观不同（只有磨砂模糊，没有 Liquid Glass 的折射和高光）。
+- **状态：** 仅 Mac
+
+#### 没有窗口时的 MacGlass
+- **Windows：** 没有对应功能。
+- **Mac：** `--render`、Skin Studio 的画布和缩略图会画一个替代图形：半透明的白色填充（着色叠加其上）加一条细边，形状与
+  玻璃相同，并按 `--render` 的 `--background` 或 Studio 的背景深浅绘制。
+- **原因：** 图片背后没有可以透过去看的东西。
+- **对皮肤的影响：** `--render` 生成的图片中看不到真正的玻璃。
 - **状态：** 仅 Mac
 
 ---
@@ -929,7 +984,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）绘制，并输出
   兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
-  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果；WebParser 的 `file://` 只能
+  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
+  （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
 - **原因：** 无需权限提示或可见屏幕即可得到可重复的截图。
@@ -1778,7 +1834,7 @@ RunCommand、Quote、FolderInfo、FileView、RecycleManager、ResMon、WindowMes
   和边框。
 - **Mac：** 在皮肤后面的子窗口中使用 macOS 的毛玻璃效果（NSVisualEffectView），跟随皮肤的位置、层级和透明度。Blur → HUD
   材质，Acrylic → 弹出框材质 + 着色，Mica → 窗口下方背景，MicaAcrylic → 侧边栏 + 着色，MicaAlt → 窗口背景；Backdrop 类型 =
-  纯色。8 / 8 / 4 点的圆角也会裁剪皮肤；方角边框没有阴影；DarkMode 强制深色外观；MicaOnFocus 在皮肤不是主窗口时显示平面
+  纯色。8 / 8 / 4 点的圆角也会裁剪皮肤（及其 MacGlass）；方角边框没有阴影；DarkMode 强制深色外观；MicaOnFocus 在皮肤不是主窗口时显示平面
   材质；`Effect=` 被忽略；“降低透明度”会把模糊变为纯色。所有命令都可用。`!DisableMeasure` 会保留效果直到刷新（请用
   `DisableBlur`）。
 - **原因：** macOS 没有 DWM 效果；材质是原生的对应物。

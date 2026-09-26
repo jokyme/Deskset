@@ -653,7 +653,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** meter rectangles catch the mouse (Shape: its solid parts; Button: its opaque pixels); clicks on fully
   transparent pixels pass to what is behind.
 - **Why:** AppKit hit-tests borderless transparent windows by pixel alpha.
-- **Skin impact:** a meter with an invisible `SolidColor=0,0,0,1` catches clicks, as on Windows.
+- **Skin impact:** a meter with an invisible `SolidColor=0,0,0,1` catches clicks, as on Windows. Glass (`MacGlass`,
+  [§6.8](#68-deskset-extensions)) catches clicks too.
 - **Status:** identical
 
 ### 6.6 Actions and mouse
@@ -721,6 +722,63 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   messages and notes per skin and 256 pending `!Delay`s.
 - **Why:** hostile or broken formulas must not exhaust memory or crash the app.
 - **Skin impact:** none for real skins.
+- **Status:** Mac-only
+
+### 6.8 Deskset extensions
+
+Options Rainmeter does not have. Their names start with `Mac`; Rainmeter ignores options it does not know, so a skin
+that uses them still loads there, only without the effect.
+
+#### MacGlass: glass behind a skin or behind a meter
+- **Windows:** no counterpart (Rainmeter ignores the options).
+- **Mac:** `MacGlass=None|Regular|Clear` (default None) in `[Rainmeter]` puts glass behind the whole skin; on any meter
+  it puts glass behind the meter's frame (Padding included). `MacGlassCornerRadius=` rounds it (points, default 0, at
+  most half the shorter side) and `MacGlassTint=` tints it (any color). The glass is behind everything the skin draws:
+  the skin's own glass first, then the meters' in file order. At most 64 pieces of glass per skin.
+- **Why:** the Mac's glass look (Liquid Glass on macOS 26) has no Rainmeter option.
+- **Skin impact:** none for skins that do not use it.
+- **Status:** Mac-only
+
+#### MacGlass on Shape meters, containers, hidden and transformed meters
+- **Windows:** no counterpart.
+- **Mac:** a Shape meter whose first shape is a `Rectangle` gets glass in that rectangle, with its corners (the smaller
+  radius when RadiusX and RadiusY differ); an `Offset` moves it along, while `Rotate`, `Scale`, `Skew`, another first
+  shape or a Combine use the meter's frame. `MacGlassCornerRadius` wins over the shape's corners. Hidden meters, meters
+  of zero size, meters in a hidden container and meters turned, scaled or skewed by a `TransformationMatrix` have no
+  glass. Content of a container has its glass cut off at the container's frame (a rectangle, not the container's
+  pixels); a container's own glass is shown.
+- **Why:** a piece of glass is a rounded rectangle; it cannot follow a path or a pixel mask.
+- **Skin impact:** put glass behind a Rectangle shape, or give a meter its own `MacGlassCornerRadius`.
+- **Status:** Mac-only
+
+#### MacGlass follows variables, `!SetOption` and redraws
+- **Windows:** `[Rainmeter]` options are fixed apart from the context menu.
+- **Mac:** on meters the options are read like any option (DynamicVariables, `!SetOption`), so glass can be turned on,
+  off or changed while the skin runs. The `[Rainmeter]` options are read again at every redraw with variables resolved,
+  like `ContextTitle`, and `!SetOption Rainmeter MacGlass…` works. A change shows at the next redraw (an update,
+  `!Redraw`…), like `!HideMeter`.
+- **Why:** glass that reacts to the skin without a refresh.
+- **Skin impact:** none.
+- **Status:** Mac-only
+
+#### How the glass is shown, clicks and FrostedGlass
+- **Windows:** no counterpart.
+- **Mac:** the glass is part of the skin window, under the skin's drawing. macOS 26 and later: Liquid Glass
+  (`NSGlassEffectView`) with the style, corners and tint. macOS 13–15: a blur of what is behind the window
+  (`NSVisualEffectView`; Regular = popover material, Clear = HUD material), rounded, the tint laid over it. The glass
+  follows the window's alpha, fades, level and moves exactly. It counts as a solid part of the skin: clicks, drags and
+  hover work on it even where the skin draws nothing. FrostedGlass's rounded corners cut it off too.
+  `DESKSET_LEGACY_GLASS=1` shows the macOS 13–15 glass on macOS 26 for comparison.
+- **Why:** Liquid Glass exists only on macOS 26.
+- **Skin impact:** the glass looks different before macOS 26 (a frosted blur without Liquid Glass's lensing and shine).
+- **Status:** Mac-only
+
+#### MacGlass where there is no window
+- **Windows:** no counterpart.
+- **Mac:** `--render`, the Skin Studio's canvas and thumbnails draw a stand-in: a translucent white fill (the tint over
+  it) with a hairline edge, in the glass's shape, drawn for `--render`'s `--background` or the Studio's backdrop.
+- **Why:** nothing is behind an image to see through.
+- **Skin impact:** `--render` images do not show real glass.
 - **Status:** Mac-only
 
 ---
@@ -1020,7 +1078,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   (default 2) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track). FrostedGlass blur is not visible in the image, and WebParser's `file://` limit to the Skins and settings
+  track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
+  ([§6.8](#68-deskset-extensions)), and WebParser's `file://` limit to the Skins and settings
   folders ([§11.1](#111-webparser)) applies in the app only. `Deskset --help` (or `-h`) lists every command-line mode;
   an unknown `--` option prints that list and exits with status 2 instead of starting the menu bar app.
 - **Why:** repeatable screenshots without prompts or a visible screen.
@@ -1954,7 +2013,8 @@ These plugins are rebuilt on Core Audio, AppleScript (Music / Spotify), CoreWLAN
   and borders on Windows 11.
 - **Mac:** macOS vibrancy (NSVisualEffectView) in a child window behind the skin, following its frame, level and
   alpha. Blur → HUD material, Acrylic → popover + tint, Mica → under-window background, MicaAcrylic → sidebar + tint,
-  MicaAlt → window background; Backdrop types = a plain color. Rounded corners 8 / 8 / 4 points clip the skin too;
+  MicaAlt → window background; Backdrop types = a plain color. Rounded corners 8 / 8 / 4 points clip the skin (and its
+  MacGlass) too;
   square borders have no shadow; DarkMode forces the dark appearance; MicaOnFocus shows the flat material while the
   skin is not the key window; `Effect=` is ignored; "Reduce transparency" turns the blur solid. All commands work.
   `!DisableMeasure` keeps the effect until refresh (use `DisableBlur`).
