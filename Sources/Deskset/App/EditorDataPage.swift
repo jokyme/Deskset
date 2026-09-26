@@ -280,7 +280,8 @@ extension InspectorWindowController {
     /// Band [6] of 16 (1-based), "Band 1 is the deepest bass."
     func bandRow(_ ctx: PropertyContext, m: Measure, skin: Skin) -> InspectorRow? {
         guard ctx.form == .literal, ctx.variable == nil else { return nil }
-        let index = Int(OptionValue.number(ctx.isSet ? ctx.resolved : "0") ?? 0)
+        // As AudioLevel reads it (within ±1e9): converted as written, `BandIdx=1e20` would trap.
+        let index = AudioLevelChildOptions.index(ctx.isSet ? ctx.resolved : nil)
         let parent = m.rawOption("Parent").flatMap { skin.measure(named: $0) }
         let bands = Int(parent?.rawOption("Bands") ?? "") ?? 0
         let field = GeometryField("\(index + 1)")
