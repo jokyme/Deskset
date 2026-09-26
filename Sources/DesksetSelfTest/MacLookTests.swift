@@ -38,7 +38,7 @@ func runMacLookTests(_ t: TestRunner) {
         let symbol = MacSymbol(name: "cpu.fill")
         t.equal(symbol.path, "sf:cpu.fill?size=16&weight=regular&rendering=monochrome")
         t.check(MacSymbol.isSymbolPath(symbol.path))
-        t.check(!MacSymbol.isSymbolPath("/Users/x/sf:cpu.png"), "a file path is never a symbol path")
+        t.check(!MacSymbol.isSymbolPath("/Volumes/Data/sf:cpu.png"), "a file path is never a symbol path")
         t.equal(MacSymbol(path: symbol.path), symbol, "round trip")
         let styled = MacSymbol(name: "gauge.with.needle",
                                style: MacSymbol.Style(pointSize: 22.5, weight: .semibold, rendering: .hierarchical),
