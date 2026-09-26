@@ -1370,13 +1370,13 @@ enum MediaUITests {
                 t.equal(m.computeValue(), 1)
                 let backdrop = FrostedGlassBackdrop.backdrop(for: c)
                 t.check(backdrop != nil, "a backdrop is attached to the skin window")
-                t.equal(c.view.layer?.cornerRadius, 8, "the skin content is rounded")
-                t.check(c.view.layer?.masksToBounds == true)
+                t.equal(c.contentView.layer?.cornerRadius, 8, "the skin content is rounded")
+                t.check(c.contentView.layer?.masksToBounds == true)
                 t.check(backdrop?.effectWindow.isVisible == false, "headless: never shown")
                 t.equal(backdrop?.effectView.material, .popover)
                 m.execute(command: "ToggleBlur")
                 t.equal(m.computeValue(), 0)
-                t.equal(c.view.layer?.cornerRadius, 0, "disabled: no rounding")
+                t.equal(c.contentView.layer?.cornerRadius, 0, "disabled: no rounding")
                 m.execute(command: "EnableBlur")
                 m.execute(command: "DisableCorner")
                 t.equal(m.style.effectiveRadius, 0)
@@ -1395,7 +1395,7 @@ enum MediaUITests {
             measure = nil
             AppSelfTest.spin(timeout: 2) { FrostedGlassBackdrop.backdrop(for: c) == nil }
             t.check(FrostedGlassBackdrop.backdrop(for: c) == nil, "backdrop removed when the measure goes")
-            t.equal(c.view.layer?.cornerRadius, 0)
+            t.equal(c.contentView.layer?.cornerRadius, 0)
             c.stop()
         }
     }

@@ -71,7 +71,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext, let skin = controller?.skin else { return }
         ctx.clear(bounds)
-        SkinRenderer.draw(skin, in: ctx)
+        // The glass itself is behind this view (`SkinGlassViews`).
+        SkinRenderer.draw(skin, in: ctx, glass: .window)
     }
 
     override func updateTrackingAreas() {
@@ -476,7 +477,11 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
     let file: String
     private(set) var skin: Skin!
     private(set) var window: SkinPanel
+    /// The window's content view: the glass (`MacGlass`), then `view` in front of it.
+    let contentView: SkinContentView
     let view: SkinView
+    /// The glass behind the skin's drawing (`MacGlass`), in `contentView`.
+    let glass = SkinGlassViews()
     /// The skin's update clock, on the skin's executor.
     private var timer: SkinScheduledWork?
     private var hoverTimer: Timer?
@@ -519,6 +524,8 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         self.file = file
         self.app = app
         view = SkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+        contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+        contentView.addSubview(view)
         window = SkinController.makePanel()
         super.init()
 
@@ -528,7 +535,7 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         self.skin = skin
         try skin.load()
         // Wired up only once the skin loaded (NSWindow does not retain its delegate).
-        window.contentView = view
+        window.contentView = contentView
         window.delegate = self
         view.controller = self
         // Skins measured before these fonts existed drew their text with a fallback font. (Fonts also announces the
@@ -747,7 +754,8 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         panel.collectionBehavior = old.collectionBehavior
         panel.alphaValue = old.alphaValue
         old.delegate = nil
-        panel.contentView = view
+        // The skin's drawing and its glass move to the new panel together.
+        panel.contentView = contentView
         panel.delegate = self
         window = panel
         if old.isVisible && app.presentsWindows {
@@ -1083,6 +1091,13 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
 
     func skinOutsidePointerNeedsChanged(_ skin: Skin) {
         app.outsidePointer.needsChanged()
+    }
+
+    /// MacGlass: the glass views follow the engine's regions (asked on the main thread, right before the redraw that
+    /// shows the new layout).
+    func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {
+        guard !isStopped else { return }
+        glass.apply(regions, in: contentView, below: view)
     }
 
     /// The window gets the mouse while it is on screen and does not let the mouse through (ClickThrough, OnHover=Hide
