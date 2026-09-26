@@ -84,7 +84,7 @@ public struct MacSymbol: Hashable {
     }
 
     /// The symbol name of an image option value written `sf:<name>` (surrounding spaces and quotes allowed), nil for
-    /// anything else. `sf:` alone names the empty symbol, which does not exist.
+    /// anything else. `sf:` alone gives the empty name, which the image options treat as no image.
     public static func symbolName(in written: String) -> String? {
         var text = written.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.count >= 2, text.hasPrefix("\""), text.hasSuffix("\"") { text = String(text.dropFirst().dropLast()) }
@@ -178,6 +178,13 @@ extension Meter {
         skin.noteMissingSymbol(symbol, section: name)
     }
 
+    /// Takes back the note of a missing symbol the meter no longer shows (a measure's value named it, and now names
+    /// another picture). Nothing for a file, or a symbol the host has.
+    func withdrawMissingSymbol(_ path: String?) {
+        guard let path, let symbol = MacSymbol(path: path) else { return }
+        skin.removeIssue(Skin.missingSymbolNote(symbol, section: name))
+    }
+
     /// Meters that cannot draw symbols (Bitmap, Rotator, Histogram) note an `sf:` image option once and draw nothing.
     /// True when `written` names a symbol.
     func rejectSymbol(_ written: String, option: String) -> Bool {
@@ -199,8 +206,12 @@ extension Skin {
 
     /// See `Meter.noteMissingSymbol`.
     func noteMissingSymbol(_ symbol: MacSymbol, section: String) {
-        let message = "[\(section)] sf:\(symbol.name): there is no SF Symbol called “\(symbol.name)” on this Mac"
+        let message = Skin.missingSymbolNote(symbol, section: section)
         addIssue(message)
         logOnce(message, level: .warning)
+    }
+
+    static func missingSymbolNote(_ symbol: MacSymbol, section: String) -> String {
+        "[\(section)] sf:\(symbol.name): there is no SF Symbol called “\(symbol.name)” on this Mac"
     }
 }

@@ -405,7 +405,8 @@ public final class Skin {
         st.skinHeight = s.optionalDouble("SkinHeight").flatMap { $0.isFinite && $0 > 0 ? min($0, Skin.maxSide) : nil }
         st.dragMargins = insets(s.string("DragMargins"))
         let background = s.string("Background").trimmingCharacters(in: .whitespaces)
-        st.backgroundImage = background.isEmpty ? nil
+        // `sf:` alone names no symbol: no background, as for an empty name (`ImageOptions.filePath`).
+        st.backgroundImage = background.isEmpty || MacSymbol.symbolName(in: background)?.isEmpty == true ? nil
             : MacSymbol.path(for: background, style: MacSymbol.Style.read(from: s)) ?? imageFilePath(background, imagePath: "")
         // Manual default is 1 (transparent). Judgment: a skin that sets Background= without BackgroundMode shows the
         // image (mode 0) — otherwise the Background option would have no effect at all.

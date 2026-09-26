@@ -93,6 +93,11 @@ public final class ImageMeter: Meter {
         resolveImagePath()
         // Log a missing file once per path (only here: before the first update, bound measures are still empty).
         if imagePath != lastCheckedPath {
+            // A symbol name that came from a measure and changed: the old one's note goes (unless the mask shows it).
+            if let old = lastCheckedPath.flatMap({ MacSymbol(path: $0) }),
+               maskImagePath.flatMap({ MacSymbol(path: $0) })?.name != old.name {
+                withdrawMissingSymbol(lastCheckedPath)
+            }
             lastCheckedPath = imagePath
             if let imagePath, let host = skin.host, host.imageSize(atPath: imagePath) == nil {
                 // A symbol macOS does not have is a compatibility note, not a missing file.

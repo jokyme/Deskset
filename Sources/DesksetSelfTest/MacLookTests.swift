@@ -186,7 +186,8 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(missing.count, 1, "\(skin.issues)")
         t.check(missing.first?.contains("[Missing]") == true && missing.first?.contains("SF Symbol") == true)
         t.check(skin.issues.contains { $0.contains("[Rainmeter]") && $0.contains("no.such.background") }, "\(skin.issues)")
-        t.check(skin.issues.contains { $0.contains("[Empty]") }, "sf: alone names no symbol")
+        t.check(!skin.issues.contains { $0.contains("[Empty]") }, "sf: alone is no image, as an empty name: \(skin.issues)")
+        t.equal((skin.meter(named: "Empty") as? ImageMeter)?.imagePath, nil)
         t.equal(skin.meter(named: "Missing")?.frame.width, 0, "draws nothing")
         t.equal(host.logs.filter { $0.contains("no.such.symbol") }.count, 1, "logged once")
         t.check(host.logs.allSatisfy { !$0.contains("Unable to open image") }, "no missing-file message for a symbol")
@@ -197,6 +198,45 @@ func runMacLookTests(_ t: TestRunner) {
             t.check(skin.issues.contains { $0.hasPrefix("[\(section)] \(option)=sf:") && $0.contains("Image, Button and Bar") },
                     "\(section): \(skin.issues)")
         }
+    }
+
+    t.suite("Mac look: a symbol named by a measure is noted only while it is missing") {
+        // `sf:[MeasureIcon]` before the measure has a value is `sf:` — no image, no note — and a name that was missing
+        // and is now found takes its note back: a widget that works has no compatibility note.
+        let host = MacLookHost()
+        let (skin, _) = try makeSkin(t, """
+        [MeasureIcon]
+        Measure=String
+        String=
+        [Icon]
+        Meter=Image
+        ImageName=sf:[MeasureIcon]
+        DynamicVariables=1
+        [Template]
+        Meter=Image
+        MeasureName=MeasureIcon
+        ImageName=sf:%1
+        [Masked]
+        Meter=Image
+        MeasureName=MeasureIcon
+        ImageName=sf:%1
+        MaskImageName=sf:not.there
+        """, host: host)
+        skin.update()
+        t.equal(skin.issues.filter { !$0.contains("not.there") }, [], "empty: no note")
+        t.equal((skin.meter(named: "Icon") as? ImageMeter)?.imagePath, nil)
+        skin.execute("[!SetOption MeasureIcon String not.there]", from: nil)
+        skin.update()
+        t.equal(skin.issues.filter { $0.contains("not.there") }.count, 3, "a missing name: one note per meter \(skin.issues)")
+        skin.execute("[!SetOption MeasureIcon String cpu.fill]", from: nil)
+        skin.update()
+        t.equal(skin.issues, [Skin.missingSymbolNote(MacSymbol(name: "not.there"), section: "Masked")],
+                "found now: the notes go, but the mask still names the missing one")
+        t.equal((skin.meter(named: "Icon") as? ImageMeter)?.imagePath, MacSymbol(name: "cpu.fill").path)
+        t.equal((skin.meter(named: "Template") as? ImageMeter)?.imagePath, MacSymbol(name: "cpu.fill").path)
+        skin.execute("[!SetOption MeasureIcon String no.longer]", from: nil)
+        skin.update()
+        t.check(skin.issues.contains { $0.hasPrefix("[Icon] sf:no.longer") }, "missing again: noted again \(skin.issues)")
     }
 
     t.suite("Mac look: the editor knows the new options") {
