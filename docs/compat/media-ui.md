@@ -342,8 +342,9 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 - Mac (Deskset): from CoreWLAN. macOS returns network names only to apps with Location Services permission; Deskset asks
   for it the first time a skin with an SSID or LIST measure loads in the app. Without it SSID is "" (a notice is logged
   once, and the skin gets a compatibility note until Location Services are allowed) — use `Substitute="":"…"` for a
-  placeholder. No "connecting…" states (CoreWLAN reports only associated
-  networks).
+  placeholder. No "connecting…" states (CoreWLAN reports only associated networks). The permission is asked by the
+  app's one `LocationCenter`, which also serves the weather plugins' `Location=auto` (`weather.md`): at most one
+  question per launch, whichever kind of skin asks first; WiFiStatus never reads the location itself.
 - Why: macOS privacy (Sonoma and later).
 - Skin impact: the user sees a Location Services prompt; denying it hides network names only.
 - Status: emulated

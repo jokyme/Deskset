@@ -6,6 +6,8 @@ FolderInfo, RecycleManager, UsageMonitor, PerfMon, ResMon, SpeedFan, WindowMessa
 third-party Mouse plugin with Slider, its version 2, a stand-in for the third-party MSIAfterburner plugin, and
 Deskset's own MacSensors. The hardware sensors CoreTemp, SpeedFan, MSIAfterburner, MacSensors and some Performance
 Monitor counters read come from the app (`Sources/Deskset/Sensors/`, see [Hardware sensors](#hardware-sensors)).
+Deskset's weather and sun plugins, MacWeather and MacSun, are registered here as well; they are described in
+[weather.md](weather.md).
 AudioLevel, Win7Audio, AppVolume (audio.md) and NowPlaying,
 iTunes, WebNowPlaying, MediaKey, WiFiStatus, InputText, FrostedGlass, Chameleon, IsFullScreen, GetActiveTitle, SysColor
 (media-ui.md) need AppKit / Core Audio / CoreWLAN: the app implements and registers them at startup. The core plugins

@@ -8,7 +8,9 @@ menus, window / config / app bangs the engine hands to the host, the installer U
 Code: `Sources/Deskset/AppController.swift` (lifecycle, menus, sleep/wake), `SkinController.swift` (window, mouse,
 fades), `App/WindowGeometry.swift` (levels, keep on screen, snapping, visibility rules), `App/SkinBangs.swift`
 (host bangs), `App/SkinInstallFlow.swift` + `App/ManageWindowController.swift` (installer UI), `Fonts.swift`,
-`Plugins/FileViewIconWriter.swift`, `RenderCommand.swift`, `scripts/build-app.sh` (Info.plist).
+`Plugins/FileViewIconWriter.swift`, `RenderCommand.swift`, `Location/LocationCenter.swift` (Location Services),
+`Weather/WeatherWiring.swift` + `Weather/WeatherCommands.swift` (the weather service's wiring, the skin menu's credit,
+the weather reports), `scripts/build-app.sh` (Info.plist).
 Tests: `Deskset --self-test` (suites "App: …"; the ones added with this file: `Deskset --self-test "Info.plist"`,
 `"installing ZIP"`, `"font"`, `"FileView icons"`, `"audio capture is suspended"`, `"silence watchdog"`,
 `"FadeWindow"`, `"permission and player"`, `"taken back"`, `"command-line flags"`, `"appProvidedMeasures"`,
@@ -472,7 +474,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   | AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording (then restart Deskset) | — | levels read 0 |
   | AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | levels read 0 (tried again every 10 s) |
   | NowPlaying / iTunes / WebNowPlaying, RecycleManager Empty, FileView Properties | Automation (Music, Spotify, Finder) | `NSAppleEventsUsageDescription` | player shown as closed; Trash / Get Info do nothing |
-  | WiFiStatus SSID and LIST | Location Services | `NSLocationUsageDescription`, `NSLocationWhenInUseUsageDescription` | names empty |
+  | WiFiStatus SSID and LIST; MacWeather / MacSun `Location=auto` | Location Services (asked once per launch at most, reduced accuracy) | `NSLocationUsageDescription`, `NSLocationWhenInUseUsageDescription` (one text for both: weather and sun, then Wi-Fi names) | names empty; weather `Status` 5 |
   | Skins and scripts reading Desktop, Documents, Downloads, removable or network volumes | Files and Folders | `NSDesktopFolderUsageDescription`, `NSDocumentsFolderUsageDescription`, `NSDownloadsFolderUsageDescription`, `NSRemovableVolumesUsageDescription`, `NSNetworkVolumesUsageDescription` | the file reads fail |
   | WebParser / Ping to devices on the local network | Local Network | `NSLocalNetworkUsageDescription` | the request fails |
   | MediaKey media keys | Accessibility (never asked; granted by the user) | — | play / track keys reach Music and Spotify only |
@@ -490,7 +492,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): besides the log line, the skin gets a compatibility note when: the microphone is refused (Port=Input);
   on macOS 13 – 14.1 Screen Recording is missing; a system-audio stream carried nothing but digital silence over two
   looks 10 seconds apart while another app was playing sound (the usual sign of a refused System Audio Recording
-  permission, which macOS reports as silence); Location Services are off for a WiFiStatus SSID / LIST measure; Deskset
+  permission, which macOS reports as silence); Location Services are off for a WiFiStatus SSID / LIST measure or a
+  MacWeather / MacSun `Location=auto` measure (the weather note is taken back at the measure's next update once they
+  are allowed); Deskset
   may not control Music or Spotify; a MediaKey track key is sent without Accessibility (it reaches only Music and
   Spotify); RecycleManager `RecycleType=Size` cannot list the Trash (no Full Disk Access). Player names without a Mac
   version (Winamp, foobar2000, AIMP, WMP, MusicBee…) and WebNowPlaying (Deskset does not connect to its browser
@@ -529,12 +533,40 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none (developer tool).
 - Status: Deskset extension
 
+### `--system-report` and `--weather-report` (weather)
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): `Deskset --system-report` ends with a Weather section when weather is set up on the Mac — an active
+  skin writes a place in a MacWeather or MacSun measure, or Location Services are already allowed for Deskset: whether
+  weather is on, the User-Agent, the units `Units=Auto` gives, the place table, the disk cache, the Location Services
+  status (only the status: the report never reads the location and never makes macOS ask), and for each place in an
+  active skin how it resolves offline and today's sunrise and sunset. Otherwise one line says weather is not set up.
+  `Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]` makes one real request to MET
+  Norway with the real User-Agent (default place: the sample "Oslo, NO"; `auto` is refused, the report never uses this
+  Mac's location; nothing is read from or written to the weather cache) and prints the request, the response headers,
+  now, the next hours, the days, the sun and the credit; exit status 0 with data, 1 without, 2 for a wrong argument.
+  `--offline FILE [--now 2026-09-26T12:00:00Z]` reads a saved response instead (no network).
+- Why: checking the weather setup and MET Norway's answers without a skin.
+- Skin impact: none (developer tool).
+- Status: Deskset extension
+
+### MET Norway credit in the skin menu, weather settings
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): the right-click menu of every skin with a MacWeather measure has "Weather: Based on data from MET
+  Norway ↗" (opens api.met.no) and "Updated 12:05", after the skin's own items; the About window names MET Norway and
+  GeoNames. `defaults write app.deskset.Deskset WeatherEnabled -bool NO` turns weather requests off (read at every
+  use); `WeatherDebug -bool YES` adds the rounded coordinates of places written in skins (never this Mac's location)
+  and timings to the log. See `weather.md`.
+- Why: MET Norway's data is CC BY 4.0, and third-party skins may not credit it themselves.
+- Skin impact: none.
+- Status: Deskset extension
+
 ### Command-line flags
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): the binary's development modes are `--render`, `--self-test [filter]`, `--snapshot-ui`,
-  `--system-report` and `--make-icon`; `--help` / `-h` prints them (exit status 0). An argument starting with `--` that
-  is none of these flags or their options (`--out`, `--updates`, `--interval`, `--scale`, `--background`,
-  `--skins-dir`, `--dark`, `--appearance`, `--select`, `--size`, `--zoom`), or such an option without a mode, prints the usage to
+  `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`; `--help` / `-h` prints them (exit status
+  0). An argument starting with `--` that is none of these flags or their options (`--out`, `--updates`, `--interval`,
+  `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--select`, `--size`, `--zoom`, `--location`,
+  `--units`, `--offline`, `--now`), or such an option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to
   `scripts/build-app.sh`, not to the binary.)

@@ -1278,6 +1278,12 @@ final class LayerNamer {
             case "list": return named("Nearby Wi-Fi networks", "Networks")
             default: return named("Wi-Fi", "Wi-Fi")
             }
+        case "macweather", "macsun":
+            // Clamped as the plugins clamp them (a skin may say Day=1e20).
+            let hour = OptionValue.number(option(m, "Hour")).map { Int($0.clamped(0, 47)) }
+            let day = OptionValue.number(option(m, "Day")).map { Int(type == "macsun" ? $0.clamped(-1, 30) : $0.clamped(0, 9)) }
+            let n = EditorSchema.weatherDataName(plugin: type, type: option(m, "Type"), hour: hour, day: day)
+            return named(n.name, n.short)
         case "nowplaying":
             switch option(m, "PlayerType").lowercased() {
             case "title": return named("Song title", "Song")

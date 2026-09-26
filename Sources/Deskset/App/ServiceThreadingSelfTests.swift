@@ -284,8 +284,8 @@ enum ServiceThreadingSelfTests {
                     "another thread reads what the main thread stored")
 
             // Location Services: the status comes from the main thread's manager.
-            let onMain = MediaUILocationPermission.shared.status
-            t.equal(offMain { MediaUILocationPermission.shared.status }, onMain, "another thread gets the main thread's")
+            let onMain = LocationCenter.shared.status
+            t.equal(offMain { LocationCenter.shared.status }, onMain, "another thread gets the main thread's")
 
             // SysColor and Chameleon: the same colors and desktop on every thread as on the main thread.
             DesktopInputs.publishAll()

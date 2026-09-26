@@ -28,6 +28,15 @@ enum Paths {
         return repositoryFolder("DefaultSkins")
     }
 
+    /// The weather plugins' offline place table: `Contents/Resources/Places/places.tsv` in the .app; the repo's
+    /// `Data/Places/places.tsv` during `swift run`.
+    static var placesTable: URL? {
+        let fm = FileManager.default
+        if let res = Bundle.main.resourceURL?.appendingPathComponent("Places/places.tsv"),
+           fm.fileExists(atPath: res.path) { return res }
+        return repositoryFolder("Data/Places")?.appendingPathComponent("places.tsv")
+    }
+
     /// `<repo>/<name>` when running from a SwiftPM build folder (`.build/debug/Deskset`), else nil.
     static func repositoryFolder(_ name: String) -> URL? {
         let fm = FileManager.default

@@ -125,8 +125,8 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
     }
 
     t.suite("EditorSchema: all measure types and plugins") {
-        t.equal(S.measureTypes.count, 52)
-        t.equal(Set(S.measureTypes.map { $0.name.lowercased() }).count, 52, "no type twice")
+        t.equal(S.measureTypes.count, 54)
+        t.equal(Set(S.measureTypes.map { $0.name.lowercased() }).count, 54, "no type twice")
         for m in S.measureTypes {
             let d = m.isPlugin ? S.describeMeasure(type: "Plugin", plugin: m.name) : S.describeMeasure(type: m.name)
             t.equal(d.title, m.title, m.name)

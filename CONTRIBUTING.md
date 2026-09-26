@@ -57,6 +57,13 @@ bash scripts/build-app.sh            # build/Deskset.app
   `defaults write app.deskset.Deskset MainThreadStallLog -int 50` logs every main-thread step of 50 ms or more to
   `~/Library/Logs/Deskset/Deskset.log`, with what was running (read at launch; `defaults delete` to turn it off).
 
+## Weather requests
+
+The weather plugins identify Deskset to MET Norway in their User-Agent (`METNorway.userAgentProduct` and
+`METNorway.userAgentContact` in `Sources/DesksetCore/Weather/METNorway.swift`), as MET Norway's terms require. If you
+distribute a modified build of your own, change both to your app's name and a contact address of yours. Tests must
+never reach the real service: use the fixtures, a fake transport or the loopback test server.
+
 ## Pull requests
 
 - Keep each pull request focused on one change and describe how you tested it.

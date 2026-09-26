@@ -1,5 +1,4 @@
 import AppKit
-import CoreLocation
 import CoreWLAN
 import DesksetCore
 
@@ -240,52 +239,6 @@ final class WiFiCenter {
     }
 }
 
-/// Location Services permission, asked once and only for skins running in the app.
-///
-/// A `CLLocationManager` belongs to the thread that made it (it reports on that thread's run loop), so the manager and
-/// the question live on the main thread; the status is published from there for skins on other threads
-/// (docs/skin-threading.md §4.6).
-final class MediaUILocationPermission: NSObject, CLLocationManagerDelegate {
-    static let shared = MediaUILocationPermission()
-    // Main thread only.
-    private var manager: CLLocationManager?
-    private var asked = false
-    /// The status for any thread; before the main thread's first look, "not decided" (no note about a refusal).
-    private let published = MainPublished<CLAuthorizationStatus>(maxAge: 2, initial: .notDetermined, compute: {
-        .notDetermined
-    })
-
-    override init() {
-        super.init()
-        published.compute = { [unowned self] in (self.manager ?? CLLocationManager()).authorizationStatus }
-    }
-
-    /// Any thread: on the main thread the status now, elsewhere the one the main thread saw last (at most about 2 s
-    /// old while the main thread is free).
-    var status: CLAuthorizationStatus { published.value() }
-
-    var isDenied: Bool { status == .denied || status == .restricted }
-
-    /// Asks when the user has not decided yet: on the main thread, at once when the caller is there, else queued there.
-    func requestIfNeeded() {
-        MediaUIMainHop.run { self.requestOnMain() }
-    }
-
-    private func requestOnMain() {
-        guard !asked else { return }
-        asked = true
-        let m = CLLocationManager()
-        m.delegate = self
-        manager = m
-        if m.authorizationStatus == .notDetermined { m.requestWhenInUseAuthorization() }
-    }
-
-    /// Main thread (the manager was made there): the user answered, or changed it in System Settings.
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        published.publish(manager.authorizationStatus)
-    }
-}
-
 /// `Measure=WiFiStatus` / `Plugin=WiFiStatus`.
 final class WiFiStatusMeasure: MediaUIMeasure {
     enum InfoType: String {
@@ -297,7 +250,7 @@ final class WiFiStatusMeasure: MediaUIMeasure {
         + "Services. Allow Deskset in System Settings → Privacy & Security → Location Services to see them."
 
     /// Whether Location Services are refused for Deskset; replaced in tests.
-    static var locationDenied: () -> Bool = { MediaUILocationPermission.shared.isDenied }
+    static var locationDenied: () -> Bool = { LocationCenter.shared.isDenied }
 
     private(set) var infoType: InfoType?
     /// This measure added `locationNote` to its skin (taken back once Location Services are allowed).
@@ -317,7 +270,7 @@ final class WiFiStatusMeasure: MediaUIMeasure {
         listStyle = min(max(int("WiFiListStyle", 0), 0), 7)
         listLimit = min(max(int("WiFiListLimit", 5), 0), 1000)
         if (infoType == .ssid || infoType == .list) && runsInApp {
-            MediaUILocationPermission.shared.requestIfNeeded()
+            LocationCenter.shared.requestIfNeeded()
         }
     }
 

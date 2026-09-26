@@ -39,6 +39,7 @@ enum AppSelfTest {
         wiringTests(t)
         AudioSelfTests.run(t)
         MediaUITests.run(t)
+        WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         RenderContextSelfTests.run(t)
         MacLookSelfTests.run(t)
@@ -400,7 +401,9 @@ enum AppSelfTest {
             check(["--render", "a.ini", "--scael", "2"], .invalid("unknown option --scael"))
             check(["--foo", "--bar"], .invalid("unknown options --foo, --bar"))
             check(["--"], .invalid("unknown option --"))
-            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui"), "an option without a mode")
+            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
+                  "an option without a mode")
+            check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
             let long = "--" + String(repeating: "x", count: 500)
             if case .invalid(let message) = CommandLineTools.validate(["P", long]) {
                 t.check(message.count < 100, "a long flag is shown shortened")

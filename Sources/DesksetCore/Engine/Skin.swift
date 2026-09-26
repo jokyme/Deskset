@@ -1286,7 +1286,7 @@ public final class Skin {
         return String(Int(v.rounded(.towardZero).clamped(-9e18, 9e18)))
     }
 
-    private func builtInVariables() -> [String: String] {
+    func builtInVariables() -> [String: String] {
         let env = currentEnvironment()
         func dir(_ url: URL) -> String {
             let p = url.path

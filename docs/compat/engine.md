@@ -652,11 +652,12 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
   per point: a 16-point symbol stays sharp drawn 512 points wide on a Retina display). With both W and H an Image
   meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0 stretches it), unless ScaleMargins is set: it
-  then defaults to 0, where ScaleMargins nine-slices the symbol (a capsule stretched to any width). A Button uses the symbol for all three states and draws it at half opacity while pressed. A name
-  macOS does not have gives a compatibility note (once) and draws nothing; when the name comes from a measure and
-  changes to one macOS has, the note goes. `sf:` with no name (`sf:[MeasureIcon]` before the measure has a value)
-  draws nothing and is not noted, as an empty image name. Bitmap, Rotator and Histogram images cannot
-  be symbols (a compatibility note; nothing is drawn): they need a strip of frames or a picture at its pixel size.
+  then defaults to 0, where ScaleMargins nine-slices the symbol (a capsule stretched to any width). A Button uses the
+  symbol for all three states and draws it at half opacity while pressed. A name macOS does not have gives a
+  compatibility note (once) and draws nothing; when the name comes from a measure and changes to one macOS has, the
+  note goes. `sf:` with no name (`sf:%1` or `sf:[MeasureIcon]` before the measure has a value) draws nothing and is
+  not noted, as an empty image name. Bitmap, Rotator and Histogram images cannot be symbols (a compatibility note;
+  nothing is drawn): they need a strip of frames or a picture at its pixel size.
 - Why: Deskset extension — SF Symbols are the Mac's icon set; skins can use them without shipping image files.
 - Skin impact: none for Windows skins. On Windows such a skin shows missing images.
 - Status: Deskset extension
@@ -817,7 +818,8 @@ Options Rainmeter does not have. Their names start with `Mac`: Rainmeter ignores
 that uses them still loads there, only without the effect. The Mac look extensions are described with the areas they
 belong to: the system font designs (§2), the light and dark mode variables with `MacOnAppearanceChangeAction` (§3),
 and SF Symbols as images with the `MacSymbol…` options (§5). Deskset's own hardware sensor plugin, `Plugin=MacSensors`,
-is in plugins.md ("MacSensors (Deskset)").
+is in plugins.md ("MacSensors (Deskset)"); its weather and sun plugins, `Plugin=MacWeather` and `Plugin=MacSun`, are in
+weather.md.
 
 ### MacGlass: glass behind a skin or behind a meter
 - Windows (Rainmeter): n/a (a Deskset option; Rainmeter ignores it).

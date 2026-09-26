@@ -8,6 +8,7 @@ import DesksetCore
 ///     Deskset --make-icon Deskset.iconset                   writes the app icon PNGs (build-app.sh)
 ///     Deskset --snapshot-ui manage|inspector|settings|install|icon|menubar --out x.png [--dark] [--skins-dir DIR]
 ///     Deskset --system-report                              prints every system reading
+///     Deskset --weather-report [--location PLACE] [...]    one MET Norway forecast (see WeatherReportCommand)
 ///     Deskset --cover-lookup ARTIST TITLE [ALBUM]          NowPlaying's online cover lookup, every request printed
 ///     Deskset --help | -h                                  prints the usage
 ///
@@ -19,7 +20,7 @@ import DesksetCore
 enum CommandLineTools {
     /// Flags that select a mode (in none of them does audio capture start: `AudioCaptureEngine.captureAllowed`).
     static let modeFlags = ["--render", "--self-test", "--snapshot-ui", "--system-report", "--make-icon",
-                            "--cover-lookup"]
+                            "--cover-lookup", "--weather-report"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
@@ -27,7 +28,9 @@ enum CommandLineTools {
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
-                                           "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll"]
+                                           "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
+                                           // --weather-report.
+                                           "--location", "--units", "--offline", "--now"]
 
     static let usage = """
         usage: Deskset                   start the menu bar app
@@ -44,6 +47,9 @@ enum CommandLineTools {
                       [--scroll "CARD TITLE"]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
+               Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]
+                      [--offline FILE] [--now ISO8601]
+                                        get one forecast from MET Norway (sends the place's rounded coordinates)
                Deskset --cover-lookup ARTIST TITLE [ALBUM]
                                         look a cover up online as NowPlaying does (sends the names to Apple)
                Deskset --make-icon Output.iconset
@@ -73,7 +79,7 @@ enum CommandLineTools {
         }
         if args.contains(where: { modeFlags.contains($0) }) { return .mode }
         if let option = args.first(where: { optionFlags.contains($0) }) {
-            return .invalid("\(option) needs one of --render, --snapshot-ui")
+            return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report")
         }
         return .app
     }
@@ -130,6 +136,10 @@ enum CommandLineTools {
             _ = NSApplication.shared
             return SystemReport.run()
         }
+        if arguments.contains("--weather-report") {
+            _ = NSApplication.shared
+            return WeatherReportCommand.run(arguments)
+        }
         return nil
     }
 
@@ -180,6 +190,7 @@ enum SystemReport {
         if let gpu = m.graphicsAdapterName() { print("Graphics processor: \(gpu)") }
         for (type, text) in sysInfoValues() { print("SysInfo \(type): \(text)") }
         for line in sensorLines(m) { print(line) }
+        for line in weatherLines() { print(line) }
         return 0
     }
 

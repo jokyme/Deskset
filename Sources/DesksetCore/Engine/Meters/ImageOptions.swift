@@ -156,8 +156,8 @@ public struct ImageOptions: Hashable {
     /// `.png` unless a file with the exact name exists. Nil for an empty name.
     ///
     /// A name written `sf:<symbol>` is an SF Symbol drawn with `symbol` (Deskset extension): its path is the symbol's
-    /// (`MacSymbol.path`), and `imagePath` does not apply. `sf:` with no name after it — `sf:[MeasureIcon]` before the
-    /// measure has a value — is nil like an empty name: nothing is drawn, and it is not a missing symbol.
+    /// (`MacSymbol.path`), and `imagePath` does not apply. `sf:` with no name after it — `sf:[MeasureIcon]` or `sf:%1`
+    /// before the measure has a value — is nil like an empty name: nothing is drawn, and it is not a missing symbol.
     public static func filePath(_ name: String, imagePath: String, skin: Skin,
                                 symbol: MacSymbol.Style = MacSymbol.Style()) -> String? {
         var n = name.trimmingCharacters(in: .whitespacesAndNewlines)

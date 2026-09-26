@@ -30,6 +30,8 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、系�
 - **原生、轻量。** Swift + AppKit，Core Graphics 与 Core Text 绘制，不用网页视图。每个皮肤是桌面上的一个透明面板，可放在桌面层、
   普通层或置顶；支持点击穿透、贴边、淡入淡出和记住位置。
 - **Skin Studio。** 可视化编辑器：画布、图层、组件库、属性面板，代码编辑器可以并排显示。修改会写回皮肤自己的文件，保留原有格式。
+- **天气与日出日落。** Deskset 自己的 `Plugin=MacWeather` 显示任意地点的天气预报（当前、逐小时、逐日，配 SF Symbols 图标），
+  数据来自 [MET Norway](https://api.met.no/)；`Plugin=MacSun` 在本机计算日出、日落和月相。见[天气](#天气)。
 - **如实记录兼容性。** 所有与 Windows 表现不一致的地方都写在 [docs/COMPATIBILITY.zh-CN.md](docs/COMPATIBILITY.zh-CN.md)。
   用 390 个真实皮肤测试：没有崩溃，只剩 8 个皮肤有兼容性提示（5 个用了只有 Windows 版的插件 DLL，2 个指定了没有 Mac 版的
   Winamp 播放器，1 个从 Windows 注册表读取显存大小）。
@@ -39,7 +41,7 @@ Deskset 在 Mac 桌面上放置实时更新的小组件：时钟、日历、系�
 - macOS 13 Ventura 或更新版本。
 - Apple 芯片或 Intel 芯片，各有单独的安装包。
 - 部分皮肤需要权限：音频可视化需要“系统音频录制”（macOS 14.2+；13–14.1 为“屏幕录制”），正在播放类皮肤需要控制 Music 或
-  Spotify，Wi-Fi 皮肤需要定位服务才能读取网络名称。只有载入的皮肤用到时，macOS 才会询问。
+  Spotify，Wi-Fi 皮肤需要定位服务才能读取网络名称，使用当前位置的天气皮肤也需要定位服务。只有载入的皮肤用到时，macOS 才会询问。
 
 ## 安装
 
@@ -62,6 +64,18 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 - **兼容性：** 右键皮肤 → **Compatibility Notes** 列出与 Windows 不同的地方。
 
 皮肤本质上是程序：可以运行 Lua 脚本、抓取网页、执行命令。只安装来源可信的皮肤（见 [SECURITY.md](SECURITY.md)）。
+
+## 天气
+
+皮肤可以用 `Plugin=MacWeather` 显示天气（Deskset 扩展；Windows 天气皮肤读取的网络服务早已停止）。天气预报**基于 MET Norway
+（挪威气象研究所）的数据**，采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可；地名来自
+[GeoNames](https://www.geonames.org/)（CC BY 4.0），在本机查找。每个天气皮肤的右键菜单都会注明 MET Norway 并显示数据的更新时间。
+
+- **隐私：** 只有在桌面上运行、并且设置了地点的皮肤才会发出请求。MET Norway 只会收到你的 IP 地址和取整到约 1 公里的地点坐标。
+  `Location=auto` 会请求一次定位服务；得到的位置会先取整，只保存在内存中，从不写入磁盘或日志。日出日落和月相（`Plugin=MacSun`）
+  从不联网。
+- **关闭：** `defaults write app.deskset.Deskset WeatherEnabled -bool NO`（恢复：`defaults delete app.deskset.Deskset WeatherEnabled`）。
+- 选项、数值和细节见 [docs/compat/weather.md](docs/compat/weather.md)（英文）。
 
 ## 已知限制
 

@@ -824,7 +824,7 @@ public enum EditorSchema {
     }
 
     /// Every measure type and plugin the engine and the app provide (Skin.makeMeasure, CorePlugins, LuaSupport,
-    /// AudioPlugins, MediaUIPlugins) — 52 in all.
+    /// AudioPlugins, MediaUIPlugins) — 54 in all.
     public static let measureTypes: [MeasureType] = [
         type("CPU", "CPU usage", "cpu"),
         type("Memory", "Memory used (Windows-style)", "memorychip"),
@@ -878,6 +878,8 @@ public enum EditorSchema {
         type("IsFullScreen", "Full-screen app", "arrow.up.left.and.arrow.down.right", plugin: true),
         type("GetActiveTitle", "Active window title", "macwindow", plugin: true),
         type("SysColor", "System accent color", "eyedropper", plugin: true),
+        type("MacWeather", "Weather", "cloud.sun", plugin: true),
+        type("MacSun", "Sunrise and sunset", "sunrise", plugin: true),
     ]
 
     /// One item of the "+ Add Live Data" menu and of every Shows menu's "New ▸" (docs/editor-friendly.md §5.3): a
@@ -957,6 +959,25 @@ public enum EditorSchema {
         LiveDataSection(title: "From the Web", items: [
             LiveDataChoice("Text from a web page", "Reads a value from a page", type: "WebParser",
                            options: ["URL": "https://example.com", "RegExp": "(?siU)<title>(.*)</title>", "StringIndex": "1"]),
+        ]),
+        LiveDataSection(title: "Weather and Sun", items: [
+            LiveDataChoice("Weather", "Forecasts for a place, from MET Norway", type: nil, children: [
+                LiveDataChoice("Temperature now", "The temperature at the place", type: "MacWeather",
+                               options: ["Type": "Temperature"]),
+                LiveDataChoice("Weather icon", "An SF Symbol for the sky (ImageName=sf:%1)", type: "MacWeather",
+                               options: ["Type": "Symbol"]),
+                LiveDataChoice("Today's high", "The warmest it gets today", type: "MacWeather",
+                               options: ["Type": "High", "Day": "0"]),
+                LiveDataChoice("Chance of rain", "Chance of rain in the next hour", type: "MacWeather",
+                               options: ["Type": "PrecipitationChance"]),
+            ]),
+            LiveDataChoice("Sun and moon", "Worked out on this Mac for a place", type: nil, children: [
+                LiveDataChoice("Sunrise", "When the sun rises today", type: "MacSun", options: ["Type": "Sunrise"]),
+                LiveDataChoice("Sunset", "When the sun sets today", type: "MacSun", options: ["Type": "Sunset"]),
+                LiveDataChoice("Daylight", "How far the day has gone (0–1)", type: "MacSun",
+                               options: ["Type": "DaylightProgress"]),
+                LiveDataChoice("Moon phase", "0 new moon, 0.5 full moon", type: "MacSun", options: ["Type": "MoonPhase"]),
+            ]),
         ]),
     ]
 
@@ -1042,7 +1063,7 @@ public enum EditorSchema {
     /// InvertMeasure under Settings as "free" / "used").
     static func rangeProperties(_ name: String) -> [Property] {
         let tracking: Set<String> = ["NetIn", "NetOut", "NetTotal", "Calc", "WebParser", "Script", "CoreTemp",
-                                     "MacSensors", "MSIAfterburner"]
+                                     "MacSensors", "MSIAfterburner", "MacWeather", "MacSun"]
         let automatic: [String: String] = ["CPU": "100", "PowerPlugin": "100", "Win7AudioPlugin": "100"]
         let net = name.hasPrefix("Net")
         var list: [Property] = []
@@ -1167,6 +1188,8 @@ public enum EditorSchema {
                     Property("Type", "Disk type", flag("Report the disk type"), default: "0"),
                     Property("IgnoreRemovable", "Removable disks", flag("Ignore removable disks"), default: "1")]
         case "Time": return timeSettings
+        case "MacWeather": return weatherSettings
+        case "MacSun": return sunSettings
         case "Uptime":
             return [Property("Format", "Format", .format(presets: uptimeFormats, preview: .uptime),
                              default: "%4!i!d %3!i!:%2!02i!", help: "%4 days, %3 hours, %2 minutes, %1 seconds",
@@ -1633,6 +1656,7 @@ public enum EditorSchema {
 
     /// Events of some types (after their settings, in "More Live Data Options").
     static func measureEvents(_ name: String) -> [Property] {
+        if name == "MacWeather" { return weatherEvents }
         guard name == "WebParser" else { return [] }
         return [
             Property("FinishAction", "When loaded", .action),

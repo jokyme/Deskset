@@ -1,0 +1,113 @@
+Shanghai	Shanghai	上海,上海市	31.22	121.46	CN	23	24874500	Asia/Shanghai
+Beijing	Beijing	北京,北京市,Peking,Pekin	39.91	116.40	CN	22	18960744	Asia/Shanghai
+Guangzhou	Guangzhou	广州,广州市,Canton	23.12	113.25	CN	30	18676605	Asia/Shanghai
+Mumbai	Mumbai	Bombay	19.07	72.88	IN	16	12691836	Asia/Kolkata
+São Paulo	Sao Paulo	圣保罗,San Paolo	-23.55	-46.64	BR	27	12400232	America/Sao_Paulo
+Moscow	Moscow	Москва,Moskau,莫斯科	55.75	37.62	RU	48	10381222	Europe/Moscow
+Seoul	Seoul	서울,首尔	37.57	126.98	KR	11	10349312	Asia/Seoul
+Tokyo	Tokyo	東京,东京	35.69	139.69	JP	40	9733276	Asia/Tokyo
+Cairo	Cairo	القاهرة	30.06	31.25	EG	11	9606916	Africa/Cairo
+London	London	伦敦,倫敦,Londres	51.51	-0.13	GB	ENG	8961989	Europe/London
+New York City	New York City	New York	40.71	-74.01	US	NY	8804190	America/New_York
+Suzhou	Suzhou	苏州,苏州市,蘇州,Soochow	31.30	120.60	CN	04	6715559	Asia/Shanghai
+Sydney	Sydney	悉尼,雪梨	-33.87	151.21	AU	02	5638830	Australia/Sydney
+Singapore	Singapore	新加坡	1.29	103.85	SG		5638700	Asia/Singapore
+Kolkata	Kolkata	Calcutta,加尔各答	22.56	88.36	IN	28	4631392	Asia/Kolkata
+Los Angeles	Los Angeles	洛杉矶	34.05	-118.24	US	CA	3820914	America/Los_Angeles
+Berlin	Berlin	柏林	52.52	13.41	DE	16	3426354	Europe/Berlin
+Chicago	Chicago	芝加哥	41.85	-87.65	US	IL	2664452	America/Chicago
+Paris	Paris	巴黎	48.85	2.35	FR	11	2138551	Europe/Paris
+Stockholm	Stockholm		59.33	18.07	SE	26	1515017	Europe/Stockholm
+Oslo	Oslo	奥斯陆,奧斯陸,Kristiania,Christiania	59.91	10.75	NO	12	1082575	Europe/Oslo
+Helsinki	Helsinki	Helsingfors	60.17	24.94	FI	01	658864	Europe/Helsinki
+Portland	Portland		45.52	-122.68	US	OR	652503	America/Los_Angeles
+London	London		42.98	-81.23	CA	08	422324	America/Toronto
+Zürich	Zuerich	苏黎世,Zurigo	47.37	8.55	CH	ZH	415367	Europe/Zurich
+Honolulu	Honolulu	檀香山	21.31	-157.86	US	HI	350964	Pacific/Honolulu
+Bergen	Bergen		60.39	5.32	NO	46	294029	Europe/Oslo
+Anchorage	Anchorage		61.22	-149.90	US	AK	289600	America/Anchorage
+Springfield	Springfield		37.22	-93.30	US	MO	170188	America/Chicago
+Springfield	Springfield		42.10	-72.59	US	MA	154341	America/New_York
+Reykjavík	Reykjavik		64.14	-21.90	IS	39	118918	Atlantic/Reykjavik
+Springfield	Springfield		39.80	-89.64	US	IL	114394	America/Chicago
+St. John's	St. John's	Saint John's	47.56	-52.71	CA	05	110525	America/St_Johns
+Drammen	Drammen		59.74	10.20	NO	04	106013	Europe/Oslo
+Sydney	Sydney		46.14	-60.18	CA	07	105968	America/Glace_Bay
+Portland	Portland		43.66	-70.26	US	ME	66881	America/New_York
+Springfield	Springfield		44.05	-123.02	US	OR	60870	America/Los_Angeles
+Springfield	Springfield		39.92	-83.81	US	OH	59680	America/New_York
+Tromsø	Tromso	特罗姆瑟	69.65	18.96	NO	18	41915	Europe/Oslo
+Tarawa	Tarawa		1.33	172.98	KI	01	40311	Pacific/Tarawa
+Springfield	Springfield		38.79	-77.19	US	VA	30484	America/New_York
+Springfield	Springfield		39.93	-75.32	US	PA	23363	America/New_York
+Springfield	Springfield		36.51	-86.89	US	TN	16808	America/Chicago
+Portland	Portland		27.88	-97.32	US	TX	16116	America/Chicago
+Nuuk	Nuuk		64.18	-51.72	GL	07	14798	America/Nuuk
+Kiritimati	Kiritimati		1.87	-157.43	KI		5586	Pacific/Kiritimati
+Longyearbyen	Longyearbyen		78.22	15.65	SJ	21	2368	Arctic/Longyearbyen
+#country	AU	Australia
+#country	BR	Brazil
+#country	CA	Canada
+#country	CH	Switzerland
+#country	CN	China
+#country	DE	Germany
+#country	EG	Egypt
+#country	FI	Finland
+#country	FR	France
+#country	GB	United Kingdom
+#country	GL	Greenland
+#country	IN	India
+#country	IS	Iceland
+#country	JP	Japan
+#country	KI	Kiribati
+#country	KR	South Korea
+#country	NO	Norway
+#country	RU	Russia
+#country	SE	Sweden
+#country	SG	Singapore
+#country	SJ	Svalbard and Jan Mayen
+#country	US	United States
+#admin1	AU.02	New South Wales
+#admin1	BR.27	São Paulo
+#admin1	CA.05	Newfoundland and Labrador
+#admin1	CA.07	Nova Scotia
+#admin1	CA.08	Ontario
+#admin1	CH.ZH	Zurich
+#admin1	CN.04	Jiangsu
+#admin1	CN.22	Beijing
+#admin1	CN.23	Shanghai
+#admin1	CN.30	Guangdong
+#admin1	DE.16	State of Berlin
+#admin1	EG.11	Cairo
+#admin1	FI.01	Uusimaa
+#admin1	FR.11	Île-de-France
+#admin1	GB.ENG	England
+#admin1	GL.07	Sermersooq
+#admin1	IN.16	Maharashtra
+#admin1	IN.28	West Bengal
+#admin1	IS.39	Capital Region
+#admin1	JP.40	Tokyo
+#admin1	KI.01	Gilbert Islands
+#admin1	KR.11	Seoul
+#admin1	NO.04	Buskerud
+#admin1	NO.12	Oslo
+#admin1	NO.18	Troms
+#admin1	NO.46	Vestland
+#admin1	RU.48	Moscow
+#admin1	SE.26	Stockholm
+#admin1	SJ.21	Svalbard
+#admin1	US.AK	Alaska
+#admin1	US.CA	California
+#admin1	US.HI	Hawaii
+#admin1	US.IL	Illinois
+#admin1	US.MA	Massachusetts
+#admin1	US.ME	Maine
+#admin1	US.MO	Missouri
+#admin1	US.NY	New York
+#admin1	US.OH	Ohio
+#admin1	US.OR	Oregon
+#admin1	US.PA	Pennsylvania
+#admin1	US.TN	Tennessee
+#admin1	US.TX	Texas
+#admin1	US.VA	Virginia
+#meta	source	Hand-picked rows of the GeoNames place table (test fixture), plus one made-up row (Kiritimati)

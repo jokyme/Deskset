@@ -100,6 +100,8 @@ enum RenderCommand {
         Log.fileLoggingEnabled = false
         for w in o.warnings { fputs("warning: \(w)\n", stderr) }
         applyAppearance(o.appearance)
+        // Weather: no network, place names from the bundled table; DESKSET_WEATHER_DEMO=1 draws a demo forecast.
+        WeatherWiring.installPreview()
         let fileURL = URL(fileURLWithPath: o.input).standardizedFileURL
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             fputs("error: no such file: \(fileURL.path)\n", stderr)

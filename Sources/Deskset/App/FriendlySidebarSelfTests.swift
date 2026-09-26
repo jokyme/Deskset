@@ -742,8 +742,12 @@ enum FriendlySidebarSelfTests {
         t.suite("App: friendly sidebar: + Add Live Data in plain words") {
             guard let (_, editor) = try visualizer(t) else { return }
             let items = LiveDataChoice.catalogue
-            t.equal(items.map(\.section), ["On This Mac", "Calculate", "From the Web"])
+            t.equal(items.map(\.section), ["On This Mac", "Calculate", "From the Web", "Weather and Sun"])
             let menu = editor.liveDataMenu(title: "Add Live Data")
+            t.equal(menu.items.first { $0.identifier?.rawValue == "Weather" }?.submenu?.items.compactMap(\.identifier?.rawValue),
+                    ["Temperature now", "Weather icon", "Today's high", "Chance of rain"])
+            t.equal(menu.items.first { $0.identifier?.rawValue == "Sun and moon" }?.submenu?.items.compactMap(\.identifier?.rawValue),
+                    ["Sunrise", "Sunset", "Daylight", "Moon phase"])
             let cpu = menu.items.first { ($0.representedObject as? String) == "CPU" }
             t.equal(cpu?.attributedTitle?.string, "CPU usage\nHow busy the processor is (0–100%)", "two lines")
             t.equal(menu.items.first { $0.identifier?.rawValue == "Network speed" }?.submenu?.items.compactMap(\.identifier?.rawValue),

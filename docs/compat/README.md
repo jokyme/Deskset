@@ -14,8 +14,9 @@ judgment call where the manual is silent. Use this format for each entry:
 ```
 
 The last three have no Rainmeter counterpart: a Deskset extension is a feature Rainmeter does not have (an option
-starting with `Mac` that skins can use, an app or command-line feature), the other two are Deskset's own safety limits
-and interface. The summaries list all three as Mac-only.
+starting with `Mac` that skins can use, one of Deskset's own plugins such as MacSensors or MacWeather, an app or
+command-line feature), the other two are Deskset's own safety limits and interface. The summaries list all three as
+Mac-only.
 
 Only describe behaviour from the public manual (https://docs.rainmeter.net/manual/) and observed skin files —
 never from Rainmeter's source code.

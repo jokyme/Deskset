@@ -3,10 +3,10 @@ import Foundation
 
 // Rainmeter's bundled plugins that need no Apple UI / media frameworks (manual: /manual/plugins/ and the
 // deprecated plugins, plus the RecycleManager measure), third-party plugins that need nothing from the app (Mouse,
-// and Slider, its version 2; MSIAfterburner over the hardware sensors) and Deskset's own MacSensors. Clean-room
-// implementations from the public manual and the plugins' public documentation (MSIAfterburner, which has none: the
-// names public skins use and the monitoring names MSI Afterburner shows) only; every Mac-vs-Windows difference is
-// listed in docs/compat/plugins.md.
+// and Slider, its version 2; MSIAfterburner over the hardware sensors) and Deskset's own MacSensors, MacWeather and
+// MacSun. Clean-room implementations from the public manual and the plugins' public documentation (MSIAfterburner,
+// which has none: the names public skins use and the monitoring names MSI Afterburner shows) only; every
+// Mac-vs-Windows difference is listed in docs/compat/plugins.md (the weather plugins in docs/compat/weather.md).
 
 /// Registration entry point for the core plugins. The app calls `CorePlugins.register()` once at startup, before
 /// skins load; `Skin.makeMeasure` then finds the types through `MeasureRegistry`.
@@ -38,6 +38,8 @@ public enum CorePlugins {
         ("Slider", SliderMeasure.self),
         ("MSIAfterburner", MSIAfterburnerMeasure.self),
         ("MacSensors", MacSensorsMeasure.self),
+        ("MacWeather", MacWeatherMeasure.self),
+        ("MacSun", MacSunMeasure.self),
     ]
 
     /// `Measure=` types provided here (RecycleManager "was previously a plugin measure").
