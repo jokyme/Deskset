@@ -130,19 +130,35 @@ enum IOReportMath {
         }
     }
 
-    /// Watts of the catalog's power keys from the energy channels (joules by channel name) over `seconds`.
+    /// Watts of the catalog's power keys from the energy channels (joules by channel name) over `seconds`. Channel
+    /// names by chip: "CPU Energy", "ANE", "DRAM" (M1…M4, Pro); "ANE0", "ANE1"… (Max); one per die on Ultra chips:
+    /// "DIE_0_CPU Energy", "DIE_1_CPU Energy", "ANE0_0", "ANE0_1", "DRAM0_1"…, added up.
     static func power(_ joules: [String: Double], seconds: Double) -> [String: Double] {
         guard seconds > 0 else { return [:] }
-        func sum(_ prefix: String) -> Double? {
-            let parts = joules.filter { $0.key.hasPrefix(prefix) && Int($0.key.dropFirst(prefix.count)) != nil }
+        func isNumber(_ s: Substring) -> Bool { !s.isEmpty && s.allSatisfy { ("0"..."9").contains($0) } }
+        func total(_ match: (String) -> Bool) -> Double? {
+            let parts = joules.filter { match($0.key) }
             return parts.isEmpty ? nil : parts.values.reduce(0, +)
+        }
+        /// "ANE", or the numbered channels: "ANE0", "ANE1", "ANE0_1" (not "ANE_SRAM" or "ANEX").
+        func numbered(_ prefix: String) -> Double? {
+            joules[prefix] ?? total { name in
+                guard name.hasPrefix(prefix) else { return false }
+                let parts = name.dropFirst(prefix.count).split(separator: "_", omittingEmptySubsequences: false)
+                return (1...2).contains(parts.count) && parts.allSatisfy(isNumber)
+            }
+        }
+        /// "CPU Energy", else the dies' "DIE_<n>_CPU Energy".
+        let cpu = joules["CPU Energy"] ?? total { name in
+            guard name.hasPrefix("DIE_"), name.hasSuffix("_CPU Energy") else { return false }
+            return isNumber(name.dropFirst("DIE_".count).dropLast("_CPU Energy".count))
         }
         var result: [String: Double] = [:]
         let picks: [(String, Double?)] = [
-            (SensorKeys.powerCPU, joules["CPU Energy"]),
+            (SensorKeys.powerCPU, cpu),
             (SensorKeys.powerGPU, joules["GPU Energy"] ?? joules["GPU"]),
-            (SensorKeys.powerANE, joules["ANE"] ?? sum("ANE")),
-            (SensorKeys.powerDRAM, joules["DRAM"] ?? sum("DRAM")),
+            (SensorKeys.powerANE, numbered("ANE")),
+            (SensorKeys.powerDRAM, numbered("DRAM")),
         ]
         for (key, j) in picks {
             if let j, j >= 0 { result[key] = j / seconds }

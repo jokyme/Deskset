@@ -600,9 +600,9 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
   - the System Management Controller (SMC): temperatures, fans, whole-Mac power. Only three read commands (read a
     key, read the key at an index, read a key's type) can be sent; there is no code that writes a key, so no fan or
     other setting can change;
-  - IOReport (Apple silicon): CPU, GPU, Neural Engine and memory power from their energy counters, and clocks from how
-    long each core and the GPU spent in each clock state (the states' clocks and voltages come from the device
-    tree's power manager tables);
+  - IOReport (Apple silicon): CPU, GPU, Neural Engine and memory power from their energy counters (on Ultra chips
+    the two dies' counters added up; untested), and clocks from how long each core and the GPU spent in each clock
+    state (the states' clocks and voltages come from the device tree's power manager tables);
   - the HID temperature sensors, when the SMC has no CPU temperatures;
   - the graphics accelerators' statistics (GPU usage, GPU memory in use) and the battery's registry entry (health,
     cycles, voltage, current, temperature).

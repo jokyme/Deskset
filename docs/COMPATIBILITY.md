@@ -1383,11 +1383,11 @@ Intel Macs are untested.
 - **Windows:** the plugins read the programs' shared memory.
 - **Mac:** one sensor service reads, without privileges and strictly read-only: the System Management Controller
   (temperatures, fans, whole-Mac power; only three read commands can be sent, nothing is ever written, so no fan or
-  setting can change), IOReport on Apple silicon (CPU / GPU / Neural Engine / memory power, per-core and GPU clocks),
-  the HID temperature sensors (when the SMC has no CPU temperatures), the GPU's statistics (usage, memory in use) and
-  the battery's registry entry (health, cycles, voltage, current). Only the groups of sensors some skin asks for are
-  read, in the background, at most about once a second; so the first update after a skin loads shows 0 and the next
-  one the reading. A virtual machine or a future macOS without one of these sources simply lacks those sensors.
+  setting can change), IOReport on Apple silicon (CPU / GPU / Neural Engine / memory power, both dies added up on
+  Ultra chips; per-core and GPU clocks), the HID temperature sensors (when the SMC has no CPU temperatures), the
+  GPU's statistics (usage, memory in use) and the battery's registry entry (health, cycles, voltage, current). Only
+  the groups of sensors some skin asks for are read, in the background, at most about once a second; so the first
+  update after a skin loads shows 0 and the next one the reading. A virtual machine or a future macOS without one of these sources simply lacks those sensors.
 - **Why:** macOS has no public API for any of this.
 - **Skin impact:** `Deskset --system-report` lists every sensor of this Mac with its reading and source.
 - **Status:** emulated

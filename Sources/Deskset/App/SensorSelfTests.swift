@@ -435,6 +435,13 @@ enum SensorSelfTests {
                                         "AMCC": 9], seconds: 0.5),
                     ["power.cpu": 9, "power.gpu": 2.5, "power.ane": 0, "power.dram": 1], "GPU Energy is preferred")
             t.equal(IOReportMath.power(["ANE0": 1, "ANE1": 2, "ANEX": 5], seconds: 1), ["power.ane": 3])
+            // Ultra chips: a channel per die.
+            t.equal(IOReportMath.power(["DIE_0_CPU Energy": 2, "DIE_1_CPU Energy": 3, "GPU Energy": 1, "ANE0_0": 0.5,
+                                        "ANE0_1": 0.25, "ANE_SRAM": 9, "DRAM0_0": 1, "DRAM0_1": 2, "DRAMX": 9,
+                                        "DIE_X_CPU Energy": 9, "ECPU0": 9], seconds: 1),
+                    ["power.cpu": 5, "power.gpu": 1, "power.ane": 0.75, "power.dram": 3])
+            t.equal(IOReportMath.power(["CPU Energy": 4, "DIE_0_CPU Energy": 9], seconds: 1)["power.cpu"], 4,
+                    "the whole CPU's channel when there is one")
             t.equal(IOReportMath.power(["CPU Energy": 1], seconds: 0), [:])
             // Core channels: each cluster type's channels, in name order, to its cores in logical order.
             let types: [CoreType] = [.efficiency, .efficiency, .performance, .performance]
