@@ -399,4 +399,31 @@ func runMacLookTests(_ t: TestRunner) {
         t.check(written.contains("Theme=Dark"), written)
         t.equal(themeHost.handled.filter { $0.name == "refresh" }.count, 1)
     }
+
+    t.suite("Mac look: a MacOnAppearanceChangeAction of the skin's own runs in any skin") {
+        // A skin can follow the appearance without the variables (SysColor, a script): what it writes itself runs.
+        let host = MacLookHost()
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        MacOnAppearanceChangeAction=[!SetOption M Text changed][!UpdateMeter M]
+        [M]
+        Meter=String
+        Text=start
+        """, host: host)
+        skin.update()
+        t.check(skin.usesMacAppearance, "written: it opts in")
+        skin.appearanceDidChange()
+        t.equal(text(skin, "M"), "changed")
+        let (refresh, refreshHost) = try makeSkin(t, "[Rainmeter]\nMacOnAppearanceChangeAction=[!Refresh]\n[M]\nMeter=String\n",
+                                                  host: MacLookHost())
+        refresh.appearanceDidChange()
+        t.equal(refreshHost.handled.filter { $0.name == "refresh" }.count, 1, "[!Refresh] written out reloads it")
+        // Written empty, or left to the default, in a skin without the variables: nothing.
+        for ini in ["[Rainmeter]\nMacOnAppearanceChangeAction=\n[M]\nMeter=String\n", "[Rainmeter]\nUpdate=500\n[M]\nMeter=String\n"] {
+            let (quiet, quietHost) = try makeSkin(t, ini, host: MacLookHost())
+            t.check(!quiet.usesMacAppearance, ini)
+            quiet.appearanceDidChange()
+            t.equal(quietHost.handled.count, 0, ini)
+        }
+    }
 }

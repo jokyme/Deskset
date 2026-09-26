@@ -172,9 +172,10 @@ public final class Skin {
     /// here…). Mistakes in the skin itself that Rainmeter treats the same way (a missing MeterStyle, an invalid
     /// Container, an unknown bang, measure or meter type) are log lines, not issues.
     public private(set) var issues: [String] = []
-    /// Whether the skin uses one of the Mac appearance variables (`#MACDARKMODE#`…): its files mention one, or an
-    /// option, include, bang or script read one. Such a skin runs `MacOnAppearanceChangeAction` when the appearance
-    /// changes (`appearanceDidChange()`).
+    /// Whether the skin follows the Mac's appearance: it uses one of the appearance variables (`#MACDARKMODE#`…: its
+    /// files mention one, or an option, include, bang or script read one), or its `[Rainmeter]` writes a
+    /// `MacOnAppearanceChangeAction` of its own that is not empty. Such a skin runs that action when the appearance
+    /// changes (`appearanceDidChange()`); the implicit `[!Refresh]` does not reload skins that use no variable.
     public private(set) var usesMacAppearance = false
     /// What loading the files ran into (a missing `@Include` file, an include cycle…): mistakes of the skin's files, not
     /// Mac differences (`SkinFileLoader`'s warnings); the editor says them in plain words.
@@ -294,9 +295,14 @@ public final class Skin {
                 return table[key]
             }).resolve(raw)
         }
-        usesMacAppearance = includesAppearance || loaded.document.sections.contains { section in
-            section.entries.contains { SkinAppearance.mentioned(in: $0.value) }
-        }
+        // An action the skin writes itself runs whatever the skin uses (it may follow the appearance through SysColor
+        // or a script); only the implicit [!Refresh] waits for an appearance variable.
+        let ownAction = loaded.document.section(named: "Rainmeter")?.value(forKey: "MacOnAppearanceChangeAction")
+        usesMacAppearance = includesAppearance
+            || !(ownAction?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+            || loaded.document.sections.contains { section in
+                section.entries.contains { SkinAppearance.mentioned(in: $0.value) }
+            }
         document = loaded.document
         includedFiles = loaded.includedFiles
         sources = loaded.sources

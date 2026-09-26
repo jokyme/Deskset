@@ -358,9 +358,10 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` (text) and `#MACSEPARATORCOLOR#`
   (hairlines). Like every built-in they cannot be set by `[Variables]` or `!SetVariable`, and options see changes
   only with `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin
-  that uses one of them — in its files, an `@Include` path, or read by an option, bang or script — runs
-  `[Rainmeter] MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write
-  `MacOnAppearanceChangeAction=` to turn it off); skins that use none are left alone. The action's own variables are resolved when it
+  that uses one of them — in its files, an `@Include` path, or read by an option, bang or script — runs `[Rainmeter]
+  MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write `MacOnAppearanceChangeAction=` to turn
+  it off); skins that use none are left alone by that implicit refresh, but an action a skin writes itself runs in any
+  skin (one may follow the appearance through SysColor or a script). The action's own variables are resolved when it
   runs, so `#MACLABELCOLOR#` in it is the new color (other actions keep the `#Var#` values of when they were read), and
   `[Variables]` built from the appearance variables (`Fg=#MACLABELCOLOR#`, and variables built from those) take the
   new values before it runs, unless `!SetVariable` changed them: `[!UpdateMeter *][!Redraw]` recolors

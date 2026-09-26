@@ -294,8 +294,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// The appearance or the accent color may have changed: the new values are published, and when they differ from
-    /// what the skins last saw, every skin that uses an appearance variable runs its `MacOnAppearanceChangeAction`
-    /// (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where it is owned. Skins that use none are left alone.
+    /// what the skins last saw, every skin that follows the appearance (it uses an appearance variable or writes an action
+    /// of its own) runs its `MacOnAppearanceChangeAction` (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where
+    /// it is owned. Other skins are left alone.
     /// Main thread.
     func appearanceChanged() {
         DesktopInputs.appearance.refresh()
