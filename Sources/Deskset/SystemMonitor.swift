@@ -13,7 +13,8 @@ import SystemConfiguration
 /// with the lock held, so one thread reads them and the others use its reading, while the slower ones (configd,
 /// the process list, the power sources, SysInfo's lookups) are taken between two accesses, so no thread waits for
 /// another's system call. The configd session is created at once and its calls are serialized, the utmpx walk is
-/// serialized, and the desktop picture, which only AppKit knows, is published by the main thread.
+/// serialized, and the desktop picture, which only AppKit knows, is published by the main thread. A network volume's
+/// background reading is stored on the main thread, as before.
 ///
 /// Readings were checked against the system tools: CPU against `top -l 2` (user + sys), memory against `vm_stat`
 /// and Activity Monitor ("Memory Used" = app memory + wired + compressed), swap against `sysctl vm.swapusage`,
@@ -42,14 +43,21 @@ final class SystemMonitor: SystemDataSource {
     private let cachedBest = Guarded<(String?, TimeInterval)?>(nil)
     private let cachedText = Guarded<[String: (value: (Double, String?)?, time: TimeInterval)]>([:])
 
-    private init() {
+    /// What every cache's age is measured with.
+    private let clock: () -> TimeInterval
+
+    /// The app has one monitor (`shared`). The threading self-tests make their own with a clock that runs an hour
+    /// ahead at every look, so every reading is stale for every thread: all threads then take the readings and fill
+    /// the caches at the same time, which the caches' short lifetimes otherwise make rare.
+    init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.clock = clock
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
-            state.lastSample = ProcessInfo.processInfo.systemUptime
+            state.lastSample = clock()
         }
     }
 
-    private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
+    private func now() -> TimeInterval { clock() }
 
     // MARK: CPU
 
@@ -482,7 +490,8 @@ final class SystemMonitor: SystemDataSource {
     }
 
     /// The last background reading of a network volume; starts a new one when it is older than 5 seconds. The
-    /// reading is stored from the disk queue, under the lock.
+    /// reading is stored under the lock on the main thread, as before skins could leave it: between the updates of
+    /// the skins that run there (today every skin), so a volume's size and free space come from one reading.
     private func networkVolume(_ path: String) -> NetworkVolume? {
         let t = now()
         let (hit, start) = disk.access { state -> ((value: NetworkVolume, time: TimeInterval)?, Bool) in
@@ -496,11 +505,13 @@ final class SystemMonitor: SystemDataSource {
             diskQueue.async { [weak self] in
                 let value = NetworkVolume(space: SystemMonitor.statfsSpace(path),
                                           info: SystemMonitor.readVolumeInfo(path))
-                guard let self else { return }
-                self.disk.access { state in
-                    state.pending.remove(path)
-                    if state.networkVolumes.count >= 64 { state.networkVolumes.removeAll() }
-                    state.networkVolumes[path] = (value, self.now())
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.disk.access { state in
+                        state.pending.remove(path)
+                        if state.networkVolumes.count >= 64 { state.networkVolumes.removeAll() }
+                        state.networkVolumes[path] = (value, self.now())
+                    }
                 }
             }
         }

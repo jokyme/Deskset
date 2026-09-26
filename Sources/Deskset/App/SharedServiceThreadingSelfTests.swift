@@ -249,6 +249,29 @@ enum SharedServiceThreadingSelfTests {
             t.check(!AppSelfTest.familyAvailable("DesksetTstK"))
         }
 
+        t.suite("App: skin threading: a skin without a font folder does not wait for another skin's registration") {
+            // Most skins have no @Resources/Fonts, and their layouts look for it again every few seconds.
+            let folder = t.temporaryDirectory("fonts-missing").appendingPathComponent("@Resources/Fonts").path
+            let held = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+            let holder = Thread {
+                Fonts.runOnQueue {
+                    held.signal()
+                    _ = release.wait(timeout: .now() + 120)
+                }
+            }
+            holder.stackSize = 8 << 20
+            holder.start()
+            t.check(held.wait(timeout: .now() + 60) == .success, "a registration holds the fonts queue")
+            let missing = Collected<Bool>()
+            t.check(onThreads(1) { _ in
+                Fonts.registerFolder(folder, now: 5000)
+                Fonts.registerFolder(folder, now: 5000 + Fonts.missingFolderRecheck + 1)
+                missing.add(Fonts.isRememberedAsMissing(folder))
+            }, "looked for (twice) while the queue is held")
+            release.signal()
+            t.equal(missing.all, [true], "and still missing")
+        }
+
         t.suite("App: skin threading: fonts registered off the main thread are announced there; skins measure again") {
             // Announcements of earlier suites' registrations come first.
             t.check(drainMainQueue())

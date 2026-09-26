@@ -31,7 +31,34 @@ extension SkinRenderer {
 /// The cache is bounded by bytes and evicts the least recently used entries, so a skin that keeps changing an
 /// option (a tint animation…) cannot pile up dozens of full-size bitmaps, and a working set of many small
 /// processed images is not thrown away all at once.
+///
+/// The bytes are counted for all skins together (`Budget`): each skin may keep `Budget.perSkin` (16 MB) whatever the
+/// others hold, and more only while all skins' caches together stay within `Budget.total` (64 MB, what the one cache
+/// shared by every skin used to keep). So one skin with many large needles keeps them all, as before, and a suite of
+/// skins that each keep changing a tint does not keep 64 MB per skin.
 final class RotatorImageCache {
+    /// What the Rotator image caches of all skins hold together. Any thread: each skin's cache counts its own bytes in
+    /// and out, from its own thread.
+    final class Budget {
+        let total: Int
+        let perSkin: Int
+        private let held = Guarded(0)
+
+        init(total: Int, perSkin: Int) {
+            self.total = total
+            self.perSkin = perSkin
+        }
+
+        /// Bytes held by all caches.
+        var bytes: Int { held.current }
+
+        fileprivate func add(_ bytes: Int) {
+            held.access { $0 += bytes }
+        }
+    }
+
+    static let budget = Budget(total: 64 << 20, perSkin: 16 << 20)
+
     private struct Key: Hashable {
         let path: String
         let processing: RotatorMeter.ImageProcessing
@@ -45,13 +72,21 @@ final class RotatorImageCache {
         var lastUse: UInt64
     }
 
+    private let budget: Budget
     private var entries: [Key: Entry] = [:]
     private var totalBytes = 0
     private var useClock: UInt64 = 0
-    private static let maxBytes = 64 << 20
     private static let maxEntries = 256
     /// Processed canvases larger than this many pixels are not built (the unprocessed image is drawn instead).
     private static let maxPixels = 4096 * 4096
+
+    init(budget: Budget = RotatorImageCache.budget) {
+        self.budget = budget
+    }
+
+    deinit {
+        budget.add(-totalBytes)
+    }
 
     /// How many processed images the cache holds (self-tests).
     var count: Int { entries.count }
@@ -65,19 +100,30 @@ final class RotatorImageCache {
             entries[key] = hit
             return hit.image
         }
-        if let stale = entries.removeValue(forKey: key) { totalBytes -= stale.bytes }
+        if let stale = entries.removeValue(forKey: key) { forget(stale.bytes) }
         let image = Self.process(source, processing)
         let bytes = image.map { $0 === source ? 0 : $0.bytesPerRow * $0.height } ?? 0
         // The new entry is always kept (even one bigger than the budget, which then evicts everything else), so
         // a large processed image is not rebuilt on every frame.
-        while !entries.isEmpty, totalBytes + bytes > Self.maxBytes || entries.count >= Self.maxEntries {
+        while !entries.isEmpty, entries.count >= Self.maxEntries || overBudget(adding: bytes) {
             guard let oldest = entries.min(by: { $0.value.lastUse < $1.value.lastUse }) else { break }
-            totalBytes -= oldest.value.bytes
+            forget(oldest.value.bytes)
             entries.removeValue(forKey: oldest.key)
         }
         entries[key] = Entry(source: source, image: image, bytes: bytes, lastUse: useClock)
         totalBytes += bytes
+        budget.add(bytes)
         return image
+    }
+
+    /// Whether keeping `bytes` more would take this skin past its share while all skins together are past the total.
+    private func overBudget(adding bytes: Int) -> Bool {
+        totalBytes + bytes > budget.perSkin && budget.bytes + bytes > budget.total
+    }
+
+    private func forget(_ bytes: Int) {
+        totalBytes -= bytes
+        budget.add(-bytes)
     }
 
     private static func process(_ source: CGImage, _ p: RotatorMeter.ImageProcessing) -> CGImage? {

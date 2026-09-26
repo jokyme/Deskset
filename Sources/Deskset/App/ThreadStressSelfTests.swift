@@ -9,12 +9,16 @@ import DesksetCore
 ///
 /// It shows that the shared services made thread-safe in phase 1 hold up under real skins: nothing crashes, no
 /// ownership check fires (debug builds), nothing calls AppKit off the main thread (run it under
-/// `scripts/check-main-thread.sh "App: threads"`), and what the skins compute stays right: the four copies of the
-/// writer fixture lose none of the keys they write into one file (`!WriteKeyValue`), the slideshows show photos at the
-/// size of one of their versions, the font-heavy skin measures with its own font, and the deep nesting fixture reaches
-/// the engine's limit well within the 8 MB stack of a skin thread (§5.3, §7.4). Without the per-file lock of
-/// `IniWriter` the writers lose keys; with one render context shared by all skins (as the static caches were before
-/// phase 1) the run crashes.
+/// `scripts/check-main-thread.sh "App: threads"`), every call the engine makes to its host comes from the skin's own
+/// thread (background work hands over to the skin's executor first), and what the skins compute stays right: the four
+/// copies of the writer fixture lose none of the keys they write into one file (`!WriteKeyValue`), the slideshows show
+/// photos at the size of one of their versions, the font-heavy skin measures with its own font, and the deep nesting
+/// fixture reaches the engine's limit well within the 8 MB stack of a skin thread (§5.3, §7.4). Without the per-file
+/// lock of `IniWriter` the writers lose keys; with one render context shared by all skins (as the static caches were
+/// before phase 1), or with `Fonts.resolve` or `Images.purge` unlocked, the run crashes. The services skins read at
+/// every update (§4.5–§4.8: the system monitor, NowPlaying, Wi-Fi, the focused window) keep their readings for a
+/// while, so few of their calls overlap here: their own suites (`ServiceThreadingSelfTests`) are what catch a missing
+/// lock there.
 ///
 /// The work is bounded — a number of loads and updates per skin, not a length of time — so a slow machine (CI's Intel
 /// runner, `taskpolicy -b`) only takes longer. The only time limits tell "finishes" from "never" (a hang).
@@ -251,6 +255,9 @@ enum ThreadStressSelfTests {
                 }
             }
             t.equal(problems, [], "every skin loaded, updated and drew")
+            // Background work (a plugin's download, a timer) reaches the host only through the skin's executor.
+            let stray = skins.flatMap { skin in skin.host.strayCalls.map { "\(skin.file.config): \($0)" } }
+            t.equal(stray, [], "every call the engine made to its host came from the skin's own thread")
             if hasFonts {
                 t.check(skins.contains { $0.report.current.fontsChanges > 0 }, "font changes reached the skins")
             }
@@ -389,7 +396,7 @@ enum ThreadStressSelfTests {
             self.file = file
             self.plan = plan
             executor = TestThreadExecutor(name: "Deskset self-test skin \(number) \(file.config)")
-            host = StressHost(environment: environment)
+            host = StressHost(environment: environment, executor: executor)
         }
 
         /// Main thread.
@@ -499,57 +506,97 @@ enum ThreadStressSelfTests {
     /// main thread made beforehand (the environment) or from the thread-safe shared services (`SkinRenderer.textSize`
     /// with the skin's own layouts, `Images`); what it asks the app to do is recorded instead. It also notes how
     /// deep the skin thread's stack was whenever the engine called it.
+    ///
+    /// Every call must come from the skin's own thread, as the engine promises its host: a plugin's background work
+    /// that logs or runs an action without handing it to the skin's executor first would reach `SkinController` off
+    /// its thread once skins leave the main thread (phase 2). Such a call is noted in `strayCalls`, which the suite
+    /// checks.
     final class StressHost: SkinHost {
         private struct Records {
             var logs: [String] = []
             var deepestStack = 0
+            var strayCalls: [String] = []
         }
 
         private let environment: SkinEnvironment
+        private let executor: SkinExecutor
         private let records = Guarded(Records())
 
-        init(environment: SkinEnvironment) {
+        init(environment: SkinEnvironment, executor: SkinExecutor) {
             self.environment = environment
+            self.executor = executor
         }
 
         var logs: [String] { records.current.logs }
         /// Bytes of stack in use at the deepest call seen.
         var deepestStack: Int { records.current.deepestStack }
+        /// Calls that came from another thread than the skin's: which call, and from which thread.
+        var strayCalls: [String] { records.current.strayCalls }
 
-        func skinNeedsDisplay(_ skin: Skin) {}
+        func skinNeedsDisplay(_ skin: Skin) {
+            noteCall("skinNeedsDisplay", skin)
+        }
 
         func skin(_ skin: Skin, handle bang: Bang) -> Bool {
-            noteStack()
+            noteCall("handle \(bang.name)", skin)
             return true
         }
 
-        func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {}
-        func skin(_ skin: Skin, execute target: String, arguments: [String]) {}
+        func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
+            noteCall("forward \(bang.name)", skin)
+        }
+
+        func skin(_ skin: Skin, execute target: String, arguments: [String]) {
+            noteCall("execute", skin)
+        }
 
         func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {
-            noteStack()
+            noteCall("log \(message)", skin)
             records.access { if $0.logs.count < 1000 { $0.logs.append("[\(level.rawValue)] \(message)") } }
         }
 
         func textSize(_ text: String, style: TextStyle, wrapWidth: Double?,
                       for skin: Skin) -> (width: Double, height: Double) {
-            noteStack()
+            noteCall("textSize", skin)
             return SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
         }
 
         func imageSize(atPath path: String) -> (width: Double, height: Double)? {
-            Images.size(atPath: path)
+            noteCall("imageSize", nil)
+            return Images.size(atPath: path)
         }
 
         func environment(for skin: Skin) -> SkinEnvironment {
-            noteStack()
+            noteCall("environment", skin)
             var env = environment
             env.windowFrame = SkinRect(width: skin.width, height: skin.height)
             return env
         }
 
-        /// How much of the calling thread's stack is in use here (the stack grows down from its base address).
-        private func noteStack() {
+        func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool {
+            noteCall("fadeWindow", skin)
+            return false
+        }
+
+        func skinOutsidePointerNeedsChanged(_ skin: Skin) {
+            noteCall("skinOutsidePointerNeedsChanged", skin)
+        }
+
+        func skinWindowTakesPointer(_ skin: Skin) -> Bool {
+            noteCall("skinWindowTakesPointer", skin)
+            return true
+        }
+
+        /// Notes a call from another thread than the skin's (`skin`'s executor, or this host's skin's when the call
+        /// names no skin), and how much of the calling thread's stack is in use here (the stack grows down from its
+        /// base address).
+        private func noteCall(_ call: @autoclosure () -> String, _ skin: Skin?) {
+            guard (skin?.executor ?? executor).isCurrent else {
+                let thread = Thread.isMainThread ? "the main thread" : Thread.current.name ?? ""
+                let note = "\(call()) on \(thread.isEmpty ? "another thread" : thread)"
+                records.access { if $0.strayCalls.count < 100 { $0.strayCalls.append(note) } }
+                return
+            }
             let base = Int(bitPattern: pthread_get_stackaddr_np(pthread_self()))
             var marker = 0
             let here = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }

@@ -5,13 +5,15 @@ import DesksetCore
 
 /// The app's shared services that skins read at every update (docs/skin-threading.md §4.5–§4.8, phase 1), used from
 /// several dedicated threads at once, released together:
-/// - `SystemMonitor` answers every thread, and the utmpx walks do not skip each other's entries;
+/// - `SystemMonitor` answers every thread, also when every reading is stale for all of them at once, and the utmpx
+///   walks do not skip each other's entries;
 /// - what only AppKit knows (the desktop picture, the appearance, a screen's desktop, Location Services) is worked out
 ///   on the main thread and read elsewhere without waiting for it; the main thread is asked once, however many threads
 ///   find it stale;
 /// - the NowPlaying centre: reads, subscriptions and commands from several threads all arrive, on the main thread;
-/// - the Wi-Fi reader and the focused-window info: one reading for every thread;
-/// - volume steps and mute toggles of several skins at once all count, on the device too.
+/// - the Wi-Fi reader and the focused-window info: one reading for every thread, stored on the main thread;
+/// - the audio devices: skins asking while the first read runs all wait for it; volume steps and mute toggles of
+///   several skins at once all count, on the device too.
 ///
 /// Like `SharedServiceThreadingSelfTests`, the threads never call the runner: they report into `Collected`. Run them
 /// under `scripts/check-main-thread.sh "skin threading"` too: nothing of AppKit may run on the threads.
@@ -54,46 +56,99 @@ enum ServiceThreadingSelfTests {
 
     static func systemMonitorTests(_ t: AppTestRunner) {
         t.suite("App: skin threading: the system monitor answers several threads at once") {
-            let monitor = SystemMonitor.shared
-            // What every thread must agree with, read on the main thread first.
-            let processors = monitor.processorCount
-            let memoryTotal = monitor.memoryStatus().physicalTotal
-            let computer = monitor.sysInfo(type: "COMPUTER_NAME", data: "")?.string
-            let logon = monitor.logonTime()
-            t.check(monitor.desktopPicturePath() != nil, "the desktop picture is known on the main thread")
-            let problems = Collected<String>()
-            let finished = onThreads(6) { i in
-                for round in 0..<40 {
-                    let cpu = monitor.cpuUsage(processor: (round + i) % (processors + 1))
+            // As the app's skins use it: most readings come from the caches, which one thread fills now and then.
+            checkSystemMonitor(t, SystemMonitor.shared, rounds: 40)
+            // Every reading stale at every look (the monitor's clock runs an hour ahead each time): all six threads
+            // take every reading and fill every cache at the same time, over and over. That is what a missing lock
+            // gets wrong (two threads replacing one cache's dictionaries and arrays at once crash the process), and
+            // what the caches' lifetimes (a quarter of a second to a minute) make rare above.
+            let time = Guarded(ProcessInfo.processInfo.systemUptime)
+            let stale = SystemMonitor(clock: { time.access { now -> TimeInterval in
+                now += 3600
+                return now
+            } })
+            checkSystemMonitor(t, stale, rounds: 4)
+            hammerSystemMonitor(t, stale)
+        }
+    }
+
+    /// Six threads take `monitor`'s readings as fast as they can, all at once: the quick ones (CPU ticks, memory, the
+    /// interface list, the mounts, a volume) in every round, the slow ones (the adapters, the "Best" interface, the
+    /// battery, the process list) in every eighth.
+    ///
+    /// Without the CPU, network or volume lock this crashes in most runs (tried: 4–6 runs in 6 for each). The slow
+    /// readings are taken between two accesses and only their result is stored under the lock: two threads storing
+    /// it at the very moment a third copies it is too narrow a window for a test to hit, and a torn memory reading
+    /// (plain numbers) looks like a valid one. Those locks are there all the same; this only shows that the paths
+    /// run side by side.
+    private static func hammerSystemMonitor(_ t: AppTestRunner, _ monitor: SystemMonitor) {
+        let processors = monitor.processorCount
+        let memoryTotal = monitor.memoryStatus().physicalTotal
+        let problems = Collected<String>()
+        t.check(onThreads(6) { i in
+            for round in 0..<300 {
+                for n in 0..<4 {
+                    let cpu = monitor.cpuUsage(processor: (round + i + n) % (processors + 1))
                     if !(0...100).contains(cpu) { problems.add("cpu \(cpu)") }
-                    if monitor.processorCount != processors { problems.add("processor count") }
-                    let memory = monitor.memoryStatus()
-                    if memory.physicalTotal != memoryTotal || memory.physicalUsed <= 0 { problems.add("memory") }
+                }
+                let memory = monitor.memoryStatus()
+                if memory.physicalTotal != memoryTotal || memory.physicalUsed <= 0 { problems.add("memory") }
+                for _ in 0..<2 {
                     let interfaces = monitor.networkInterfaces()
                     _ = monitor.networkCounters(interface: nil)
-                    _ = monitor.networkCounters(interface: interfaces.first)
-                    _ = monitor.bestNetworkInterface()
-                    if monitor.diskSpace(path: "/") == nil { problems.add("disk space") }
-                    if monitor.volumeInfo(path: "/") == nil { problems.add("volume") }
-                    if monitor.uptime() <= 0 { problems.add("uptime") }
-                    _ = monitor.battery()
-                    if !monitor.isProcessRunning("launchd") { problems.add("process list") }
-                    for type in ["IP_ADDRESS", "MAC_ADDRESS", "ADAPTER_TYPE", "ADAPTER_STATE", "GATEWAY_ADDRESS",
-                                 "DNS_SERVER", "LAN_CONNECTIVITY", "USER_LOGONTIME", "OS_VERSION"] {
-                        _ = monitor.sysInfo(type: type, data: "")
-                    }
-                    if monitor.sysInfo(type: "COMPUTER_NAME", data: "")?.string != computer {
-                        problems.add("computer name")
-                    }
-                    // The walk itself, not its cached value: walks on several threads at once each see every entry.
-                    if monitor.logonTime() != logon { problems.add("logon time") }
-                    // Published by the main thread: never "unknown" on a skin thread.
-                    if monitor.desktopPicturePath() == nil { problems.add("desktop picture") }
+                    if let first = interfaces.first { _ = monitor.networkCounters(interface: first) }
                 }
+                if monitor.volumeInfo(path: "/") == nil { problems.add("volume") }
+                guard (round + i) % 8 == 0 else { continue }
+                _ = monitor.bestNetworkInterface()
+                _ = monitor.sysInfo(type: "ADAPTER_TYPE", data: "")
+                _ = monitor.battery()
+                if !monitor.isProcessRunning("launchd") { problems.add("process list") }
             }
-            t.check(finished, "the threads finish")
-            t.equal(Set(problems.all).sorted(), [], "every thread got sensible, matching readings")
+        }, "the threads finish")
+        t.equal(Set(problems.all).sorted(), [], "every thread got sensible readings, all of them stale")
+    }
+
+    /// Six threads read everything `monitor` offers `rounds` times, all at once, and must get what the main thread got.
+    private static func checkSystemMonitor(_ t: AppTestRunner, _ monitor: SystemMonitor, rounds: Int) {
+        // What every thread must agree with, read on the main thread first.
+        let processors = monitor.processorCount
+        let memoryTotal = monitor.memoryStatus().physicalTotal
+        let computer = monitor.sysInfo(type: "COMPUTER_NAME", data: "")?.string
+        let logon = monitor.logonTime()
+        t.check(monitor.desktopPicturePath() != nil, "the desktop picture is known on the main thread")
+        let problems = Collected<String>()
+        let finished = onThreads(6) { i in
+            for round in 0..<rounds {
+                let cpu = monitor.cpuUsage(processor: (round + i) % (processors + 1))
+                if !(0...100).contains(cpu) { problems.add("cpu \(cpu)") }
+                if monitor.processorCount != processors { problems.add("processor count") }
+                let memory = monitor.memoryStatus()
+                if memory.physicalTotal != memoryTotal || memory.physicalUsed <= 0 { problems.add("memory") }
+                let interfaces = monitor.networkInterfaces()
+                _ = monitor.networkCounters(interface: nil)
+                _ = monitor.networkCounters(interface: interfaces.first)
+                _ = monitor.bestNetworkInterface()
+                if monitor.diskSpace(path: "/") == nil { problems.add("disk space") }
+                if monitor.volumeInfo(path: "/") == nil { problems.add("volume") }
+                if monitor.uptime() <= 0 { problems.add("uptime") }
+                _ = monitor.battery()
+                if !monitor.isProcessRunning("launchd") { problems.add("process list") }
+                for type in ["IP_ADDRESS", "MAC_ADDRESS", "ADAPTER_TYPE", "ADAPTER_STATE", "GATEWAY_ADDRESS",
+                             "DNS_SERVER", "LAN_CONNECTIVITY", "USER_LOGONTIME", "OS_VERSION"] {
+                    _ = monitor.sysInfo(type: type, data: "")
+                }
+                if monitor.sysInfo(type: "COMPUTER_NAME", data: "")?.string != computer {
+                    problems.add("computer name")
+                }
+                // The walk itself, not its cached value: walks on several threads at once each see every entry.
+                if monitor.logonTime() != logon { problems.add("logon time") }
+                // Published by the main thread: never "unknown" on a skin thread.
+                if monitor.desktopPicturePath() == nil { problems.add("desktop picture") }
+            }
         }
+        t.check(finished, "the threads finish")
+        t.equal(Set(problems.all).sorted(), [], "every thread got sensible, matching readings")
     }
 
     // MARK: Values only the main thread can work out
@@ -188,7 +243,7 @@ enum ServiceThreadingSelfTests {
 
     static func desktopInfoTests(_ t: AppTestRunner) {
         t.suite("App: skin threading: Wi-Fi, the focused window and desktop inputs for several threads") {
-            // Wi-Fi: one reading and one scan for every thread; the worker stores them.
+            // Wi-Fi: one reading and one scan for every thread; the main thread stores them (it runs meanwhile).
             let wifi = WiFiCenter()
             wifi.clock = { 0 }
             let reads = Collected<Int>()
@@ -224,8 +279,9 @@ enum ServiceThreadingSelfTests {
             let settled = Collected<Bool>()
             FrontmostAppInfo.shared.worker.async { settled.add(true) }
             t.check(AppSelfTest.spin(timeout: 60) { settled.count == 1 }, "and the worker read the windows")
+            t.check(drainMainQueue(), "the main thread stored what the worker read")
             t.equal(offMain { FrontmostAppInfo.shared.current() }, FrontmostAppInfo.shared.info,
-                    "another thread reads what the worker stored")
+                    "another thread reads what the main thread stored")
 
             // Location Services: the status comes from the main thread's manager.
             let onMain = MediaUILocationPermission.shared.status
@@ -255,6 +311,16 @@ enum ServiceThreadingSelfTests {
 
     static func audioTests(_ t: AppTestRunner) {
         t.suite("App: skin threading: volume steps and mute toggles of several skins at once all count") {
+            // Skins loading at the same time: each one that asks while the first read of the devices runs waits for
+            // it, not only the one that started it (the fake HAL takes 0.3 s for that read).
+            let slowHAL = AudioSelfTests.FakeSystemHAL()
+            slowHAL.readDelay = 0.3
+            let slow = AudioSystem(hal: slowHAL, firstReadWait: 60)
+            let loaded = Collected<Bool>()
+            t.check(onThreads(4) { _ in loaded.add(slow.snapshot().loaded) }, "the threads finish")
+            t.equal(loaded.all, Array(repeating: true, count: 4), "every skin's first look found the devices")
+            AudioSelfTests.drainHAL()
+
             let hal = AudioSelfTests.FakeSystemHAL()
             let system = AudioSystem(hal: hal, firstReadWait: 60)
             system.activateIfNeeded()

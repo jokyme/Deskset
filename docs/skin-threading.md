@@ -225,7 +225,9 @@ Two small fixes:
 - `Win7Audio` `ChangeVolume` and `AppVolume` `togglemute` read, then write, with two separate locks. Two skins at
   once can lose a step, where today the main thread serializes them. Make each change one locked operation.
 - `AudioSystem.activateIfNeeded()` blocks its first caller for up to 0.2 s. On a skin thread that blocks one skin,
-  once. That is acceptable.
+  once. That is acceptable. But the skins that ask while that first read runs must wait for it too (no longer than the
+  first one): otherwise a second skin loading at the same time finds nothing loaded (its value 0, an OnRefreshAction
+  `ChangeVolume` lost).
 
 ### 4.8 WebParser
 
@@ -1063,14 +1065,24 @@ a stress suite runs every test and default skin that way (below).
 - the skin's text layouts (`TextLayoutCache`). `SkinHost.textSize` now names the skin, so a host that serves several
   skins (`RenderHost` in some self-tests) measures with that skin's layouts, and the String meter is still drawn with
   the layout it was measured with;
-- its Rotator images with the image options applied (`RotatorImageCache`, the same 64 MB LRU, now per skin);
+- its Rotator images with the image options applied (`RotatorImageCache`, an LRU as before, now per skin). The bytes
+  are counted for all skins together: each skin may keep 16 MB whatever the others hold, and more only while all of
+  them together stay within the 64 MB the one shared cache kept. One skin with many large needles keeps them all, as
+  before; eight skins that each keep changing a tint do not keep 64 MB apiece. The same processed image in two skins
+  is kept twice;
 - the Histogram's scratch space and cropped images.
 
 What it keeps goes with the skin. Refresh All no longer purges the Rotator images: they go with the skins it replaces.
 
 The text cache still keeps two generations, but they no longer turn over when 1024 layouts from all skins filled them.
-They turn over at the skin's next update once the current one holds 64 layouts, and at 1024 in one update. A skin
-that keeps showing the same texts builds none of them again; one whose texts keep changing keeps a few dozen layouts.
+They turn over at the skin's next update once the current one holds twice as many layouts as the last update used (at
+least 64), and at 1024 in one update. A skin that keeps showing the same texts builds none of them again, and a text
+that comes back every few updates (a weekday, a CPU percentage, a Loop's frames) is kept too: after a turnover the
+current generation grows only by the new texts, so it spans about as many updates as the skin shows texts for each new
+one (a hundred labels and a counter: about a hundred updates). A skin whose texts all keep changing keeps about four
+updates' worth, at least a few dozen layouts. The skin's update count moves on after its meters are measured and
+before they are drawn, so a turnover can fall between the two; the drawing then moves the measured layouts back into
+the current generation, it does not build them again.
 
 **Colors:** `RGBA.cgColor` is `CGColor(srgbRed:green:blue:alpha:)` instead of going through `NSColor`: the same
 components and color space, also out of range.
@@ -1084,15 +1096,21 @@ components and color space, also out of range.
 - `purge` (Refresh All) takes the lock.
 
 **Fonts** (§4.4):
-- One lock for resolution: the caches, the family index and `generation`. A miss is resolved with the lock held, so
-  that nothing resolved from the fonts as they were before a registration is kept after it.
+- One lock for resolution: the caches and the family index. A miss is resolved with the lock held, and the fonts
+  queue holds it while it registers or unregisters a font with Core Text and clears the caches in the same step, so a
+  resolution sees the fonts either before or after a change, never half of each (the family list from before a skin's
+  font went away and the family's members from after: the system font), and nothing resolved before a change is kept
+  after it.
+- `generation`, which every text layout reads, also one it has already, has a lock of its own: reading it never waits
+  for another skin's miss.
 - `NSFont(name:size:)` and the system font stay AppKit calls, under that lock. Core Text's lookups give other fonts:
   an unknown name falls back to Helvetica, PostScript names match in any case, some families get another default
   member, and a system font built from traits snaps weights and widths differently. Main Thread Checker reports
   nothing for them.
 - Registration and rescans run on a serial fonts queue, which skins may wait on and which never waits on a skin. A
-  folder already read is answered without the queue. A folder counts as read only once its fonts are registered, so
-  a thread that finds it read also finds its fonts.
+  folder already read is answered without the queue, and so is a folder still missing (most skins have no
+  `@Resources/Fonts` and look for it every few seconds). A folder counts as read only once its fonts are registered,
+  so a thread that finds it read also finds its fonts.
 - Every change posts `Fonts.didChangeNotification` on the main thread, a turn later (never in the middle of the layout
   that registered the fonts). The app then lays out its running skins again, each on its executor
   (`AppController.fontsChanged`), unless a caller already did that for this change: a skin's load, an installation,
@@ -1109,8 +1127,9 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
   SysInfo values, mounts, volumes). The quick readings (CPU ticks, memory, the interface list, the mount list) are
   taken with the lock held, so one thread reads and the others use its reading; the slow ones (configd, the process
   list, the power sources, SysInfo lookups) between two accesses, so no thread waits for another's system call. The
-  configd session is created with the monitor and its calls are serialized; the utmpx walk is serialized; a network
-  volume's background reading is stored under the lock instead of on the main thread.
+  configd session is created with the monitor and its calls are serialized; the utmpx walk is serialized. A network
+  volume's background reading is still stored on the main thread (under the lock), between the updates of the skins
+  running there, so a volume's size and free space come from one reading.
 - The desktop picture (Registry `Wallpaper`): `DesktopPictureCache` publishes every answer it gives on the main thread,
   and the folder lookup's result when it arrives; another thread gets the latest answer ("" before the first one), no
   longer nil. `SystemDataSource.desktopPicturePath`'s contract says so.
@@ -1118,9 +1137,12 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
   thread. Subscribing, `wantsCover`, commands, and the poll after a quiet spell run on the main thread: at once when the
   caller is there (every skin today, so nothing changes), else queued there (`MediaUIMainHop.run`). The timer, the
   cover jobs and `NSWorkspace` stay on the main thread.
-- Wi-Fi and the focused window: their values are behind a lock, and the worker stores what it read there instead of
-  hopping to the main thread. Which app is in front is still asked on the main thread (`frontmostApplication` is not
-  documented as safe elsewhere; `runningApplications` is, and `SystemMonitor` keeps using it on any thread).
+- Wi-Fi and the focused window: their values are behind a lock. What the worker read is still stored on the main
+  thread, as before: between the updates of the skins that run there (today every skin), so one update never pairs
+  the old SSID with the new signal, or the old window with the new title. Skins on threads of their own read whatever
+  was stored last; phase 2 may store it from the worker instead. Which app is in front is still asked on the main
+  thread (`frontmostApplication` is not documented as safe elsewhere; `runningApplications` is, and `SystemMonitor`
+  keeps using it on any thread).
 - Location Services: the manager and the question live on the main thread; the status is published from there.
 - SysColor and Chameleon: the appearance, "Reduce transparency", and the main screen's desktop fill color, picture and
   frame are published by the main thread (`DesktopInputs`, also once at launch). Colors resolve for that appearance on
@@ -1134,31 +1156,46 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
 - Lua: the tick rate and `os.clock`'s origin are set once (`pthread_once`), when Lua is registered at launch, so
   `os.clock` now counts from there rather than from the first script (`docs/compat/lua.md`).
 - Audio: Win7Audio `ChangeVolume` and `ToggleMute` and AppVolume `togglemute` are each one step under the lock, with
-  the device write queued in the same step, so two skins' changes both count, on the device too.
+  the device write queued in the same step, so two skins' changes both count, on the device too. Every skin that asks
+  while the first read of the devices runs waits for it, no longer than the one that started it (at most 0.2 s, once),
+  so a second skin loading at the same time does not find nothing loaded (§4.7).
 
 **Tests:** "App: skin threading: …"
 - `RenderContextSelfTests`: a context per skin, measuring and drawing share it and drawing one skin leaves another's
-  alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the skin that drew them, a context
-  goes with its skin and a refresh, colors match AppKit's. The Core ownership suite also covers `renderContext`.
+  alone, layouts are kept (also texts that come back every third and fifth update in a skin of a hundred labels) and
+  bounded, Rotator images and Histogram crops stay in the skin that drew them, each skin keeps its share of the Rotator
+  budget and all skins together its total, a context goes with its skin and a refresh, colors match AppKit's. The Core
+  ownership suite also covers `renderContext`.
 - `SharedServiceThreadingSelfTests` use `Images` and `Fonts` from several dedicated threads (8 MB stacks, as in §5.3),
   released together. Several threads wanting one file decode it once, and one derived image is made once (the maker
   is held until the others wait for it). A purge during a decode keeps nothing of it. Files replaced and purged under
   four drawing threads never hand out an image of the wrong version. Fonts and text sizes come out the same on every
-  thread as on the main thread. A font folder is registered once, and every thread that asked finds its fonts.
-  Rescans under running layouts keep the fonts consistent. A registration is announced on the main thread a turn
+  thread as on the main thread. A font folder is registered once, and every thread that asked finds its fonts. A
+  missing font folder is looked for again while a registration holds the fonts queue. Rescans under running layouts
+  keep the fonts consistent (with `generation` on a lock of its own, rescans that unregistered a font while a
+  resolution was under way gave the system font in half the runs, until a change and the clearing of the caches
+  became one step). A registration is announced on the main thread a turn
   later, and a running skin measures its text again. They also run under Main Thread Checker
   (`scripts/check-main-thread.sh "skin threading"`): nothing reported.
 - `ServiceThreadingSelfTests`: the system monitor gives every thread sensible, matching readings (the utmpx walk
-  included); a `MainPublished` value is worked out on the main thread once however many threads find it stale, and
-  read elsewhere without waiting; NowPlaying reads, subscriptions and commands from four threads all arrive and polling
-  stops with the last subscription; one Wi-Fi reading for six threads; the focused window, Location Services, SysColor
-  colors and Chameleon's desktop read the same on every thread as on the main thread; volume steps and mute toggles of
-  four skins at once all count, on the device too; a refused WebParser file is logged once. The desktop picture suite
-  reads it from another thread while the main thread is blocked.
+  included), also a monitor whose clock makes every reading stale at every look, so six threads take every reading
+  and fill every cache at once, 300 rounds of the quick ones: without the CPU, network or volume lock that crashes in
+  most runs. (The slow readings are taken between two accesses and only their result is stored under the lock; a
+  missing lock there, or on memory's plain numbers, is too narrow a race for a test to hit.) A `MainPublished` value is
+  worked out on the main thread once however many threads find it stale, and read elsewhere without waiting;
+  NowPlaying reads, subscriptions and commands from four threads all arrive and polling stops with the last
+  subscription; one Wi-Fi reading for six threads; the focused window, Location Services, SysColor colors and
+  Chameleon's desktop read the same on every thread as on the main thread; four skins asking for the audio devices
+  while the first read runs all find them; volume steps and mute toggles of four skins at once all count, on the
+  device too; a refused WebParser file is logged once. The desktop picture suite reads it from another thread while
+  the main thread is blocked. These suites, not the stress suite, are what catch a missing lock in the services of
+  §4.5–§4.8 (below).
 - Core, "Skin threading: …": two skins joining and leaving `ProcessSampler` 2000 times each always find it running
   while subscribed; a second skin gets the Registry facts while the first is inside its data source call; eight skins
   writing 25 keys each into one file lose none; `os.clock` on eight threads reads between the main thread's before and
-  after. Without the fixes, the sampler, file and volume suites fail.
+  after. Without the fixes, the sampler, file and volume suites fail. The `os.clock` suite shows one clock for every
+  thread; it cannot race the once-only start itself (the clock has started before the threads run, and cannot start
+  again in one process): that is `pthread_once`'s.
 
 **The stress suite** (`ThreadStressSelfTests`, "App: threads: …"; §10):
 - `TestThreadExecutor` is the executor §5.3 recommends, for tests for now (phase 3 turns it into `SkinThreadExecutor`):
@@ -1174,7 +1211,10 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
 - The host (`StressHost`) is thread-safe: it answers from an environment the main thread made beforehand and from the
   shared services (`SkinRenderer.textSize` with the skin's own layouts, `Images`). Window and app bangs, bangs for
   other skins and opened files are recorded, not carried out, and the plugins that need a skin window stay idle, as in
-  `--render` (FrostedGlass's backdrop, InputText's prompt, AudioLevel's capture, NowPlaying's Apple Events).
+  `--render` (FrostedGlass's backdrop, InputText's prompt, AudioLevel's capture, NowPlaying's Apple Events). It notes
+  every call that does not come from the skin's own thread (a plugin's background work logging or running an action
+  without handing it to the skin's executor first, which would reach `SkinController` off its thread in phase 2); the
+  suite checks there are none.
 - Meanwhile the main thread does what the app does, spread over the run by the skins' progress rather than by time
   (a slow machine does no more of it): it replaces photos under the slideshows (32 times), purges the images (12,
   Refresh All), removes or restores a skin font and reads the folder again (8; every change reaches every skin's
@@ -1187,11 +1227,16 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
   `!WriteKeyValue` key at every update, into one shared file).
 - It checks that every skin finishes (a hang otherwise) with its loads, updates and draws; that no writer key is
   missing from the shared file; that each slideshow shows its photo at the size of one of the photo's versions; that
-  the font-heavy skin measures with its own font; and that the deep-nesting chain reaches the limit of 16 nested
-  actions using about 290 KB of the 8 MB stack (debug build). Under Main Thread Checker
-  (`scripts/check-main-thread.sh "App: threads"`) nothing is reported.
-- It catches what phase 1 fixed: without `IniWriter`'s per-file lock the writers lose keys in every run, and with one
-  render context shared by all skins (as the static caches were) the run crashes.
+  the font-heavy skin measures with its own font; that the deep-nesting chain reaches the limit of 16 nested
+  actions using about 290 KB of the 8 MB stack (debug build); and that every call to the host came from the skin's
+  own thread. Under Main Thread Checker (`scripts/check-main-thread.sh "App: threads"`) nothing is reported.
+- It catches what phase 1 fixed in the render caches, `Images`, `Fonts` and `IniWriter`: without `IniWriter`'s
+  per-file lock the writers lose keys in every run; with one render context shared by all skins (as the static caches
+  were), or with `Fonts.resolve` or `Images.purge` unlocked, the run crashes. It is not what catches a missing lock in
+  the services of §4.5–§4.8 (the system monitor, NowPlaying, Wi-Fi, the focused window): they keep their readings for
+  a while, so few calls of the skins overlap, and with those locks removed it still passes. Their own suites
+  (`ServiceThreadingSelfTests`, above) are what catch a missing lock there, as far as a test can (see the system
+  monitor's).
 - Cost: about 8 s on an M4 Pro (debug build), 15 s for the x86_64 build under Rosetta, about a minute under
   `taskpolicy -b`. The work is bounded, so a slower runner only takes longer; the only time limits tell "finishes"
   from "never". String\Review is drawn at its first update only: its Border around simulated-bold Chalkduster takes

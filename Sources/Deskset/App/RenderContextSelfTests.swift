@@ -52,18 +52,23 @@ enum RenderContextSelfTests {
             t.check(context.text.storedCount <= 2 * (TextLayoutCache.turnoverFloor + 8),
                     "a few dozen layouts, not one per update: \(context.text.storedCount)")
 
-            // A large skin (more texts than the turnover floor): fixed labels and a counter.
+            // A large skin (more texts than the turnover floor): fixed labels, a counter, and texts that come back
+            // every third and every fifth update.
             var large = "[Rainmeter]\nUpdate=1000\n[Count]\nMeasure=Calc\nFormula=Counter\n"
+                + "[Round]\nMeasure=Calc\nFormula=Counter % 3\n[Week]\nMeasure=Calc\nFormula=Counter % 5\n"
                 + "[Tick]\nMeter=String\nMeasureName=Count\nText=%1\n"
+                + "[Step]\nMeter=String\nMeasureName=Round\nX=40\nText=Step %1\n"
+                + "[Day]\nMeter=String\nMeasureName=Week\nX=80\nText=Day %1\n"
             let labels = TextLayoutCache.turnoverFloor + 36
             for i in 0..<labels { large += "[Fixed\(i)]\nMeter=String\nX=\(i % 10 * 40)\nY=\(16 + i / 10 * 16)\nText=Label \(i)\n" }
             let (big, bigHost) = try MediaUITests.bareSkin(t, large)
             let bigBuilds = try runCycles(big, count: cycles)
-            t.equal(bigBuilds.last, bigBuilds.first.map { $0 + cycles - 1 },
-                    "one new layout per update: \(labels) labels are never built again")
+            // From the sixth update on, every value of both rounds has been shown.
+            t.equal(bigBuilds[cycles - 1] - bigBuilds[5], cycles - 6,
+                    "one new layout per update: \(labels) labels and the rounds' texts are never built again")
             let bigContext = SkinRenderContext.of(big)
-            t.check(bigContext.text.storedCount <= 2 * (labels + 4),
-                    "the layouts of about two updates: \(bigContext.text.storedCount)")
+            t.check(bigContext.text.storedCount <= 4 * (labels + 12),
+                    "the layouts of a few dozen updates: \(bigContext.text.storedCount)")
 
             // More layouts in one update than the limit: bounded all the same.
             let style = TextStyle()
@@ -127,6 +132,31 @@ enum RenderContextSelfTests {
             t.check(pictureA?.tiffRepresentation != nil && pictureA?.tiffRepresentation == pictureB?.tiffRepresentation,
                     "both skins draw the same picture")
             withExtendedLifetime((hostA, hostB)) {}
+        }
+
+        t.suite("App: skin threading: Rotator images: a share for each skin, the old total for all of them") {
+            // Scaled down: 256 KB images, a share of two of them per skin, eight for all skins.
+            let budget = RotatorImageCache.Budget(total: 8 << 18, perSkin: 2 << 18)
+            guard let canvas = Images.bitmapContext(width: 256, height: 256), let source = canvas.makeImage() else {
+                return t.check(false, "an image")
+            }
+            var flipped = RotatorMeter.ImageProcessing()
+            flipped.flipHorizontal = true
+            func fill(_ cache: RotatorImageCache, _ name: String, _ count: Int) {
+                for i in 0..<count { _ = cache.image(for: source, path: "\(name)\(i)", processing: flipped) }
+            }
+            var a: RotatorImageCache? = RotatorImageCache(budget: budget)
+            let b = RotatorImageCache(budget: budget)
+            fill(a!, "a", 6)
+            t.equal(a?.count, 6, "alone, a skin keeps more than its share: the others do not need theirs")
+            fill(b, "b", 4)
+            t.equal(b.count, 2, "another skin keeps its share, and no more while the total is reached")
+            t.equal(a?.count, 6, "and leaves the first one's alone")
+            t.equal(budget.bytes, 8 << 18, "all skins together: the total")
+            a = nil
+            t.equal(budget.bytes, 2 << 18, "a skin's images go with it")
+            fill(b, "c", 4)
+            t.equal(b.count, 6, "and the other skin may keep more again")
         }
 
         t.suite("App: skin threading: a skin's render context goes with the skin") {

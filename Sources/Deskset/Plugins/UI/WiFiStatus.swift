@@ -111,7 +111,9 @@ enum WiFiStatusFormat {
 }
 
 /// Shared CoreWLAN reader (one per app). Any thread: measures of skins on different threads read the latest values
-/// under a lock, and the worker stores what it read under that lock (docs/skin-threading.md §4.6).
+/// under a lock (docs/skin-threading.md §4.6). What the worker read is stored under that lock on the main thread, as
+/// before skins could leave it: between the updates of the skins that run there (today every skin), so one update
+/// never sees half of a new reading (the old SSID with the new signal).
 final class WiFiCenter {
     static let shared = WiFiCenter()
 
@@ -146,9 +148,11 @@ final class WiFiCenter {
             let reader = self.reader
             worker.async { [weak self] in
                 let info = reader(index)
-                self?.state.access { s in
-                    s.current[index] = .some(info)
-                    s.refreshing.remove(index)
+                MediaUIMainHop.async {
+                    self?.state.access { s in
+                        s.current[index] = .some(info)
+                        s.refreshing.remove(index)
+                    }
                 }
             }
         }
@@ -168,9 +172,11 @@ final class WiFiCenter {
             let scanner = self.scanner
             worker.async { [weak self] in
                 let found = scanner(index)
-                self?.state.access { s in
-                    s.scans[index] = found
-                    s.scanning.remove(index)
+                MediaUIMainHop.async {
+                    self?.state.access { s in
+                        s.scans[index] = found
+                        s.scanning.remove(index)
+                    }
                 }
             }
         }

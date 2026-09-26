@@ -18,13 +18,15 @@ import DesksetCore
 /// Italic / Oblique use an italic member when the family has one, otherwise a slanted (simulated) font.
 ///
 /// Thread-safe (docs/skin-threading.md §4.4): skins measure and draw text on threads of their own.
-/// - Resolution (`resolve`, the family lookups, `generation`) is guarded by one lock, `lock`.
+/// - Resolution (`resolve`, the family lookups) is guarded by one lock, `lock`. `generation`, which every text layout
+///   reads, even one it has already, has a lock of its own, so reading it never waits for another skin's miss.
 /// - Registration and rescans run on a serial fonts queue, `queue`: at most one at a time, in order. Skins may wait for
 ///   it (a layout registers its skin's font folder the first time), and it never waits for a skin. Whether a folder
 ///   is registered already is answered without it (`folderLock`), so a skin whose fonts are in does not wait behind
 ///   another skin's registration.
-/// - A registration that changes the fonts clears what resolution kept and moves `generation` on, then posts
-///   `didChangeNotification` on the main thread: the app lays out its skins again (`AppController.fontsChanged`).
+/// - Registering or unregistering a font clears what resolution kept, in one step with the change; `generation` then
+///   moves on, and `didChangeNotification` is posted on the main thread: the app lays out its skins again
+///   (`AppController.fontsChanged`).
 enum Fonts {
     /// Rainmeter FontSize → macOS point size.
     static let sizeScale = 96.0 / 72.0
@@ -73,10 +75,11 @@ enum Fonts {
     /// Shear of simulated italic / oblique text (about 11°).
     static let simulatedSlant: CGFloat = 0.2
 
-    /// Incremented whenever the set of available fonts changes (layout caches key on it). Any thread.
+    /// Incremented whenever the set of available fonts changes (layout caches key on it). Any thread; it never waits
+    /// for a resolution under way.
     static var generation: Int {
-        lock.lock()
-        defer { lock.unlock() }
+        generationLock.lock()
+        defer { generationLock.unlock() }
         return currentGeneration
     }
 
@@ -86,17 +89,20 @@ enum Fonts {
     /// middle of the layout that registered the fonts.
     static let didChangeNotification = Notification.Name("DesksetFontsDidChange")
 
-    /// Guards what resolution keeps (`cache`, `faceCache`, `memberCache`, `familyIndex`) and `currentGeneration`.
-    /// A miss is resolved with the lock held: a font resolved from the fonts as they were before a registration can
-    /// then never be kept after it (the fonts queue takes the lock to clear the caches once Core Text has the new
-    /// fonts), and misses are rare (every skin keeps its layouts, `TextLayoutCache`). It is a leaf: nothing waits for
-    /// anything else while holding it.
+    /// Guards what resolution keeps (`cache`, `faceCache`, `memberCache`, `familyIndex`). A miss is resolved with the
+    /// lock held, and the fonts queue holds it while it registers or unregisters fonts with Core Text and clears the
+    /// caches in the same step (`changingFonts`): a resolution sees the fonts either before or after a change, never
+    /// half of each, and nothing resolved before a change is kept after it. Misses are rare (every skin keeps its
+    /// layouts, `TextLayoutCache`), and so are registrations. Nothing waits for anything else while holding it, apart
+    /// from Core Text's registration and `generationLock`, a leaf.
     ///
     /// The AppKit lookups of resolution (`NSFont(name:size:)`, the system font) are kept under it rather than replaced
     /// with Core Text's: `CTFontCreateWithName` falls back to Helvetica for an unknown name, matches PostScript names
     /// in any case and picks another default member of some families, and a system font built from traits snaps
     /// weights and widths differently, so skins would get other fonts. Main Thread Checker reports nothing for them.
     private static let lock = NSLock()
+    /// Guards `currentGeneration`, which moves on while `lock` is held (a leaf: taken inside `lock`, never around it).
+    private static let generationLock = NSLock()
     private static var currentGeneration = 0
     private static var cache: [Request: Resolved] = [:]
     private static var faceCache: [String: FaceMatch] = [:]
@@ -104,7 +110,8 @@ enum Fonts {
     private static var familyIndex: [String: String]?
 
     /// The serial fonts queue: registration and rescans, one at a time. `registered` and `copyCounter` are touched
-    /// only on it; `registeredFolders` and `missingFolders` are changed on it, under `folderLock`.
+    /// only on it; `registeredFolders` is changed on it, under `folderLock`, and so is `missingFolders`, apart from a
+    /// missing folder found missing again (`noteStillMissing`).
     private static let queue: DispatchQueue = {
         let queue = DispatchQueue(label: "app.deskset.fonts")
         queue.setSpecific(key: onFontsQueue, value: true)
@@ -171,7 +178,7 @@ enum Fonts {
             var registration = Registration(modified: modified ?? .distantPast, copy: nil)
             if let copy = privateCopy(of: path) {
                 var error: Unmanaged<CFError>?
-                if CTFontManagerRegisterFontsForURL(copy as CFURL, .process, &error) {
+                if changingFonts({ CTFontManagerRegisterFontsForURL(copy as CFURL, .process, &error) }) {
                     registration.copy = copy
                     changed = true
                 } else {
@@ -190,9 +197,22 @@ enum Fonts {
     @discardableResult
     private static func unregister(_ registration: Registration) -> Bool {
         guard let copy = registration.copy else { return false }
-        CTFontManagerUnregisterFontsForURL(copy as CFURL, .process, nil)
+        changingFonts { _ = CTFontManagerUnregisterFontsForURL(copy as CFURL, .process, nil) }
         try? FileManager.default.removeItem(at: copy)
         return true
+    }
+
+    /// Registers or unregisters fonts with Core Text (`body`) and forgets what resolution kept, in one step under
+    /// `lock`. A resolution that overlapped the change would put together fonts from before it and after it (the
+    /// family list read before a skin's font went away, the family's members after: the system font rather than the
+    /// skin's font or the fallback). `generation` moves on once the whole batch is done (`invalidate`). Runs on the
+    /// fonts queue.
+    private static func changingFonts<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = body()
+        forgetResolutions()
+        return result
     }
 
     /// A registered copy deleted behind Deskset's back (a cleaning utility emptied the caches) is made again from the
@@ -290,10 +310,13 @@ enum Fonts {
 
     /// Registers the fonts in a `@Resources/Fonts` folder once (cheap to call for every layout — `TextLayoutCache`
     /// does, from `TextStyle.fontFolder`). A missing folder is looked for again after `missingFolderRecheck`
-    /// seconds, not remembered for good. Any thread: a folder already read is answered without the fonts queue;
-    /// otherwise the caller waits for the queue, and returns once the folder's fonts are registered.
+    /// seconds, not remembered for good. Any thread: a folder already read, or still missing, is answered without the
+    /// fonts queue; otherwise the caller waits for the queue, and returns once the folder's fonts are registered.
     static func registerFolder(_ folder: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         guard !folder.isEmpty, needsReading(folder, now: now) else { return }
+        // Most skins have no font folder and look for it again every few seconds: a folder still missing is noted
+        // without the queue, so a layout never waits behind another skin's registration or a rescan just to learn that.
+        guard FileManager.default.fileExists(atPath: folder) else { return noteStillMissing(folder, now: now) }
         onQueue {
             // Another skin may have read it while this one waited for the queue.
             guard needsReading(folder, now: now) else { return }
@@ -323,6 +346,15 @@ enum Fonts {
         missingFolders[folder] = nil
         registeredFolders.insert(folder)
         folderLock.unlock()
+    }
+
+    /// Off the fonts queue: `registerFolder` did not find `folder`. A folder the queue has read meanwhile stays read.
+    private static func noteStillMissing(_ folder: String, now: TimeInterval) {
+        folderLock.lock()
+        defer { folderLock.unlock() }
+        guard !registeredFolders.contains(folder) else { return }
+        if missingFolders.count >= 1024 { missingFolders.removeAll() }
+        missingFolders[folder] = now
     }
 
     /// Runs on the fonts queue.
@@ -406,20 +438,30 @@ enum Fonts {
         return missingFolders[folder] != nil
     }
 
+    /// Runs `body` on the fonts queue and waits for it, as a registration does (tests hold the queue with it).
+    static func runOnQueue(_ body: () -> Void) { onQueue(body) }
+
     /// The private copy registered for the font file at `path`, nil when none is (tests).
     static func registeredCopy(ofFile path: String) -> URL? { onQueue { registered[path]?.copy } }
 
-    /// Forgets what resolution kept and moves `generation` on, then tells the app (`didChangeNotification`). Runs on
-    /// the fonts queue, once Core Text has the new set of fonts.
+    /// Forgets what resolution kept (again: every change already did) and moves `generation` on, then tells the app
+    /// (`didChangeNotification`). Runs on the fonts queue, once Core Text has the new set of fonts.
     private static func invalidate() {
         lock.lock()
+        forgetResolutions()
+        generationLock.lock()
+        currentGeneration += 1
+        generationLock.unlock()
+        lock.unlock()
+        DispatchQueue.main.async { NotificationCenter.default.post(name: didChangeNotification, object: nil) }
+    }
+
+    /// Call with `lock` held.
+    private static func forgetResolutions() {
         cache.removeAll()
         faceCache.removeAll()
         memberCache.removeAll()
         familyIndex = nil
-        currentGeneration += 1
-        lock.unlock()
-        DispatchQueue.main.async { NotificationCenter.default.post(name: didChangeNotification, object: nil) }
     }
 
     // MARK: Resolution

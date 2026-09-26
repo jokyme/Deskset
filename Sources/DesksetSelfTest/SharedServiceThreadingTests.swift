@@ -7,7 +7,7 @@ import Foundation
 // - ProcessSampler: a skin joining just as the last other one leaves still gets samples;
 // - the Registry measure's machine facts are worked out without holding their lock while the data source is asked;
 // - !WriteKeyValue into one shared file from several skins at once: every write lands;
-// - Lua: os.clock has one origin for the whole process, whichever thread opens a state first.
+// - Lua: os.clock is one clock for the whole process, started when Lua is registered: every thread reads it.
 // The threads never call the runner (it is not thread-safe); they report into `ThreadReports`, checked afterwards.
 
 func runSharedServiceThreadingTests(_ t: TestRunner) {
@@ -194,7 +194,10 @@ private func runIniWriterThreadingTests(_ t: TestRunner) {
 // MARK: - Lua clock
 
 private func runLuaClockThreadingTests(_ t: TestRunner) {
-    t.suite("Skin threading: Lua os.clock has one origin, whichever thread opens a state") {
+    // What this cannot show is the race the once-only start removed (two threads opening the first states at once, each
+    // setting its own origin): in one process the clock starts once, at the latest here, before any thread opens a
+    // state, and it cannot be started again. That start is pthread_once's (deskset_lua_start_clock).
+    t.suite("Skin threading: Lua os.clock: every thread reads the one clock started at registration") {
         LuaSupport.register()
         func clock(_ state: LuaState?) -> Double? {
             guard case .ok(let values)? = state?.evaluate("os.clock()"), case .number(let n)? = values.first

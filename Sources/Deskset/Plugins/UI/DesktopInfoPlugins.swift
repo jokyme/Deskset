@@ -429,8 +429,9 @@ enum DesktopInputs {
 /// The focused app and window, refreshed off the main thread at most twice a second.
 ///
 /// Any thread (docs/skin-threading.md §4.6): measures read the latest info under a lock. Which app is in front is
-/// asked on the main thread (at once when the reader is there, else queued there), the windows on the worker, which
-/// stores the result under the lock.
+/// asked on the main thread (at once when the reader is there, else queued there), the windows on the worker. The
+/// result is stored under the lock on the main thread, as before skins could leave it: between the updates of the
+/// skins that run there (today every skin), so IsFullScreen and GetActiveTitle agree within one update.
 final class FrontmostAppInfo {
     static let shared = FrontmostAppInfo()
 
@@ -488,9 +489,11 @@ final class FrontmostAppInfo {
             result.fullScreen = FrontmostAppInfo.isFullScreen(windows: windows, pid: pid,
                                                               display: CGDisplayBounds(CGMainDisplayID()))
             if wantsTitle { result.title = FrontmostAppInfo.title(pid: pid, windows: windows) ?? appName }
-            self?.state.access { s in
-                s.info = result
-                s.refreshing = false
+            MediaUIMainHop.async {
+                self?.state.access { s in
+                    s.info = result
+                    s.refreshing = false
+                }
             }
         }
     }

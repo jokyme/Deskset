@@ -113,16 +113,18 @@ private enum RunKey {
 /// (`SkinRenderer.textSize`) and drawing ask the same cache, so a String meter is drawn with the layout it was measured
 /// with.
 ///
-/// Two generations: the layouts used in the skin's current update cycle, and those used before. A layout found among
-/// the older ones moves to the current generation; the older generation is dropped when the generations turn over:
+/// Two generations: the layouts used since the last turnover, and those used before it. A layout found among the older
+/// ones moves to the current generation; the older generation is dropped when the generations turn over:
 /// - at the first layout asked for in a new cycle (the skin's update count changed), once the current generation holds
-///   `turnoverFloor` layouts;
+///   twice as many layouts as the last cycle used (and at least `turnoverFloor`);
 /// - and whenever it reaches `cacheLimit`.
 ///
 /// So a skin that keeps showing the same texts never builds them again, however many it shows (up to `cacheLimit` in
 /// one cycle: a plain "clear when full" cache would rebuild every layout on every redraw once a redraw needs more than
-/// its limit). A skin whose texts keep changing (a clock with seconds) keeps a few dozen layouts, not thousands, and a
-/// small skin also keeps the texts it shows only now and then.
+/// its limit), and a text that comes back every few updates (a weekday, a CPU percentage, a Loop's frames) is still
+/// there when it does: after a turnover the current generation grows only by the new texts, so it spans about as many
+/// cycles as the skin shows texts for each new one (a hundred labels and a counter: about a hundred updates). A skin
+/// whose texts all keep changing keeps about four cycles' worth, and at least a few dozen layouts, not thousands.
 final class TextLayoutCache {
     private struct Key: Hashable {
         var text: String
@@ -135,6 +137,9 @@ final class TextLayoutCache {
     private var previous: [Key: TextLayout] = [:]
     /// The update cycle `current` was last asked in.
     private var cycle = Int.min
+    /// Layouts asked for in this cycle and in the last one, each counted once (`TextLayout.lastCycle`).
+    private var usedThisCycle = 0
+    private var usedLastCycle = 0
     static let cacheLimit = 1024
     static let turnoverFloor = 64
     /// How many layouts were built (self-tests).
@@ -148,10 +153,15 @@ final class TextLayoutCache {
         if let folder = style.fontFolder { Fonts.registerFolder(folder) }
         if cycle != self.cycle {
             self.cycle = cycle
-            if current.count >= Self.turnoverFloor { turnOver() }
+            usedLastCycle = usedThisCycle
+            usedThisCycle = 0
+            if current.count >= min(max(Self.turnoverFloor, 2 * usedLastCycle), Self.cacheLimit) { turnOver() }
         }
         let key = Key(text: text, style: style, wrapWidth: wrapWidth, generation: Fonts.generation)
-        if let hit = current[key] { return hit }
+        if let hit = current[key] {
+            noteUse(hit)
+            return hit
+        }
         let layout: TextLayout
         if let kept = previous[key] {
             layout = kept
@@ -159,9 +169,16 @@ final class TextLayoutCache {
             layout = TextLayout.build(text, style: style, wrapWidth: wrapWidth)
             builds += 1
         }
+        noteUse(layout)
         if current.count >= Self.cacheLimit { turnOver() }
         current[key] = layout
         return layout
+    }
+
+    private func noteUse(_ layout: TextLayout) {
+        guard layout.lastCycle != cycle else { return }
+        layout.lastCycle = cycle
+        usedThisCycle += 1
     }
 
     private func turnOver() {
@@ -205,6 +222,8 @@ final class TextLayout {
     let gradients: [InlineGradient]
     private let units: [UInt16]
     private var gradientCache: [Int: CGGradient] = [:]
+    /// The last update cycle of its skin's `TextLayoutCache` that asked for it.
+    fileprivate var lastCycle = Int.min
     /// The last `visibleLines` result (clipped meters would otherwise re-truncate their lines on every redraw).
     private var visibleCache: (clip: Int, boxHeight: CGFloat, innerWidth: CGFloat, lines: [Placed])?
 

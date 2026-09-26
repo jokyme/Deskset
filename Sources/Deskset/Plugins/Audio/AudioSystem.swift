@@ -159,6 +159,11 @@ final class AudioSystem: AudioOutputControlling {
     private let lock = NSLock()
     private var current = AudioSystemSnapshot()
     private var activated = false
+    /// Left once the first read of the devices has finished. Callers that arrive while it runs wait for it (up to
+    /// `firstReadEnds`), not only the one that started it.
+    private let firstRead = DispatchGroup()
+    /// When the first caller's wait for the first read ends (under `lock`).
+    private var firstReadEnds = DispatchTime.now()
     private var lastOutputRefresh: TimeInterval = 0
     private var outputRefreshPending = false
     /// Commands queued for the HAL and not carried out yet (under `lock`; see the type comment).
@@ -175,9 +180,9 @@ final class AudioSystem: AudioOutputControlling {
 
     /// Seconds after which a read also re-reads the output state (in case a volume listener is not delivered).
     static let outputStaleness: TimeInterval = 1
-    /// How long the first reader waits for the first read of the devices (once per app run). That read takes
-    /// 55–65 ms on macOS 26.5 (Apple Silicon), so a shorter wait would block the main thread for nothing and still
-    /// leave the skin's first update without a device name or volume.
+    /// How long readers wait for the first read of the devices (once per app run). That read takes 55–65 ms on
+    /// macOS 26.5 (Apple Silicon), so a shorter wait would block the main thread for nothing and still leave the skin's
+    /// first update without a device name or volume.
     static let firstReadWait: TimeInterval = 0.2
     /// This instance's `firstReadWait` (tests give a slow fake HAL more time on a busy machine).
     let firstReadWait: TimeInterval
@@ -209,25 +214,41 @@ final class AudioSystem: AudioOutputControlling {
     /// Starts listening and reads the devices. The first caller waits up to `wait` seconds (default:
     /// `firstReadWait`) for that read, so a skin's first update already has device names; a stalled HAL only delays
     /// it that long, once.
+    ///
+    /// Callers that arrive while that read runs wait for it too, but no longer than the first caller does: skins on
+    /// threads of their own load at the same time (docs/skin-threading.md §4.7), and the second one's first update
+    /// (or its OnRefreshAction's `ChangeVolume`) would otherwise find nothing loaded. Today the skins ask on the main
+    /// thread, which the first caller holds until the read is done or its wait is over: nobody else waits then.
     func activateIfNeeded(wait: TimeInterval? = nil) {
         let wait = wait ?? firstReadWait
+        let now = DispatchTime.now()
         lock.lock()
         let first = !activated
-        activated = true
+        if first {
+            activated = true
+            firstRead.enter()
+            firstReadEnds = now + wait
+        }
+        let loaded = current.loaded
+        let ends = firstReadEnds
         lock.unlock()
-        guard first else { return }
-        if AudioHAL.isOnQueue {
-            installSystemListeners()
-            refresh()
+        if first {
+            if AudioHAL.isOnQueue {
+                installSystemListeners()
+                refresh()
+                firstRead.leave()
+                return
+            }
+            AudioHAL.queue.async {
+                self.installSystemListeners()
+                self.refresh()
+                self.firstRead.leave()
+            }
+        } else if loaded || AudioHAL.isOnQueue {
+            // Loaded already, or called on the HAL queue, which the first read needs: it cannot be waited for there.
             return
         }
-        let done = DispatchSemaphore(value: 0)
-        AudioHAL.queue.async {
-            self.installSystemListeners()
-            self.refresh()
-            done.signal()
-        }
-        _ = done.wait(timeout: .now() + wait)
+        _ = firstRead.wait(timeout: min(now + wait, ends))
     }
 
     /// `handler` runs on `AudioHAL.queue` after every change of the devices or the default devices.
