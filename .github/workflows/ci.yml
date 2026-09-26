@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-26
+          - arch: x86_64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    # The Intel runner is several times slower than the Apple silicon one. A suite stuck for 10 minutes stops the run
+    # with every thread's stack (the self-tests' watchdog, DESKSET_SUITE_TIMEOUT), and each run ends with its slowest
+    # suites.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Core self-tests
+        run: swift run DesksetSelfTest
+
+      - name: App self-tests
+        run: .build/debug/Deskset --self-test
+
+      - name: App bundle
+        run: bash scripts/build-app.sh --arch ${{ matrix.arch }}

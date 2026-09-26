@@ -1,0 +1,355 @@
+{
+ "split_view_patterns": [
+  "Android Studio layout editor (the closest model for Deskset). It has a three-state Code | Split | Design control at the top right of the editor. On macOS, Ctrl+Shift+Left/Right cycles the modes. Split shows the XML and the rendered layout side by side. Switching modes keeps zoom and selection. In Code-only mode the Palette, Component Tree and Attributes panels are unavailable; in Split they stay live. The default mode is set in Settings > Editor > Design Tools. Source: https://developer.android.com/studio/views/layout-editor",
+  "Xcode SwiftUI canvas. The canvas is toggled with Opt+Cmd+Return (Editor > Canvas). It sits on the right or at the bottom via Editor Options > Layout > Canvas on Right / Canvas on Bottom (https://help.apple.com/xcode/mac/current/en.lproj/dev79c94bf05.html). In Selectable mode, clicking a view in the canvas highlights its code, and selecting code highlights the view (https://useyourloaf.com/blog/whats-new-in-xcode-14-previews/). Live mode is for interacting with the view. The Library (Shift+Cmd+L) drags into either the canvas or the code. Automatic refresh can be switched off (Editor > Canvas > Automatically Refresh Canvas). On errors the canvas shows a banner with a Diagnostics button instead of going blank (https://noahgilmore.com/blog/automatic-preview-updating-paused).",
+  "Visual Studio XAML Designer. One document has a design pane and a XAML pane, with Vertical Split, Horizontal Split, Swap Panes and Collapse Pane buttons; the same button restores a collapsed pane. Orientation, swap and collapse are all user choices. Source: https://learn.microsoft.com/en-us/visualstudio/xaml-tools/xaml-designer",
+  "Dreamweaver. Code / Split / Design-Live toggle buttons; selection is linked both ways (click an element and its code is selected, select code and the element is highlighted). But code edits do NOT update Design view automatically: the user has to click Refresh in the Property inspector or press F5. This is an anti-pattern Deskset should avoid; always apply changes automatically. Sources: https://helpx.adobe.com/dreamweaver/using/previewing-pages.html, https://helpx.adobe.com/dreamweaver/using/editing-code-design-view.html",
+  "VS Code. Markdown preview to the side (Cmd+K V) updates as you type. Scroll sync goes both ways and each direction can be switched off (markdown.preview.scrollPreviewWithEditor / scrollEditorWithPreview). The editor's current line is shown as a grey bar in the preview, and double-clicking the preview jumps to the source line (https://code.visualstudio.com/docs/languages/markdown). The Live Preview extension has an 'apply' setting, livePreview.autoRefreshPreview = On All Changes in Editor (default) / On Changes to Saved Files / Never (https://marketplace.visualstudio.com/items?itemName=ms-vscode.live-server).",
+  "Qt Design Studio. The Code view is a dockable view next to the 2D view, Navigator and Properties. Properties edits show up in the code immediately, and the code view has syntax checking and inline error markers while you type (https://doc.qt.io/qtdesignstudio/qtquick-text-editor.html). Historically Qt Creator refused to open the design view while the QML had an error ('Cannot open this QML document because of an error in the QML file', https://forum.qt.io/topic/69223/). That is an anti-pattern; keep showing the last good render instead.",
+  "Framer / Figma Dev Mode / Webflow. Framer's in-app code editor has a split preview (top-right preview button); changes save automatically and refresh instantly (https://www.framer.community/c/announcements/code-preview). Figma Dev Mode's code is a read-only projection generated for the selection in the Inspect panel (https://help.figma.com/hc/en-us/articles/15023202277399). Webflow limits code to embed blocks with a full-screen editor that has autocomplete and validation. Takeaway: those tools treat the visual model as the source of truth. For Deskset the .ini text must stay the source of truth (skins are shared as plain Rainmeter files), so follow the Xcode / Android Studio / XAML model: the canvas and the inspector are projections that write minimal diffs back into the text, keeping comments and order.",
+  "Recommended Deskset layout. A toolbar NSToolbarItemGroup (select-one) with [Design | Split | Code], mirrored in the View menu with checkmarks and shortcuts (for example Ctrl+Cmd+1/2/3, plus Opt+Cmd+Return to toggle the code pane, Xcode-style). Design = Library/Layers sidebar | canvas | inspector. Split = the same sidebars with the centre area split into canvas + code. Code = code at full centre width, inspector hidden, left sidebar still usable as a section navigator. The code pane position (Right / Bottom), its collapsed state and the divider sizes are remembered per user, not per skin.",
+  "When the preference is an external editor, the Split / Code segments are replaced by a single 'Open in <App>' toolbar button showing the app's name and icon, and live reload is switched on automatically. The canvas then stays the WYSIWYG view and refreshes whenever the external app saves.",
+  "Component library tie-in. Dropping a library component on the canvas inserts a new [Section] after the selected one; the code pane scrolls to it and flashes it. Dropping the component into the code pane inserts its INI snippet at the drop line (Xcode allows library items to be dropped into code). Both are one undo step.",
+  "Multi-file skins. Rainmeter skins often @Include .inc files (for example #@#Variables.inc), so the code pane needs a jump bar / tab strip listing the main .ini plus every included file, each with a dirty dot. Selecting a meter defined in an included file switches the code pane to that file. Deskset's IniSourceMap.location(section:key:) already records file + line."
+ ],
+ "sync_behaviours": [
+  "Canvas/Layers to code: selecting a meter scrolls the code pane to its [Section] header (centred if off-screen, no scroll if already visible), tints the whole section block (header down to the next header) and flashes it briefly. It must not steal focus: move the caret only if the code pane is not first responder. With several meters selected, tint every block and scroll to the first. Same idea as Xcode Selectable mode and Dreamweaver's linked selection.",
+  "Inspector to code: focusing an inspector row highlights the Key= line where the effective value is defined, via IniSourceMap.location(section:key:), even when that line lives in a MeterStyle section or an @Include file. Inherited values get a 'from [StyleName]' link that jumps to the definition.",
+  "Code to canvas: when the caret comes to rest inside a section (debounce about 150 ms, user-initiated moves only), select that meter on the canvas and in the inspector. Measure section: select it in the Data tab. [Variables]: select that variable. [Rainmeter] / [Metadata]: show skin properties. Could: Cmd-click on MeasureName=Foo, [Foo:] or #Var# jumps to the definition.",
+  "Loop prevention: tag every selection change with its origin (canvas, layers, inspector, code) and never echo it back to that origin. Programmatic scrolling and selection must not fire 'user moved caret' events.",
+  "When code edits apply: live, debounced. Re-parse and re-render about 300-500 ms after the last keystroke, and immediately on Cmd+S, on caret leaving the line, or on focus leaving the pane. Never require a manual Refresh (the Dreamweaver anti-pattern). An optional advanced setting 'Apply code changes: As I type / When I save' mirrors VS Code Live Preview's autoRefreshPreview.",
+  "Persistence: visual edits already write to disk immediately (EditorFileChange). For code, render from the in-memory buffer (add an overlay hook to SkinFileLoader, which already has run(mainText:)), and write to disk debounced (about 1 s idle) plus on Cmd+S, window close or file switch. Show a dirty dot until the write happens. The simpler fallback is write-through on the same debounce.",
+  "Invalid or incomplete code: INI is line-oriented and forgiving (a malformed line is simply ignored), so rendering should never stop. Don't flag the line under the caret until the user has been idle about 0.8 s or leaves the line.",
+  "Diagnostics are a squiggle + gutter icon + issues list. Kinds: unknown option for this Meter=/Measure= type (warning); unknown enum value such as Shape=aaaa (error, with a quick-fix menu of valid values); unbalanced [ ] ( ) or quotes; formula parse errors; references to missing measures, meters or variables; duplicate sections.",
+  "If the whole skin can't render, keep the last good frame dimmed with a banner such as 'Showing last working version - 3 problems' (Xcode error-banner pattern), not a blank canvas (the Qt anti-pattern). For a section with a parse error, the inspector shows the error and a 'Show in Code' button instead of controls.",
+  "Undo: one undo stack per file, shared by code and visual edits. Visual edits (drag, nudge, inspector change, library insert) are applied as text replacements through the text view, so Cmd+Z in either pane undoes the latest change whichever pane made it. That is how Xcode's canvas/inspector and Android Studio's attribute edits behave.",
+  "Undo grouping: a whole drag, a nudge burst or a multi-key inspector commit is one undo group with an action name ('Undo Move Meter'). Undoing a visual edit reselects the affected meter; undoing typing restores the caret. The existing snapshot-based EditorFileChange undo must be folded into this single stack while the code pane is open.",
+  "File changed on disk (external editor, !WriteKeyValue, git checkout, sync tools): if the buffer is clean, reload silently and keep caret, scroll and selection (VS Code / Xcode behaviour). If it is dirty, show a non-modal bar in the code pane: 'Skin.ini was changed by another app - [Reload from Disk] [Keep My Version] [Compare]'. If the disk copy became newer before a save, ask the same question (VS Code's 'The content of the file is newer' Compare/Overwrite, https://github.com/microsoft/vscode/issues/77387).",
+  "Ignore Deskset's own writes by remembering the hash and mtime of what it wrote. Keep the existing rule that a skin's own !WriteKeyValue writes don't trigger a skin refresh, but do reload the code buffer for them.",
+  "External-editor mode: 'Open in <App>' opens the file that defines the selected section, at that section's line (or at the selected option's line). Saves are picked up by the existing live reload (0.5 s mtime polling today; FSEvents or DispatchSource would be better). If the built-in buffer has unsaved edits, save or warn before handing off."
+ ],
+ "builtin_editor_features": [
+  {
+   "feature": "Syntax highlighting for Deskset's INI dialect",
+   "priority": "must",
+   "notes": "Tokens: [Section] headers; option keys; '='; values; @Include keys; Meter=/Measure= type names emphasised; #Var#, [#Var], nested [#A[#B]], escaped #*Var*#; section variables [Measure], [Measure:], [Measure:%], [Meter:X]; character variables [\\x263A]; bangs [!Name ...] with the bang name coloured; \"quoted\" and \"\"\"triple-quoted\"\"\" strings; numbers; R,G,B,A and hex colours. ';' starts a comment ONLY as the first non-blank character (the manual has no inline comments), so a ';' mid-line must not be coloured as a comment. Everything is line-local, so re-highlighting only the edited lines is correct."
+  },
+  {
+   "feature": "Line-number gutter with issue icons and section tint band",
+   "priority": "must",
+   "notes": "NSRulerView. Clicking a number selects the line. Error/warning icons show tooltips. The tint band marks the section currently selected on the canvas."
+  },
+  {
+   "feature": "Code-safe text settings",
+   "priority": "must",
+   "notes": "Monospaced system font, size adjustable with Cmd+Plus / Cmd+Minus. Turn OFF smart quotes, smart dashes, text replacement, autocorrect, spell/grammar checking and data/link detection. Smart quotes would silently turn \" into curly quotes and break options and bangs."
+  },
+  {
+   "feature": "Round-trip encoding and line endings",
+   "priority": "must",
+   "notes": "Skins arrive as UTF-16LE with BOM, UTF-8 with or without BOM, or legacy ANSI, usually with CRLF endings. Keep the detected encoding, BOM, line ending and final newline, and write back identically. Reuse DesksetCore's encoding detection and IniWriter."
+  },
+  {
+   "feature": "Find / replace",
+   "priority": "must",
+   "notes": "NSTextView's built-in find bar: usesFindBar + incremental search gives Cmd+F, Cmd+G, Shift+Cmd+G, Opt+Cmd+F and Use Selection for Find for free."
+  },
+  {
+   "feature": "Go to line (Cmd+L) and jump-to-section menu",
+   "priority": "must",
+   "notes": "Jump bar pop-up listing sections grouped by kind (Rainmeter, Variables, Measures, Meters, Styles), like Xcode's symbol jump bar. It doubles as the file switcher for @Include files."
+  },
+  {
+   "feature": "Error / warning markers from one validation pass",
+   "priority": "must",
+   "notes": "Squiggles, gutter icons and a clickable issues list, fed by the same schema validation that drives the inspector's enum menus and the existing skin.issues compatibility list. Example: Shape=aaaa gets 'Unknown shape type \"aaaa\"'."
+  },
+  {
+   "feature": "Tabs / jump bar for the main .ini and every @Include file, with dirty indicators",
+   "priority": "must",
+   "notes": "Required because selection sync may land in an included file."
+  },
+  {
+   "feature": "Unified undo/redo with visual edits and two-way selection sync",
+   "priority": "must",
+   "notes": "See sync_behaviours. Without this, split view feels like two disconnected editors."
+  },
+  {
+   "feature": "Context-aware autocompletion",
+   "priority": "should",
+   "notes": "Suggestions come from the same option schema as the inspector (single source of truth): option names for the section's Meter=/Measure= type; enum values (Shape types, StringAlign, StringEffect, StringCase, BackgroundMode, AutoScale, 0/1 booleans...); measure names after MeasureName=; variable names after '#'; bang names after '[!'; section names inside '[..:]'. Trigger after typing a letter at key position, after '=', '#' or '[!', and on Esc / Opt+Esc."
+  },
+  {
+   "feature": "Quick fixes for invalid enum values and unknown options",
+   "priority": "should",
+   "notes": "A lightbulb or gutter menu offers valid values, or the closest option name (typo distance). This is the code-side twin of the fool-proof inspector menus."
+  },
+  {
+   "feature": "Toggle comment (Cmd+/)",
+   "priority": "should",
+   "notes": "Adds or removes ';' at the start of each selected line."
+  },
+  {
+   "feature": "Current-line highlight and bracket/quote matching for [ ] ( ) \"\"",
+   "priority": "should",
+   "notes": "Formulas and nested variables make bracket matching genuinely useful."
+  },
+  {
+   "feature": "Soft-wrap toggle (on by default)",
+   "priority": "should",
+   "notes": "Bang lines and long action options are very long."
+  },
+  {
+   "feature": "Inline colour swatches next to R,G,B[,A] and hex colours",
+   "priority": "should",
+   "notes": "Clicking a swatch opens NSColorPanel and writes the value back in the same notation, linking the fool-proof editing into the code view."
+  },
+  {
+   "feature": "Hover documentation for option names",
+   "priority": "should",
+   "notes": "One-line description from the schema, the allowed values, and a link to the matching docs.rainmeter.net manual page."
+  },
+  {
+   "feature": "Go to definition (Cmd-click) for measures, meters, styles and variables",
+   "priority": "could",
+   "notes": "Resolve through IniSourceMap across @Include files."
+  },
+  {
+   "feature": "Ghost text with the resolved or live value at line end",
+   "priority": "could",
+   "notes": "For example 'W=(#Size#*2)   = 120'. A Deskset differentiator that reuses the inspector's resolved-value logic."
+  },
+  {
+   "feature": "Fold by section",
+   "priority": "could",
+   "notes": "Handy for 1,000+ line skins; hidden sections still take part in selection sync."
+  },
+  {
+   "feature": "Snippets / new-section templates and 'align = signs' formatting",
+   "priority": "could",
+   "notes": "Snippets can share definitions with the component library."
+  },
+  {
+   "feature": "Explicitly out of scope",
+   "priority": "could",
+   "notes": "Auto-indent, LSP, tree-sitter, minimap, multi-cursor, Vim mode. The dialect is too small to need them."
+  }
+ ],
+ "editor_setting_ux": [
+  "Where: add a proper app Settings window (none exists today). Reach it from the app menu 'Settings... Cmd+,' when an editor window is key, from 'Settings...' in the status-bar menu, and from the editor's Open-in menu ('Change Default Editor...'). Pane 'Editing', row 'Edit skin code with:' as an NSPopUpButton.",
+  "Pop-up contents, in order: 'Deskset built-in editor (side by side)' (default); separator; detected editors with 16 pt icons (VS Code, Antigravity IDE, Cursor, Zed, BBEdit, Xcode...); separator; 'macOS default for .ini (currently: Antigravity IDE)', shown for people who want Finder's choice but never used implicitly; 'Other...', which opens an NSOpenPanel on /Applications limited to application bundles. An app picked via Other... is added to the list and remembered.",
+  "This follows the HIG pop-up button guidance (a flat list of mutually exclusive choices, a sensible default, a Custom item; https://developer.apple.com/design/human-interface-guidelines/pop-up-buttons). It is also GitHub Desktop's model: Settings > Integrations > External Editor lists detected editors plus 'Configure Custom Editor' with a Choose button and an Arguments field (https://docs.github.com/en/desktop/configuring-and-customizing-github-desktop/configuring-a-default-editor-in-github-desktop). Kaleidoscope (Settings > General) lists only supported installed editors and tells you which can jump to line + column, line only, or file only (https://kaleidoscope.app/help/docs/text-editing).",
+  "Default = built-in, for new AND existing users. With no stored value, use the built-in editor, never the Launch Services default. This removes today's 'always opens Antigravity IDE' behaviour (Workspace.edit falls back to NSWorkspace's default app for .ini, which can be an IDE such as Antigravity because it declares .ini as a 'Configuration file' document type).",
+  "Helper text under the pop-up updates with the choice, e.g. 'Opens at the selected section's line' or 'TextEdit can't jump to a line; the file opens at the top'. Below that: a checkbox 'Refresh the skin when the file is saved in the external editor' (the existing live reload, default on), and for an Other... app an optional advanced 'Arguments' field with %FILE% %LINE% %COLUMN% placeholders (GitHub Desktop has Arguments with %TARGET_PATH%).",
+  "Editor toolbar follows the setting. Built-in: the [Design | Split | Code] control. External: a button labelled 'Open in Antigravity IDE' (name + icon, so the user knows what will happen) with a pull-down chevron offering 'Edit in Built-in Editor', 'Open With >' (the other detected editors), 'Reveal in Finder' and 'Change Default Editor...'. A one-off choice from the menu does not change the default (Finder 'Open With' semantics).",
+  "Storage: save the bundle identifier plus the last known app path in UserDefaults (the app is not sandboxed, so no bookmark is needed). Resolve at use time with urlForApplication(withBundleIdentifier:). If the app has been uninstalled, fall back to the built-in editor, show a one-time toast ('Cursor is no longer installed - using the built-in editor') and mark the pop-up item '(missing)'.",
+  "#CONFIGEDITOR# (skins use it, e.g. [\"#CONFIGEDITOR#\" \"#@#Variables.inc\"]) should resolve to the chosen external editor. When the built-in editor is chosen, SkinController.executePlan should recognise Deskset's own bundle as the target and open the file in the built-in editor window instead of asking Launch Services.",
+  "Could: the first time the user clicks Code while external editors are installed, show a small popover: 'Edit code in Deskset or in VS Code? [Use Built-in] [Use VS Code] - change anytime in Settings'.",
+  "Never call NSWorkspace.setDefaultApplication(...): the choice is Deskset-local and must not change the user's system file associations (Xcode's 'Open with External Editor' simply follows Launch Services, which is exactly the problem here)."
+ ],
+ "external_editors": [
+  {
+   "name": "Visual Studio Code",
+   "bundle_ids": [
+    "com.microsoft.VSCode"
+   ],
+   "open_at_line": "Preferred: bundled CLI '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code --goto \"/abs/path:LINE:COL\"' (no prompt; about 1 s cold because it starts Electron as Node). Alternative: URL 'vscode://file/abs/path:LINE:COL'. VS Code shows a security dialog for this URL ('An external application wants to open ... Do you want to open this file or folder?' with an 'Allow opening local paths without asking' checkbox, setting security.promptForLocalFileProtocolHandling).",
+   "confidence": "verified",
+   "source": "https://code.visualstudio.com/docs/configure/command-line ; installed bundle inspected: product.json urlProtocol=vscode, prompt strings in nls.messages.json"
+  },
+  {
+   "name": "Visual Studio Code - Insiders",
+   "bundle_ids": [
+    "com.microsoft.VSCodeInsiders"
+   ],
+   "open_at_line": "'vscode-insiders://file/abs/path:LINE:COL' or the bundled bin/code-insiders --goto path:LINE:COL",
+   "confidence": "verified",
+   "source": "https://code.visualstudio.com/docs/configure/command-line (Insiders prefix); bundle id from GitHub Desktop's editor list https://github.com/desktop/desktop/blob/development/app/src/lib/editors/darwin.ts"
+  },
+  {
+   "name": "VSCodium",
+   "bundle_ids": [
+    "com.vscodium",
+    "com.visualstudio.code.oss"
+   ],
+   "open_at_line": "Bundled bin/codium --goto path:LINE:COL, or '<urlProtocol>://file/abs/path:LINE' where urlProtocol comes from Contents/Resources/app/product.json (expected 'vscodium')",
+   "confidence": "likely",
+   "source": "Bundle ids from GitHub Desktop darwin.ts; scheme follows the VS Code product.json convention"
+  },
+  {
+   "name": "Cursor",
+   "bundle_ids": [
+    "com.todesktop.230313mzl4w4u92"
+   ],
+   "open_at_line": "'cursor://file/abs/path:LINE' (column probably works too) or bundled bin/cursor --goto path:LINE:COL. Kaleidoscope treats Cursor as 'file only', so test before claiming line support.",
+   "confidence": "likely",
+   "source": "https://forum.cursor.com/t/does-cursor-have-a-unique-open-scheme/3659 ; bundle id from GitHub Desktop darwin.ts (already in Deskset's Support.swift); https://kaleidoscope.app/help/docs/text-editing"
+  },
+  {
+   "name": "Windsurf",
+   "bundle_ids": [
+    "com.exafunction.windsurf"
+   ],
+   "open_at_line": "'windsurf://file/abs/path:LINE:COL' (VS Code fork file handler) or bundled bin/windsurf --goto path:LINE:COL",
+   "confidence": "likely",
+   "source": "Bundle id from GitHub Desktop darwin.ts; protocol 'windsurf' per https://registry.coder.com/modules/coder/windsurf"
+  },
+  {
+   "name": "Google Antigravity IDE",
+   "bundle_ids": [
+    "com.google.antigravity-ide"
+   ],
+   "open_at_line": "VS Code fork (product.json: applicationName 'antigravity-ide', urlProtocol 'antigravity-ide', VS Code base 1.107.0, app 2.5.5). Preferred: '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide --goto \"/abs/path:LINE:COL\"'. URL: 'antigravity-ide://file/abs/path:LINE:COL'; its main.js has the same getWindowOpenableFromProtocolUrl + gotoLineMode handler and the same confirmation prompt as VS Code.",
+   "confidence": "verified",
+   "source": "Inspected on a test Mac: Info.plist CFBundleURLSchemes=[antigravity-ide], product.json, out/main.js; the Linux install notes at https://gist.github.com/mattezell/febc265a34f9f60058fa48d0f000364d also describe the antigravity-ide:// deep-link scheme"
+  },
+  {
+   "name": "Google Antigravity 2.x (agent 'hub' app, not a text editor)",
+   "bundle_ids": [
+    "com.google.antigravity"
+   ],
+   "open_at_line": "Not an editor: registers 'antigravity://' but does not claim .ini files. Leave it out of the editor list.",
+   "confidence": "verified",
+   "source": "Inspected on a test Mac: /Applications/Antigravity.app Info.plist; urlsForApplications(toOpen:) for a .ini returns only Antigravity IDE and VS Code"
+  },
+  {
+   "name": "Zed",
+   "bundle_ids": [
+    "dev.zed.Zed",
+    "dev.zed.Zed-Preview",
+    "dev.zed.Zed-Nightly",
+    "dev.zed.Zed-Dev"
+   ],
+   "open_at_line": "'zed://file/abs/path:LINE:COL' (the URL handler strips 'zed://file' and parses path:row:col with PathWithPosition) or CLI 'zed path:LINE:COL'",
+   "confidence": "verified",
+   "source": "Zed source crates/zed/src/zed/open_listener.rs and crates/zed/Cargo.toml (osx_url_schemes=[zed], identifiers); https://zed.dev/docs/reference/cli"
+  },
+  {
+   "name": "Sublime Text",
+   "bundle_ids": [
+    "com.sublimetext.4",
+    "com.sublimetext.3"
+   ],
+   "open_at_line": "Bundled CLI '/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl \"/abs/path:LINE:COL\"'. Sublime does NOT register subl:// on macOS itself (a third-party handler is needed), so the subl://open?url=... branch in Deskset's Workspace.edit(_:line:) cannot work and always falls back.",
+   "confidence": "verified",
+   "source": "https://www.sublimetext.com/docs/command_line.html ; https://forum.sublimetext.com/t/use-subl-open-url-file-on-osx/17474"
+  },
+  {
+   "name": "BBEdit",
+   "bundle_ids": [
+    "com.barebones.bbedit"
+   ],
+   "open_at_line": "'x-bbedit://open?url=file:///abs/path&line=LINE&column=COL' (BBEdit 12.1.4+; always launches BBEdit)",
+   "confidence": "verified",
+   "source": "https://www.barebones.com/support/bbedit/notes-12.1.4.html"
+  },
+  {
+   "name": "TextMate",
+   "bundle_ids": [
+    "com.macromates.TextMate"
+   ],
+   "open_at_line": "'txmt://open?url=file:///abs/path&line=LINE&column=COL'",
+   "confidence": "verified",
+   "source": "https://macromates.com/blog/2007/the-textmate-url-scheme/ ; https://macromates.com/textmate/manual/opening-files"
+  },
+  {
+   "name": "Nova",
+   "bundle_ids": [
+    "com.panic.Nova"
+   ],
+   "open_at_line": "'nova://open?path=/abs/path&line=LINE:COL' (Nova 11+)",
+   "confidence": "verified",
+   "source": "https://help.nova.app/projects/url-schema/"
+  },
+  {
+   "name": "CotEditor",
+   "bundle_ids": [
+    "com.coteditor.CotEditor"
+   ],
+   "open_at_line": "Bundled CLI '/Applications/CotEditor.app/Contents/SharedSupport/bin/cot --line LINE --column COL /abs/path' (no known URL scheme)",
+   "confidence": "verified",
+   "source": "https://coteditor.com/cot ; bundle id per https://github.com/iterate-ch/cyberduck/issues/8312"
+  },
+  {
+   "name": "Xcode",
+   "bundle_ids": [
+    "com.apple.dt.Xcode"
+   ],
+   "open_at_line": "'/usr/bin/xed --line LINE /abs/path' (-l selects the line after opening; -b keeps Xcode in the background)",
+   "confidence": "verified",
+   "source": "Ran 'xed --help' locally; https://keith.github.io/xcode-man-pages/xed.1.html"
+  },
+  {
+   "name": "JetBrains IDEs (IntelliJ IDEA, WebStorm, PyCharm, GoLand, CLion, PhpStorm, RubyMine, Rider, RustRover, Android Studio)",
+   "bundle_ids": [
+    "com.jetbrains.intellij",
+    "com.jetbrains.intellij.ce",
+    "com.jetbrains.WebStorm",
+    "com.jetbrains.PyCharm",
+    "com.jetbrains.pycharm.ce",
+    "com.jetbrains.goland",
+    "com.jetbrains.CLion",
+    "com.jetbrains.PhpStorm",
+    "com.jetbrains.RubyMine",
+    "com.jetbrains.rider",
+    "com.jetbrains.RustRover",
+    "com.google.android.studio"
+   ],
+   "open_at_line": "'idea://open?file=/abs/path&line=LINE'. IntelliJ-platform IDEs register the 'idea' scheme (Android Studio does on this Mac), and several IDEs may claim it, so send the URL to the chosen app with NSWorkspace.open([url], withApplicationAt:). Alternative: the launcher '<App>.app/Contents/MacOS/<idea|webstorm|pycharm...> --line LINE --column COL /abs/path'.",
+   "confidence": "likely",
+   "source": "https://www.jetbrains.com/help/idea/opening-files-from-command-line.html ; https://github.com/dandavison/open-in-editor ; local Android Studio Info.plist (CFBundleURLSchemes=[idea]); bundle ids from GitHub Desktop darwin.ts"
+  },
+  {
+   "name": "MacVim (Vim / Neovim users)",
+   "bundle_ids": [
+    "org.vim.MacVim"
+   ],
+   "open_at_line": "'mvim://open?url=file:///abs/path&line=LINE&column=COL'. Special characters in the path must be double-encoded (space = %2520).",
+   "confidence": "verified",
+   "source": "https://macvim.org/docs/gui_mac.txt.html"
+  },
+  {
+   "name": "Neovide (Neovim GUI) / VimR",
+   "bundle_ids": [
+    "com.neovide.neovide",
+    "com.qvacua.VimR"
+   ],
+   "open_at_line": "No documented URL scheme found. Open the file only (a CLI with +LINE may work but is unverified).",
+   "confidence": "unknown",
+   "source": "Bundle ids from GitHub Desktop darwin.ts"
+  },
+  {
+   "name": "TextEdit",
+   "bundle_ids": [
+    "com.apple.TextEdit"
+   ],
+   "open_at_line": "No line support; open the file with NSWorkspace.open([file], withApplicationAt:). Note: .ini has no system UTI (it resolves to a dyn.* type), so TextEdit is not offered for .ini by Launch Services on its own.",
+   "confidence": "verified",
+   "source": "Local check: urlsForApplications(toOpen: t.ini) and UTType(filenameExtension: \"ini\")"
+  }
+ ],
+ "appkit_implementation_notes": [
+  "Text view: build the code editor on a TextKit 1 NSTextView created explicitly with NSTextView(usingTextLayoutManager: false) (initUsingTextLayoutManager:). Since macOS 13, NSTextView uses TextKit 2 by default, and touching .layoutManager silently and irreversibly switches it to TextKit 1 compatibility mode (WWDC22 'What's new in TextKit and text views', https://developer.apple.com/videos/play/wwdc2022/10090/). TextKit 1 gives temporary attributes, line-fragment rects for the ruler and well-known behaviour, and is plenty for files of a few thousand lines.",
+  "Third-party editor components: CodeEditSourceEditor / CodeEditTextView (MIT, tree-sitter, heavier) are viable. STTextView is GPL-3.0 or commercial, so it is incompatible with a closed paid app unless a licence is bought.",
+  "Text view setup: isRichText=false, allowsUndo=true, usesFindBar=true, isIncrementalSearchingEnabled=true, isAutomaticQuoteSubstitutionEnabled=false, isAutomaticDashSubstitutionEnabled=false, isAutomaticTextReplacementEnabled=false, isAutomaticSpellingCorrectionEnabled=false, isContinuousSpellCheckingEnabled=false, isGrammarCheckingEnabled=false, isAutomaticDataDetectionEnabled=false, isAutomaticLinkDetectionEnabled=false, smartInsertDeleteEnabled=false; typingAttributes with NSFont.monospacedSystemFont. For no-wrap mode: textContainer.widthTracksTextView=false, a huge containerSize width, isHorizontallyResizable=true. Set layoutManager.allowsNonContiguousLayout=true.",
+  "Highlighting model: put a small hand-written line tokenizer in DesksetCore (Foundation only, testable in DesksetSelfTest) that returns [(NSRange, TokenKind)] for a line. Every INI construct is line-local, so after an edit re-tokenize only the paragraph range(s) the edit touched.",
+  "Applying highlights: use NSLayoutManager temporary attributes (removeTemporaryAttribute / addTemporaryAttributes for the edited range). They never touch the text storage, never register undo, never invalidate layout, and they avoid the caret-jump bug of colouring inside processEditing (https://christiantietze.de/posts/2017/11/syntax-highlight-nstextstorage-insertion-point-change/). Record edited ranges in the NSTextStorageDelegate didProcessEditing callback and apply colours after the edit (textDidChange / next runloop turn).",
+  "Large files: on first load, highlight the visible range first and the rest in chunks. These techniques follow the CotEditor author's talk on TextKit highlight performance (https://speakerdeck.com/1024jp/optimize-syntax-highlight-with-textkit).",
+  "Line numbers: an NSRulerView subclass set as scrollView.verticalRulerView with hasVerticalRuler / rulersVisible. Draw in drawHashMarksAndLabels(in:) by enumerating line fragments in the visible glyph range, using an incrementally maintained array of line-start offsets. Redraw on the clip view's boundsDidChange and on text change; let ruleThickness grow with the digit count. The ruler also draws issue icons and the selected-section tint band.",
+  "Ruler gotcha: set ruler.clipsToBounds = true. The macOS 14 NSView clipsToBounds default change makes custom rulers cover the text (https://developer.apple.com/forums/thread/767825).",
+  "Diagnostics rendering: squiggles as temporary attributes (underlineStyle patternDot|single + underlineColor), gutter icons with NSView.addToolTip(rect), inline hover via characterIndexForInsertion(at:) on mouseMoved plus a small popover. The validator is the same schema that drives the inspector's enum pop-ups (Shape type, StringAlign...), so code and inspector can never disagree.",
+  "Completion: start with NSTextView's built-in completion: complete(_:) plus the delegate textView(_:completions:forPartialWordRange:indexOfSelectedItem:). Override rangeForUserCompletion so '#', '[!' and ':' contexts work, and call complete(nil) programmatically after '=', '#' or '[!'. Replace it later with a custom borderless NSPanel + NSTableView if richer rows (type, description) are wanted.",
+  "Visual edits as text edits: apply every canvas or inspector change to the buffer with textView.shouldChangeText(in:replacementString:) -> textStorage.replaceCharacters(in:with:) -> textView.didChangeText(), wrapped in undoManager.beginUndoGrouping() / setActionName / endUndoGrouping(). Give each file its own NSUndoManager (the text view delegate's undoManager(for:) returns the current file's) so switching files keeps separate histories. During a drag, keep today's beginGeometry / previewGeometry / endGeometry flow and write text once, at mouse-up.",
+  "Rendering from the buffer: SkinFileLoader already has run(mainText:expand:). Add a contents(for: URL) -> String? overlay so unsaved buffers of the main file AND included files render without touching disk; write to disk debounced. INI parsing is cheap enough for the main thread behind a 300-500 ms debounce.",
+  "Split layout: nested NSSplitViewControllers. The outer controller holds the sidebar (NSSplitViewItem(sidebarWithViewController:)), the centre, and the inspector (NSSplitViewItem(inspectorWithViewController:), macOS 11+; toggleInspector: needs macOS 14, so write a custom toggle for the macOS 13 minimum). The centre is a second NSSplitViewController with canvas + code items.",
+  "Split details: flip splitView.isVertical for Code on Right / Code Below and use one splitView.autosaveName per orientation. Set codeItem.canCollapse = true and animate codeItem.animator().isCollapsed. Give the canvas the lower holdingPriority so it absorbs window resizes. minimumThickness about 260 pt for code and 240 pt for the canvas. Thin divider (HIG split views: 'Provide multiple ways to reveal hidden panes', 'Prefer the thin divider style'). The current InspectorWindowController uses a raw NSSplitView (around line 170); migration is optional.",
+  "Mode control: NSToolbarItemGroup(itemIdentifier:titles:selectionMode: .selectOne, labels:target:action:) (macOS 10.15) for Design / Split / Code, mirrored by View menu items with state checkmarks and validateMenuItem.",
+  "Opening an external app: resolve it with NSWorkspace.shared.urlForApplication(withBundleIdentifier:). Plain files: NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) (macOS 10.15). Line-aware URL schemes: pass the scheme URL through the SAME API aimed at the chosen app, so an idea:// or vscode:// link can't be grabbed by a different registered handler. CLI-based editors (subl, cot, xed, VS Code-family --goto): run Process with the executable inside the app bundle, not PATH (users rarely install shell commands), off the main thread. Fall back to plain open on failure and log errors from the completion handler.",
+  "Generic VS Code-fork detection: if <App>/Contents/Resources/app/product.json exists, read applicationName, urlProtocol and nameLong. The CLI is Contents/Resources/app/bin/<applicationName>; the URL is '<urlProtocol>://file<abs path>:<line>:<col>'. This covers VS Code, Insiders, VSCodium, Cursor, Windsurf, Antigravity IDE and future forks with no code changes. Prefer the CLI with --goto, because the URL route shows VS Code's security prompt.",
+  "Listing candidate apps: NSWorkspace.urlsForApplications(toOpen: URL) (macOS 12) for the real .ini returns only apps that explicitly claim the 'ini' extension (on a test Mac, just two editors), because .ini has no system UTI (UTType(filenameExtension: \"ini\") is a dyn.* type conforming only to public.data). urlsForApplications(toOpen: .plainText) is noisy (Safari, Chrome, Notes, Pages, Script Editor...).",
+  "So build the list as: a curated bundle-id table filtered to installed apps (urlForApplication(withBundleIdentifier:) / urlsForApplications(withBundleIdentifier:), macOS 12) + apps that claim the file + user-added apps; icons from NSWorkspace.icon(forFile:). Never call setDefaultApplication(at:toOpen...). Optional: declare an imported UTI for ini/inc conforming to public.plain-text in Deskset's Info.plist (as is already done for .rmskin) so ordinary text editors can open .ini files. Test carefully, because Launch Services uses it system-wide.",
+  "File watching: replace or augment the 0.5 s mtime polling in InspectorWindowController.tick() with DispatchSource.makeFileSystemObjectSource(fileDescriptor:eventMask: [.write, .delete, .rename, .extend, .attrib]) per open file. Re-open and re-arm after .delete / .rename, because editors save atomically and replace the inode. An FSEventStream on the skin folder also works. Debounce 100-200 ms and compare a content hash with what Deskset last loaded or wrote, to ignore its own writes. For external reloads of a clean buffer, replace only the changed range (common prefix/suffix diff) to keep scroll, selection and undo.",
+  "Encoding and line endings: load with DesksetCore's encoding detection; store the String.Encoding, BOM flag and dominant line ending in the buffer model; normalise CRLF to LF for the text view and restore both on save (UTF-16LE with BOM is common in Rainmeter skins).",
+  "Fix existing code: Support.swift Workspace.edit(_:) and edit(_:line:) use the Launch Services default (hence Antigravity IDE) and only deep-link when that default happens to be VS Code, Cursor, Sublime, BBEdit or TextMate. The subl:// branch cannot work. configEditorPath (#CONFIGEDITOR#) also returns the Launch Services default. Route all three through a single EditorPreference + per-editor launcher table (see external_editors)."
+ ]
+}

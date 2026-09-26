@@ -1,0 +1,2 @@
+Tip: scripts run in their own Lua state.
+Tip: SKIN:Bang runs after the script returns.

@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in Deskset itself does not work (the app, the editor, installing skins…).
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Relevant lines from ~/Library/Logs/Deskset/Deskset.log.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Deskset and macOS version
+      placeholder: "Deskset 0.1.0 (x86_64), macOS 15.6"
+    validations:
+      required: true

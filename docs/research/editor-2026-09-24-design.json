@@ -1,0 +1,394 @@
+{
+ "hig_rules": [
+  {
+   "topic": "Inspector: placement",
+   "rule": "Make the inspector the trailing pane of the editor window's split view (AppKit: NSSplitViewItem(inspectorWithViewController:)), not a floating NSPanel. It always shows the current selection and updates as soon as the selection changes. Figma tried floating panels in UI3 and went back to fixed, resizable panels because floating ones 'cramped the canvas' and 'slowed people down'.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/panels ; https://developer.apple.com/design/human-interface-guidelines/windows ; https://www.figma.com/blog/our-approach-to-designing-ui3/ ; https://developer.apple.com/videos/play/wwdc2023/10054/"
+  },
+  {
+   "topic": "Inspector: show/hide",
+   "rule": "Put the system .toggleInspector toolbar item after .inspectorTrackingSeparator, pinned to the trailing edge. Mirror it in the View menu as 'Show Inspector' / 'Hide Inspector' (the title follows the current state) with ⌥⌘I, which the HIG lists as the standard inspector shortcut.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/keyboards ; https://developer.apple.com/design/human-interface-guidelines/toolbars ; https://developer.apple.com/design/human-interface-guidelines/the-menu-bar ; https://marioaguzman.github.io/design/toolbarguidelines/"
+  },
+  {
+   "topic": "Inspector: control types",
+   "rule": "In an inspector, prefer simple adjustment controls (sliders, steppers, pop-ups, color wells, segmented controls) over controls that need typing. The HIG says to avoid, as much as possible, controls that require typing text in panels and inspectors. A text field is the exception, not the default.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/panels"
+  },
+  {
+   "topic": "Split views",
+   "rule": "Use thin (1 pt) dividers. Set a minimum and maximum width for every pane so a divider never disappears (sidebar about 200–320 pt, inspector about 260–340 pt, code pane at least 280 pt). Let people hide the sidebar, the inspector and the code pane, and give each a toolbar button, a menu command and a keyboard shortcut to bring it back.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/split-views"
+  },
+  {
+   "topic": "Split views: selection",
+   "rule": "Keep the selection highlighted in every pane that leads to the detail: the Layers row, the canvas handles and the code range for the selected section all stay highlighted while the inspector shows that section.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/split-views"
+  },
+  {
+   "topic": "Split views: drag between panes",
+   "rule": "Support drag and drop between panes. Library items can land on the canvas or between rows of the Layers outline (which sets z-order). Data sources can be dropped onto a layer or onto the inspector's 'Shows' control to bind them. Webflow and Sketch both do this.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/split-views ; https://university.webflow.com/videos/add-elements-panel ; https://www.sketch.com/blog/color-variables-components-view-and-a-new-insert-window-what-s-new-in-sketch/"
+  },
+  {
+   "topic": "Sidebar",
+   "rule": "Show at most two levels of hierarchy (for example a Shape meter with its shapes). Give every layer type an SF Symbol and every group a short label. Don't put critical actions at the bottom of the sidebar, because moving the window can hide that edge. Skin Settings therefore does not belong there.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/sidebars"
+  },
+  {
+   "topic": "Toolbar",
+   "rule": "Use a standard NSToolbar with at most three groups: leading (sidebar toggle, then the title), center (Insert/Library and the Design | Split | Code view mode) and trailing ('Open in…' and the inspector toggle). Use SF Symbols without borders and put a fixed space between buttons that have text labels. Every toolbar item must also exist in the menu bar, such as the Insert and View menus.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/toolbars ; https://marioaguzman.github.io/design/toolbarguidelines/"
+  },
+  {
+   "topic": "Window title",
+   "rule": "Title the window after the skin (for example 'System — Deskset/System'), never the app name. Keep the title under about 15 characters where possible.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/toolbars"
+  },
+  {
+   "topic": "Settings window",
+   "rule": "App-level preferences that rarely change, such as the code editor choice, go in a Settings window opened from the App menu with ⌘,. Use a non-customizable toolbar of panes (for example General | Editor). The window title names the current pane, the window reopens on the last pane used, and minimize/zoom are dimmed. Don't add a settings button to the editor toolbar.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/settings"
+  },
+  {
+   "topic": "Task-specific options",
+   "rule": "Options that only affect the editing task stay in the editor's View menu or toolbar, not in Settings. Examples: code pane on the right vs below, showing or hiding panes, zoom, backdrop.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/settings"
+  },
+  {
+   "topic": "Pop-up buttons",
+   "rule": "Use NSPopUpButton for a flat list of mutually exclusive values. Preselect the engine default, precede it with a label that predicts the options, and add a 'Custom…' or 'Other…' item when an escape hatch is needed. Use a pull-down button instead for lists of actions such as 'Open in ▾' or 'Add ▾'.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/pop-up-buttons ; https://developer.apple.com/design/human-interface-guidelines/pull-down-buttons"
+  },
+  {
+   "topic": "Segmented controls",
+   "rule": "Use NSSegmentedControl in the inspector for closely related choices that affect the selection. Aim for 5–7 segments at most. Use either all text or all icons, and give icon segments tooltips. macOS allows multi-select segments (Keynote's Bold/Italic). Use it to switch views in a toolbar or inspector, not for main-area tabs.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/segmented-controls"
+  },
+  {
+   "topic": "Checkboxes / switches / radios",
+   "rule": "Use a checkbox with a trailing title for a single on/off option, and show the mixed state when a multi-selection disagrees. Use a (mini) switch only to turn a whole group of settings on or off. Use radio buttons for 2–5 exclusive options that need visible labels; with more than about 5, use a pop-up. Never put switches, checkboxes or radios in the toolbar.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/toggles"
+  },
+  {
+   "topic": "Steppers",
+   "rule": "Always pair an NSStepper with a numeric field that shows its value. Shift-click should step by 10× for wide ranges.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/steppers"
+  },
+  {
+   "topic": "Sliders",
+   "rule": "Use a horizontal NSSlider plus a numeric field for bounded ranges such as opacity 0–100%. Use a circular NSSlider (sliderType = .circular) for angles and rotation. Update the canvas live while dragging.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/sliders"
+  },
+  {
+   "topic": "Color wells",
+   "rule": "Edit colors with NSColorWell and the system color panel, which gives dragging between wells and saved swatches for free. Turn on alpha (NSColorPanel.shared.showsAlpha = true). Avoid the .minimal style when alpha matters: it has no alpha channel.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/color-wells ; https://developer.apple.com/videos/play/wwdc2022/10074/ ; https://github.com/iina/iina/issues/4322"
+  },
+  {
+   "topic": "Combo boxes",
+   "rule": "Use NSComboBox for open-ended values that have common presets, such as a time format or a number format string. Fill it with a meaningful default from the list and give it an introductory label.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/combo-boxes"
+  },
+  {
+   "topic": "Text fields",
+   "rule": "Attach a NumberFormatter (with min and max) to numeric fields. Validate when the value is committed. Size each field to the expected content, keep labels outside the field, and stack fields with consistent widths.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/text-fields ; https://www.nngroup.com/articles/form-design-placeholders/"
+  },
+  {
+   "topic": "Entering data",
+   "rule": "Offer choices instead of text entry wherever you can. Accept drag and paste (drop an image onto an image well, paste a color). Validate as people enter values and give feedback right away.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/entering-data"
+  },
+  {
+   "topic": "Image wells",
+   "rule": "Image options take a well that accepts dragged image files and copy/paste, and falls back to the default when cleared.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/image-wells"
+  },
+  {
+   "topic": "Form labels & alignment",
+   "rule": "Labels are title case and end with a colon. Mac convention is right-aligned labels with left-aligned controls, 6 pt between a label's colon and its control, at least 6 pt between stacked controls, and 12 pt around separators. Keep the layout center-equalized. Inspectors use small controls.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/sliders ; https://developer.apple.com/design/human-interface-guidelines/combo-boxes ; https://marioaguzman.github.io/design/layoutguidelines/"
+  },
+  {
+   "topic": "Layout: grouping & hierarchy",
+   "rule": "Group related items with space or separators. Indent a dependent control under the checkbox or pop-up that enables it, for example Gradient angle under 'Gradient'.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/layout ; https://developer.apple.com/design/human-interface-guidelines/toggles"
+  },
+  {
+   "topic": "Progressive disclosure",
+   "rule": "Keep the common controls visible at the top. Hide advanced ones behind disclosure triangles with descriptive labels ('Transform', 'Advanced', 'Other options'). Use at most 2 disclosure levels.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/disclosure-controls ; https://developer.apple.com/design/human-interface-guidelines/layout ; https://www.nngroup.com/articles/progressive-disclosure/"
+  },
+  {
+   "topic": "Popovers (library)",
+   "rule": "The library can be an NSPopover anchored to the toolbar '+' button, with its arrow pointing at it and sized only to its content. Show one popover at a time. Make it detachable into a panel (popoverShouldDetach) so it can stay open. Never lose work when it auto-closes.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/popovers"
+  },
+  {
+   "topic": "Drag and drop feedback",
+   "rule": "Show a translucent drag image after about 3 pt of movement, at the component's real default size and the current zoom. Highlight a destination only while it can accept the drop and the pointer is over it. Animate a failed drop back to its source. Keep the dropped item selected, make every drop undoable, and treat Option as copy.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/drag-and-drop"
+  },
+  {
+   "topic": "Undo",
+   "rule": "Put Undo/Redo in the Edit menu (⌘Z, ⇧⌘Z) with descriptive names ('Undo Change Fill Color', 'Undo Add CPU Gauge'), and don't cap the number of steps. Combine continuous adjustments (a slider drag, scrubbing, repeated nudges) into one undo step. After undo, reveal the affected layer. Canvas, inspector and built-in code editor share one undo stack.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/undo-and-redo"
+  },
+  {
+   "topic": "Menu bar",
+   "rule": "Add an Insert menu that mirrors the library categories. The View menu gets Show/Hide Sidebar, Inspector and Code (titles follow state) and Code on Right / Code Below. Toolbar commands are never available only in the toolbar.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/the-menu-bar ; https://developer.apple.com/design/human-interface-guidelines/toolbars"
+  },
+  {
+   "topic": "NN/g: error prevention",
+   "rule": "Remove conditions that invite errors: any option with a fixed set of values is written only through a constrained control, so 'Shape=aaaa' can't happen. Prevent the expensive errors first, give good defaults, and back everything with undo.",
+   "source": "https://www.nngroup.com/articles/ten-usability-heuristics/"
+  },
+  {
+   "topic": "NN/g: slips",
+   "rule": "Prevent slips with constraints, suggestions (autocomplete measure and variable names), good defaults and forgiving formatting. Accept '#FF8800', 'FF8800' or '255,136,0' and normalize to Rainmeter syntax, rather than rejecting.",
+   "source": "https://www.nngroup.com/articles/slips/"
+  },
+  {
+   "topic": "NN/g: recognition over recall",
+   "rule": "Show friendly names, icons and live previews ('Processor usage', 'Graph') instead of INI section and key names. Keep the INI key in a tooltip or Advanced view, so people don't have to remember key names or syntax.",
+   "source": "https://www.nngroup.com/articles/ten-usability-heuristics/ ; https://www.nngroup.com/articles/usability-heuristics-complex-applications/"
+  },
+  {
+   "topic": "NN/g: option-count thresholds",
+   "rule": "5 or fewer mutually exclusive options: radio buttons or segmented control. 5–15: a dropdown (pop-up) when space is tight, as in an inspector. More than 15 (fonts, measures, volumes): a searchable list or combo box.",
+   "source": "https://www.nngroup.com/articles/listbox-dropdown/"
+  },
+  {
+   "topic": "NN/g: dropdown hygiene",
+   "rule": "Gray out unavailable options instead of removing them, for example Windows-only measure types disabled with a 'Not available on Mac' tooltip. Keep the label visible while the menu is open. Avoid menus whose options change based on another menu unless it can't be avoided.",
+   "source": "https://www.nngroup.com/articles/drop-down-menus/"
+  },
+  {
+   "topic": "NN/g: checkboxes & radios",
+   "rule": "Radio groups always have a default. Clicking the label also toggles the control. Word checkbox labels positively ('Flip direction', not 'Don't flip').",
+   "source": "https://www.nngroup.com/articles/checkboxes-vs-radio-buttons/"
+  },
+  {
+   "topic": "NN/g: immediate effect",
+   "rule": "Inspector edits apply immediately and live, with no Save/Apply button. Don't mix controls that apply instantly with controls that wait for a commit button in the same area.",
+   "source": "https://www.nngroup.com/articles/toggle-switch-guidelines/"
+  },
+  {
+   "topic": "NN/g: placeholders",
+   "rule": "Never use placeholder text as the only label or hint. Show the default value greyed inside the field, and keep the label and help outside it.",
+   "source": "https://www.nngroup.com/articles/form-design-placeholders/"
+  },
+  {
+   "topic": "NN/g: defaults",
+   "rule": "People rarely change defaults, so every new library component must look good as dropped: sensible size, readable font, visible color, and a data source already bound.",
+   "source": "https://www.nngroup.com/articles/the-power-of-defaults/"
+  },
+  {
+   "topic": "NN/g: direct manipulation + precision",
+   "rule": "Offer direct manipulation on the canvas (drag, resize, corner-radius and endpoint handles) and always pair it with exact numeric fields in the inspector for precision and accessibility.",
+   "source": "https://www.nngroup.com/articles/direct-manipulation/"
+  },
+  {
+   "topic": "NN/g: accelerators",
+   "rule": "Give experts accelerators that stay out of novices' way: ⇧⌘L library, type-to-search quick insert, arrow and ⇧arrow nudges, scrubbing on field labels, arithmetic in numeric fields.",
+   "source": "https://www.nngroup.com/articles/ten-usability-heuristics/"
+  },
+  {
+   "topic": "Code + canvas sync",
+   "rule": "The file text is the single source of truth. Visual edits rewrite only the affected lines, and typing in the code pane re-renders the canvas (debounced). Sync selection both ways: selecting on the canvas selects and scrolls to the [Section] in code, and moving the caret into a section selects that layer. Offer code on the right or below, as Xcode does (Canvas on Right / Canvas on Bottom, ⌥⌘↩) and Dreamweaver does (Split Vertically).",
+   "source": "https://developer.apple.com/videos/play/wwdc2020/10185/ ; https://help.apple.com/xcode/mac/current/en.lproj/dev79c94bf05.html ; https://helpx.adobe.com/dreamweaver/desktop/extend/vertical-split-view.html"
+  },
+  {
+   "topic": "External code editor setting",
+   "rule": "In Settings, add 'Code editor: [Built-in ▾]'. The menu lists Built-in, a separator, every installed app that can open .ini or plain text (NSWorkspace.urlsForApplications(toOpen:) with app icons, the system default marked '(Default)'), a separator, and 'Other…' (NSOpenPanel limited to .app bundles). GitHub Desktop (Settings → Integrations → External Editor + 'Configure Custom Editor') and Unity (External Script Editor + 'Browse…') use the same pattern. Name the chosen app on the action itself ('Open in BBEdit'), so it's always clear which app will open.",
+   "source": "https://docs.github.com/en/desktop/configuring-and-customizing-github-desktop/configuring-a-default-editor-in-github-desktop ; https://docs.unity3d.com/6000.0/Documentation/Manual/preferences-external-tools.html ; https://developer.apple.com/documentation/appkit/nsworkspace/3752999-urlsforapplications ; https://developer.apple.com/design/human-interface-guidelines/pop-up-buttons"
+  }
+ ],
+ "component_library_patterns": [
+  "Entry points (Xcode, Figma, Sketch, Webflow): (1) a toolbar '+' button that opens the library as a detachable NSPopover; (2) ⇧⌘L, like Xcode's Library; (3) an Insert menu in the menu bar. Holding Option while clicking or dragging detaches it into a floating panel that stays open, as Xcode does. The popover hides while you drag onto the canvas, like Sketch's Insert window. Sources: https://useyourloaf.com/blog/xcode-10-library-tips/ ; https://www.sketch.com/blog/color-variables-components-view-and-a-new-insert-window-what-s-new-in-sketch/",
+  "Structure: a search field on top that gets focus when the library opens, so typing a name filters at once (Figma Quick insert ⇧I, Webflow ⌘E/⌘K, Sketch 'C' then type). Categories go in a narrow left list or a scope bar (Keynote shapes: categories on the left, items on the right). Suggested categories: Text, Shapes, Graphs & Bars, Gauges, Images & Buttons, Data sources, Templates (whole widgets such as Clock, System monitor, Network, Disk). Sources: https://help.figma.com/hc/en-us/articles/360039150173-Create-and-insert-component-instances ; https://support.apple.com/guide/keynote/add-and-edit-a-shape-tanbbe3614e0/mac ; https://university.webflow.com/videos/add-elements-panel",
+  "Each library item: a large live preview thumbnail made by the real skin renderer with sample data (Sketch: 'Each Component gets a big preview'), a plain-language name ('CPU graph', 'Progress bar', 'Rounded rectangle', 'Clock text'), a one-line description (Xcode library and Figma component details show documentation), and a small badge for the data it binds (e.g. 'CPU'). Offer grid and list views, as Figma's Assets tab does. Search matches name, description, synonyms and the Rainmeter type ('Roundline' finds 'Gauge'), so Rainmeter veterans can find things too. Sources: Sketch Insert Window blog above; https://help.figma.com/hc/en-us/articles/360039150173",
+  "Drag to canvas (NSDraggingSource with a custom UTType): the drag image is a translucent render at the component's real default size and the current zoom, so the drop is predictable (HIG drag-and-drop). While hovering, show snap guides to skin edges and neighbouring meters, plus a size/position badge. Dropping outside the skin bounds either grows the skin (DynamicWindowSize) or clamps the layer inside, with a toast. An invalid drop animates back. Source: https://developer.apple.com/design/human-interface-guidelines/drag-and-drop",
+  "Drag into Layers: dropping between rows of the Layers outline sets draw order exactly, since meters draw in file order. Webflow calls this dragging into the Navigator 'for exact hierarchical placement'. Show an insertion line; the new section is written at that position in the file. Source: https://university.webflow.com/videos/add-elements-panel",
+  "Click instead of drag: a single click (or Return on a focused item) inserts at a predictable place. With a layer selected, the new layer goes just after it in file order and 10 pt below it (Webflow puts it inside or after the selection). With nothing selected, it goes at the center of the visible canvas, which is Deskset's current insertComponent behaviour. Source: https://university.webflow.com/videos/add-elements-panel",
+  "After a drop: select the new layer, show it in the inspector, and highlight its row. Register one undo step named after it ('Undo Add CPU Graph'). HIG: 'People expect the content they drop to remain selected so they can immediately act on it.' Source: https://developer.apple.com/design/human-interface-guidelines/drag-and-drop",
+  "A component can be several sections: a meter plus the measure(s) and variables it needs. Create them all in one undoable edit with readable unique names (MeterCPUGraph2, MeasureCPU reused when an equivalent one already exists), and list the new data source on the Data tab. Deskset's EditorComponents.sections(for:x:y:existing:variables:) already builds these.",
+  "Data-source items (measures) have no visual. Dropped on a layer, they bind to it by setting MeasureName, just as Sketch lets you drop Text Styles, Layer Styles and Color Variables onto layers and color wells. Dropped on empty canvas, they create a String meter showing the value. Source: https://www.sketch.com/blog/color-variables-components-view-and-a-new-insert-window-what-s-new-in-sketch/",
+  "Also allow Option-drag of a canvas layer to duplicate it, and ⌘D, as in Figma. Source: https://help.figma.com/hc/en-us/articles/360039150173-Create-and-insert-component-instances",
+  "Later: a 'My components' category that holds layer groups the user saved, like the Figma and Sketch component libraries. Built-in library content must be original (no third-party skins)."
+ ],
+ "inspector_patterns": [
+  "Two panel states, as in Figma: with nothing selected, the inspector shows document-level Skin properties (update interval, background mode and color, window defaults, metadata, variables). With a selection, it shows that layer's properties. This replaces the 'Skin Settings' button at the bottom of the sidebar. Source: https://help.figma.com/hc/en-us/articles/360039832014-Design-prototype-and-explore-layer-properties-in-the-right-sidebar",
+  "Header: type icon, an editable layer name (renaming updates every reference: MeterStyle, [Meter:X], bangs), the type in plain language ('Graph' rather than 'Histogram meter'), and a 'Show in Code' button that reveals the [Section] in the built-in code pane (the current link opens System.ini:114 in the default external app). Figma UI3 also puts component details at the top of the panel. Source: https://www.figma.com/blog/making-the-move-to-ui3-a-guide-to-figmas-next-chapter/",
+  "Group by intent, in a fixed order, and show only groups that apply to the type (Sketch: 'The Inspector hides and shows these controls and settings based on what you have selected'): Layout (X/Y/W/H, relative placement, alignment), Data (source, number format), the type's appearance group (Text, Fill & Stroke, Bar, Graph, Gauge, Image), Background & Padding, Effects, Interaction (mouse actions, tooltip; collapsed), Advanced (collapsed). Keynote splits these further into Style/Text/Arrange tabs. Sources: https://www.sketch.com/docs/interface-and-settings/the-mac-app-interface/the-inspector/ ; https://support.apple.com/guide/keynote/fill-shapes-text-boxes-color-image-tan754f55080/mac",
+  "Grid layout with NSGridView: a fixed label column (right-aligned, title case, colon) and a control column that fills the rest. Numeric pairs sit two per row as compact fields with a one-letter inline label (X Y / W H), as in Figma. Only full-width content (multi-line Text, action lists, formulas) puts its label above. Collapsible sections use a disclosure header. Sources: https://marioaguzman.github.io/design/layoutguidelines/ ; https://help.figma.com/hc/en-us/articles/360039956914-Adjust-alignment-rotation-position-and-dimensions",
+  "Numeric field behaviour, as in Figma: drag the field's letter label left or right to scrub; ↑/↓ changes by 1 and ⇧ by 10; arithmetic is accepted ('+10', '*2', '(x/2)+6'). Rainmeter formulas such as '(#Padding#*2)' are stored as formulas and shown as a pill with the resolved value. Units appear as a suffix (pt, °, %). Source: https://help.figma.com/hc/en-us/articles/360039956914-Adjust-alignment-rotation-position-and-dimensions",
+  "Variables and formulas shown as pills, not raw text. A value bound to #Var# or a formula displays as a coloured token (Figma draws a purple pill) with the variable name and the resolved value, e.g. 'Padding · 18'. Hovering shows a Detach button that replaces it with the literal resolved value. Clicking opens a variable picker (Figma opens its picker when you press '='), and 'Edit variable' jumps to [Variables]. AppKit: an NSTokenField or a custom pill view inside the field. Source: https://help.figma.com/hc/en-us/articles/15343107263511-Apply-variables-to-designs",
+  "Where a value comes from, like Webflow's colored style labels: an unset option shows the engine default greyed in the control, with a normal label. An option set on this section gets an accent label or dot and a 'Reset to Default' context-menu item. A value inherited from MeterStyle (or a Shape 'Extend' set) gets a second color and a link to the style. Editing an inherited value asks for either 'Override here' or 'Change style (affects N layers)'. Source: https://help.webflow.com/hc/en-us/articles/33961332425875-Style-labels",
+  "Multi-selection: fields whose values differ show 'Mixed' and accept relative input ('Mixed+10' in Figma). Checkboxes show the mixed dash, and pop-ups show an empty or 'Mixed' title. Changes apply to all selected layers in one undo step. Only properties shared by all selected types are shown. Sources: https://help.figma.com/hc/en-us/articles/360039956914 ; https://developer.apple.com/design/human-interface-guidelines/toggles",
+  "Conditional visibility driven by the schema (Framer: each control has hidden(props)). Examples: Effect color only when Effect ≠ None; Gradient-to and angle only when Gradient is on; miter limit only for the Miter join; start/end caps only on open shapes; ClipStringW only when Wrap is chosen. Hidden options keep their stored values. Source: https://www.framer.com/developers/property-controls",
+  "Make the schema richer instead of hard-coding UI. Replace EditorSchema.Kind's {text, number, color, font, choice, measure, action} with Framer-style typed controls: bool(onTitle), number(min, max, step, unit, stepper|slider), angle(storage: degrees|radians), percent(of: 255), enum(options, display: segmented|popup|radio), flags, alignment9, color(alpha), image(folder), sectionRef(kind), point, insets(L,T,R,B), list(of:), shape (a structured editor), formula, action, text(multiline). Every kind carries default, title, help (Markdown) and hidden(). The same schema drives the inspector, validation and code-editor autocomplete. Source: https://www.framer.com/developers/property-controls",
+  "Apply edits live and write the file on commit: sliders and scrubbing preview on the canvas continuously and write once on mouse-up (one undo step). Text commits on Return or focus loss. Enum controls write immediately. There is never a Save/Apply button. Sources: https://www.nngroup.com/articles/toggle-switch-guidelines/ ; https://developer.apple.com/design/human-interface-guidelines/undo-and-redo",
+  "Validation: a constrained control can't produce an invalid value. For the few free-text fields (formula, format string), parse on commit. On error, keep the old value, show a red inline message under the field and beep. Never write the bad value to the file. Where possible, show a live preview under the field (e.g. Time format '%H:%M' → '14:05'; Formula → '= 42'). Sources: https://developer.apple.com/design/human-interface-guidelines/entering-data ; https://www.nngroup.com/articles/slips/",
+  "Raw escape hatch, kept last: a collapsed 'Other options' section at the bottom lists keys the schema doesn't know (read-only rows with an Edit-in-Code button, or a small key/value table), with unsupported or Windows-only keys flagged in the compatibility tooltip. The raw add key/value row must not be the main way to add options.",
+  "INI key names appear only in tooltips (e.g. 'PrimaryColor') or when the power-user setting 'Show INI keys in inspector' is on. They are not printed in monospace next to every label. Figma similarly makes extra property labels optional ('Property labels' toggle). Source: https://www.figma.com/blog/making-the-move-to-ui3-a-guide-to-figmas-next-chapter/",
+  "Help on demand: a short help sentence in secondary label color under a group, or in a tooltip, rather than a placeholder. Link to the relevant docs.rainmeter.net manual page from a (?) button in each group header. Source: https://www.nngroup.com/articles/form-design-placeholders/"
+ ],
+ "control_selection_rules": [
+  {
+   "value_kind": "Boolean 0/1 option (AntiAlias, Flip, Solid, Hidden, Percentual, DynamicVariables, Draggable, ClickThrough, KeepOnScreen, SnapEdges)",
+   "control": "NSButton checkbox with a positively worded trailing title ('Flip direction', 'Smooth edges'), with mixed state for multi-selection",
+   "why": "The HIG says to prefer a checkbox for a single on/off setting. The current Off/On pop-up (EditorSchema.onOff) takes two clicks and hides the state inside a menu.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/toggles ; https://www.nngroup.com/articles/checkboxes-vs-radio-buttons/"
+  },
+  {
+   "value_kind": "On/off that enables a group of sub-settings (Gradient on SolidColor2 + GradientAngle; Stroke; Shadow/Outline effect; Tooltip)",
+   "control": "Checkbox or mini switch in the group header (or Figma-style +/− to add or remove), with dependent controls indented and hidden or disabled when off",
+   "why": "The HIG suggests a switch to turn a group of settings on or off and indentation to show dependency. It is staged disclosure.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/toggles ; https://help.figma.com/hc/en-us/articles/360041003694-Guide-to-fills"
+  },
+  {
+   "value_kind": "2–4 mutually exclusive short options (BarOrientation Horizontal/Vertical, GraphStart Left/Right, GraphOrientation, Arc sweep direction, Arc size, Tile on/off vs Scale, StringCase)",
+   "control": "NSSegmentedControl with icons plus tooltips, or short text",
+   "why": "Every choice and the current state are visible and one click changes it. The HIG recommends segmented controls in inspectors, and Framer's SegmentedEnum is meant for about 3–4 options.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/segmented-controls ; https://www.framer.com/developers/property-controls"
+  },
+  {
+   "value_kind": "5–15 mutually exclusive values (Shape type, Fill type, Stroke cap/join, StringEffect, FontWeight, BevelType, BackgroundMode, PreserveAspectRatio, ClipString, AutoScale, AlwaysOnTop -2…2, Combine operation, Measure type)",
+   "control": "NSPopUpButton with human titles (optionally icons) that preselects the engine default. Items that don't work on Mac are grayed with a reason",
+   "why": "Space-efficient and constrained, so an invalid value can't be entered. NN/g recommends a dropdown for 5–15 items when space is tight.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/pop-up-buttons ; https://www.nngroup.com/articles/listbox-dropdown/ ; https://www.nngroup.com/articles/drop-down-menus/"
+  },
+  {
+   "value_kind": "Two-dimensional alignment (StringAlign: Left/Center/Right × Top/Center/Bottom, 9 values, anchored at X/Y)",
+   "control": "Two icon segmented controls (horizontal L/C/R and vertical T/M/B) or a 3×3 anchor-point grid, with a note that alignment is relative to the X/Y point",
+   "why": "The current flat 9-item pop-up mixes two dimensions. Keynote uses segmented alignment controls. The manual defines StringAlign relative to X/Y, which an anchor picker makes visible.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/segmented-controls ; https://docs.rainmeter.net/manual/meters/string/"
+  },
+  {
+   "value_kind": "Several independent flags (StringStyle Bold/Italic, font attributes)",
+   "control": "Multi-select NSSegmentedControl (selectAny tracking), like Keynote's B/I/U",
+   "why": "macOS segmented controls support multiple selection for combinable attributes.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/segmented-controls"
+  },
+  {
+   "value_kind": "Unbounded or wide-range number (X, Y, W, H, FontSize, LineWidth, StrokeWidth, radii, NumOfDecimals)",
+   "control": "Compact NSTextField with NumberFormatter (min, max, integer/decimal), NSStepper for small ranges, scrubbing on the label, arrow keys ±1 and ⇧ ±10, and a unit suffix",
+   "why": "Precise and fast. The HIG pairs steppers with fields, and Figma's scrubbing and arithmetic make adjusting quick.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/steppers ; https://developer.apple.com/design/human-interface-guidelines/text-fields ; https://help.figma.com/hc/en-us/articles/360039956914-Adjust-alignment-rotation-position-and-dimensions"
+  },
+  {
+   "value_kind": "Bounded continuous value (ImageAlpha 0–255, AlphaValue, colour alpha, gradient stop %)",
+   "control": "Horizontal NSSlider plus a percent field that shows 0–100%, converted to 0–255 on write",
+   "why": "People think of opacity as a percentage. Sliders give live feedback, and the HIG suggests adding a text field for exact values.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/sliders"
+  },
+  {
+   "value_kind": "Angle (Roundline/Rotator StartAngle and RotationAngle in radians, Shape Rotate/Skew in degrees, GradientAngle, LinearGradient angle)",
+   "control": "Circular NSSlider plus a degree field ('°'); ⇧ snaps to 15°. Radians are stored as (Rad(x)) or as a numeric radian value, and the user never types radians",
+   "why": "The HIG recommends circular sliders for rotation. The current field asks users to type '(Rad(135))', which is syntax recall.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/sliders ; https://help.figma.com/hc/en-us/articles/360039956914-Adjust-alignment-rotation-position-and-dimensions"
+  },
+  {
+   "value_kind": "Colour (R,G,B[,A] or RRGGBB[AA]: FontColor, SolidColor, BarColor, LineColor, Fill/Stroke Color)",
+   "control": "NSColorWell with alpha. Hex or RGB entry goes through the colour panel, or an 'Edit as text' item in the well's context menu. A #Var# colour is shown as a pill with a swatch",
+   "why": "The system colour UI is familiar and supports dragging between wells. A text field for colours invites malformed values.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/color-wells"
+  },
+  {
+   "value_kind": "Open-ended value with common presets (Time Format, Uptime Format, number Format, Substitute rules)",
+   "control": "NSComboBox with presets and a live preview line of the result below ('%H:%M' → '14:05')",
+   "why": "The HIG says combo boxes offer likely choices while still allowing custom values. The preview supports recognition.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/combo-boxes"
+  },
+  {
+   "value_kind": "Font family (FontFace)",
+   "control": "Searchable font pop-up or combo box of installed families, each rendered in its own face, plus a note when a Windows font is missing and which fallback is used",
+   "why": "Hundreds of options: NN/g recommends a searchable list or combo box above about 15 items.",
+   "source": "https://www.nngroup.com/articles/listbox-dropdown/"
+  },
+  {
+   "value_kind": "Reference to another section (MeasureName/MeasureName2…, MeterStyle, Combine parent/child, Path name, group)",
+   "control": "NSPopUpButton of existing sections by friendly name and icon, plus 'New Data Source…' / 'New Style…' at the bottom. A multi-value reference (MeterStyle A | B) is an NSTokenField limited to existing names",
+   "why": "Recognition over recall. The HIG endorses a 'Custom…' item in pop-ups. Free text allows typos that silently break the binding.",
+   "source": "https://www.nngroup.com/articles/ten-usability-heuristics/ ; https://developer.apple.com/design/human-interface-guidelines/pop-up-buttons"
+  },
+  {
+   "value_kind": "File or image path (ImageName, ButtonImage, BitmapImage, Background)",
+   "control": "Small image well (thumbnail, accepts drops) plus a pop-up of images in the skin folder and @Resources, plus 'Choose…' (NSOpenPanel), which copies the file into @Resources and writes a #@#-relative path",
+   "why": "The HIG image well accepts drag and paste, and choosing beats typing paths. It also handles the Windows '\\' vs '/' path problem.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/image-wells ; https://developer.apple.com/design/human-interface-guidelines/entering-data"
+  },
+  {
+   "value_kind": "Multi-component numbers (Padding L,T,R,B; Scale x,y; Offset x,y; RadiusX/RadiusY; anchor x,y)",
+   "control": "A row of small labelled numeric fields with a link/unlink toggle that keeps them equal, like Figma's independent corners",
+   "why": "One field per number can be constrained. The current 'Padding: 0,0,0,0' text field is error-prone.",
+   "source": "https://help.figma.com/hc/en-us/articles/360050986854-Adjust-corner-radius-and-smoothing"
+  },
+  {
+   "value_kind": "Numbered option lists (Shape/Shape2…, IfCondition/IfCondition2…, MeasureName2…, gradient stops, ContextTitle/ContextAction N)",
+   "control": "An ordered list inside the group with +/− buttons, drag to reorder (renumbers N), and a disclosure per row, like Figma's Fills stack",
+   "why": "It shows the whole set and removes manual renumbering.",
+   "source": "https://help.figma.com/hc/en-us/articles/360041003694-Guide-to-fills"
+  },
+  {
+   "value_kind": "Mouse or event action (LeftMouseUpAction, OnUpdateAction, IfTrueAction, ButtonCommand)",
+   "control": "An action list: each step is a pop-up of common bangs in plain words ('Open website', 'Show/Hide layer', 'Set variable', 'Toggle skin', 'Run command') with typed parameter controls (section pop-ups, URL field) built from BangCatalog, and '+' to add steps. The raw bang string is under a disclosure",
+   "why": "Constrained bang names and targets prevent silent typos. The raw text stays available for experts.",
+   "source": "https://www.nngroup.com/articles/slips/ ; https://developer.apple.com/design/human-interface-guidelines/disclosure-controls"
+  },
+  {
+   "value_kind": "Display text with value placeholders (Text with %1 %2, Prefix, Postfix, ToolTipText)",
+   "control": "Text field (NSTextView when multi-line) with an 'Insert ▾' pull-down for %1…%N, [Measure] and #Var# that inserts tokens shown as pills, plus a live preview of the rendered text",
+   "why": "This really is free text, but the tokens are recognisable rather than recalled.",
+   "source": "https://www.nngroup.com/articles/ten-usability-heuristics/"
+  },
+  {
+   "value_kind": "Formula or condition (Calc Formula, IfCondition, formula-valued options)",
+   "control": "Monospace text field with syntax colouring, autocomplete of measure and variable names, inline validation, and a live '= value' result",
+   "why": "This is legitimately code. Validation and a live result prevent silent failure.",
+   "source": "https://www.nngroup.com/articles/slips/"
+  },
+  {
+   "value_kind": "Enumerated per-platform value (CPU Processor index, Net Interface, FreeDiskSpace Drive)",
+   "control": "A pop-up filled from the live system (Total, Core 1…N; All interfaces, en0 Wi-Fi…; mounted volumes by name), plus 'Custom…'",
+   "why": "People recognise real names instead of recalling indexes or Windows drive letters.",
+   "source": "https://developer.apple.com/design/human-interface-guidelines/entering-data"
+  }
+ ],
+ "shape_editing_patterns": [
+  "Model: a Shape meter is a container of ordered shapes (Shape, Shape2…ShapeN, drawn in numeric order). Show them as child rows under the meter in Layers (at most two levels) and as a list in the inspector's 'Shapes' group with +/− and drag-to-reorder, like Figma's Fills stack. Reordering renumbers ShapeN and rewrites Combine references. Sources: https://docs.rainmeter.net/manual/meters/shape/ ; https://help.figma.com/hc/en-us/articles/360041003694-Guide-to-fills",
+  "Shape type is an NSPopUpButton with icons: Rectangle, Ellipse, Line, Arc, Curve, Path, Combine. Changing the type carries geometry over (the rect bounds become the ellipse centre and radii; the line keeps the rect diagonal) and keeps every modifier, so nothing is thrown away. A typo like 'aaaa' can't be entered because the type isn't free text.",
+  "Geometry fields per type (from the manual's parameter lists). Rectangle: X, Y, W, H plus corner radius, with a link toggle between RadiusX and RadiusY (Figma independent corners). Ellipse: Center X/Y plus radius, linked RadiusX/RadiusY. Line: Start X/Y, End X/Y. Arc: Start and End points, radii, a segmented control for Clockwise / Counter-clockwise, a segmented control for Small / Large arc, a Rotation angle field, and a 'Close shape' checkbox. Curve: Start and End, Control 1, an optional Control 2 revealed by a 'Cubic' checkbox, and 'Close shape'. Path: an editable list of segments (LineTo / ArcTo / CurveTo pop-up with point fields) plus a 'Close path' checkbox and the fill rule (Path even-odd vs Path1 non-zero) as a segmented control. Sources: https://docs.rainmeter.net/manual/meters/shape/ ; https://help.figma.com/hc/en-us/articles/360050986854-Adjust-corner-radius-and-smoothing",
+  "On-canvas handles for direct manipulation. Resize handles on the bounds. A corner-radius handle that is dragged toward or away from the corner, like Keynote's green dot and Figma's radius handle. Endpoint handles for Line, Arc and Curve. Control-point handles joined by thin lines for curves. All of these write the same fields as the inspector. Sources: https://support.apple.com/guide/keynote/add-and-edit-a-shape-tanbbe3614e0/mac ; https://www.nngroup.com/articles/direct-manipulation/",
+  "Fill group, modelled on Keynote's Fill pop-up: [No Fill | Color | Linear Gradient | Radial Gradient]. Color shows one NSColorWell with alpha. Linear Gradient shows a gradient bar with draggable stops (each stop has a colour well and a position %, with +/−) and an angle as circular slider plus ° field. Radial Gradient shows centre X/Y, offset, radii and the same stop bar. 'No Fill' writes 'Fill Color 0,0,0,0'. Open shapes default to no fill, as the manual says. Sources: https://support.apple.com/guide/keynote/fill-shapes-text-boxes-color-image-tan754f55080/mac ; https://docs.rainmeter.net/manual/meters/shape/",
+  "Stroke group, modelled on Figma's stroke section: an enable checkbox or +/− in the header (off writes StrokeWidth 0); colour, or a gradient using the same editor as Fill; Width as number plus stepper; Dash as a pop-up [Solid | Dashed | Dotted | Custom…] that maps to StrokeDashes, with Dash and Gap fields labelled '× width' because the manual defines them as multiples of StrokeWidth, plus Dash offset; Dotted = dash 0 with round dash cap. Caps: Start/End cap pop-ups [Flat | Round | Square | Triangle] shown only for open shapes, since closed shapes ignore them, and a Dash cap pop-up shown only when dashed. Join pop-up [Miter | Bevel | Round | Miter or Bevel], with Miter limit shown only for Miter joins. Sources: https://help.figma.com/hc/en-us/articles/360049283914-Apply-and-adjust-stroke-properties ; https://docs.rainmeter.net/manual/meters/shape/",
+  "Transform group, collapsed by default. Rotate: circular slider plus °, with an optional anchor X/Y behind a 'Custom anchor' checkbox. Scale: X/Y linked, plus Flip Horizontal / Flip Vertical buttons that write Scale -1. Skew: X/Y in degrees. Offset: X/Y. Transform order: a pop-up for the rare cases where it matters. Source: https://docs.rainmeter.net/manual/meters/shape/",
+  "Combine shapes: when the type is Combine, show a Parent pop-up (existing closed shapes) and a list of rows, each with an operation pop-up [Union | Intersect | XOR | Exclude] and a child-shape pop-up, with +/−. Explain inline that the parent's fill and stroke are used and child modifiers are ignored. Source: https://docs.rainmeter.net/manual/meters/shape/",
+  "Shared modifiers (Extend): show 'Style: [None | MySharedModifiers | New Style…]'. Values that come from the Extend set get the 'inherited' colour. Editing one asks 'Override for this shape' or 'Change style (N shapes)', like Webflow's inheritance labels and Figma style detach. Sources: https://help.webflow.com/hc/en-us/articles/33961332425875-Style-labels ; https://www.sketch.com/docs/interface-and-settings/the-mac-app-interface/the-inspector/",
+  "Round-trip safety: parse the ShapeN string into a structured model in DesksetCore (type, params, ordered modifiers). Serialise back in canonical order and change only the tokens that were edited. Keep #Var#, [Measure] and formula tokens as pills with resolved values. If a string can't be parsed (unknown keyword, dynamic parts), don't guess: show a notice 'This shape uses syntax the visual editor can't edit' with the raw text read-only and a 'Show in Code' button, and never rewrite it.",
+  "Defaults for new shapes from the library (Rectangle, Rounded rectangle, Circle, Line, Arc ring, Pill/progress track): sized to fit what is currently visible on the canvas, a visible semi-transparent white fill, no stroke (StrokeWidth 0), and a radius of 6 on rounded rectangles. The first render already looks intentional. Source: https://www.nngroup.com/articles/the-power-of-defaults/"
+ ],
+ "anti_patterns": [
+  "The whole Shape definition is one free-text field: Sources/DesksetCore/Editor/EditorSchema.swift lines 167-170, Property(\"Shape\", \"Shape\", .text, help: \"e.g. Rectangle 0,0,100,40,6 | Fill Color …\"). Typing 'aaaa' silently breaks the meter, and Shape2…ShapeN, Extend and Combine aren't exposed at all.",
+  "The kinds in EditorSchema.Kind (text/number/color/font/choice/measure/action) are too coarse. There is no bool, angle, percent, image, section reference, insets, list or structured kind, so anything outside those falls back to a text field.",
+  "Booleans are Off/On pop-ups (EditorSchema.onOff, used by Flip, Percentual, HorizontalLines, Solid) instead of checkboxes. The HIG says to prefer a checkbox for a single on/off setting.",
+  "Angles are typed in radians as formulas ('Radians, e.g. (Rad(135))' for Roundline StartAngle and RotationAngle). That's syntax recall instead of a degree field with a circular slider.",
+  "Image paths (ImageName, ButtonImage, BitmapImage) are plain text fields with no picker, thumbnail or drop target.",
+  "Padding is one text field in 'left,top,right,bottom' format instead of four numeric fields. ImageAlpha is a raw 0–255 number instead of an opacity slider in %.",
+  "StringAlign offers 9 values in one flat pop-up that mixes horizontal and vertical alignment, and never explains that alignment is relative to X/Y.",
+  "Colours are edited as text ('255,0,0,255', '#CPUFill#') next to a swatch, with the resolved value printed underneath ('= 64,156,255,70'). The text field is the main control rather than an optional detail.",
+  "Variables and formulas appear as raw text in fields ('#Padding#', '#ContentWidth#') with a '= 18' line below. There's no token or pill, no detach, and no variable picker.",
+  "INI key names (PrimaryColor, SecondaryColor, BothColor, MeasureName) are printed in monospace next to every friendly label. Implementation detail sits in the main UI and competes with the label.",
+  "A raw 'add key / value' row (addKeyField/addValueField in Sources/Deskset/App/EditorInspector.swift around line 591 and EditorEditing.swift around line 28) works as a general way to add options, so the result is an INI editor wrapped in a GUI.",
+  "Nothing can be dragged from a component library. The toolbar 'Add' item (InspectorWindowController.swift toolbarAdd, EditorEditing.insertComponent around line 336) always inserts at the centre of the visible canvas, and items have no thumbnails, descriptions, categories or search.",
+  "'Edit' and 'Show in code' go to the Launch Services default app for .ini (Sources/Deskset/Support.swift Workspace.edit around line 131, configEditorPath around line 175; the only fallback is TextEdit). That can be any app, for example an IDE. There's no setting to change it, the UI doesn't name the app, and there's no built-in code view.",
+  "'Skin Settings' is a button at the bottom of the sidebar (EditorSidebar.swift skinButton). The HIG says not to put critical actions at the bottom of a sidebar. Figma and Sketch show document properties in the inspector when nothing is selected.",
+  "Low density: every group is a card with an all-caps title and full-width stacked text fields with labels above. The panel scrolls a lot, and there's no two-column label/control grid or compact numeric pairs.",
+  "Every field is shown whether or not it applies (for example Effect color while Effect = None). There's no conditional visibility and no collapsed Advanced section, which goes against progressive disclosure.",
+  "Hints live in the help text, and some options rely on greyed placeholder text as the only hint. NN/g calls placeholders harmful as labels or instructions."
+ ],
+ "recommended_layout": "One editor window per skin, built with NSWindow(.fullSizeContentView) and NSSplitViewController, with three primary panes and a nested split in the centre.\n\n(1) LEADING SIDEBAR: NSSplitViewItem(sidebarWithViewController:), 220–300 pt, collapsible with the .toggleSidebar item and View ▸ Show Sidebar. At the top, a small segmented control switches Layers | Data. Layers is an NSOutlineView in source-list style, front-most layer first, at most two levels (a Shape meter's shapes as children). Each row has an SF Symbol per type, a friendly name, and hover buttons for visibility and lock. Data lists measures and variables with their live values. Nothing critical sits at the bottom: remove the 'Skin Settings' button.\n\n(2) CENTRE: an NSSplitView holding the Canvas (zoomable, checkerboard or desktop backdrop, snap guides, handles, the existing floating zoom control) and a built-in Code pane (NSTextView with INI syntax colouring, line numbers, and autocomplete driven by the same schema). The code pane sits on the right or below, chosen under View ▸ Code on Right / Code Below, as in Xcode's Canvas on Right/Bottom and Dreamweaver's Split Vertically. A centred toolbar segmented control switches Design | Split | Code (⌥⌘↩ toggles the code pane, like Xcode's canvas shortcut). The file text is the single source of truth. Selection syncs both ways: a canvas selection selects and scrolls to the [Section], and moving the caret selects the layer. Typing re-renders after a ~300 ms debounce. Parse errors appear in the gutter while the canvas keeps the last good render. Canvas, inspector and code share one undo stack. If the file is edited externally, it reloads through NSFilePresenter.\n\n(3) TRAILING INSPECTOR: NSSplitViewItem(inspectorWithViewController:), 260–340 pt, with .toggleInspector after .inspectorTrackingSeparator and ⌥⌘I. With nothing selected it shows Skin properties; with a selection it shows a header (icon, editable name, plain-language type, 'Show in Code') and collapsible sections in intent order: Layout → Data → type appearance (Text / Fill & Stroke / Bar / Graph / Gauge / Image / Shapes) → Background & Padding → Effects → Interaction → Advanced / Other options. It uses an NSGridView label/control grid with small controls chosen per the control rules.\n\nTOOLBAR (unified, at most three groups). Leading: sidebar toggle, sidebar tracking separator, title (skin name and config). Centre: an Insert group with '+' Library (⇧⌘L), a detachable NSPopover with a search field, a category list, a grid of live thumbnails with name and description, drag to canvas or into Layers, and click to insert after the selection; optional one-click Text / Shape / Graph buttons; then the Design | Split | Code segmented control. Trailing: Backdrop and Live toggles, an 'Open in <App Name> ▾' pull-down (items: Open in <App>, Reveal in Finder, a separator, 'Choose Code Editor…', which opens Settings ▸ Editor), inspector tracking separator, inspector toggle.\n\nMENU BAR mirrors the toolbar: Insert menu (library categories), View menu (Show/Hide Sidebar, Inspector, Code; Code on Right/Below; zoom), Edit (named Undo/Redo, Duplicate ⌘D).\n\nSETTINGS WINDOW (⌘, from the App menu) with toolbar panes General | Editor | Skins | Advanced; the title follows the pane and the last pane is restored. The Editor pane holds:\n- 'Code editor:' pop-up with Built-in (Deskset) as the default; a separator; installed apps that can open .ini or plain text, found with NSWorkspace.urlsForApplications(toOpen:) and shown with icons, the system default marked '(Default)'; a separator; and 'Other…', an NSOpenPanel limited to .app bundles.\n- 'Open skins in:' Design / Split / Code.\n- Code font size.\n- 'Show INI keys in inspector' checkbox.\nWhen an external editor is chosen, 'Show in Code' and the toolbar button open the file in that app with NSWorkspace.open(_:withApplicationAt:configuration:), jumping to the line through that editor's URL scheme when it has one (as Workspace.edit(_:line:) does today). Otherwise the built-in pane is revealed.\n\nKey file paths:\n- Sources/DesksetCore/Editor/EditorSchema.swift (schema kinds; Shape at lines 167-170)\n- Sources/Deskset/App/EditorInspector.swift\n- Sources/Deskset/App/EditorEditing.swift (insertComponent)\n- Sources/Deskset/App/EditorSidebar.swift\n- Sources/Deskset/App/InspectorWindowController.swift (toolbar items)\n- Sources/Deskset/Support.swift (Workspace.edit / configEditorPath, which rely on the Launch Services default)"
+}

@@ -1,0 +1,1964 @@
+{
+ "measure_types": [
+  {
+   "type": "CPU",
+   "is_plugin": false,
+   "plain_name": "Processor usage",
+   "sf_symbol": "cpu",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift (makeMeasure switch) -> CPUMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Processor",
+     "label": "Core (0 = all cores averaged, N = core N)",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "AverageSize",
+     "label": "Smooth over last N updates",
+     "kind": "number",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Memory",
+   "is_plugin": false,
+   "plain_name": "All memory in use (RAM + swap, Windows-style total)",
+   "sf_symbol": "memorychip",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> MemoryMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Total",
+     "label": "Show total instead of used",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "InvertMeasure",
+     "label": "Show free instead of used",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "Free",
+     "label": "Show free (legacy key)",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "PhysicalMemory",
+   "is_plugin": false,
+   "plain_name": "Memory (RAM) in use",
+   "sf_symbol": "memorychip",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> MemoryMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Total",
+     "label": "Show total RAM instead of used",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "InvertMeasure",
+     "label": "Show free instead of used",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "SwapMemory",
+   "is_plugin": false,
+   "plain_name": "Memory incl. swap in use",
+   "sf_symbol": "memorychip.fill",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> MemoryMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Total",
+     "label": "Show total instead of used",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "InvertMeasure",
+     "label": "Show free instead of used",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "NetIn",
+   "is_plugin": false,
+   "plain_name": "Download speed",
+   "sf_symbol": "arrow.down.circle",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> NetMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Interface",
+     "label": "Network connection (Best = active one, 0 = all, or a name like en0)",
+     "kind": "enum",
+     "values": [
+      "Best",
+      "0",
+      "en0",
+      "en1"
+     ],
+     "default": "Best"
+    },
+    {
+     "key": "Cumulative",
+     "label": "Total since startup instead of per second",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "UseBits",
+     "label": "Count bits instead of bytes",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "MaxValue",
+     "label": "Top speed for bars/graphs (in bits; empty = learn automatically)",
+     "kind": "number",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "NetOut",
+   "is_plugin": false,
+   "plain_name": "Upload speed",
+   "sf_symbol": "arrow.up.circle",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> NetMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Interface",
+     "label": "Network connection (Best = active one, 0 = all, or a name like en0)",
+     "kind": "enum",
+     "values": [
+      "Best",
+      "0",
+      "en0",
+      "en1"
+     ],
+     "default": "Best"
+    },
+    {
+     "key": "Cumulative",
+     "label": "Total since startup instead of per second",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "UseBits",
+     "label": "Count bits instead of bytes",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "MaxValue",
+     "label": "Top speed for bars/graphs (in bits; empty = learn automatically)",
+     "kind": "number",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "NetTotal",
+   "is_plugin": false,
+   "plain_name": "Network speed (up + down)",
+   "sf_symbol": "arrow.up.arrow.down.circle",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> NetMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Interface",
+     "label": "Network connection (Best = active one, 0 = all, or a name like en0)",
+     "kind": "enum",
+     "values": [
+      "Best",
+      "0",
+      "en0",
+      "en1"
+     ],
+     "default": "Best"
+    },
+    {
+     "key": "Cumulative",
+     "label": "Total since startup instead of per second",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "UseBits",
+     "label": "Count bits instead of bytes",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "MaxValue",
+     "label": "Top speed for bars/graphs (in bits; empty = learn automatically)",
+     "kind": "number",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "FreeDiskSpace",
+   "is_plugin": false,
+   "plain_name": "Free disk space",
+   "sf_symbol": "internaldrive",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> FreeDiskSpaceMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Drive",
+     "label": "Disk (C: = startup disk, / or /Volumes/Name)",
+     "kind": "enum",
+     "values": [
+      "C:",
+      "/",
+      "/Volumes/<Name>"
+     ],
+     "default": "C:"
+    },
+    {
+     "key": "Total",
+     "label": "Show disk size instead of free space",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "InvertMeasure",
+     "label": "Show used space instead of free",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "Label",
+     "label": "Text value is the disk's name",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "Type",
+     "label": "Report disk type (0 Error,1 Removed,3 Removable,4 Fixed,5 Network,6 CD,7 RAM)",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "IgnoreRemovable",
+     "label": "Treat removable disks as 0",
+     "kind": "bool",
+     "default": "1"
+    }
+   ]
+  },
+  {
+   "type": "Time",
+   "is_plugin": false,
+   "plain_name": "Date & time",
+   "sf_symbol": "clock",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> TimeMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Format",
+     "label": "Display format (%H hour, %M minute, %A weekday, %#d day without zero...)",
+     "kind": "text",
+     "values": [
+      "%H:%M",
+      "%H:%M:%S",
+      "%I:%M %p",
+      "%A",
+      "%B %#d",
+      "%Y-%m-%d"
+     ],
+     "default": "%H:%M:%S"
+    },
+    {
+     "key": "TimeZone",
+     "label": "Time zone (local, or hours from UTC like -5 or 5.5)",
+     "kind": "text",
+     "default": "local"
+    },
+    {
+     "key": "DaylightSavingTime",
+     "label": "Apply local daylight saving to a fixed time zone",
+     "kind": "bool",
+     "default": "1"
+    },
+    {
+     "key": "FormatLocale",
+     "label": "Language for day/month names (Local, en-US, de-DE...)",
+     "kind": "text",
+     "default": "(system)"
+    },
+    {
+     "key": "TimeStamp",
+     "label": "Show this fixed moment instead of now",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "TimeStampFormat",
+     "label": "How TimeStamp is written",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Uptime",
+   "is_plugin": false,
+   "plain_name": "Time since startup",
+   "sf_symbol": "timer",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> UptimeMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Format",
+     "label": "Display format (%4 days, %3 hours, %2 minutes, %1 seconds)",
+     "kind": "text",
+     "default": "%4!i!d %3!i!:%2!02i!"
+    },
+    {
+     "key": "AddDaysToHours",
+     "label": "Fold days into hours when days are not shown",
+     "kind": "bool",
+     "default": "1"
+    },
+    {
+     "key": "SecondsValue",
+     "label": "Format this number of seconds instead of the uptime",
+     "kind": "number",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Calc",
+   "is_plugin": false,
+   "plain_name": "Calculation",
+   "sf_symbol": "function",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> CalcMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Formula",
+     "label": "Formula (use other data sources by name; Random, Counter)",
+     "kind": "text",
+     "default": "0"
+    },
+    {
+     "key": "LowBound",
+     "label": "Random: lowest number",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "HighBound",
+     "label": "Random: highest number",
+     "kind": "number",
+     "default": "100"
+    },
+    {
+     "key": "UpdateRandom",
+     "label": "Random: new number every update",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "UniqueRandom",
+     "label": "Random: no repeats until all used",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Loop",
+   "is_plugin": false,
+   "plain_name": "Counter / loop",
+   "sf_symbol": "repeat",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> LoopMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "StartValue",
+     "label": "Start at",
+     "kind": "number",
+     "default": "1"
+    },
+    {
+     "key": "EndValue",
+     "label": "End at",
+     "kind": "number",
+     "default": "100"
+    },
+    {
+     "key": "Increment",
+     "label": "Step",
+     "kind": "number",
+     "default": "1"
+    },
+    {
+     "key": "LoopCount",
+     "label": "Times to loop (0 = forever)",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "Reset"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "String",
+   "is_plugin": false,
+   "plain_name": "Fixed text",
+   "sf_symbol": "textformat",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> StringMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "String",
+     "label": "Text",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "Substitute",
+     "label": "Replace text (\"old\":\"new\",...)",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Process (alias Plugin=Process)",
+   "is_plugin": false,
+   "plain_name": "App is running",
+   "sf_symbol": "app.badge",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift (also via Skin.formerPluginMeasures) -> ProcessMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "ProcessName",
+     "label": "App / process name (e.g. Safari; .exe is ignored). Value 1 running, -1 not",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "SysInfo (alias Plugin=SysInfo)",
+   "is_plugin": false,
+   "plain_name": "System information",
+   "sf_symbol": "info.circle",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift (also via Skin.formerPluginMeasures) -> SysInfoMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift; Mac answers in Sources/Deskset/SystemMonitor.swift sysInfo()",
+   "key_settings": [
+    {
+     "key": "SysInfoType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "COMPUTER_NAME",
+      "USER_NAME",
+      "HOST_NAME",
+      "OS_VERSION",
+      "OS_PRODUCT_NAME",
+      "OS_BITS",
+      "PAGESIZE",
+      "USER_LOGONTIME",
+      "LAST_SLEEP_TIME",
+      "LAST_WAKE_TIME",
+      "IDLE_TIME",
+      "IP_ADDRESS",
+      "NET_MASK",
+      "MAC_ADDRESS",
+      "GATEWAY_ADDRESS",
+      "GATEWAY_ADDRESS_V4",
+      "GATEWAY_ADDRESS_V6",
+      "DNS_SERVER",
+      "DOMAIN_NAME",
+      "DOMAIN_WORKGROUP",
+      "ADAPTER_DESCRIPTION",
+      "ADAPTER_ALIAS",
+      "ADAPTER_TYPE",
+      "ADAPTER_STATE",
+      "ADAPTER_STATUS",
+      "ADAPTER_TRANSMIT_SPEED",
+      "ADAPTER_RECEIVE_SPEED",
+      "LAN_CONNECTIVITY",
+      "LAN_CONNECTIVITY_V4",
+      "LAN_CONNECTIVITY_V6",
+      "INTERNET_CONNECTIVITY",
+      "INTERNET_CONNECTIVITY_V4",
+      "INTERNET_CONNECTIVITY_V6",
+      "NUM_MONITORS",
+      "SCREEN_SIZE",
+      "SCREEN_WIDTH",
+      "SCREEN_HEIGHT",
+      "VIRTUAL_SCREEN_TOP",
+      "VIRTUAL_SCREEN_LEFT",
+      "VIRTUAL_SCREEN_WIDTH",
+      "VIRTUAL_SCREEN_HEIGHT",
+      "WORK_AREA",
+      "WORK_AREA_TOP",
+      "WORK_AREA_LEFT",
+      "WORK_AREA_WIDTH",
+      "WORK_AREA_HEIGHT",
+      "TIMEZONE_ISDST",
+      "TIMEZONE_BIAS",
+      "TIMEZONE_STANDARD_NAME",
+      "TIMEZONE_STANDARD_BIAS",
+      "TIMEZONE_DAYLIGHT_NAME",
+      "TIMEZONE_DAYLIGHT_BIAS"
+     ],
+     "default": ""
+    },
+    {
+     "key": "SysInfoData",
+     "label": "Which monitor (1, 2...) or network adapter",
+     "kind": "number",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "WebParser (alias Plugin=WebParser)",
+   "is_plugin": false,
+   "plain_name": "Web data",
+   "sf_symbol": "globe",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift (also via Skin.formerPluginMeasures) -> WebParserMeasure in Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift (+ Measures/WebParser/*)",
+   "key_settings": [
+    {
+     "key": "URL",
+     "label": "Web address, or [ParentWebParser] to take a piece of another one",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "RegExp",
+     "label": "Pattern that captures the pieces",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "StringIndex",
+     "label": "Which captured piece to show",
+     "kind": "number",
+     "default": ""
+    },
+    {
+     "key": "UpdateRate",
+     "label": "Reload every N updates",
+     "kind": "number",
+     "default": "600"
+    },
+    {
+     "key": "DecodeCharacterReference",
+     "label": "Decode HTML entities (0 none, 1 all, 2 numeric only, 3 named only)",
+     "kind": "enum",
+     "values": [
+      "0",
+      "1",
+      "2",
+      "3"
+     ],
+     "default": "0"
+    },
+    {
+     "key": "Download",
+     "label": "Download the file (e.g. an image) instead of reading text",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Registry",
+   "is_plugin": false,
+   "plain_name": "Windows registry (Mac stand-ins for system facts only)",
+   "sf_symbol": "list.bullet.rectangle",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift -> RegistryMeasure in Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift",
+   "key_settings": [
+    {
+     "key": "RegHKey",
+     "label": "Registry root",
+     "kind": "enum",
+     "values": [
+      "HKEY_CURRENT_USER",
+      "HKEY_LOCAL_MACHINE",
+      "HKEY_CLASSES_ROOT",
+      "HKEY_CURRENT_CONFIG",
+      "HKEY_USERS"
+     ],
+     "default": "HKEY_CURRENT_USER"
+    },
+    {
+     "key": "RegKey",
+     "label": "Key path",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "RegValue",
+     "label": "Value name (empty = default value)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "OutputType",
+     "label": "Output",
+     "kind": "enum",
+     "values": [
+      "Value",
+      "SubKeyList",
+      "ValueList"
+     ],
+     "default": "Value"
+    },
+    {
+     "key": "OutputDelimiter",
+     "label": "Separator for lists",
+     "kind": "text",
+     "default": "#CRLF#"
+    }
+   ]
+  },
+  {
+   "type": "Script",
+   "is_plugin": false,
+   "plain_name": "Lua script",
+   "sf_symbol": "curlybraces",
+   "registered_in": "Sources/DesksetCore/Engine/Lua/LuaSupport.swift (LuaSupport.register, called from Skin.registerBuiltInExtensions) -> ScriptMeasure in Sources/DesksetCore/Engine/Lua/ScriptMeasure.swift",
+   "key_settings": [
+    {
+     "key": "ScriptFile",
+     "label": "Script file (.lua)",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "*",
+     "label": "Custom options the script reads (SELF:GetOption)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Lua code to run from a button",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=PowerPlugin",
+   "is_plugin": true,
+   "plain_name": "Battery",
+   "sf_symbol": "battery.75percent",
+   "registered_in": "Sources/DesksetCore/Engine/Skin.swift (makeMeasure special case \"powerplugin\") -> PowerPluginMeasure in Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "key_settings": [
+    {
+     "key": "PowerState",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "Percent",
+      "ACLine",
+      "Status",
+      "Status2",
+      "Lifetime",
+      "Hz",
+      "MHz"
+     ],
+     "default": "Percent"
+    },
+    {
+     "key": "Format",
+     "label": "Time-left format (for Lifetime)",
+     "kind": "text",
+     "default": "%H:%M"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=ActionTimer",
+   "is_plugin": true,
+   "plain_name": "Animation timer / timed action sequence",
+   "sf_symbol": "stopwatch",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> ActionTimerMeasure in Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift",
+   "key_settings": [
+    {
+     "key": "ActionList1",
+     "label": "Sequence 1 (e.g. Step1 | Wait 10 | Repeat Step2, 5, 20); ActionList2... for more",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "IgnoreWarnings",
+     "label": "Don't warn when a running sequence is started again",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "Execute 1",
+      "Stop 1"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=CoreTemp",
+   "is_plugin": true,
+   "plain_name": "CPU temperature & speed (temperatures need a sensor source; 0 on Mac today)",
+   "sf_symbol": "thermometer.medium",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> CoreTempMeasure in Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift",
+   "key_settings": [
+    {
+     "key": "CoreTempType",
+     "label": "What to show (Load, CpuName, CpuSpeed work without sensors)",
+     "kind": "enum",
+     "values": [
+      "MaxTemperature",
+      "Temperature",
+      "TjMax",
+      "Load",
+      "CpuSpeed",
+      "CoreSpeed",
+      "CpuName",
+      "Vid",
+      "Tdp",
+      "Power",
+      "BusSpeed",
+      "BusMultiplier",
+      "CoreBusMultiplier"
+     ],
+     "default": "MaxTemperature"
+    },
+    {
+     "key": "CoreTempIndex",
+     "label": "Core number (0 = first)",
+     "kind": "number",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=AdvancedCPU",
+   "is_plugin": true,
+   "plain_name": "Processor time by app (legacy)",
+   "sf_symbol": "chart.bar.xaxis",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> AdvancedCPUMeasure in Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift",
+   "key_settings": [
+    {
+     "key": "CPUInclude",
+     "label": "Only these apps (; separated)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "CPUExclude",
+     "label": "Leave out these apps (; separated)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "TopProcess",
+     "label": "0 total, 1 busiest app's value, 2 busiest app's name",
+     "kind": "enum",
+     "values": [
+      "0",
+      "1",
+      "2"
+     ],
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=PingPlugin (alias Plugin=Ping)",
+   "is_plugin": true,
+   "plain_name": "Ping time",
+   "sf_symbol": "antenna.radiowaves.left.and.right",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> PingMeasure in Sources/DesksetCore/Engine/Plugins/PingPlugin.swift",
+   "key_settings": [
+    {
+     "key": "DestAddress",
+     "label": "Address to ping (host name or IP)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "UpdateRate",
+     "label": "Ping every N updates",
+     "kind": "number",
+     "default": "32"
+    },
+    {
+     "key": "Timeout",
+     "label": "Give up after (ms)",
+     "kind": "number",
+     "default": "30000"
+    },
+    {
+     "key": "TimeoutValue",
+     "label": "Value when there is no reply",
+     "kind": "number",
+     "default": "30000"
+    },
+    {
+     "key": "FinishAction",
+     "label": "Action after each ping",
+     "kind": "action",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=RunCommand",
+   "is_plugin": true,
+   "plain_name": "Run a shell command",
+   "sf_symbol": "terminal",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> RunCommandMeasure in Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift",
+   "key_settings": [
+    {
+     "key": "Parameter",
+     "label": "Command line to run",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "Program",
+     "label": "Program / shell (empty = /bin/sh -c)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "StartInFolder",
+     "label": "Working folder (empty = skin folder)",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "Timeout",
+     "label": "Stop after (ms, -1 = never)",
+     "kind": "number",
+     "default": "-1"
+    },
+    {
+     "key": "FinishAction",
+     "label": "Action when it finishes",
+     "kind": "action",
+     "default": ""
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "Run",
+      "Close",
+      "Kill"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=QuotePlugin (alias Plugin=Quote)",
+   "is_plugin": true,
+   "plain_name": "Random quote or random file",
+   "sf_symbol": "quote.bubble",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> QuoteMeasure in Sources/DesksetCore/Engine/Plugins/FilePlugins.swift",
+   "key_settings": [
+    {
+     "key": "PathName",
+     "label": "Text file (random line) or folder (random file)",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "Separator",
+     "label": "Separator between quotes (default: new line)",
+     "kind": "text",
+     "default": "\\n"
+    },
+    {
+     "key": "Subfolders",
+     "label": "Include subfolders",
+     "kind": "bool",
+     "default": "1"
+    },
+    {
+     "key": "FileFilter",
+     "label": "File types (e.g. *.jpg;*.png)",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=FileView",
+   "is_plugin": true,
+   "plain_name": "Folder browser",
+   "sf_symbol": "folder",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> FileViewMeasure in Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift",
+   "key_settings": [
+    {
+     "key": "Path",
+     "label": "Folder to list (parent; empty = mounted disks) or [ParentFileView] for an item",
+     "kind": "file",
+     "default": "/Volumes/"
+    },
+    {
+     "key": "Count",
+     "label": "Items per page (parent)",
+     "kind": "number",
+     "default": "1"
+    },
+    {
+     "key": "SortType",
+     "label": "Sort by (parent)",
+     "kind": "enum",
+     "values": [
+      "Name",
+      "Size",
+      "Type",
+      "Date"
+     ],
+     "default": "Name"
+    },
+    {
+     "key": "ShowHidden",
+     "label": "Show hidden files (parent)",
+     "kind": "bool",
+     "default": "1"
+    },
+    {
+     "key": "Type",
+     "label": "What an item shows (child)",
+     "kind": "enum",
+     "values": [
+      "FolderPath",
+      "FolderSize",
+      "FileCount",
+      "FolderCount",
+      "FileName",
+      "FileType",
+      "FileSize",
+      "FileDate",
+      "FilePath",
+      "PathToFile",
+      "Icon"
+     ],
+     "default": "FolderPath"
+    },
+    {
+     "key": "Index",
+     "label": "Item number on the page (child)",
+     "kind": "number",
+     "default": "1"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=FolderInfo",
+   "is_plugin": true,
+   "plain_name": "Folder size / file count",
+   "sf_symbol": "folder.circle",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> FolderInfoMeasure in Sources/DesksetCore/Engine/Plugins/FilePlugins.swift",
+   "key_settings": [
+    {
+     "key": "Folder",
+     "label": "Folder (or [OtherFolderInfo] to reuse its scan)",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "InfoType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "FolderSize",
+      "FileCount",
+      "FolderCount"
+     ],
+     "default": "FolderSize"
+    },
+    {
+     "key": "IncludeSubFolders",
+     "label": "Include subfolders",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "IncludeHiddenFiles",
+     "label": "Include hidden files",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "IncludeSystemFiles",
+     "label": "Include system files (.DS_Store...)",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "RegExpFilter",
+     "label": "Only files whose name matches",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "RecycleManager (alias Plugin=RecycleManager)",
+   "is_plugin": false,
+   "plain_name": "Trash",
+   "sf_symbol": "trash",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift (pluginTypes + measureTypes) -> RecycleManagerMeasure in Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift",
+   "key_settings": [
+    {
+     "key": "RecycleType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "Count",
+      "Size"
+     ],
+     "default": "Count"
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "OpenBin",
+      "EmptyBin",
+      "EmptyBinSilent"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=UsageMonitor",
+   "is_plugin": true,
+   "plain_name": "Top apps by CPU / memory / disk",
+   "sf_symbol": "list.number",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> UsageMonitorMeasure in Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift",
+   "key_settings": [
+    {
+     "key": "Alias",
+     "label": "What to rank by (GPU/VRAM need sensors)",
+     "kind": "enum",
+     "values": [
+      "CPU",
+      "RAM",
+      "RAMSHARED",
+      "IO",
+      "IOREAD",
+      "IOWRITE",
+      "GPU",
+      "VRAM",
+      "VRAMSHARED"
+     ],
+     "default": ""
+    },
+    {
+     "key": "Index",
+     "label": "0 total, -1 average, N = Nth busiest app",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "Name",
+     "label": "A specific app instead of a rank",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "Blacklist",
+     "label": "Apps to leave out (| separated)",
+     "kind": "text",
+     "default": "_Total|Idle"
+    },
+    {
+     "key": "Rollup",
+     "label": "Add up apps with the same name",
+     "kind": "bool",
+     "default": "1"
+    },
+    {
+     "key": "Percent",
+     "label": "Show as percent (automatic for CPU)",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=PerfMon (alias Plugin=PerfMonPlugin)",
+   "is_plugin": true,
+   "plain_name": "Performance counter (legacy)",
+   "sf_symbol": "gauge.with.dots.needle.50percent",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> PerfMonMeasure in Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift (counters in PerfCounters.swift)",
+   "key_settings": [
+    {
+     "key": "PerfMonObject",
+     "label": "Counter group",
+     "kind": "enum",
+     "values": [
+      "Processor",
+      "Processor Information",
+      "Process",
+      "Memory",
+      "Paging File",
+      "Network Interface",
+      "Network Adapter",
+      "LogicalDisk",
+      "PhysicalDisk",
+      "System",
+      "Thermal Zone Information",
+      "GPU Engine",
+      "GPU Process Memory",
+      "GPU Adapter Memory"
+     ],
+     "default": ""
+    },
+    {
+     "key": "PerfMonCounter",
+     "label": "Counter (e.g. % Processor Time, Bytes Received/sec)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "PerfMonInstance",
+     "label": "Instance (empty = _Total)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "PerfMonDifference",
+     "label": "Report change since last update",
+     "kind": "bool",
+     "default": "1"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=ResMon",
+   "is_plugin": true,
+   "plain_name": "Open files count (Windows GDI/USER objects are 0 on Mac)",
+   "sf_symbol": "square.stack.3d.up",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> ResMonMeasure in Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift",
+   "key_settings": [
+    {
+     "key": "ResCountType",
+     "label": "What to count (only Handle has a Mac value)",
+     "kind": "enum",
+     "values": [
+      "GDI",
+      "USER",
+      "Handle",
+      "Window"
+     ],
+     "default": "GDI"
+    },
+    {
+     "key": "ProcessName",
+     "label": "App (empty = whole system)",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=SpeedFanPlugin (alias Plugin=SpeedFan)",
+   "is_plugin": true,
+   "plain_name": "Temperatures, fans & voltages (needs a sensor source; 0 on Mac today)",
+   "sf_symbol": "fan",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> SpeedFanMeasure in Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift",
+   "key_settings": [
+    {
+     "key": "SpeedFanType",
+     "label": "Sensor kind",
+     "kind": "enum",
+     "values": [
+      "Temperature",
+      "Fan",
+      "Voltage"
+     ],
+     "default": "Temperature"
+    },
+    {
+     "key": "SpeedFanNumber",
+     "label": "Sensor number (0 = first)",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "SpeedFanScale",
+     "label": "Temperature unit",
+     "kind": "enum",
+     "values": [
+      "C",
+      "F",
+      "K"
+     ],
+     "default": "C"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=WindowMessagePlugin (alias Plugin=WindowMessage)",
+   "is_plugin": true,
+   "plain_name": "Windows window messages (not available on Mac; always 0)",
+   "sf_symbol": "envelope",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> WindowMessageMeasure in Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift",
+   "key_settings": [
+    {
+     "key": "WindowName",
+     "label": "Window title",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "WindowClass",
+     "label": "Window class",
+     "kind": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=VirtualDesktops",
+   "is_plugin": true,
+   "plain_name": "Virtual desktops (reports one desktop on Mac)",
+   "sf_symbol": "square.split.2x2",
+   "registered_in": "Sources/DesksetCore/Engine/Plugins/CorePlugins.swift -> VirtualDesktopsMeasure in Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift",
+   "key_settings": [
+    {
+     "key": "VDMeasureType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "VDMActive",
+      "DesktopCount",
+      "DesktopCountX",
+      "DesktopCountY",
+      "CurrentDesktop",
+      "DesktopName",
+      "Screenshot"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=AudioLevel",
+   "is_plugin": true,
+   "plain_name": "Sound level / audio visualizer",
+   "sf_symbol": "waveform",
+   "registered_in": "Sources/Deskset/Plugins/Audio/AudioPlugins.swift (AudioPlugins.register, called from Sources/Deskset/main.swift) -> AudioLevelMeasure in Sources/Deskset/Plugins/Audio/AudioLevelMeasure.swift",
+   "key_settings": [
+    {
+     "key": "Port",
+     "label": "Listen to (parent)",
+     "kind": "enum",
+     "values": [
+      "Output",
+      "Input"
+     ],
+     "default": "Output"
+    },
+    {
+     "key": "Parent",
+     "label": "Parent AudioLevel measure (child; empty = this is the parent)",
+     "kind": "measure-ref",
+     "default": ""
+    },
+    {
+     "key": "Type",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "RMS",
+      "Peak",
+      "FFT",
+      "FFTFreq",
+      "Band",
+      "BandFreq",
+      "Format",
+      "DeviceStatus",
+      "DeviceName",
+      "DeviceID",
+      "DeviceList"
+     ],
+     "default": ""
+    },
+    {
+     "key": "Channel",
+     "label": "Channel",
+     "kind": "enum",
+     "values": [
+      "Sum",
+      "L",
+      "R",
+      "C",
+      "LFE",
+      "BL",
+      "BR",
+      "SL",
+      "SR"
+     ],
+     "default": "Sum"
+    },
+    {
+     "key": "Bands",
+     "label": "Number of frequency bands (parent; 0 = off, needs FFTSize)",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "BandIdx",
+     "label": "Which band (child, 0 = lowest)",
+     "kind": "number",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=Win7AudioPlugin (alias Plugin=Win7Audio)",
+   "is_plugin": true,
+   "plain_name": "Volume (0-100, -1 when muted; text = output device)",
+   "sf_symbol": "speaker.wave.2",
+   "registered_in": "Sources/Deskset/Plugins/Audio/AudioPlugins.swift -> Win7AudioMeasure in Sources/Deskset/Plugins/Audio/Win7AudioMeasure.swift",
+   "key_settings": [
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button (no options otherwise)",
+     "kind": "enum",
+     "values": [
+      "ToggleMute",
+      "Mute",
+      "Unmute",
+      "SetVolume 50",
+      "ChangeVolume 5",
+      "ChangeVolume -5",
+      "ToggleNext",
+      "TogglePrevious",
+      "SetOutputIndex 1"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=AppVolume",
+   "is_plugin": true,
+   "plain_name": "Per-app audio (which apps play sound, mute them)",
+   "sf_symbol": "speaker.wave.2.circle",
+   "registered_in": "Sources/Deskset/Plugins/Audio/AudioPlugins.swift -> AppVolumeMeasure in Sources/Deskset/Plugins/Audio/AppVolumeMeasure.swift",
+   "key_settings": [
+    {
+     "key": "Parent",
+     "label": "Parent AppVolume measure (child; empty = this is the parent)",
+     "kind": "measure-ref",
+     "default": ""
+    },
+    {
+     "key": "Index",
+     "label": "App number in the list (child)",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "AppName",
+     "label": "Specific app instead of a number (child)",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "NumberType",
+     "label": "Number shows",
+     "kind": "enum",
+     "values": [
+      "Volume",
+      "Peak"
+     ],
+     "default": "Volume"
+    },
+    {
+     "key": "StringType",
+     "label": "Text shows",
+     "kind": "enum",
+     "values": [
+      "FileName",
+      "FilePath"
+     ],
+     "default": "FileName"
+    },
+    {
+     "key": "IgnoreSystemSound",
+     "label": "Hide system sounds (parent)",
+     "kind": "bool",
+     "default": "1"
+    }
+   ]
+  },
+  {
+   "type": "NowPlaying (alias Plugin=NowPlaying)",
+   "is_plugin": false,
+   "plain_name": "Now playing (Music / Spotify)",
+   "sf_symbol": "music.note",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift (registerMeasure + registerPlugin, called from Sources/Deskset/main.swift) -> NowPlayingMeasure in Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift",
+   "key_settings": [
+    {
+     "key": "PlayerName",
+     "label": "Player (Spotify = Spotify, anything else = Apple Music) or [MainMeasure] to share",
+     "kind": "enum",
+     "values": [
+      "iTunes",
+      "Spotify",
+      "[MainMeasure]"
+     ],
+     "default": ""
+    },
+    {
+     "key": "PlayerType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "Title",
+      "Artist",
+      "Album",
+      "Cover",
+      "Duration",
+      "Position",
+      "Progress",
+      "State",
+      "Status",
+      "Volume",
+      "Rating",
+      "Repeat",
+      "Shuffle",
+      "Number",
+      "Year",
+      "Genre",
+      "File",
+      "Lyrics"
+     ],
+     "default": "Title"
+    },
+    {
+     "key": "DisableLeadingZero",
+     "label": "Times as 3:05 instead of 03:05",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "TrackChangeAction",
+     "label": "Action when the track changes",
+     "kind": "action",
+     "default": ""
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "PlayPause",
+      "Play",
+      "Pause",
+      "Stop",
+      "Next",
+      "Previous",
+      "OpenPlayer",
+      "ClosePlayer",
+      "TogglePlayer",
+      "SetPosition +5",
+      "SetVolume 50",
+      "SetRating 5",
+      "SetShuffle -1",
+      "SetRepeat -1"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=iTunesPlugin (alias Plugin=iTunes)",
+   "is_plugin": true,
+   "plain_name": "Now playing (legacy iTunes plugin, uses Apple Music)",
+   "sf_symbol": "music.note.list",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> ITunesMeasure in Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift",
+   "key_settings": [
+    {
+     "key": "Command",
+     "label": "What to show (Get...) or the button command it runs",
+     "kind": "enum",
+     "values": [
+      "GetCurrentTrackName",
+      "GetCurrentTrackArtist",
+      "GetCurrentTrackAlbum",
+      "GetCurrentTrackArtwork",
+      "GetCurrentTrackTime",
+      "GetPlayerPosition",
+      "GetPlayerPositionPercent",
+      "GetSoundVolume",
+      "GetCurrentTrackRating",
+      "GetCurrentTrackGenre",
+      "GetCurrentTrackYear",
+      "GetCurrentTrackTrackNumber",
+      "GetCurrentTrackTrackCount",
+      "GetCurrentTrackComposer",
+      "GetCurrentTrackComment",
+      "GetCurrentTrackBitrate",
+      "GetCurrentTrackSampleRate",
+      "GetCurrentTrackBPM",
+      "GetCurrentTrackEQ",
+      "GetCurrentTrackKindAsString",
+      "GetCurrentTrackSize",
+      "PlayPause",
+      "Play",
+      "Pause",
+      "Stop",
+      "NextTrack",
+      "PreviousTrack",
+      "BackTrack",
+      "FastForward",
+      "Rewind",
+      "Resume",
+      "Power",
+      "Quit",
+      "SoundVolumeUp",
+      "SoundVolumeDown",
+      "ToggleiTunes"
+     ],
+     "default": ""
+    },
+    {
+     "key": "DefaultArtwork",
+     "label": "Image when the track has no artwork",
+     "kind": "file",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=WebNowPlaying",
+   "is_plugin": true,
+   "plain_name": "Now playing (whichever player is playing)",
+   "sf_symbol": "play.rectangle",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> WebNowPlayingMeasure in Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift",
+   "key_settings": [
+    {
+     "key": "PlayerType",
+     "label": "What to show",
+     "kind": "enum",
+     "values": [
+      "Title",
+      "Artist",
+      "Album",
+      "Cover",
+      "CoverWebAddress",
+      "Duration",
+      "Position",
+      "Remaining",
+      "Progress",
+      "Volume",
+      "State",
+      "Status",
+      "Rating",
+      "Repeat",
+      "Shuffle",
+      "Player",
+      "SupportsPlayPause",
+      "SupportsSkipPrevious",
+      "SupportsSkipNext",
+      "SupportsSetPosition",
+      "SupportsSetVolume",
+      "SupportsToggleRepeatMode",
+      "SupportsToggleShuffleActive",
+      "SupportsSetRating",
+      "RatingSystem",
+      "IsUsingNativeAPIs"
+     ],
+     "default": "Title"
+    },
+    {
+     "key": "DefaultPath",
+     "label": "Image when there is no cover",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Command from a button",
+     "kind": "enum",
+     "values": [
+      "PlayPause",
+      "Next",
+      "Previous",
+      "Stop",
+      "Repeat",
+      "Shuffle",
+      "ToggleThumbsUp",
+      "ToggleThumbsDown",
+      "SetPosition +5",
+      "SetVolume 50"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "MediaKey (alias Plugin=MediaKey)",
+   "is_plugin": false,
+   "plain_name": "Media keys (play/pause, next, volume)",
+   "sf_symbol": "playpause",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift (registerMeasure + registerPlugin) -> MediaKeyMeasure in Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift",
+   "key_settings": [
+    {
+     "key": "!CommandMeasure",
+     "label": "Key to press from a button (no options otherwise)",
+     "kind": "enum",
+     "values": [
+      "PlayPause",
+      "NextTrack",
+      "PrevTrack",
+      "Stop",
+      "VolumeUp",
+      "VolumeDown",
+      "VolumeMute"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "WiFiStatus (alias Plugin=WiFiStatus)",
+   "is_plugin": false,
+   "plain_name": "Wi-Fi",
+   "sf_symbol": "wifi",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift (registerMeasure + registerPlugin) -> WiFiStatusMeasure in Sources/Deskset/Plugins/UI/WiFiStatus.swift",
+   "key_settings": [
+    {
+     "key": "WiFiInfoType",
+     "label": "What to show (SSID/LIST need Location permission)",
+     "kind": "enum",
+     "values": [
+      "SSID",
+      "QUALITY",
+      "TXRATE",
+      "RXRATE",
+      "ENCRYPTION",
+      "AUTH",
+      "PHY",
+      "LIST"
+     ],
+     "default": ""
+    },
+    {
+     "key": "WiFiIntfID",
+     "label": "Wi-Fi adapter number",
+     "kind": "number",
+     "default": "0"
+    },
+    {
+     "key": "WiFiListStyle",
+     "label": "Network list style (0-7)",
+     "kind": "enum",
+     "values": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+     ],
+     "default": "0"
+    },
+    {
+     "key": "WiFiListLimit",
+     "label": "Networks in the list",
+     "kind": "number",
+     "default": "5"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=InputText",
+   "is_plugin": true,
+   "plain_name": "Text input box",
+   "sf_symbol": "keyboard",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> InputTextMeasure in Sources/Deskset/Plugins/UI/InputTextMeasure.swift (options in InputTextModel.swift)",
+   "key_settings": [
+    {
+     "key": "Command1",
+     "label": "Action run with the typed text ($UserInput$); Command2... for more",
+     "kind": "action",
+     "default": ""
+    },
+    {
+     "key": "DefaultValue",
+     "label": "Text already in the box",
+     "kind": "text",
+     "default": ""
+    },
+    {
+     "key": "InputNumber",
+     "label": "Numbers only",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "Password",
+     "label": "Hide typed characters",
+     "kind": "bool",
+     "default": "0"
+    },
+    {
+     "key": "FontSize",
+     "label": "Font size",
+     "kind": "number",
+     "default": "10"
+    },
+    {
+     "key": "!CommandMeasure",
+     "label": "Open the box from a button",
+     "kind": "enum",
+     "values": [
+      "ExecuteBatch All",
+      "ExecuteBatch 1",
+      "ExecuteBatch 1-2"
+     ],
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=FrostedGlass",
+   "is_plugin": true,
+   "plain_name": "Blurred glass background",
+   "sf_symbol": "camera.filters",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> FrostedGlassMeasure in Sources/Deskset/Plugins/UI/FrostedGlass.swift",
+   "key_settings": [
+    {
+     "key": "Type",
+     "label": "Effect",
+     "kind": "enum",
+     "values": [
+      "Blur",
+      "Acrylic",
+      "Mica",
+      "MicaAcrylic",
+      "MicaAlt",
+      "Backdrop",
+      "TranslucentBackdrop",
+      "None"
+     ],
+     "default": "Blur"
+    },
+    {
+     "key": "Corner",
+     "label": "Corners",
+     "kind": "enum",
+     "values": [
+      "None",
+      "Round",
+      "RoundSmall",
+      "RoundWs"
+     ],
+     "default": "None"
+    },
+    {
+     "key": "Border",
+     "label": "Border sides (All, None, or Top | Left | Right | Bottom)",
+     "kind": "enum",
+     "values": [
+      "None",
+      "All",
+      "Top",
+      "Left",
+      "Right",
+      "Bottom"
+     ],
+     "default": "None"
+    },
+    {
+     "key": "Backdrop",
+     "label": "Tint color",
+     "kind": "color",
+     "default": "0,0,0,0"
+    },
+    {
+     "key": "BorderColor",
+     "label": "Border color",
+     "kind": "color",
+     "default": ""
+    },
+    {
+     "key": "DarkMode",
+     "label": "Dark appearance",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "type": "Plugin=Chameleon",
+   "is_plugin": true,
+   "plain_name": "Colors from wallpaper or image",
+   "sf_symbol": "paintpalette",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> ChameleonMeasure in Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift",
+   "key_settings": [
+    {
+     "key": "Type",
+     "label": "Sample (parent)",
+     "kind": "enum",
+     "values": [
+      "Desktop",
+      "File"
+     ],
+     "default": "Desktop"
+    },
+    {
+     "key": "Path",
+     "label": "Image file (parent, Type=File)",
+     "kind": "file",
+     "default": ""
+    },
+    {
+     "key": "Parent",
+     "label": "Parent Chameleon measure (child)",
+     "kind": "measure-ref",
+     "default": ""
+    },
+    {
+     "key": "Color",
+     "label": "Which color (child)",
+     "kind": "enum",
+     "values": [
+      "Background1",
+      "Background2",
+      "Foreground1",
+      "Foreground2",
+      "Light1",
+      "Light2",
+      "Light3",
+      "Light4",
+      "Dark1",
+      "Dark2",
+      "Dark3",
+      "Dark4",
+      "Average",
+      "Luminance"
+     ],
+     "default": ""
+    },
+    {
+     "key": "Format",
+     "label": "Color format (parent)",
+     "kind": "enum",
+     "values": [
+      "Hex",
+      "Dec"
+     ],
+     "default": "Hex"
+    },
+    {
+     "key": "FallbackBG1",
+     "label": "Fallback background color (parent)",
+     "kind": "color",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "Plugin=IsFullScreen",
+   "is_plugin": true,
+   "plain_name": "Full-screen app detector (1 = full screen; text = front app)",
+   "sf_symbol": "arrow.up.left.and.arrow.down.right",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> IsFullScreenMeasure in Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift",
+   "key_settings": []
+  },
+  {
+   "type": "Plugin=GetActiveTitle",
+   "is_plugin": true,
+   "plain_name": "Active window title",
+   "sf_symbol": "macwindow",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> ActiveTitleMeasure in Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift",
+   "key_settings": []
+  },
+  {
+   "type": "Plugin=SysColor",
+   "is_plugin": true,
+   "plain_name": "System accent color",
+   "sf_symbol": "eyedropper",
+   "registered_in": "Sources/Deskset/Plugins/Media/MediaUIPlugins.swift -> SysColorMeasure in Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift",
+   "key_settings": [
+    {
+     "key": "ColorType",
+     "label": "Which system color",
+     "kind": "enum",
+     "values": [
+      "Accent",
+      "Highlight",
+      "HighlightText",
+      "Desktop",
+      "Window",
+      "WindowText",
+      "GrayText",
+      "WindowFrame",
+      "ButtonFace",
+      "ButtonHighlight",
+      "ButtonShadow",
+      "Menu",
+      "MenuText",
+      "AppWorkspace",
+      "ScrollBar",
+      "Hyperlink",
+      "DWM_OPAQUE_BLEND"
+     ],
+     "default": "Accent"
+    },
+    {
+     "key": "DisplayType",
+     "label": "Channels",
+     "kind": "enum",
+     "values": [
+      "All",
+      "RGB",
+      "Red",
+      "Green",
+      "Blue",
+      "Alpha"
+     ],
+     "default": "All"
+    },
+    {
+     "key": "Hex",
+     "label": "Hex instead of R,G,B",
+     "kind": "bool",
+     "default": "0"
+    }
+   ]
+  }
+ ]
+}

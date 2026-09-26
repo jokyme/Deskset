@@ -1,0 +1,9 @@
+[Rainmeter]
+SkinPath=C:\Old\Skins\
+ConfigEditor=Notepad.exe
+
+[Orbit\Clock]
+Active=1
+WindowX=40
+WindowY=40
+AlwaysOnTop=-1

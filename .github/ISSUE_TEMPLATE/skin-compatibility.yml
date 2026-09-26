@@ -1,0 +1,35 @@
+name: Skin compatibility report
+description: A Rainmeter skin does not look or behave on Deskset as it does on Windows.
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Please don't attach the skin's files unless its license allows sharing them; a link to where the skin
+        is published is enough. First check `docs/COMPATIBILITY.md`: some differences are known and documented.
+  - type: input
+    id: skin
+    attributes:
+      label: Skin
+      description: Name, author and a link to the page where the skin is published.
+    validations:
+      required: true
+  - type: textarea
+    id: difference
+    attributes:
+      label: What is different?
+      description: What you expected (as on Windows) and what Deskset does. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Compatibility notes
+      description: The skin's compatibility notes (right-click the skin → Compatibility Notes) and any lines from ~/Library/Logs/Deskset/Deskset.log.
+  - type: input
+    id: version
+    attributes:
+      label: Deskset and macOS version
+      placeholder: "Deskset 0.1.0 (arm64), macOS 26.5"
+    validations:
+      required: true

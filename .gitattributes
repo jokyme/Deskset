@@ -1,0 +1,7 @@
+# Skins keep their exact bytes: line endings (CRLF / LF) and encodings are part of what the tests check and of what
+# the app ships, so Git never converts them.
+TestSkins/** -text
+DefaultSkins/** -text
+
+# GitHub language statistics: Lua 5.1.5 is third-party code.
+Sources/CLua/** linguist-vendored

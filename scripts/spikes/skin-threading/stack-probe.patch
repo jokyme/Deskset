@@ -1,0 +1,68 @@
+diff --git a/Sources/Deskset/RenderCommand.swift b/Sources/Deskset/RenderCommand.swift
+index 8d376b4..b356e4e 100644
+--- a/Sources/Deskset/RenderCommand.swift
++++ b/Sources/Deskset/RenderCommand.swift
+@@ -76,7 +76,40 @@ struct RenderOptions: Equatable {
+ /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
+ /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr.
+ enum RenderCommand {
++    // Stack probe (docs/skin-threading.md, "Stack depth"): with DESKSET_RENDER_STACK_KB set, the render runs on a
++    // thread with that stack size. Only for `--updates 1`: later updates pump the main run loop from that thread.
+     static func run(_ arguments: [String]) -> Int32 {
++        guard let kb = ProcessInfo.processInfo.environment["DESKSET_RENDER_STACK_KB"].flatMap(Int.init) else {
++            return runBody(arguments)
++        }
++        var status: Int32 = 0
++        let done = DispatchSemaphore(value: 0)
++        let t = Thread {
++            let base = UInt(bitPattern: pthread_get_stackaddr_np(pthread_self()))
++            let size = pthread_get_stacksize_np(pthread_self())
++            fputs("render thread stack: \(size / 1024) KB\n", stderr)
++            RenderCommand.stackBase = base
++            status = runBody(arguments)
++            fputs("deepest stack use seen: \(RenderCommand.deepest / 1024) KB\n", stderr)
++            done.signal()
++        }
++        t.stackSize = kb * 1024
++        t.start()
++        done.wait()
++        return status
++    }
++
++    static var stackBase: UInt = 0
++    static var deepest: UInt = 0
++    /// Records how deep the stack is right now (called from deep engine paths during the experiment).
++    static func noteStack() {
++        guard stackBase != 0 else { return }
++        var marker = 0
++        let here = withUnsafeMutablePointer(to: &marker) { UInt(bitPattern: $0) }
++        if stackBase > here { deepest = max(deepest, stackBase - here) }
++    }
++
++    static func runBody(_ arguments: [String]) -> Int32 {
+         guard let o = RenderOptions.parse(arguments) else {
+             fputs(RenderOptions.usage + "\n", stderr)
+             return 2
+@@ -197,17 +230,20 @@ final class RenderHost: SkinHost {
+     var logs: [String] = []
+ 
+     func skinNeedsDisplay(_ skin: Skin) {}
+-    func skin(_ skin: Skin, handle bang: Bang) -> Bool { true }
++    func skin(_ skin: Skin, handle bang: Bang) -> Bool { RenderCommand.noteStack(); return true }
+     func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {}
+     func skin(_ skin: Skin, execute target: String, arguments: [String]) {}
+     func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {
++        RenderCommand.noteStack()
+         if logs.count < 10_000 { logs.append("[\(level.rawValue)] \(message)") }
+     }
+     func textSize(_ text: String, style: TextStyle, wrapWidth: Double?) -> (width: Double, height: Double) {
+-        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth)
++        RenderCommand.noteStack()
++        return SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth)
+     }
+     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
+     func environment(for skin: Skin) -> SkinEnvironment {
++        RenderCommand.noteStack()
+         var env = SkinController.environment(windowFrame: nil)
+         env.windowFrame = SkinRect(width: skin.width, height: skin.height)
+         return env

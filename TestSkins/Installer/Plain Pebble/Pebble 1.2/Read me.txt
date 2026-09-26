@@ -1,0 +1,2 @@
+Pebble 1.2 — original sample of a plain ZIP distribution (no RMSKIN.ini), for Deskset tests.
+Move the "Pebble" folder into your Skins folder.

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+  <title><![CDATA[Deskset Weather Desk]]></title>
+  <link>https://example.invalid/desk</link>
+  <image><url>badge.png</url></image>
+  <current temp="18.5" condition="Light rain &amp; wind" humidity="82" />
+  <item>
+    <title>Showers clearing by &quot;late afternoon&quot;</title>
+    <link>https://example.invalid/items/1</link>
+  </item>
+  <item>
+    <title>Café terraces reopen &#8211; finally</title>
+    <link>https://example.invalid/items/2</link>
+  </item>
+</channel>
+</rss>

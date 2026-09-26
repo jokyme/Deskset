@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened-runtime entitlements for Developer ID builds (scripts/build-app.sh with DESKSET_SIGN_IDENTITY).
+     Each matches a permission a skin can ask for; the usage texts are in the Info.plist. -->
+<plist version="1.0">
+<dict>
+    <!-- AudioLevel skins: system audio (Core Audio process taps) and audio inputs. -->
+    <key>com.apple.security.device.audio-input</key><true/>
+    <!-- NowPlaying / iTunes skins ask Music or Spotify what is playing; Finder for RecycleManager. -->
+    <key>com.apple.security.automation.apple-events</key><true/>
+    <!-- WiFiStatus: macOS shares Wi-Fi network names only with apps allowed to use Location Services. -->
+    <key>com.apple.security.personal-information.location</key><true/>
+</dict>
+</plist>

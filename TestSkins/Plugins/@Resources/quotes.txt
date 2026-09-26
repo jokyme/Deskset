@@ -1,0 +1,4 @@
+Small widgets, quiet desktop.
+Measure twice, render once.
+Every pixel pulls its weight.
+A clock is just a promise kept every second.

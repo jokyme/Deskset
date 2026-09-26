@@ -1,0 +1,4772 @@
+{
+ "options": [
+  {
+   "scope": "all meters",
+   "key": "Meter",
+   "kind": "enum",
+   "default": "(required)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "values": [
+    {
+     "value": "String",
+     "meaning": "Text"
+    },
+    {
+     "value": "Image",
+     "meaning": "Image file"
+    },
+    {
+     "value": "Bar",
+     "meaning": "Bar filled to a percentage"
+    },
+    {
+     "value": "Bitmap",
+     "meaning": "Frame strip picked by value / digit images"
+    },
+    {
+     "value": "Button",
+     "meaning": "3-state image button"
+    },
+    {
+     "value": "Line",
+     "meaning": "Line graph of history"
+    },
+    {
+     "value": "Histogram",
+     "meaning": "Column graph of history (1-2 measures)"
+    },
+    {
+     "value": "Roundline",
+     "meaning": "Rotating line / pie / ring gauge"
+    },
+    {
+     "value": "Rotator",
+     "meaning": "Rotating image"
+    },
+    {
+     "value": "Shape",
+     "meaning": "Vector shapes"
+    }
+   ],
+   "notes": "Case-insensitive. Unknown types become UnsupportedMeter (draws only its background) and a compatibility issue."
+  },
+  {
+   "scope": "all meters",
+   "key": "MeterStyle",
+   "kind": "list",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Pipe-separated names of style sections (any section that is not a measure/meter/[Rainmeter]/[Variables]/[Metadata]). Later styles override earlier ones; the meter's own keys override styles. Read from the meter itself only (never inherited). Missing style = log warning."
+  },
+  {
+   "scope": "all meters",
+   "key": "MeasureName",
+   "kind": "measure-ref",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Numbered family MeasureName, MeasureName2, MeasureName3... (stops at first gap after 2). String / Image / Line: any number (%1, %2... ; Line uses one per line up to LineCount). Histogram: MeasureName + MeasureName2 (alias SecondaryMeasureName). Bar, Bitmap, Roundline, Rotator: MeasureName only (percent of MinValue..MaxValue). Button/Shape: no data binding (only used for ToolTipText %1). Name not found = log warning, slot empty."
+  },
+  {
+   "scope": "all meters",
+   "key": "X",
+   "kind": "structured",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Formula/OptionValue.swift",
+   "range": "±1000000",
+   "values": [
+    {
+     "value": "N",
+     "meaning": "Absolute, relative to skin origin (or container top-left)"
+    },
+    {
+     "value": "Nr",
+     "meaning": "Relative to previous meter's X (anchor, before StringAlign/BitmapAlign shift)"
+    },
+    {
+     "value": "NR",
+     "meaning": "Relative to previous meter's X + W"
+    }
+   ],
+   "notes": "Number or (formula) followed by optional case-sensitive suffix r / R, e.g. 10, (5+5)R, 10 r. Bare r/R = 0r/0R. Previous meter includes hidden meters (W=H=0). First content meter of a Container: r assumed, R ignored."
+  },
+  {
+   "scope": "all meters",
+   "key": "Y",
+   "kind": "structured",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Formula/OptionValue.swift",
+   "range": "±1000000",
+   "values": [
+    {
+     "value": "N",
+     "meaning": "Absolute"
+    },
+    {
+     "value": "Nr",
+     "meaning": "Relative to previous meter's Y (anchor)"
+    },
+    {
+     "value": "NR",
+     "meaning": "Relative to previous meter's Y + H"
+    }
+   ],
+   "notes": "Same syntax as X."
+  },
+  {
+   "scope": "all meters",
+   "key": "W",
+   "kind": "number",
+   "default": "auto (natural size for String, Image, Shape, Bar/Histogram images; else 0)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "range": "0-1000000 px",
+   "notes": "Number or (formula). Ignored by Bitmap and Button (image frame size). Histogram with an image and Bar with BarImage: image size wins. Padding is added on top."
+  },
+  {
+   "scope": "all meters",
+   "key": "H",
+   "kind": "number",
+   "default": "auto",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "range": "0-1000000 px",
+   "notes": "Same rules as W."
+  },
+  {
+   "scope": "all meters",
+   "key": "Padding",
+   "kind": "structured",
+   "default": "0,0,0,0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Left,Top,Right,Bottom in px (formulas allowed, missing trailing values = 0). Added to W/H; content starts at X+Left, Y+Top. Four number fields."
+  },
+  {
+   "scope": "all meters",
+   "key": "Hidden",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "1 = hidden (W=H=0 but keeps its place for r/R). Formula allowed. !ShowMeter/!HideMeter override until the option text changes."
+  },
+  {
+   "scope": "all meters",
+   "key": "Container",
+   "kind": "meter-ref",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Name of another meter used as clip/mask container. The container itself is not drawn. No nesting: naming itself or a meter that has its own Container is ignored."
+  },
+  {
+   "scope": "all meters",
+   "key": "UpdateDivider",
+   "kind": "number",
+   "default": "[Rainmeter] DefaultUpdateDivider (1)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift",
+   "range": "integer; -1 (or any negative) = only on load/refresh and bangs; 0 counts as 1",
+   "notes": "Update every N skin updates."
+  },
+  {
+   "scope": "all meters",
+   "key": "DynamicVariables",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift",
+   "notes": "1 = re-read every option (variables and [Section] variables) on every update."
+  },
+  {
+   "scope": "all meters",
+   "key": "Group",
+   "kind": "list",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift",
+   "notes": "Pipe-separated group names (case-insensitive) for !ShowMeterGroup, !UpdateMeterGroup, !SetOptionGroup..."
+  },
+  {
+   "scope": "all meters",
+   "key": "OnUpdateAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Bangs run each time the meter updates."
+  },
+  {
+   "scope": "all meters",
+   "key": "SolidColor",
+   "kind": "color",
+   "default": "0,0,0,0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Background fill of the meter frame (padding included)."
+  },
+  {
+   "scope": "all meters",
+   "key": "SolidColor2",
+   "kind": "color",
+   "default": "(none = no gradient)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Second gradient color with SolidColor."
+  },
+  {
+   "scope": "all meters",
+   "key": "GradientAngle",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "range": "degrees (0-360)",
+   "notes": "Angle of the SolidColor -> SolidColor2 gradient. Angle picker."
+  },
+  {
+   "scope": "all meters",
+   "key": "BevelType",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "None"
+    },
+    {
+     "value": "1",
+     "meaning": "Raised"
+    },
+    {
+     "value": "2",
+     "meaning": "Sunken"
+    }
+   ],
+   "notes": "1-px bevel drawn around the frame (SkinRenderer.drawBevel)."
+  },
+  {
+   "scope": "all meters",
+   "key": "BevelColor",
+   "kind": "color",
+   "default": "255,255,255,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Top/left edge when Raised, bottom/right when Sunken. Only relevant when BevelType is 1 or 2."
+  },
+  {
+   "scope": "all meters",
+   "key": "BevelColor2",
+   "kind": "color",
+   "default": "0,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Bottom/right edge when Raised, top/left when Sunken."
+  },
+  {
+   "scope": "all meters",
+   "key": "AntiAlias",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Smooth edges (String, Line, Histogram, Roundline). Shape meters are always anti-aliased."
+  },
+  {
+   "scope": "all meters",
+   "key": "TransformationMatrix",
+   "kind": "structured",
+   "default": "1;0;0;1;0;0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Exactly 6 semicolon-separated numbers a;b;c;d;tx;ty (3x2 affine). Anything else is ignored. Affects drawing only; frame/hit area stay untransformed (Shape hit test inverts it). Editor: rotate/scale/skew/translate controls that compose the matrix."
+  },
+  {
+   "scope": "all meters",
+   "key": "ToolTipText",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Required for a tooltip. %1, %2... = bound measures (String/Line/Image: all, Histogram: 2, others: 1), formatted AutoScale=1, 0 decimals. #CRLF# = line break."
+  },
+  {
+   "scope": "all meters",
+   "key": "ToolTipTitle",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Single-line title; Mac shows it as the first line of the native tooltip."
+  },
+  {
+   "scope": "all meters",
+   "key": "ToolTipIcon",
+   "kind": "enum",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "values": [
+    {
+     "value": "Info",
+     "meaning": "Information icon"
+    },
+    {
+     "value": "Warning",
+     "meaning": "Warning icon"
+    },
+    {
+     "value": "Error",
+     "meaning": "Error icon"
+    },
+    {
+     "value": "Question",
+     "meaning": "Question icon"
+    },
+    {
+     "value": "Shield",
+     "meaning": "Shield icon"
+    },
+    {
+     "value": "<path>.ico",
+     "meaning": "Custom icon file"
+    }
+   ],
+   "notes": "Needs ToolTipTitle. Read by the engine but the Mac app shows a plain native tooltip (icon not drawn)."
+  },
+  {
+   "scope": "all meters",
+   "key": "ToolTipType",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Normal tooltip"
+    },
+    {
+     "value": "1",
+     "meaning": "Balloon tooltip"
+    }
+   ],
+   "notes": "Read, but the Mac app always shows a normal native tooltip."
+  },
+  {
+   "scope": "all meters",
+   "key": "ToolTipWidth",
+   "kind": "number-range",
+   "default": "1000",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "range": "1-100000 px",
+   "notes": "Max width before wrapping. Read; not applied by the native Mac tooltip."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "ToolTipHidden",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "1 hides this meter's tooltip; in [Rainmeter] hides all tooltips of the skin."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseActionCursor",
+   "kind": "bool",
+   "default": "1 (meter default = [Rainmeter] value)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Show a pointer cursor over meters that have mouse actions."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseActionCursorName",
+   "kind": "enum",
+   "default": "HAND",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "values": [
+    {
+     "value": "HAND",
+     "meaning": "Pointing hand (Mac: pointingHand)"
+    },
+    {
+     "value": "TEXT",
+     "meaning": "I-beam (Mac: iBeam)"
+    },
+    {
+     "value": "HELP",
+     "meaning": "Help (Mac: arrow)"
+    },
+    {
+     "value": "BUSY",
+     "meaning": "Busy (Mac: arrow)"
+    },
+    {
+     "value": "CROSS",
+     "meaning": "Crosshair (Mac: crosshair)"
+    },
+    {
+     "value": "PEN",
+     "meaning": "Pen (Mac: arrow)"
+    },
+    {
+     "value": "NO",
+     "meaning": "Not allowed (Mac: operationNotAllowed)"
+    },
+    {
+     "value": "SIZE_ALL",
+     "meaning": "Move (Mac: arrow)"
+    },
+    {
+     "value": "SIZE_NESW",
+     "meaning": "Diagonal resize (Mac: arrow)"
+    },
+    {
+     "value": "SIZE_NS",
+     "meaning": "Vertical resize (Mac: resizeUpDown)"
+    },
+    {
+     "value": "SIZE_NWSE",
+     "meaning": "Diagonal resize (Mac: arrow)"
+    },
+    {
+     "value": "SIZE_WE",
+     "meaning": "Horizontal resize (Mac: resizeLeftRight)"
+    },
+    {
+     "value": "UPARROW",
+     "meaning": "Up arrow (Mac: arrow)"
+    },
+    {
+     "value": "WAIT",
+     "meaning": "Wait (Mac: arrow)"
+    },
+    {
+     "value": "<file>.cur / .ani",
+     "meaning": "Custom cursor in @Resources/Cursors (Mac: arrow)"
+    }
+   ],
+   "notes": "Only 6 names have a Mac equivalent; others fall back to the arrow."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "LeftMouseUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Left button released. Meter actions override the [Rainmeter] (skin-level) ones. Empty = not detected; [] = caught, does nothing."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "LeftMouseDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Left button pressed."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "LeftMouseDoubleClickAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Left double-click."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "RightMouseUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Right button released (replaces the skin context menu; Ctrl+right-click still opens it in Rainmeter)."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "RightMouseDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "RightMouseDoubleClickAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MiddleMouseUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MiddleMouseDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MiddleMouseDoubleClickAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X1MouseUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Extra mouse button 1 (also X1MouseDownAction, X1MouseDoubleClickAction)."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X1MouseDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X1MouseDoubleClickAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X2MouseUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X2MouseDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "X2MouseDoubleClickAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseOverAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Pointer enters the meter (or skin)."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseLeaveAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift",
+   "notes": "Pointer leaves."
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseScrollUpAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseScrollDownAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseScrollLeftAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "all meters; [Rainmeter]",
+   "key": "MouseScrollRightAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/EngineTypes.swift"
+  },
+  {
+   "scope": "String meter",
+   "key": "Text",
+   "kind": "text",
+   "default": "%1 when MeasureName is set, else empty",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "%1..%N = string values of MeasureName..MeasureNameN (formatted with the number options). Empty value = not set. #CRLF# = newline. Leading/trailing spaces trimmed unless TrailingSpaces=1. Capped at 32768 UTF-16 units."
+  },
+  {
+   "scope": "String meter",
+   "key": "Prefix",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "Text before Text."
+  },
+  {
+   "scope": "String meter",
+   "key": "Postfix",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "Text after Text."
+  },
+  {
+   "scope": "String meter",
+   "key": "FontFace",
+   "kind": "font",
+   "default": "Arial",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "Font family name. Fonts in @Resources/Fonts (.ttf/.otf/.ttc) and LocalFont files are loaded automatically; empty = Arial. Offer system fonts + skin fonts."
+  },
+  {
+   "scope": "String meter",
+   "key": "FontSize",
+   "kind": "number-range",
+   "default": "10",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "range": "0-1000 (points at 96 DPI; fractional allowed; 0 = invisible)",
+   "notes": "Negative counts as 0."
+  },
+  {
+   "scope": "String meter",
+   "key": "FontColor",
+   "kind": "color",
+   "default": "0,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift"
+  },
+  {
+   "scope": "String meter",
+   "key": "FontWeight",
+   "kind": "number-range",
+   "default": "(unset: StringStyle decides)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "range": "1-999 (clamped)",
+   "values": [
+    {
+     "value": "100",
+     "meaning": "Thin"
+    },
+    {
+     "value": "200",
+     "meaning": "Extra Light"
+    },
+    {
+     "value": "300",
+     "meaning": "Light"
+    },
+    {
+     "value": "350",
+     "meaning": "Semi Light"
+    },
+    {
+     "value": "400",
+     "meaning": "Regular"
+    },
+    {
+     "value": "500",
+     "meaning": "Medium"
+    },
+    {
+     "value": "600",
+     "meaning": "Semi Bold"
+    },
+    {
+     "value": "700",
+     "meaning": "Bold"
+    },
+    {
+     "value": "800",
+     "meaning": "Extra Bold"
+    },
+    {
+     "value": "900",
+     "meaning": "Black"
+    },
+    {
+     "value": "950",
+     "meaning": "Extra Black"
+    }
+   ],
+   "notes": "Presets from the manual; any integer 1-999 is valid. Overrides StringStyle bold."
+  },
+  {
+   "scope": "String meter",
+   "key": "StringStyle",
+   "kind": "enum",
+   "default": "Normal",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "values": [
+    {
+     "value": "Normal",
+     "meaning": "Regular"
+    },
+    {
+     "value": "Bold",
+     "meaning": "Bold"
+    },
+    {
+     "value": "Italic",
+     "meaning": "Italic"
+    },
+    {
+     "value": "BoldItalic",
+     "meaning": "Bold italic"
+    }
+   ],
+   "notes": "Case-insensitive; unknown = Normal."
+  },
+  {
+   "scope": "String meter",
+   "key": "StringAlign",
+   "kind": "enum",
+   "default": "Left",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "values": [
+    {
+     "value": "Left",
+     "meaning": "Left, top (= LeftTop)"
+    },
+    {
+     "value": "Center",
+     "meaning": "Center, top (= CenterTop)"
+    },
+    {
+     "value": "Right",
+     "meaning": "Right, top (= RightTop)"
+    },
+    {
+     "value": "LeftTop",
+     "meaning": "X = left edge, Y = top"
+    },
+    {
+     "value": "CenterTop",
+     "meaning": "X = horizontal center, Y = top"
+    },
+    {
+     "value": "RightTop",
+     "meaning": "X = right edge, Y = top"
+    },
+    {
+     "value": "LeftCenter",
+     "meaning": "X = left, Y = vertical middle"
+    },
+    {
+     "value": "CenterCenter",
+     "meaning": "X/Y = center"
+    },
+    {
+     "value": "RightCenter",
+     "meaning": "X = right, Y = middle"
+    },
+    {
+     "value": "LeftBottom",
+     "meaning": "X = left, Y = bottom"
+    },
+    {
+     "value": "CenterBottom",
+     "meaning": "X = center, Y = bottom"
+    },
+    {
+     "value": "RightBottom",
+     "meaning": "X = right, Y = bottom"
+    }
+   ],
+   "notes": "X/Y become the anchor; the box shifts by W or W/2 (H or H/2). Case/whitespace-insensitive; unknown = LeftTop. Best shown as a 3x3 alignment grid."
+  },
+  {
+   "scope": "String meter",
+   "key": "StringCase",
+   "kind": "enum",
+   "default": "None",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "values": [
+    {
+     "value": "None",
+     "meaning": "As written"
+    },
+    {
+     "value": "Upper",
+     "meaning": "UPPERCASE"
+    },
+    {
+     "value": "Lower",
+     "meaning": "lowercase"
+    },
+    {
+     "value": "Proper",
+     "meaning": "Title Case"
+    }
+   ]
+  },
+  {
+   "scope": "String meter",
+   "key": "StringEffect",
+   "kind": "enum",
+   "default": "None",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "values": [
+    {
+     "value": "None",
+     "meaning": "No effect"
+    },
+    {
+     "value": "Shadow",
+     "meaning": "Drop shadow in FontEffectColor"
+    },
+    {
+     "value": "Border",
+     "meaning": "Outline in FontEffectColor"
+    }
+   ]
+  },
+  {
+   "scope": "String meter",
+   "key": "FontEffectColor",
+   "kind": "color",
+   "default": "0,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "Only relevant when StringEffect is Shadow or Border."
+  },
+  {
+   "scope": "String meter",
+   "key": "Angle",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "range": "radians (positive = clockwise); wraps at 2*PI",
+   "notes": "Rotates text around the StringAlign anchor; does not change size/position. Editor may show degrees and write (Rad(deg))."
+  },
+  {
+   "scope": "String meter",
+   "key": "ClipString",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "No clipping"
+    },
+    {
+     "value": "1",
+     "meaning": "Clip at W with ellipsis (needs W; wraps while H allows more lines)"
+    },
+    {
+     "value": "2",
+     "meaning": "Auto: wrap on spaces at W / ClipStringW, grow up to ClipStringW/ClipStringH, clip long words"
+    }
+   ],
+   "notes": "Other values behave like 0."
+  },
+  {
+   "scope": "String meter",
+   "key": "ClipStringW",
+   "kind": "number",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "range": ">0 px (<=0 = not set)",
+   "notes": "Max width, only with ClipString=2."
+  },
+  {
+   "scope": "String meter",
+   "key": "ClipStringH",
+   "kind": "number",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "range": ">0 px",
+   "notes": "Max height, only with ClipString=2."
+  },
+  {
+   "scope": "String meter",
+   "key": "TrailingSpaces",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "1 keeps leading/trailing spaces of Text and counts trailing spaces in the width."
+  },
+  {
+   "scope": "String meter",
+   "key": "NumOfDecimals",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "range": "0-1000 integer (formula allowed)",
+   "notes": "Decimals for numeric measure values. Stepper 0-10 is enough in practice."
+  },
+  {
+   "scope": "String meter",
+   "key": "Scale",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Divides the value (ignored with AutoScale). If the written value contains a decimal point, decimals are shown (e.g. 1.0)."
+  },
+  {
+   "scope": "String meter",
+   "key": "AutoScale",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/NumberFormatting.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Off"
+    },
+    {
+     "value": "1",
+     "meaning": "1024-based: k, M, G, T"
+    },
+    {
+     "value": "1k",
+     "meaning": "1024-based, at least k"
+    },
+    {
+     "value": "2",
+     "meaning": "1000-based: k, M, G, T"
+    },
+    {
+     "value": "2k",
+     "meaning": "1000-based, at least k"
+    },
+    {
+     "value": "1m",
+     "meaning": "1024-based, at least M (Deskset extension; also 1g, 1t)"
+    },
+    {
+     "value": "2m",
+     "meaning": "1000-based, at least M (Deskset extension; also 2g, 2t)"
+    }
+   ],
+   "notes": "Also (formula) evaluating to a mode. NOTE: on Line/Histogram meters AutoScale is a different, boolean option. Unknown = Off."
+  },
+  {
+   "scope": "String meter",
+   "key": "Percentual",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meter.swift",
+   "notes": "Show the value as percent of MinValue..MaxValue."
+  },
+  {
+   "scope": "String meter",
+   "key": "InlineSetting",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/TextStyle.swift",
+   "values": [
+    {
+     "value": "Face | FontName",
+     "meaning": "Font family"
+    },
+    {
+     "value": "Size | Points",
+     "meaning": "Font size (>0, <=1000)"
+    },
+    {
+     "value": "Color | R,G,B,A",
+     "meaning": "Text color"
+    },
+    {
+     "value": "Weight | 1-999",
+     "meaning": "Font weight (100 Thin ... 950 Extra Black)"
+    },
+    {
+     "value": "Case | Lower|Upper|Proper|Sentence",
+     "meaning": "Change case of the matched text"
+    },
+    {
+     "value": "CharacterSpacing | Leading | Trailing | MinimumAdvance",
+     "meaning": "Spacing in DIP; * or empty = 0"
+    },
+    {
+     "value": "Italic",
+     "meaning": "Italic (no params)"
+    },
+    {
+     "value": "Oblique",
+     "meaning": "Oblique (no params)"
+    },
+    {
+     "value": "Underline",
+     "meaning": "Underline (no params)"
+    },
+    {
+     "value": "Strikethrough",
+     "meaning": "Strikethrough (no params)"
+    },
+    {
+     "value": "Shadow | OffsetX, OffsetY | Blur | Color",
+     "meaning": "Drop shadow (px, blur >=0, default black)"
+    },
+    {
+     "value": "Stretch | 1-9",
+     "meaning": "1 Ultra-condensed, 2 Extra-condensed, 3 Condensed, 4 Semi-condensed, 5 Normal, 6 Semi-expanded, 7 Expanded, 8 Extra-expanded, 9 Ultra-expanded"
+    },
+    {
+     "value": "Typography | Tag | Index",
+     "meaning": "OpenType feature (smcp, onum, sups, subs, cpsp, ss01...; 1-4 ASCII chars), index default 1"
+    },
+    {
+     "value": "GradientColor | Angle | Color ; Position | Color ; Position ...",
+     "meaning": "Text gradient, >=2 stops, positions 0.0-1.0 (missing = spread evenly)"
+    },
+    {
+     "value": "GradientColor1 | ...",
+     "meaning": "Same, alternative gamma (linear-light interpolation)"
+    },
+    {
+     "value": "None",
+     "meaning": "No effect (placeholder for !SetOption)"
+    }
+   ],
+   "notes": "Numbered: InlineSetting, InlineSetting2, InlineSetting3... The list ends at the first missing/empty entry. Parameters separated by |. Names case-insensitive. Unknown kind = logged, skipped. Editor: one row per rule = kind menu + typed parameter fields + its InlinePattern."
+  },
+  {
+   "scope": "String meter",
+   "key": "InlinePattern",
+   "kind": "text",
+   "default": ".*",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/StringMeter.swift",
+   "notes": "Numbered to match InlineSettingN. PCRE regex applied to the final displayed text; capture groups receive the setting, otherwise the whole match; every match counts. ^$ disables. Invalid pattern = logged."
+  },
+  {
+   "scope": "general image options: Image, Bar (BarImage), Bitmap, Button, Rotator (ImageName), [Rainmeter] Background",
+   "key": "ImagePath",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "notes": "Folder that relative image names resolve against (e.g. #@#Images/). Folder picker. Backslashes are converted."
+  },
+  {
+   "scope": "general image options (not Bitmap/Button)",
+   "key": "ImageCrop",
+   "kind": "structured",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "values": [
+    {
+     "value": "1",
+     "meaning": "Origin top-left (default)"
+    },
+    {
+     "value": "2",
+     "meaning": "Origin top-right"
+    },
+    {
+     "value": "3",
+     "meaning": "Origin bottom-right"
+    },
+    {
+     "value": "4",
+     "meaning": "Origin bottom-left"
+    },
+    {
+     "value": "5",
+     "meaning": "Origin center"
+    }
+   ],
+   "notes": "X, Y, W, H[, Origin]: X/Y offset from the origin corner (negative = left/up), W/H size in px. Needs >=4 numbers; origin outside 1-5 = 1. Changes the meter's natural size. Editor: 4 number fields + origin menu (or drag a crop rect)."
+  },
+  {
+   "scope": "general image options",
+   "key": "Greyscale",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "notes": "Desaturate (Rec.601). With ImageTint it recolors."
+  },
+  {
+   "scope": "general image options",
+   "key": "ImageTint",
+   "kind": "color",
+   "default": "255,255,255,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "notes": "Multiply tint; white = unchanged. Alpha is overridden by ImageAlpha. Ignored when ColorMatrix is set."
+  },
+  {
+   "scope": "general image options",
+   "key": "ImageAlpha",
+   "kind": "number-range",
+   "default": "255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "range": "0-255",
+   "notes": "Opacity; overrides the alpha of ImageTint. Slider."
+  },
+  {
+   "scope": "general image options",
+   "key": "ImageFlip",
+   "kind": "enum",
+   "default": "None",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "values": [
+    {
+     "value": "None",
+     "meaning": "No flip"
+    },
+    {
+     "value": "Horizontal",
+     "meaning": "Mirror left-right"
+    },
+    {
+     "value": "Vertical",
+     "meaning": "Mirror top-bottom"
+    },
+    {
+     "value": "Both",
+     "meaning": "Both axes"
+    }
+   ],
+   "notes": "Unknown = None. Button flips each frame in place."
+  },
+  {
+   "scope": "general image options (not Bitmap/Button)",
+   "key": "ImageRotate",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "range": "degrees, clockwise (negative = counter-clockwise), mod 360",
+   "notes": "Result is the rotated bounding box (changes natural size)."
+  },
+  {
+   "scope": "general image options",
+   "key": "UseExifOrientation",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "notes": "Apply the camera EXIF orientation first."
+  },
+  {
+   "scope": "general image options",
+   "key": "ColorMatrix1",
+   "kind": "structured",
+   "default": "1;0;0;0;0 (identity row)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageOptions.swift",
+   "notes": "Rows ColorMatrix1..ColorMatrix5, each 5 semicolon-separated numbers (formulas allowed). Rows 1-4 = input R,G,B,A contributions to output R,G,B,A; row 5 = offsets. Identity: 1;0;0;0;0 / 0;1;0;0;0 / 0;0;1;0;0 / 0;0;0;1;0 / 0;0;0;0;1. Missing rows/values keep identity. Overrides ImageTint and ImageAlpha. Editor: 5x5 grid with presets."
+  },
+  {
+   "scope": "Image meter",
+   "key": "ImageName",
+   "kind": "file",
+   "default": "(the bound measure's string value)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Image file (png, jpg, bmp, gif, tif, webp, ico, heic). Relative to ImagePath, then the skin folder. .png assumed without extension. May contain %1, %2... filled from MeasureName, MeasureName2...; a bound measure without placeholder replaces a plain ImageName."
+  },
+  {
+   "scope": "Image meter",
+   "key": "Path",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Deprecated alias of ImagePath (used only when ImagePath is empty). Editor should write ImagePath."
+  },
+  {
+   "scope": "Image meter",
+   "key": "PreserveAspectRatio",
+   "kind": "enum",
+   "default": "0 (1 when only one of W/H is set)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Stretch to W x H"
+    },
+    {
+     "value": "1",
+     "meaning": "Fit inside, keep aspect ratio"
+    },
+    {
+     "value": "2",
+     "meaning": "Fill and crop, keep aspect ratio"
+    }
+   ],
+   "notes": "Clamped 0-2."
+  },
+  {
+   "scope": "Image meter",
+   "key": "Tile",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Repeat the image unscaled inside W x H."
+  },
+  {
+   "scope": "Image meter",
+   "key": "ScaleMargins",
+   "kind": "structured",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Left,Top,Right,Bottom px not scaled (nine-slice). Only with Tile=0 and PreserveAspectRatio=0. Needs 4 numbers with at least one > 0."
+  },
+  {
+   "scope": "Image meter",
+   "key": "MaskImageName",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Mask image; its size/shape defines the result (image fills it, cropped). Tile/ScaleMargins do not apply. Not bindable to measures."
+  },
+  {
+   "scope": "Image meter",
+   "key": "MaskImagePath",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "notes": "Folder for MaskImageName (ImagePath is not used for the mask)."
+  },
+  {
+   "scope": "Image meter",
+   "key": "MaskImageFlip",
+   "kind": "enum",
+   "default": "None",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "values": [
+    {
+     "value": "None",
+     "meaning": "No flip"
+    },
+    {
+     "value": "Horizontal",
+     "meaning": "Mirror left-right"
+    },
+    {
+     "value": "Vertical",
+     "meaning": "Mirror top-bottom"
+    },
+    {
+     "value": "Both",
+     "meaning": "Both"
+    }
+   ]
+  },
+  {
+   "scope": "Image meter",
+   "key": "MaskImageRotate",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ImageMeter.swift",
+   "range": "degrees, clockwise"
+  },
+  {
+   "scope": "Bar meter",
+   "key": "BarColor",
+   "kind": "color",
+   "default": "0,128,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BarMeter.swift",
+   "notes": "Fill color when BarImage is not set."
+  },
+  {
+   "scope": "Bar meter",
+   "key": "BarImage",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BarMeter.swift",
+   "notes": "Image revealed instead of BarColor, drawn at its own size (W/H do not scale it). All general image options apply."
+  },
+  {
+   "scope": "Bar meter",
+   "key": "BarOrientation",
+   "kind": "enum",
+   "default": "Vertical",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BarMeter.swift",
+   "values": [
+    {
+     "value": "Vertical",
+     "meaning": "Fills bottom to top"
+    },
+    {
+     "value": "Horizontal",
+     "meaning": "Fills left to right"
+    }
+   ],
+   "notes": "Anything other than Horizontal = Vertical."
+  },
+  {
+   "scope": "Bar meter",
+   "key": "Flip",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BarMeter.swift",
+   "notes": "Reverse the fill direction (top to bottom / right to left)."
+  },
+  {
+   "scope": "Bar meter",
+   "key": "BarBorder",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BarMeter.swift",
+   "range": "0-32768 px",
+   "notes": "With BarImage: px at both ends of the image always drawn."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapImage",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "notes": "Frame strip, horizontal if wider than tall, else vertical. General image options except ImageCrop/ImageRotate. W and H are ignored."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapFrames",
+   "kind": "number-range",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "range": "1-100000 integer",
+   "notes": "Total frames including transition frames."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapZeroFrame",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "notes": "1 = first frame only for exactly 0%."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapExtend",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "notes": "1 = draw the (rounded) value digit by digit, one frame per digit (base = frame count)."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapDigits",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "range": "0-64 (0 = as many as needed)",
+   "notes": "Only with BitmapExtend=1."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapAlign",
+   "kind": "enum",
+   "default": "Left",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "values": [
+    {
+     "value": "Left",
+     "meaning": "X = left edge"
+    },
+    {
+     "value": "Center",
+     "meaning": "X = center"
+    },
+    {
+     "value": "Right",
+     "meaning": "X = right edge"
+    }
+   ],
+   "notes": "Only with BitmapExtend=1."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapSeparation",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "range": "px (±32768)",
+   "notes": "Gap between digits (BitmapExtend=1)."
+  },
+  {
+   "scope": "Bitmap meter",
+   "key": "BitmapTransitionFrames",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/BitmapMeter.swift",
+   "range": "0 to BitmapFrames-1",
+   "notes": "Transition frames after each real frame; played at [Rainmeter] TransitionUpdate ms."
+  },
+  {
+   "scope": "Button meter",
+   "key": "ButtonImage",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ButtonMeter.swift",
+   "notes": "3 equal frames: normal, pressed, hover (side by side or stacked). General image options except ImageCrop/ImageRotate. W/H ignored. Transparent pixels are not clickable."
+  },
+  {
+   "scope": "Button meter",
+   "key": "ButtonCommand",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/ButtonMeter.swift",
+   "notes": "Bangs run on click (press + release on an opaque pixel)."
+  },
+  {
+   "scope": "Line meter",
+   "key": "LineCount",
+   "kind": "number-range",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "range": "0-64 (Deskset cap)",
+   "notes": "Number of lines; line N uses MeasureNameN, LineColorN, ScaleN (no suffix for line 1)."
+  },
+  {
+   "scope": "Line meter",
+   "key": "LineColor",
+   "kind": "color",
+   "default": "255,255,255,255 (manual gives none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "notes": "Numbered LineColor2...LineColorN per line."
+  },
+  {
+   "scope": "Line meter",
+   "key": "LineWidth",
+   "kind": "number-range",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "range": "0-1000 px"
+  },
+  {
+   "scope": "Line meter",
+   "key": "Scale",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "notes": "Numbered Scale2...ScaleN; multiplies the line's values; ignored with AutoScale=1. (Different meaning from String Scale.)"
+  },
+  {
+   "scope": "Line meter; Histogram meter",
+   "key": "AutoScale",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "notes": "1 = scale so the largest recorded value fits. Boolean here (unlike the String meter's AutoScale modes)."
+  },
+  {
+   "scope": "Line meter",
+   "key": "HorizontalLines",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "notes": "Background marker lines (quarters)."
+  },
+  {
+   "scope": "Line meter",
+   "key": "HorizontalLineColor",
+   "kind": "color",
+   "default": "0,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "notes": "Only relevant when HorizontalLines=1."
+  },
+  {
+   "scope": "Line meter; Histogram meter",
+   "key": "GraphStart",
+   "kind": "enum",
+   "default": "Right",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/GraphHistory.swift",
+   "values": [
+    {
+     "value": "Right",
+     "meaning": "Newest sample at the right (bottom when horizontal), scrolls left"
+    },
+    {
+     "value": "Left",
+     "meaning": "Newest sample at the left (top), scrolls right"
+    }
+   ]
+  },
+  {
+   "scope": "Line meter; Histogram meter",
+   "key": "GraphOrientation",
+   "kind": "enum",
+   "default": "Vertical",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/GraphHistory.swift",
+   "values": [
+    {
+     "value": "Vertical",
+     "meaning": "Time along X, values along Y"
+    },
+    {
+     "value": "Horizontal",
+     "meaning": "Time along Y, values along X"
+    }
+   ]
+  },
+  {
+   "scope": "Line meter; Histogram meter",
+   "key": "Flip",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/GraphHistory.swift",
+   "notes": "Mirror the value axis (values grow from the top / right)."
+  },
+  {
+   "scope": "Line meter",
+   "key": "TransformStroke",
+   "kind": "enum",
+   "default": "Normal",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/LineMeter.swift",
+   "values": [
+    {
+     "value": "Normal",
+     "meaning": "LineWidth is transformed by TransformationMatrix"
+    },
+    {
+     "value": "Fixed",
+     "meaning": "LineWidth stays constant under TransformationMatrix"
+    }
+   ]
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "SecondaryMeasureName",
+   "kind": "measure-ref",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Deprecated alias of MeasureName2 (used when MeasureName2 is empty). Editor should write MeasureName2."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "PrimaryColor",
+   "kind": "color",
+   "default": "0,128,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift"
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "SecondaryColor",
+   "kind": "color",
+   "default": "255,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Used only with MeasureName2."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "BothColor",
+   "kind": "color",
+   "default": "255,255,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Overlap of primary and secondary."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>Image",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "PrimaryImage, SecondaryImage, BothImage replace the colors (image revealed). The first loadable one sets the meter size (W/H ignored). .png assumed."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImagePath",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Folder for the corresponding image."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImageCrop",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "X,Y,W,H[,Origin 1-5] like ImageCrop."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImageTint",
+   "kind": "color",
+   "default": "255,255,255,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift"
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImageAlpha",
+   "kind": "number-range",
+   "default": "255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "range": "0-255"
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImageFlip",
+   "kind": "enum",
+   "default": "None",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "values": [
+    {
+     "value": "None",
+     "meaning": "No flip"
+    },
+    {
+     "value": "Horizontal",
+     "meaning": "Mirror left-right"
+    },
+    {
+     "value": "Vertical",
+     "meaning": "Mirror top-bottom"
+    },
+    {
+     "value": "Both",
+     "meaning": "Both"
+    }
+   ]
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>GreyScale",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift"
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>ImageRotate",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": false,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Only detected to report a compatibility issue; not applied."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "PrimaryColorMatrix1..5 / SecondaryColorMatrix1..5 / BothImageColorMatrix1..5",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": false,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/HistogramMeter.swift",
+   "notes": "Detected only to report a compatibility issue."
+  },
+  {
+   "scope": "Histogram meter",
+   "key": "<Primary|Secondary|Both>UseExifOrientation",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": false,
+   "notes": "Not read for Histogram images."
+  },
+  {
+   "scope": "Roundline meter; Rotator meter",
+   "key": "StartAngle",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "radians; 0 = right of center, positive = clockwise (4.712 = up)",
+   "notes": "Angle at 0%. Editor: degree dial writing (Rad(deg))."
+  },
+  {
+   "scope": "Roundline meter; Rotator meter",
+   "key": "RotationAngle",
+   "kind": "number",
+   "default": "6.2832 (2*PI)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "radians; negative = counter-clockwise",
+   "notes": "Sweep at 100%. Manual gives no Roundline default; Deskset uses 2*PI."
+  },
+  {
+   "scope": "Roundline meter; Rotator meter",
+   "key": "ValueRemainder",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Off: use percent of MinValue..MaxValue"
+    },
+    {
+     "value": "60",
+     "meaning": "Second hand (with a Time measure)"
+    },
+    {
+     "value": "3600",
+     "meaning": "Minute hand"
+    },
+    {
+     "value": "43200",
+     "meaning": "Hour hand (12 h)"
+    }
+   ],
+   "notes": "Value modulo N / N gives the fraction. Misspelling ValueReminder is accepted as alias."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "LineStart",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "px from center"
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "LineLength",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "px from center",
+   "notes": "Manual marks it required; nothing is drawn while 0."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "LineWidth",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": ">=0 px",
+   "notes": "Only when Solid=0."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "LineColor",
+   "kind": "color",
+   "default": "255,255,255,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift"
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "Solid",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "notes": "1 = pie / ring sector from StartAngle to the current value, between LineStart and LineLength."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "ControlAngle",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "notes": "0 = the value does not move the angle (RotationAngle ignored)."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "ControlStart",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "notes": "1 = value moves LineStart up to LineStart+StartShift."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "StartShift",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "px",
+   "notes": "Only with ControlStart=1."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "ControlLength",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "notes": "1 = value moves LineLength up to LineLength+LengthShift."
+  },
+  {
+   "scope": "Roundline meter",
+   "key": "LengthShift",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RoundlineMeter.swift",
+   "range": "px",
+   "notes": "Only with ControlLength=1."
+  },
+  {
+   "scope": "Rotator meter",
+   "key": "ImageName",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RotatorMeter.swift",
+   "notes": "Image rotated around the meter center (middle of W x H, or X/Y without W/H). All general image options apply. .png assumed."
+  },
+  {
+   "scope": "Rotator meter",
+   "key": "OffsetX",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RotatorMeter.swift",
+   "range": "px in the image",
+   "notes": "Image point placed on the rotation center (half the image width = rotate around its middle)."
+  },
+  {
+   "scope": "Rotator meter",
+   "key": "OffsetY",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/RotatorMeter.swift",
+   "range": "px in the image"
+  },
+  {
+   "scope": "Shape meter",
+   "key": "Shape",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/Shape/ShapeParser.swift",
+   "notes": "Numbered Shape, Shape2, Shape3... drawn in numeric order (higher = in front). Each: 'Type params | Modifier params | ...'. See shape_grammar. Editor: shape-type menu + typed parameter fields + a modifier stack (Fill, Stroke, StrokeWidth, caps, joins, dashes, transforms)."
+  },
+  {
+   "scope": "Shape meter",
+   "key": "<path definition option>",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/Shape/ShapeParser.swift",
+   "notes": "Any option name referenced by 'Path Name' / 'Path1 Name': 'StartX, StartY | LineTo ... | ArcTo ... | CurveTo ... | SetRoundJoin 0|1 | SetNoStroke 0|1 | ClosePath 0|1'. Looked up like any meter option (MeterStyle, variables)."
+  },
+  {
+   "scope": "Shape meter",
+   "key": "<gradient definition option>",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/Shape/ShapeGradients.swift",
+   "notes": "Referenced by Fill/Stroke LinearGradient[1] Name ('Angle | Color ; Pos | Color ; Pos ...') or RadialGradient[1] Name ('CenterX, CenterY[, OffsetX, OffsetY[, RadiusX[, RadiusY]]] | Color ; Pos | ...'). Editor: gradient bar with stops + angle / center controls."
+  },
+  {
+   "scope": "Shape meter",
+   "key": "<extend modifier-set option>",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Meters/Shape/ShapeParser.swift",
+   "notes": "Referenced by 'Extend Name1, Name2': a pipe-separated list of modifiers inserted in place (Extend inside it is ignored)."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "Update",
+   "kind": "number",
+   "default": "1000",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": "ms >= 16 (lower raised to 16); -1 = update once on load",
+   "notes": "Skin update interval."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultUpdateDivider",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": "integer; negative = only once",
+   "notes": "Default UpdateDivider of every measure/meter."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "TransitionUpdate",
+   "kind": "number",
+   "default": "100",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": "16-86400000 ms",
+   "notes": "Rate of Bitmap transition frames."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DynamicWindowSize",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Recompute the window size on every update."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "AccurateText",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "0 = GDI+-like 1/6 em horizontal padding on String meters; 1 = exact text bounds."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "SkinWidth",
+   "kind": "number",
+   "default": "(auto)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": ">0 px; 0/missing = auto",
+   "notes": "Fixed window width; meters outside are cut."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "SkinHeight",
+   "kind": "number",
+   "default": "(auto)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": ">0 px",
+   "notes": "Fixed window height."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DragMargins",
+   "kind": "structured",
+   "default": "0,0,0,0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Left,Top,Right,Bottom px where the skin cannot be dragged; negative values measure from the opposite side."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "Background",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Background image; general image options (ImageCrop, ImageTint, ImageFlip...) in [Rainmeter] apply to it."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BackgroundMode",
+   "kind": "enum",
+   "default": "1 (Deskset: 0 when Background is set and BackgroundMode is missing)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Image as-is (window takes image size)"
+    },
+    {
+     "value": "1",
+     "meaning": "Transparent (no background)"
+    },
+    {
+     "value": "2",
+     "meaning": "Solid color (SolidColor / SolidColor2 gradient)"
+    },
+    {
+     "value": "3",
+     "meaning": "Image scaled to the window (BackgroundMargins kept)"
+    },
+    {
+     "value": "4",
+     "meaning": "Image tiled"
+    }
+   ]
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BackgroundMargins",
+   "kind": "structured",
+   "default": "0,0,0,0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Left,Top,Right,Bottom unscaled edges for BackgroundMode=3."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "SolidColor",
+   "kind": "color",
+   "default": "128,128,128,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Background color for BackgroundMode=2."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "SolidColor2",
+   "kind": "color",
+   "default": "(none)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Gradient end color with BackgroundMode=2."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "GradientAngle",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": "degrees"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BevelType",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "None"
+    },
+    {
+     "value": "1",
+     "meaning": "Raised"
+    },
+    {
+     "value": "2",
+     "meaning": "Sunken"
+    }
+   ],
+   "notes": "Bevel around the whole skin."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BevelColor",
+   "kind": "color",
+   "default": "255,255,255,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BevelColor2",
+   "kind": "color",
+   "default": "0,0,0,255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnRefreshAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "After load/refresh (first update)."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnUpdateAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "After every skin update."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnCloseAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "When the skin is unloaded/refreshed."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnFocusAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Skin window gains focus."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnUnfocusAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Skin window loses focus."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "OnWakeAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "After the system wakes from sleep."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "ContextTitle",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "range": "up to 25 items (ContextTitle, ContextTitle2...ContextTitle25); >30 chars truncated with ...",
+   "notes": "Custom context-menu item; paired with ContextActionN. With more than 3 items a title of only dashes is a separator. Blank title or missing action ends the list. Variables always dynamic. Editor: reorderable list of (title, action) rows."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "ContextAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Numbered to match ContextTitleN."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "Group",
+   "kind": "list",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Pipe-separated skin groups (for group bangs)."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DragGroup",
+   "kind": "list",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Pipe-separated drag groups. Parsed, but multi-skin group dragging is not implemented in the Mac app."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "SelectedColor",
+   "kind": "color",
+   "default": "(app default)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Overlay when selected in a drag group. Parsed; no visible effect on Mac yet."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "Blur",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Windows Aero blur. Parsed; no effect on Mac (use Plugin=FrostedGlass)."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "BlurRegion",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Type: disabled"
+    },
+    {
+     "value": "1",
+     "meaning": "Type: rectangle"
+    },
+    {
+     "value": "2",
+     "meaning": "Type: rounded rectangle (needs Radius)"
+    },
+    {
+     "value": "3",
+     "meaning": "Type: ellipse"
+    }
+   ],
+   "notes": "Numbered BlurRegion, BlurRegion2... (<=100): Type, TopX, TopY, BottomX, BottomY[, Radius]. Parsed; no effect on Mac."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "LocalFont",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Deprecated: numbered LocalFont, LocalFont2... font files to load. Prefer @Resources/Fonts."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "Author",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": false,
+   "notes": "Deprecated; use [Metadata] Author."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "AppVersion",
+   "kind": "number",
+   "default": "",
+   "supported_by_engine": false,
+   "notes": "Deprecated; ignored."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultWindowX",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "notes": "First-load window X: pixels, N% of screen width, suffix R (from right edge), @N (monitor N), formula. Used only when the config has no saved state."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultWindowY",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "notes": "Like DefaultWindowX; suffix B = from bottom edge."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultAnchorX",
+   "kind": "structured",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "notes": "Anchor inside the window: px, %, R."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultAnchorY",
+   "kind": "structured",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "notes": "px, %, B."
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultAlwaysOnTop",
+   "kind": "enum",
+   "default": "(app default -2)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "values": [
+    {
+     "value": "-2",
+     "meaning": "On desktop"
+    },
+    {
+     "value": "-1",
+     "meaning": "Bottom"
+    },
+    {
+     "value": "0",
+     "meaning": "Normal"
+    },
+    {
+     "value": "1",
+     "meaning": "Topmost"
+    },
+    {
+     "value": "2",
+     "meaning": "Stay topmost"
+    }
+   ]
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultDraggable",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultSnapEdges",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultClickThrough",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultKeepOnScreen",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultSavePosition",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultStartHidden",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultAutoSelectScreen",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultAlphaValue",
+   "kind": "number-range",
+   "default": "255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "range": "0-255"
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultOnHover",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Do nothing"
+    },
+    {
+     "value": "1",
+     "meaning": "Hide"
+    },
+    {
+     "value": "2",
+     "meaning": "Fade in"
+    },
+    {
+     "value": "3",
+     "meaning": "Fade out"
+    }
+   ]
+  },
+  {
+   "scope": "[Rainmeter]",
+   "key": "DefaultFadeDuration",
+   "kind": "number-range",
+   "default": "250",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/SkinController.swift",
+   "range": "0-10000 ms"
+  },
+  {
+   "scope": "per-skin window settings (state.json, not in the .ini)",
+   "key": "AlwaysOnTop",
+   "kind": "enum",
+   "default": "-2 (Deskset product default; manual 0)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift",
+   "values": [
+    {
+     "value": "-2",
+     "meaning": "On desktop"
+    },
+    {
+     "value": "-1",
+     "meaning": "Bottom"
+    },
+    {
+     "value": "0",
+     "meaning": "Normal"
+    },
+    {
+     "value": "1",
+     "meaning": "Topmost"
+    },
+    {
+     "value": "2",
+     "meaning": "Stay topmost"
+    }
+   ]
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "Draggable",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "ClickThrough",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "KeepOnScreen",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "SnapEdges",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "AlphaValue",
+   "kind": "number-range",
+   "default": "255",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift",
+   "range": "0-255"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "SavePosition",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "LoadOrder",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift",
+   "notes": "Lower loads first / behind within the same z-level."
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "FadeDuration",
+   "kind": "number-range",
+   "default": "250",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift",
+   "range": "0-10000 ms"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "OnHover",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Do nothing"
+    },
+    {
+     "value": "1",
+     "meaning": "Hide"
+    },
+    {
+     "value": "2",
+     "meaning": "Fade in"
+    },
+    {
+     "value": "3",
+     "meaning": "Fade out"
+    }
+   ]
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "StartHidden",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "per-skin window settings (state.json)",
+   "key": "AutoSelectScreen",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/Deskset/AppState.swift"
+  },
+  {
+   "scope": "[Metadata]",
+   "key": "Name",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "[Metadata]",
+   "key": "Author",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "[Metadata]",
+   "key": "Information",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "notes": "Multi-line via | or #CRLF#."
+  },
+  {
+   "scope": "[Metadata]",
+   "key": "Version",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "[Metadata]",
+   "key": "License",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "Measure",
+   "kind": "enum",
+   "default": "(required)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Skin.swift",
+   "values": [
+    {
+     "value": "CPU",
+     "meaning": "Processor usage 0-100"
+    },
+    {
+     "value": "Memory",
+     "meaning": "RAM x2 + swap used (bytes)"
+    },
+    {
+     "value": "PhysicalMemory",
+     "meaning": "RAM used (bytes)"
+    },
+    {
+     "value": "SwapMemory",
+     "meaning": "RAM + swap used (bytes)"
+    },
+    {
+     "value": "NetIn",
+     "meaning": "Download bytes/s"
+    },
+    {
+     "value": "NetOut",
+     "meaning": "Upload bytes/s"
+    },
+    {
+     "value": "NetTotal",
+     "meaning": "Total bytes/s"
+    },
+    {
+     "value": "FreeDiskSpace",
+     "meaning": "Free bytes of a volume"
+    },
+    {
+     "value": "Time",
+     "meaning": "Date/time"
+    },
+    {
+     "value": "Uptime",
+     "meaning": "Time since boot"
+    },
+    {
+     "value": "Calc",
+     "meaning": "Formula"
+    },
+    {
+     "value": "Loop",
+     "meaning": "Counter"
+    },
+    {
+     "value": "String",
+     "meaning": "Fixed text"
+    },
+    {
+     "value": "Process",
+     "meaning": "Is an app running (1/-1)"
+    },
+    {
+     "value": "SysInfo",
+     "meaning": "System information"
+    },
+    {
+     "value": "WebParser",
+     "meaning": "Web/file data with regex"
+    },
+    {
+     "value": "Script",
+     "meaning": "Lua script"
+    },
+    {
+     "value": "Plugin",
+     "meaning": "Plugin (see Plugin=)"
+    },
+    {
+     "value": "Registry",
+     "meaning": "Windows registry (a few values emulated)"
+    },
+    {
+     "value": "RecycleManager",
+     "meaning": "Trash (former plugin)"
+    },
+    {
+     "value": "NowPlaying",
+     "meaning": "Now playing media (former plugin)"
+    },
+    {
+     "value": "WiFiStatus",
+     "meaning": "Wi-Fi info (former plugin)"
+    },
+    {
+     "value": "MediaKey",
+     "meaning": "Media keys (former plugin)"
+    }
+   ],
+   "notes": "Case-insensitive. Type-specific options change with the type."
+  },
+  {
+   "scope": "Plugin measure",
+   "key": "Plugin",
+   "kind": "enum",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/MeasureRegistry.swift",
+   "values": [
+    {
+     "value": "PowerPlugin",
+     "meaning": "Battery / power"
+    },
+    {
+     "value": "ActionTimer",
+     "meaning": "Timed action sequences"
+    },
+    {
+     "value": "AudioLevel",
+     "meaning": "Audio level / FFT"
+    },
+    {
+     "value": "Win7AudioPlugin",
+     "meaning": "Volume control"
+    },
+    {
+     "value": "AppVolume",
+     "meaning": "Per-app volume"
+    },
+    {
+     "value": "NowPlaying",
+     "meaning": "Media player info"
+    },
+    {
+     "value": "WebNowPlaying",
+     "meaning": "Browser media info"
+    },
+    {
+     "value": "iTunesPlugin",
+     "meaning": "iTunes/Music control"
+    },
+    {
+     "value": "MediaKey",
+     "meaning": "Media key presses"
+    },
+    {
+     "value": "WiFiStatus",
+     "meaning": "Wi-Fi info"
+    },
+    {
+     "value": "InputText",
+     "meaning": "Text input box"
+    },
+    {
+     "value": "FrostedGlass",
+     "meaning": "Blur behind skin"
+    },
+    {
+     "value": "Chameleon",
+     "meaning": "Colors from wallpaper/images"
+    },
+    {
+     "value": "IsFullScreen",
+     "meaning": "Fullscreen app detection"
+    },
+    {
+     "value": "GetActiveTitle",
+     "meaning": "Active window title"
+    },
+    {
+     "value": "SysColor",
+     "meaning": "System colors"
+    },
+    {
+     "value": "PingPlugin",
+     "meaning": "Ping"
+    },
+    {
+     "value": "RunCommand",
+     "meaning": "Run shell command"
+    },
+    {
+     "value": "QuotePlugin",
+     "meaning": "Random line/file"
+    },
+    {
+     "value": "FileView",
+     "meaning": "Folder browser"
+    },
+    {
+     "value": "FolderInfo",
+     "meaning": "Folder size/count"
+    },
+    {
+     "value": "RecycleManager",
+     "meaning": "Trash"
+    },
+    {
+     "value": "UsageMonitor",
+     "meaning": "Usage counters"
+    },
+    {
+     "value": "PerfMon",
+     "meaning": "Performance counters"
+    },
+    {
+     "value": "ResMon",
+     "meaning": "Resource counts"
+    },
+    {
+     "value": "AdvancedCPU",
+     "meaning": "Per-process CPU"
+    },
+    {
+     "value": "CoreTemp",
+     "meaning": "CPU temperature (no Mac data yet, 0)"
+    },
+    {
+     "value": "SpeedFanPlugin",
+     "meaning": "Sensors (no Mac data yet, 0)"
+    },
+    {
+     "value": "WindowMessagePlugin",
+     "meaning": "Window messages"
+    },
+    {
+     "value": "VirtualDesktops",
+     "meaning": "Virtual desktops"
+    },
+    {
+     "value": "SysInfo",
+     "meaning": "= Measure=SysInfo"
+    },
+    {
+     "value": "Process",
+     "meaning": "= Measure=Process"
+    },
+    {
+     "value": "WebParser",
+     "meaning": "= Measure=WebParser"
+    }
+   ],
+   "notes": "Only with Measure=Plugin. Folder and .dll are ignored (Plugins\\X.dll = X); aliases accepted: Ping, Quote, PerfMonPlugin, SpeedFan, WindowMessage, Win7Audio, iTunes. Other names = Windows plugin, unsupported."
+  },
+  {
+   "scope": "all measures",
+   "key": "MinValue",
+   "kind": "number",
+   "default": "0 (automatic for some types)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Lower bound for percentages. Not settable for Loop. Net: written in bits. Calc/Net/WebParser/Script track observed min when unset."
+  },
+  {
+   "scope": "all measures",
+   "key": "MaxValue",
+   "kind": "number",
+   "default": "1 (automatic: CPU 100, Memory/Disk total, battery 100...)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Upper bound for percentages. Not settable for Memory*, FreeDiskSpace, Loop. Net: in bits."
+  },
+  {
+   "scope": "all measures",
+   "key": "InvertMeasure",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "value = MaxValue - (value - MinValue): Memory -> free, FreeDiskSpace -> used. Not for String measures."
+  },
+  {
+   "scope": "all measures",
+   "key": "AverageSize",
+   "kind": "number-range",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "range": "0-10000 (<=1 = off)",
+   "notes": "Average of the last N values. Not for Loop."
+  },
+  {
+   "scope": "all measures",
+   "key": "UpdateDivider",
+   "kind": "number",
+   "default": "[Rainmeter] DefaultUpdateDivider (1)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift",
+   "range": "integer; -1 = only on load and bangs"
+  },
+  {
+   "scope": "all measures",
+   "key": "DynamicVariables",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "Disabled",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Never updated; number 0, keeps string."
+  },
+  {
+   "scope": "all measures",
+   "key": "Paused",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Never updated; keeps last number and string."
+  },
+  {
+   "scope": "all measures",
+   "key": "Group",
+   "kind": "list",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/SkinSection.swift",
+   "notes": "Pipe-separated."
+  },
+  {
+   "scope": "all measures",
+   "key": "OnUpdateAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "OnChangeAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "When number or string value changes (not on the first update)."
+  },
+  {
+   "scope": "all measures",
+   "key": "Substitute",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Actions/TextTransforms.swift",
+   "notes": "Comma-separated \"pattern\":\"replacement\" pairs applied in order; single quotes allowed around either side. \"\":\"x\" replaces an empty value. Editor: table of (find, replace) rows."
+  },
+  {
+   "scope": "all measures",
+   "key": "RegExpSubstitute",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "1 = Substitute patterns are PCRE; \\1, \\2 insert captures, \\0 the whole match."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfCondition",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Formula (parentheses optional; measure names usable as numbers; comparison = <> < > <= >=, && || need parenthesized sides). Numbered IfCondition2, IfCondition3... Action runs when the result becomes true/false."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfTrueAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Numbered to match IfConditionN."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfFalseAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "Numbered to match IfConditionN."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfConditionMode",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "1 = run the true/false action on every update, not only on change."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfAboveValue",
+   "kind": "number",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "With IfAboveAction: runs when the value becomes > this."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfAboveAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "IfBelowValue",
+   "kind": "number",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "With IfBelowAction: runs when the value becomes < this."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfBelowAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "IfEqualValue",
+   "kind": "number",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "With IfEqualAction; both rounded to integers."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfEqualAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "IfMatch",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "PCRE matched against the string value (after Substitute). Numbered IfMatch2...; with IfMatchActionN / IfNotMatchActionN."
+  },
+  {
+   "scope": "all measures",
+   "key": "IfMatchAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "IfNotMatchAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift"
+  },
+  {
+   "scope": "all measures",
+   "key": "IfMatchMode",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measure.swift",
+   "notes": "1 = run match actions on every update."
+  },
+  {
+   "scope": "CPU measure",
+   "key": "Processor",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "0 to number of cores (clamped 0-4096)",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Average of all cores"
+    },
+    {
+     "value": "N",
+     "meaning": "Core N (1-based)"
+    }
+   ],
+   "notes": "Menu: All cores, Core 1...Core N (from the system)."
+  },
+  {
+   "scope": "Memory / PhysicalMemory / SwapMemory measure",
+   "key": "Total",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = total amount instead of used. Free amount: InvertMeasure=1. MaxValue not settable (auto = total)."
+  },
+  {
+   "scope": "Memory / PhysicalMemory / SwapMemory measure",
+   "key": "Free",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Not in the manual (compatibility): total - used. Editor should prefer InvertMeasure=1."
+  },
+  {
+   "scope": "NetIn / NetOut / NetTotal measure",
+   "key": "Interface",
+   "kind": "enum",
+   "default": "Best",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "values": [
+    {
+     "value": "Best",
+     "meaning": "Active interface"
+    },
+    {
+     "value": "0",
+     "meaning": "All interfaces"
+    },
+    {
+     "value": "N",
+     "meaning": "Nth active interface (1-based)"
+    },
+    {
+     "value": "<name>",
+     "meaning": "BSD interface name, e.g. en0"
+    }
+   ],
+   "notes": "Windows names/aliases (Wi-Fi, Ethernet) and unknown indexes fall back to Best. Populate the menu from the system's interfaces."
+  },
+  {
+   "scope": "NetIn / NetOut / NetTotal measure",
+   "key": "Cumulative",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = total bytes since system start instead of bytes/s (no persistence across restarts on Mac)."
+  },
+  {
+   "scope": "NetIn / NetOut / NetTotal measure",
+   "key": "UseBits",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = bits instead of bytes (MinValue/MaxValue then not divided by 8)."
+  },
+  {
+   "scope": "NetIn / NetOut measure",
+   "key": "NetInSpeed / NetOutSpeed",
+   "kind": "number",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Deprecated max speed in bytes (NetTotal: sum); used when MaxValue is missing. Prefer MaxValue (bits)."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "Drive",
+   "kind": "file",
+   "default": "C: (= startup volume /)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Windows drive letter (C:, D:\\) maps to /; a folder path (/Volumes/Data, ~); a bare name = /Volumes/Name. Editor: menu of mounted volumes + folder picker."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "Total",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = total size. Used space: InvertMeasure=1."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "Label",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = string value is the volume name."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "Type",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "values": [
+    {
+     "value": "0 Error",
+     "meaning": "returned value"
+    },
+    {
+     "value": "1 Removed",
+     "meaning": "returned value: does not exist"
+    },
+    {
+     "value": "3 Removable",
+     "meaning": "returned value"
+    },
+    {
+     "value": "4 Fixed",
+     "meaning": "returned value"
+    },
+    {
+     "value": "5 Network",
+     "meaning": "returned value"
+    },
+    {
+     "value": "6 CDRom",
+     "meaning": "returned value"
+    },
+    {
+     "value": "7 Ram",
+     "meaning": "returned value"
+    }
+   ],
+   "notes": "1 = number and string are the drive type (values listed are the outputs, not option values)."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "IgnoreRemovable",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = removable media measure as 0 (Type/Label still work)."
+  },
+  {
+   "scope": "FreeDiskSpace measure",
+   "key": "DiskQuota",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": false,
+   "notes": "Windows disk quotas; not read (free space is what the user can use)."
+  },
+  {
+   "scope": "Time measure",
+   "key": "Format",
+   "kind": "structured",
+   "default": "%H:%M:%S",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/TimeFormatting.swift",
+   "values": [
+    {
+     "value": "%a",
+     "meaning": "Short weekday"
+    },
+    {
+     "value": "%A",
+     "meaning": "Full weekday"
+    },
+    {
+     "value": "%b",
+     "meaning": "Short month (%h same)"
+    },
+    {
+     "value": "%B",
+     "meaning": "Full month"
+    },
+    {
+     "value": "%c",
+     "meaning": "Date and time (%#c long)"
+    },
+    {
+     "value": "%C",
+     "meaning": "Century"
+    },
+    {
+     "value": "%d",
+     "meaning": "Day 01-31 (%#d no zero)"
+    },
+    {
+     "value": "%D",
+     "meaning": "MM/DD/YY"
+    },
+    {
+     "value": "%e",
+     "meaning": "Day, space-padded"
+    },
+    {
+     "value": "%F",
+     "meaning": "YYYY-MM-DD"
+    },
+    {
+     "value": "%g",
+     "meaning": "ISO week year, 2 digits"
+    },
+    {
+     "value": "%G",
+     "meaning": "ISO week year"
+    },
+    {
+     "value": "%H",
+     "meaning": "Hour 00-23 (%#H no zero)"
+    },
+    {
+     "value": "%I",
+     "meaning": "Hour 01-12 (%#I)"
+    },
+    {
+     "value": "%j",
+     "meaning": "Day of year 001-366"
+    },
+    {
+     "value": "%m",
+     "meaning": "Month 01-12 (%#m)"
+    },
+    {
+     "value": "%M",
+     "meaning": "Minute 00-59 (%#M)"
+    },
+    {
+     "value": "%n",
+     "meaning": "Newline"
+    },
+    {
+     "value": "%p",
+     "meaning": "AM/PM"
+    },
+    {
+     "value": "%r",
+     "meaning": "12-hour time"
+    },
+    {
+     "value": "%R",
+     "meaning": "HH:MM"
+    },
+    {
+     "value": "%S",
+     "meaning": "Second 00-59 (%#S)"
+    },
+    {
+     "value": "%t",
+     "meaning": "Tab"
+    },
+    {
+     "value": "%T",
+     "meaning": "HH:MM:SS"
+    },
+    {
+     "value": "%u",
+     "meaning": "ISO weekday 1-7"
+    },
+    {
+     "value": "%U",
+     "meaning": "Week of year (Sunday first)"
+    },
+    {
+     "value": "%V",
+     "meaning": "ISO week number"
+    },
+    {
+     "value": "%w",
+     "meaning": "Weekday 0-6"
+    },
+    {
+     "value": "%W",
+     "meaning": "Week of year (Monday first)"
+    },
+    {
+     "value": "%x",
+     "meaning": "Short date (%#x long)"
+    },
+    {
+     "value": "%X",
+     "meaning": "Time"
+    },
+    {
+     "value": "%y",
+     "meaning": "Year 2 digits (%#y)"
+    },
+    {
+     "value": "%Y",
+     "meaning": "Year 4 digits"
+    },
+    {
+     "value": "%z",
+     "meaning": "UTC offset"
+    },
+    {
+     "value": "%Z",
+     "meaning": "Time zone name"
+    },
+    {
+     "value": "%%",
+     "meaning": "Literal %"
+    },
+    {
+     "value": "locale-date",
+     "meaning": "Whole value: system short date"
+    },
+    {
+     "value": "locale-time",
+     "meaning": "Whole value: system time"
+    }
+   ],
+   "notes": "strftime-style tokens mixed with literal text. # flag removes leading zeros. With Format set, the number value is the leading number of the formatted text; otherwise seconds since 1601-01-01. Editor: token picker + live preview."
+  },
+  {
+   "scope": "Time measure",
+   "key": "TimeZone",
+   "kind": "number-range",
+   "default": "local",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/TimeFormatting.swift",
+   "range": "local, or hours from UTC -12 to +14 (fractions like 5.5 allowed, formulas allowed)",
+   "notes": "Editor: 'Local' + UTC offset menu."
+  },
+  {
+   "scope": "Time measure",
+   "key": "DaylightSavingTime",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "0 = no DST adjustment with TimeZone."
+  },
+  {
+   "scope": "Time measure",
+   "key": "FormatLocale",
+   "kind": "text",
+   "default": "(standard English)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/TimeLocaleSupport.swift",
+   "notes": "Culture name (en-US, de-DE, zh-CN, fr...) or Local (system locale) for day/month names. Editor: locale menu."
+  },
+  {
+   "scope": "Time measure",
+   "key": "TimeStamp",
+   "kind": "text",
+   "default": "(current time)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Windows timestamp (seconds since 1601) or a formatted date string parsed with TimeStampFormat. TimeZone does not apply."
+  },
+  {
+   "scope": "Time measure",
+   "key": "TimeStampFormat",
+   "kind": "structured",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/TimeStampParsing.swift",
+   "notes": "Mask with Format codes describing a string TimeStamp."
+  },
+  {
+   "scope": "Time measure",
+   "key": "TimeStampLocale",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Locale of the TimeStamp string."
+  },
+  {
+   "scope": "Uptime measure",
+   "key": "Format",
+   "kind": "structured",
+   "default": "%4!i!d %3!i!:%2!02i!",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Format/UptimeFormatting.swift",
+   "values": [
+    {
+     "value": "%4",
+     "meaning": "Days"
+    },
+    {
+     "value": "%3",
+     "meaning": "Hours"
+    },
+    {
+     "value": "%2",
+     "meaning": "Minutes"
+    },
+    {
+     "value": "%1",
+     "meaning": "Seconds"
+    },
+    {
+     "value": "!i!",
+     "meaning": "Suffix: no leading zeros (e.g. %3!i!)"
+    },
+    {
+     "value": "!02i!",
+     "meaning": "Suffix: zero-pad to 2 digits"
+    }
+   ],
+   "notes": "Editor: token picker."
+  },
+  {
+   "scope": "Uptime measure",
+   "key": "AddDaysToHours",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = when %4 is not used, hours include days*24."
+  },
+  {
+   "scope": "Uptime measure",
+   "key": "SecondsValue",
+   "kind": "number",
+   "default": "(system uptime)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Format this number of seconds instead (formula / section variable)."
+  },
+  {
+   "scope": "Calc measure",
+   "key": "Formula",
+   "kind": "structured",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Formula (outer parentheses optional). Measure names are numbers; Random and Counter are Calc-only. See other_structured_values: formula syntax."
+  },
+  {
+   "scope": "Calc measure",
+   "key": "LowBound",
+   "kind": "number",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "32-bit integer",
+   "notes": "Random lower bound (inclusive). Only relevant when Formula uses Random."
+  },
+  {
+   "scope": "Calc measure",
+   "key": "HighBound",
+   "kind": "number",
+   "default": "100",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "32-bit integer",
+   "notes": "Random upper bound (inclusive)."
+  },
+  {
+   "scope": "Calc measure",
+   "key": "UpdateRandom",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = new Random every update (else once)."
+  },
+  {
+   "scope": "Calc measure",
+   "key": "UniqueRandom",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "1 = no repeats until all values used (range <= 65535)."
+  },
+  {
+   "scope": "Loop measure",
+   "key": "StartValue",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "whole number",
+   "notes": "MinValue/MaxValue derived from Start/End; AverageSize not allowed. !CommandMeasure Reset restarts."
+  },
+  {
+   "scope": "Loop measure",
+   "key": "EndValue",
+   "kind": "number",
+   "default": "100",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "whole number"
+  },
+  {
+   "scope": "Loop measure",
+   "key": "Increment",
+   "kind": "number",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "whole number (sign ignored; always moves toward EndValue; 0 = stay)"
+  },
+  {
+   "scope": "Loop measure",
+   "key": "LoopCount",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "range": "0 (endless) - 1e9"
+  },
+  {
+   "scope": "String measure",
+   "key": "String",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Text value (no formula evaluation); number = text read as a number. InvertMeasure not allowed."
+  },
+  {
+   "scope": "Process measure",
+   "key": "ProcessName",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "App/process name (.exe dropped); 1 running, -1 not. Editor: running-apps picker."
+  },
+  {
+   "scope": "SysInfo measure",
+   "key": "SysInfoType",
+   "kind": "enum",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "values": [
+    {
+     "value": "COMPUTER_NAME",
+     "meaning": "Computer name (string)"
+    },
+    {
+     "value": "USER_NAME",
+     "meaning": "User name (string)"
+    },
+    {
+     "value": "USER_SID",
+     "meaning": "Windows SID (not on Mac)"
+    },
+    {
+     "value": "USER_LOGONTIME",
+     "meaning": "Logon timestamp (number)"
+    },
+    {
+     "value": "LAST_SLEEP_TIME",
+     "meaning": "Last sleep timestamp"
+    },
+    {
+     "value": "LAST_WAKE_TIME",
+     "meaning": "Last wake timestamp"
+    },
+    {
+     "value": "OS_PRODUCT_NAME",
+     "meaning": "OS name with edition"
+    },
+    {
+     "value": "OS_VERSION",
+     "meaning": "OS version"
+    },
+    {
+     "value": "OS_BITS",
+     "meaning": "32/64"
+    },
+    {
+     "value": "PAGESIZE",
+     "meaning": "Memory page size"
+    },
+    {
+     "value": "IDLE_TIME",
+     "meaning": "Seconds since last input"
+    },
+    {
+     "value": "HOST_NAME",
+     "meaning": "Host name"
+    },
+    {
+     "value": "DOMAIN_NAME",
+     "meaning": "Domain name"
+    },
+    {
+     "value": "DOMAIN_WORKGROUP",
+     "meaning": "Domain/workgroup"
+    },
+    {
+     "value": "DNS_SERVER",
+     "meaning": "Primary DNS"
+    },
+    {
+     "value": "ADAPTER_DESCRIPTION",
+     "meaning": "Adapter name (SysInfoData = NIC)"
+    },
+    {
+     "value": "ADAPTER_TYPE",
+     "meaning": "Ethernet/Wireless/Other"
+    },
+    {
+     "value": "ADAPTER_ALIAS",
+     "meaning": "Interface alias"
+    },
+    {
+     "value": "ADAPTER_GUID",
+     "meaning": "Adapter GUID (not on Mac)"
+    },
+    {
+     "value": "ADAPTER_STATE",
+     "meaning": "Connected state"
+    },
+    {
+     "value": "ADAPTER_STATUS",
+     "meaning": "Operational status"
+    },
+    {
+     "value": "ADAPTER_TRANSMIT_SPEED",
+     "meaning": "Outbound bits/s"
+    },
+    {
+     "value": "ADAPTER_RECEIVE_SPEED",
+     "meaning": "Inbound bits/s"
+    },
+    {
+     "value": "MAC_ADDRESS",
+     "meaning": "MAC address"
+    },
+    {
+     "value": "NET_MASK",
+     "meaning": "Subnet mask"
+    },
+    {
+     "value": "IP_ADDRESS",
+     "meaning": "LAN IP"
+    },
+    {
+     "value": "GATEWAY_ADDRESS",
+     "meaning": "Gateway"
+    },
+    {
+     "value": "GATEWAY_ADDRESS_V4",
+     "meaning": "IPv4 gateway"
+    },
+    {
+     "value": "GATEWAY_ADDRESS_V6",
+     "meaning": "IPv6 gateway"
+    },
+    {
+     "value": "LAN_CONNECTIVITY",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "LAN_CONNECTIVITY_V4",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "LAN_CONNECTIVITY_V6",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "INTERNET_CONNECTIVITY",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "INTERNET_CONNECTIVITY_V4",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "INTERNET_CONNECTIVITY_V6",
+     "meaning": "1/-1"
+    },
+    {
+     "value": "NUM_MONITORS",
+     "meaning": "Monitor count"
+    },
+    {
+     "value": "SCREEN_SIZE",
+     "meaning": "Primary 'W x H'"
+    },
+    {
+     "value": "SCREEN_WIDTH",
+     "meaning": "Width (SysInfoData = monitor)"
+    },
+    {
+     "value": "SCREEN_HEIGHT",
+     "meaning": "Height (monitor)"
+    },
+    {
+     "value": "VIRTUAL_SCREEN_TOP",
+     "meaning": "Virtual screen top (monitor)"
+    },
+    {
+     "value": "VIRTUAL_SCREEN_LEFT",
+     "meaning": "Virtual screen left (monitor)"
+    },
+    {
+     "value": "VIRTUAL_SCREEN_WIDTH",
+     "meaning": "Virtual screen width"
+    },
+    {
+     "value": "VIRTUAL_SCREEN_HEIGHT",
+     "meaning": "Virtual screen height"
+    },
+    {
+     "value": "WORK_AREA",
+     "meaning": "Work area 'W x H'"
+    },
+    {
+     "value": "WORK_AREA_TOP",
+     "meaning": "Work area top (monitor)"
+    },
+    {
+     "value": "WORK_AREA_LEFT",
+     "meaning": "Work area left (monitor)"
+    },
+    {
+     "value": "WORK_AREA_WIDTH",
+     "meaning": "Work area width (monitor)"
+    },
+    {
+     "value": "WORK_AREA_HEIGHT",
+     "meaning": "Work area height (monitor)"
+    },
+    {
+     "value": "TIMEZONE_ISDST",
+     "meaning": "1 DST, 0 not, -1 unused"
+    },
+    {
+     "value": "TIMEZONE_BIAS",
+     "meaning": "UTC offset minutes"
+    },
+    {
+     "value": "TIMEZONE_STANDARD_NAME",
+     "meaning": "Standard zone name"
+    },
+    {
+     "value": "TIMEZONE_STANDARD_BIAS",
+     "meaning": "Standard bias"
+    },
+    {
+     "value": "TIMEZONE_DAYLIGHT_NAME",
+     "meaning": "Daylight zone name"
+    },
+    {
+     "value": "TIMEZONE_DAYLIGHT_BIAS",
+     "meaning": "Daylight bias (usually -60)"
+    }
+   ],
+   "notes": "Case-insensitive. All answered on Mac except USER_SID and ADAPTER_GUID (compatibility issue, empty)."
+  },
+  {
+   "scope": "SysInfo measure",
+   "key": "SysInfoData",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Monitor types: monitor number (1-based). ADAPTER_*/network types: Best (default), interface name or index. Editor: show only for types that use it, with the matching picker."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "URL",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "http(s):// or file:// resource, or [ParentMeasure] for a child measure (may be embedded: https://host/[Parent])."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "RegExp",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "PCRE (e.g. (?siU)...); ungreedy U flag emulated."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "StringIndex",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "range": "0-1000 (manual 1-99)",
+   "notes": "Which capture of the parent's RegExp this measure returns."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "StringIndex2",
+   "kind": "number-range",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "range": "0-1000",
+   "notes": "Capture of this measure's own RegExp applied to its StringIndex text."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "UpdateRate",
+   "kind": "number",
+   "default": "600",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "range": "measure updates (fetch every Update x UpdateDivider x UpdateRate ms)"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "DecodeCharacterReference",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParser/WebParserText.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "No decoding"
+    },
+    {
+     "value": "1",
+     "meaning": "Numeric and named references"
+    },
+    {
+     "value": "2",
+     "meaning": "Numeric only (&#...;)"
+    },
+    {
+     "value": "3",
+     "meaning": "Named only (&amp; ...)"
+    }
+   ]
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "DecodeCodePoints",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "Decode \\uXXXX escapes."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "CodePage",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParser/WebParserText.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Auto / UTF-8"
+    },
+    {
+     "value": "65001",
+     "meaning": "UTF-8"
+    },
+    {
+     "value": "1200",
+     "meaning": "UTF-16 LE"
+    },
+    {
+     "value": "1201",
+     "meaning": "UTF-16 BE"
+    },
+    {
+     "value": "12000",
+     "meaning": "UTF-32 LE"
+    },
+    {
+     "value": "12001",
+     "meaning": "UTF-32 BE"
+    },
+    {
+     "value": "1252",
+     "meaning": "Western (Latin-1)"
+    },
+    {
+     "value": "1251",
+     "meaning": "Cyrillic"
+    },
+    {
+     "value": "936",
+     "meaning": "Simplified Chinese GBK"
+    },
+    {
+     "value": "932",
+     "meaning": "Japanese Shift-JIS"
+    }
+   ],
+   "notes": "Any Windows code page number is accepted."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "Debug",
+   "kind": "enum",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "values": [
+    {
+     "value": "0",
+     "meaning": "Off"
+    },
+    {
+     "value": "1",
+     "meaning": "Log details"
+    },
+    {
+     "value": "2",
+     "meaning": "Dump downloaded page to a file"
+    }
+   ]
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "Debug2File",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "Dump path for Debug=2."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "Download",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "1 = download the URL/value to a file and return its path (e.g. for an Image meter)."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "DownloadFile",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "File name saved under a DownloadFile folder of the skin (kept after unload)."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "ErrorString",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "Value returned when the RegExp fails."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "LogSubstringErrors",
+   "kind": "bool",
+   "default": "1",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "ProxyServer",
+   "kind": "enum",
+   "default": "/auto",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "values": [
+    {
+     "value": "/auto",
+     "meaning": "System proxy settings"
+    },
+    {
+     "value": "/none",
+     "meaning": "Direct connection"
+    },
+    {
+     "value": "host:port",
+     "meaning": "Custom proxy (free text)"
+    }
+   ]
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "UserAgent",
+   "kind": "text",
+   "default": "(built-in agent)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "Header",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "Numbered Header, Header2...; each 'Name: Value'. Editor: key/value table."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "Flags",
+   "kind": "list",
+   "default": "Resync",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift",
+   "values": [
+    {
+     "value": "Resync",
+     "meaning": "Revalidate cache (default)"
+    },
+    {
+     "value": "ForceReload",
+     "meaning": "Bypass cache"
+    },
+    {
+     "value": "NoCookies",
+     "meaning": "No cookies"
+    },
+    {
+     "value": "NoCacheWrite",
+     "meaning": "Do not cache response"
+    },
+    {
+     "value": "PragmaNoCache",
+     "meaning": "Ask proxies not to cache"
+    },
+    {
+     "value": "NoAuth",
+     "meaning": "Ignore user:pass@ in URL"
+    },
+    {
+     "value": "IgnoreHTTPRedirect",
+     "meaning": "Allow HTTPS->HTTP redirects"
+    },
+    {
+     "value": "IgnoreHTTPSRedirect",
+     "meaning": "Allow HTTP->HTTPS (always on)"
+    },
+    {
+     "value": "Hyperlink",
+     "meaning": "Accepted, no effect"
+    },
+    {
+     "value": "TempFile",
+     "meaning": "Accepted, no effect"
+    },
+    {
+     "value": "Secure",
+     "meaning": "Accepted, no effect"
+    },
+    {
+     "value": "IgnoreCertName",
+     "meaning": "UNSUPPORTED (certificate checks stay on)"
+    },
+    {
+     "value": "IgnoreCertDate",
+     "meaning": "UNSUPPORTED"
+    }
+   ],
+   "notes": "Pipe-separated set. Editor: checkbox list."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "ForceReload",
+   "kind": "bool",
+   "default": "0",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift",
+   "notes": "Deprecated; = Flags=ForceReload."
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "FinishAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "OnConnectErrorAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "OnRegExpErrorAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "WebParser measure",
+   "key": "OnDownloadErrorAction",
+   "kind": "action",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift"
+  },
+  {
+   "scope": "PowerPlugin measure",
+   "key": "PowerState",
+   "kind": "enum",
+   "default": "Percent",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "values": [
+    {
+     "value": "Percent",
+     "meaning": "Battery charge 0-100 (100 without battery)"
+    },
+    {
+     "value": "ACLine",
+     "meaning": "1 plugged in, 0 on battery"
+    },
+    {
+     "value": "Status",
+     "meaning": "0 no battery, 1 charging, 2 critical, 3 low, 4 above low"
+    },
+    {
+     "value": "Status2",
+     "meaning": "Flags: 1 high, 2 low, 4 critical, 8 charging, 128 no battery"
+    },
+    {
+     "value": "Lifetime",
+     "meaning": "Seconds left (string via Format); -1/Unknown on AC"
+    },
+    {
+     "value": "Hz",
+     "meaning": "Rated CPU frequency in Hz (0 if unknown)"
+    },
+    {
+     "value": "MHz",
+     "meaning": "Rated CPU frequency in MHz"
+    }
+   ],
+   "notes": "Case-insensitive."
+  },
+  {
+   "scope": "PowerPlugin measure",
+   "key": "Format",
+   "kind": "structured",
+   "default": "%H:%M",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift",
+   "notes": "Time-measure format codes; only for PowerState=Lifetime."
+  },
+  {
+   "scope": "Script measure",
+   "key": "ScriptFile",
+   "kind": "file",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Lua/ScriptMeasure.swift",
+   "notes": "Lua 5.1 file (.lua) relative to the skin folder; other options of the section are readable by the script (SELF:GetOption)."
+  },
+  {
+   "scope": "Registry measure",
+   "key": "RegHKey",
+   "kind": "enum",
+   "default": "HKEY_CURRENT_USER",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift",
+   "values": [
+    {
+     "value": "HKEY_CURRENT_USER",
+     "meaning": "User hive"
+    },
+    {
+     "value": "HKEY_LOCAL_MACHINE",
+     "meaning": "Machine hive"
+    },
+    {
+     "value": "HKEY_CLASSES_ROOT",
+     "meaning": "Classes"
+    },
+    {
+     "value": "HKEY_CURRENT_CONFIG",
+     "meaning": "Current config"
+    },
+    {
+     "value": "HKEY_USERS",
+     "meaning": "All users"
+    }
+   ],
+   "notes": "Mac has no registry: only common machine facts are emulated; other values read 0/empty + compatibility issue."
+  },
+  {
+   "scope": "Registry measure",
+   "key": "RegKey",
+   "kind": "text",
+   "default": "",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift"
+  },
+  {
+   "scope": "Registry measure",
+   "key": "RegValue",
+   "kind": "text",
+   "default": "(key default value)",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift"
+  },
+  {
+   "scope": "Registry measure",
+   "key": "OutputType",
+   "kind": "enum",
+   "default": "Value",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift",
+   "values": [
+    {
+     "value": "Value",
+     "meaning": "The value"
+    },
+    {
+     "value": "SubKeyList",
+     "meaning": "List of sub-keys"
+    },
+    {
+     "value": "ValueList",
+     "meaning": "List of value names"
+    }
+   ]
+  },
+  {
+   "scope": "Registry measure",
+   "key": "OutputDelimiter",
+   "kind": "text",
+   "default": "#CRLF#",
+   "supported_by_engine": true,
+   "engine_file": "Sources/DesksetCore/Engine/Measures/RegistryMeasure.swift"
+  }
+ ],
+ "shape_grammar": {
+  "shapes": [
+   {
+    "name": "Rectangle",
+    "params": [
+     "X",
+     "Y",
+     "Width",
+     "Height"
+    ],
+    "optional_params": [
+     "RadiusX (corner radius, default 0)",
+     "RadiusY (default = RadiusX)"
+    ],
+    "notes": "Closed. Negative Width/Height are normalized; radii clamped to half the size. Filled white by default."
+   },
+   {
+    "name": "Ellipse",
+    "params": [
+     "CenterX",
+     "CenterY",
+     "RadiusX"
+    ],
+    "optional_params": [
+     "RadiusY (default = RadiusX, i.e. a circle)"
+    ],
+    "notes": "Closed. May extend left/above the meter (negative coordinates are not clipped)."
+   },
+   {
+    "name": "Line",
+    "params": [
+     "StartX",
+     "StartY",
+     "EndX",
+     "EndY"
+    ],
+    "optional_params": [],
+    "notes": "Open (no fill by default); gets StrokeStartCap/StrokeEndCap."
+   },
+   {
+    "name": "Arc",
+    "params": [
+     "StartX",
+     "StartY",
+     "EndX",
+     "EndY"
+    ],
+    "optional_params": [
+     "RadiusX (default: half the start-end distance)",
+     "RadiusY (default = RadiusX)",
+     "RotationAngle (degrees, default 0)",
+     "SweepDirection (0 clockwise = default, 1 counter-clockwise)",
+     "ArcSize (0 small = default, 1 large)",
+     "ShapeEnding (0 open = default, 1 closed)"
+    ],
+    "notes": "Elliptical arc from start to end. Use * to skip an optional parameter and keep its default. Open arcs are not filled."
+   },
+   {
+    "name": "Curve",
+    "params": [
+     "StartX",
+     "StartY",
+     "EndX",
+     "EndY",
+     "ControlX1",
+     "ControlY1"
+    ],
+    "optional_params": [
+     "ControlX2, ControlY2 (both given => cubic Bezier, else quadratic)",
+     "ShapeEnding (0 open / 1 closed): 7th value for a quadratic curve, 9th value for a cubic curve"
+    ],
+    "notes": "Quadratic or cubic Bezier."
+   },
+   {
+    "name": "Path",
+    "params": [
+     "PathOptionName"
+    ],
+    "optional_params": [],
+    "notes": "Geometry from another option of the meter: 'StartX, StartY | segments...'. Even-odd fill rule. Closed only with ClosePath 1."
+   },
+   {
+    "name": "Path1",
+    "params": [
+     "PathOptionName"
+    ],
+    "optional_params": [],
+    "notes": "Same as Path but non-zero (winding) fill rule."
+   },
+   {
+    "name": "Combine",
+    "params": [
+     "ParentShapeName (Shape, Shape2, ...)"
+    ],
+    "optional_params": [
+     "| Union ShapeN",
+     "| Intersect ShapeN",
+     "| XOR ShapeN",
+     "| Exclude ShapeN (any number of steps, applied in order)",
+     "| Consume 0|1 (Deskset extension, default 1)"
+    ],
+    "notes": "Boolean combination; the result is always closed and inherits the PARENT's attribute modifiers (fill/stroke/width/caps/joins/dashes); attribute modifiers on children and on the Combine line are ignored; transform modifiers of parent and children apply before combining, those on the Combine line after. Operands are consumed (not drawn on their own) unless Consume 0."
+   }
+  ],
+  "modifiers": [
+   {
+    "name": "Fill",
+    "params": [
+     "PaintType",
+     "Value"
+    ],
+    "values": [
+     "Color R,G,B[,A] | RRGGBB[AA]",
+     "LinearGradient <GradientOptionName>",
+     "LinearGradient1 <GradientOptionName> (alternative gamma, linear-light interpolation)",
+     "RadialGradient <GradientOptionName>",
+     "RadialGradient1 <GradientOptionName>"
+    ],
+    "notes": "Default: Color 255,255,255,255 for closed shapes, none for open ones. Deskset also accepts 'Fill R,G,B' (Color keyword omitted). An unparsable paint leaves the previous one."
+   },
+   {
+    "name": "Stroke",
+    "params": [
+     "PaintType",
+     "Value"
+    ],
+    "values": [
+     "Color R,G,B[,A]",
+     "LinearGradient <Name>",
+     "LinearGradient1 <Name>",
+     "RadialGradient <Name>",
+     "RadialGradient1 <Name>"
+    ],
+    "notes": "Default: Color 0,0,0,255."
+   },
+   {
+    "name": "FillColor / StrokeColor",
+    "params": [
+     "Color"
+    ],
+    "notes": "Deskset alias for 'Fill Color' / 'Stroke Color' (appears once in the manual's examples). Editor should write the two-word form."
+   },
+   {
+    "name": "StrokeWidth",
+    "params": [
+     "Width"
+    ],
+    "notes": "Default 1 px; half inside, half outside the outline; not affected by Scale. Clamped 0-10000. 0 = no stroke."
+   },
+   {
+    "name": "StrokeStartCap",
+    "params": [
+     "Cap"
+    ],
+    "values": [
+     "Flat",
+     "Round",
+     "Square",
+     "Triangle"
+    ],
+    "notes": "Default Flat. Start of open shapes/path figures."
+   },
+   {
+    "name": "StrokeEndCap",
+    "params": [
+     "Cap"
+    ],
+    "values": [
+     "Flat",
+     "Round",
+     "Square",
+     "Triangle"
+    ],
+    "notes": "Default Flat."
+   },
+   {
+    "name": "StrokeDashCap",
+    "params": [
+     "Cap"
+    ],
+    "values": [
+     "Flat",
+     "Round",
+     "Square",
+     "Triangle"
+    ],
+    "notes": "Default Flat. Caps of each dash."
+   },
+   {
+    "name": "StrokeDashes",
+    "params": [
+     "Dash",
+     "Gap",
+     "Dash",
+     "Gap",
+     "..."
+    ],
+    "notes": "Comma-separated multiples of StrokeWidth (decimals allowed, negative -> 0, max 64 entries). Empty = solid."
+   },
+   {
+    "name": "StrokeDashOffset",
+    "params": [
+     "Offset"
+    ],
+    "notes": "Default 0; multiple of StrokeWidth."
+   },
+   {
+    "name": "StrokeLineJoin",
+    "params": [
+     "Join",
+     "MiterLimit (optional, Miter/MiterOrBevel only, >= 1, default 10)"
+    ],
+    "values": [
+     "Miter",
+     "Bevel",
+     "Round",
+     "MiterOrBevel"
+    ],
+    "notes": "Default 'Miter, 10'. MeterOrBevel (manual typo) accepted."
+   },
+   {
+    "name": "StrokeType",
+    "params": [
+     "Placement"
+    ],
+    "values": [
+     "Center",
+     "Outer",
+     "Inner"
+    ],
+    "notes": "Deskset extension (not in the manual; also Centre/Outside/Inside). Default Center; open shapes always Center."
+   },
+   {
+    "name": "Rotate",
+    "params": [
+     "Angle (degrees, clockwise)"
+    ],
+    "notes": "Optional AnchorX, AnchorY (relative to the shape's untransformed top-left; default = shape center)."
+   },
+   {
+    "name": "Scale",
+    "params": [
+     "ScaleX",
+     "ScaleY"
+    ],
+    "notes": "Default 1,1; negative mirrors; optional AnchorX, AnchorY (default center). A missing ScaleY stays 1."
+   },
+   {
+    "name": "Skew",
+    "params": [
+     "SkewX (degrees)",
+     "SkewY (degrees)"
+    ],
+    "notes": "Default 0,0; optional AnchorX, AnchorY (default center)."
+   },
+   {
+    "name": "Offset",
+    "params": [
+     "OffsetX",
+     "OffsetY"
+    ],
+    "notes": "Default 0,0; translation."
+   },
+   {
+    "name": "TransformOrder",
+    "params": [
+     "Kind",
+     "Kind",
+     "..."
+    ],
+    "values": [
+     "Rotate",
+     "Scale",
+     "Skew",
+     "Offset"
+    ],
+    "notes": "Default Rotate, Scale, Skew, Offset; missing kinds appended in default order."
+   },
+   {
+    "name": "Extend",
+    "params": [
+     "OptionName",
+     "OptionName",
+     "..."
+    ],
+    "notes": "Inserts the modifiers stored in the named options at this position (last-wins still applies). No cascading: Extend inside a named option is ignored."
+   },
+   {
+    "name": "Union / Intersect / XOR / Exclude",
+    "params": [
+     "ShapeName"
+    ],
+    "values": [
+     "Union",
+     "Intersect",
+     "XOR",
+     "Exclude"
+    ],
+    "notes": "Only on a Combine line: combine step with ShapeN (Shape = Shape1)."
+   },
+   {
+    "name": "Consume",
+    "params": [
+     "0|1"
+    ],
+    "values": [
+     "0",
+     "1"
+    ],
+    "notes": "Deskset extension, only on Combine: 0 keeps the operand shapes visible."
+   }
+  ],
+  "combine_and_path": "PATH: 'ShapeN=Path MyPath | modifiers' (or Path1 for non-zero fill) references option 'MyPath=StartX, StartY | Segment | Segment ...' of the same meter (lookup like any option: MeterStyle inheritance and variables work). Segments, each continuing from the previous end point: 'LineTo X, Y'; 'ArcTo X, Y[, RadiusX[, RadiusY[, RotationAngle[, SweepDirection 0 cw|1 ccw[, ArcSize 0 small|1 large]]]]]' (radius default half the chord); 'CurveTo X, Y, ControlX1, ControlY1[, ControlX2, ControlY2]' (quadratic, or cubic with the 2nd control point). State commands: 'SetRoundJoin 0|1' (round joins for following segments; SetLineJoin accepted), 'SetNoStroke 0|1' (following segments not stroked), 'ClosePath 0|1' (close back to the start; the closing line uses the state at the end). A bare command without value counts as 1. Missing/invalid start point = shape skipped. Max 10000 segments. COMBINE: 'ShapeN=Combine ShapeA | Union ShapeB | Exclude ShapeC ...' names shapes by option name (Shape, Shape2...; Shape1 accepted), may reference shapes defined later, cycles are rejected, max depth 32 and 256 operands. Open operands are closed first. Result inherits the parent's attribute modifiers; child/Combine attribute modifiers are ignored; transforms: operands' own first, then the Combine line's. Operands are not drawn separately unless '| Consume 0'. GRADIENTS: 'Fill|Stroke LinearGradient[1] Name' -> 'Name=Angle | Color ; Position | Color ; Position ...' (Angle degrees: 0/360 right->left, 90 bottom->top, 180 left->right, 270 top->bottom; the gradient spans the shape's untransformed bounds). 'RadialGradient[1] Name' -> 'Name=CenterX, CenterY[, OffsetX, OffsetY[, RadiusX[, RadiusY]]] | Color ; Position | ...' (center offset from the shape center; Offset moves the origin of position 0; Deskset default radii = half the shape width/height, RadiusY = RadiusX when only RadiusX is given). Positions 0.0-1.0 (values outside still affect interpolation); a missing position spreads stops evenly; max 256 stops; '1' variants interpolate in linear light.",
+  "syntax_rules": [
+   "Option names: Shape, Shape2, Shape3... (consecutive; the list stops at the first missing number after Shape2). Drawn in numeric order, higher numbers in front; coordinates relative to the meter's content origin (X+PaddingLeft, Y+PaddingTop), not clipped to the meter.",
+   "Each value: 'Type params | Modifier params | Modifier params ...'. '|' separates the shape from modifiers (and path segments / gradient stops in named options); ',' separates parameters; ';' separates color and position in gradient stops.",
+   "Keywords (types, modifiers, enum values) are case-insensitive. Modifiers may appear in any order; for the same modifier the last one wins.",
+   "Parameters are Number options: plain numbers or (formulas) in parentheses; separators inside parentheses do not split. '*' or an empty item means 'use the default' for optional parameters.",
+   "Required parameters that are empty count as 0 (e.g. 'Rectangle ,,100,50,8'); a non-numeric required parameter skips the shape (logged).",
+   "Unknown shape type = shape skipped (logged); unknown modifier = ignored (logged); bad color/missing gradient option = paint unchanged.",
+   "Coordinates clamped to +-1,000,000; StrokeWidth 0-10,000.",
+   "Defaults: closed shapes Fill white, open shapes no fill; Stroke black; StrokeWidth 1; caps Flat; join Miter 10; transforms identity in order Rotate, Scale, Skew, Offset.",
+   "Meter size without W/H: from origin to the right/bottom edge of all shapes including stroke, rounded to whole pixels. Mouse actions fire only over solid parts of the shapes (or the meter's SolidColor background), even outside the meter frame. Shapes are always anti-aliased.",
+   "Named options used by Path/Path1, LinearGradient/RadialGradient and Extend are arbitrary keys of the same meter (or inherited via MeterStyle) and may use variables."
+  ],
+  "engine_files": [
+   "Sources/DesksetCore/Engine/Meters/ShapeMeter.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeParser.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeTypes.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeGradients.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeGeometryBuilder.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeStroker.swift",
+   "Sources/DesksetCore/Engine/Meters/Shape/ShapeHitTest.swift"
+  ]
+ },
+ "other_structured_values": [
+  "COLOR (every color option): decimal 'R,G,B[,A]' 0-255 each, components may be (formulas), alpha defaults 255, trailing empty components dropped; or hex 'RRGGBB[AA]' (case-insensitive, optional 0x prefix). Invalid = option default. Engine: Sources/DesksetCore/Formula/OptionValue.swift OptionValue.color. Editor: color well with alpha; write back in the style the skin already uses.",
+  "NUMBER options: plain number or a formula that must be wrapped in parentheses, e.g. W=(#A# * 2). Calc Formula= and IfCondition= may omit the outer parentheses. Operators + - * / ** % & | ^ ~ = <> < > <= >= && || ?: ; functions Cos Sin Tan Acos Asin Atan Atan2 Rad Deg Abs Neg Exp Log Ln Sqrt Sgn Frac Trunc Floor Ceil Min Max Clamp Round(x[,digits]); constants PI, E; measure names allowed in Calc/IfCondition. Engine: Sources/DesksetCore/Formula/*. Editor: numeric field that switches to a formula field when the value starts with '(' or contains #Var#/[Section].",
+  "BOOL options: any number, 0 = off, non-zero = on (formulas allowed). Editor: switch; keep a variable/formula as text if present.",
+  "POSITION (X/Y): number or (formula) plus optional suffix r (relative to previous meter's X/Y anchor) or R (relative to previous meter's X+W / Y+H). Editor: number field + segmented control Absolute | After previous (R) | Same as previous (r).",
+  "INSETS (Padding, ScaleMargins, DragMargins, BackgroundMargins, ImageCrop first 4): comma-separated numbers Left,Top,Right,Bottom (ImageCrop: X,Y,W,H[,Origin]); commas inside parentheses do not split; missing trailing values = 0.",
+  "MATRICES: TransformationMatrix 'a;b;c;d;tx;ty' (exactly 6); ColorMatrix1..5 rows 'v1;v2;v3;v4;v5' (semicolon separators).",
+  "LISTS: MeterStyle, Group, DragGroup = '|'-separated names (pipes inside parentheses do not split); WebParser Flags = '|'-separated flag names; Shape Extend and TransformOrder = ','-separated.",
+  "NUMBERED FAMILIES (Key, Key2, Key3..., the list ends at the first gap after Key2 unless noted): MeasureName, Shape, InlineSetting/InlinePattern (ends at first missing/empty), LineColor/Scale (by LineCount), IfCondition/IfTrueAction/IfFalseAction, IfMatch/IfMatchAction/IfNotMatchAction, ContextTitle/ContextAction (max 25), Header (WebParser), BlurRegion, LocalFont, ColorMatrix1-5 (fixed 5). Editor: repeatable row groups with add/remove/reorder that renumbers keys.",
+  "ACTIONS (all *Action options, ButtonCommand, ContextAction): one or more bangs '[!Bang arg \"arg with spaces\"][!Bang2 ...]'; arguments containing quotes use triple quotes \"\"\"...\"\"\"; a bracket without '!' like [\"https://...\"] opens a URL/file. [] = caught but does nothing. Engine: Sources/DesksetCore/Actions/ActionParser.swift and BangCatalog.swift (list of bangs with their parameter shapes). Editor: action list builder (bang menu + typed argument fields: meter/measure/variable/option pickers).",
+  "VARIABLES inside any value: #Var#, nested [#Var], escaped #*Var*#, built-ins #@# #CURRENTPATH# #CURRENTFILE# #CURRENTCONFIG# #ROOTCONFIG# #ROOTCONFIGPATH# #SKINSPATH# #SETTINGSPATH# #PROGRAMPATH# #CRLF# #CURRENTSECTION# #CURRENTCONFIGX/Y/WIDTH/HEIGHT# #SCREENAREAWIDTH/HEIGHT# #WORKAREAX/Y/WIDTH/HEIGHT# (+@N). Section variables [Measure], [Measure:], [Measure:%], [Measure:MaxValue], [Measure:MinValue], [Measure:/1024,1], [Meter:X/Y/W/H/XW/YH], [\\x263A] characters, [*Measure*] escaped; resolved dynamically only with DynamicVariables=1 (always in bangs). Editor: any typed control must fall back to showing the raw text (with a 'uses variable' badge) when the value contains #...# or [..], and offer 'bind to variable'.",
+  "PATH/FILE options (ImageName, ImagePath, BarImage, BitmapImage, ButtonImage, MaskImageName, Background, Primary/Secondary/BothImage, ScriptFile, DownloadFile, Debug2File, LocalFont, FreeDiskSpace Drive): absolute, ~/..., or relative to the skin folder (or ImagePath); #@# = @Resources of the root config; backslashes converted; Windows drive letters/UNC paths are not resolvable (except FreeDiskSpace C: = /). Images: .png assumed without extension; png jpg bmp gif tif webp ico heic. Editor: file picker rooted at the skin folder that writes #@#-relative paths when inside @Resources.",
+  "STRING METER AutoScale vs LINE/HISTOGRAM AutoScale: same key, different types (enum 0/1/1k/2/2k vs bool). Line Scale (per-line multiplier) vs String Scale (divisor): same key, different meaning. The inspector must resolve the schema by (section kind, meter/measure type, key).",
+  "ANGLES: Roundline/Rotator StartAngle/RotationAngle and String Angle are radians; GradientAngle, ImageRotate, MaskImageRotate, Shape Rotate/Skew/gradient Angle and InlineSetting GradientColor angle are degrees. Editor: always show degrees; for radian options write (Rad(deg)) or the numeric radian value.",
+  "Meter= enum: String, Image, Bar, Bitmap, Button, Line, Histogram, Roundline, Rotator, Shape.",
+  "Measure= enum: CPU, Memory, PhysicalMemory, SwapMemory, NetIn, NetOut, NetTotal, FreeDiskSpace, Time, Uptime, Calc, Loop, String, Process, SysInfo, WebParser, Script, Plugin, Registry (emulated), RecycleManager, NowPlaying, WiFiStatus, MediaKey. SysInfo/Process/WebParser/RecycleManager/NowPlaying/WiFiStatus/MediaKey also work as Measure=Plugin + Plugin=Name.",
+  "!CommandMeasure arguments by measure: Loop 'Reset'; WebParser 'Update', 'Reset'; Script: any Lua code; plugin-specific commands per plugin (e.g. ActionTimer 'Execute N', 'Stop N'; NowPlaying 'PlayPause', 'Next'...).",
+  "UPTIME Format tokens: %1 seconds, %2 minutes, %3 hours, %4 days, each with optional printf spec !i! (no padding) or !02i! (zero-pad to width 2).",
+  "TIME Format tokens: see Time measure Format values; '#' after % removes leading zeros (%#d %#H %#I %#j %#m %#M %#S %#U %#w %#W %#y %#Y), %#c / %#x long forms; whole value 'locale-date' / 'locale-time' = system format.",
+  "Window position syntax (DefaultWindowX/Y, !Move, WindowX/Y in state): number of pixels, N% of the screen, suffix R (X from right edge) / B (Y from bottom edge), @N monitor N, formulas; AnchorX/AnchorY: px, %, R/B inside the skin.",
+  "SysInfoData depends on SysInfoType: monitor number for SCREEN_WIDTH/HEIGHT, VIRTUAL_SCREEN_TOP/LEFT, WORK_AREA_TOP/LEFT/WIDTH/HEIGHT; NIC (Best / name / index) for ADAPTER_*, MAC_ADDRESS, NET_MASK, IP_ADDRESS, GATEWAY_*, *_CONNECTIVITY*; unused otherwise.",
+  "Options that are only meaningful together (inspector should hide/disable dependents): SolidColor2+GradientAngle (need SolidColor2); BevelColor/BevelColor2 (BevelType 1|2); FontEffectColor (StringEffect != None); ClipStringW/H (ClipString=2); NumOfDecimals/Scale/AutoScale/Percentual (meter bound to a numeric measure); ScaleMargins (Tile=0 and PreserveAspectRatio=0); BarBorder (BarImage set); BitmapDigits/BitmapAlign/BitmapSeparation (BitmapExtend=1); HorizontalLineColor (HorizontalLines=1); SecondaryColor/BothColor (MeasureName2 set); LineWidth (Roundline Solid=0); StartShift (ControlStart=1); LengthShift (ControlLength=1); RotationAngle (ControlAngle=1); LowBound/HighBound/UpdateRandom/UniqueRandom (Formula uses Random); SolidColor/SolidColor2 in [Rainmeter] (BackgroundMode=2); Background/BackgroundMargins (BackgroundMode 0/3/4); ToolTipIcon (ToolTipTitle set); Format for PowerPlugin (PowerState=Lifetime); TimeStampFormat/TimeStampLocale (TimeStamp set); DaylightSavingTime (TimeZone not local); SysInfoData (types that use it); W/H hidden for Bitmap and Button."
+ ]
+}
