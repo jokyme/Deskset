@@ -420,6 +420,12 @@ enum AppSelfTest {
             t.equal(zero?.updates, 1)
             t.equal(zero?.interval, 0)
             t.equal(zero?.warnings.count, 1)
+            // The warning shows the value; a whole number past Int's range (-1e20) used to trap there.
+            for (value, shown) in [("0", "0"), ("0.5", "0.5"), ("-1e20", "-1e+20")] {
+                let o = RenderOptions.parse(["P", "--render", "a.ini", "--updates", value])
+                t.equal(o?.updates, 1, value)
+                t.equal(o?.warnings, ["--updates \(shown): at least one update is needed to lay the skin out"], value)
+            }
             let bad = RenderOptions.parse(["P", "--render", "a.ini", "--updates", "many", "--interval", "-5",
                                            "--scale", "100", "--background", "nope"])
             t.equal(bad?.updates, 2)

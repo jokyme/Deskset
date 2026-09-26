@@ -65,7 +65,9 @@ struct RenderOptions: Equatable {
         return o
     }
 
-    private static func raw(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(v) }
+    /// Whole numbers without ".0". Past Int's range (`--updates -1e20`) Swift's own form ("-1e+20"): converting those
+    /// to Int would trap.
+    private static func raw(_ v: Double) -> String { Int(exactly: v).map(String.init) ?? String(v) }
 }
 
 /// Headless rendering for development and compatibility testing:
