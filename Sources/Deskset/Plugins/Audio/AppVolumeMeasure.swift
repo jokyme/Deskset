@@ -135,11 +135,24 @@ final class AudioAppCatalog {
 
     /// Mutes or unmutes one app (macOS 14.2+). Returns a message when it cannot.
     func setMuted(_ pid: pid_t, _ mute: Bool) -> String? {
+        setMuted(pid) { _ in mute }
+    }
+
+    /// Mutes the app when it is not muted and the other way round, as one step: skins on different threads may toggle
+    /// it at the same time (docs/skin-threading.md §4.7), and each toggle must count.
+    func toggleMuted(_ pid: pid_t) -> String? {
+        setMuted(pid) { !$0 }
+    }
+
+    /// `decide` gets whether the app is muted and returns whether it should be. The decision and the HAL work are
+    /// queued under the lock, so the HAL queue carries out concurrent changes in the order they were decided.
+    private func setMuted(_ pid: pid_t, _ decide: (Bool) -> Bool) -> String? {
         guard #available(macOS 14.2, *) else { return "muting one app needs macOS 14.2 or later" }
         guard captureAllowed() else { return "audio capture is off in command-line mode" }
         lock.lock()
+        defer { lock.unlock() }
+        let mute = decide(muted.contains(pid))
         if mute { muted.insert(pid) } else { muted.remove(pid) }
-        lock.unlock()
         AudioHAL.queue.async {
             if mute {
                 guard self.muteTaps[pid] == nil else { return }
@@ -311,7 +324,7 @@ final class AppVolumeMeasure: Measure, SectionVariableFunctions {
         switch verb {
         case "mute": problem = AudioAppCatalog.shared.setMuted(app.pid, true)
         case "unmute": problem = AudioAppCatalog.shared.setMuted(app.pid, false)
-        case "togglemute": problem = AudioAppCatalog.shared.setMuted(app.pid, !AudioAppCatalog.shared.isMuted(app.pid))
+        case "togglemute": problem = AudioAppCatalog.shared.toggleMuted(app.pid)
         case "setvolume": problem = "per-app volume does not exist on macOS (Mute / UnMute work)"
         default: problem = "unknown command \"\(command)\""
         }

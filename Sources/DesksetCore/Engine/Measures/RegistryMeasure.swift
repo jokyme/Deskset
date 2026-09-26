@@ -153,11 +153,31 @@ public final class RegistryMeasure: Measure {
         }
 
         /// Computed once; the product name comes from the data source's OS_PRODUCT_NAME, like SysInfo, so both
-        /// measures agree.
+        /// measures agree. Worked out without the lock, which only guards `shared`: it asks the data source, whose
+        /// own locks must never be taken inside this one, and the computer's name can take a moment. Skins on two
+        /// threads that ask first at the same time may both work the facts out; the first stored is kept, and both
+        /// get it.
         private static func machine(system: SystemDataSource) -> Facts {
+            lock.lock()
+            let known = shared
+            lock.unlock()
+            if let known { return known }
+            let facts = compute(system: system)
             lock.lock()
             defer { lock.unlock() }
             if let shared { return shared }
+            shared = facts
+            return facts
+        }
+
+        /// Tests: the next `current(system:)` works the facts out again.
+        static func forget() {
+            lock.lock()
+            shared = nil
+            lock.unlock()
+        }
+
+        private static func compute(system: SystemDataSource) -> Facts {
             let v = ProcessInfo.processInfo.operatingSystemVersion
             let version = "\(v.majorVersion).\(v.minorVersion)"
             let full = version + (v.patchVersion > 0 ? ".\(v.patchVersion)" : "")
@@ -175,7 +195,6 @@ public final class RegistryMeasure: Measure {
                               computerName: system.sysInfo(type: "COMPUTER_NAME", data: "")?.string
                                 ?? ProcessInfo.processInfo.hostName,
                               homeDirectory: NSHomeDirectory())
-            shared = facts
             return facts
         }
 

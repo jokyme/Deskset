@@ -962,6 +962,8 @@ extension AppSelfTest {
                 t.equal(skin.measure(named: "Wallpaper")?.stringValue, real)
             }
             t.equal(skin.issues, [], "Wallpaper is emulated in the app")
+            // Another thread (a skin running on a thread of its own) gets the main thread's answer, without waiting
+            // for the main thread, which is blocked here.
             var fromOtherThread: String?? = .none
             let done = DispatchSemaphore(value: 0)
             DispatchQueue.global().async {
@@ -969,7 +971,38 @@ extension AppSelfTest {
                 done.signal()
             }
             done.wait()
-            t.check(fromOtherThread == .some(nil), "AppKit is not asked off the main thread")
+            t.check(fromOtherThread == .some(SystemMonitor.shared.desktopPicturePath()),
+                    "another thread gets what the main thread found: \(String(describing: fromOtherThread))")
+
+            // What the main thread publishes, and when another thread makes it look again.
+            let published = DesktopPictureCache()
+            var picture = "/Library/Desktop Pictures/Lake.heic"
+            var looks = 0
+            published.setting = { looks += 1; return picture }
+            var clock: TimeInterval = 500
+            published.clock = { clock }
+            func readOffMain() -> String? {
+                var answer: String?
+                let read = DispatchSemaphore(value: 0)
+                DispatchQueue.global().async {
+                    answer = published.published.value()
+                    read.signal()
+                }
+                read.wait()
+                return answer
+            }
+            t.equal(readOffMain(), "", "nothing looked at yet: no picture")
+            t.check(spin(timeout: 60) { looks == 1 }, "the main thread is asked to look")
+            t.equal(readOffMain(), picture, "then its answer")
+            picture = "/Library/Desktop Pictures/Dunes.heic"
+            clock += 1
+            t.equal(readOffMain(), "/Library/Desktop Pictures/Lake.heic", "an answer younger than 2 s is used as is")
+            clock += 1
+            t.equal(readOffMain(), "/Library/Desktop Pictures/Lake.heic", "an older one too, while the main thread looks")
+            t.check(spin(timeout: 60) { published.published.lastPublished == picture }, "which it does")
+            t.equal(looks, 2)
+            t.equal(readOffMain(), picture)
+            t.equal(published.path(), picture, "the main thread answers itself")
         }
     }
 

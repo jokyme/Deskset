@@ -110,17 +110,24 @@ enum WiFiStatusFormat {
     }
 }
 
-/// Shared CoreWLAN reader (one per app).
+/// Shared CoreWLAN reader (one per app). Any thread: measures of skins on different threads read the latest values
+/// under a lock, and the worker stores what it read under that lock (docs/skin-threading.md §4.6).
 final class WiFiCenter {
     static let shared = WiFiCenter()
 
     let worker = MediaUIWorker(name: "Deskset WiFiStatus")
-    private var current: [Int: WiFiNetworkInfo?] = [:]
-    private var scans: [Int: [WiFiNetworkInfo]] = [:]
-    private var lastRefresh: [Int: TimeInterval] = [:]
-    private var lastScan: [Int: TimeInterval] = [:]
-    private var refreshing: Set<Int> = []
-    private var scanning: Set<Int> = []
+
+    private struct State {
+        var current: [Int: WiFiNetworkInfo?] = [:]
+        var scans: [Int: [WiFiNetworkInfo]] = [:]
+        var lastRefresh: [Int: TimeInterval] = [:]
+        var lastScan: [Int: TimeInterval] = [:]
+        var refreshing: Set<Int> = []
+        var scanning: Set<Int> = []
+    }
+
+    private let state = Guarded(State())
+    /// Set before use (tests), like the reader and the scanner.
     var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Tests replace the reader.
     var reader: (Int) -> WiFiNetworkInfo? = WiFiCenter.readCurrent
@@ -129,37 +136,45 @@ final class WiFiCenter {
     /// Latest info of interface `index` (nil = no such interface / Wi-Fi off); refreshes in the background.
     func info(interface index: Int) -> WiFiNetworkInfo? {
         let now = clock()
-        if !refreshing.contains(index), now - (lastRefresh[index] ?? -1e9) >= 2 {
-            refreshing.insert(index)
-            lastRefresh[index] = now
+        let start = state.access { s -> Bool in
+            guard !s.refreshing.contains(index), now - (s.lastRefresh[index] ?? -1e9) >= 2 else { return false }
+            s.refreshing.insert(index)
+            s.lastRefresh[index] = now
+            return true
+        }
+        if start {
             let reader = self.reader
             worker.async { [weak self] in
                 let info = reader(index)
-                MediaUIMainHop.async {
-                    self?.current[index] = .some(info)
-                    self?.refreshing.remove(index)
+                self?.state.access { s in
+                    s.current[index] = .some(info)
+                    s.refreshing.remove(index)
                 }
             }
         }
-        return current[index] ?? nil
+        return state.access { $0.current[index] ?? nil }
     }
 
     /// Latest scan of interface `index`; scans again after 30 s.
     func networks(interface index: Int) -> [WiFiNetworkInfo] {
         let now = clock()
-        if !scanning.contains(index), now - (lastScan[index] ?? -1e9) >= 30 {
-            scanning.insert(index)
-            lastScan[index] = now
+        let start = state.access { s -> Bool in
+            guard !s.scanning.contains(index), now - (s.lastScan[index] ?? -1e9) >= 30 else { return false }
+            s.scanning.insert(index)
+            s.lastScan[index] = now
+            return true
+        }
+        if start {
             let scanner = self.scanner
             worker.async { [weak self] in
                 let found = scanner(index)
-                MediaUIMainHop.async {
-                    self?.scans[index] = found
-                    self?.scanning.remove(index)
+                self?.state.access { s in
+                    s.scans[index] = found
+                    s.scanning.remove(index)
                 }
             }
         }
-        return scans[index] ?? []
+        return state.access { $0.scans[index] ?? [] }
     }
 
     /// `WiFiIntfID`: 0-based index into the Wi-Fi interfaces (0 = the default one).
@@ -220,19 +235,37 @@ final class WiFiCenter {
 }
 
 /// Location Services permission, asked once and only for skins running in the app.
+///
+/// A `CLLocationManager` belongs to the thread that made it (it reports on that thread's run loop), so the manager and
+/// the question live on the main thread; the status is published from there for skins on other threads
+/// (docs/skin-threading.md §4.6).
 final class MediaUILocationPermission: NSObject, CLLocationManagerDelegate {
     static let shared = MediaUILocationPermission()
+    // Main thread only.
     private var manager: CLLocationManager?
     private var asked = false
+    /// The status for any thread; before the main thread's first look, "not decided" (no note about a refusal).
+    private let published = MainPublished<CLAuthorizationStatus>(maxAge: 2, initial: .notDetermined, compute: {
+        .notDetermined
+    })
 
-    var status: CLAuthorizationStatus {
-        (manager ?? CLLocationManager()).authorizationStatus
+    override init() {
+        super.init()
+        published.compute = { [unowned self] in (self.manager ?? CLLocationManager()).authorizationStatus }
     }
+
+    /// Any thread: on the main thread the status now, elsewhere the one the main thread saw last (at most about 2 s
+    /// old while the main thread is free).
+    var status: CLAuthorizationStatus { published.value() }
 
     var isDenied: Bool { status == .denied || status == .restricted }
 
-    /// Asks when the user has not decided yet (main thread).
+    /// Asks when the user has not decided yet: on the main thread, at once when the caller is there, else queued there.
     func requestIfNeeded() {
+        MediaUIMainHop.run { self.requestOnMain() }
+    }
+
+    private func requestOnMain() {
         guard !asked else { return }
         asked = true
         let m = CLLocationManager()
@@ -241,7 +274,10 @@ final class MediaUILocationPermission: NSObject, CLLocationManagerDelegate {
         if m.authorizationStatus == .notDetermined { m.requestWhenInUseAuthorization() }
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {}
+    /// Main thread (the manager was made there): the user answered, or changed it in System Settings.
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        published.publish(manager.authorizationStatus)
+    }
 }
 
 /// `Measure=WiFiStatus` / `Plugin=WiFiStatus`.

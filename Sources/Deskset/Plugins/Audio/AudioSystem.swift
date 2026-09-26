@@ -52,6 +52,22 @@ protocol AudioOutputControlling: AnyObject {
     func setOutputVolume(_ volume: Double)
     func setOutputMuted(_ muted: Bool)
     func setDefaultOutput(_ device: AudioObjectID)
+    /// Changes the volume by `delta` percentage points (the result clamped to 0…100 %) from the current one, and
+    /// unmutes, as one step: two skins changing it at the same time both count.
+    func changeOutputVolume(byPercent delta: Double)
+    /// Mutes when unmuted and the other way round, as one step: two toggles at the same time cancel out.
+    func toggleOutputMuted()
+}
+
+extension AudioOutputControlling {
+    /// Read, then write (fakes that only one thread uses).
+    func changeOutputVolume(byPercent delta: Double) {
+        setOutputVolume(AudioSystem.changedVolume(snapshot().output.volume, byPercent: delta))
+    }
+
+    func toggleOutputMuted() {
+        setOutputMuted(!snapshot().output.muted)
+    }
 }
 
 /// The Core Audio calls `AudioSystem` makes, always on `AudioHAL.queue`. The self-tests use a fake, so they can check
@@ -227,12 +243,31 @@ final class AudioSystem: AudioOutputControlling {
     // MARK: Control (any thread)
 
     func setOutputVolume(_ volume: Double) {
-        let v = volume.isFinite ? min(max(volume, 0), 1) : 0
+        setOutputVolume { _ in volume }
+    }
+
+    /// Skins on different threads may change the volume at once (docs/skin-threading.md §4.7): the new volume is
+    /// worked out from the cached one under the same lock that stores it, so no step is lost.
+    func changeOutputVolume(byPercent delta: Double) {
+        setOutputVolume { AudioSystem.changedVolume($0, byPercent: delta) }
+    }
+
+    /// `volume` (0…1; nil without a volume control: full level) changed by `delta` percentage points, within 0…1.
+    static func changedVolume(_ volume: Double?, byPercent delta: Double) -> Double {
+        let percent = (volume ?? 1) * 100 + delta
+        return percent.isNaN ? 0 : min(max(percent, 0), 100) / 100
+    }
+
+    /// `volume` gets the cached volume (nil without a volume control) and returns the new one, under the lock. The
+    /// write is queued under the lock too, so the device gets the volumes in the order they were worked out.
+    private func setOutputVolume(_ volume: (Double?) -> Double) {
         lock.lock()
+        defer { lock.unlock() }
+        let wanted = volume(current.output.volume)
+        let v = wanted.isFinite ? min(max(wanted, 0), 1) : 0
         current.output.volume = current.output.volume == nil && !current.output.canSetVolume ? nil : v
         current.output.muted = false
         pendingWrites += 1
-        lock.unlock()
         write {
             guard let device = self.hal.defaultDevice(input: false) else { return }
             if let saved = self.emulatedMute {
@@ -246,10 +281,21 @@ final class AudioSystem: AudioOutputControlling {
     }
 
     func setOutputMuted(_ muted: Bool) {
+        setOutputMuted { _ in muted }
+    }
+
+    /// One step, like `changeOutputVolume(byPercent:)`.
+    func toggleOutputMuted() {
+        setOutputMuted { !$0 }
+    }
+
+    /// `decide` gets the cached mute state and returns the new one, under the lock, where the write is queued too.
+    private func setOutputMuted(_ decide: (Bool) -> Bool) {
         lock.lock()
+        defer { lock.unlock() }
+        let muted = decide(current.output.muted)
         current.output.muted = muted
         pendingWrites += 1
-        lock.unlock()
         write {
             guard let device = self.hal.defaultDevice(input: false) else { return }
             if self.hal.hasSettableMute(device) {
@@ -287,7 +333,7 @@ final class AudioSystem: AudioOutputControlling {
     }
 
     /// Runs a command's HAL work on the HAL queue, then re-reads the state (the caller counted it in
-    /// `pendingWrites`).
+    /// `pendingWrites`). Only queues: callers may hold `lock`.
     private func write(thenRefreshDevices devices: Bool = false, _ body: @escaping () -> Void) {
         AudioHAL.queue.async {
             body()

@@ -337,7 +337,7 @@ content; before, those areas stayed empty.
 - Windows (Rainmeter): the Microsoft C library: `%#d`, `%#H`… remove leading zeros; clock() is wall-clock time since
   the process started.
 - Mac (Deskset): `%#x` is emulated (numbers without leading zeros; `!` UTC formats included). os.clock returns
-  wall-clock seconds since Lua was first used in the app (the Mac C library would return CPU time, which hardly moves
+  wall-clock seconds since the app started Lua at launch (the Mac C library would return CPU time, which hardly moves
   for an idle app). os.time, os.difftime, os.tmpname, os.remove, os.rename are the standard ones; locale-dependent
   formats use the C locale on both systems.
 - Why: scripts time animations with os.clock and format dates with `%#`.

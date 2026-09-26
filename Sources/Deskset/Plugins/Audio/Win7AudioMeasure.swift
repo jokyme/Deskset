@@ -57,14 +57,18 @@ enum Win7AudioCommand: Equatable {
         case .toggleMute, .mute, .unmute:
             guard output.deviceID != nil else { return "there is no audio output device" }
             guard output.canMute || output.canSetVolume else { return "the output device cannot be muted" }
-            system.setOutputMuted(self == .toggleMute ? !output.muted : self == .mute)
+            if self == .toggleMute {
+                system.toggleOutputMuted()
+            } else {
+                system.setOutputMuted(self == .mute)
+            }
         case .setVolume(let v):
             guard output.canSetVolume else { return "the output device has no volume control" }
             system.setOutputVolume(v.clamped(0, 100) / 100)
         case .changeVolume(let delta):
             guard output.canSetVolume else { return "the output device has no volume control" }
-            let current = (output.volume ?? 1) * 100
-            system.setOutputVolume((current + delta).clamped(0, 100) / 100)
+            // From the volume at the moment of the change (another skin may be changing it too), not `output`'s.
+            system.changeOutputVolume(byPercent: delta)
         case .toggleNext, .togglePrevious:
             let devices = snapshot.outputDevices
             guard !devices.isEmpty else { return "there is no audio output device" }

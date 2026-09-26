@@ -143,6 +143,18 @@ enum MediaUIMainHop {
             DispatchQueue.main.async(execute: block)
         }
     }
+
+    /// Runs `block` now on the main thread (or when tests make hops synchronous), else queues it there. For the
+    /// commands skins give the shared centres, whose state lives on the main thread: a skin on the main thread
+    /// (today every skin) sees the command carried out before its next line, as before; a skin on a thread of its own
+    /// never waits for the main thread (docs/skin-threading.md §5.2).
+    static func run(_ block: @escaping () -> Void) {
+        if runsInline || Thread.isMainThread {
+            block()
+        } else {
+            DispatchQueue.main.async(execute: block)
+        }
+    }
 }
 
 extension StringProtocol {

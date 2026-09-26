@@ -92,6 +92,9 @@ void deskset_lua_set_total_memory_limit(size_t limit);
 size_t deskset_lua_total_memory_used(void);
 /* Number of calls currently running on this state (0 when idle). */
 int deskset_lua_depth(const deskset_lua *p);
+/* Starts os.clock's clock (and reads the tick rate) once for the whole process; later calls do nothing. Called when
+   Lua is registered, and by deskset_lua_open for programs that never register it. Any thread. */
+void deskset_lua_start_clock(void);
 
 /* Loads `code` as a chunk named `chunkname` (`@file` or `=name`) and runs it. */
 int deskset_lua_run(deskset_lua *p, const char *code, size_t length, const char *chunkname);

@@ -38,17 +38,53 @@ public enum IniWriter {
     /// target updated.
     public static func writeValue(_ value: String, key: String, section: String, fileURL: URL) throws {
         let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
-            throw IniWriterError.fileNotFound(fileURL.path)
+        try withFileLock(target) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                throw IniWriterError.fileNotFound(fileURL.path)
+            }
+            let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
+            let updated = try updating(text, value: value, key: key, section: section)
+            // Compare bytes, not `==`: String equality is canonical equivalence, so an NFC → NFD change would be
+            // skipped.
+            if updated.utf8.elementsEqual(text.utf8) { return }
+            let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
+            try data.write(to: target, options: .atomic)
         }
-        let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
-        let updated = try updating(text, value: value, key: key, section: section)
-        // Compare bytes, not `==`: String equality is canonical equivalence, so an NFC → NFD change would be skipped.
-        if updated.utf8.elementsEqual(text.utf8) { return }
-        let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-        try data.write(to: target, options: .atomic)
     }
+
+    /// Runs `body` (a read, change and write of the file at `target`, already standardized with its links
+    /// resolved) while no other thread of the app does the same to that file. Skins on different threads may write
+    /// to one shared file at once (`!WriteKeyValue` into a `Variables.inc` several skins include); without the lock
+    /// both would read the old text and the second write would drop the first one's change
+    /// (docs/skin-threading.md §4.10). Different files do not wait for each other.
+    static func withFileLock<T>(_ target: URL, _ body: () throws -> T) rethrows -> T {
+        let path = target.path
+        fileLocksLock.lock()
+        let entry = fileLocks[path] ?? FileLock()
+        entry.users += 1
+        fileLocks[path] = entry
+        fileLocksLock.unlock()
+        entry.lock.lock()
+        defer {
+            entry.lock.unlock()
+            fileLocksLock.lock()
+            entry.users -= 1
+            if entry.users == 0 { fileLocks[path] = nil }
+            fileLocksLock.unlock()
+        }
+        return try body()
+    }
+
+    /// A file's lock and how many threads hold or wait for it (the entry goes when the last one is done).
+    private final class FileLock {
+        let lock = NSLock()
+        var users = 0
+    }
+
+    private static var fileLocks: [String: FileLock] = [:]
+    private static let fileLocksLock = NSLock()
 
     /// The text-level operation behind `writeValue`: returns `text` with `key=value` set in `[section]`.
     /// Only the updated line changes (or new lines are inserted); all other characters are kept exactly.

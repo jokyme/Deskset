@@ -76,6 +76,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpStatusItem()
         observeSystem()
         observeFonts()
+        // What SysColor and Chameleon ask AppKit, published for skins that update on threads of their own.
+        DesktopInputs.publishAll()
         loadActiveSkins()
         launched = true
         if !pendingOpenURLs.isEmpty {

@@ -468,11 +468,13 @@ extension IniWriter {
     /// (removed, then appended at the end of the block). A definition already after the includes is updated in place.
     public static func writeAfterIncludes(_ value: String, key: String, section: String, fileURL: URL) throws {
         let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
-        let updated = try writingAfterIncludes(text, value: value, key: key, section: section)
-        if updated.utf8.elementsEqual(text.utf8) { return }
-        let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-        try data.write(to: target, options: .atomic)
+        try withFileLock(target) {
+            let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
+            let updated = try writingAfterIncludes(text, value: value, key: key, section: section)
+            if updated.utf8.elementsEqual(text.utf8) { return }
+            let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
+            try data.write(to: target, options: .atomic)
+        }
     }
 
     /// The text-level operation behind `writeAfterIncludes`.

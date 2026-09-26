@@ -4,6 +4,7 @@
  */
 #include "deskset_lua.h"
 
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -75,26 +76,18 @@ static deskset_lua *state_of(lua_State *L) {
 }
 
 /* A monotonic clock read on every function call of a script (the call hook), so it must be cheap:
-   mach_absolute_time takes about 4 ns, clock_gettime about 16 ns. */
+   mach_absolute_time takes about 4 ns, clock_gettime about 16 ns. The tick rate is set once, by start_clock. */
+static double tick_rate = 1e9;
 #ifdef __APPLE__
 static uint64_t now_ticks(void) { return mach_absolute_time(); }
-static double ticks_per_second(void) {
-    static double value = 0;
-    if (value == 0) {
-        mach_timebase_info_data_t timebase;
-        mach_timebase_info(&timebase);
-        value = 1e9 * (double)timebase.denom / (double)timebase.numer;
-    }
-    return value;
-}
 #else
 static uint64_t now_ticks(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
 }
-static double ticks_per_second(void) { return 1e9; }
 #endif
+static double ticks_per_second(void) { return tick_rate; }
 
 static double monotonic_seconds(void) { return (double)now_ticks() / ticks_per_second(); }
 
@@ -259,8 +252,25 @@ void deskset_lua_check_budget(lua_State *L, unsigned long steps) {
 
 /* Windows' clock() (which Lua's os.clock uses) counts wall-clock time since the process started; the C library
    on macOS counts CPU time, which barely moves for an idle app. Scripts time animations and timeouts with it, so
-   os.clock returns wall-clock seconds since the first Lua state was opened. */
-static double clock_origin = -1;
+   os.clock returns wall-clock seconds since Lua was registered at launch (deskset_lua_start_clock), or since the
+   first state was opened when nothing registered it.
+
+   The tick rate and the origin are set exactly once (pthread_once), however many threads open states at the same
+   time: skins on threads of their own must not each see a different origin. Every state is opened after it, so the
+   hook and os.clock read both without a lock. */
+static double clock_origin = 0;
+static pthread_once_t clock_once = PTHREAD_ONCE_INIT;
+
+static void start_clock_once(void) {
+#ifdef __APPLE__
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    tick_rate = 1e9 * (double)timebase.denom / (double)timebase.numer;
+#endif
+    clock_origin = monotonic_seconds();
+}
+
+void deskset_lua_start_clock(void) { pthread_once(&clock_once, start_clock_once); }
 
 static int deskset_os_clock(lua_State *L) {
     lua_pushnumber(L, monotonic_seconds() - clock_origin);
@@ -792,7 +802,7 @@ deskset_lua *deskset_lua_open(size_t memory_limit, deskset_host_fn host, void *c
         p->prelude_name = (char *)malloc(n + 1);
         if (p->prelude_name) memcpy(p->prelude_name, prelude_name, n + 1);
     }
-    if (clock_origin < 0) clock_origin = monotonic_seconds();
+    deskset_lua_start_clock();
     p->L = lua_newstate(deskset_alloc, p);
     if (p->L == NULL) {
         free(p->prelude_name);

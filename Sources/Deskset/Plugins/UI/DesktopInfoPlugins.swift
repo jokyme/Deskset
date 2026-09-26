@@ -313,10 +313,9 @@ final class ChameleonMeasure: MediaUIMeasure {
         var aspect: CGFloat?
         var path = ""
         if isDesktop {
-            let screen = controller?.window.screen ?? NSScreen.main
-            if let screen, let url = NSWorkspace.shared.desktopImageURL(for: screen) {
-                path = url.path
-                if cropDesktop, crop == nil, screen.frame.height > 0 { aspect = screen.frame.width / screen.frame.height }
+            if let desktop = ChameleonMeasure.desktop(of: controller) {
+                path = desktop.picture
+                if cropDesktop, crop == nil, desktop.frame.height > 0 { aspect = desktop.frame.width / desktop.frame.height }
             }
         } else {
             let resolved = skin.resolve(pathOption, in: self, sectionVariables: true).muiTrimmed
@@ -357,6 +356,16 @@ final class ChameleonMeasure: MediaUIMeasure {
         }
     }
 
+    /// The desktop picture setting and the frame of the screen the skin's window is on (else the main screen); nil
+    /// without a screen or a desktop picture. AppKit is asked on the main thread only: a skin on another thread gets
+    /// the main screen's, as the main thread last saw it (`DesktopInputs.mainScreenDesktop`). The window's own screen
+    /// reaches a skin thread with the window's facts, in phase 2 (docs/skin-threading.md §8.1).
+    static func desktop(of controller: SkinController?) -> DesktopInputs.ScreenDesktop? {
+        guard Thread.isMainThread else { return DesktopInputs.mainScreenDesktop.value() }
+        guard let screen = controller?.window.screen ?? NSScreen.main else { return nil }
+        return DesktopInputs.desktop(of: screen)
+    }
+
     /// The desktop picture of a screen: the file itself, or for a folder of rotating wallpapers its first picture by
     /// name (as the Registry `Wallpaper` value; see `DesktopPicture`). Background queue.
     static func wallpaperFile(_ path: String) -> String {
@@ -364,9 +373,64 @@ final class ChameleonMeasure: MediaUIMeasure {
     }
 }
 
+// MARK: - Inputs from AppKit
+
+/// What SysColor and Chameleon need from AppKit, which only the main thread may ask: the app's appearance, "Reduce
+/// transparency", and the main screen's desktop picture, fill color and frame. Each is worked out when the main thread
+/// reads it (every skin today) and published for skins on other threads, which read the latest one and never wait
+/// (`MainPublished`; docs/skin-threading.md §4.6). The app publishes them once at launch, before it loads skins, so
+/// a skin on another thread has them from its first update.
+enum DesktopInputs {
+    /// A screen's desktop picture setting (a file, or a folder of rotating pictures) and its frame.
+    struct ScreenDesktop: Equatable {
+        var picture: String
+        var frame: CGRect
+    }
+
+    /// The app's appearance (light or dark) that system colors resolve for.
+    static let appearance = MainPublished<NSAppearance?>(maxAge: 1, initial: nil) {
+        NSApp?.effectiveAppearance ?? NSAppearance(named: .aqua)
+    }
+
+    /// System Settings → Accessibility → Display → Reduce transparency.
+    static let reduceTransparency = MainPublished<Bool>(maxAge: 1, initial: false) {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    }
+
+    /// The main screen's desktop fill color (the color around a picture that does not fill the screen); nil when the
+    /// options do not have one.
+    static let desktopFillColor = MainPublished<NSColor?>(maxAge: 2, initial: nil) {
+        guard let screen = NSScreen.main else { return nil }
+        return NSWorkspace.shared.desktopImageOptions(for: screen)?[.fillColor] as? NSColor
+    }
+
+    /// The main screen's desktop picture and frame.
+    static let mainScreenDesktop = MainPublished<ScreenDesktop?>(maxAge: 2, initial: nil) {
+        NSScreen.main.flatMap(desktop(of:))
+    }
+
+    /// Main thread.
+    static func desktop(of screen: NSScreen) -> ScreenDesktop? {
+        guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { return nil }
+        return ScreenDesktop(picture: url.path, frame: screen.frame)
+    }
+
+    /// Main thread: publishes every input now (at launch, before skins run elsewhere).
+    static func publishAll() {
+        appearance.refresh()
+        reduceTransparency.refresh()
+        desktopFillColor.refresh()
+        mainScreenDesktop.refresh()
+    }
+}
+
 // MARK: - IsFullScreen / GetActiveTitle
 
 /// The focused app and window, refreshed off the main thread at most twice a second.
+///
+/// Any thread (docs/skin-threading.md §4.6): measures read the latest info under a lock. Which app is in front is
+/// asked on the main thread (at once when the reader is there, else queued there), the windows on the worker, which
+/// stores the result under the lock.
 final class FrontmostAppInfo {
     static let shared = FrontmostAppInfo()
 
@@ -376,37 +440,59 @@ final class FrontmostAppInfo {
         var title = ""
     }
 
+    private struct State {
+        var info = Info()
+        var lastRefresh: TimeInterval = -1e9
+        var refreshing = false
+        var wantsTitle = false
+    }
+
     let worker = MediaUIWorker(name: "Deskset focused window")
-    private(set) var info = Info()
-    private var lastRefresh: TimeInterval = -1e9
-    private var refreshing = false
-    var wantsTitle = false
+    private let state = Guarded(State())
+
+    var info: Info { state.access { $0.info } }
+
+    /// A GetActiveTitle measure wants the window title (reading it can take a moment, so only then).
+    var wantsTitle: Bool {
+        get { state.access { $0.wantsTitle } }
+        set { state.access { $0.wantsTitle = newValue } }
+    }
 
     /// Latest info; starts a refresh when the last one is older than 0.5 s.
     func current() -> Info {
         let now = ProcessInfo.processInfo.systemUptime
-        if !refreshing, now - lastRefresh >= 0.5 {
-            refreshing = true
-            lastRefresh = now
-            let app = NSWorkspace.shared.frontmostApplication
-            let pid = app?.processIdentifier ?? 0
-            let name = app?.executableURL?.lastPathComponent ?? app?.localizedName ?? ""
-            let appName = app?.localizedName ?? name
-            let wantsTitle = self.wantsTitle
-            worker.async { [weak self] in
-                let windows = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                    as? [[String: Any]]) ?? []
-                var result = Info(processName: name)
-                result.fullScreen = FrontmostAppInfo.isFullScreen(windows: windows, pid: pid,
-                                                                  display: CGDisplayBounds(CGMainDisplayID()))
-                if wantsTitle { result.title = FrontmostAppInfo.title(pid: pid, windows: windows) ?? appName }
-                MediaUIMainHop.async {
-                    self?.info = result
-                    self?.refreshing = false
-                }
+        let (info, start) = state.access { s -> (Info, Bool) in
+            let start = !s.refreshing && now - s.lastRefresh >= 0.5
+            if start {
+                s.refreshing = true
+                s.lastRefresh = now
+            }
+            return (s.info, start)
+        }
+        if start { MediaUIMainHop.run { self.refresh() } }
+        return info
+    }
+
+    /// Main thread: which app is in front (`NSWorkspace.frontmostApplication` is not documented as safe elsewhere),
+    /// then its windows on the worker.
+    private func refresh() {
+        let app = NSWorkspace.shared.frontmostApplication
+        let pid = app?.processIdentifier ?? 0
+        let name = app?.executableURL?.lastPathComponent ?? app?.localizedName ?? ""
+        let appName = app?.localizedName ?? name
+        let wantsTitle = self.wantsTitle
+        worker.async { [weak self] in
+            let windows = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]) ?? []
+            var result = Info(processName: name)
+            result.fullScreen = FrontmostAppInfo.isFullScreen(windows: windows, pid: pid,
+                                                              display: CGDisplayBounds(CGMainDisplayID()))
+            if wantsTitle { result.title = FrontmostAppInfo.title(pid: pid, windows: windows) ?? appName }
+            self?.state.access { s in
+                s.info = result
+                s.refreshing = false
             }
         }
-        return info
     }
 
     /// Whether the front window of `pid` (the first normal-layer window in front-to-back order) covers the primary
@@ -502,9 +588,7 @@ enum SysColorFormat {
             return NSColor.controlAccentColor
         case "highlight": return NSColor.selectedContentBackgroundColor
         case "desktop":
-            if let screen = NSScreen.main,
-               let fill = NSWorkspace.shared.desktopImageOptions(for: screen)?[.fillColor] as? NSColor { return fill }
-            return NSColor.windowBackgroundColor
+            return DesktopInputs.desktopFillColor.value() ?? NSColor.windowBackgroundColor
         case "window", "menu", "menubar", "activecaption", "activecaptiongradient", "inactivecaption",
              "inactivecaptiongradient", "tooltipbackground":
             return NSColor.windowBackgroundColor
@@ -522,10 +606,11 @@ enum SysColorFormat {
         }
     }
 
-    /// The color in sRGB, resolved for the current light / dark appearance.
+    /// The color in sRGB, resolved for the app's light / dark appearance (published by the main thread; resolving a
+    /// color for an appearance works on any thread: the drawing appearance is the thread's own).
     static func resolved(_ color: NSColor) -> RGBA? {
         var result: RGBA?
-        let appearance = NSApp?.effectiveAppearance ?? NSAppearance(named: .aqua)
+        let appearance = DesktopInputs.appearance.value() ?? NSAppearance(named: .aqua)
         let resolve = {
             if let c = color.usingColorSpace(.sRGB) {
                 result = RGBA(r: Double(c.redComponent) * 255, g: Double(c.greenComponent) * 255,
@@ -554,7 +639,7 @@ final class SysColorMeasure: MediaUIMeasure {
     override func computeValue() -> Double {
         switch colorType.lowercased() {
         case "dwm_opaque_blend":
-            publishString(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? "1" : "0")
+            publishString(DesktopInputs.reduceTransparency.value() ? "1" : "0")
             return 1
         case "dwm_color_balance", "dwm_afterglow_balance", "dwm_blur_balance", "dwm_glass_reflection_intensity":
             publishString("0")

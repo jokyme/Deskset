@@ -1818,12 +1818,14 @@ extension IniWriter {
     @discardableResult
     public static func moveSection(_ section: String, before: String?, fileURL: URL) throws -> Bool {
         let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
-        guard let updated = movingSection(text, section: section, before: before) else { return false }
-        if updated.utf8.elementsEqual(text.utf8) { return true }
-        let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-        try data.write(to: target, options: .atomic)
-        return true
+        return try withFileLock(target) {
+            let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
+            guard let updated = movingSection(text, section: section, before: before) else { return false }
+            if updated.utf8.elementsEqual(text.utf8) { return true }
+            let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
+            try data.write(to: target, options: .atomic)
+            return true
+        }
     }
 
     /// The text-level operation behind `moveSection`: a block is its header and every line up to the next header

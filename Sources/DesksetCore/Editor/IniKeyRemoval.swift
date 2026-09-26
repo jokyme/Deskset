@@ -10,16 +10,19 @@ extension IniWriter {
     @discardableResult
     public static func removeKey(_ key: String, section: String, fileURL: URL) throws -> Bool {
         let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
-            throw IniWriterError.fileNotFound(fileURL.path)
+        return try withFileLock(target) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                throw IniWriterError.fileNotFound(fileURL.path)
+            }
+            let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
+            let updated = removingKey(text, key: key, section: section)
+            if updated.utf8.elementsEqual(text.utf8) { return false }
+            let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
+            try data.write(to: target, options: .atomic)
+            return true
         }
-        let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
-        let updated = removingKey(text, key: key, section: section)
-        if updated.utf8.elementsEqual(text.utf8) { return false }
-        let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-        try data.write(to: target, options: .atomic)
-        return true
     }
 
     /// The text-level operation behind `removeKey`: the lines defining `key` in the first `[section]` block are

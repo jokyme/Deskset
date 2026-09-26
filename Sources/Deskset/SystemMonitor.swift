@@ -8,6 +8,13 @@ import SystemConfiguration
 /// System readings for all skins. Everything is read on demand and cached briefly, so many measures in many skins
 /// share one system call and nothing runs while no skin asks (no background timers).
 ///
+/// Any thread (docs/skin-threading.md §4.5): skins on different threads ask at the same time. Each cache group has a
+/// lock of its own (`Guarded`); the quick readings (CPU ticks, memory, the interface list, the mount list) are taken
+/// with the lock held, so one thread reads them and the others use its reading, while the slower ones (configd,
+/// the process list, the power sources, SysInfo's lookups) are taken between two accesses, so no thread waits for
+/// another's system call. The configd session is created at once and its calls are serialized, the utmpx walk is
+/// serialized, and the desktop picture, which only AppKit knows, is published by the main thread.
+///
 /// Readings were checked against the system tools: CPU against `top -l 2` (user + sys), memory against `vm_stat`
 /// and Activity Monitor ("Memory Used" = app memory + wired + compressed), swap against `sysctl vm.swapusage`,
 /// network counters against `netstat -ib`, disk space against `df -k`, battery against `pmset -g batt`, uptime
@@ -15,43 +22,53 @@ import SystemConfiguration
 final class SystemMonitor: SystemDataSource {
     static let shared = SystemMonitor()
 
-    private var previousTicks: [[UInt32]] = []
-    private var cpuUsageByCore: [Double] = []
-    private var cpuUsageTotal = 0.0
-    private var lastCPUSample: TimeInterval = 0
+    /// The last CPU tick sample and the usage worked out from it.
+    private struct CPUState {
+        var previousTicks: [[UInt32]] = []
+        var usageByCore: [Double] = []
+        var usageTotal = 0.0
+        var lastSample: TimeInterval = 0
+    }
+
+    private let cpu = Guarded(CPUState())
     /// CPU usage is a difference between two tick samples; samples closer than this reuse the last result.
     static let minimumCPUSampleInterval: TimeInterval = 0.25
 
-    private var cachedMemory: (MemoryStatus, TimeInterval)?
-    private var cachedNet: (NetSnapshot, TimeInterval)?
-    private var cachedBattery: (BatteryStatus?, TimeInterval)?
-    private var cachedProcesses: (Set<String>, TimeInterval)?
-    private var cachedAdapters: ([String: AdapterInfo], TimeInterval)?
-    private var cachedBest: (String?, TimeInterval)?
-    private var cachedText: [String: (value: (Double, String?)?, time: TimeInterval)] = [:]
+    private let cachedMemory = Guarded<(MemoryStatus, TimeInterval)?>(nil)
+    private let cachedNet = Guarded<(NetSnapshot, TimeInterval)?>(nil)
+    private let cachedBattery = Guarded<(BatteryStatus?, TimeInterval)?>(nil)
+    private let cachedProcesses = Guarded<(Set<String>, TimeInterval)?>(nil)
+    private let cachedAdapters = Guarded<([String: AdapterInfo], TimeInterval)?>(nil)
+    private let cachedBest = Guarded<(String?, TimeInterval)?>(nil)
+    private let cachedText = Guarded<[String: (value: (Double, String?)?, time: TimeInterval)]>([:])
 
     private init() {
-        sampleCPU()
-        lastCPUSample = now()
+        cpu.access { state in
+            SystemMonitor.sampleCPU(&state)
+            state.lastSample = ProcessInfo.processInfo.systemUptime
+        }
     }
 
     private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     // MARK: CPU
 
-    var processorCount: Int { max(cpuUsageByCore.count, ProcessInfo.processInfo.processorCount) }
+    var processorCount: Int { max(cpu.access { $0.usageByCore.count }, ProcessInfo.processInfo.processorCount) }
 
     func cpuUsage(processor: Int) -> Double {
         let t = now()
-        if t - lastCPUSample >= SystemMonitor.minimumCPUSampleInterval {
-            lastCPUSample = t
-            sampleCPU()
+        return cpu.access { state in
+            if t - state.lastSample >= SystemMonitor.minimumCPUSampleInterval {
+                state.lastSample = t
+                SystemMonitor.sampleCPU(&state)
+            }
+            if processor <= 0 { return state.usageTotal }
+            return processor <= state.usageByCore.count ? state.usageByCore[processor - 1] : 0
         }
-        if processor <= 0 { return cpuUsageTotal }
-        return processor <= cpuUsageByCore.count ? cpuUsageByCore[processor - 1] : 0
     }
 
-    private func sampleCPU() {
+    /// Takes a tick sample (with the CPU lock held: one thread samples, the others read its result).
+    private static func sampleCPU(_ state: inout CPUState) {
         var count: natural_t = 0
         var info: processor_info_array_t?
         var infoCount: mach_msg_type_number_t = 0
@@ -71,11 +88,12 @@ final class SystemMonitor: SystemDataSource {
         }
         // First sample: the average since boot (zero ticks as the previous sample) instead of 0, so a skin's first
         // update — which fixes the window size of skins without DynamicWindowSize — sees a realistic value.
-        let before = previousTicks.isEmpty ? ticks.map { Array(repeating: UInt32(0), count: $0.count) } : previousTicks
+        let before = state.previousTicks.isEmpty ? ticks.map { Array(repeating: UInt32(0), count: $0.count) }
+            : state.previousTicks
         let usage = SystemMonitor.cpuUsage(now: ticks, before: before)
-        cpuUsageByCore = usage.perCore
-        cpuUsageTotal = usage.total
-        previousTicks = ticks
+        state.usageByCore = usage.perCore
+        state.usageTotal = usage.total
+        state.previousTicks = ticks
     }
 
     /// Busy share of the ticks between two samples (user + system + nice over all states), per core and overall.
@@ -102,8 +120,17 @@ final class SystemMonitor: SystemDataSource {
 
     // MARK: Memory
 
+    /// Read with the memory lock held (a few microseconds).
     func memoryStatus() -> MemoryStatus {
-        if let c = cachedMemory, now() - c.1 < 0.5 { return c.0 }
+        cachedMemory.access { cache in
+            if let c = cache, now() - c.1 < 0.5 { return c.0 }
+            let status = SystemMonitor.readMemory()
+            cache = (status, now())
+            return status
+        }
+    }
+
+    private static func readMemory() -> MemoryStatus {
         var status = MemoryStatus(physicalTotal: Double(ProcessInfo.processInfo.physicalMemory))
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
@@ -122,7 +149,6 @@ final class SystemMonitor: SystemDataSource {
             status.swapTotal = Double(swap.xsu_total)
             status.swapUsed = Double(swap.xsu_used)
         }
-        cachedMemory = (status, now())
         return status
     }
 
@@ -144,20 +170,31 @@ final class SystemMonitor: SystemDataSource {
         var baudRate: [String: UInt64] = [:]
     }
 
+    /// The interface list, read with the network lock held (two sysctls): the counters of one reading are what every
+    /// skin sees for half a second, and a reading builds on the previous one (see `fallback`).
     private func readNetwork() -> NetSnapshot {
-        if let c = cachedNet, now() - c.1 < 0.5 { return c.0 }
-        // When the interface list cannot be read (it can grow between the size query and the read, e.g. while a VPN
-        // or AirDrop interface comes up), the last good snapshot is kept: an empty one would make every counter drop
-        // to 0 and the next reading jump by all the traffic since boot — a huge NetIn / NetOut spike that would also
-        // become the measure's automatic MaxValue.
-        let fallback = cachedNet?.0 ?? NetSnapshot()
+        cachedNet.access { cache in
+            if let c = cache, now() - c.1 < 0.5 { return c.0 }
+            // When the interface list cannot be read (it can grow between the size query and the read, e.g. while a
+            // VPN or AirDrop interface comes up), the last good snapshot is kept: an empty one would make every counter
+            // drop to 0 and the next reading jump by all the traffic since boot — a huge NetIn / NetOut spike that
+            // would also become the measure's automatic MaxValue.
+            let fallback = cache?.0 ?? NetSnapshot()
+            guard let snapshot = SystemMonitor.readInterfaces(fallback: fallback) else { return fallback }
+            cache = (snapshot, now())
+            return snapshot
+        }
+    }
+
+    /// nil when the interface list cannot be read.
+    private static func readInterfaces(fallback: NetSnapshot) -> NetSnapshot? {
         var snapshot = NetSnapshot()
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var length = 0
-        guard sysctl(&mib, 6, nil, &length, nil, 0) == 0, length > 0, length < 64 * 1024 * 1024 else { return fallback }
+        guard sysctl(&mib, 6, nil, &length, nil, 0) == 0, length > 0, length < 64 * 1024 * 1024 else { return nil }
         length += 4096
         var buffer = [UInt8](repeating: 0, count: length)
-        guard sysctl(&mib, 6, &buffer, &length, nil, 0) == 0, length <= buffer.count else { return fallback }
+        guard sysctl(&mib, 6, &buffer, &length, nil, 0) == 0, length <= buffer.count else { return nil }
 
         buffer.withUnsafeBytes { raw in
             var offset = 0
@@ -193,7 +230,6 @@ final class SystemMonitor: SystemDataSource {
                 offset += messageLength
             }
         }
-        cachedNet = (snapshot, now())
         return snapshot
     }
 
@@ -246,9 +282,16 @@ final class SystemMonitor: SystemDataSource {
         var serviceName: String?
     }
 
-    /// SystemConfiguration's view of the network hardware, cached for 30 s.
+    /// SystemConfiguration's view of the network hardware, cached for 30 s. Read without the lock (configd round
+    /// trips): two threads that find it stale at once both read it, and the later reading is kept.
     private func adapters() -> [String: AdapterInfo] {
-        if let c = cachedAdapters, now() - c.1 < 30 { return c.0 }
+        if let c = cachedAdapters.current, now() - c.1 < 30 { return c.0 }
+        let result = SystemMonitor.readAdapters()
+        cachedAdapters.access { $0 = (result, now()) }
+        return result
+    }
+
+    private static func readAdapters() -> [String: AdapterInfo] {
         var result: [String: AdapterInfo] = [:]
         if let list = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] {
             for item in list {
@@ -270,7 +313,6 @@ final class SystemMonitor: SystemDataSource {
                 result[bsd]?.serviceName = name
             }
         }
-        cachedAdapters = (result, now())
         return result
     }
 
@@ -280,12 +322,24 @@ final class SystemMonitor: SystemDataSource {
             ?? globalNetworkValue("State:/Network/Global/IPv6", "PrimaryInterface") as? String
     }
 
-    /// One configd session for all lookups (creating a store per reading opened a new connection every time).
-    private lazy var dynamicStore: SCDynamicStore? = SCDynamicStoreCreate(nil, "Deskset" as CFString, nil, nil)
+    /// One configd session for all lookups (creating a store per reading opened a new connection every time). Created
+    /// with the monitor, not on first use by whichever thread asks first; its calls go through `withDynamicStore`.
+    private let dynamicStore: SCDynamicStore? = SCDynamicStoreCreate(nil, "Deskset" as CFString, nil, nil)
+    private let dynamicStoreLock = NSLock()
+
+    /// Runs `body` with the configd session, one thread at a time: the session is shared by every skin, and
+    /// SystemConfiguration does not say that one session may be used from several threads at once. The lookups are
+    /// rare (their results are cached) and quick.
+    private func withDynamicStore<T>(_ body: (SCDynamicStore) -> T?) -> T? {
+        guard let store = dynamicStore else { return nil }
+        dynamicStoreLock.lock()
+        defer { dynamicStoreLock.unlock() }
+        return body(store)
+    }
 
     private func globalNetworkValue(_ key: String, _ field: String) -> Any? {
-        guard let store = dynamicStore,
-              let dict = SCDynamicStoreCopyValue(store, key as CFString) as? [String: Any] else { return nil }
+        guard let dict = withDynamicStore({ SCDynamicStoreCopyValue($0, key as CFString) as? [String: Any] })
+        else { return nil }
         return dict[field]
     }
 
@@ -295,10 +349,11 @@ final class SystemMonitor: SystemDataSource {
         let key = raw.trimmingCharacters(in: .whitespaces)
         let snapshot = readNetwork()
         if key.isEmpty || key.caseInsensitiveCompare("Best") == .orderedSame {
-            // NetIn/NetOut with Interface=Best ask on every update: the choice is kept for a few seconds.
-            if let c = cachedBest, now() - c.1 < 3 { return c.0 }
+            // NetIn/NetOut with Interface=Best ask on every update: the choice is kept for a few seconds. It is worked
+            // out without the lock (it asks configd); two threads may both do it, the later choice is kept.
+            if let c = cachedBest.current, now() - c.1 < 3 { return c.0 }
             let best = bestInterface(snapshot)
-            cachedBest = (best, now())
+            cachedBest.access { $0 = (best, now()) }
             return best
         }
         if let n = Int(key) {
@@ -415,29 +470,37 @@ final class SystemMonitor: SystemDataSource {
     func volumeInfo(path: String) -> VolumeInfo? {
         guard SystemMonitor.mountIsLocal(path, mounts: mounts()) == false else {
             let t = now()
-            if let hit = localVolumes[path], t - hit.time < 3 { return hit.info }
+            if let hit = disk.access({ $0.localVolumes[path] }), t - hit.time < 3 { return hit.info }
             let info = SystemMonitor.readVolumeInfo(path)
-            if localVolumes.count >= 64 { localVolumes.removeAll() }
-            localVolumes[path] = (info, t)
+            disk.access { state in
+                if state.localVolumes.count >= 64 { state.localVolumes.removeAll() }
+                state.localVolumes[path] = (info, t)
+            }
             return info
         }
         return networkVolume(path)?.info
     }
 
-    /// The last background reading of a network volume; starts a new one when it is older than 5 seconds.
+    /// The last background reading of a network volume; starts a new one when it is older than 5 seconds. The
+    /// reading is stored from the disk queue, under the lock.
     private func networkVolume(_ path: String) -> NetworkVolume? {
         let t = now()
-        let hit = diskCache[path]
-        if (hit == nil || t - (hit?.time ?? 0) >= 5) && !diskPending.contains(path) && diskPending.count < 16 {
-            diskPending.insert(path)
+        let (hit, start) = disk.access { state -> ((value: NetworkVolume, time: TimeInterval)?, Bool) in
+            let hit = state.networkVolumes[path]
+            let start = (hit == nil || t - (hit?.time ?? 0) >= 5) && !state.pending.contains(path)
+                && state.pending.count < 16
+            if start { state.pending.insert(path) }
+            return (hit, start)
+        }
+        if start {
             diskQueue.async { [weak self] in
                 let value = NetworkVolume(space: SystemMonitor.statfsSpace(path),
                                           info: SystemMonitor.readVolumeInfo(path))
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.diskPending.remove(path)
-                    if self.diskCache.count >= 64 { self.diskCache.removeAll() }
-                    self.diskCache[path] = (value, self.now())
+                guard let self else { return }
+                self.disk.access { state in
+                    state.pending.remove(path)
+                    if state.networkVolumes.count >= 64 { state.networkVolumes.removeAll() }
+                    state.networkVolumes[path] = (value, self.now())
                 }
             }
         }
@@ -449,9 +512,14 @@ final class SystemMonitor: SystemDataSource {
         var info: VolumeInfo?
     }
 
-    private var diskCache: [String: (value: NetworkVolume, time: TimeInterval)] = [:]
-    private var diskPending: Set<String> = []
-    private var localVolumes: [String: (info: VolumeInfo?, time: TimeInterval)] = [:]
+    /// Volume readings: network volumes' background readings and those in flight, local volumes' names and kinds.
+    private struct DiskState {
+        var networkVolumes: [String: (value: NetworkVolume, time: TimeInterval)] = [:]
+        var pending: Set<String> = []
+        var localVolumes: [String: (info: VolumeInfo?, time: TimeInterval)] = [:]
+    }
+
+    private let disk = Guarded(DiskState())
     private let diskQueue = DispatchQueue(label: "deskset.disk", qos: .utility)
 
     /// Name and kind of the volume holding `path` (nil when `path` does not exist). Blocks on unreachable network
@@ -479,7 +547,7 @@ final class SystemMonitor: SystemDataSource {
         if fileSystem == "tmpfs" { return .ram }
         return removable ? .removable : .fixed
     }
-    private var cachedMounts: ([(path: String, local: Bool)], TimeInterval)?
+    private let cachedMounts = Guarded<([(path: String, local: Bool)], TimeInterval)?>(nil)
 
     static func statfsSpace(_ path: String) -> (total: Double, free: Double)? {
         var s = statfs()
@@ -489,9 +557,17 @@ final class SystemMonitor: SystemDataSource {
     }
 
     /// Mount points and whether they are local, from the kernel's cached list (`MNT_NOWAIT` never waits for a file
-    /// server), refreshed every few seconds.
+    /// server), refreshed every few seconds, with the lock held (one quick system call).
     private func mounts() -> [(path: String, local: Bool)] {
-        if let c = cachedMounts, now() - c.1 < 5 { return c.0 }
+        cachedMounts.access { cache in
+            if let c = cache, now() - c.1 < 5 { return c.0 }
+            let result = SystemMonitor.readMounts()
+            cache = (result, now())
+            return result
+        }
+    }
+
+    private static func readMounts() -> [(path: String, local: Bool)] {
         var result: [(path: String, local: Bool)] = []
         let count = getfsstat(nil, 0, MNT_NOWAIT)
         if count > 0 && count < 4096 {
@@ -507,7 +583,6 @@ final class SystemMonitor: SystemDataSource {
                 result.append((path, (buffer[i].f_flags & UInt32(MNT_LOCAL)) != 0))
             }
         }
-        cachedMounts = (result, now())
         return result
     }
 
@@ -587,19 +662,25 @@ final class SystemMonitor: SystemDataSource {
     // MARK: Desktop picture
 
     /// Registry `HKCU\Control Panel\Desktop` `Wallpaper`: the desktop picture of the primary screen (the one with the
-    /// menu bar), "" when there is none. AppKit is asked on the main thread only (the thread that updates skins);
-    /// elsewhere the answer is "unknown" (nil). See `DesktopPictureCache`.
+    /// menu bar), "" when there is none. Any thread: AppKit is asked on the main thread only, and other threads get
+    /// what the main thread found last (see `DesktopPictureCache.published`).
     func desktopPicturePath() -> String? {
-        guard Thread.isMainThread else { return nil }
-        return desktopPicture.path()
+        desktopPicture.published.value()
     }
 
     private let desktopPicture = DesktopPictureCache()
 
     // MARK: Battery
 
+    /// Read without the lock (IOKit asks the power management daemon).
     func battery() -> BatteryStatus? {
-        if let c = cachedBattery, now() - c.1 < 5 { return c.0 }
+        if let c = cachedBattery.current, now() - c.1 < 5 { return c.0 }
+        let result = SystemMonitor.readBattery()
+        cachedBattery.access { $0 = (result, now()) }
+        return result
+    }
+
+    private static func readBattery() -> BatteryStatus? {
         var result: BatteryStatus?
         if let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
            let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] {
@@ -610,7 +691,6 @@ final class SystemMonitor: SystemDataSource {
                 result = SystemMonitor.batteryStatus(d)
             }
         }
-        cachedBattery = (result, now())
         return result
     }
 
@@ -629,9 +709,11 @@ final class SystemMonitor: SystemDataSource {
 
     // MARK: Processes
 
+    /// The process list is read without the lock (it takes a few milliseconds). `NSWorkspace.runningApplications`
+    /// may be called from any thread ("the result is returned atomically", NSRunningApplication.h).
     func isProcessRunning(_ name: String) -> Bool {
         let names: Set<String>
-        if let c = cachedProcesses, now() - c.1 < 2 {
+        if let c = cachedProcesses.current, now() - c.1 < 2 {
             names = c.0
         } else {
             var set = Set<String>()
@@ -656,7 +738,7 @@ final class SystemMonitor: SystemDataSource {
                 }
             }
             names = set
-            cachedProcesses = (set, now())
+            cachedProcesses.access { $0 = (set, now()) }
         }
         let key = name.lowercased()
         // The kernel keeps only the first 16 bytes of a command name (MAXCOMLEN).
@@ -794,11 +876,13 @@ final class SystemMonitor: SystemDataSource {
         }
     }
 
+    /// A SysInfo value kept for `seconds`. It is worked out without the lock (configd, reachability): two threads
+    /// that find it stale at once both work it out, and the later value is kept.
     private func cached(_ key: String, seconds: TimeInterval,
                         _ compute: () -> (Double, String?)?) -> (number: Double, string: String?)? {
-        if let hit = cachedText[key], now() - hit.time < seconds { return hit.value.map { ($0.0, $0.1) } }
+        if let hit = cachedText.access({ $0[key] }), now() - hit.time < seconds { return hit.value.map { ($0.0, $0.1) } }
         let value = compute()
-        cachedText[key] = (value, now())
+        cachedText.access { $0[key] = (value, now()) }
         return value.map { ($0.0, $0.1) }
     }
 
@@ -851,10 +935,17 @@ final class SystemMonitor: SystemDataSource {
         return value.doubleValue / 1_000_000_000
     }
 
-    /// Login time of the current console user (utmpx).
-    private func logonTime() -> TimeInterval? {
+    /// `getutxent` walks one database position shared by the whole process: two walks at once would skip each other's
+    /// entries.
+    private static let utmpxLock = NSLock()
+
+    /// Login time of the current console user (utmpx), one walk at a time. (Not private: the threading self-tests
+    /// walk it from several threads at once.)
+    func logonTime() -> TimeInterval? {
         let user = NSUserName()
         var earliest: TimeInterval?
+        SystemMonitor.utmpxLock.lock()
+        defer { SystemMonitor.utmpxLock.unlock() }
         setutxent()
         defer { endutxent() }
         var count = 0
@@ -874,15 +965,18 @@ final class SystemMonitor: SystemDataSource {
     /// Router of the primary interface (or of `interface` when it has its own service).
     private func routerAddress(ipv6: Bool, interface: String?) -> String? {
         let family = ipv6 ? "IPv6" : "IPv4"
-        guard let store = dynamicStore else { return nil }
-        if let global = SCDynamicStoreCopyValue(store, "State:/Network/Global/\(family)" as CFString) as? [String: Any],
+        if let global = withDynamicStore({
+               SCDynamicStoreCopyValue($0, "State:/Network/Global/\(family)" as CFString) as? [String: Any]
+           }),
            interface == nil || (global["PrimaryInterface"] as? String) == interface,
            let router = global["Router"] as? String {
             return router
         }
         guard let interface,
-              let values = SCDynamicStoreCopyMultiple(store, nil,
-                                                      ["State:/Network/Service/[^/]+/\(family)"] as CFArray) as? [String: Any]
+              let values = withDynamicStore({
+                  SCDynamicStoreCopyMultiple($0, nil, ["State:/Network/Service/[^/]+/\(family)"] as CFArray)
+                      as? [String: Any]
+              })
         else { return nil }
         for case let dict as [String: Any] in values.values where (dict["InterfaceName"] as? String) == interface {
             if let router = dict["Router"] as? String { return router }
@@ -931,7 +1025,7 @@ final class SystemMonitor: SystemDataSource {
 // MARK: - Desktop picture
 
 /// The desktop picture file for the Registry measure's `Wallpaper` value (`SystemMonitor.desktopPicturePath()`),
-/// answered quickly on the main thread, which asks at every update of such a measure:
+/// answered quickly, since a skin asks at every update of such a measure:
 /// - the setting (`NSWorkspace.desktopImageURL(for:)` of the primary screen) is looked at most every
 ///   `settingInterval` seconds;
 /// - a picture file is answered as is, without touching the file system;
@@ -939,6 +1033,11 @@ final class SystemMonitor: SystemDataSource {
 ///   so the answer is the folder's first picture by name (as for Chameleon `Type=Desktop`), "" for a folder without
 ///   pictures. The folder is looked into on a background queue (it may be on a slow or unreachable volume); until
 ///   the first look finishes the answer is "", and the result is reused for `folderInterval` seconds.
+///
+/// Only the main thread asks AppKit (`path()`); it publishes each answer, and a skin on another thread reads the
+/// latest one (`published`). That answer is at most `settingInterval` seconds old when the main thread is free; an
+/// older one makes the main thread look again, and a later read sees the change. Before the main thread's first
+/// answer, the other threads get "" (like a folder not looked into yet).
 final class DesktopPictureCache {
     static let settingInterval: TimeInterval = 2
     static let folderInterval: TimeInterval = 30
@@ -948,15 +1047,31 @@ final class DesktopPictureCache {
         guard let screen = NSScreen.screens.first else { return "" }
         return NSWorkspace.shared.desktopImageURL(for: screen)?.path ?? ""
     }
-    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime } {
+        didSet { published.clock = clock }
+    }
     var queue = DispatchQueue(label: "deskset.desktop-picture", qos: .utility)
 
+    /// The answer for any thread: `path()` on the main thread, the latest one published elsewhere.
+    let published = MainPublished<String>(maxAge: DesktopPictureCache.settingInterval, initial: "", compute: { "" })
+
+    // Main thread only.
     private var lastSetting: (path: String, time: TimeInterval)?
     private var folder: (path: String, picture: String, time: TimeInterval)?
     private var pendingFolder: String?
 
-    /// Main thread.
+    init() {
+        published.compute = { [unowned self] in self.path() }
+    }
+
+    /// Main thread. Publishes its answer (`published`).
     func path() -> String {
+        let answer = lookUp()
+        published.publish(answer)
+        return answer
+    }
+
+    private func lookUp() -> String {
         let now = clock()
         let setting: String
         if let last = lastSetting, now - last.time < DesktopPictureCache.settingInterval {
@@ -975,6 +1090,9 @@ final class DesktopPictureCache {
                     guard let self else { return }
                     if self.pendingFolder == setting { self.pendingFolder = nil }
                     self.folder = (setting, picture, self.clock())
+                    // Published at once (it is what `path()` now answers): a skin on another thread need not wait
+                    // for the next look.
+                    if self.lastSetting?.path == setting { self.published.publish(picture) }
                 }
             }
         }

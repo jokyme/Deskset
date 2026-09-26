@@ -234,6 +234,11 @@ enum ProcessNames {
 /// Samples processes and CPU ticks once a second on a background queue while measures subscribe to it (manual,
 /// UsageMonitor: data is gathered "once a second" independently of the skin's Update). One sample of ~1000 processes
 /// costs a few milliseconds. The first subscriber gets a sample at once; sampling stops when the last one leaves.
+///
+/// Any thread: skins on different threads subscribe and leave at the same time, so whether to start or stop the timer
+/// is decided and carried out under one lock (docs/skin-threading.md §4.10). Deciding under the lock and acting after
+/// it let a skin that joined just as the last other one left end up subscribed to a stopped timer. A sample taken by a
+/// timer that was stopped meanwhile is dropped.
 final class ProcessSampler: @unchecked Sendable {
     static let shared = ProcessSampler()
 
@@ -246,6 +251,8 @@ final class ProcessSampler: @unchecked Sendable {
     private let lock = NSLock()
     private var subscribers: Set<ObjectIdentifier> = []
     private var timer: DispatchSourceTimer?
+    /// Counts the timers started: a sample of an older one is not kept.
+    private var timerGeneration = 0
     private var snapshots: (previous: ProcessSnapshot?, latest: ProcessSnapshot?) = (nil, nil)
     private var serial = 0
     private var hiddenCPU = 0.0
@@ -253,10 +260,9 @@ final class ProcessSampler: @unchecked Sendable {
     /// Starts sampling for `owner` (idempotent).
     func subscribe(_ owner: AnyObject) {
         lock.lock()
+        defer { lock.unlock() }
         let inserted = subscribers.insert(ObjectIdentifier(owner)).inserted
-        let start = inserted && subscribers.count == 1
-        lock.unlock()
-        if start { startTimer() }
+        if inserted && subscribers.count == 1 { startTimer() }
     }
 
     func unsubscribe(_ owner: AnyObject) {
@@ -266,10 +272,9 @@ final class ProcessSampler: @unchecked Sendable {
     /// For `deinit`, where `self` can no longer be passed around.
     func unsubscribe(id: ObjectIdentifier) {
         lock.lock()
+        defer { lock.unlock() }
         let removed = subscribers.remove(id) != nil
-        let stop = removed && subscribers.isEmpty
-        lock.unlock()
-        if stop { stopTimer() }
+        if removed && subscribers.isEmpty { stopTimer() }
     }
 
     /// The last two samples (previous may be nil right after sampling started).
@@ -283,29 +288,31 @@ final class ProcessSampler: @unchecked Sendable {
         return timer != nil
     }
 
+    /// With `lock` held. Creating, resuming and cancelling a timer never wait for its handler (a sample in progress
+    /// finishes on the queue and is then dropped, see `sample`).
     private func startTimer() {
+        timer?.cancel()
+        timerGeneration += 1
+        let generation = timerGeneration
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now(), repeating: ProcessSampler.interval, leeway: .milliseconds(100))
-        t.setEventHandler { [weak self] in self?.sample() }
-        lock.lock()
-        timer?.cancel()
+        t.setEventHandler { [weak self] in self?.sample(generation: generation) }
         timer = t
-        lock.unlock()
         t.resume()
     }
 
+    /// With `lock` held.
     private func stopTimer() {
-        lock.lock()
-        let t = timer
+        timer?.cancel()
         timer = nil
+        timerGeneration += 1
         snapshots = (nil, nil)
         hiddenCPU = 0
-        lock.unlock()
-        t?.cancel()
     }
 
-    /// Takes a sample now (on the sampler queue). Tests call `sampleNow()` to step deterministically.
-    private func sample() {
+    /// Takes a sample now (on the sampler queue) for the timer of `generation` (nil: whichever runs). Tests call
+    /// `sampleNow()` to step deterministically.
+    private func sample(generation: Int? = nil) {
         let provider = ProcessSampler.provider
         let cores = provider.readCores()
         // The time of the core ticks: rates divide their change by the change of this time, and the process walk
@@ -313,6 +320,11 @@ final class ProcessSampler: @unchecked Sendable {
         let now = ProcessInfo.processInfo.systemUptime
         let (visible, total) = provider.readProcesses()
         lock.lock()
+        // Stopped (and perhaps started again) while this sample was taken: it belongs to no subscription.
+        if let generation, generation != timerGeneration {
+            lock.unlock()
+            return
+        }
         let previous = snapshots.latest
         serial += 1
         if let previous {

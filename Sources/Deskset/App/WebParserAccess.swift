@@ -5,19 +5,28 @@ import DesksetCore
 /// but a skin that reads private files could send their contents elsewhere in the URL of another WebParser, so the
 /// app allows only files inside the Skins folder of the skin and the app's settings folder (`#SETTINGSPATH#`).
 /// A refused file behaves like a missing one; each refused path is logged once.
+///
+/// The check runs on the thread of the skin that asks, so skins on different threads use it at once: the set of
+/// refusals already logged is behind a lock.
 enum WebParserAccess {
-    private static var loggedRefusals: Set<String> = []
+    private static let loggedRefusals = Guarded<Set<String>>([])
 
     /// Installs the policy (at launch).
     static func install(settingsFolder: URL) {
         WebParserMeasure.allowsFileAccess = { path, skin in
             let allowed = isAllowed(path, roots: [skin.skinsDirectory, settingsFolder])
-            if !allowed, loggedRefusals.count < 256, loggedRefusals.insert(path).inserted {
+            if !allowed, isFirstRefusal(path) {
                 Log.write("WebParser: reading \(path) is not allowed (only files in the Skins and settings folders)",
                           level: .warning, source: skin.config)
             }
             return allowed
         }
+    }
+
+    /// Whether `path` has not been refused before (the first 256 refused paths are remembered, so a skin that tries
+    /// ever new paths cannot fill the log).
+    static func isFirstRefusal(_ path: String) -> Bool {
+        loggedRefusals.access { $0.count < 256 && $0.insert(path).inserted }
     }
 
     /// True when `path` (absolute) is inside one of `roots`, resolved the way the file system opens it: symbolic

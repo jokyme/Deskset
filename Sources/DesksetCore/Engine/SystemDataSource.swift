@@ -101,12 +101,13 @@ public protocol SystemDataSource: AnyObject {
     func cpuFrequency() -> Double?
     /// Absolute path of the desktop picture of the main screen, or "" when the desktop has no picture file; nil when
     /// this source cannot tell. Read by the Registry measure for `HKCU\Control Panel\Desktop` `Wallpaper` at every
-    /// update of that measure, on the thread that updates skins (the main thread in the app), so it must answer
-    /// quickly: nothing slow (such as listing a folder) may happen in the call.
+    /// update of that measure, on whichever thread updates the skin, so it must answer quickly and from any thread:
+    /// nothing slow (such as listing a folder) may happen in the call, and the call never waits for another thread.
     /// Default: nil. The app's `SystemMonitor` answers with `NSWorkspace.desktopImageURL(for:)` of the primary screen,
     /// looked at every 2 s at most; for a folder of rotating pictures — macOS does not say which one is showing — the
-    /// folder's first picture by name, found on a background queue ("" until then); off the main thread it answers
-    /// nil (see `DesktopPictureCache`).
+    /// folder's first picture by name, found on a background queue ("" until then). Only the main thread asks AppKit;
+    /// another thread gets the main thread's latest answer ("" before its first one; an answer older than 2 s makes
+    /// the main thread look again, for a later read). See `DesktopPictureCache`.
     func desktopPicturePath() -> String?
     /// Name of an Intel Mac's graphics processor as System Information shows it (for example "AMD Radeon Pro 5500M"
     /// or "Intel Iris Plus Graphics 655"); nil when unknown. Read by the Registry measure for `…\WinSat`

@@ -8,6 +8,8 @@ import Foundation
 public enum LuaSupport {
     public static func register() {
         MeasureRegistry.registerMeasure("Script", ScriptMeasure.self)
+        // os.clock counts from here, once for the whole app, whichever skin's thread opens the first state.
+        deskset_lua_start_clock()
     }
 
     /// Memory one script instance (one Lua state) may allocate. Allocations beyond it fail with Lua's

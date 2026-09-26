@@ -412,7 +412,13 @@ enum MediaKeys {
         }
     }
 
+    /// Posts the key's down and up events: built on the main thread (an `NSEvent`), at once when the caller is there,
+    /// else queued there.
     static func post(_ key: MediaKeyCommand) {
+        MediaUIMainHop.run { postOnMain(key) }
+    }
+
+    private static func postOnMain(_ key: MediaKeyCommand) {
         let type = keyType(key)
         for down in [true, false] {
             let flags = NSEvent.ModifierFlags(rawValue: down ? 0xA00 : 0xB00)

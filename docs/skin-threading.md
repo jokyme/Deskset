@@ -1052,8 +1052,8 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 
 ### Phase 1: in progress
 
-Skins still run on `MainSkinExecutor`, and nothing they do changes, apart from one case under Fonts below. Done so
-far:
+Skins still run on `MainSkinExecutor`, and nothing they do changes, apart from one case under Fonts and where Lua's
+`os.clock` counts from (Shared services), below. Done so far:
 
 **Render caches per skin** (`Renderers/SkinRenderContext.swift`, §4.3). A `SkinRenderContext` hangs on
 `Skin.renderContext`; like the rest of the skin, only its owner touches it (debug builds check). It holds:
@@ -1098,6 +1098,44 @@ components and color space, also out of range.
   a skin loaded for a thumbnail or a dry run) now also makes the running skins measure their text again, as a load or
   an installation already did.
 
+**Shared services** (§4.5–§4.10). Two small tools in `SharedState.swift`: `Guarded` (a value behind a lock of its
+own) and `MainPublished` (a value only the main thread can work out, because it comes from AppKit: a read on the main
+thread works it out and publishes it, as every read did before; a read elsewhere gets the latest one without waiting,
+and one older than its `maxAge` asks the main thread for a fresh one, one request at a time).
+- `SystemMonitor`: a lock per cache group (CPU, memory, network, adapters, the "Best" interface, battery, processes,
+  SysInfo values, mounts, volumes). The quick readings (CPU ticks, memory, the interface list, the mount list) are
+  taken with the lock held, so one thread reads and the others use its reading; the slow ones (configd, the process
+  list, the power sources, SysInfo lookups) between two accesses, so no thread waits for another's system call. The
+  configd session is created with the monitor and its calls are serialized; the utmpx walk is serialized; a network
+  volume's background reading is stored under the lock instead of on the main thread.
+- The desktop picture (Registry `Wallpaper`): `DesktopPictureCache` publishes every answer it gives on the main thread,
+  and the folder lookup's result when it arrives; another thread gets the latest answer ("" before the first one), no
+  longer nil. `SystemDataSource.desktopPicturePath`'s contract says so.
+- NowPlaying: the snapshots, refusals, last choices and last read are behind a lock, so measures read them from any
+  thread. Subscribing, `wantsCover`, commands, and the poll after a quiet spell run on the main thread: at once when the
+  caller is there (every skin today, so nothing changes), else queued there (`MediaUIMainHop.run`). The timer, the
+  cover jobs and `NSWorkspace` stay on the main thread.
+- Wi-Fi and the focused window: their values are behind a lock, and the worker stores what it read there instead of
+  hopping to the main thread. Which app is in front is still asked on the main thread (`frontmostApplication` is not
+  documented as safe elsewhere; `runningApplications` is, and `SystemMonitor` keeps using it on any thread).
+- Location Services: the manager and the question live on the main thread; the status is published from there.
+- SysColor and Chameleon: the appearance, "Reduce transparency", and the main screen's desktop fill color, picture and
+  frame are published by the main thread (`DesktopInputs`, also once at launch). Colors resolve for that appearance on
+  the skin's thread. Off the main thread Chameleon `Type=Desktop` uses the main screen: its window's screen reaches a
+  skin thread with the window facts, in phase 2 (§8.1). A media key event is posted from the main thread.
+- `ProcessSampler` decides to start or stop and does it under one lock; a sample of a timer stopped meanwhile is
+  dropped. `RegistryMeasure.Facts` are worked out outside their lock (it only guards the stored facts; two first
+  askers may both work them out, the first stored is kept). `WebParserAccess`' set of logged refusals has a lock.
+- `IniWriter` holds a lock per file (resolved path) for every read, change and write: `writeValue`,
+  `writeAfterIncludes`, `removeKey`, `removeSection`, `moveSection`. Different files do not wait for each other.
+- Lua: the tick rate and `os.clock`'s origin are set once (`pthread_once`), when Lua is registered at launch, so
+  `os.clock` now counts from there rather than from the first script (`docs/compat/lua.md`).
+- Audio: Win7Audio `ChangeVolume` and `ToggleMute` and AppVolume `togglemute` are each one step under the lock, with
+  the device write queued in the same step, so two skins' changes both count, on the device too.
+
+Still for phase 2: a NowPlaying measure read on demand asks its `SkinController` whether updates are paused
+(`currentSnapshot`), a main-thread object; and the FrostedGlass / InputText companions (§4.6).
+
 **Tests:** "App: skin threading: …"
 - `RenderContextSelfTests`: a context per skin, measuring and drawing share it and drawing one skin leaves another's
   alone, layouts are kept and bounded, Rotator images and Histogram crops stay in the skin that drew them, a context
@@ -1110,3 +1148,14 @@ components and color space, also out of range.
   Rescans under running layouts keep the fonts consistent. A registration is announced on the main thread a turn
   later, and a running skin measures its text again. They also run under Main Thread Checker
   (`scripts/check-main-thread.sh "skin threading"`): nothing reported.
+- `ServiceThreadingSelfTests`: the system monitor gives every thread sensible, matching readings (the utmpx walk
+  included); a `MainPublished` value is worked out on the main thread once however many threads find it stale, and
+  read elsewhere without waiting; NowPlaying reads, subscriptions and commands from four threads all arrive and polling
+  stops with the last subscription; one Wi-Fi reading for six threads; the focused window, Location Services, SysColor
+  colors and Chameleon's desktop read the same on every thread as on the main thread; volume steps and mute toggles of
+  four skins at once all count, on the device too; a refused WebParser file is logged once. The desktop picture suite
+  reads it from another thread while the main thread is blocked.
+- Core, "Skin threading: …": two skins joining and leaving `ProcessSampler` 2000 times each always find it running
+  while subscribed; a second skin gets the Registry facts while the first is inside its data source call; eight skins
+  writing 25 keys each into one file lose none; `os.clock` on eight threads reads between the main thread's before and
+  after. Without the fixes, the sampler, file and volume suites fail.

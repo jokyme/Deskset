@@ -9,12 +9,16 @@ extension IniWriter {
     /// after the first one is gone, so they go too. Nothing is written when the section is not there.
     public static func removeSection(_ section: String, fileURL: URL) throws {
         let target = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        guard FileManager.default.fileExists(atPath: target.path) else { throw IniWriterError.fileNotFound(fileURL.path) }
-        let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
-        let updated = removingSection(text, section: section)
-        if updated.utf8.elementsEqual(text.utf8) { return }
-        let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
-        try data.write(to: target, options: .atomic)
+        try withFileLock(target) {
+            guard FileManager.default.fileExists(atPath: target.path) else {
+                throw IniWriterError.fileNotFound(fileURL.path)
+            }
+            let (text, encoding) = try TextDecoding.readFileDetectingEncoding(at: target)
+            let updated = removingSection(text, section: section)
+            if updated.utf8.elementsEqual(text.utf8) { return }
+            let data = TextDecoding.encodeForWriting(updated, preferring: encoding)
+            try data.write(to: target, options: .atomic)
+        }
     }
 
     /// The text-level operation behind `removeSection`: every block of `section` removed.

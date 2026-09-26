@@ -31,7 +31,8 @@ in each script's state after the standard libraries are opened.
   - restricted: `loadstring` / `load` accept text chunks only (no precompiled bytecode, which Lua 5.1 does not
     verify); `debug.getfenv` / `debug.setfenv` work only on Lua functions and threads; `debug.setlocal` changes only
     named locals of Lua functions (not C frames or the VM's hidden loop variables);
-  - `os.clock` returns wall-clock seconds since the first state was opened (like Windows' `clock()`), not CPU time.
+  - `os.clock` returns wall-clock seconds since Lua was registered at launch (like Windows' `clock()`, which counts
+    from the process start), not CPU time; its origin is set once for the process (`deskset_lua_start_clock`).
 - `deskset_lstrlib.c` — derived from the pattern-matching part of Lua 5.1.5's `lstrlib.c` (Copyright © 1994–2012
   Lua.org, PUC-Rio, MIT license, see COPYRIGHT). It is a separate, modified copy; `lstrlib.c` itself is compiled
   unchanged and its `string.find`, `string.match`, `string.gmatch` and `string.gsub` (and the `string.gfind` alias)

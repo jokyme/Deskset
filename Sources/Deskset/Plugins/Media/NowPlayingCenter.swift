@@ -9,6 +9,10 @@ import DesksetCore
 // - Polls only while at least one measure of a skin running in the app subscribes, once a second, and only the
 //   players that are running (NSRunningApplication; never launches a player to query it).
 // - All Apple Events run on one background thread (`MediaUIWorker`); results come back to the main thread.
+// - Threads (docs/skin-threading.md §4.6): the center's own state (the timer, the jobs, the subscribers) lives on the
+//   main thread. Measures read what they show from any thread: the snapshots and refusals, under a lock. What they ask
+//   of the center (subscribing, covers, commands, a poll after a quiet spell) runs on the main thread: at once when
+//   they are there, as every skin is today, else queued there (`MediaUIMainHop.run`), never waited for.
 // - Automation permission ("Deskset wants to control Music") is asked the first time a running player is polled,
 //   i.e. only when a skin shows NowPlaying data. When it is denied, that player is left alone (re-checked every
 //   30 s without asking, in case it is granted in System Settings) and measures show "not running" values.
@@ -283,18 +287,35 @@ final class DemoNowPlayingBackend: NowPlayingBackend {
 
 // MARK: - Center
 
-/// Keeps a measure subscribed to the center; polling stops when the last subscription goes away.
+/// Keeps a measure subscribed to the center; polling stops when the last subscription goes away. Its measure sets
+/// `wantsCover` on the skin's thread; the center reads it on the main thread.
 final class NowPlayingSubscription {
     fileprivate weak var center: NowPlayingCenter?
     let live: Bool
+    private let lock = NSLock()
+    private var coverWanted: Bool
+
     var wantsCover: Bool {
-        didSet { if wantsCover != oldValue { center?.subscriptionsChanged() } }
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return coverWanted
+        }
+        set {
+            lock.lock()
+            let changed = coverWanted != newValue
+            coverWanted = newValue
+            lock.unlock()
+            guard changed else { return }
+            let center = self.center
+            MediaUIMainHop.run { center?.subscriptionsChanged() }
+        }
     }
 
     fileprivate init(center: NowPlayingCenter, live: Bool, wantsCover: Bool) {
         self.center = center
         self.live = live
-        self.wantsCover = wantsCover
+        self.coverWanted = wantsCover
     }
 
     deinit {
@@ -310,6 +331,7 @@ final class NowPlayingCenter {
     /// `DESKSET_NOWPLAYING_DEMO=1`: fixed demo data (for `--render` previews), never Apple Events.
     static let demoMode = ProcessInfo.processInfo.environment["DESKSET_NOWPLAYING_DEMO"] == "1"
 
+    /// Set before the first skin subscribes (tests), like the other settings below.
     var backend: NowPlayingBackend
     /// Tests: treat every subscriber as live (with a fake backend).
     var forceLive = false
@@ -322,7 +344,31 @@ final class NowPlayingCenter {
     /// Cover files go here (tests use a temporary folder).
     var coverFolder: URL { MediaUICache.folder("NowPlaying") }
 
-    private(set) var snapshots: [MediaApp: NowPlayingSnapshot] = [:]
+    /// What measures read, from whichever thread runs their skin. Only the main thread changes the snapshots and
+    /// the refusals; a read changes the last choice and the time of the last read.
+    private struct Readable {
+        var snapshots: [MediaApp: NowPlayingSnapshot] = [:]
+        var deniedUntil: [MediaApp: TimeInterval] = [:]
+        var lastChoice: [String: MediaApp] = [:]
+        /// When a measure last read a snapshot (energy: see `poll`).
+        var lastReadAt: TimeInterval = -1e9
+    }
+
+    private let readable = Guarded(Readable())
+
+    /// Any thread; changed on the main thread only.
+    private(set) var snapshots: [MediaApp: NowPlayingSnapshot] {
+        get { readable.access { $0.snapshots } }
+        set { readable.access { $0.snapshots = newValue } }
+    }
+
+    /// Any thread; changed on the main thread only.
+    private var deniedUntil: [MediaApp: TimeInterval] {
+        get { readable.access { $0.deniedUntil } }
+        set { readable.access { $0.deniedUntil = newValue } }
+    }
+
+    // The rest of the center's state (subscribers, polls, covers, logging) is the main thread's.
     private var liveSubscribers = 0
     private var coverSubscribers = 0
     private var subscriptions: [WeakSubscription] = []
@@ -360,10 +406,6 @@ final class NowPlayingCenter {
         guard UserDefaults.standard.bool(forKey: "NowPlayingDebug") else { return }
         Log.write(message, level: .debug, source: "NowPlaying")
     }
-    private var deniedUntil: [MediaApp: TimeInterval] = [:]
-    private var lastChoice: [String: MediaApp] = [:]
-    /// When a measure last read a snapshot (energy: see `poll`).
-    private var lastReadAt: TimeInterval = -1e9
     /// Polling pauses when no measure has read anything for this long (skins paused while the Mac sleeps or the
     /// screens are locked, or updating very rarely) and resumes on the next read.
     static let idleAfter: TimeInterval = 30
@@ -384,35 +426,48 @@ final class NowPlayingCenter {
 
     /// `live`: the skin runs in the app (so Apple Events and permission prompts are fine). Measures of `--render`
     /// and self-test skins subscribe with `live: false` and see closed players, unless demo mode is on.
+    ///
+    /// Any thread: the subscription counts (and polling starts) on the main thread. A subscription dropped before
+    /// that is counted first, then let go of: its `deinit` hop comes after the registration on the main queue.
     func subscribe(live: Bool, wantsCover: Bool = false) -> NowPlayingSubscription {
         let s = NowPlayingSubscription(center: self, live: live || forceLive || NowPlayingCenter.demoMode,
                                        wantsCover: wantsCover)
+        if s.live {
+            let now = clock()
+            readable.access { $0.lastReadAt = now }
+        }
+        MediaUIMainHop.run { self.register(s) }
+        return s
+    }
+
+    /// Main thread.
+    private func register(_ s: NowPlayingSubscription) {
         if s.live { liveSubscribers += 1 }
         subscriptions.removeAll { $0.value == nil }
         subscriptions.append(WeakSubscription(value: s))
         subscriptionsChanged()
-        if s.live {
-            lastReadAt = clock()
-            if liveSubscribers == 1 { startPolling() }
-        }
-        return s
+        if s.live, liveSubscribers == 1 { startPolling() }
     }
 
+    /// Main thread.
     fileprivate func unsubscribe(live: Bool) {
         if live { liveSubscribers = max(liveSubscribers - 1, 0) }
         subscriptionsChanged()
         if liveSubscribers == 0 { stopPolling() }
     }
 
+    /// Main thread.
     fileprivate func subscriptionsChanged() {
         subscriptions.removeAll { $0.value == nil }
         coverSubscribers = subscriptions.filter { $0.value?.wantsCover == true && $0.value?.live == true }.count
     }
 
+    /// Main thread.
     var isPolling: Bool { timer != nil }
 
-    /// Deskset was refused the Automation permission for `app` (it is asked again only from System Settings).
-    func isDenied(_ app: MediaApp) -> Bool { deniedUntil[app] != nil }
+    /// Deskset was refused the Automation permission for `app` (it is asked again only from System Settings). Any
+    /// thread.
+    func isDenied(_ app: MediaApp) -> Bool { readable.access { $0.deniedUntil[app] != nil } }
 
     private func startPolling() {
         guard timer == nil else { return }
@@ -435,7 +490,7 @@ final class NowPlayingCenter {
     func poll() {
         guard liveSubscribers > 0 else { return }
         let now = clock()
-        guard now - lastReadAt < NowPlayingCenter.idleAfter else { return }
+        guard now - readable.access({ $0.lastReadAt }) < NowPlayingCenter.idleAfter else { return }
         for app in MediaApp.allCases {
             guard backend.isRunning(app) else {
                 snapshots[app] = NowPlayingSnapshot(app: app)
@@ -716,29 +771,38 @@ final class NowPlayingCenter {
     // MARK: Reading
 
     /// The snapshot a measure shows (see the "whichever is playing" rule above). `preferred` nil = no preference
-    /// (WebNowPlaying, MediaKey): the last player shown, else Music.
+    /// (WebNowPlaying, MediaKey): the last player shown, else Music. Any thread; the first read after a quiet spell
+    /// polls, on the main thread (at once when the reader is there).
     func snapshot(preferring preferred: MediaApp?) -> NowPlayingSnapshot {
         let now = clock()
-        let wasIdle = now - lastReadAt >= NowPlayingCenter.idleAfter
-        lastReadAt = now
-        if wasIdle, liveSubscribers > 0 { poll() }
-        let (key, chosen) = choice(preferring: preferred)
-        if snapshots[chosen]?.running == true { lastChoice[key] = chosen }
-        return snapshots[chosen] ?? NowPlayingSnapshot(app: chosen)
+        let wasIdle = readable.access { r -> Bool in
+            let wasIdle = now - r.lastReadAt >= NowPlayingCenter.idleAfter
+            r.lastReadAt = now
+            return wasIdle
+        }
+        if wasIdle { MediaUIMainHop.run { if self.liveSubscribers > 0 { self.poll() } } }
+        return readable.access { r in
+            let (key, chosen) = NowPlayingCenter.choice(preferring: preferred, in: r)
+            if r.snapshots[chosen]?.running == true { r.lastChoice[key] = chosen }
+            return r.snapshots[chosen] ?? NowPlayingSnapshot(app: chosen)
+        }
     }
 
     /// What `snapshot(preferring:)` shows, without counting as a read: no idle bookkeeping, no poll, the last choice
     /// kept. For reads that are not a running skin's, such as a paused skin's meters read by the Studio's live values.
+    /// Any thread.
     func peek(preferring preferred: MediaApp?) -> NowPlayingSnapshot {
-        let chosen = choice(preferring: preferred).app
-        return snapshots[chosen] ?? NowPlayingSnapshot(app: chosen)
+        readable.access { r in
+            let chosen = NowPlayingCenter.choice(preferring: preferred, in: r).app
+            return r.snapshots[chosen] ?? NowPlayingSnapshot(app: chosen)
+        }
     }
 
-    private func choice(preferring preferred: MediaApp?) -> (key: String, app: MediaApp) {
+    private static func choice(preferring preferred: MediaApp?, in r: Readable) -> (key: String, app: MediaApp) {
         let key = preferred?.rawValue ?? "any"
-        let first = preferred ?? lastChoice[key] ?? .music
-        return (key, NowPlayingCenter.choose(preferred: first, last: lastChoice[key],
-                                             snapshots: MediaApp.allCases.map { snapshots[$0] ?? NowPlayingSnapshot(app: $0) }))
+        let first = preferred ?? r.lastChoice[key] ?? .music
+        return (key, NowPlayingCenter.choose(preferred: first, last: r.lastChoice[key],
+                                             snapshots: MediaApp.allCases.map { r.snapshots[$0] ?? NowPlayingSnapshot(app: $0) }))
     }
 
     /// The selection rule (pure, tested).
@@ -760,10 +824,15 @@ final class NowPlayingCenter {
     // MARK: Commands
 
     /// Performs a skin's command on the player the measure currently shows. `playerPath`: NowPlaying's PlayerPath
-    /// (used for OpenPlayer when it names a Mac application).
+    /// (used for OpenPlayer when it names a Mac application). Any thread: carried out on the main thread (at once
+    /// when the caller is there), which sees which players run and opens, quits or shows them.
     func perform(_ request: NowPlayingRequest, preferring preferred: MediaApp?, playerPath: String = "",
                  live: Bool) {
         guard live || forceLive || NowPlayingCenter.demoMode else { return }
+        MediaUIMainHop.run { self.performOnMain(request, preferring: preferred, playerPath: playerPath) }
+    }
+
+    private func performOnMain(_ request: NowPlayingRequest, preferring preferred: MediaApp?, playerPath: String) {
         refreshRunningState()
         let snap = snapshot(preferring: preferred)
         // A player seen running only just now: a relative value or toggle would be computed from an unknown state
@@ -776,6 +845,7 @@ final class NowPlayingCenter {
         perform(command, on: snap.app, running: snap.running, playerPath: playerPath)
     }
 
+    /// Main thread.
     func perform(_ command: MediaPlayerCommand, on app: MediaApp, running: Bool, playerPath: String = "") {
         if let appControl, [.open, .quit, .toggleOpen, .toggleVisible].contains(command) {
             appControl(command, app)
