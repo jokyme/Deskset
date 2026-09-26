@@ -686,9 +686,13 @@ final class ShapeEditorView: NSStackView {
         let swatch = SwatchButton()
         swatch.color = OptionValue.color(resolved)
         swatch.identifier = NSUserInterfaceItemIdentifier(id)
-        let variable = written.flatMap { controller?.wholeVariable($0) }
+        let linked = written.flatMap { controller?.wholeVariable($0) }
+        // A Mac color (`#MACACCENTCOLOR#`) follows macOS and is no shared color: a pick writes a color of the shape's own.
+        let followsMac = InspectorWindowController.followsSystem(linked)
+        let variable = followsMac ? nil : linked
         let key = item.key, meter = self.meter
-        swatch.toolTip = variable.map { "Changes the shared color “\($0)” for the whole widget" } ?? "Pick a color"
+        swatch.toolTip = followsMac ? "Follows macOS light / dark mode — pick a color to use a fixed one"
+            : variable.map { "Changes the shared color “\($0)” for the whole widget" } ?? "Pick a color"
         swatch.target = ShapeColorPicker.shared
         swatch.action = #selector(ShapeColorPicker.swatchClicked(_:))
         ShapeColorPicker.shared.register(swatch, identity: "\(meter)/\(key)/\(id)", controller: controller) { [weak controller] rgba, finished in
@@ -715,6 +719,9 @@ final class ShapeEditorView: NSStackView {
                 return menu
             }
             parts.append(pill)
+        } else if followsMac, let linked {
+            let name = controller?.colorRoleName(variable: linked, color: nil) ?? linked
+            parts.append(EditorStyle.label("\(name) · follows macOS", size: 11.5, color: .secondaryLabelColor))
         } else if controller?.showsDetails == true {
             parts.append(EditorStyle.mono(written ?? "\(resolved) (default)", size: 11, color: .secondaryLabelColor))
         } else {
@@ -772,8 +779,11 @@ final class ShapeEditorView: NSStackView {
             swatch.identifier = NSUserInterfaceItemIdentifier("gradient-stop-\(i)")
             swatch.target = ShapeColorPicker.shared
             swatch.action = #selector(ShapeColorPicker.swatchClicked(_:))
-            let variable = controller.wholeVariable(stop.color)
-            swatch.toolTip = variable.map { "Changes the shared color “\($0)” for the whole widget" } ?? stop.color
+            let linked = controller.wholeVariable(stop.color)
+            // A Mac color follows macOS: a pick writes a color of the stop's own (see `colorControl`).
+            let variable = InspectorWindowController.followsSystem(linked) ? nil : linked
+            swatch.toolTip = variable.map { "Changes the shared color “\($0)” for the whole widget" }
+                ?? (linked != nil ? "Follows macOS light / dark mode — pick a color to use a fixed one" : stop.color)
             ShapeColorPicker.shared.register(swatch, identity: "\(meter)/\(name)/stop-\(i)", controller: controller) { [weak controller] rgba, finished in
                 guard let controller else { return }
                 if let variable {

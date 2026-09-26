@@ -867,7 +867,7 @@ struct WriteTarget: Equatable {
 /// Decides where an edit of a property of the selection is written (docs/editor-friendly.md §7.5): the narrowest
 /// place that covers exactly what is selected.
 /// 1. The shared value (variable), when the value is exactly `#Var#`, the selection is every layer (and data item) of
-///    this widget using Var, and Var is defined in this widget's own files.
+///    this widget using Var, and Var is defined in this widget's own files (never a built-in such as `#MACLABELCOLOR#`).
 /// 2. The look, when the value comes from look L, the selection is every layer taking the option from L, and L is
 ///    defined in this widget's own files.
 /// 3. Otherwise each selected section's own key.
@@ -888,7 +888,9 @@ struct ScopeResolver {
             let defined = skin.editTarget(section: section, key: key)
             return WriteTarget(scope: .own, section: defined.section, key: key, file: defined.file)
         }
-        if let variable {
+        // A built-in (`#MACLABELCOLOR#`) is never a shared value to write: [Variables] cannot set it, even when the
+        // widget defines a same-named fallback for Windows. The option itself gets the value.
+        if let variable, !BuiltInVariables.isBuiltIn(variable) {
             let usage = (usages ?? skin.valueUsages()).variable(variable)
             let users = Set((usage?.sections ?? []).map { $0.lowercased() })
             let defined = skin.sources.location(section: "Variables", key: variable)?.file

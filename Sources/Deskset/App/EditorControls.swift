@@ -1670,6 +1670,14 @@ extension InspectorWindowController {
         return group.name
     }
 
+    /// Whether a value linked to `variable` follows the system rather than the widget: a built-in variable — the Mac's
+    /// appearance colors (`#MACLABELCOLOR#`…) change with light / dark mode. `[Variables]` cannot set one (a same-named
+    /// entry is a fallback for Windows), so the editor shows its value and never edits it as a shared value; a new
+    /// color is written to the option itself.
+    static func followsSystem(_ variable: String?) -> Bool {
+        variable.map { BuiltInVariables.isBuiltIn($0) } ?? false
+    }
+
     /// Names of the Mac appearance color variables (Deskset extension, `SkinAppearance`).
     static let macColorNames: [String: String] = [
         "macaccentcolor": "Mac accent color", "maclabelcolor": "Mac text color",
@@ -1677,13 +1685,14 @@ extension InspectorWindowController {
         "macseparatorcolor": "Mac separator color",
     ]
 
-    /// "#78C8FF · 100% opacity"; with Rainmeter Details "Accent · 120,200,255,255".
+    /// "#78C8FF · 100% opacity"; with Rainmeter Details "Accent · 120,200,255,255". A Mac color says it follows macOS.
     func colorTooltip(_ color: RGBA?, ctx: PropertyContext?) -> String {
         guard let color else { return "Not set — pick a color to set it" }
         if app.state.editor.showIniNames, let ctx {
             return "\(ctx.variable ?? ctx.key) · \(ctx.isSet ? ctx.resolved : ctx.property.defaultValue)"
         }
-        return "\(Self.hex(color)) · \(Int((color.a / 255 * 100).rounded()))% opacity"
+        let text = "\(Self.hex(color)) · \(Int((color.a / 255 * 100).rounded()))% opacity"
+        return Self.followsSystem(ctx?.variable) ? text + " now — follows macOS light / dark mode" : text
     }
 
     static func hex(_ c: RGBA) -> String {
@@ -1713,11 +1722,21 @@ extension InspectorWindowController {
         guard let skin else { return menu }
         let index = valueUsages(skin)
         let groups = index.colorGroups(separate: inspectorState.separateColors, includeInternal: app.state.editor.showIniNames)
-        let current = ctx.variable.flatMap { v in groups.first { $0.variables.contains { $0.caseInsensitiveCompare(v) == .orderedSame } } }
-        let header = NSMenuItem(title: current.map { "\($0.name) · \(usersPhrase($0.sections, atLeast: $0.isAtLeast))" } ?? ctx.label,
-                                action: nil, keyEquivalent: "")
+        // A Mac color (`#MACLABELCOLOR#`) follows macOS: shown as such, with no shared value to change (`followsSystem`).
+        let followsMac = Self.followsSystem(ctx.variable)
+        let current = followsMac ? nil
+            : ctx.variable.flatMap { v in groups.first { $0.variables.contains { $0.caseInsensitiveCompare(v) == .orderedSame } } }
+        let title = followsMac ? "\(colorRoleName(variable: ctx.variable, color: nil) ?? ctx.label) · follows macOS"
+            : current.map { "\($0.name) · \(usersPhrase($0.sections, atLeast: $0.isAtLeast))" } ?? ctx.label
+        let header = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         header.isEnabled = false
+        header.identifier = NSUserInterfaceItemIdentifier(followsMac ? "follows-mac" : "color-menu-header")
         menu.addItem(header)
+        if followsMac {
+            let note = NSMenuItem(title: "Changes with light / dark mode and the accent color", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+        }
         func sectionTitle(_ title: String) {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.attributedTitle = NSAttributedString(string: title, attributes: [
@@ -1759,14 +1778,16 @@ extension InspectorWindowController {
             }
         }
         menu.addItem(.separator())
-        let custom = ClosureMenuItem("Custom Color…") { [weak self] in
+        // For a Mac color: a color of the option's own in its place (written to the layer or its look, never to
+        // [Variables], where it would change nothing).
+        let custom = ClosureMenuItem(followsMac ? "Use a Fixed Color…" : "Custom Color…") { [weak self] in
             self?.startColorEdit(ColorEdit(target: .property(section: ctx.section, key: ctx.key, raw: ctx.raw,
                                                              variable: ctx.variable, label: ctx.label, selection: selection)),
                                  current: ctx.isSet ? OptionValue.color(ctx.resolved) : nil)
         }
         custom.identifier = NSUserInterfaceItemIdentifier("custom-color")
         menu.addItem(custom)
-        if let variable = ctx.variable {
+        if let variable = ctx.variable, !followsMac {
             let variables = current?.variables ?? [variable]
             let role = current?.name ?? "Shared color"
             let users = current?.sections ?? index.users(ofVariable: variable)
@@ -1937,6 +1958,12 @@ extension InspectorWindowController {
         useFixed.identifier = NSUserInterfaceItemIdentifier("use-fixed")
         let id = tag.pill.identifier?.rawValue ?? ""
         switch link {
+        case .variable(let v) where Self.followsSystem(v), .offset(let v, _) where Self.followsSystem(v):
+            // A built-in (the Mac's appearance): nothing to change here, only a number of the option's own.
+            let note = ClosureMenuItem("Follows macOS", enabled: false) {}
+            note.identifier = NSUserInterfaceItemIdentifier("follows-mac")
+            menu.addItem(note)
+            menu.addItem(useFixed)
         case .variable(let v), .offset(let v, _):
             let users = (skin.map { valueUsages($0) })?.variable(v)?.sections ?? []
             let layers = layersReached(users)

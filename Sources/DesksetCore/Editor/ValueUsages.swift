@@ -692,7 +692,8 @@ struct ValueUsageScanner {
         var order: [String] = []
         for v in skin.inspectedVariables() {
             let key = v.name.lowercased()
-            guard definitions[key] == nil else { continue }
+            // A same-named entry cannot set a built-in (`MACLABELCOLOR=…` is a fallback for Windows): no shared value.
+            guard definitions[key] == nil, !BuiltInVariables.isBuiltIn(key) else { continue }
             definitions[key] = Definition(name: v.name, raw: v.raw, current: v.current, file: v.location?.file)
             order.append(key)
         }

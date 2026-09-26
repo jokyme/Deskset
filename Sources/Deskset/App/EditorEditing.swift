@@ -74,7 +74,8 @@ extension InspectorWindowController {
 
     func beginColorEdit(section: String, key: String, raw: String, variable: String?) {
         commitPendingColor()
-        colorTarget = (section, key, raw, variable)
+        // A built-in (the Mac's `#MACLABELCOLOR#`…) cannot be set: the color goes to the option itself.
+        colorTarget = (section, key, raw, InspectorWindowController.followsSystem(variable) ? nil : variable)
     }
 
     @objc func colorPicked(_ sender: NSColorPanel) {

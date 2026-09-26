@@ -547,6 +547,93 @@ extension MacLookSelfTests {
             t.equal(row(mac)?.titleOfSelectedItem, "Reload the widget")
             mac.window?.close()
         }
+
+        t.suite("App: Mac look: a Mac color follows macOS in the editor") {
+            // FontColor=#MACLABELCOLOR# is the Mac's color, not a shared value of the widget: [Variables] cannot set it
+            // (this widget even has a fallback of that name for Windows), so the editor never writes it there.
+            typealias P = FriendlyWidgetPageSelfTests
+            guard let (_, editor) = try P.openScratch(t, files: ["Look/Colors/Colors.ini": """
+                [Rainmeter]
+                Update=1000
+
+                [Variables]
+                MACLABELCOLOR=0,0,0,217
+                Accent=255,128,0
+
+                [StyleText]
+                FontColor=#MACSECONDARYLABELCOLOR#
+
+                [Title]
+                Meter=String
+                Text=Title
+                FontColor=#MACLABELCOLOR#
+
+                [Sub]
+                Meter=String
+                MeterStyle=StyleText
+                Y=20
+                Text=Sub
+
+                [Box]
+                Meter=Shape
+                Y=40
+                Shape=Rectangle 0,0,40,10 | Fill Color #MACACCENTCOLOR#
+
+                [Tinted]
+                Meter=String
+                Y=60
+                Text=Tinted
+                FontColor=#Accent#
+                """], config: "Look\\Colors"),
+                  let skin = editor.skin, let ini = editor.skin?.fileURL else { return }
+            let original = P.read(ini)
+            let groups = skin.valueUsages().colorGroups()
+            t.check(!groups.contains { $0.variables.contains { BuiltInVariables.isBuiltIn($0) } }, "the fallback is no theme color")
+            t.check(groups.contains { $0.variables == ["Accent"] }, "a color of the widget's own is")
+
+            editor.select(section: "Title")
+            guard let control = P.find(editor, "FontColor.row") as? ColorControl, let menu = control.colorMenu else {
+                return t.check(false, "the font color control")
+            }
+            t.equal(control.nameButton.title, "Mac text color")
+            t.check(control.swatch.toolTip?.contains("follows macOS") == true, control.swatch.toolTip ?? "")
+            func item(_ menu: NSMenu, _ id: String) -> NSMenuItem? { menu.items.first { $0.identifier?.rawValue == id } }
+            t.equal(item(menu, "follows-mac")?.title, "Mac text color · follows macOS")
+            t.equal(item(menu, "change-everywhere"), nil, "no shared value to change")
+            t.equal(item(menu, "custom-color")?.title, "Use a Fixed Color…")
+            t.equal(item(menu, "theme-color-MACLABELCOLOR"), nil)
+            t.check(item(menu, "theme-color-Accent") != nil, "the widget's own colors can still be chosen")
+
+            // Where a new color goes: the option itself (its look when the layer takes it from one), never [Variables].
+            let resolver = ScopeResolver(skin: skin)
+            t.equal(resolver.target(section: "Title", key: "FontColor", selection: ["Title"], variable: "MACLABELCOLOR").scope, .own)
+            t.equal(resolver.target(section: "Sub", key: "FontColor", selection: ["Sub"], variable: "MACSECONDARYLABELCOLOR").scope,
+                    .look("StyleText"))
+            t.equal(resolver.target(section: "Tinted", key: "FontColor", selection: ["Tinted"], variable: "Accent").scope,
+                    .sharedValue("Accent"), "a variable of the widget's own still is a shared value")
+            editor.startColorEdit(ColorEdit(target: .property(section: "Title", key: "FontColor", raw: "#MACLABELCOLOR#",
+                                                              variable: "MACLABELCOLOR", label: "Color", selection: ["Title"])),
+                                  current: nil)
+            editor.previewColorEdit(RGBA(r: 255, g: 0, b: 0, a: 255))
+            t.equal((editor.skin?.meter(named: "Title") as? StringMeter)?.style.color, RGBA(r: 255, g: 0, b: 0, a: 255),
+                    "previewed on the layer")
+            editor.finishColorEdit()
+            let written = P.read(ini)
+            t.check(P.section("Title", in: written).contains("FontColor=255,0,0"), P.section("Title", in: written))
+            t.equal(P.section("Variables", in: written), P.section("Variables", in: original), "[Variables] is not touched")
+            // The older swatch path (the Variables page, the Shape editor) does the same.
+            editor.beginColorEdit(section: "Sub", key: "FontColor", raw: "#MACSECONDARYLABELCOLOR#", variable: "MACSECONDARYLABELCOLOR")
+            t.check(editor.colorTarget != nil && editor.colorTarget?.variable == nil, "the option, not the built-in")
+            editor.colorTarget = nil
+
+            // A Shape's fill: the same.
+            editor.select(section: "Box")
+            let shape = editor.shapePaintMenu(meter: "Box", key: "Shape", stroke: false, swatch: nil)
+            t.check(item(shape, "follows-mac")?.title.hasSuffix("follows macOS") == true)
+            t.equal(item(shape, "change-everywhere"), nil)
+            t.equal(item(shape, "custom-color")?.title, "Use a Fixed Color…")
+            editor.window?.close()
+        }
     }
 }
 
