@@ -1313,7 +1313,8 @@ final class LayerNamer {
         let input = parent.map { option($0, "Port").lowercased() == "input" } ?? false
         let channel = option(m, "Channel").lowercased()
         let left = ["l", "left", "0"].contains(channel), right = ["r", "right", "1"].contains(channel)
-        func index(_ key: String) -> Int { Int(OptionValue.number(option(m, key)) ?? 0) }
+        // Within ±1e9, as AudioLevel reads BandIdx and FFTIdx.
+        func index(_ key: String) -> Int { Int((OptionValue.number(option(m, key)) ?? 0).clamped(-1e9, 1e9)) }
         switch option(m, "Type").lowercased() {
         case "band":
             return DataName(name: "Sound band \(index("BandIdx") + 1)", short: "Band \(index("BandIdx") + 1)", subtitle: "")
@@ -1337,7 +1338,8 @@ final class LayerNamer {
             return DataName(name: "Sound format", short: "Format", subtitle: "")
         case "bandfreq":
             let i = index("BandIdx")
-            let bands = parent.map { Int(OptionValue.number(option($0, "Bands")) ?? 0) } ?? 0
+            // 0 to 1024 bands, as AudioLevel reads its parent's Bands.
+            let bands = parent.map { Int((OptionValue.number(option($0, "Bands")) ?? 0).clamped(0, 1024)) } ?? 0
             if i == 0 { return DataName(name: "Lowest band frequency", short: "Frequency", subtitle: "") }
             if bands > 0, i == bands - 1 { return DataName(name: "Highest band frequency", short: "Frequency", subtitle: "") }
             return DataName(name: "Band \(i + 1) frequency", short: "Frequency", subtitle: "")
