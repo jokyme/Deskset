@@ -560,6 +560,18 @@ private func runWeatherSunTests(_ t: TestRunner) {
         t.equal(night.state, 2)
         t.equal(night.length, 0)
         t.equal(night.progress(at: WeatherFixtures.date("2026-12-21T12:00:00Z")), 0)
+        // Day, night and polar twilight from the sun alone.
+        func daylight(_ iso: String, _ lat: Double, _ lon: Double, _ zone: String) -> Int {
+            SolarCalculator.daylight(at: date(iso), latitude: lat, longitude: lon, zone: WeatherFixtures.zone(zone))
+        }
+        t.equal(daylight("2026-09-26T11:59:31Z", 59.91, 10.75, "Europe/Oslo"), 1, "Oslo at noon")
+        t.equal(daylight("2026-09-26T20:00:00Z", 59.91, 10.75, "Europe/Oslo"), 0, "Oslo at night")
+        t.equal(daylight("2026-09-26T04:40:00Z", 59.91, 10.75, "Europe/Oslo"), 0, "dawn on a day the sun rises: night")
+        t.equal(daylight("2026-12-21T11:00:00Z", 69.65, 18.96, "Europe/Oslo"), 2, "Tromsø in the polar night at noon")
+        t.equal(daylight("2026-12-21T12:30:00Z", 69.65, 18.96, "Europe/Oslo"), 2, "5° below the horizon")
+        t.equal(daylight("2026-12-21T13:00:00Z", 69.65, 18.96, "Europe/Oslo"), 0, "6.3° below")
+        t.equal(daylight("2026-12-21T06:00:00Z", 69.65, 18.96, "Europe/Oslo"), 0, "darker than civil twilight")
+        t.equal(daylight("2026-06-21T23:00:00Z", 69.65, 18.96, "Europe/Oslo"), 1, "the midnight sun")
         let p = SolarCalculator.position(at: WeatherFixtures.clock, latitude: 59.91, longitude: 10.75)
         t.close(p.elevation, 27.917, accuracy: 0.1, "elevation")
         t.close(p.azimuth, 194.513, accuracy: 0.2, "azimuth")

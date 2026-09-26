@@ -712,14 +712,11 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             let s = type == .condition ? symbol.description : type == .symbol ? symbol.sfSymbol(outline: outline) : symbol.raw
             out = Output(number: Double(symbol.number), string: s, available: true, range: (0, 50))
         case .isDaylight:
-            guard let s = step else { return none() }
-            var flag = symbol?.daylightFlag
-            if flag == nil, let c = location.coordinate {
-                let e = SolarCalculator.position(at: s.time.addingTimeInterval(1800), latitude: c.latitude,
-                                                 longitude: c.longitude).elevation
-                flag = e > -0.833 ? 1 : 0
-            }
-            out = number(flag.map(Double.init))
+            // From the sun for every condition (only half of MET's codes come in day / night / polar twilight forms,
+            // so their variant would switch with the clouds): now at this moment, hour N in the middle of that hour.
+            guard let s = step, let c = location.coordinate else { return none() }
+            let at = requestedHour == nil ? b.now : s.time.addingTimeInterval(1800)
+            out = number(Double(SolarCalculator.daylight(at: at, latitude: c.latitude, longitude: c.longitude, zone: zone)))
             out.range = (0, 2)
         case .humidity:
             out = number(step?.instant.humidity)

@@ -1094,6 +1094,36 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         days.close()
     }
 
+    t.suite("Weather: measure: IsDaylight follows the sun, not the clouds") {
+        // The demo forecast's icons take MET's day and night forms from Oslo's sun; in Tromsø's polar night
+        // IsDaylight is 2 around noon and 0 in the evening, whatever the sky.
+        var demo = weatherTestEnvironment(t)
+        demo.isLive = { _ in false }
+        demo.demo = true
+        demo.demoNow = date("2026-12-21T11:00:00Z")
+        WeatherService.install(demo)
+        let (skin, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=69.65,18.96
+        Type=IsDaylight
+        """)
+        for _ in 0..<3 {
+            skin.update()
+            WeatherService.shared.drain()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        t.equal(value(skin, "W"), 2, "now")
+        func hour(_ n: Int) -> String { skin.resolve("[&W:Hour(\(n), IsDaylight)]", in: nil, sectionVariables: true) }
+        t.equal((0...2).map(hour), ["2", "2", "0"], "11:30 and 12:30 UTC; at 13:30 the sun is 7.8° down")
+        t.equal((6...9).map(hour), ["0", "0", "0", "0"], "the evening")
+        t.check(skin.resolve("[&W:Hour(0, SymbolCode)]", in: nil, sectionVariables: true).hasSuffix("_day"),
+                "the icon has its own (day) form")
+        skin.close()
+    }
+
     t.suite("Weather: measure: states without data") {
         func status(_ ini: String, env: (inout WeatherEnvironment) -> Void = { _ in }) throws -> (Skin, FakeHost) {
             var e = weatherTestEnvironment(t)

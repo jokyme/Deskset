@@ -60,7 +60,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Temperature, FeelsLike, DewPoint | N H | temperature | — |
   | High, Low | D | temperature | — |
   | Condition, Symbol, SymbolCode | N H D | MET's legacy number (1 clear … 50 heavy snow) | "Partly cloudy" / SF Symbol name / MET's code |
-  | IsDaylight | N H | 1 day, 0 night, 2 polar twilight | — |
+  | IsDaylight | N H | 1 day (the sun is up), 2 polar twilight (on a day the sun does not rise, while it is less than 6° below the horizon), 0 night; from the sun: now at this moment, H in the middle of the hour | — |
   | Humidity, CloudCover, Fog | N H | % | — |
   | Pressure | N H | pressure | — |
   | UVIndex, WindSpeed (`Wind`), WindGust | N H D (day: the highest) | value | — |
@@ -103,7 +103,9 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   hours in the day, always shown as by day. MET's data starts at the current hour, so today's icon follows what is
   left of today, and once less than 3 hours of it are left (late in the evening) it is the one-hour or six-hour period
   of what is left nearest to noon. A day counts when at least 12 of its hours are covered (today: any). The weather
-  condition is MET's own symbol, which already tells day from night.
+  condition is MET's own symbol, which already tells day from night. `IsDaylight` comes from the sun for every
+  condition instead (MET's day, night and polar twilight forms exist for only 21 of its 41 conditions, so their form
+  would switch with the clouds); around sunrise and sunset MET's icons may change form an hour earlier or later.
 - Why: the forecast is a list of hourly and six-hourly steps; skins want "now", hours and days.
 - Skin impact: daily values may differ slightly from yr.no's own summaries.
 - Status: Deskset extension

@@ -194,6 +194,19 @@ public enum SolarCalculator {
         return "\(minutes / 60):\(m < 10 ? "0" : "")\(m)"
     }
 
+    /// Day (1), night (0) or polar twilight (2) at an instant, from the sun alone: day while the sun's centre is above
+    /// −0.833° (between sunrise and sunset); polar twilight on a local day the sun does not rise at all, while it is
+    /// less than 6° below the horizon (civil twilight, bright enough to look like day: MET Norway's `_polartwilight`
+    /// icons); otherwise night.
+    public static func daylight(at date: Date, latitude: Double, longitude: Double, zone: TimeZone) -> Int {
+        let elevation = position(at: date, latitude: latitude, longitude: longitude).elevation
+        if elevation > -0.833 { return 1 }
+        guard elevation > -6 else { return 0 }
+        let sunrise = event(.sunrise, dayStart: WeatherTimeline.startOfDay(date, zone: zone), zone: zone,
+                            latitude: latitude, longitude: longitude)
+        return sunrise == .alwaysBelow ? 2 : 0
+    }
+
     public static func day(containing date: Date, zone: TimeZone, latitude: Double, longitude: Double,
                            offset: Int = 0) -> Day {
         var c = Calendar(identifier: .gregorian)
