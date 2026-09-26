@@ -1,8 +1,8 @@
 import Foundation
 @testable import DesksetCore
 
-// The weather service's request policy (fake transport, virtual clock) and the real transport against the loopback
-// test server.
+// The weather service's request policy (fake transport, virtual clock), the real transport against the loopback test
+// server, and the plugins in skins (TestSkins/Plugins/Weather/Weather.ini).
 
 // MARK: - Fakes and helpers
 
@@ -566,5 +566,489 @@ func runWeatherTransportTests(_ t: TestRunner) {
         t.check(!strict.allows(URL(string: "https://example.com/x")!, redirect: true), "a redirect off met.no")
         t.check(!strict.allows(URL(string: "ftp://api.met.no/x")!))
         if case .failure(.refused)? = get("http://example.invalid/x", strict) {} else { t.check(false, "not HTTPS") }
+    }
+}
+
+// MARK: - The plugins in skins
+
+/// A host that knows the SF Symbols the weather plugins name (32 × 32 at any size), like the app does.
+final class WeatherSymbolHost: FakeHost {
+    static let known: Set<String> = {
+        var names = Set(WeatherCondition.all.flatMap { [$0.daySymbol, $0.nightSymbol] })
+        names.formUnion(names.map { $0.hasSuffix(".fill") ? String($0.dropLast(5)) : $0 })
+        names.insert("cloud.fill")
+        names.insert("cloud")
+        names.formUnion(WeatherSymbols.moon)
+        names.formUnion(WeatherStatus.allCases.map(WeatherSymbols.status).filter { !$0.isEmpty })
+        return names
+    }()
+
+    override func imageSize(atPath path: String) -> (width: Double, height: Double)? {
+        guard let symbol = MacSymbol(path: path) else { return super.imageSize(atPath: path) }
+        return WeatherSymbolHost.known.contains(symbol.name) ? (32, 32) : nil
+    }
+}
+
+private func weatherSkin(_ t: TestRunner, file: URL? = nil, ini: String? = nil,
+                         host: FakeHost = WeatherSymbolHost()) throws -> (Skin, FakeHost) {
+    if let ini { return try makeSkin(t, ini, host: host) }
+    let testSkins = WeatherFixtures.repository.appendingPathComponent("TestSkins")
+    let url = file ?? testSkins.appendingPathComponent("Plugins/Weather/Weather.ini")
+    let skin = Skin(config: "Plugins\\Weather", fileURL: url, skinsDirectory: testSkins, system: FakeSystem(), host: host)
+    retainedWeatherHosts.append(host)
+    try skin.load()
+    return (skin, host)
+}
+
+private var retainedWeatherHosts: [FakeHost] = []
+
+private func value(_ skin: Skin, _ name: String) -> Double { skin.measure(named: name)?.value ?? .nan }
+private func string(_ skin: Skin, _ name: String) -> String { skin.measure(named: name)?.stringValue ?? "<none>" }
+
+/// Updates the skin until its weather is ready (the lookups and the fetch run on the service's queue).
+@discardableResult
+private func updateUntilReady(_ skin: Skin, root: String = "MeasureWeather", timeout: TimeInterval = 10) -> Bool {
+    let ok = weatherWait(timeout) {
+        WeatherService.shared.drain()
+        skin.update()
+        return (skin.measure(named: root) as? MacWeatherMeasure)?.status.showsData == true
+    }
+    skin.update()
+    return ok
+}
+
+func runWeatherMeasureTests(_ t: TestRunner) {
+    defer { WeatherService.install(.offline) }
+
+    t.suite("Weather: measure: the fixture skin with MET Norway's forecast") {
+        let transport = FakeWeatherTransport.fixture()
+        let clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        WeatherService.install(weatherTestEnvironment(t, transport: transport, clock: clock))
+        let (skin, host) = try weatherSkin(t)
+        skin.update()
+        t.equal(value(skin, "MeasureStatus"), 1, "Loading while the place is looked up")
+        t.equal(string(skin, "MeasureWeather"), "--", "UnavailableText")
+        t.check(updateUntilReady(skin), "ready: \(string(skin, "MeasureStatus"))")
+        t.equal(transport.requests.count, 1)
+        t.equal(transport.requests.first?.url.query, "lat=59.91&lon=10.75", "Oslo, NO from the place table")
+        t.equal(text(skin, "MeterPlace"), "Oslo")
+        t.equal(text(skin, "MeterTemperature"), "16°")
+        t.equal(text(skin, "MeterCondition"), "Mostly clear")
+        t.equal(value(skin, "MeasureHigh"), 18, "Decimals=0 from the parent")
+        t.equal(value(skin, "MeasureLow"), 13, "12.5: half away from zero")
+        t.equal(string(skin, "MeasureSymbol"), "sun.max.fill")
+        t.equal(value(skin, "MeasureSymbol"), 2, "legacy number")
+        t.equal(value(skin, "MeasureHumidity"), 54)
+        t.equal(value(skin, "MeasureWind"), 8, "2.2 m/s in km/h (Units=Metric)")
+        t.equal(string(skin, "MeasureWindUnit"), "km/h")
+        t.equal(string(skin, "MeasureWindFrom"), "W")
+        t.equal(value(skin, "MeasureRainChance"), 0)
+        t.equal(string(skin, "MeasureH1Time"), "14:00", "Oslo time")
+        t.equal(value(skin, "MeasureH1Temp"), 17)
+        t.equal(string(skin, "MeasureH3Symbol"), "sun.max.fill")
+        t.equal(string(skin, "MeasureH6Time"), "19:00")
+        t.equal(string(skin, "MeasureH6Symbol"), "moon.stars.fill")
+        t.equal(string(skin, "MeasureD1Name"), "Sun")
+        t.equal(value(skin, "MeasureD1High"), 17)
+        t.equal(value(skin, "MeasureD1Low"), 10)
+        t.equal(string(skin, "MeasureD1Symbol"), "cloud.sun.fill")
+        t.equal(string(skin, "MeasureD2Name"), "Mon")
+        t.equal(string(skin, "MeasureD2Symbol"), "cloud.drizzle.fill")
+        t.equal(value(skin, "MeasureD2Rain"), 63)
+        t.equal(string(skin, "MeasurePlace"), "Oslo")
+        t.equal(string(skin, "MeasureAttribution"), "Based on data from MET Norway")
+        t.equal(string(skin, "MeasureSourceURL"), "https://api.met.no/")
+        let updated = TimeFormatting.format(WeatherFixtures.clock, format: "%H:%M", timeZone: .current)
+        t.equal(string(skin, "MeasureStatus"), "Updated \(updated)")
+        t.equal(string(skin, "MeasureUpdated"), updated)
+        t.check(text(skin, "MeterAttribution").hasPrefix("Based on data from MET Norway  ·  Updated"))
+        // Sun times (MacSun, offline): 05:10 UTC ± a minute, shown in Oslo time.
+        let sunrise = TimeFormatting.date(fromWindowsTimestamp: value(skin, "MeasureSunrise"),
+                                          timeZone: WeatherFixtures.zone("Europe/Oslo"))
+        t.check(abs(sunrise.timeIntervalSince(date("2026-09-26T05:10:25Z"))) < 90, "sunrise \(sunrise)")
+        t.check(string(skin, "MeasureSunrise").hasPrefix("07:"), string(skin, "MeasureSunrise"))
+        t.check(value(skin, "MeasureDaylight") > 0.5 && value(skin, "MeasureDaylight") < 0.7)
+        // Automatic ranges: High/Low over the week, so range bars line up.
+        let high = skin.measure(named: "MeasureD1High")
+        t.check((high?.maxValue ?? 0) >= 17.9 && (high?.minValue ?? 99) <= 10.2, "week range")
+        t.equal(skin.measure(named: "MeasureHumidity")?.maxValue, 100)
+        t.equal(skin.issues, [], "\(skin.issues)")
+        t.check(skin.meter(named: "MeterSetLocation")?.hidden == true)
+        // Refresh with fresh data: no request.
+        skin.execute("[!CommandMeasure MeasureWeather \"Refresh\"]", from: nil)
+        WeatherService.shared.drain()
+        t.equal(transport.requests.count, 1, "fresh data is not fetched again")
+        // Another place: the measure moves to another feed.
+        skin.execute("[!SetOption MeasureWeather Location \"Bergen, NO\"][!UpdateMeasure MeasureWeather]", from: nil)
+        t.check(weatherWait {
+            WeatherService.shared.drain()
+            skin.update()
+            return transport.requests.count == 2 && string(skin, "MeasurePlace") == "Bergen"
+        }, "moved to Bergen: \(transport.requests.map(\.url))")
+        t.equal(transport.requests.last?.url.query, "lat=60.39&lon=5.32")
+        t.equal(WeatherService.shared.livePlaces, [RoundedCoordinate(latitude: 60.39, longitude: 5.32)])
+        _ = host
+        skin.close()
+    }
+
+    t.suite("Weather: measure: actions, parents, units, curves and section variables") {
+        let transport = FakeWeatherTransport.fixture()
+        let clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        WeatherService.install(weatherTestEnvironment(t, transport: transport, clock: clock))
+        let (skin, host) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        Update=1000
+        [Variables]
+        Finished=0
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91, 10.75
+        Units=Imperial
+        FinishAction=[!SetVariable Finished "(#Finished#+1)"][!Log "finish W"]
+        OnConnectErrorAction=[!Log "connect error"]
+        [F]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=Temperature
+        Decimals=1
+        [C]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=F
+        Type=Temperature
+        TemperatureUnit=C
+        [Curve]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=TemperatureCurve
+        Hours=6
+        CurveWidth=100
+        CurveHeight=20
+        [Color]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=TemperatureColor
+        Day=1
+        [Place]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=PlaceDetail
+        [Zone]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=TimeZone
+        [Beaufort]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=Beaufort
+        [Code]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=SymbolCode
+        Hour=6
+        [Bad]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Nobody
+        [T]
+        Meter=String
+        MeasureName=W
+        """)
+        t.check(updateUntilReady(skin, root: "W"), "ready")
+        t.check(weatherWait { skin.update(); return host.logs.contains { $0.contains("finish W") } }, "FinishAction")
+        for _ in 0..<3 { skin.update() }
+        t.equal(host.logs.filter { $0.contains("finish W") }.count, 1, "once: \(host.logs)")
+        t.equal(skin.variable("Finished"), "1")
+        t.close(value(skin, "W"), 16.3 * 9 / 5 + 32, accuracy: 1e-9, "Imperial")
+        t.equal(value(skin, "F"), 61.3, "Decimals=1, Imperial from the parent")
+        t.equal(value(skin, "C"), 16.3, "own TemperatureUnit, Decimals from the grandparent chain")
+        let curve = string(skin, "Curve")
+        t.check(curve.hasPrefix("0, "), curve)
+        t.equal(curve.components(separatedBy: "CurveTo").count, 6, "six hours → five curves")
+        t.check((skin.measure(named: "Curve")?.maxValue ?? 0) > (skin.measure(named: "Curve")?.minValue ?? 0))
+        t.equal(string(skin, "Color").split(separator: ",").count, 3)
+        t.equal(string(skin, "Place"), "Oslo, Oslo, Norway", "nearest place within 50 km")
+        t.equal(string(skin, "Zone"), "Europe/Oslo")
+        t.equal(value(skin, "Zone"), 2)
+        t.equal(string(skin, "Beaufort"), "Light breeze")
+        t.equal(string(skin, "Code"), "clearsky_night")
+        t.check(host.logs.contains { $0.contains("Parent=Nobody") }, "a broken parent is logged")
+        t.equal(skin.resolve("[&W:Now(Humidity, 0)]", in: nil, sectionVariables: true), "54")
+        t.equal(skin.resolve("[&W:Day(1, High, 1)]", in: nil, sectionVariables: true), "61.7")
+        t.equal(skin.resolve("[&W:Hour(3, Symbol)]", in: nil, sectionVariables: true), "sun.max.fill")
+        skin.close()
+    }
+
+    t.suite("Weather: measure: states without data") {
+        func status(_ ini: String, env: (inout WeatherEnvironment) -> Void = { _ in }) throws -> (Skin, FakeHost) {
+            var e = weatherTestEnvironment(t)
+            env(&e)
+            WeatherService.install(e)
+            let (skin, host) = try weatherSkin(t, ini: """
+            [Rainmeter]
+            [W]
+            Measure=Plugin
+            Plugin=MacWeather
+            \(ini)
+            UnavailableText=--
+            OnLocationErrorAction=[!Log "location error"]
+            [S]
+            Measure=Plugin
+            Plugin=MacWeather
+            Parent=W
+            Type=Status
+            [Sun]
+            Measure=Plugin
+            Plugin=MacWeather
+            Parent=W
+            Type=Sunrise
+            """)
+            for _ in 0..<20 {
+                WeatherService.shared.drain()
+                skin.update()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+            }
+            return (skin, host)
+        }
+        var (skin, host) = try status("Location=")
+        t.equal(value(skin, "S"), 3)
+        t.equal(string(skin, "S"), "Set a location")
+        t.equal(string(skin, "W"), "--")
+        t.equal(string(skin, "Sun"), "--", "no place, no sun: UnavailableText")
+        (skin, host) = try status("Location=Atlantis")
+        t.equal(value(skin, "S"), 4)
+        t.equal(string(skin, "S"), "Can't find “Atlantis”")
+        t.check(skin.issues.contains { $0.contains("Atlantis") }, "\(skin.issues)")
+        t.equal(host.logs.filter { $0.contains("location error") }.count, 1)
+        (skin, host) = try status("Location=Oslo") { $0.isEnabled = { false } }
+        t.equal(value(skin, "S"), 11)
+        t.check(!string(skin, "Sun").isEmpty, "sun times without the forecast")
+        (skin, host) = try status("Location=Oslo") { $0.isLive = { _ in false } }
+        t.equal(value(skin, "S"), 12)
+        t.equal(string(skin, "S"), "Preview · live weather shows on the desktop")
+        t.check(!string(skin, "Sun").isEmpty, "sun times in previews")
+        let device = FakeDeviceLocation()
+        (skin, host) = try status("Location=auto") { $0.deviceLocation = device }
+        t.equal(value(skin, "S"), 0, "this Mac's location: \(string(skin, "S"))")
+        device.authorization = .denied
+        (skin, host) = try status("Location=auto") { $0.deviceLocation = device }
+        t.equal(value(skin, "S"), 5)
+        t.check(skin.issues.contains { $0.contains("Location Services") })
+        let lost = FakeDeviceLocation()
+        lost.result = .failure(.unavailable)
+        (skin, host) = try status("Location=auto") { $0.deviceLocation = lost }
+        t.equal(value(skin, "S"), 6)
+        let untouched = FakeDeviceLocation()
+        (skin, host) = try status("Location=auto") { $0.isLive = { _ in false }; $0.deviceLocation = untouched }
+        t.equal(value(skin, "S"), 12, "previews never ask for the location")
+        t.equal(untouched.requests, 0)
+        (skin, host) = try status("Location=Oslo") { $0.transport = FakeWeatherTransport.fixture(status: 404, headers: [:], body: Data()) }
+        t.equal(value(skin, "S"), 7)
+        // Demo data for screenshots.
+        (skin, host) = try status("Location=Oslo") { $0.isLive = { _ in false }; $0.demo = true }
+        t.equal(value(skin, "S"), 0, "demo")
+        t.check(!string(skin, "W").isEmpty && string(skin, "W") != "--")
+        _ = host
+    }
+
+    t.suite("Weather: measure: the offline default in the fixture skin") {
+        var env = WeatherEnvironment.offline
+        env.placesTable = WeatherFixtures.placesFixture
+        WeatherService.install(env)
+        let (skin, _) = try weatherSkin(t)
+        for _ in 0..<10 {
+            WeatherService.shared.drain()
+            skin.update()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        t.equal(value(skin, "MeasureStatus"), 12, "Preview")
+        t.equal(WeatherService.shared.requestCount, 0, "no network")
+        t.check(!string(skin, "MeasureSunrise").isEmpty, "sun times still work")
+        t.equal(string(skin, "MeasurePlace"), "Oslo")
+        skin.close()
+    }
+
+    t.suite("Weather: MacSun") {
+        var env = WeatherEnvironment.offline
+        env.placesTable = WeatherFixtures.placesFixture
+        env.clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        env.uses24HourClock = { true }
+        WeatherService.install(env)
+        let (skin, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [Rise]
+        Measure=Plugin
+        Plugin=MacSun
+        Location=Tromsø
+        Type=Sunrise
+        [Set]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=Sunset
+        Format=%H.%M
+        [RiseJune]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=Sunrise
+        Day=30
+        [Polar]
+        Measure=Plugin
+        Plugin=MacSun
+        Location=78.22,15.65
+        Type=Sunrise
+        Day=-1
+        NoEventText=none
+        [UTC]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=Sunrise
+        TimeZone=UTC
+        [Place]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=Place
+        [Moon]
+        Measure=Plugin
+        Plugin=MacSun
+        Type=MoonPhaseName
+        [Light]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=IsDaylight
+        [Elevation]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=SunElevation
+        [Length]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=DayLength
+        [Nowhere]
+        Measure=Plugin
+        Plugin=MacSun
+        Type=Sunrise
+        UnavailableText=?
+        """)
+        for _ in 0..<10 {
+            WeatherService.shared.drain()
+            skin.update()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        t.check(string(skin, "Rise").hasPrefix("06:"), "Tromsø sunrise \(string(skin, "Rise"))")
+        t.check(string(skin, "Set").hasPrefix("18."), "Format \(string(skin, "Set"))")
+        t.check(string(skin, "UTC").hasPrefix("04:"), "TimeZone=UTC \(string(skin, "UTC"))")
+        t.equal(string(skin, "Place"), "Tromsø")
+        t.check(string(skin, "RiseJune") != string(skin, "Rise"), "Day offsets")
+        t.check(string(skin, "Polar").contains(":"), "Longyearbyen still has a sunrise on 25 September")
+        t.equal(value(skin, "Light"), 1)
+        t.check(value(skin, "Elevation") > 10 && value(skin, "Elevation") < 30)
+        t.check(string(skin, "Length").contains(":"))
+        t.check(MoonPhase.names.contains(string(skin, "Moon")))
+        t.equal(string(skin, "Nowhere"), "?")
+        // Polar night: no sunrise (and the place's own time zone once the nearest place is known).
+        env.clock = VirtualWeatherClock(now: date("2026-12-21T11:00:00Z"))
+        WeatherService.install(env)
+        let (dark, _) = try weatherSkin(t, ini: """
+        [Rainmeter]
+        [Rise]
+        Measure=Plugin
+        Plugin=MacSun
+        Location=69.65,18.96
+        Type=Sunrise
+        NoEventText=polar
+        [Dawn]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=CivilDawn
+        [State]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=SunState
+        [Zone]
+        Measure=Plugin
+        Plugin=MacSun
+        Parent=Rise
+        Type=TimeZone
+        """)
+        for _ in 0..<10 {
+            WeatherService.shared.drain()
+            dark.update()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        t.equal(string(dark, "Rise"), "polar", "Tromsø on 21 December")
+        t.equal(value(dark, "State"), 2)
+        t.equal(string(dark, "Zone"), "Europe/Oslo")
+        t.check(string(dark, "Dawn").hasPrefix("09:"), "civil dawn \(string(dark, "Dawn"))")
+        skin.close()
+    }
+}
+
+// MARK: - Weather symbols in Image meters (core part)
+
+func runWeatherSymbolImageTests(_ t: TestRunner) {
+    t.suite("Weather: symbols reach Image meters as sf: names") {
+        // MacWeather's Symbol type gives an SF Symbol name; `ImageName=sf:%1` (the Mac look extension) draws it.
+        let previous = WeatherService.shared.environment
+        defer { WeatherService.install(previous) }
+        var env = weatherTestEnvironment(t)
+        env.isLive = { _ in false }
+        env.demo = true
+        env.demoNow = WeatherFixtures.clock
+        WeatherService.install(env)
+        let (skin, host) = try makeSkin(t, """
+        [Rainmeter]
+        [Symbol]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91,10.75
+        Type=Symbol
+        [Outline]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Symbol
+        Type=Symbol
+        SymbolStyle=Outline
+        [Icon]
+        Meter=Image
+        MeasureName=Symbol
+        ImageName=sf:%1
+        ImagePath=#@#Images
+        MacSymbolRendering=Multicolor
+        W=48
+        H=48
+        [OutlineIcon]
+        Meter=Image
+        MeasureName=Outline
+        ImageName=sf:%1
+        """)
+        skin.update()
+        guard let icon = skin.meter(named: "Icon") as? ImageMeter,
+              let outline = skin.meter(named: "OutlineIcon") as? ImageMeter else { return t.check(false, "meters") }
+        let name = skin.measure(named: "Symbol")?.stringValue ?? ""
+        t.check(name.hasSuffix(".fill"), "a filled symbol name: \(name)")
+        let symbol = icon.imagePath.flatMap { MacSymbol(path: $0) }
+        t.equal(symbol?.name, name, "no ImagePath, no .png")
+        t.equal(symbol?.style.rendering, .multicolor)
+        let plain = outline.imagePath.flatMap { MacSymbol(path: $0) }
+        t.equal(plain?.name, String(name.dropLast(5)), "SymbolStyle=Outline drops .fill")
+        t.check(!host.logs.contains { $0.contains("Unable to open image") }, "no missing-file warnings: \(host.logs)")
+        skin.close()
     }
 }

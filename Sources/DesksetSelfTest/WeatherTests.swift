@@ -14,6 +14,8 @@ func runWeatherTests(_ t: TestRunner) {
     runWeatherSunTests(t)
     runWeatherFetchTests(t)
     runWeatherTransportTests(t)
+    runWeatherMeasureTests(t)
+    runWeatherSymbolImageTests(t)
     runWeatherEditorTests(t)
 }
 
@@ -561,6 +563,14 @@ private func runWeatherEditorTests(_ t: TestRunner) {
                     "unavailabletext", "symbolstyle", "hours", "curvewidth", "curveheight", "smooth", "colorof",
                     "finishaction", "onconnecterroraction", "onlocationerroraction"] {
             t.check(keys.contains(key), "MacWeather \(key)")
+        }
+        t.equal(S.property("Type", in: weather)?.kind.choices?.count, MacWeatherMeasure.ValueType.allCases.count,
+                "every Type is in the menu")
+        for type in MacWeatherMeasure.ValueType.allCases {
+            t.check(S.weatherTypes.contains { $0.value == type.optionName }, "\(type.optionName) listed")
+        }
+        for type in MacSunMeasure.ValueType.allCases {
+            t.check(S.sunTypes.contains { $0.value == type.optionName }, "MacSun \(type.optionName) listed")
         }
         t.check(weather.allSatisfy { $0.essentialRows.count <= 5 }, "at most five essentials")
         func visible(_ key: String, _ values: [String: String], _ groups: [S.Group] = weather) -> Bool {

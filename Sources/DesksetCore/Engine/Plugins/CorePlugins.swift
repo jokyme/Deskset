@@ -34,6 +34,8 @@ public enum CorePlugins {
         ("VirtualDesktops", VirtualDesktopsMeasure.self),
         ("Mouse", MouseMeasure.self),
         ("Slider", SliderMeasure.self),
+        ("MacWeather", MacWeatherMeasure.self),
+        ("MacSun", MacSunMeasure.self),
     ]
 
     /// `Measure=` types provided here (RecycleManager "was previously a plugin measure").
