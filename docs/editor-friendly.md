@@ -435,6 +435,8 @@ Where the numbers and words in your widget come from.          ← always shown,
 | | Counting number | A number that counts up |
 | | Random number | A new random number each update |
 | **From the Web** | Text from a web page | Reads a value from a page |
+| **Weather and Sun** | Weather ▸ Temperature now · Weather icon · Today's high · Chance of rain | Forecasts for a place, from MET Norway |
+| | Sun and moon ▸ Sunrise · Sunset · Daylight · Moon phase | Worked out on this Mac for a place |
 | **Extras (limited on a Mac) ▸** | everything else | plain names |
 
 "Memory in use (Windows-style)" is hidden. Windows-only types appear only with Rainmeter Details on, marked "Doesn't work on a Mac".
@@ -442,6 +444,11 @@ Where the numbers and words in your widget come from.          ← always shown,
 "Temperature" (added with the hardware sensors) is Deskset's own sensor data (`Plugin=MacSensors`, `Sensor=cpu`: the
 hottest CPU sensor). Its "Shows" menu picks any other sensor this catalogue knows: a core, the GPU, a fan, power, a
 clock, the battery.
+
+"Weather and Sun" (added with the weather plugins) creates Deskset's own `Plugin=MacWeather` and `Plugin=MacSun` data
+with the `Type` (and `Day`) the item names; its Settings start with the place ("Place": a town, latitude,longitude or
+auto) and "Shows", which picks any other value of the plugin (docs/compat/weather.md). Such data is named by what it
+shows: "Temperature (weather)", "Today's high", "Temperature in 3 hours", "Sunrise".
 
 ---
 
