@@ -74,7 +74,7 @@ extension InspectorWindowController {
         let title = EditorStyle.label(name.isEmpty ? skin.config : name, size: 17, weight: .semibold)
         title.identifier = NSUserInterfaceItemIdentifier("widget-title")
         let layers = skin.meters.count
-        let speed = WidgetPresets.updateWords(for: Int(skin.rainmeterSection?.rawOption("Update").flatMap(OptionValue.number) ?? 1000))
+        let speed = WidgetPresets.updateWords(for: Self.wholeNumber(skin.rainmeterSection?.rawOption("Update"), default: 1000))
         let lead = "A widget with \(layers) layer\(layers == 1 ? "" : "s") that "
         let sentence = NSMutableAttributedString(string: lead, attributes: [
             .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor,
@@ -790,10 +790,17 @@ extension InspectorWindowController {
 
     // MARK: Update speed (§8.1.2)
 
+    /// A whole-number option of `[Rainmeter]` as the engine reads it with `SkinSection.int`: missing, not a number or
+    /// past ±Int.max / 2 is `defaultValue`. Converted as written, `Update=1e20` would trap.
+    static func wholeNumber(_ text: String?, default defaultValue: Int) -> Int {
+        guard let v = text.flatMap(OptionValue.number), abs(v) < Double(Int.max / 2) else { return defaultValue }
+        return Int(v)
+    }
+
     func updateSpeedCard(_ skin: Skin) -> NSView {
         let rainmeter = rows(of: "Rainmeter", kind: .rainmeter)
         let written = rainmeter.first { $0.key.caseInsensitiveCompare("Update") == .orderedSame }
-        let ms = Int(written.flatMap { OptionValue.number($0.resolved) } ?? 1000)
+        let ms = Self.wholeNumber(written?.resolved, default: 1000)
         let popup = NSPopUpButton()
         popup.identifier = NSUserInterfaceItemIdentifier("update-speed")
         popup.setAccessibilityLabel("How often")
@@ -1452,7 +1459,7 @@ extension InspectorWindowController {
 
         // Timing.
         views.append(heading("Timing"))
-        let divider = Int(value("DefaultUpdateDivider").flatMap { OptionValue.number($0.resolved) } ?? 1)
+        let divider = Self.wholeNumber(value("DefaultUpdateDivider")?.resolved, default: 1)
         let writeRedraw: (Int) -> Void = { [weak self] v in
             self?.inspectorState.disclosures.remove("widget/redraw-custom")
             self?.writeWidgetSetting("DefaultUpdateDivider", value: v == 1 ? nil : String(v), undoName: "Change Redraw Timing",
@@ -1463,7 +1470,8 @@ extension InspectorWindowController {
                                  self?.inspectorState.disclosures.insert("widget/redraw-custom")
                                  self?.rebuildKeepingScroll()
                              }, write: writeRedraw)
-        let ms = Int(value("TransitionUpdate").flatMap { OptionValue.number($0.resolved) } ?? 100)
+        // 16 ms to a day, as Skin.readSettings keeps it.
+        let ms = min(max(Self.wholeNumber(value("TransitionUpdate")?.resolved, default: 100), 16), 86_400_000)
         let transition = choices(WidgetPresets.transitionSpeeds, current: ms, title: WidgetPresets.transitionTitle,
                                  identifier: "transition-speed") { [weak self] v in
             self?.writeWidgetSetting("TransitionUpdate", value: v == 100 ? nil : String(v), undoName: "Change Transition Speed",
