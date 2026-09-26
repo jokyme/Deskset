@@ -1032,6 +1032,52 @@ enum FriendlySidebarSelfTests {
             t.equal(editor.liveValueText(fixed, in: skin), "24.0 GB", "24 GB, as About This Mac says (not 25.8 GB)")
         }
 
+        t.suite("App: friendly sidebar: live values past Int's range") {
+            // A formula's size and a band's frequency are written out whole: converted to Int, each trapped as soon as
+            // the Live Data tab showed it. The number shown is the value in the unit shown.
+            func reads(_ text: String?, _ unit: String, _ value: Double) -> Bool {
+                guard let text, text.hasSuffix(" " + unit), let n = Double(text.dropLast(unit.count + 1)) else { return false }
+                return abs(n / value - 1) < 1e-9
+            }
+            t.check(reads(InspectorWindowController.bytes(1e40), "TB", 1e28), InspectorWindowController.bytes(1e40))
+            t.check(reads(InspectorWindowController.frequency(1e30), "kHz", 1e27), InspectorWindowController.frequency(1e30))
+            FriendlyFixtures.fakeDevice(t)
+            guard let (_, editor) = try openWidget(t, """
+                [Rainmeter]
+                [MeasureRAMTotal]
+                Measure=PhysicalMemory
+                Total=1
+                [MeasureHuge]
+                Measure=Calc
+                Formula=MeasureRAMTotal * 0 + 1e40
+                [MeasureSound]
+                Measure=Plugin
+                Plugin=AudioLevel
+                FFTSize=1024
+                Bands=1
+                FreqMax=1e300
+                [MeasureFrequency]
+                Measure=Plugin
+                Plugin=AudioLevel
+                Parent=MeasureSound
+                Type=BandFreq
+                [MeterSize]
+                Meter=String
+                MeasureName=MeasureHuge
+                [MeterFrequency]
+                Meter=String
+                MeasureName=MeasureFrequency
+                Y=20
+                """) else { return }
+            editor.selectSidebarTab(.data)
+            func value(_ name: String) -> String? {
+                editor.sidebarItem(forSection: name).flatMap { cell(editor, $0)?.detail.stringValue }
+            }
+            t.check(reads(value("MeasureHuge"), "TB", 1e40 / pow(1024, 4)), "1e40 bytes, counted as memory: \(value("MeasureHuge") ?? "")")
+            t.check(reads(value("MeasureFrequency"), "kHz", (20 * 1e300).squareRoot() / 1000),
+                    "the centre of one band from 20 Hz to 1e300 Hz: \(value("MeasureFrequency") ?? "")")
+        }
+
         t.suite("App: friendly sidebar: menus and rows follow Show Rainmeter Details") {
             guard let (app, editor) = try visualizer(t) else { return }
             editor.selectSidebarTab(.data)
