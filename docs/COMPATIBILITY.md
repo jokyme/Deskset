@@ -284,6 +284,18 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   Icon fonts from Windows show empty boxes. Ship the font in `@Resources\Fonts` to get identical text.
 - **Status:** emulated (Windows icon fonts: not supported)
 
+#### System font designs (`System Rounded`, `SF Mono`, `New York`…)
+- **Windows:** FontFace names an installed family; `System` is an old bitmap font, and Apple's font names fall back
+  to Arial.
+- **Mac:** after installed and skin fonts (an installed family of the same name still wins), `System` draws the Mac
+  system font, `System Rounded` / `SF Pro Rounded` its rounded design, `System Mono` / `SF Mono` its monospaced
+  design and `System Serif` / `New York` its serif design (also `ui-rounded`, `ui-monospace`, `ui-serif`). Weights,
+  italic (keeping the weight; the rounded design is slanted), style words ("System Rounded Semibold") and inline
+  `Face` work as for any font. The editor's font menu lists them after System Font.
+- **Why:** Deskset extension: macOS's own font designs have no installable family name.
+- **Skin impact:** none for Windows skins except `FontFace=System`, drawn in the Mac system font instead of Arial.
+- **Status:** Mac-only
+
 #### Skin fonts (`@Resources\Fonts`, `LocalFont`)
 - **Windows:** fonts in the root config's `@Resources\Fonts` "are automatically loaded"; `LocalFontN=` loads more.
   Fonts elsewhere in a package must be installed by the user.
@@ -381,6 +393,18 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Why:** judgment calls where the manual is silent; macOS draws every Unicode plane.
 - **Skin impact:** none for valid skins.
 - **Status:** identical (+ leniencies)
+
+#### Light and dark mode variables (`#MACAPPEARANCE#`, `#MACDARKMODE#`, `#MACACCENTCOLOR#`…)
+- **Windows:** no such variables.
+- **Mac:** dynamic built-in variables for the Mac's appearance: `#MACAPPEARANCE#` (`Dark` / `Light`, usable in
+  `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 / 0) and, as `R,G,B,A` for the current appearance,
+  `#MACACCENTCOLOR#`, `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` and
+  `#MACSEPARATORCOLOR#`. They cannot be overridden in `[Variables]` or by `!SetVariable`. When the Mac switches
+  between light and dark or the accent color changes, each skin that uses one runs `[Rainmeter]
+  MacOnAppearanceChangeAction` (default `[!Refresh]`; written empty, nothing runs); other skins are left alone.
+- **Why:** Deskset extension: Mac widgets are expected to follow the appearance and the accent color.
+- **Skin impact:** none for Windows skins; on Windows these names are undefined.
+- **Status:** Mac-only
 
 #### Formulas
 - **Windows:** the operators and functions of the Formulas page; precedence is not documented; `.5` must be written
@@ -606,6 +630,20 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Why:** judgment calls where the manual is silent; CoreGraphics scaling.
 - **Skin impact:** tinted or greyscaled images may differ slightly in tone.
 - **Status:** emulated / partial
+
+#### SF Symbols as images (`ImageName=sf:cpu.fill`)
+- **Windows:** `sf:cpu.fill` is just a missing file.
+- **Mac:** `sf:<symbol name>` draws that SF Symbol in Image meters (also as `MaskImageName` or a measure's value),
+  `ButtonImage`, `BarImage` and the skin's `Background`. It is white, so ImageTint colors it and ImageAlpha,
+  Greyscale, ColorMatrix, flip, rotate, crop, Tile and ScaleMargins work; it is rendered at the pixels it covers and
+  stays sharp. `MacSymbolSize` (default 16) sets its size without W / H, `MacSymbolWeight` its weight (Ultralight …
+  Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths) or Multicolor (the
+  symbol's own colors, plain parts white). With W and H it keeps its shape (PreserveAspectRatio defaults to 1). A
+  Button shows it in every state, at half opacity while pressed. Unknown names give a compatibility note; Bitmap,
+  Rotator and Histogram cannot use symbols (note, nothing drawn).
+- **Why:** Deskset extension: the Mac's icon set, without image files.
+- **Skin impact:** none for Windows skins; on Windows such images are missing.
+- **Status:** Mac-only
 
 #### Bar, Bitmap, Button
 - **Windows:** documented on the Bar, Bitmap and Button pages.
@@ -1016,8 +1054,9 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Rendering a skin to a PNG
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S
-  (default 2) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` loads the skin without a window, runs N updates
+  (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light appearance (or the one asked for) and prints
+  compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track). FrostedGlass blur is not visible in the image, and WebParser's `file://` limit to the Skins and settings

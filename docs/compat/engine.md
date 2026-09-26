@@ -138,6 +138,25 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   different character. Icon fonts from Windows show nothing.
 - Status: emulated / partial (icon fonts: not supported)
 
+### System font designs (`FontFace=System Rounded`, `SF Mono`, `New York`…)
+- Windows (Rainmeter): FontFace names an installed family. `System` is an old Windows bitmap font; the Apple names
+  below are not installed on Windows (Arial is used).
+- Mac (Deskset): after the installed and skin-registered families (which still win: a user who installed Apple's SF
+  Pro Rounded or SF Mono family gets it), these names draw the designs of the Mac system font — `System` (the system
+  font; `System Font`, `SF Pro`, `-apple-system` already did), `System Rounded` / `SF Pro Rounded` / `SF Rounded` /
+  `ui-rounded` (rounded), `System Mono` / `System Monospaced` / `SF Mono` / `ui-monospace` (monospaced) and
+  `System Serif` / `New York` / `ui-serif` (New York). FontWeight, StringStyle, trailing style words ("System Rounded
+  Semibold"), inline `Face`, `Weight` and `Italic` work as for any family: italic keeps the weight; the rounded design
+  has no italic and is slanted. `Stretch` applies to the standard design only. The editor's font menu offers System
+  Rounded, System Mono and System Serif after System Font. (Italic system text now keeps its weight in every design;
+  before, bold italic Segoe UI substitutes drew as regular italic.)
+- Why: Deskset extension — the designs are part of macOS but have no installable family name, so skins could not ask
+  for them. `System` meaning the system font follows what Mac skin authors expect; Windows skins hardly use the old
+  bitmap font.
+- Skin impact: none for Windows skins (except `FontFace=System`, drawn in the Mac system font rather than Arial). Mac
+  skins can use the rounded, monospaced and serif system fonts; on Windows the same skin falls back to Arial.
+- Status: Deskset extension
+
 ### Skin fonts (`@Resources\Fonts`, `LocalFont`)
 - Windows (Rainmeter): TrueType / OpenType fonts in the root config's `@Resources\Fonts` "are automatically
   loaded and can be used with the FontFace option"; `LocalFontN=` loads more. Fonts elsewhere in a package (e.g.
@@ -330,6 +349,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Why: judgment calls where the manual is silent; macOS draws every Unicode plane.
 - Skin impact: none for valid skins.
 - Status: identical (+ leniencies)
+
+### Light and dark mode variables (`#MACAPPEARANCE#`, `#MACDARKMODE#`, `#MACACCENTCOLOR#`…)
+- Windows (Rainmeter): no such built-in variables.
+- Mac (Deskset): seven dynamic built-in variables describe the Mac's appearance: `#MACAPPEARANCE#` (`Dark` or
+  `Light`, also in `@Include` paths: `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 or 0), and as
+  `R,G,B,A` colors resolved for the appearance `#MACACCENTCOLOR#` (System Settings → Appearance → Accent color),
+  `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` (text) and `#MACSEPARATORCOLOR#`
+  (hairlines). Like every built-in they cannot be set by `[Variables]` or `!SetVariable`, and options see changes
+  only with `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin
+  that uses one of them — in its files, an `@Include` path, or read by an option, bang or script — runs
+  `[Rainmeter] MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write
+  `MacOnAppearanceChangeAction=` to turn it off, or e.g. `[!UpdateMeter *][!Redraw]` for DynamicVariables meters);
+  skins that use none are left alone. `Deskset --render` uses the Light appearance unless `--appearance dark` (or
+  `--dark`) or `--appearance system`.
+- Why: Deskset extension — Mac widgets are expected to follow light and dark mode and the accent color.
+- Skin impact: none for Windows skins (the names are not Rainmeter's). On Windows the variables are undefined, so a
+  cross-platform skin should give fallbacks in its own variables.
+- Status: Deskset extension
 
 ### Formulas
 - Windows (Rainmeter): the operators and functions of /manual/formulas/; precedence is not documented; `.5` must be
@@ -589,6 +626,26 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Why: judgment calls where the manual is silent; CoreGraphics rotation and scaling.
 - Skin impact: tinted / greyscaled images may differ slightly in tone.
 - Status: emulated / partial
+
+### SF Symbols as images (`ImageName=sf:cpu.fill`)
+- Windows (Rainmeter): an image option names a file; `sf:cpu.fill` would be a missing file.
+- Mac (Deskset): an image name written `sf:<symbol name>` draws that SF Symbol, in Image meters (`ImageName`, also
+  from a measure's value, and `MaskImageName`), `ButtonImage`, `BarImage` and the skin's `Background`. ImagePath does
+  not apply. The symbol is white, so the general image options color it as a white picture: ImageTint gives its color,
+  ImageAlpha, Greyscale, ColorMatrix, ImageFlip, ImageRotate, ImageCrop (in points), Tile and ScaleMargins work.
+  Options: `MacSymbolSize` (points, default 16) sets its natural size, used when the meter has no W / H;
+  `MacSymbolWeight` = Ultralight, Thin, Light, Regular (default), Medium, Semibold, Bold, Heavy, Black;
+  `MacSymbolRendering` = Monochrome (default: the whole symbol white, the parts it knocks out transparent),
+  Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths) or
+  Multicolor (the symbol's own colors as drawn in Dark Mode, its plain layers white; ImageTint multiplies every color,
+  so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale), so it stays
+  sharp at any size. With both W and H an Image meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0
+  stretches it). A Button uses the symbol for all three states and draws it at half opacity while pressed. A name
+  macOS does not have gives a compatibility note (once) and draws nothing. Bitmap, Rotator and Histogram images cannot
+  be symbols (a compatibility note; nothing is drawn): they need a strip of frames or a picture at its pixel size.
+- Why: Deskset extension — SF Symbols are the Mac's icon set; skins can use them without shipping image files.
+- Skin impact: none for Windows skins. On Windows such a skin shows missing images.
+- Status: Deskset extension
 
 ### Bar, Bitmap, Button
 - Windows (Rainmeter): /manual/meters/bar/, …/bitmap/, …/button/ and Tips → Button Images.
