@@ -8,7 +8,7 @@ import Foundation
 /// is named by a canonical path (`sf:cpu.fill?size=16&weight=regular&rendering=monochrome`) that goes wherever an
 /// image file's path goes (`SkinHost.imageSize(atPath:)`, the app's image caches), so every general image option works
 /// on it as on a file. Its size in points is the symbol's own at `MacSymbolSize`; the app renders it for drawing at
-/// the pixels it covers (`density`), so it stays sharp at any W / H and backing scale.
+/// the pixels it covers (`density`, up to `maxDensity`), so it stays sharp at any usual W / H and backing scale.
 ///
 /// Options (read with the image options, `ImageOptions.symbol`):
 /// - `MacSymbolSize` — point size of the symbol's natural size (default 16), used when the meter has no W / H.
@@ -67,8 +67,10 @@ public struct MacSymbol: Hashable {
     public static let defaultPointSize = 16.0
     /// Largest `MacSymbolSize` (points).
     public static let maxPointSize = 1024.0
-    /// Pixels per point a symbol is rendered at, at most (and at least `minDensity`).
-    public static let maxDensity = 16.0
+    /// Pixels per point a symbol is rendered at, at most (and at least `minDensity`): a 16-point symbol stays sharp up to
+    /// 512 points wide on a Retina display (1024 at 1x). The app also keeps each render within its pixel budget
+    /// (`SymbolImages.drawingPath`), so a large `MacSymbolSize` gets less.
+    public static let maxDensity = 64.0
     public static let minDensity = 0.25
 
     /// The symbol's name as written after `sf:` (`cpu.fill`).

@@ -267,6 +267,32 @@ enum MacLookSelfTests {
             t.check(!sizes.contains("nil"))
         }
 
+        t.suite("App: Mac look: a symbol drawn far larger than its size stays sharp") {
+            // W=H=256 at the default MacSymbolSize (16) on a Retina display: some 27 pixels per point.
+            guard let (skin, host) = try loadSkin(t, """
+            [Rainmeter]
+            [Big]
+            Meter=Image
+            ImageName=sf:circle.fill
+            W=256
+            H=256
+            """, label: "big-symbol") else { return }
+            withExtendedLifetime(host) {
+                guard let rep = draw(skin, scale: 2), let natural = Images.size(atPath: MacSymbol(name: "circle.fill").path)
+                else { return t.check(false, "draws") }
+                let path = SymbolImages.drawingPath(MacSymbol(name: "circle.fill").path, options: ImageOptions(),
+                                                    drawn: CGSize(width: 256, height: 256), fit: true, in: rep.cgContextForTest())
+                let expected = ((2 * min(256 / natural.width, 256 / natural.height)) * 8).rounded(.up) / 8
+                t.check(expected > 16, "more than the old limit: \(expected)")
+                t.close(MacSymbol(path: path)?.density ?? 0, expected, accuracy: 1e-9, "rendered at the pixels it covers: \(path)")
+                // Across the middle row, the edge goes from clear to opaque within a pixel or two (scaled up from a
+                // smaller render, it took three or more).
+                let row = pixels(rep, in: CGRect(x: 0, y: 256, width: 256, height: 1)).map(\.a)
+                let ramp = row.prefix { $0 < 245 }.filter { $0 > 10 }.count
+                t.check(ramp <= 2, "a sharp edge: \(row.prefix { $0 < 245 }.suffix(5))")
+            }
+        }
+
         t.suite("App: Mac look: symbols in Button, Bar and the background") {
             guard let (skin, host) = try loadSkin(t, """
             [Rainmeter]

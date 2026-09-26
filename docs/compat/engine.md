@@ -644,9 +644,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   `MacSymbolRendering` = Monochrome (default: the whole symbol white, the parts it knocks out transparent),
   Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths) or
   Multicolor (the symbol's own colors as drawn in Dark Mode, its plain layers white; ImageTint multiplies every color,
-  so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale), so it stays
-  sharp at any size. With both W and H an Image meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0
-  stretches it). A Button uses the symbol for all three states and draws it at half opacity while pressed. A name
+  so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
+  per point: a 16-point symbol stays sharp drawn 512 points wide on a Retina display). With both W and H an Image
+  meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0 stretches it). A Button uses the symbol for all three states and draws it at half opacity while pressed. A name
   macOS does not have gives a compatibility note (once) and draws nothing; when the name comes from a measure and
   changes to one macOS has, the note goes. `sf:` with no name (`sf:[MeasureIcon]` before the measure has a value)
   draws nothing and is not noted, as an empty image name. Bitmap, Rotator and Histogram images cannot
