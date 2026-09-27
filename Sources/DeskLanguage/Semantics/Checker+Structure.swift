@@ -809,25 +809,94 @@ extension Checker {
     }
 
     /// DK5022: an options-only control among elements, or a widget control written the options way.
+    /// A removal inside a line that would leave two blanks (`widget {  }`): one of them goes too.
+    func tidyRemoval(_ removal: TextEdit) -> TextEdit {
+        let r = removal.range
+        guard r.lowerBound > 0, text((r.lowerBound - 1)..<r.lowerBound) == " ", text(r.upperBound..<(r.upperBound + 1)) == " " else { return removal }
+        return edit((r.lowerBound - 1)..<r.upperBound, removal.replacement)
+    }
+
     func reportControlInWrongPlace(_ call: CallStmtSyntax, control: String) {
-        let label = call.arguments?.arguments.first.map { text($0.value.node) } ?? "\"…\""
-        let optionName = DidYouMean.lowerCamel(from: StringLiteralSyntax(call.arguments?.arguments.first?.value.node ?? call.node)?.literalValue ?? control)
-        let widgetForm: String
+        let arguments = call.arguments?.arguments ?? []
+        let labelNode = arguments.first { $0.label == nil }?.value.node
+        let labelText = labelNode.map { text($0) } ?? "\"…\""
+        let labelValue = labelNode.flatMap { StringLiteralSyntax($0)?.literalValue } ?? control
+        var name = DidYouMean.lowerCamel(from: labelValue)
+        if name.isEmpty || !Checker.isIdentifier(name) || Chars.reservedWords[name] != nil || Chars.blockWords.contains(name) {
+            name = control.prefix(1).lowercased() + control.dropFirst()
+        }
+        // The other values are read, so what they name counts as used (no DK3020 for `n` in `Stepper("N", n)`).
+        for argument in arguments where argument.value.node.range != labelNode?.range {
+            _ = infer(argument.value.node, ExprContext(), expected: nil)
+        }
+        // The options form keeps the values the control takes there (a Picker's choices), not a binding.
+        let positional = catalog.control(named: control)?.signatures.first?.params.filter { $0.label == nil }.count ?? 1
+        var kept: [String] = []
+        var seenPositional = 0
+        for argument in arguments {
+            if argument.label == nil {
+                seenPositional += 1
+                if seenPositional > positional { continue }
+            }
+            kept.append(text(argument.node))
+        }
+        let optionForm = "\(name) = \(control)(\(kept.joined(separator: ", ")))"
+        // The widget form exists for the controls that are also elements; it binds a value named like the option.
+        let initial: String?
+        var widgetForm: String?
         switch control {
-        case "Toggle": widgetForm = "Toggle(\(label), isOn)"
-        case "Slider": widgetForm = "Slider(\(label), value)"
-        case "Input": widgetForm = "Input(\(label), text)"
-        default: widgetForm = "Toggle(\(label), isOn)"
+        case "Toggle":
+            initial = "false"
+            widgetForm = "Toggle(\(labelText), \(name))"
+        case "Slider":
+            initial = "0"
+            widgetForm = "Slider(\(labelText), \(name), min: 0, max: 100)"
+        case "Input":
+            initial = "\"\""
+            widgetForm = "Input(\(labelText), \(name))"
+        default:
+            initial = nil
         }
-        let optionForm = "\(optionName) = \(text(call.node))"
         var fixIts: [FixIt] = []
-        if let options = optionsBlock, let block = options.firstChild(.block) {
-            let close = BlockSyntax(unchecked: block).rBrace.textRange.lowerBound
-            fixIts.append(fix("moveInto", [edit(call.node.range.lowerBound..<range(call.node).upperBound, ""),
-                                            edit(close..<close, "    " + optionForm + lineBreak)], ["text": .code("options")]))
+        let callRange = range(call.node)
+        // Move into `options` (a new block before `widget` when there is none).
+        if let options = optionsBlock, let block = options.firstChild(.block), BlockSyntax(unchecked: block).isClosed {
+            let piece = SyntaxEditor.Lines(lines: [optionForm], statementLine: 0, kind: nil, from: nil)
+            let editor = SyntaxEditor(tree: tree)
+            let indent = editor.isSingleLine(block) ? editor.ownerIndent(of: block) + 4 : editor.contentIndent(of: block)
+            let indented = SyntaxEditor.Lines(lines: [String(repeating: " ", count: indent) + optionForm], statementLine: 0, kind: nil, from: nil)
+            _ = piece
+            if let insertion = editor.insertion(of: indented, into: block, index: editor.statements(of: block).count) {
+                let removal = tidyRemoval(editor.removal(of: editor.extent(of: call.node)))
+                if removal.range.upperBound <= insertion.edit.range.lowerBound || insertion.edit.range.upperBound <= removal.range.lowerBound {
+                    fixIts.append(fix("moveInto", [edit(removal.range, removal.replacement), edit(insertion.edit.range, insertion.edit.replacement)],
+                                      ["text": .code("options")]))
+                }
+            }
+        } else if optionsBlock == nil, let widget = widgetBlock {
+            let at = textStart(widget)
+            let removal = tidyRemoval(SyntaxEditor(tree: tree).removal(of: SyntaxEditor(tree: tree).extent(of: call.node)))
+            fixIts.append(fix("moveInto", [edit(at..<at, "options {" + lineBreak + "    " + optionForm + lineBreak + "}" + lineBreak + lineBreak),
+                                            edit(removal.range, removal.replacement)], ["text": .code("options")]))
         }
-        report(.controlInWrongPlace, range(call.node), ["widgetForm": .code(widgetForm), "optionForm": .code(optionForm)],
-               fixIts: fixIts)
+        // Add a binding: a variable at the top of `widget`, changed by the control.
+        if let initial, let widgetForm, decls[name] == nil, let widget = widgetBlock?.firstChild(.block) {
+            let body = BlockSyntax(unchecked: widget)
+            let open = body.lBrace.textRange.upperBound
+            let firstStatement = body.statements.first.map { textStart($0) } ?? open
+            let sameLine = !text(open..<firstStatement).contains("\n") && !text(open..<firstStatement).contains("\r")
+            let indent = sameLine ? "    " : indentation(at: firstStatement)
+            let declaration = lineBreak + indent + "variable \(name) = \(initial)" + (sameLine ? lineBreak + indent : "")
+            let calleeEnd = call.arguments.map { range($0.node).upperBound } ?? range(call.callee.node).upperBound
+            fixIts.append(fix("addBinding", [edit(open..<(sameLine ? firstStatement : open), declaration),
+                                              edit(callRange.lowerBound..<calleeEnd, widgetForm)]))
+        }
+        var messageArguments: [String: DiagnosticArgument] = ["optionForm": .code(optionForm), "widget": .text(LocalizedText("", ""))]
+        if let widgetForm {
+            messageArguments["widgetForm"] = .code(widgetForm)
+            messageArguments["widget"] = hintText(.controlInWrongPlace, "widgetForm")
+        }
+        report(.controlInWrongPlace, callRange, messageArguments, fixIts: fixIts)
     }
 
     // MARK: - Menus

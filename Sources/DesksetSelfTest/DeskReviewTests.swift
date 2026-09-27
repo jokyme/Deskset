@@ -623,4 +623,21 @@ func runDeskReviewTests(_ t: TestRunner) {
         let none = deskCheck("info { name: \"T\" }\nwidget { Text(\"{battery.qqqqqq}\") }")
         t.equal(none.diagnostics.first?.message(in: .simplifiedChinese), "`battery` 没有 `qqqqqq`。")
     }
+
+    t.suite("Desk: review — controls among elements (findings 14, 77)") {
+        let toggle = deskCheck("info { name: \"T\" }\nwidget {\n    Toggle(\"Show seconds\")\n}")
+        t.equal(toggle.diagnostics.first?.message(in: .english),
+                "In the widget a control changes a value: `Toggle(\"Show seconds\", showSeconds)`. To add a setting, declare it in `options { }`: `showSeconds = Toggle(\"Show seconds\")`.")
+        let moved = deskApplyFix(toggle, "DK5022", title: "Move")
+        t.equal(moved, "info { name: \"T\" }\noptions {\n    showSeconds = Toggle(\"Show seconds\")\n}\n\nwidget {\n}")
+        let bound = deskApplyFix(toggle, "DK5022", title: "Add the value")
+        t.equal(bound, "info { name: \"T\" }\nwidget {\n    variable showSeconds = false\n    Toggle(\"Show seconds\", showSeconds)\n}")
+        t.equal(bound.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let picker = deskCheck("info { name: \"T\" }\nwidget { Picker(\"Day\", [.sunday, .monday]) }")
+        t.equal(picker.diagnostics.first?.message(in: .english), "To add a setting, declare it in `options { }`: `day = Picker(\"Day\", [.sunday, .monday])`.")
+        t.equal(picker.diagnostics.first?.message(in: .simplifiedChinese), "想加一个设置项，请在 `options { }` 里声明：`day = Picker(\"Day\", [.sunday, .monday])`。")
+        t.equal(deskApplyFix(picker, "DK5022"), "info { name: \"T\" }\noptions {\n    day = Picker(\"Day\", [.sunday, .monday])\n}\n\nwidget { }")
+        let stepper = deskCheck("info { name: \"T\" }\nwidget {\n    variable n = 0\n    Stepper(\"N\", n)\n}")
+        t.equal(stepper.diagnostics.map(\.id.rawValue), ["DK5022"], "no DK3020 for n")
+    }
 }

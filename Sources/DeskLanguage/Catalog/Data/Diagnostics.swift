@@ -1749,9 +1749,14 @@ extension CatalogData {
             id: .controlInWrongPlace, severity: .error,
             trigger: #"`Toggle("Show seconds")` among the elements; `Picker(…)` as an element"#,
             template: LocalizedText(
-                #"In the widget a control changes a value: `{widgetForm}`. To add a setting, declare it in `options { }`: `{optionForm}`."#,
-                #"在组件里，控件用来改一个值：`{widgetForm}`。想加一个设置项，请在 `options { }` 里声明：`{optionForm}`。"#),
-            placeholders: ["widgetForm": .code, "optionForm": .code],
+                #"{widget} To add a setting, declare it in `options { }`: `{optionForm}`."#,
+                #"{widget}想加一个设置项，请在 `options { }` 里声明：`{optionForm}`。"#),
+            placeholders: ["widget": .text, "widgetForm": .code, "optionForm": .code],
+            hints: [
+                // Only for the controls that are also elements (Toggle, Slider, Input); options-only controls show
+                // the options form alone.
+                HintSpec(key: "widgetForm", placeholder: "widget", text: LocalizedText(#"In the widget a control changes a value: `{widgetForm}`."#, #"在组件里，控件用来改一个值：`{widgetForm}`。"#)),
+            ],
             fixIts: [
                 FixItSpec("moveInto", arguments: ["text": #"options"#]),
                 FixItSpec("addBinding"),
