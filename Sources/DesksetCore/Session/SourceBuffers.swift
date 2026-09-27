@@ -92,16 +92,20 @@ public final class SourceBuffers: SourceProvider {
     public enum Failure: Error, Equatable, CustomStringConvertible {
         /// The file holds other text than the step left in it (changed since, in another app or by the widget).
         case changedElsewhere(URL)
+        /// The file cannot be read (gone, or not a file any more).
+        case unreadable(URL)
 
         public var description: String {
             switch self {
             case .changedElsewhere(let url): return "\(url.lastPathComponent) was changed in another app"
+            case .unreadable(let url): return "cannot read \(url.lastPathComponent)"
             }
         }
     }
 
     /// Makes `changes` (or takes them back: `reverse`) in the buffers, all or none: every file must hold the text the
-    /// changes start from (`Failure.changedElsewhere` otherwise). The buffers become dirty.
+    /// changes start from (`Failure.changedElsewhere` otherwise; `Failure.unreadable` when it cannot be read). The
+    /// buffers become dirty.
     public func apply(_ changes: [SourceChange], reverse: Bool = false) throws {
         let steps = reverse ? changes.reversed().map(\.reversed) : changes
         // Checked in order, on the text each step leaves for the next (a file may appear twice).
@@ -111,7 +115,7 @@ public final class SourceBuffers: SourceProvider {
             if let pending = texts[change.file] {
                 current = pending
             } else {
-                let buffer = try load(change.file.url)
+                guard let buffer = try? load(change.file.url) else { throw Failure.unreadable(change.file.url) }
                 current = (buffer.text, buffer.encoding)
             }
             guard TextDigest(current.text) == change.digestBefore else { throw Failure.changedElsewhere(change.file.url) }

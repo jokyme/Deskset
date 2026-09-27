@@ -90,6 +90,15 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(try buffers.text(of: other), "[Variables]\nA=1\n", "the good file was not changed either")
         buffers.forget(other)
         t.check(!buffers.contains(other))
+        // A file that is gone cannot be undone into, and says so as the editor always did.
+        try FileManager.default.removeItem(at: other)
+        do {
+            try buffers.apply([otherChange])
+            t.check(false, "a file that is gone throws")
+        } catch {
+            t.equal(error as? SourceBuffers.Failure, .unreadable(SourceFileID(other).url))
+            t.equal("\(error)", "cannot read Other.inc")
+        }
     }
 
     t.suite("Session: the INI backend writes what IniWriter writes") {
