@@ -139,3 +139,14 @@ ClockTipBody3=[MeasureSun]：极夜，今天太阳不升。
 ClockTipBody4=选择城市后显示日出和日落。
 ClockTipMoon=[#Moon[&MeasureMoonEighth:0]]，亮面 [MeasureMoonIllum:0]%。
 ClockTipChooseCity=选择日出日落所用的城市
+
+; ---------------------------------------------------------------- Sentence Clock
+SentenceMenuOpen=打开时钟
+SentenceMenuCardGlass=背景：卡片
+SentenceMenuCardFrameless=背景：无
+SentenceMenuGrid0=未亮的词：淡
+SentenceMenuGrid1=未亮的词：清晰
+SentenceMenuGlow1=深色模式发光：开
+SentenceMenuGlow0=深色模式发光：关
+SentenceMenuTime1=底部时间：显示
+SentenceMenuTime0=底部时间：隐藏

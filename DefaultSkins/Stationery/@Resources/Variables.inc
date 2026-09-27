@@ -35,3 +35,13 @@ DigitGroup=,
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
 ClockBottomLine=Sun
+
+; ---------------------------------------------------------------- Sentence Clock
+; Background: Glass (the words on a glass card) or Frameless (straight on the wallpaper, in the Ink above)
+SentenceCard=Glass
+; Unlit words: 0 subtle, 1 visible (for more contrast)
+SentenceGrid=0
+; A soft glow on the lit words in the Dark look: 1 on, 0 off
+SentenceGlow=1
+; The time in the footer: 1 shown, 0 hidden (the date stays)
+SentenceShowTime=1

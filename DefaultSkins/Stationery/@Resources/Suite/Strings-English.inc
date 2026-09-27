@@ -146,3 +146,14 @@ ClockTipBody3=" [MeasureSun]: polar night, the sun does not rise today."
 ClockTipBody4=" Choose a city to see sunrise and sunset."
 ClockTipMoon=" [#Moon[&MeasureMoonEighth:0]], [MeasureMoonIllum:0]% lit."
 ClockTipChooseCity=Choose the city for sunrise and sunset
+
+; ---------------------------------------------------------------- Sentence Clock
+SentenceMenuOpen=Open Clock
+SentenceMenuCardGlass=Background: Card
+SentenceMenuCardFrameless=Background: None
+SentenceMenuGrid0=Unlit Words: Subtle
+SentenceMenuGrid1=Unlit Words: Visible
+SentenceMenuGlow1=Glow in Dark Mode: On
+SentenceMenuGlow0=Glow in Dark Mode: Off
+SentenceMenuTime1=Footer Time: Show
+SentenceMenuTime0=Footer Time: Hide
