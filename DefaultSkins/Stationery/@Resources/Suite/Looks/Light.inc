@@ -29,6 +29,9 @@ PressedColor=0,0,0,41
 ; tiles, segmented tracks, placeholders; the selected segment's knob
 ControlFillColor=0,0,0,18
 KnobColor=255,255,255,235
+; a segmented control's labels: the selected one on the knob, the others on the track (#InkRGB#,#SegmentOnAlpha#)
+SegmentOnAlpha=#Alpha1#
+SegmentOffAlpha=#Alpha2#
 ; an InputText field's SolidColor (opaque: its alpha would fade the typed text too), and the pad under a line being
 ; edited in place
 FieldColor=255,255,255,255

@@ -18,6 +18,8 @@ HoverColor=255,255,255,38
 PressedColor=255,255,255,64
 ControlFillColor=255,255,255,38
 KnobColor=255,255,255,77
+SegmentOnAlpha=#Alpha1#
+SegmentOffAlpha=#Alpha2#
 FieldColor=50,50,52,255
 EditPadColor=255,255,255,51
 

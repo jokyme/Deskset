@@ -20,7 +20,11 @@ SeparatorColor=255,255,255,26
 HoverColor=255,255,255,26
 PressedColor=255,255,255,51
 ControlFillColor=255,255,255,31
-KnobColor=255,255,255,56
+; the knob only just lifts the glass, so the selected label in full white stays above 6:1 even where the dark glass
+; is brightest (over a white wallpaper), and the other labels take primary ink on the track
+KnobColor=255,255,255,28
+SegmentOnAlpha=255
+SegmentOffAlpha=#Alpha1#
 FieldColor=50,50,52,255
 EditPadColor=255,255,255,31
 
