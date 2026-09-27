@@ -1,7 +1,7 @@
-; Stationery · Battery — the Medium's detail column (x 176 → 344): five rows at baselines 47, 73, 99, 125 and 151, the
-; last sharing the status line's. Symbols at their natural 13 pt semibold size, centred on the column's leading slot
-; (x 186, baseline − 4.6), outline throughout; labels at X 201; values right-aligned at X 344. Original work, MIT
-; licensed. Included from [MeterCard], so the meters draw over the card; the measures come first.
+; Stationery · Battery — the Medium's detail column (x 176 → 344). Original work, MIT licensed.
+; Five rows at baselines 47, 73, 99, 125 and 151, the last sharing the status line's. Symbols at their natural 13 pt
+; semibold size, centred on the column's leading slot (x 186, baseline − 4.6), outline throughout; labels at X 201;
+; values right-aligned at X 344. Included from [MeterCard], so the meters draw over the card; the measures come first.
 
 [MeasureHealthShown]
 ; system_profiler's Maximum Capacity ("92%"); without it MacSensors' battery.health; else "--"
