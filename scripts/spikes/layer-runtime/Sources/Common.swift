@@ -167,6 +167,16 @@ func windowServerMemory() -> (mem: Double?, idleWakeups: Double?, rss: Double?) 
     return (mem, idle, rss)
 }
 
+/// The GPU's "In use system memory" (bytes, the whole system: every process's IOSurfaces, textures and buffers, the
+/// window server's included) from the accelerator's PerformanceStatistics in the I/O Registry. No root needed, byte
+/// resolution, but everything else on the screen moves it too.
+func gpuInUseMemory() -> Double? {
+    guard let out = run("/usr/sbin/ioreg", ["-r", "-c", "IOAccelerator", "-d", "1", "-w0"]),
+          let r = out.range(of: "\"In use system memory\"=") else { return nil }
+    let digits = out[r.upperBound...].prefix { $0.isNumber }
+    return Double(digits)
+}
+
 /// "1006M", "12K", "3.2G", "512B" (with an optional trailing + or -) in bytes.
 func parseSize(_ s: String) -> Double? {
     var t = s.trimmingCharacters(in: CharacterSet(charactersIn: "+-"))

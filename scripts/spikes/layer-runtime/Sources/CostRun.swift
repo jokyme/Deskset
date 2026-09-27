@@ -20,6 +20,9 @@
 //   --backdrop         an opaque, static window of ours under the whole grid, on screen in on and off phases alike:
 //                      without it, showing the widgets hides whatever animates under them (other apps), which
 //                      changes WindowServer's work by more than the widgets cost
+//   --off-shown        off phases keep the windows on screen and only stop their updates (instead of ordering them
+//                      out): the difference is then only what the updates cost, without the window server's work of
+//                      ordering windows out and in (which spills into the next phase)
 //
 // Order: warm-up, the scenario (memory, CPU phases, memory, close), then the extra WindowServer cycles, so this
 // process's memory is measured before anything else was opened and closed. Every open and close runs in its own
@@ -51,6 +54,7 @@ func costRun() -> JSON {
     let wsCycles = Int(option("--ws-cycles") ?? "") ?? 1
     let sampleTop = !flag("--no-top")
     let reshowWait = Double(option("--reshow-wait") ?? "") ?? 1.5
+    let offShown = flag("--off-shown")
     var config = Config(mode: mode)
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
@@ -67,7 +71,8 @@ func costRun() -> JSON {
     }()
     var j: JSON = ["mode": mode.rawValue, "config": config.label, "scenario": scenario, "widgets": count,
                    "phaseSeconds": seconds, "pairs": pairs, "settleSeconds": settle,
-                   "updateIntervalMs": r(interval * 1000, 2)]
+                   "updateIntervalMs": r(interval * 1000, 2),
+                   "offPhases": offShown ? "windows on screen, updates stopped" : "windows ordered out, updates stopped"]
     let mb = 1024.0 * 1024.0
 
     func footprintMedian() -> Double {
@@ -224,15 +229,15 @@ func costRun() -> JSON {
         phases.append(phase("on"))
         for w in windows {
             w.stop()
-            w.panel.orderOut(nil)
+            if !offShown { w.panel.orderOut(nil) }
         }
         pump(0.5)
         phases.append(phase("off"))
         for w in windows {
-            w.show()
+            if !offShown { w.show() }
             w.start(interval: interval)
         }
-        pump(i == pairs - 1 ? 0.5 : reshowWait)
+        pump(i == pairs - 1 ? 0.5 : offShown ? 0.5 : reshowWait)
     }
     j["phases"] = phases
     func mean(_ key: String, _ label: String) -> Double? {
@@ -250,11 +255,19 @@ func costRun() -> JSON {
     }
     cpu["provisional"] = phases.contains { $0["provisional"] as? Bool == true }
     j["cpu"] = cpu
-    // Drawing and commit cost per update on the skin's executor (all windows).
+    // Cost per update on the skin's executor (all windows): drawing before the commit (A: draw(_:) on the main
+    // thread, which only records), and the commit with its flush.
     let costs = windows.flatMap(\.frameCosts)
     if !costs.isEmpty {
-        j["frameCost"] = ["updates": costs.count, "p50us": r(percentile(costs, 0.5) * 1e6, 0),
-                          "p99us": r(percentile(costs, 0.99) * 1e6, 0)]
+        var f: JSON = ["updates": costs.count, "p50us": r(percentile(costs, 0.5) * 1e6, 0),
+                       "p99us": r(percentile(costs, 0.99) * 1e6, 0),
+                       "what": mode == .A ? "draw(_:) on the main thread (recording)" : "drawing before the commit"]
+        let commits = windows.flatMap(\.commitCosts)
+        if !commits.isEmpty {
+            f["commitP50us"] = r(percentile(commits, 0.5) * 1e6, 0)
+            f["commitP99us"] = r(percentile(commits, 0.99) * 1e6, 0)
+        }
+        j["frameCost"] = f
     }
 
     // 3. The end of the scenario: memory after all phases, 60 Hz pacing, close.
@@ -268,10 +281,15 @@ func costRun() -> JSON {
         let all = w.commitTimes
         let times = Array(all[min(lastOnCommits.lowerBound, all.count)..<min(lastOnCommits.upperBound, all.count)])
         let gaps = zip(times.dropFirst(), times).map { ($0 - $1) * 1000 }
-        j["frames"] = ["commits": times.count, "intervalP50ms": r(percentile(gaps, 0.5), 2),
-                       "intervalP99ms": r(percentile(gaps, 0.99), 2), "intervalMaxMs": r(gaps.max() ?? 0, 2),
-                       "frameCostP50us": r(percentile(w.frameCosts, 0.5) * 1e6, 0),
-                       "frameCostP99us": r(percentile(w.frameCosts, 0.99) * 1e6, 0)]
+        var frames: JSON = ["commits": times.count, "intervalP50ms": r(percentile(gaps, 0.5), 2),
+                            "intervalP99ms": r(percentile(gaps, 0.99), 2), "intervalMaxMs": r(gaps.max() ?? 0, 2),
+                            "frameCostP50us": r(percentile(w.frameCosts, 0.5) * 1e6, 0),
+                            "frameCostP99us": r(percentile(w.frameCosts, 0.99) * 1e6, 0)]
+        if !w.commitCosts.isEmpty {
+            frames["commitCostP50us"] = r(percentile(w.commitCosts, 0.5) * 1e6, 0)
+            frames["commitCostP99us"] = r(percentile(w.commitCosts, 0.99) * 1e6, 0)
+        }
+        j["frames"] = frames
         if flag("--frames") && canCapture { j["onScreen"] = sampleFrames(w, seconds: 5) }
     }
     close(&windows)
@@ -421,18 +439,22 @@ func memTrace() -> JSON {
 }
 
 /// `wsmem`: WindowServer's footprint when a fresh process opens `--count` widgets of one scenario and mode, updating
-/// at the scenario's rate: median of 3 `top` samples before, after 8 s, and after closing them. One open per process,
+/// at the scenario's rate: median of 5 `top` samples before, after 8 s, and after closing them. One open per process,
 /// so WindowServer cannot reuse memory it kept from an earlier window of ours. Several windows per process (default
 /// 20 System widgets, 5 design skins, 5 visualizers) so the step stands out of `top`'s 1 MB resolution.
+/// WindowServer's footprint also jumps by ±100 MB on its own now and then; a round counts as clean when the footprint
+/// went back to where it started after the windows closed (open step + close step within ±2 MB). Also recorded:
+/// WindowServer's resident size (`ps`, KB; without GPU memory) and the GPU's "In use system memory" (the whole system,
+/// this process's surfaces included).
 ///   --scenario ten|design|sixty  --count N  --mode --window-cs --format as for `cost`
 func windowServerMemoryRun() -> JSON {
     let mode = choice("--mode", Mode.EP)
     let scenario = scenarioOption()
-    let (make, defaultCount, interval): (() -> Widget, Int, Double) = {
+    let (make, defaultCount, interval, columns): (() -> Widget, Int, Double, Int) = {
         switch scenario {
-        case "design": return ({ Widgets.design() }, 5, 1.0)
-        case "sixty": return ({ Widgets.visualizer() }, 5, 1.0 / 60)
-        default: return ({ Widgets.system() }, 20, 1.0)
+        case "design": return ({ Widgets.design() }, 5, 1.0, 4)
+        case "sixty": return ({ Widgets.visualizer() }, 5, 1.0 / 60, 5)
+        default: return ({ Widgets.system() }, 20, 1.0, 5)
         }
     }()
     let count = Int(option("--count") ?? "") ?? defaultCount
@@ -441,14 +463,22 @@ func windowServerMemoryRun() -> JSON {
     config.windowSpace = choice("--window-cs", WindowSpace.default)
     config.baseSurface = mode == .DP
     let mb = 1024.0 * 1024.0
-    func wsMedian() -> Double? {
-        let v = (0..<3).compactMap { _ in windowServerMemory().mem }
-        return v.isEmpty ? nil : median(v) / mb
+    /// Medians of 5 samples: WindowServer's footprint (`top`) and resident size (`ps`), the GPU's memory in use.
+    func sample() -> (mem: Double?, rss: Double?, gpu: Double?) {
+        var mem: [Double] = [], rss: [Double] = [], gpu: [Double] = []
+        for _ in 0..<5 {
+            let w = windowServerMemory()
+            if let m = w.mem { mem.append(m / mb) }
+            if let r = w.rss { rss.append(r / mb) }
+            if let g = gpuInUseMemory() { gpu.append(g / mb) }
+        }
+        return (mem.isEmpty ? nil : median(mem), rss.isEmpty ? nil : median(rss), gpu.isEmpty ? nil : median(gpu))
     }
     var threads: [RunLoopThread] = []
     var windows: [SkinWindow] = []
     let load0 = loadAverage()
-    let before = wsMedian()
+    let pressure0 = memoryPressure()
+    let before = sample()
     let footprint0 = physFootprint()
     var size = CGSize.zero
     autoreleasepool {
@@ -456,7 +486,8 @@ func windowServerMemoryRun() -> JSON {
             let widget = make()
             size = widget.size
             threads.append(RunLoopThread.make("skin \(i)"))
-            let w = SkinWindow(widget, config, origin: gridOrigin(i, size: widget.size, columns: 5), thread: threads[i])
+            let w = SkinWindow(widget, config, origin: gridOrigin(i, size: widget.size, columns: columns),
+                               thread: threads[i])
             w.buildAndCommit(tick: 0)
             w.show()
             w.start(interval: interval)
@@ -464,14 +495,15 @@ func windowServerMemoryRun() -> JSON {
         }
     }
     pump(8)
-    let open = wsMedian()
+    let open = sample()
     let footprint1 = physFootprint()
+    let layerBytes = windows.reduce(0) { $0 + $1.layerBitmapBytes }
     autoreleasepool {
         for w in windows { w.close() }
         windows = []
     }
     pump(2)
-    let closed = wsMedian()
+    let closed = sample()
     for t in threads { t.stop() }
     let scale = NSScreen.main?.backingScaleFactor ?? 2
     let windowPixels = Double(size.width * scale * size.height * scale)
@@ -479,12 +511,26 @@ func windowServerMemoryRun() -> JSON {
                    "updateIntervalMs": r(interval * 1000, 2),
                    "oneBitmapOfTheWindowMB": r(windowPixels * 4 / mb, 3),
                    "footprintIncreasePerWidgetMB": r((footprint1 - footprint0) / mb / Double(count), 3),
-                   "memoryPressure": memoryPressure(), "loadAverageAtStart": load0]
-    if let before, let open {
-        j["windowServerBeforeMB"] = r(before, 0)
-        j["windowServerOpenStepMB"] = r(open - before, 1)
-        j["windowServerOpenStepPerWidgetMB"] = r((open - before) / Double(count), 2)
-        if let closed { j["windowServerCloseStepMB"] = r(closed - open, 1) }
+                   "layerBitmapsPerWidgetMB": r(Double(layerBytes) / mb / Double(count), 3),
+                   "memoryPressure": pressure0, "memoryPressureAtEnd": memoryPressure(),
+                   "loadAverageAtStart": load0]
+    if let a = before.mem, let b = open.mem {
+        j["windowServerBeforeMB"] = r(a, 0)
+        j["windowServerOpenStepMB"] = r(b - a, 1)
+        j["windowServerOpenStepPerWidgetMB"] = r((b - a) / Double(count), 2)
+        if let c = closed.mem {
+            j["windowServerCloseStepMB"] = r(c - b, 1)
+            j["windowServerBackToStart"] = abs(c - a) <= 2
+        }
+    }
+    if let a = before.rss, let b = open.rss, let c = closed.rss {
+        j["windowServerResidentOpenStepMB"] = r(b - a, 2)
+        j["windowServerResidentCloseStepMB"] = r(c - b, 2)
+    }
+    if let a = before.gpu, let b = open.gpu, let c = closed.gpu {
+        j["gpuInUseOpenStepMB"] = r(b - a, 1)
+        j["gpuInUseCloseStepMB"] = r(c - b, 1)
+        j["gpuInUseOpenStepPerWidgetMB"] = r((b - a) / Double(count), 2)
     }
     return j
 }

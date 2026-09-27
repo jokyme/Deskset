@@ -8,6 +8,7 @@
 #                                                     wsmem probes
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
+#   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
 #   scripts/spikes/layer-runtime/run.sh --only sixty cost   only the cost / wscpu / wsmem runs of one scenario
 #   scripts/spikes/layer-runtime/run.sh --round 1 --combo ten-A cost
 #                                                     only these rounds (repeatable) and cost / wscpu / memtrace
@@ -22,6 +23,7 @@
 set -euo pipefail
 
 ROUNDS=3
+WSMEM_ROUNDS=5
 ONLY=""
 PICK_ROUNDS=""
 PICK_COMBOS=""
@@ -30,11 +32,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --rounds) ROUNDS="${2:-}"; [[ "$ROUNDS" =~ ^[1-9][0-9]*$ ]] || { echo "--rounds needs a number" >&2; exit 2; }
                   shift 2 ;;
+        --wsmem-rounds) WSMEM_ROUNDS="${2:-}"
+                        [[ "$WSMEM_ROUNDS" =~ ^[1-9][0-9]*$ ]] || { echo "--wsmem-rounds needs a number" >&2; exit 2; }
+                        shift 2 ;;
         --only) ONLY="${2:-}"; shift 2 ;;
         --round) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "--round needs a number" >&2; exit 2; }
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
-        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
         env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click) STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
@@ -168,7 +173,9 @@ for step in "${STEPS[@]}"; do
             done ;;
         wscpu)
             # WindowServer's CPU moves by several % of a core between phases on a busy screen: many short on / off
-            # pairs (2 s each, no `top` sampling in between) for the main combinations.
+            # pairs (2 s each, no `top` sampling in between) for the main combinations. The windows stay on screen
+            # in the off phases (only their updates stop), so ordering windows out and in does not spill into the
+            # phases.
             for r in $(seq 1 "$ROUNDS"); do
                 for entry in "${WSCPU[@]}"; do
                     set -- $entry
@@ -176,12 +183,12 @@ for step in "${STEPS[@]}"; do
                     shift 2
                     wanted "$r" "$scenario" "$name" || continue
                     run "wscpu/$scenario-$name-r$r" cost --scenario "$scenario" --seconds 2 --pairs 10 --settle 5 \
-                        --ws-cycles 0 --no-top --reshow-wait 1 --backdrop "$@"
+                        --ws-cycles 0 --no-top --off-shown --backdrop "$@"
                 done
             done ;;
         wsmem)
             # One opening per process: 20 System widgets, 5 design skins or 5 visualizers at 60 Hz.
-            for r in $(seq 1 "$ROUNDS"); do
+            for r in $(seq 1 "$WSMEM_ROUNDS"); do
                 for scenario in ten design sixty; do
                     [[ -z "$ONLY" || "$scenario" == "$ONLY" ]] || continue
                     for spec in "A default" "E1 srgb" "EP srgb" "D1 srgb" "DP srgb"; do

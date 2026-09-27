@@ -79,6 +79,8 @@ def cost(directory="cost"):
         ("windowServerIdleWakeupsPerSecondIncrease", "cpu.windowServerIdleWakeupsPerSecondIncrease"),
         ("frameCostP50us", "frameCost.p50us"),
         ("frameCostP99us", "frameCost.p99us"),
+        ("commitCostP50us", "frameCost.commitP50us"),
+        ("commitCostP99us", "frameCost.commitP99us"),
         ("openAllMs", "openAllMs"),
         ("commitIntervalP50ms", "frames.intervalP50ms"),
         ("commitIntervalP99ms", "frames.intervalP99ms"),
@@ -123,6 +125,9 @@ def cost(directory="cost"):
 
 
 def wsmem():
+    """One opening per process. A round is clean when WindowServer's footprint went back to where it started after the
+    windows closed (the spike's windowServerBackToStart): the medians of the WindowServer steps use clean rounds only
+    (all rounds are listed too)."""
     groups = {}
     for path in sorted(glob.glob(os.path.join(RESULTS, "wsmem", "*.json"))):
         name = os.path.basename(path)[:-5]
@@ -130,16 +135,26 @@ def wsmem():
         groups.setdefault(combo, []).append(load(path))
     out = {}
     for combo, runs in sorted(groups.items()):
-        e = {"rounds": len(runs), "config": runs[0].get("config"), "scenario": runs[0].get("scenario"),
-             "widgets": runs[0].get("widgets"), "oneBitmapOfTheWindowMB": runs[0].get("oneBitmapOfTheWindowMB")}
-        for key in ("windowServerOpenStepMB", "windowServerOpenStepPerWidgetMB", "windowServerCloseStepMB",
-                    "windowServerBeforeMB", "footprintIncreasePerWidgetMB"):
+        clean = [run for run in runs if run.get("windowServerBackToStart")]
+        e = {"rounds": len(runs), "cleanRounds": len(clean), "config": runs[0].get("config"),
+             "scenario": runs[0].get("scenario"), "widgets": runs[0].get("widgets"),
+             "oneBitmapOfTheWindowMB": runs[0].get("oneBitmapOfTheWindowMB")}
+        for key in ("windowServerOpenStepMB", "windowServerOpenStepPerWidgetMB", "windowServerCloseStepMB"):
+            st = stats([run.get(key) for run in clean])
+            if st:
+                e[key + "Clean"] = st
+        for key in ("windowServerOpenStepMB", "windowServerOpenStepPerWidgetMB", "windowServerBeforeMB",
+                    "windowServerResidentOpenStepMB", "gpuInUseOpenStepMB", "gpuInUseOpenStepPerWidgetMB",
+                    "gpuInUseCloseStepMB", "footprintIncreasePerWidgetMB", "layerBitmapsPerWidgetMB"):
             st = stats([run.get(key) for run in runs])
             if st:
                 e[key] = st
         e["values"] = [run.get("windowServerOpenStepMB") for run in runs]
         e["closeValues"] = [run.get("windowServerCloseStepMB") for run in runs]
+        e["gpuValues"] = [run.get("gpuInUseOpenStepMB") for run in runs]
         e["memoryPressureLevels"] = sorted({dig(run, "memoryPressure.pressureLevel") for run in runs} - {None})
+        loads = [run.get("loadAverageAtStart", [None])[0] for run in runs]
+        e["loadAverage1mAtStartMax"] = max([l for l in loads if l is not None], default=None)
         out[combo] = e
     return out
 
@@ -191,8 +206,8 @@ def main():
     print("## Cost table (median (min–max) over rounds)\n")
     print("| combination | rounds | load max | process MB (all widgets) | process MB/widget | layer bitmaps MB/widget "
           "| WS open step MB | process CPU % | WS CPU on / off % | WS increase per pair % | wakeups/s (intr / idle) "
-          "| frame cost p50 µs |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+          "| frame cost p50 µs | commit p50 µs |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for combo, e in summary["cost"].items():
         flag = " (provisional)" if e["provisional"] else ""
         print(f"| {combo}{flag} | {e['rounds']} | {e['loadAverage1mMax']} | {m(e, 'footprintIncreaseMB', 1)} "
@@ -202,7 +217,7 @@ def main():
               f"| {m(e, 'windowServerPercentOfOneCore', 1)} / {m(e, 'windowServerPercentOfOneCoreOff', 1)} "
               f"| {m(e, 'windowServerIncreasePerPair', 1)} "
               f"| {m(e, 'interruptWakeupsPerSecond', 1)} / {m(e, 'idleWakeupsPerSecond', 1)} "
-              f"| {m(e, 'frameCostP50us', 0)} |")
+              f"| {m(e, 'frameCostP50us', 0)} | {m(e, 'commitCostP50us', 0)} |")
     print("\n## WindowServer CPU, many short on / off pairs (wscpu)\n")
     print("| combination | rounds | load max | process CPU % | WS CPU on / off % | WS increase per pair % | pairs |")
     print("|---|---|---|---|---|---|---|")
@@ -214,13 +229,15 @@ def main():
               f"| {m(e, 'windowServerIncreasePerPair', 2)} (mean {e.get('windowServerIncreasePerPair', {}).get('mean')} "
               f"± {e.get('windowServerIncreasePerPair', {}).get('standardError')}) | {pairs} |")
     print("\n## WindowServer memory, several widgets opened once per process (wsmem)\n")
-    print("| scenario | mode | widgets | rounds | WS open step MB (each round) | per widget MB | close step MB (each round) "
-          "| one window bitmap MB | process MB/widget |")
-    print("|---|---|---|---|---|---|---|---|---|")
+    print("| scenario | mode | widgets | clean / rounds | WS open step MB, clean rounds (all rounds) | per widget MB (clean) "
+          "| close steps MB | GPU in use: open step MB per widget | process MB/widget | layer bitmaps MB/widget |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     for combo, e in summary["wsmem"].items():
-        print(f"| {e['scenario']} | {e['config']} | {e['widgets']} | {e['rounds']} | {e['values']} "
-              f"| {m(e, 'windowServerOpenStepPerWidgetMB')} | {e['closeValues']} | {e['oneBitmapOfTheWindowMB']} "
-              f"| {m(e, 'footprintIncreasePerWidgetMB')} |")
+        print(f"| {e['scenario']} | {e['config']} | {e['widgets']} | {e['cleanRounds']} / {e['rounds']} "
+              f"| {m(e, 'windowServerOpenStepMBClean', 1)} ({e['values']}) "
+              f"| {m(e, 'windowServerOpenStepPerWidgetMBClean')} | {e['closeValues']} "
+              f"| {m(e, 'gpuInUseOpenStepPerWidgetMB')} | {m(e, 'footprintIncreasePerWidgetMB')} "
+              f"| {m(e, 'layerBitmapsPerWidgetMB')} |")
     print("\n## 60 Hz\n")
     print("| combination | commit interval p50 / p99 / max ms | on screen: distinct frames / committed "
           "| longest same frame ms | frame change p99 ms |")

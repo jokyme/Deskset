@@ -91,14 +91,18 @@ final class ContentHostView: NSView {
 /// Today's SkinView: draws the whole skin in draw(_:) on the main thread.
 final class SkinDrawView: NSView {
     var paint: ((CGContext) -> Void)?
+    /// How long each draw(_:) took (recording the display list; the rasterization happens later, elsewhere).
+    var onDrawn: ((Double) -> Void)?
     var label = "A"
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let start = now()
         noteContext(ctx, label)
         ctx.clear(bounds)
         paint?(ctx)
+        onDrawn?(now() - start)
     }
 }
 
@@ -288,12 +292,22 @@ final class SkinWindow {
     private let statsLock = NSLock()
     private var _commitTimes: [Double] = []
     private var _frameCosts: [Double] = []
+    private var _commitCosts: [Double] = []
     var commitTimes: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _commitTimes }
+    /// Drawing of one update on the skin's executor, before the commit (A: its draw(_:), recording only).
     var frameCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _frameCosts }
-    private func record(commit: Double, cost: Double?) {
+    /// CATransaction.commit plus flush of one update on the skin's executor (layered modes).
+    var commitCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _commitCosts }
+    private func record(commit: Double, cost: Double?, commitCost: Double? = nil) {
         statsLock.lock()
         _commitTimes.append(commit)
         if let cost { _frameCosts.append(cost) }
+        if let commitCost { _commitCosts.append(commitCost) }
+        statsLock.unlock()
+    }
+    private func recordDraw(_ cost: Double) {
+        statsLock.lock()
+        _frameCosts.append(cost)
         statsLock.unlock()
     }
     private var timer: Timer?
@@ -313,6 +327,7 @@ final class SkinWindow {
             let v = SkinDrawView(frame: container.bounds)
             v.label = config.label
             v.paint = { [unowned self] ctx in widget.draw(ctx, tick: tick) }
+            v.onDrawn = { [unowned self] d in recordDraw(d) }
             container.addSubview(v)
             drawView = v
         } else {
@@ -394,6 +409,7 @@ final class SkinWindow {
         // layer on the main thread, must not reach it once it is gone (seen at 60 Hz: "read an unowned reference
         // but object was already destroyed").
         drawView?.paint = nil
+        drawView?.onDrawn = nil
         if config.mode.isLayered {
             onSkinSync { [self] in
                 for l in groupLayers { l.paint = nil }
@@ -711,7 +727,8 @@ final class SkinWindow {
         let b = now()
         CATransaction.commit()
         if !Thread.isMainThread { CATransaction.flush() }
-        record(commit: now(), cost: b - a)
+        let c = now()
+        record(commit: c, cost: b - a, commitCost: c - b)
     }
 
     /// Bytes of bitmaps this window's runtime owns itself (D surface pools, the base bitmap, the scratch bitmap).
