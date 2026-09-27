@@ -357,15 +357,16 @@ InlineSetting5=None
 InlineSetting6=None
 
 [sMissing]
-; slot 7: a missing or loading value ("--"), or an event that does not happen ("—"), in Tertiary
+; slot 7: a missing or loading value ("--", "--°", "--%"), or an event that does not happen ("—"), in Tertiary; a
+; unit after it keeps the unit's colour
 InlineSetting7=Color | #TertiaryTextColor#
-InlinePattern7=^(--|—)
+InlinePattern7=^((?:--|—)(?:°|%)?)
 
 [sWordValue]
 ; slots 7–10: a value that is a word ("Unplugged", "All day") is supporting text: SF Pro 500 in Secondary. It brings
 ; sMissing's slot 7 along, so it works with or without it.
 InlineSetting7=Color | #TertiaryTextColor#
-InlinePattern7=^(--|—)
+InlinePattern7=^((?:--|—)(?:°|%)?)
 InlineSetting8=Face | #FontText#
 InlinePattern8=^(\p{L}[\p{L} ]*)$
 InlineSetting9=Weight | 500
@@ -378,7 +379,8 @@ InlinePattern10=^(\p{L}[\p{L} ]*)$
 [sCard]
 ; The card: the first meter of every widget (Meter=Shape). One piece of glass, with the look's veil drawn over it;
 ; no outline, no shadow. Set CardW, CardH and OpenAction (the card's click, which opens the widget's Mac app; empty
-; for the tools) in the widget's [Variables], and the widget's sentence in ToolTipText.
+; for the tools) in the widget's [Variables], the widget's sentence in ToolTipText, and how often the sentence is read
+; again: UpdateDivider=60, or -1 in the group the widget updates when its data changes (the Clock's minute tick).
 Shape=Rectangle 0,0,#CardW#,#CardH#,#CardRadius# | Fill Color #Veil# | StrokeWidth 0
 MacGlass=#Glass#
 MacGlassTint=#GlassTint#
@@ -466,7 +468,8 @@ W=(#CardW# - 32)
 ClipString=1
 
 [sNoticeBodySmall]
-; MeterStyle=sCaption | sNoticeBodySmall: centred, up to three lines from baseline 99
+; MeterStyle=sCaption | sNoticeBodySmall: centred, up to three lines from baseline 99 (Deskset's line pitch at 11 pt
+; is 12.95, so the next baselines are 112 and 125)
 StringAlign=Center
 X=(#CardW# / 2)
 Y=(99 - #Ascent11#)

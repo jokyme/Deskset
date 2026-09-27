@@ -60,15 +60,16 @@ FontNumber=System Rounded
 FontMono=System Mono
 FontSerif=System Serif
 ; ascent and cap height by point size: Y = baseline − ascent; a symbol centred on a line of text has its centre at
-; baseline − cap height ÷ 2
-Ascent9=8.70
-Ascent10=9.67
-Ascent11=10.63
-Ascent13=12.57
-Ascent15=14.50
+; baseline − cap height ÷ 2. The ascents are rounded up, never down: Deskset snaps a line's baseline down to the next
+; device pixel, so a baseline a hair below a whole point (94.0027 from 44.47) would land half a point low.
+Ascent9=8.702
+Ascent10=9.668
+Ascent11=10.635
+Ascent13=12.569
+Ascent15=14.502
 Ascent22=21.27
-Ascent40=38.67
-Ascent46=44.47
+Ascent40=38.672
+Ascent46=44.473
 CapHeight9=6.34
 CapHeight11=7.75
 CapHeight13=9.16
