@@ -370,6 +370,62 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(skin.definingFiles(ofSection: "Extra").count, 1, "(the disk copy has only its header file)")
     }
 
+    t.suite("Session: a new instance takes the graphs and the counter of the running one") {
+        let ini = """
+            [Rainmeter]
+            [MeasureCPU]
+            Measure=CPU
+            [MeasureCount]
+            Measure=Calc
+            Formula=Counter
+            [Graph]
+            Meter=Line
+            MeasureName=MeasureCPU
+            MeasureName2=MeasureCount
+            LineCount=2
+            W=20
+            H=10
+            [Bars]
+            Meter=Histogram
+            MeasureName=MeasureCPU
+            W=20
+            H=10
+            [Other]
+            Meter=Line
+            MeasureName=MeasureCPU
+            W=20
+            H=10
+            """
+        let system = FakeSystem()
+        let (running, host) = try makeSkin(t, ini, system: system)
+        for i in 0..<5 {
+            system.cpu = Double(10 * (i + 1))
+            running.update()
+        }
+        let fresh = Skin(config: running.config, fileURL: running.fileURL, skinsDirectory: running.skinsDirectory,
+                         system: system, host: host)
+        try fresh.load()
+        fresh.seed(from: running)
+        guard let graph = fresh.meter(named: "Graph") as? LineMeter, let was = running.meter(named: "Graph") as? LineMeter,
+              let bars = fresh.meter(named: "Bars") as? HistogramMeter,
+              let barsWere = running.meter(named: "Bars") as? HistogramMeter else { return t.check(false, "meters") }
+        t.equal(graph.lines.map { $0.history.count }, [5, 5], "every line's samples")
+        t.equal((0..<5).map { graph.lines[0].history.value(age: $0) }, [50, 40, 30, 20, 10], "newest first")
+        t.equal((0..<5).map { graph.lines[1].history.value(age: $0) }, (0..<5).map { was.lines[1].history.value(age: $0) })
+        t.equal((0..<5).map { bars.primaryHistory.value(age: $0) }, (0..<5).map { barsWere.primaryHistory.value(age: $0) })
+        t.equal(fresh.counter, running.counter, "the counter goes on")
+        system.cpu = 60
+        fresh.update()
+        t.equal(graph.lines[0].history.value(age: 0), 60, "and the graph goes on from there")
+        t.equal(graph.lines[0].history.value(age: 1), 50)
+        t.equal(fresh.counter, running.counter + 1)
+        // A meter of another kind under the same name takes nothing.
+        let other = try makeSkin(t, ini.replacingOccurrences(of: "[Other]\nMeter=Line", with: "[Other]\nMeter=Histogram"),
+                                 system: system).0
+        other.seed(from: running)
+        t.equal((other.meter(named: "Other") as? HistogramMeter)?.primaryHistory.count, 0)
+    }
+
     t.suite("Session: the Studio's instance runs what stays inside the widget") {
         let ini = """
             [Rainmeter]

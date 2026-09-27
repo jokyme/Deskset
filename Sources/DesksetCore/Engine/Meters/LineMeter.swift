@@ -84,6 +84,12 @@ public final class LineMeter: Meter {
         computeRange()
     }
 
+    /// Takes the samples of `other`'s lines, line by line: a new instance of a widget then shows the graph the one
+    /// already running shows (`Skin.seed(from:)`).
+    func takeHistory(from other: LineMeter) {
+        for i in lines.indices where i < other.lines.count { lines[i].history = other.lines[i].history }
+    }
+
     private func computeRange() {
         var lo = Double.infinity, hi = -Double.infinity
         for line in lines {

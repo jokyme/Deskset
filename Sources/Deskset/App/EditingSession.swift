@@ -124,8 +124,9 @@ final class EditingSession {
 
     /// Loads the Studio's own instance again from the text in memory — after buffers without edits of their own took
     /// what changed on disk — and tells the Studio window. The Calc `Counter` goes on from the old instance, which is
-    /// closed once the new one had its first update (nothing in between shows nothing). Keeps the old one when the
-    /// widget's file cannot be read.
+    /// closed once the new one had its first update (nothing in between shows nothing); the first instance takes the
+    /// counter and the graphs of the widget on the desktop (`Skin.seed`). Keeps the old one when the widget's file
+    /// cannot be read.
     @discardableResult
     func reloadStudioSkin(notify: Bool = true) -> Skin? {
         guard let fileURL else { return studioSkin }
@@ -147,7 +148,14 @@ final class EditingSession {
         // The desktop copy registered the widget's fonts already; a new font file is registered here.
         if Fonts.registerFonts(for: skin) { app.fontsChanged() }
         let old = studioSkin
-        if let old { skin.continueCounter(from: old) }
+        if let old {
+            skin.continueCounter(from: old)
+        } else if let running = runningDesktop?.skin, running.executor.isCurrent,
+                  SourceFileID(running.fileURL) == SourceFileID(fileURL) {
+            // Opened: the canvas shows the graphs and the counter of the widget on the desktop, as it did when it drew
+            // that one (a widget on a thread of its own is not read from here).
+            skin.seed(from: running)
+        }
         skin.update()
         studioSkin = skin
         startUpdates(skin)

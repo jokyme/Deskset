@@ -9,6 +9,7 @@ enum StudioSessionSelfTests {
 
     static func run(_ t: AppTestRunner) {
         ownInstanceTests(t)
+        seedingTests(t)
         undoStackTests(t)
         filesElsewhereTests(t)
         insideTests(t)
@@ -106,6 +107,44 @@ enum StudioSessionSelfTests {
             editor.window?.undoManager?.undo()
             editor.window?.undoManager?.undo()
             t.equal(read(url), ini, "back to the bytes it started from")
+            editor.window?.close()
+        }
+    }
+
+    static func seedingTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: the Studio opens on the graphs the desktop shows") {
+            guard let app = try AppSelfTest.makeApp(t) else { return }
+            let folder = app.skinsDirectory.appendingPathComponent("Studio/Graph")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try """
+                [Rainmeter]
+                Update=1000
+
+                [MeasureCount]
+                Measure=Calc
+                Formula=Counter % 7
+                MaxValue=7
+
+                [MeterGraph]
+                Meter=Line
+                MeasureName=MeasureCount
+                W=40
+                H=20
+
+                """.write(to: folder.appendingPathComponent("Graph.ini"), atomically: true, encoding: .utf8)
+            guard let c = app.activate(config: "Studio\\Graph", file: "Graph.ini") else { return t.check(false, "loads") }
+            for _ in 0..<6 { c.skin.update() }
+            guard let desktop = c.skin.meter(named: "MeterGraph") as? LineMeter else { return t.check(false, "graph") }
+            let shown = (0..<desktop.lines[0].history.count).map { desktop.lines[0].history.value(age: $0) }
+            app.showInspector(for: c)
+            guard let editor = app.inspector, let studio = editor.skin?.meter(named: "MeterGraph") as? LineMeter else {
+                return t.check(false, "the Studio shows the graph")
+            }
+            t.check(editor.skin !== c.skin)
+            let history = studio.lines[0].history
+            t.equal(history.count, shown.count + 1, "the desktop's samples and the Studio's first")
+            t.equal((1...shown.count).map { history.value(age: $0) }, shown, "the desktop's samples, in order")
+            t.equal(editor.skin?.counter, c.skin.counter + 1, "the counter goes on from the desktop's")
             editor.window?.close()
         }
     }
