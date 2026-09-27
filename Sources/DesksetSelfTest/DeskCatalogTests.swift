@@ -644,7 +644,8 @@ func runDeskCatalogTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: catalog page fields for the editor") {
-        // STUDIO-DESIGN §9.9: section, labels in both languages, control, presets, level, units and range, long sample.
+        // What the editor's generated pages read: section, labels in both languages, control, presets, level, units and
+        // range, long sample.
         for f in c.facets {
             let page = f.page
             t.check(page.label.isComplete, "facet \(f.id): page label")
@@ -775,7 +776,7 @@ func runDeskCatalogTests(_ t: TestRunner) {
             t.equal(d.severity, expected, "\(d.id.rawValue) \(d.id.symbolicName)")
         }
         t.equal(c.diagnostic(.variableFromData)?.escalation?.severity, .warning, "DK4046 is a warning when never assigned")
-        // §6.5: DESK-DESIGN §7's messages, in Chinese as the design wrote them.
+        // §6.5: the design's own examples of messages, in Chinese as the design wrote them.
         t.equal(c.diagnostic(.unknownModifier)?.render(.simplifiedChinese, ["name": "colour", "suggestion": "color"]),
                 "没有 `.colour`，是不是想写 `.color`？")
         t.equal(c.diagnostic(.missingOptionsPrefix)?.render(.simplifiedChinese, ["name": "weekStart"]),
@@ -792,7 +793,7 @@ func runDeskCatalogTests(_ t: TestRunner) {
                 t.check((try? NSRegularExpression(pattern: regex)) != nil, "\(row.pattern): not a valid pattern")
             }
         }
-        // DESK-DESIGN §7 and the guessing test: the first thing people write gets its Desk spelling.
+        // The design's examples and the guessing test: the first thing people write gets its Desk spelling.
         let expected: [(String, String, DiagnosticID)] = [
             ("VStack", "Column", .swiftUIComponent), (".foregroundColor", ".color({0})", .swiftUIModifier),
             (".cornerRadius", ".rounded({0})", .swiftUIModifier), (".fontSize", ".font({0})", .otherFrameworkName),
