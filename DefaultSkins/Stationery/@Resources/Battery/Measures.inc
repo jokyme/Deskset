@@ -120,13 +120,14 @@ Substitute="(?s)^.*cycle_count=(\d+).*$":"\1","(?s)^(?!\d+$).*$":"--","(\d)(?=(\
 
 [MeasureServiceKey]
 ; 1 when macOS says the battery needs service: system_profiler's battery_health is neither "Good" nor "Normal"
+; (on any line, the last one too)
 Measure=String
 String=[MeasureProfile]
 DynamicVariables=1
 UpdateDivider=-1
 Group=Profile
 RegExpSubstitute=1
-Substitute="(?s)^.*battery_health=(Good|Normal)\n.*$":"0","(?s)^.*battery_health=.*$":"1","(?s)^(?!0$|1$).*$":"0"
+Substitute="(?s)^.*battery_health=(?:Good|Normal)(?:\n.*)?$":"0","(?s)^.*battery_health=.*$":"1","(?s)^(?!0$|1$).*$":"0"
 
 [MeasureAdapterText]
 ; the adapter's watts ("96"), "--" before the first run

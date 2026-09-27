@@ -152,7 +152,7 @@ Disabled=#SystemSortBy#
 Group=TopCPU
 
 [MeasureTopCPU1Text]
-; "7%", "<1%", or nothing when there is no 1th process
+; "7%", "<1%", or nothing when there is no first process
 Measure=String
 String=[MeasureTopCPU1]|[MeasureTopCPU1Pct:0]
 DynamicVariables=1
@@ -199,7 +199,7 @@ Disabled=#SystemSortBy#
 Group=TopCPU
 
 [MeasureTopCPU2Text]
-; "7%", "<1%", or nothing when there is no 2th process
+; "7%", "<1%", or nothing when there is no second process
 Measure=String
 String=[MeasureTopCPU2]|[MeasureTopCPU2Pct:0]
 DynamicVariables=1
@@ -246,7 +246,7 @@ Disabled=#SystemSortBy#
 Group=TopCPU
 
 [MeasureTopCPU3Text]
-; "7%", "<1%", or nothing when there is no 3th process
+; "7%", "<1%", or nothing when there is no third process
 Measure=String
 String=[MeasureTopCPU3]|[MeasureTopCPU3Pct:0]
 DynamicVariables=1
@@ -293,7 +293,7 @@ Disabled=#SystemSortBy#
 Group=TopCPU
 
 [MeasureTopCPU4Text]
-; "7%", "<1%", or nothing when there is no 4th process
+; "7%", "<1%", or nothing when there is no fourth process
 Measure=String
 String=[MeasureTopCPU4]|[MeasureTopCPU4Pct:0]
 DynamicVariables=1
@@ -332,7 +332,7 @@ RegExpSubstitute=1
 Substitute="^System$":"#SystemOtherUsers#","^com\.apple\.WebKit\.WebContent$":"#SystemWebContent#","^com\.apple\.WebKit\.GPU$":"#SystemWebGraphics#","^com\.apple\.WebKit\.Networking$":"#SystemWebNetworking#","^(.+?) Helper \((Renderer|GPU|Plugin)\)$":"\1 (\2)"
 
 [MeasureTopMem1Text]
-; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no 1th process
+; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no first process
 Measure=String
 String=[MeasureTopMem1]|[MeasureTopMem1:/1073741824,1]|[MeasureTopMem1:/1048576,0]
 DynamicVariables=1
@@ -363,7 +363,7 @@ RegExpSubstitute=1
 Substitute="^System$":"#SystemOtherUsers#","^com\.apple\.WebKit\.WebContent$":"#SystemWebContent#","^com\.apple\.WebKit\.GPU$":"#SystemWebGraphics#","^com\.apple\.WebKit\.Networking$":"#SystemWebNetworking#","^(.+?) Helper \((Renderer|GPU|Plugin)\)$":"\1 (\2)"
 
 [MeasureTopMem2Text]
-; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no 2th process
+; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no second process
 Measure=String
 String=[MeasureTopMem2]|[MeasureTopMem2:/1073741824,1]|[MeasureTopMem2:/1048576,0]
 DynamicVariables=1
@@ -394,7 +394,7 @@ RegExpSubstitute=1
 Substitute="^System$":"#SystemOtherUsers#","^com\.apple\.WebKit\.WebContent$":"#SystemWebContent#","^com\.apple\.WebKit\.GPU$":"#SystemWebGraphics#","^com\.apple\.WebKit\.Networking$":"#SystemWebNetworking#","^(.+?) Helper \((Renderer|GPU|Plugin)\)$":"\1 (\2)"
 
 [MeasureTopMem3Text]
-; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no 3th process
+; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no third process
 Measure=String
 String=[MeasureTopMem3]|[MeasureTopMem3:/1073741824,1]|[MeasureTopMem3:/1048576,0]
 DynamicVariables=1
@@ -425,7 +425,7 @@ RegExpSubstitute=1
 Substitute="^System$":"#SystemOtherUsers#","^com\.apple\.WebKit\.WebContent$":"#SystemWebContent#","^com\.apple\.WebKit\.GPU$":"#SystemWebGraphics#","^com\.apple\.WebKit\.Networking$":"#SystemWebNetworking#","^(.+?) Helper \((Renderer|GPU|Plugin)\)$":"\1 (\2)"
 
 [MeasureTopMem4Text]
-; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no 4th process
+; "3.1 GB" from a gigabyte, "684 MB" below it, nothing when there is no fourth process
 Measure=String
 String=[MeasureTopMem4]|[MeasureTopMem4:/1073741824,1]|[MeasureTopMem4:/1048576,0]
 DynamicVariables=1
