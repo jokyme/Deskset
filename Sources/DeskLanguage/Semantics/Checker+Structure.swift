@@ -635,6 +635,11 @@ extension Checker {
 
         if path.count == 1, nameToken.isUpperName, let spec = catalog.component(named: path[0]) {
             if requiresNewer != nil || true { noteSince(spec.doc.since, name: spec.name, at: calleeRange) }
+            // `Image(systemName: "wifi")` → `Icon("wifi")` (§6.4), before the arguments are bound.
+            if reportForeignCallLabel(call) {
+                if let block = call.block { checkGuessedBlock(block.node, context) }
+                return
+            }
             checkElement(call, spec: spec, context)
             return
         }

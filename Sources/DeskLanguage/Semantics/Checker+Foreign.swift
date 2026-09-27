@@ -462,6 +462,31 @@ extension Checker {
 
     /// A foreign modifier: `.foregroundColor(…)`, `.fontSize(…)`, `.corner(…)`, `.colour(…)`. Returns true when
     /// reported.
+    /// A foreign-table row keyed on a modifier's first argument (`.padding(.horizontal, …)`, `.font(.system(…))`),
+    /// for a modifier that exists in Desk too.
+    func foreignArgumentRow(_ modifier: ModifierAppSyntax) -> ForeignSpec? {
+        guard let first = modifier.arguments?.arguments.first, first.label == nil else { return nil }
+        let written = text(first.value.node)
+        for row in index.foreignRows("." + modifier.name.token.name) {
+            guard case .modifierWithArgument(_, let argument) = row.pattern, argument.hasPrefix(".") else { continue }
+            if written == argument || written.hasPrefix(argument + "(") { return row }
+        }
+        return nil
+    }
+
+    /// `Image(systemName: "wifi")`, `Label("Wi-Fi", systemImage: "wifi")`: a Desk component written with a foreign
+    /// label. Reports the foreign table's rewrite; false when there is no such row.
+    func reportForeignCallLabel(_ call: CallStmtSyntax) -> Bool {
+        guard call.callee.path.count == 1 else { return false }
+        let labels = call.arguments?.arguments.compactMap { $0.label?.name } ?? []
+        guard !labels.isEmpty else { return false }
+        for row in index.foreignRows(call.callee.path[0]) {
+            guard case .call(_, let label) = row.pattern, !label.isEmpty, labels.contains(label) else { continue }
+            return reportForeignComponent(call)
+        }
+        return false
+    }
+
     func reportForeignModifier(_ modifier: ModifierAppSyntax, element: ElementNode?) -> Bool {
         let name = modifier.name.token.name
         let arguments = modifier.arguments?.arguments ?? []

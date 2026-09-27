@@ -445,6 +445,8 @@ final class Checker {
         let key = "\(id.rawValue)@\(range.lowerBound)-\(range.upperBound)"
         guard reportedKeys.insert(key).inserted else { return false }
         let severity = severity ?? catalog.diagnostic(id)?.severity ?? .error
+        // A fix-it that changes nothing is never offered (§9.4).
+        let fixIts = fixIts.filter { fix in fix.edits.contains { !($0.range.isEmpty && $0.replacement.isEmpty) } }
         diagnostics.append(Diagnostic(id: id, severity: severity, file: file ?? self.file, range: range,
                                       arguments: arguments, notes: notes, fixIts: fixIts, dropped: dropped))
         return true

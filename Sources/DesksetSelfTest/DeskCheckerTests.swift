@@ -223,7 +223,7 @@ func runDeskCheckerTests(_ t: TestRunner) {
         t.equal(deskIDs(of: "options { days = Slider(\"Days\", 1...14) }\nwidget { Text(\"{options.days}\") }"), ["DK4003"])
         // Labels on positional parameters are removed.
         let size = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").size(width: 28, height: 24) }")
-        t.equal(size.diagnostics.map(\.id.rawValue), ["DK3006", "DK3006"])
+        t.equal(size.diagnostics.map(\.id.rawValue), ["DK3006"], "one diagnostic for the call")
         t.equal(size.diagnostics.first?.message(in: .english), "`.size` has no `width:`. It takes its values without labels: `.size(28, 24)`.")
         // `else:` becomes a plain value and the conditional one.
         let elseLabel = deskCheck("info { name: \"T\" }\nwidget {\n    variable hot = false\n    Text(\"A\").color(.red, if: hot, else: .green)\n}")

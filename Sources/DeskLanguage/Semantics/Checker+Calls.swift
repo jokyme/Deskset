@@ -724,6 +724,7 @@ extension Checker {
                              allSignatures: [Signature]? = nil) {
         let labels = signature.params.filter { $0.role != .condition || calleeName == ".style" }.compactMap(\.label)
         let positionalNames = Set((allSignatures ?? [signature]).flatMap { $0.params.filter { $0.label == nil }.map(\.name) })
+        var reportedPositionalLabels = false
         for i in indices {
             let argument = arguments[i]
             guard let label = argument.label else { continue }
@@ -750,17 +751,35 @@ extension Checker {
                 let full = callRangeIncludingName(clauseNode, calleeName: calleeName)
                 fixIts.append(fix("rewrite", [edit(full, fixed)]))
             } else if positionalNames.contains(name) || (labels.isEmpty && !signature.params.isEmpty) {
-                // Labels on positional parameters: remove them.
+                // Labels on positional parameters: one diagnostic for the call, whose fix-it removes them all —
+                // only when the values without labels fit a signature (§4.3, D132).
+                if reportedPositionalLabels { continue }
+                reportedPositionalLabels = true
                 let all = clause?.arguments ?? []
-                let fixed = calleeName + "(" + all.map { text($0.value.node) }.joined(separator: ", ") + ")"
-                arguments["hint"] = hintText(.unknownLabel, "noLabelsNeeded")
-                arguments["fixed"] = .code(fixed)
-                var edits: [TextEdit] = []
-                for a in all where a.label != nil && positionalNames.contains(a.label!.name) {
-                    let start = textStart(a.node)
-                    edits.append(edit(start..<textStart(a.value.node), ""))
+                let removable = all.filter { a in a.label.map { positionalNames.contains($0.name) || !labels.contains($0.name) } ?? false }
+                let fixed = calleeName + "(" + all.map { a in
+                    removable.contains { $0.node.range == a.node.range } || a.label == nil ? text(a.value.node) : text(a.node)
+                }.joined(separator: ", ") + ")"
+                let values = all.filter { a in a.label == nil || removable.contains { $0.node.range == a.node.range } }.map(\.value.node)
+                if positionalFit(values, signatures: allSignatures ?? [signature], context) {
+                    arguments["hint"] = hintText(.unknownLabel, "noLabelsNeeded")
+                    arguments["fixed"] = .code(fixed)
+                    let edits = removable.map { a in edit(textStart(a.node)..<textStart(a.value.node), "") }
+                    if !edits.isEmpty { fixIts.append(fix("removeLabels", edits)) }
+                } else if calleeName == ".font", name == "weight", let first = all.first, first.label == nil,
+                          first.value.node.kind == .implicitMemberExpr, let clauseNode = clause?.node {
+                    // `.font(.title, weight: .bold)`: a preset sets the weight softly; `.bold()` after it wins (§4.8.3).
+                    let weight = text(argument.value.node)
+                    let rewritten = weight == ".bold" ? ".font(\(text(first.value.node))).bold()" : ".font(\(text(first.value.node)))"
+                    arguments["hint"] = hintText(.unknownLabel, "presetWeight")
+                    arguments["fixed"] = .code(rewritten)
+                    if weight == ".bold", all.count == 2 {
+                        fixIts.append(fix("rewrite", [edit(callRangeIncludingName(clauseNode, calleeName: calleeName), rewritten)]))
+                    }
+                } else {
+                    arguments["hint"] = labels.isEmpty ? hintText(.unknownLabel, "noLabels") : hintText(.unknownLabel, "takes")
+                    arguments["labels"] = .list(labels.map { .code($0 + ":") }, joiner: .and)
                 }
-                fixIts.append(fix("removeLabels", edits))
             } else if labels.isEmpty {
                 arguments["hint"] = hintText(.unknownLabel, "noLabels")
             } else {
@@ -772,6 +791,20 @@ extension Checker {
                 }
             }
             report(.unknownLabel, labelRange, arguments, fixIts: fixIts)
+        }
+    }
+
+    /// Whether values written without labels fit the positional parameters of one of the signatures.
+    func positionalFit(_ values: [PositionedNode], signatures: [Signature], _ context: ExprContext) -> Bool {
+        signatures.contains { signature in
+            let positional = signature.params.filter { $0.label == nil }
+            guard values.count <= positional.count, positional.prefix(values.count).count == values.count,
+                  positional.dropFirst(values.count).allSatisfy({ !$0.required }) else { return false }
+            for (value, param) in zip(values, positional) {
+                let val = speculate { infer(value, context, expected: param.type) }
+                if val.error || cost(val, param) == nil { return false }
+            }
+            return true
         }
     }
 

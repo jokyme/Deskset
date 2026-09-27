@@ -671,4 +671,29 @@ func runDeskReviewTests(_ t: TestRunner) {
         let message = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").onClick { log(\"{event.dx}\") } }").diagnostics.first
         t.equal(message?.message(in: .english), "`event` has no `dx`. In `.onClick`, `event` has `x`, `y`, `xPercent` and `yPercent`.")
     }
+
+    t.suite("Desk: review — foreign arguments on Desk names and labels (findings 18, 34, 62, 74)") {
+        let cases: [(String, String, String)] = [
+            ("Text(\"A\").padding(.horizontal, 6)", "DK9102", "Text(\"A\").padding(horizontal: 6)"),
+            ("Text(\"A\").font(.system(size: 13, weight: .bold, design: .monospaced))", "DK9102", "Text(\"A\").font(13, .bold, .mono)"),
+            ("Text(\"CPU\").font(.system(size: 13, weight: .bold))", "DK9102", "Text(\"CPU\").font(13, .bold)"),
+            ("Text(\"A\").font(.custom(\"Menlo\", size: 13))", "DK9102", "Text(\"A\").font(\"Menlo\", 13)"),
+            ("Image(systemName: \"wifi\")", "DK9101", "Icon(\"wifi\")"),
+            ("Text(\"A\").size(width: 28, height: 24)", "DK3006", "Text(\"A\").size(28, 24)"),
+            ("Text(\"A\").font(.title, weight: .bold)", "DK3006", "Text(\"A\").font(.title).bold()"),
+        ]
+        for (code, id, fixed) in cases {
+            let checked = deskCheck("info { name: \"T\" }\nwidget { \(code) }")
+            t.equal(checked.diagnostics.map(\.id.rawValue), [id], code)
+            let applied = deskApplyFix(checked, id)
+            t.equal(applied, "info { name: \"T\" }\nwidget { \(fixed) }", code)
+            t.equal(applied.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [], "\(code) after the fix")
+        }
+        // No fix-it without edits, anywhere in the fixtures.
+        for (name, text) in deskFixtureTexts() {
+            for d in deskCheck(text, file: "F.desk").diagnostics {
+                for f in d.fixIts where f.titleKey != "jumpToLine" { t.check(!f.edits.isEmpty, "\(name): \(d.id.rawValue) fix-it with no edits") }
+            }
+        }
+    }
 }

@@ -230,6 +230,14 @@ extension Checker {
         symbols[nodeID] = .builtIn(.modifier(name))
         noteSince(spec.doc.since, name: "." + name, at: nameRange)
         noteDeprecated(spec.doc, name: "." + name, at: nameRange)
+        // A Desk modifier written with a SwiftUI argument: `.padding(.horizontal, 6)`, `.font(.system(size: 13))`,
+        // `.font(.custom("Menlo", size: 13))` — the foreign table's exact rewrite, before the arguments are bound.
+        if let row = foreignArgumentRow(modifier) {
+            reportForeignModifierRow(row, modifier: modifier)
+            quietlyCheckArguments(modifier, element: element, context)
+            element?.facts.dropped.append(.modifier(nodeID))
+            return result
+        }
 
         var exprContext = ExprContext()
         exprContext.place = styleName != nil ? .style : .views

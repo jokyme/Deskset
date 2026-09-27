@@ -765,6 +765,7 @@ extension CatalogData {
                 HintSpec(key: "noLabelsNeeded", text: LocalizedText(#"It takes its values without labels: `{fixed}`."#, #"它的值不带名字：`{fixed}`。"#)),
                 HintSpec(key: "noLabels", text: LocalizedText(#"It takes no labels."#, #"它不带任何名字。"#)),
                 HintSpec(key: "elseLabel", text: LocalizedText(#"Write a plain value and the conditional one: `{fixed}`."#, #"先写不带条件的值，再写带条件的：`{fixed}`。"#)),
+                HintSpec(key: "presetWeight", text: LocalizedText(#"A text style sets its own weight; change it after the style: `{fixed}`."#, #"文字预设自带字重；在预设后面再改：`{fixed}`。"#)),
             ],
             fixIts: [
                 FixItSpec("didYouMean", offeredWhen: LocalizedText(#"When one close name fits"#, #"只有一个相近的名字符合时"#)),
