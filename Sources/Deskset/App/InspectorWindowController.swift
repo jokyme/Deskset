@@ -104,6 +104,9 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// A change on disk came in while a gesture, a color or the code's commit was being written: looked at again on the
     /// next tick.
     var pendingDiskCheck = false
+    /// The desktop copy wrote its files while the session reloaded it, during a gesture, a color or the code's commit:
+    /// the Studio's instance follows on the next tick (`followDesktopWrites`).
+    var pendingStudioReload = false
     /// Until the user zooms, the canvas keeps fitting the skin whenever the canvas or the skin changes size.
     var autoFit = true
     /// Settings ▸ Editor ▸ "Refresh the skin when the file is saved elsewhere" (state.json).
@@ -1353,16 +1356,24 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         for part in attachParts(c) { part.work() }
     }
 
-    /// The widget on the desktop was loaded again (a new controller). After a step the session wrote, only the link
-    /// changes; after any other refresh (the widget's menu, `!Refresh`, Refresh All, another variant) the Studio's
-    /// instance loads again too, as the editor showed the refreshed widget before (an image may have changed).
+    /// The widget on the desktop was loaded again (a new controller). After a reload the session asked for (a step,
+    /// an undo, a live reload: `EditingSession.takeOwnReload`) only the link changes — and what the widget wrote to its
+    /// files as it loaded is taken as its own (`absorbDesktopWrites`); after any other refresh (the widget's menu,
+    /// `!Refresh`, Refresh All, another variant) the Studio's instance loads again too, as the editor showed the
+    /// refreshed widget before (an image may have changed). Either way the widget's writes so far are its own
+    /// (`keyValueWrites`).
     func desktopReloaded(_ c: SkinController) {
         guard let session else { return }
+        let own = session.takeOwnReload(c)
         controller = c
         config = c.config
         keyValueWrites = c.skin.keyValueWrites
         let otherFile = session.bind(desktop: c)
-        guard !session.isRefreshingDesktop || otherFile else { return }
+        if own && !otherFile {
+            session.absorbDesktopWrites()
+            return
+        }
+        session.absorbDesktopWrites(notify: false)
         session.reloadStudioSkin()
     }
 
@@ -1923,6 +1934,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// Live values (every half second), and a look at the files a change on disk was put off for (`checkFilesOnDisk`).
     func tick() {
         guard let c = controller, !c.isStopped else { return }
+        if pendingStudioReload { followDesktopWrites() }
         if pendingDiskCheck { checkFilesOnDisk() }
         refreshLiveValues()
         updateCanvasOverlays()
@@ -1935,26 +1947,50 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     ///
     /// When the widget is not reloaded — it wrote its own files with `!WriteKeyValue` (Rainmeter does not refresh for
     /// that either), or live reload is off — the session's text and the code pane still take the change: a clean buffer
-    /// holding the old text would otherwise write it back over the change with the next keystroke's commit. Put off while
-    /// a gesture, a color or the code's commit is being written (the next tick looks again).
+    /// holding the old text would otherwise write it back over the change with the next keystroke's commit. (The
+    /// Studio's instance took the clicks that made the widget write — `Skin.inputMirror` — so it shows what the desktop
+    /// shows without loading again.) A file saved again with the same bytes, or only touched, reloads the widget too, as
+    /// a save does (an image or a font it uses may have changed). Put off while a gesture, a color or the code's commit
+    /// is being written, and while a reload the session asked for is on its way (what the widget writes as it loads is
+    /// its own): the next tick looks again.
     func checkFilesOnDisk() {
         guard let session, let c = controller, !c.isStopped else { return }
-        guard geometryBases.isEmpty, colorValue == nil, !committingCode else {
+        guard geometryBases.isEmpty, colorValue == nil, !committingCode, !session.isAwaitingOwnReload else {
             pendingDiskCheck = true
             return
         }
         pendingDiskCheck = false
-        guard !session.filesChangedOnDisk().isEmpty else { return }
+        let changed = session.filesChangedOnDisk()
+        let touched = session.filesTouchedOnDisk()
+        guard !changed.isEmpty || !touched.isEmpty else { return }
         let skinWroteThem = c.skin.keyValueWrites != keyValueWrites
         keyValueWrites = c.skin.keyValueWrites
         session.takeChangesFromDisk()
         if skinWroteThem || !liveReload {
-            codeFilesChangedOnDisk()
+            // Its own writes of the same bytes are seen too.
+            session.diskSync.restamp()
+            if !changed.isEmpty { codeFilesChangedOnDisk() }
             return refreshLiveValues()
         }
         toast.show("Files changed on disk — reloaded the widget")
         session.reloadStudioSkin()
         session.refreshDesktop()
+    }
+
+    /// The widget on the desktop wrote its files while the session reloaded it (`SessionChange.desktopWroteFiles`): the
+    /// Studio's instance loads from the text in memory, which took the writes, so the canvas, the inspector and the code
+    /// agree with what the desktop shows. Put off while a gesture, a color or the code's commit is being written.
+    func followDesktopWrites() {
+        guard let session else { return }
+        guard geometryBases.isEmpty, colorValue == nil, !committingCode else {
+            pendingStudioReload = true
+            return
+        }
+        pendingStudioReload = false
+        let before = skin
+        session.reloadStudioSkin()
+        // Not loaded again (no Studio instance, or its file cannot be read now): the code pane re-reads the files.
+        if skin === before { codeFilesChangedOnDisk() }
     }
 
     /// The skin's files changed on disk and the skin is not refreshed: the code pane re-reads them from the session

@@ -107,9 +107,9 @@ public final class DiskSync {
     }
 
     /// The held files (or those of `files`) saved again with the bytes the buffers last saw, or only touched: their
-    /// modification date moved. Each is reported once (the date is taken as seen). Files whose bytes changed are left
-    /// to `changedOnDisk`.
-    public func touchedOnDisk(_ files: [URL]? = nil) -> [URL] {
+    /// modification date moved. Each is reported once (the date is taken as seen; not with `marking` false). Files
+    /// whose bytes changed are left to `changedOnDisk`.
+    public func touchedOnDisk(_ files: [URL]? = nil, marking: Bool = true) -> [URL] {
         let ids = files.map { $0.map(SourceFileID.init) } ?? buffers.files
         var touched: [URL] = []
         for id in ids {
@@ -117,7 +117,7 @@ public final class DiskSync {
             let date = SourceDisk.modificationDate(id)
             guard date != buffer.diskDate else { continue }
             guard (try? SourceDisk.read(id, reportingAs: id.url)) == disk else { continue }
-            buffers.markSeen(id, date: date)
+            if marking { buffers.markSeen(id, date: date) }
             touched.append(id.url)
         }
         return touched

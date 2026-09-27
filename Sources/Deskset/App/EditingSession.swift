@@ -16,6 +16,10 @@ enum SessionChange {
     /// Files of the widget changed on disk (another app saved them, or the widget ran `!WriteKeyValue`): what is taken
     /// is the Studio's call (live reload).
     case filesChangedOnDisk([URL])
+    /// The widget on the desktop wrote these files while the session reloaded it (an OnCloseAction, an OnRefreshAction,
+    /// a first update's `!WriteKeyValue`, a script): its own write, which the text in memory took. The Studio's instance
+    /// follows it; nothing reloads the widget on the desktop again.
+    case desktopWroteFiles([URL])
 }
 
 /// The Studio window showing a session.
@@ -71,8 +75,12 @@ final class EditingSession {
     private let watcher = SourceWatcher()
     private var updates: SkinScheduledWork?
     private var updatesPaused = false
-    /// True while the session reloads the widget on the desktop after writing a step (`refreshDesktop`).
-    private(set) var isRefreshingDesktop = false
+    /// A reload of the widget on the desktop the session asked for (`refreshDesktop`) that has not arrived yet: the
+    /// desktop copy that comes of it is the session's own (`takeOwnReload`) — what it writes while it loads is its own
+    /// write, not a change made elsewhere, and no second reload follows it. The copy arrives inside the reload on the
+    /// main thread, later from a thread of its own; a reload that fails never arrives, so the wait has an end.
+    private var awaitedReload: (key: String, deadline: Date)?
+    static let ownReloadTimeout: TimeInterval = 5
     /// How long the phases of the last step, undo or redo took (milliseconds): `plan`, `apply`, `write`, `studio`
     /// (loading the Studio's instance and the Studio following it), `desktop`, `total`.
     private(set) var lastTimings: [String: Double] = [:]
@@ -154,6 +162,9 @@ final class EditingSession {
                         host: host)
         skin.sourceProvider = buffers
         skin.actionPolicy = host.policy
+        // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
+        host.policy.resetFiles()
+        let stamps = diskSync.modificationDates()
         do {
             try skin.load()
         } catch {
@@ -177,6 +188,7 @@ final class EditingSession {
             skin.mirrorCounter(of: mirrored)
         }
         skin.update()
+        takeOwnWrites(since: stamps)
         if let mirrored { skin.takeGraphs(from: mirrored) }
         studioSkin = skin
         startUpdates(skin)
@@ -221,8 +233,23 @@ final class EditingSession {
         updates = skin.executor.timer(interval: interval, leeway: SkinController.timerTolerance(interval), repeats: true) {
             [weak self, weak skin] in
             guard let self, let skin, self.studioSkin === skin else { return }
+            let stamps = self.diskSync.modificationDates()
             skin.update()
+            self.takeOwnWrites(since: stamps)
         }
+    }
+
+    /// A safety net: a file of the widget the Studio's instance changed while it loaded or updated (its scripts and
+    /// downloads write to a private copy, so nothing should) is the session's own write — the text in memory takes it
+    /// and no live reload follows, which would load the instance again, and it would write again.
+    private func takeOwnWrites(since stamps: [SourceFileID: Date]) {
+        let now = diskSync.modificationDates(stamps.keys.map(\.url))
+        let written = stamps.filter { now[$0.key] != $0.value }.map(\.key.url)
+        guard !written.isEmpty else { return }
+        diskSync.adoptChanges(written)
+        diskSync.restamp()
+        Log.write("Studio: the widget's own instance wrote \(written.map(\.lastPathComponent).joined(separator: ", "))",
+                  level: .debug, source: config)
     }
 
     // MARK: Steps
@@ -412,30 +439,72 @@ final class EditingSession {
     // MARK: The desktop and the disk
 
     /// Reloads the widget on the desktop from the files (after a step is written), or loads it again when an earlier
-    /// reload could not (the files may be fixed since).
+    /// reload could not (the files may be fixed since). The copy that comes of it is the session's own
+    /// (`takeOwnReload`), and what the widget writes to its files meanwhile — the old copy's OnCloseAction, the new
+    /// one's OnRefreshAction or first update — is its own write (`absorbDesktopWrites`), not a change made elsewhere
+    /// that would reload it again (and again, when it writes something new each time it loads).
     func refreshDesktop() {
         guard let c = currentDesktop ?? desktop else { return }
         let state = Self.signposter.beginInterval("desktop.refresh")
         defer { Self.signposter.endInterval("desktop.refresh", state) }
-        isRefreshingDesktop = true
-        defer { isRefreshingDesktop = false }
+        let key = SkinLibrary.normalizedConfigName(c.config).lowercased()
+        awaitedReload = (key, Date().addingTimeInterval(Self.ownReloadTimeout))
         if app.controller(for: c.config) === c {
             app.refresh(c)
         } else if app.controller(for: c.config) == nil, c.isStopped {
             app.activate(config: c.config, file: c.file)
         }
+        // Nothing loaded (the file is broken): no copy will arrive.
+        let loaded = app.controller(for: c.config)
+        if loaded == nil || loaded === c { awaitedReload = nil }
+        absorbDesktopWrites()
     }
 
-    /// FSEvents saw files of the widget touched: those that really changed (not the session's own writes) are for the
-    /// Studio window to decide about.
+    /// Whether a reload of the desktop copy the session asked for is still on its way (changes on disk wait for it: they
+    /// may be what it writes as it loads).
+    var isAwaitingOwnReload: Bool {
+        guard let awaited = awaitedReload else { return false }
+        guard Date() < awaited.deadline else {
+            awaitedReload = nil
+            return false
+        }
+        return true
+    }
+
+    /// The desktop copy `c` arrived: true when it is the reload the session asked for (which then ends).
+    func takeOwnReload(_ c: SkinController) -> Bool {
+        guard isAwaitingOwnReload, let awaited = awaitedReload,
+              awaited.key == SkinLibrary.normalizedConfigName(c.config).lowercased() else { return false }
+        awaitedReload = nil
+        return true
+    }
+
+    /// What the widget on the desktop wrote to its files while it was reloaded is its own write, as when it writes them
+    /// as it runs: buffers without edits of their own take it (the dates too, for a write of the same bytes), and —
+    /// unless `notify` is false — the Studio window hears of it (`desktopWroteFiles`: its instance follows). Returns the
+    /// files taken.
+    @discardableResult
+    func absorbDesktopWrites(notify: Bool = true) -> [URL] {
+        let adopted = diskSync.adoptChanges()
+        diskSync.restamp()
+        if notify, !adopted.isEmpty { client?.session(self, didChange: .desktopWroteFiles(adopted)) }
+        return adopted
+    }
+
+    /// FSEvents saw files of the widget touched: those that really changed (not the session's own writes) — or were
+    /// saved again with the same bytes (an image or a font the widget uses may have changed) — are for the Studio window
+    /// to decide about.
     private func filesTouched(_ files: [URL]) {
         let changed = diskSync.changedOnDisk(files)
-        guard !changed.isEmpty else { return }
+        guard !changed.isEmpty || !diskSync.touchedOnDisk(files, marking: false).isEmpty else { return }
         client?.session(self, didChange: .filesChangedOnDisk(changed))
     }
 
     /// The files whose bytes on disk differ from what the buffers last saw.
     func filesChangedOnDisk() -> [URL] { diskSync.changedOnDisk() }
+
+    /// The files saved again with the bytes the buffers last saw, or only touched, since last asked.
+    func filesTouchedOnDisk() -> [URL] { diskSync.touchedOnDisk() }
 
     /// Buffers without edits of their own take what changed on disk. Returns the files that changed.
     @discardableResult

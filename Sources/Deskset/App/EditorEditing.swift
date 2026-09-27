@@ -848,6 +848,8 @@ extension InspectorWindowController: EditingSessionClient {
             NSSound.beep()
         case .filesChangedOnDisk:
             checkFilesOnDisk()
+        case .desktopWroteFiles:
+            followDesktopWrites()
         }
     }
 }

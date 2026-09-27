@@ -12,6 +12,8 @@ enum StudioSessionSelfTests {
         seedingTests(t)
         undoStackTests(t)
         filesElsewhereTests(t)
+        ownWritesTests(t)
+        followTests(t)
         insideTests(t)
         failureTests(t)
         typingTests(t)
@@ -272,11 +274,211 @@ enum StudioSessionSelfTests {
             t.check(app.controller(for: "Studio\\Watched") === written, "no reload for the Studio's own write")
             t.check(editor.skin === studio)
 
-            // The same bytes saved again change nothing.
+            // The same bytes saved again (an editor that always writes, `touch`): reloaded as a save is, since an image
+            // or a font the widget uses may have changed — the text in memory has nothing to take.
             try Data(contentsOf: url).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(30)], ofItemAtPath: url.path)
+            _ = AppSelfTest.spin(timeout: 10) { app.controller(for: "Studio\\Watched") !== written }
+            t.check(app.controller(for: "Studio\\Watched") !== written, "the same bytes saved again: reloaded")
+            t.check(editor.skin !== studio, "the Studio's instance too")
+            let touched = app.controller(for: "Studio\\Watched")
             RunLoop.main.run(until: Date().addingTimeInterval(1))
-            t.check(app.controller(for: "Studio\\Watched") === written, "the same bytes: no reload")
+            t.check(app.controller(for: "Studio\\Watched") === touched, "once")
+            // With live reload off, nothing reloads (and the touch is not reported again later).
+            editor.liveReload = false
+            defer { editor.liveReload = true }
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: url.path)
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
+            t.check(app.controller(for: "Studio\\Watched") === touched, "live reload off")
+            editor.liveReload = true
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            editor.checkFilesOnDisk()
+            t.check(app.controller(for: "Studio\\Watched") === touched, "that touch was seen")
             editor.window?.close()
+        }
+    }
+
+    /// Every desktop copy of `config` seen while the run loop runs for `seconds` (kept alive, so none is counted twice).
+    static func reloads(_ app: AppController, _ config: String, during seconds: TimeInterval) -> Int {
+        var seen: [SkinController] = app.controller(for: config).map { [$0] } ?? []
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            if let c = app.controller(for: config), !seen.contains(where: { $0 === c }) { seen.append(c) }
+        }
+        return seen.count - 1
+    }
+
+    static func ownWritesTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: what the widget writes as it reloads is its own") {
+            // Writes a new value each time it closes: taken for a change made elsewhere, it would reload the widget,
+            // which writes again, and so on.
+            let seeded = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
+                [Rainmeter]
+                Update=1000
+                OnCloseAction=[!WriteKeyValue Variables Seed [MeasureRandom]]
+
+                [MeasureRandom]
+                Measure=Calc
+                Formula=Random
+                LowBound=1
+                HighBound=1000000000
+                UpdateRandom=1
+
+                """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nSeed=0\n")
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Seeded", seeded) else { return }
+            guard let session = editor.session else { return t.check(false, "session") }
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+            t.check(read(url).contains("FontSize=20\n"), "written")
+            t.check(!read(url).contains("Seed=0\n"), "and the old copy wrote its seed as it closed")
+            t.equal(session.buffers.buffer(url)?.text, read(url), "the memory took the widget's own write")
+            t.equal(editor.skin?.variable("Seed"), app.controller(for: "Studio\\Seeded")?.skin.variable("Seed"),
+                    "the Studio's instance follows it")
+            let toast = editor.toastText
+            t.check(toast.hasPrefix("Changed"), toast)
+            t.equal(reloads(app, "Studio\\Seeded", during: 1.5), 0, "no reload follows, let alone a loop")
+            t.equal(editor.toastText, toast, "the step's toast stays")
+            t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            // The same after an undo (refused here: the widget changed the file the step left) and the Refresh button.
+            editor.refreshSkin()
+            t.equal(reloads(app, "Studio\\Seeded", during: 1.5), 0, "after Refresh")
+            t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            editor.window?.close()
+        }
+
+        t.suite("App: studio session: a widget that counts its loads counts one per step") {
+            let counting = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
+                [Rainmeter]
+                Update=1000
+                OnRefreshAction=[!WriteKeyValue Variables Loads (#Loads#+1)]
+
+                """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nLoads=0\n")
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Counting", counting) else { return }
+            guard let session = editor.session else { return t.check(false, "session") }
+            func loads() -> Int? {
+                read(url).components(separatedBy: "\n").first { $0.hasPrefix("Loads=") }.flatMap { Int($0.dropFirst(6)) }
+            }
+            _ = AppSelfTest.spin(timeout: 5) { loads() == 1 }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            t.equal(loads(), 1, "the desktop copy counted its first load")
+            t.equal(session.host.policy.recorded.filter { $0.name == "writekeyvalue" }.count, 1,
+                    "the Studio's instance did not write")
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+            t.equal(loads(), 2, "one load for the step")
+            t.equal(session.buffers.buffer(url)?.text, read(url), "taken into memory")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "21")
+            t.equal(reloads(app, "Studio\\Counting", during: 1.5), 0, "no reload follows")
+            t.equal(loads(), 2, "no more loads")
+            if editor.isCodeVisible { t.check(editor.codeView.text.contains("Loads=2"), "the code pane follows") }
+            // And again for the next step.
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "22", own: true)], name: "Change Font Size")
+            t.equal(loads(), 3)
+            t.equal(reloads(app, "Studio\\Counting", during: 1), 0)
+            editor.window?.close()
+        }
+
+        t.suite("App: studio session: a script that rewrites an include as it loads does not start a loop") {
+            let generated = ini.replacingOccurrences(of: "[Variables]\n", with: "[Variables]\n@Include=Gen.inc\n")
+                + """
+
+                [MeasureGen]
+                Measure=Script
+                ScriptFile=gen.lua
+
+                """
+            let lua = """
+                function Initialize()
+                  local f = io.open(SKIN:MakePathAbsolute('Gen.inc'), 'w')
+                  f:write('[Variables]\\nGen=' .. os.time() .. '-' .. math.random(1, 1000000000) .. '\\n')
+                  f:close()
+                end
+                function Update() return 0 end
+                """
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Generated", generated,
+                                                       files: ["Generated/gen.lua": lua, "Generated/Gen.inc": "[Variables]\nGen=0\n"])
+            else { return }
+            guard let session = editor.session else { return t.check(false, "session") }
+            let gen = url.deletingLastPathComponent().appendingPathComponent("Gen.inc")
+            let written = read(gen)
+            t.check(written.hasPrefix("[Variables]\nGen=") && written != "[Variables]\nGen=0\n", "the desktop copy wrote it")
+            t.equal(reloads(app, "Studio\\Generated", during: 1.5), 0, "opening the Studio reloads nothing")
+            t.equal(read(gen), written, "the Studio's instance wrote to a copy of its own")
+            t.check(session.host.policy.recorded.contains { $0.kind == .file && $0.text.hasSuffix("Gen.inc") },
+                    "and that was recorded: \(session.host.policy.recorded.map(\.text))")
+            t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            // A step reloads the desktop copy, which writes it again: its own write.
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "19", own: true)], name: "Change Font Size")
+            t.check(read(gen) != written, "written by the reloaded desktop copy")
+            t.equal(session.buffers.buffer(gen)?.text, read(gen), "taken into memory")
+            t.equal(reloads(app, "Studio\\Generated", during: 1.5), 0, "no loop")
+            t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            editor.window?.close()
+        }
+    }
+
+    static func followTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: the canvas follows clicks on the widget on the desktop") {
+            let paged = """
+                [Rainmeter]
+                Update=1000
+
+                [Variables]
+                Theme=light
+
+                [Tab2]
+                Meter=Image
+                SolidColor=0,0,0
+                W=20
+                H=20
+                LeftMouseUpAction=[!HideMeterGroup Page1][!ShowMeterGroup Page2][!SetVariable Theme dark][!WriteKeyValue Variables Theme dark]
+                MouseOverAction=[!SetOption Tab2 SolidColor 255,0,0][!UpdateMeter Tab2]
+                MouseLeaveAction=[!SetOption Tab2 SolidColor 0,0,0][!UpdateMeter Tab2]
+
+                [P1]
+                Meter=String
+                Y=30
+                Text=one
+                Group=Page1
+
+                [P2]
+                Meter=String
+                Y=30
+                Text=two #Theme#
+                Group=Page2
+                Hidden=1
+                DynamicVariables=1
+
+                """
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Paged", paged) else { return }
+            guard let c = app.controller(for: "Studio\\Paged"), let session = editor.session, let studio = editor.skin else {
+                return t.check(false, "loaded")
+            }
+            // Hovered on the desktop (as the widget's window reports it): the canvas shows the hover.
+            c.skin.mouseMoved(x: 5, y: 5)
+            t.equal(studio.meter(named: "Tab2")?.rawOption("SolidColor"), "255,0,0", "the hover")
+            // Clicked on the desktop: page 2, in the dark theme, on the canvas too — where its layers can be picked.
+            c.skin.mouseEvent(.leftUp, x: 5, y: 5)
+            t.equal(studio.meter(named: "P2")?.hidden, false, "page 2 on the canvas")
+            t.equal(studio.meter(named: "P1")?.hidden, true)
+            t.equal(studio.variable("Theme"), "dark")
+            t.equal(read(url).contains("Theme=dark\n"), true, "the desktop copy wrote the theme")
+            t.check(session.host.policy.recorded.contains { $0.name == "writekeyvalue" }, "the Studio's instance did not")
+            _ = AppSelfTest.spin(timeout: 5) { session.buffers.buffer(url)?.text.contains("Theme=dark\n") == true }
+            t.check(session.buffers.buffer(url)?.text.contains("Theme=dark\n") == true, "the memory took its write")
+            t.check(app.controller(for: "Studio\\Paged") === c, "not reloaded: the widget wrote its own file")
+            t.check(editor.skin === studio, "nor the Studio's instance, which already shows it")
+            t.equal(editor.skin?.meter(named: "P2")?.hidden, false, "still on page 2")
+            editor.canvasSelectionChanged(["P2"])
+            t.equal(editor.selectedSection, "P2", "a layer of page 2 can be picked")
+            c.skin.mouseExited()
+            t.equal(studio.meter(named: "Tab2")?.rawOption("SolidColor"), "0,0,0", "the hover ends")
+            editor.window?.close()
+            // The window closed: the desktop copy's input goes nowhere.
+            t.check(app.controller(for: "Studio\\Paged")?.skin.inputMirror == nil, "no mirror without a Studio")
         }
     }
 
