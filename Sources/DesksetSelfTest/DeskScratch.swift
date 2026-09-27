@@ -1,8 +1,17 @@
 import Foundation
 @testable import DeskLanguage
 
-/// Temporary exploration harness: DESK_SCRATCH=path prints each snippet's outline and diagnostics (snippets are
-/// separated by lines of `----`).
+/// Tools for working on the syntax layer, each switched on by an environment variable (nothing runs without one):
+///
+/// - `DESK_SCRATCH=file`: prints each snippet's outline, diagnostics and invariant problems (snippets are separated
+///   by lines of `----`); with `DESK_FORMAT=1` (or `escaped`) also the formatted text and any change of tokens or
+///   second-pass difference.
+/// - `DESK_FORMAT_PROFILE=1` (or `messy`): times each formatter phase on a 2,000-line file; `DESK_FORMAT_LOOP=n`
+///   formats it n times (for a sampling profiler).
+/// - `DESK_ADVERSARIAL=1`: parse and format times of hostile inputs.
+/// - `DESK_CORPUS_TIMING=1`: reports any corpus example that takes more than 3 s.
+/// - `DESK_WRITE_FORMATTED=folder`: writes `name.formatted.desk` next to each `name.desk` (regenerates the
+///   formatter's expected files; review the diff).
 func runDeskScratch(_ t: TestRunner) {
     if ProcessInfo.processInfo.environment["DESK_FORMAT_PROFILE"] != nil {
         let widget = try! String(contentsOf: deskFixtures.appendingPathComponent("Acceptance/MonthView.desk"), encoding: .utf8)

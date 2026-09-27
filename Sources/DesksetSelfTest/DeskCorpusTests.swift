@@ -397,6 +397,12 @@ func runDeskCorpusTests(_ t: TestRunner) {
         #endif
         print(String(format: "    %d lines, %d KiB (%@ build): lex %.1f ms, lex + parse %.1f ms, format %.1f ms; "
                      + "300-line re-parse %.1f ms", lineCount, text.utf8.count / 1024, build, lexMs, parseMs, formatMs, reparseMs))
+        // The budgets of a 1,000-line file in a release build (lex + parse 5 ms, format 5 ms), next to the editor's
+        // 0.3 s pause after typing.
+        let perThousand = 1000 / Double(lineCount)
+        print(String(format: "    per 1,000 lines: lex + parse %.1f ms, format %.1f ms (release-build budgets: 5 ms each); "
+                     + "the whole file parses in %.1f%% of the editor's 300 ms pause", parseMs * perThousand,
+                     formatMs * perThousand, parseMs / 300 * 100))
         t.check(lineCount >= 2000)
         t.equal(tree.diagnostics.count, 0)
         // Recorded, not asserted tightly: CI machines vary. A generous bound still catches accidental quadratic work.
