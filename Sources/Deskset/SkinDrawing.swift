@@ -22,10 +22,12 @@ final class SkinBitmapDrawing {
         let generation: Int
     }
 
-    /// A picture of consecutive items, the size of the whole skin.
+    /// A picture of consecutive items, the size of the whole skin, and the image files it was drawn from (a file
+    /// replaced on disk shows in a full drawing without any meter changing: the picture is then drawn again).
     private struct Run {
         let items: [Item]
         let image: CGImage
+        let files: Images.UsedFiles
     }
 
     /// Pictures kept per skin; runs beyond these are drawn every frame.
@@ -48,7 +50,7 @@ final class SkinBitmapDrawing {
     /// What every picture depends on besides the items (see `resetKey`).
     private var drawnFor: ResetKey?
     private var baseGeneration = 0
-    private var lastGlass: [GlassRegion] = []
+    private var lastBase: Base?
     private var reportedDifference = false
 
     /// What a picture was drawn for: another skin (a refresh), size, scale, colour space, appearance or fonts.
@@ -57,9 +59,18 @@ final class SkinBitmapDrawing {
         let width: Int
         let height: Int
         let scale: CGFloat
-        let space: String
+        /// Compared as color spaces (`CFEqual`), not by name: a display's own profile has none.
+        let space: CGColorSpace
         let appearance: String
         let fonts: Int
+    }
+
+    /// What the base (glass hit areas and background) is drawn from besides image files: the glass, and the skin's
+    /// size, which the background fills or stretches over (a skin larger than its window changes it, not the window).
+    private struct Base: Equatable {
+        let glass: [GlassRegion]
+        let width: Double
+        let height: Double
     }
 
     /// What the last frame did (tests): runs copied, runs drawn into a new picture, items drawn directly.
@@ -73,22 +84,25 @@ final class SkinBitmapDrawing {
     func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
         let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
         guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
-        let key = ResetKey(skin: ObjectIdentifier(skin), width: w, height: h, scale: scale,
-                           space: (space.name as String?) ?? "", appearance: appearance, fonts: Fonts.generation)
+        let key = ResetKey(skin: ObjectIdentifier(skin), width: w, height: h, scale: scale, space: space,
+                           appearance: appearance, fonts: Fonts.generation)
         if key != drawnFor {
             drawnFor = key
             runs = []
             previous = [:]
-            lastGlass = []
+            lastBase = nil
             bitmaps = [SkinBitmapDrawing.makeContext(w, h, space), SkinBitmapDrawing.makeContext(w, h, space)]
                 .compactMap { $0 }
         }
+        // Pictures of image files that changed since are drawn again.
+        runs.removeAll { !Images.filesUnchanged($0.files) }
         guard bitmaps.count == 2 else { return nil }
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
         let meters = SkinRenderer.topLevelMeters(skin)
-        if skin.glassRegions != lastGlass {
-            lastGlass = skin.glassRegions
+        let base = Base(glass: skin.glassRegions, width: skin.width, height: skin.height)
+        if base != lastBase {
+            lastBase = base
             baseGeneration &+= 1
         }
         var items = [Item(id: ObjectIdentifier(skin), generation: baseGeneration)]
@@ -126,10 +140,13 @@ final class SkinBitmapDrawing {
                 stats.copied += 1
             } else if kept.count < SkinBitmapDrawing.maxRuns,
                       let picture = SkinBitmapDrawing.makeContext(w, h, space) {
-                draw(items: index..<end, meters, skin, into: picture, height: h, scale: scale)
+                let range = index..<end
+                let files = Images.recordingFiles {
+                    draw(items: range, meters, skin, into: picture, height: h, scale: scale)
+                }
                 if let image = picture.makeImage() {
                     place(image)
-                    kept.append(Run(items: runItems, image: image))
+                    kept.append(Run(items: runItems, image: image, files: files))
                     stats.made += 1
                 } else {
                     drawDirectly(index..<end)
@@ -147,14 +164,17 @@ final class SkinBitmapDrawing {
         return image
     }
 
-    /// A meter's generation; a container's covers its content too.
+    /// A meter's generation, with what its drawing reads when drawn (`Meter.hashDrawInputs`); a container's covers
+    /// its content too.
     static func generation(of meter: Meter, in skin: Skin) -> Int {
-        guard meter.isContainer else { return meter.drawGeneration }
         var hasher = Hasher()
         hasher.combine(meter.drawGeneration)
+        meter.hashDrawInputs(into: &hasher)
+        guard meter.isContainer else { return hasher.finalize() }
         for m in SkinRenderer.content(of: meter, in: skin) {
             hasher.combine(ObjectIdentifier(m))
             hasher.combine(m.drawGeneration)
+            m.hashDrawInputs(into: &hasher)
         }
         return hasher.finalize()
     }

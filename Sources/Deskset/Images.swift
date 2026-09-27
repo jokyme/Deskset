@@ -164,7 +164,7 @@ enum Images {
         let request = decodeRequest(path)
         let file = request?.file ?? path
         while true {
-            let stamp = FileStamp(path: file)
+            let stamp = lookupStamp(file)
             condition.lock()
             guard let stamp else {
                 removeEntry(path)
@@ -219,6 +219,59 @@ enum Images {
             if entriesCost > entryCostLimit { evictEntries(now: now) }
             return e
         }
+    }
+
+    // MARK: Files a drawing used
+
+    /// The files looked up while a drawing ran (`recordingFiles`), each as it was then (missing ones too). A picture of
+    /// that drawing stays right while they stay as they were (`filesUnchanged`): a file replaced on disk shows in the
+    /// next drawing that looks it up, and a kept picture that does not look anything up must not miss that.
+    struct UsedFiles: Equatable {
+        fileprivate var stamps: [String: FileStamp?] = [:]
+        fileprivate var purges = 0
+        /// The files (paths on disk) looked up.
+        var paths: [String] { stamps.keys.sorted() }
+    }
+
+    private final class FileRecorder {
+        var used = UsedFiles()
+    }
+
+    private static let recorderKey = "DesksetImages.FileRecorder"
+
+    /// Runs `body`, recording every file it looks up on this thread. A recording inside another one is also part of
+    /// the outer one.
+    static func recordingFiles(_ body: () -> Void) -> UsedFiles {
+        let dictionary = Thread.current.threadDictionary
+        let outer = dictionary[recorderKey] as? FileRecorder
+        let recorder = FileRecorder()
+        recorder.used.purges = locked { purges }
+        dictionary[recorderKey] = recorder
+        body()
+        dictionary[recorderKey] = outer
+        if let outer {
+            for (path, stamp) in recorder.used.stamps where outer.used.stamps.index(forKey: path) == nil {
+                outer.used.stamps[path] = stamp
+            }
+        }
+        return recorder.used
+    }
+
+    /// Whether every file in `used` is as it was when it was looked up, and the caches were not purged since (one
+    /// `stat` per file, as a drawing's own lookups cost). Any thread.
+    static func filesUnchanged(_ used: UsedFiles) -> Bool {
+        guard locked({ purges }) == used.purges else { return false }
+        return used.stamps.allSatisfy { FileStamp(path: $0.key) == $0.value }
+    }
+
+    /// The file's stamp now, for a lookup: a recording on this thread (`recordingFiles`) keeps the first one it sees.
+    private static func lookupStamp(_ path: String) -> FileStamp? {
+        let stamp = FileStamp(path: path)
+        if let recorder = Thread.current.threadDictionary[recorderKey] as? FileRecorder,
+           recorder.used.stamps.index(forKey: path) == nil {
+            recorder.used.stamps[path] = .some(stamp)
+        }
+        return stamp
     }
 
     /// The rendered symbol of a symbol path (`MacSymbol.path`), nil when macOS has no such symbol. Rendered once, by one
@@ -435,7 +488,7 @@ enum Images {
 
     /// The file's header, cached per version of the file; nil when it is missing or unreadable. Any thread.
     static func header(atPath path: String) -> Header? {
-        guard let stamp = FileStamp(path: path) else { return nil }
+        guard let stamp = lookupStamp(path) else { return nil }
         if let h = locked({ headers[path] }), h.stamp == stamp { return h.header }
         let url = URL(fileURLWithPath: path) as CFURL
         guard let source = CGImageSourceCreateWithURL(url, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -460,7 +513,7 @@ enum Images {
         guard !MacSymbol.isSymbolPath(path) else { return nil }
         let request = decodeRequest(path)
         let file = request?.file ?? path
-        if request == nil, let stamp = FileStamp(path: file),
+        if request == nil, let stamp = lookupStamp(file),
            locked({ entries[path].map { $0.stamp == stamp } ?? false }) { return nil }
         guard let h = header(atPath: file), h.exact, h.width * h.height >= headerPixels else { return nil }
         return h

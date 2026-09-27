@@ -94,6 +94,18 @@ final class SkinView: NSView, NSViewToolTipOwner {
                                          appearance: effectiveAppearance.name.rawValue)
     }
 
+    /// The picture is the view's own: drawn again for another backing scale or color space (a window moved to another
+    /// display) and appearance, not only when the skin redraws (an `Update=-1` skin never does).
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
