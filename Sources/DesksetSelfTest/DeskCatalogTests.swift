@@ -484,6 +484,89 @@ func runDeskCatalogTests(_ t: TestRunner) {
         t.equal(c.member(path: "time.now")?.defaultFormat, .style(".time"))
     }
 
+    t.suite("Desk: catalog holds every name of the listings") {
+        // The listings of §5.3–§5.11, name by name: a name missing from the catalog fails; a name the listings do not
+        // have is printed, so additions are deliberate.
+        var extras: [String] = []
+        func holds(_ what: String, _ actual: [String], _ listed: String) {
+            let expected = listed.split(separator: " ").map(String.init)
+            for name in expected where !actual.contains(name) { t.check(false, "\(what): \(name) is missing") }
+            extras += actual.filter { !expected.contains($0) }.map { "\(what) \($0)" }
+        }
+        holds("component", c.components.map(\.name), "Column Row Grid Freeform Scroll Spacer Divider Text Label Icon Image Progress "
+              + "Gauge Graph Rectangle Circle Ellipse Capsule Line Arc Path Button Toggle Slider Input Item Menu")
+        holds("control", c.controls.map(\.name),
+              "Picker Toggle Slider Stepper Input Secret ColorPicker FontPicker ImagePicker FolderPicker DatePicker Section Choice")
+        holds("info field", c.infoFields.map(\.name), "name description author version license homepage source category size "
+              + "refresh permissions network level clickThrough draggable deskVersion requires convertedFrom")
+        holds("package field", c.packageFields.map(\.name), "name description author version license homepage deskVersion requires")
+        holds("function", c.functions.map(\.name), "round floor ceil abs min max clamp sqrt random rgb color gradient radialGradient "
+              + "supports open copy notify show hide showOrHide log run after files folder command")
+        let members: [String: String] = [
+            "time": "now", "calendar": "month events", "cpu": "usage core cores coreCount",
+            "memory": "used free total usage pressure", "swap": "used total usage",
+            "disk": "free used total usage name path removable at",
+            "network": "download upload total downloaded uploaded online address interface",
+            "battery": "level charging pluggedIn timeRemaining present health cycles",
+            "system": "name userName dark accentColor osVersion model idleTime", "wifi": "name signal connected",
+            "apps": "frontmost running",
+            "music": "title artist album cover playing position duration progress player shuffle repeat play pause playPause "
+                + "next previous openPlayer seek",
+            "volume": "level muted device set mute unmute toggleMute", "audio": "bands level peak left right",
+            "audio.microphone": "bands level peak left right",
+            "weather": "now today hourly daily place placeDetail country countryCode latitude longitude timeZone status "
+                + "statusText statusSymbol updated forecastMade credit creditShort creditLink licenseLink at refresh",
+            "sun": "sunrise sunset solarNoon dawn dusk nauticalDawn nauticalDusk astronomicalDawn astronomicalDusk "
+                + "goldenHourMorningEnd goldenHourEveningStart dayLength daylightProgress elevation azimuth isUp state at day",
+            "moon": "phase illumination phaseName symbol",
+            "sensors": "cpuTemperature cpuPerformanceTemperature cpuEfficiencyTemperature gpuTemperature socTemperature "
+                + "batteryTemperature ssdTemperature fanSpeed fan power adapterPower cpuPower gpuPower neuralEnginePower "
+                + "memoryPower cpuClock gpuClock gpuUsage gpuMemory cpuVoltage read",
+            "web": "json text feed image", "trash": "count size open empty", "widget": "size reload openOptions edit",
+            "math": "sin cos tan asin acos atan atan2 exp ln log10 power sign frac trunc pi e bitAnd bitOr bitXor bitNot",
+        ]
+        for (namespace, names) in members { holds(namespace, c.namespace(named: namespace)?.members.map(\.name) ?? [], names) }
+        for value in ["disks", "uptime"] { t.check(c.namespace(named: value)?.valueType != nil, "\(value) is a value") }
+        t.check(c.namespace(named: "options")?.dynamicMembers == true, "options has the file's own members")
+        let enumCases: [String: String] = [
+            "Alignment": "topLeft top topRight left center right bottomLeft bottom bottomRight", "HAlign": "left center right",
+            "VAlign": "top center bottom baseline", "Axis": "vertical horizontal", "Direction": "right left up down",
+            "ScrollDirection": "up down left right", "LengthKeyword": "fit fill", "SizePreset": "small medium large fit",
+            "Category": "time system media weather productivity developer other", "WindowLevel": "desktop normal onTop",
+            "Permission": "music location calendar microphone systemAudio commands notifications files accessibility",
+            "Weekday": "sunday monday tuesday wednesday thursday friday saturday",
+            "FontPreset": "largeTitle title headline body callout caption footnote largeNumber number",
+            "Weight": "ultralight thin light regular medium semibold bold heavy black", "FontDesign": "standard rounded mono serif",
+            "Digits": "equalWidth normal", "RadiusKeyword": "full", "ImageMode": "fit fill stretch tile",
+            "Flip": "horizontal vertical both", "IconColors": "monochrome hierarchical multicolor",
+            "IconEffect": "pulse bounce breathe wiggle rotate", "GaugeShape": "ring arc pie needle",
+            "GraphShape": "line area bars", "Animation": "smooth spring linear", "Transition": "fade scale slide",
+            "Cursor": "arrow hand text crosshair notAllowed resizeUpDown resizeLeftRight",
+            "MemoryPressure": "normal warning critical",
+            "WeatherStatus": "ready loading stale noLocation placeNotFound locationDenied locationUnavailable notCovered "
+                + "refused rateLimited offline turnedOff preview tooManyPlaces",
+            "SunState": "normal midnightSun polarNight", "FileSort": "name size date kind",
+            "Feature": "liquidGlass symbolEffects sensors", "ByteUnit": "auto bytes kb mb gb tb kib mib gib tib",
+            "TemperatureUnit": "auto celsius fahrenheit kelvin", "FrequencyUnit": "auto mhz ghz", "UnitStyle": "none short full",
+            "DurationStyle": "full short clock",
+            "DatePreset": "time date dateTime weekday shortWeekday month shortMonth year relative",
+        ]
+        for (id, cases) in enumCases { holds("enum \(id)", c.enumeration(id)?.cases.map(\.name) ?? [], cases) }
+        holds("enum", c.enums.map(\.id), enumCases.keys.sorted().joined(separator: " "))
+        holds("unit", c.units.map(\.spelling), "pt ms s min h d % deg ° rad °C °F B KB MB GB TB KiB MiB GiB TiB B/s KB/s MB/s "
+              + "GB/s KiB/s MiB/s GiB/s Hz kHz MHz GHz W mW V mV A mA rpm km/h mph m/s kn mm inch hPa mbar inHg")
+        holds("format option", Array(Set(c.formatOptions.map(\.label))), "decimals unit unitStyle bits format style missing")
+        // The editor's insertion order (§5.6, `sortKey`).
+        let order = "style font bold italic color align uppercase lowercase titleCase lines digits outline underline "
+            + "strikethrough letterSpacing lineSpacing imageMode tint grayscale flip keepEdges crop iconColors iconEffect fill "
+            + "stroke track width height size padding position offset margin background rounded border shadow opacity blur clip "
+            + "rotate scale hover pressed animate appear hidden tooltip cursor onClick onDoubleClick onRightClick onMouseEnter "
+            + "onMouseLeave onScroll onDrag onDrop onSubmit menu every when onChange onLoad onWake name voiceOver rainmeter"
+        let sorted = c.modifiers.sorted { $0.sortKey < $1.sortKey }.map(\.name).filter { $0 != "help" }
+        t.equal(sorted, order.split(separator: " ").map(String.init), "sort keys follow §5.6")
+        for extra in extras { print("  note    not in the listings: \(extra)") }
+    }
+
     t.suite("Desk: catalog sensor keys match the engine's") {
         // `sensors.read(key)` is typed by the key's kind (§5.7); the kinds are the engine's (SensorKeys).
         func type(of kind: SensorKind) -> DeskType {
