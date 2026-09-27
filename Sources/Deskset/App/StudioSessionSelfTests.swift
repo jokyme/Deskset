@@ -541,6 +541,22 @@ enum StudioSessionSelfTests {
     }
 
     static func insideTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: plugins of the Studio's instance know it is paused, and where the widget is") {
+            guard let (app, editor, _) = try StudioReviewSelfTests.openSkin(t, "Host", ini) else { return }
+            guard let c = app.controller(for: "Studio\\Host"), let session = editor.session,
+                  let host = editor.skin?.host as? LiveSkinHost else { return t.check(false, "loaded") }
+            t.check(host === session.host, "the Studio's host")
+            t.check(!host.areUpdatesPaused)
+            // Sleep, a locked screen: NowPlaying's reads of a paused instance only peek (the players are not polled).
+            session.setUpdatesPaused(true)
+            t.check(host.areUpdatesPaused, "paused with the widgets on the desktop")
+            session.setUpdatesPaused(false)
+            t.check(!host.areUpdatesPaused)
+            // Chameleon samples the wallpaper of the screen the desktop copy is on, not the Studio window's.
+            t.check(host.windowScreen === c.window.screen, "the desktop copy's screen")
+            editor.window?.close()
+        }
+
         t.suite("App: studio session: the Studio's instance keeps its effects inside the widget") {
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Inside", ini) else { return }
             guard let c = app.controller(for: "Studio\\Inside"), let session = editor.session, let studio = editor.skin else {

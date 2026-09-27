@@ -313,7 +313,7 @@ final class ChameleonMeasure: MediaUIMeasure {
         var aspect: CGFloat?
         var path = ""
         if isDesktop {
-            if let desktop = ChameleonMeasure.desktop(of: controller) {
+            if let desktop = ChameleonMeasure.desktop(of: liveHost) {
                 path = desktop.picture
                 if cropDesktop, crop == nil, desktop.frame.height > 0 { aspect = desktop.frame.width / desktop.frame.height }
             }
@@ -356,13 +356,14 @@ final class ChameleonMeasure: MediaUIMeasure {
         }
     }
 
-    /// The desktop picture setting and the frame of the screen the skin's window is on (else the main screen); nil
-    /// without a screen or a desktop picture. AppKit is asked on the main thread only: a skin on another thread gets
-    /// the main screen's, as the main thread last saw it (`DesktopInputs.mainScreenDesktop`). The window's own screen
-    /// reaches a skin thread with the window's facts, in phase 2 (docs/skin-threading.md §8.1).
-    static func desktop(of controller: SkinController?) -> DesktopInputs.ScreenDesktop? {
+    /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
+    /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
+    /// main thread only: a skin on another thread gets the main screen's, as the main thread last saw it
+    /// (`DesktopInputs.mainScreenDesktop`). The window's own screen reaches a skin thread with the window's facts, in
+    /// phase 2 (docs/skin-threading.md §8.1).
+    static func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? {
         guard Thread.isMainThread else { return DesktopInputs.mainScreenDesktop.value() }
-        guard let screen = controller?.window.screen ?? NSScreen.main else { return nil }
+        guard let screen = host?.windowScreen ?? NSScreen.main else { return nil }
         return DesktopInputs.desktop(of: screen)
     }
 

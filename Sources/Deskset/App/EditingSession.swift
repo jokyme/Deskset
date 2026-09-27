@@ -222,6 +222,7 @@ final class EditingSession {
     func setUpdatesPaused(_ paused: Bool) {
         guard paused != updatesPaused else { return }
         updatesPaused = paused
+        host.updatesPaused = paused
         if paused {
             updates?.cancel()
             updates = nil

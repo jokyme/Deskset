@@ -66,6 +66,9 @@ class MediaUIMeasure: Measure {
     /// The window controller of the skin, when it runs in the app.
     var controller: SkinController? { skin.host as? SkinController }
 
+    /// The app host of the skin: its window controller, or the Studio's host of its own instance of the widget.
+    var liveHost: LiveSkinHost? { skin.host as? LiveSkinHost }
+
     func publishString(_ s: String?) {
         pluginString = s
         muiSetString(s)

@@ -5,9 +5,17 @@ import DesksetCore
 /// instance of the widget it edits (`StudioHost`). Their plugins read the shared services — sound, the player that is
 /// playing, the weather — and may ask macOS for what those need; a skin read for a thumbnail, a dry run or `--render`
 /// does not.
-protocol LiveSkinHost: SkinHost {}
+protocol LiveSkinHost: SkinHost {
+    /// Whether the skin's updates are paused (sleep, a locked screen): what reads its values then must not keep the
+    /// shared services busy (NowPlaying's polling of the players).
+    var areUpdatesPaused: Bool { get }
+    /// The screen the widget's window is on (nil: not known; main thread).
+    var windowScreen: NSScreen? { get }
+}
 
-extension SkinController: LiveSkinHost {}
+extension SkinController: LiveSkinHost {
+    var windowScreen: NSScreen? { window.screen }
+}
 
 /// The host of the Studio's own instance of the widget it edits. The widget on the desktop keeps running as it is; this
 /// instance loads the editing session's text from memory and is what the canvas draws. It has no window of its own:
@@ -18,6 +26,13 @@ final class StudioHost: LiveSkinHost {
     /// The widget on the desktop (its window's place and screens).
     weak var desktop: SkinController?
     let policy = StudioActionPolicy()
+    /// The editing session pauses its instance with the widgets on the desktop (`EditingSession.setUpdatesPaused`).
+    var updatesPaused = false
+
+    var areUpdatesPaused: Bool { updatesPaused }
+
+    /// The desktop copy's screen: a Chameleon widget on a second display takes its colors from that wallpaper.
+    var windowScreen: NSScreen? { desktop?.window.screen }
     /// The instance's log lines, the last `logLimit`.
     private(set) var logs: [(level: SkinLogLevel, message: String)] = []
     var logLimit = 200
