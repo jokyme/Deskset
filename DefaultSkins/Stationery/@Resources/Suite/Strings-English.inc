@@ -146,3 +146,141 @@ ClockTipBody3=" [MeasureSun]: polar night, the sun does not rise today."
 ClockTipBody4=" Choose a city to see sunrise and sunset."
 ClockTipMoon=" [#Moon[&MeasureMoonEighth:0]], [MeasureMoonIllum:0]% lit."
 ClockTipChooseCity=Choose the city for sunrise and sunset
+
+; ---------------------------------------------------------------- Sentence Clock
+SentenceMenuOpen=Open Clock
+SentenceMenuCardGlass=Background: Card
+SentenceMenuCardFrameless=Background: None
+SentenceMenuGrid0=Unlit Words: Subtle
+SentenceMenuGrid1=Unlit Words: Visible
+SentenceMenuGlow1=Glow in Dark Mode: On
+SentenceMenuGlow0=Glow in Dark Mode: Off
+SentenceMenuTime1=Footer Time: Show
+SentenceMenuTime0=Footer Time: Hide
+
+; ---------------------------------------------------------------- Almanac
+AlmanacMenuOpen=Open Calendar
+AlmanacMenuSizeSmall=Size: Small
+AlmanacMenuSizeRegular=Size: Regular
+AlmanacMenuSizeLarge=Size: Large
+AlmanacMenuSun1=Sunrise and Sunset: Show
+AlmanacMenuSun0=Sunrise and Sunset: Hide
+; the masthead's weekday ends with this ("Saturday,")
+AlmanacWeekdaySuffix=,
+; the data lines (capitals from the style); %1 is the number. The bold figure in the "to go" slot is its digits, or
+; the whole last-day text
+AlmanacWeekText=WEEK %1
+AlmanacDayText=DAY %1
+AlmanacToGoText=%1 TO GO
+AlmanacDoneText=[MeasureDaysPercent:0]% DONE
+AlmanacLastDay=LAST DAY
+AlmanacSunriseText=SUNRISE %1
+AlmanacSunsetText=SUNSET %1
+AlmanacYearText=YEAR %1
+AlmanacWeeksLeftText=%1 WEEKS LEFT
+AlmanacTipDay=[MeasureDateFull]#CRLF#Week [MeasureWeekNumber] · day [MeasureDayOfYearNumber] of [MeasureDaysInYear:0]
+AlmanacTipSun0=
+AlmanacTipSun1=#CRLF#Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]
+AlmanacTipProgress=[MeasureDaysPercent:0]% of the year done · [MeasureDaysTo:0] days to go#CRLF#Each dot is one week left.
+
+; ---------------------------------------------------------------- Daybreak
+DaybreakMenuOpen=Open Clock
+DaybreakMenuTint1=Sky-Tinted Digits: On
+DaybreakMenuTint0=Sky-Tinted Digits: Off
+; the City item by the place's state: looking it up, found (the name, at most 21 characters), none
+DaybreakMenuCity0=City…
+DaybreakMenuCity1=City: [MeasurePlaceMenu]…
+DaybreakMenuCity2=Choose City…
+DaybreakNeedPlace=Choose a city for sunrise and sunset
+; the line in place of the date while the pointer is over the ruler
+DaybreakNextSunrise=Sunrise in [MeasureNextText]
+DaybreakNextSunset=Sunset in [MeasureNextText]
+DaybreakGoldenPrefix="Golden hour · "
+; the ruler's tooltip by state: 0 no place, 1 sunrise and sunset, 2 midnight sun, 3 polar night
+DaybreakTip0=Choose a city for sunrise and sunset.
+DaybreakTip1=Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]#CRLF#[MeasureDayLengthText] of daylight · golden hour from [MeasureGoldenStartTip]
+DaybreakTip2=Midnight sun: the sun does not set today.
+DaybreakTip3=Polar night: the sun does not rise today.
+
+; ---------------------------------------------------------------- Chronograph
+ChronoMenuOpen=Open Clock
+ChronoMenuDial0=Right Dial: Automatic
+ChronoMenuDial1=Right Dial: Battery
+ChronoMenuDial2=Right Dial: CPU
+ChronoMenuSeconds1=Running Seconds: On
+ChronoMenuSeconds0=Running Seconds: Off
+ChronoMenuDialText=Dial Text…
+; the City item by the weather's place: looking it up, found (the name, at most 21 characters), none
+ChronoMenuCity0=City…
+ChronoMenuCity1=City: [MeasureWxPlaceMenu]…
+ChronoMenuCity2=Choose City…
+; the wordmark under 12 until Dial Text… sets another (empty hides it)
+ChronoDialTextDefault=Deskset
+; the time with seconds, in the seconds register's tooltip and the dial's
+ChronoTimeSeconds24=%H:%M:%S
+ChronoTimeSeconds12=%#I:%M:%S %p
+ChronoTipDate=[MeasureDateFull] · Week [MeasureWeekNumber]
+; the weather register's tooltip by state: 0 ready, 1 no forecast yet, 2 no place, 3 location off, 4 not up to date
+ChronoTipWeather0=[#Cond[&MeasureWxCondition:0]], [MeasureWx:0]° (feels like [MeasureWxFeels:0]°). Today [MeasureWxLow:0]° to [MeasureWxHigh:0]°; the dot marks now.
+ChronoTipWeather1=[#Status[&MeasureWxStatus:0]]
+ChronoTipWeather2=[#Status[&MeasureWxStatus:0]]. Click to choose a city.
+ChronoTipWeather3=[#Status[&MeasureWxStatus:0]]. Click to open Privacy Settings.
+ChronoTipWeather4=[#Cond[&MeasureWxCondition:0]], [MeasureWx:0]° (feels like [MeasureWxFeels:0]°). Today [MeasureWxLow:0]° to [MeasureWxHigh:0]°.#CRLF#[#Status[&MeasureWxStatus:0]]
+; the power reserve's tooltip by state: 0 on battery, 1 charging, 2 plugged in, 3 CPU, 4 on battery (time unknown)
+ChronoTipReserve0=Battery [CalcReserveValue:0]% · [MeasureBattLifeText] left
+ChronoTipReserve1=Battery [CalcReserveValue:0]% · charging
+ChronoTipReserve2=Battery [CalcReserveValue:0]% · plugged in
+ChronoTipReserve3=CPU [CalcReserveValue:0]%
+ChronoTipReserve4=Battery [CalcReserveValue:0]%
+
+; ---------------------------------------------------------------- the player (Collection/Player.inc)
+MenuPlayerMusic=Player: Music
+MenuPlayerSpotify=Player: Spotify
+MenuOpenPlayerMusic=Open Music
+MenuOpenPlayerSpotify=Open Spotify
+; the player's name, where a widget names it
+PlayerNameMusic=Music
+PlayerNameSpotify=Spotify
+
+; ---------------------------------------------------------------- Turntable
+TurntableMenuVinyl1=Record Color: From the Cover
+TurntableMenuVinyl0=Record Color: Classic Black
+TurntableMenuRest1Min=Arm Rests: After 1 Min
+TurntableMenuRest5Min=Arm Rests: After 5 Min
+TurntableMenuRestNever=Arm Rests: Never
+TurntableMenuSeek1=Click a Groove to Seek: On
+TurntableMenuSeek0=Click a Groove to Seek: Off
+TurntableSpeed=33⅓ RPM
+TurntableSideA=Side A
+TurntableNotPlaying=Not Playing
+TurntablePlaySomething=Play something in Music or Spotify
+TurntableTipPlay=Play
+TurntableTipPause=Pause
+TurntableTipPrevious=Previous Track
+TurntableTipNext=Next Track
+TurntableTipSeek=Play from [MeasureSeekMin:0]:[MeasureSeekSec]
+TurntableTipTrack=[MeasureLastTitle] — [MeasureLastArtist]
+
+; ---------------------------------------------------------------- Studio VU
+StudioMenuFaceAuto=Face: Follow Appearance
+StudioMenuFaceIvory=Face: Always Ivory
+StudioMenuFaceAmber=Face: Always Amber
+StudioMenuSensNormal=Needle Sensitivity: Normal
+StudioMenuSensHigh=Needle Sensitivity: High
+StudioMenuSensLow=Needle Sensitivity: Low
+StudioMenuSpeedVU=Needle Speed: VU
+StudioMenuSpeedSlow=Needle Speed: Slow
+StudioMenuPeak1=Peak LED: −1 dBFS
+StudioMenuPeak3=Peak LED: −3 dBFS
+StudioMenuPeak6=Peak LED: −6 dBFS
+StudioPeakLabel=PEAK
+StudioNotPlaying=Not Playing
+StudioTipLeft=Left channel
+StudioTipRight=Right channel
+StudioTipLevelL=[MeasureVUL:1] VU · peak [MeasurePeakDbL:1] dBFS
+StudioTipLevelR=[MeasureVUR:1] VU · peak [MeasurePeakDbR:1] dBFS
+StudioTipPlay=Play
+StudioTipPause=Pause
+StudioTipPrevious=Previous Track
+StudioTipNext=Next Track
+StudioTipTrack=[MeasurePlayer] — [MeasureArtist]

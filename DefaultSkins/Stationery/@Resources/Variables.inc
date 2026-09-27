@@ -79,3 +79,47 @@ HideSpectrumWhenIdle=1
 PhotoInterval=600
 ; 1 shows the photo's file name at the bottom (a camera's name, such as IMG_4821, shows its folder's name)
 ShowPhotoFileName=0
+
+; ---------------------------------------------------------------- Sentence Clock
+; Background: Glass (the words on a glass card) or Frameless (straight on the wallpaper, in the Ink above)
+SentenceCard=Glass
+; Unlit words: 0 subtle, 1 visible (for more contrast)
+SentenceGrid=0
+; A soft glow on the lit words in the Dark look: 1 on, 0 off
+SentenceGlow=1
+; The time in the footer: 1 shown, 0 hidden (the date stays)
+SentenceShowTime=1
+
+; ---------------------------------------------------------------- Almanac
+; Size: Small, Regular or Large (0.8, 1 and 1.25 times 411 × 148)
+AlmanacSize=Regular
+; Sunrise and sunset on the second data line: 1 shown, 0 hidden (the year and the weeks left instead)
+AlmanacShowSun=1
+
+; ---------------------------------------------------------------- Daybreak
+; The base of the digits takes the sky's colour in twilight, the golden hours and at night: 1 on, 0 off (plain ink)
+DaybreakSkyTint=1
+
+; ---------------------------------------------------------------- Chronograph
+; The dial at 3 o'clock: 0 automatic (the battery, or the CPU on a Mac without one), 1 battery, 2 CPU
+ChronoRightDial=0
+; The running seconds at 6 o'clock: 1 on, 0 off (the register stays as a dial)
+ChronoSeconds=1
+
+; ---------------------------------------------------------------- Turntable
+; The record's colour: 1 pressed in the cover's own colour, 0 classic black
+TurntableVinyl=1
+; After a pause the arm goes back to its rest: 1Min, 5Min or Never
+TurntableRest=1Min
+; A click on the grooves drops the needle there: 1 on, 0 off (every click on the record plays or pauses)
+TurntableSeek=1
+
+; ---------------------------------------------------------------- Studio VU
+; The meters' faces: Auto (ivory in the Light look, amber in the Dark), Ivory or Amber
+StudioFace=Auto
+; Needle sensitivity: Normal (0 VU at −12 dBFS), High (−18, for quiet recordings) or Low (−8, for loud masters)
+StudioSens=Normal
+; Needle speed: VU (about 300 ms) or Slow (about 750 ms, calmer)
+StudioSpeed=VU
+; The PEAK lamps light at −1, −3 or −6 dBFS
+StudioPeak=1
