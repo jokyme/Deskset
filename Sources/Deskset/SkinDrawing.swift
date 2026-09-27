@@ -167,6 +167,11 @@ final class SkinBitmapDrawing {
     /// Draws items `range` (0 is the base, n the meter n − 1) in skin coordinates: top-left origin, points.
     private func draw(items range: Range<Int>, _ meters: [Meter], _ skin: Skin, into ctx: CGContext, height: Int,
                       scale: CGFloat) {
+        SkinBitmapDrawing.draw(items: range, meters, skin, into: ctx, height: height, scale: scale)
+    }
+
+    static func draw(items range: Range<Int>, _ meters: [Meter], _ skin: Skin, into ctx: CGContext, height: Int,
+                     scale: CGFloat) {
         ctx.saveGState()
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: scale, y: -scale)
@@ -187,6 +192,10 @@ final class SkinBitmapDrawing {
 
     /// A picture of the whole skin's size, pixel for pixel: over what is there, or `replacing` it.
     private func copy(_ image: CGImage, into ctx: CGContext, _ w: Int, _ h: Int, replacing: Bool = false) {
+        SkinBitmapDrawing.copy(image, into: ctx, w, h, replacing: replacing)
+    }
+
+    static func copy(_ image: CGImage, into ctx: CGContext, _ w: Int, _ h: Int, replacing: Bool = false) {
         ctx.saveGState()
         ctx.interpolationQuality = .none
         if replacing { ctx.setBlendMode(.copy) }
@@ -197,26 +206,61 @@ final class SkinBitmapDrawing {
     /// Compares `image` with the skin drawn in full (see `tolerance`).
     private func verify(_ image: CGImage, _ skin: Skin, _ meters: [Meter], _ w: Int, _ h: Int, _ scale: CGFloat,
                         _ space: CGColorSpace) {
-        guard let full = SkinBitmapDrawing.makeContext(w, h, space),
-              let check = SkinBitmapDrawing.makeContext(w, h, space) else { return }
-        draw(items: 0..<(meters.count + 1), meters, skin, into: full, height: h, scale: scale)
-        copy(image, into: check, w, h)
-        guard let a = full.data?.assumingMemoryBound(to: UInt8.self),
-              let b = check.data?.assumingMemoryBound(to: UInt8.self) else { return }
-        let rowA = full.bytesPerRow, rowB = check.bytesPerRow
-        var worst = 0, at = (0, 0)
-        for y in 0..<h {
-            for x in 0..<(w * 4) {
-                let d = abs(Int(a[y * rowA + x]) - Int(b[y * rowB + x]))
-                if d > worst { worst = d; at = (x / 4, y) }
-            }
-        }
-        guard worst > SkinBitmapDrawing.tolerance else { return }
+        guard let full = SkinBitmapDrawing.fullDrawing(of: skin, w, h, scale: scale, space: space),
+              let found = SkinBitmapDrawing.difference(image, full) else { return }
+        guard found.worst > SkinBitmapDrawing.tolerance else { return }
         differences += 1
         if !reportedDifference {
             reportedDifference = true
-            Log.write("Kept pictures differ from a full drawing by \(worst) at pixel \(at.0),\(at.1)", level: .warning,
-                      source: skin.config)
+            Log.write("Kept pictures differ from a full drawing by \(found.worst) at pixel \(found.x),\(found.y)",
+                      level: .warning, source: skin.config)
         }
+    }
+
+    /// The skin drawn in full into a new bitmap of `w`×`h` pixels, as a picture draws it (glass as the window's hit
+    /// areas); nil when the bitmap cannot be made.
+    static func fullDrawing(of skin: Skin, _ w: Int, _ h: Int, scale: CGFloat, space: CGColorSpace) -> CGContext? {
+        guard let ctx = makeContext(w, h, space) else { return nil }
+        ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+        let meters = SkinRenderer.topLevelMeters(skin)
+        draw(items: 0..<(meters.count + 1), meters, skin, into: ctx, height: h, scale: scale)
+        return ctx
+    }
+
+    /// How `image` differs from `ctx`'s pixels: the largest difference of one channel, where it is, and how many
+    /// pixels differ by more than `tolerance`. Nil when they cannot be compared (another size, no pixels).
+    struct Difference: Equatable {
+        var worst = 0
+        var x = 0
+        var y = 0
+        var pixels = 0
+    }
+
+    static func difference(_ image: CGImage, _ ctx: CGContext) -> Difference? {
+        guard image.width == ctx.width, image.height == ctx.height, let space = ctx.colorSpace,
+              let copy = makeContext(image.width, image.height, space),
+              let b = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        copy.setBlendMode(.copy)
+        copy.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let a = copy.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let rowA = copy.bytesPerRow, rowB = ctx.bytesPerRow, rowBytes = image.width * 4
+        var found = Difference()
+        for y in 0..<image.height {
+            let pa = a + y * rowA, pb = b + y * rowB
+            if memcmp(pa, pb, rowBytes) == 0 { continue }
+            var x = 0
+            while x < rowBytes {
+                var pixel = 0
+                for c in 0..<4 { pixel = max(pixel, abs(Int(pa[x + c]) - Int(pb[x + c]))) }
+                if pixel > tolerance { found.pixels += 1 }
+                if pixel > found.worst {
+                    found.worst = pixel
+                    found.x = x / 4
+                    found.y = y
+                }
+                x += 4
+            }
+        }
+        return found
     }
 }
