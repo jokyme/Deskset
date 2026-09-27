@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "E1",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wsmem/ten-E1-r3.json"
+ ],
+ "command": "wsmem",
+ "config": "E1@srgb",
+ "footprintIncreasePerWidgetMB": 1.806,
+ "loadAverageAtEnd": [
+  11.81,
+  9.7,
+  7.68
+ ],
+ "loadAverageAtStart": [
+  10.76,
+  9.35,
+  7.51
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.22,
+  "freeGB": 0.16,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "E1",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "scenario": "ten",
+ "updateIntervalMs": 1000,
+ "widgets": 20,
+ "windowServerBeforeMB": 1565,
+ "windowServerCloseStepMB": -106,
+ "windowServerOpenStepMB": 1,
+ "windowServerOpenStepPerWidgetMB": 0.05
+}

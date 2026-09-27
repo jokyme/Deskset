@@ -1,0 +1,2478 @@
+{
+ "arguments": [
+  "--crops",
+  "results/crops",
+  "--out",
+  "results/q1.json"
+ ],
+ "backingStores": {
+  "D1": {
+   "IOSurface 520x392 BGRA": 1
+  },
+  "D1@srgb": {
+   "IOSurface 520x392 BGRA": 1
+  },
+  "DP": {
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "IOSurface 101x45 BGRA": 1,
+   "IOSurface 126x34 BGRA": 2,
+   "IOSurface 14x28 BGRA": 8,
+   "IOSurface 170x38 BGRA": 1,
+   "IOSurface 225x68 BGRA": 1,
+   "IOSurface 298x44 BGRA": 2,
+   "IOSurface 454x18 BGRA": 2,
+   "IOSurface 456x88 BGRA": 1,
+   "IOSurface 66x34 BGRA": 1
+  },
+  "DP+surfaceBase": {
+   "IOSurface 101x45 BGRA": 1,
+   "IOSurface 126x34 BGRA": 2,
+   "IOSurface 14x28 BGRA": 8,
+   "IOSurface 170x38 BGRA": 1,
+   "IOSurface 225x68 BGRA": 1,
+   "IOSurface 298x44 BGRA": 2,
+   "IOSurface 454x18 BGRA": 2,
+   "IOSurface 456x88 BGRA": 1,
+   "IOSurface 520x392 BGRA": 38,
+   "IOSurface 66x34 BGRA": 1
+  },
+  "DP+surfaceBase+scratch": {
+   "IOSurface 101x45 BGRA": 1,
+   "IOSurface 126x34 BGRA": 2,
+   "IOSurface 14x28 BGRA": 8,
+   "IOSurface 170x38 BGRA": 1,
+   "IOSurface 225x68 BGRA": 1,
+   "IOSurface 298x44 BGRA": 2,
+   "IOSurface 454x18 BGRA": 2,
+   "IOSurface 456x88 BGRA": 1,
+   "IOSurface 520x392 BGRA": 38,
+   "IOSurface 66x34 BGRA": 1
+  },
+  "DP+surfaceBase+scratch@srgb": {
+   "IOSurface 101x45 BGRA": 1,
+   "IOSurface 126x34 BGRA": 2,
+   "IOSurface 14x28 BGRA": 8,
+   "IOSurface 170x38 BGRA": 1,
+   "IOSurface 225x68 BGRA": 1,
+   "IOSurface 298x44 BGRA": 2,
+   "IOSurface 454x18 BGRA": 2,
+   "IOSurface 456x88 BGRA": 1,
+   "IOSurface 520x392 BGRA": 38,
+   "IOSurface 66x34 BGRA": 1
+  },
+  "DP+surfaceBase@srgb": {
+   "IOSurface 101x45 BGRA": 1,
+   "IOSurface 126x34 BGRA": 2,
+   "IOSurface 14x28 BGRA": 8,
+   "IOSurface 170x38 BGRA": 1,
+   "IOSurface 225x68 BGRA": 1,
+   "IOSurface 298x44 BGRA": 2,
+   "IOSurface 454x18 BGRA": 2,
+   "IOSurface 456x88 BGRA": 1,
+   "IOSurface 520x392 BGRA": 38,
+   "IOSurface 66x34 BGRA": 1
+  },
+  "E1": {
+   "CABackingStore [520 392] BGRA8888": 1
+  },
+  "E1@srgb": {
+   "CABackingStore [520 392] BGRA8888": 1
+  },
+  "EP": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp Color LCD": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp Color LCD": 1
+  },
+  "EP+scratch": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp Color LCD": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp Color LCD": 1
+  },
+  "EP+scratch@srgb": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "EP@srgb": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "OVD": {
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 2
+  },
+  "OVD@srgb": {
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 2
+  },
+  "OVE": {
+   "CABackingStore [520 392] BGRA8888": 2
+  },
+  "OVE@srgb": {
+   "CABackingStore [520 392] BGRA8888": 2
+  }
+ },
+ "captureFormat": {
+  "bitmapInfo": "2002",
+  "bitsPerComponent": 8,
+  "bitsPerPixel": 32,
+  "colorSpace": "Color LCD",
+  "height": 392,
+  "width": 520
+ },
+ "capturesStable": {
+  "A": true,
+  "A@srgb": true,
+  "D1": true,
+  "D1@srgb": true,
+  "DP": true,
+  "DP(CGImage base)": true,
+  "DP@srgb": true,
+  "DPx": true,
+  "DPx@srgb": true,
+  "E1": true,
+  "E1@srgb": true,
+  "EP": true,
+  "EP@srgb": true,
+  "EPx": true,
+  "EPx@srgb": true,
+  "OVD": true,
+  "OVD@srgb": true,
+  "OVE": true,
+  "OVE@srgb": true
+ },
+ "command": "q1",
+ "configs": {
+  "A": "A",
+  "A@srgb": "A@srgb",
+  "D1": "D1",
+  "D1@srgb": "D1@srgb",
+  "DP": "DP+surfaceBase",
+  "DP(CGImage base)": "DP",
+  "DP@srgb": "DP+surfaceBase@srgb",
+  "DPx": "DP+surfaceBase+scratch",
+  "DPx@srgb": "DP+surfaceBase+scratch@srgb",
+  "E1": "E1",
+  "E1@srgb": "E1@srgb",
+  "EP": "EP",
+  "EP@srgb": "EP@srgb",
+  "EPx": "EP+scratch",
+  "EPx@srgb": "EP+scratch@srgb",
+  "OVD": "OVD",
+  "OVD@srgb": "OVD@srgb",
+  "OVE": "OVE",
+  "OVE@srgb": "OVE@srgb"
+ },
+ "contexts": {
+  "A [main] kCGContextTypeDisplayList": 1,
+  "A@srgb [main] kCGContextTypeDisplayList": 1,
+  "E1 [skin] kCGContextTypeBitmap Color LCD 8bpc": 1,
+  "E1@srgb [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 1,
+  "EP group [skin] kCGContextTypeBitmap Color LCD 8bpc": 19,
+  "EP+scratch group [skin] kCGContextTypeBitmap Color LCD 8bpc": 19,
+  "EP+scratch@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 19,
+  "EP@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 19,
+  "OVE content [skin] kCGContextTypeBitmap Color LCD 8bpc": 1,
+  "OVE panel [skin] kCGContextTypeBitmap Color LCD 8bpc": 1,
+  "OVE@srgb content [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 1,
+  "OVE@srgb panel [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 1
+ },
+ "format": "rgba8",
+ "loadAverageAtEnd": [
+  6.34,
+  6.46,
+  5.99
+ ],
+ "pairs": {
+  "A@srgb vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 100036,
+     "2": 7509,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 87.701,
+    "differingPixels": 107828,
+    "maxChannelDiff": 10,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 67625,
+     "2": 2371,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.531,
+    "differingPixels": 69996,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 153678,
+     "2": 11091,
+     "3": 218,
+     "4-7": 69,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 80.974,
+    "differingPixels": 165058,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   }
+  },
+  "D1 vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 100036,
+     "2": 7509,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 87.701,
+    "differingPixels": 107828,
+    "maxChannelDiff": 10,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 67625,
+     "2": 2371,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.531,
+    "differingPixels": 69996,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 153678,
+     "2": 11091,
+     "3": 218,
+     "4-7": 69,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 80.974,
+    "differingPixels": 165058,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   }
+  },
+  "D1 vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 106883,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.809,
+    "differingPixels": 109684,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 63292,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 53.756,
+    "differingPixels": 66093,
+    "maxChannelDiff": 9,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 43591,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.889,
+    "differingPixels": 43591,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 126092,
+     "2": 6227,
+     "3": 214,
+     "4-7": 39,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 65.038,
+    "differingPixels": 132574,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   }
+  },
+  "D1@srgb vs A@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "D1@srgb vs D1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "D1@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "DP vs D1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "DP vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 106883,
+     "2": 2704,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.808,
+    "differingPixels": 109683,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 63292,
+     "2": 2704,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 53.756,
+    "differingPixels": 66092,
+    "maxChannelDiff": 9,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 43591,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.889,
+    "differingPixels": 43591,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 126091,
+     "2": 6227,
+     "3": 214,
+     "4-7": 39,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 65.038,
+    "differingPixels": 132573,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   }
+  },
+  "DP(CGImage base) vs D1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 11646,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 5.713,
+    "differingPixels": 11646,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 11639,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 14.388,
+    "differingPixels": 11639,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 45214,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 22.181,
+    "differingPixels": 45214,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "DP@srgb vs D1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "DP@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "DPx vs D1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "DPx vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 106883,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.809,
+    "differingPixels": 109684,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 63292,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 53.756,
+    "differingPixels": 66093,
+    "maxChannelDiff": 9,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 43591,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.889,
+    "differingPixels": 43591,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 126092,
+     "2": 6227,
+     "3": 214,
+     "4-7": 39,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 65.038,
+    "differingPixels": 132574,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   }
+  },
+  "DPx@srgb vs D1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "DPx@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "E1 vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167947,
+     "2": 3896,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.323,
+    "differingPixels": 171883,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 101491,
+     "2": 3120,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.117,
+    "differingPixels": 104651,
+    "maxChannelDiff": 6,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66456,
+     "2": 776,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.114,
+    "differingPixels": 67232,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 154433,
+     "2": 10911,
+     "3": 51,
+     "4-7": 21,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 81.15,
+    "differingPixels": 165416,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   }
+  },
+  "E1@srgb vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 100036,
+     "2": 7509,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 87.701,
+    "differingPixels": 107828,
+    "maxChannelDiff": 10,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 67625,
+     "2": 2371,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.531,
+    "differingPixels": 69996,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 153678,
+     "2": 11091,
+     "3": 218,
+     "4-7": 69,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 80.974,
+    "differingPixels": 165058,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   }
+  },
+  "E1@srgb vs A@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "E1@srgb vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 106883,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.809,
+    "differingPixels": 109684,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 63292,
+     "2": 2705,
+     "3": 50,
+     "4-7": 44,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 53.756,
+    "differingPixels": 66093,
+    "maxChannelDiff": 9,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 43591,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 53.889,
+    "differingPixels": 43591,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 126092,
+     "2": 6227,
+     "3": 214,
+     "4-7": 39,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 65.038,
+    "differingPixels": 132574,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   }
+  },
+  "EP vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 169166,
+     "2": 7255,
+     "3": 23,
+     "4-7": 22,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.571,
+    "differingPixels": 176466,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 101654,
+     "2": 4329,
+     "3": 23,
+     "4-7": 22,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 86.237,
+    "differingPixels": 106028,
+    "maxChannelDiff": 6,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 67512,
+     "2": 2926,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.078,
+    "differingPixels": 70438,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 154539,
+     "2": 15376,
+     "3": 90,
+     "4-7": 22,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.412,
+    "differingPixels": 170027,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   }
+  },
+  "EP vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 98207,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 48.178,
+    "differingPixels": 98207,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 52120,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 42.392,
+    "differingPixels": 52120,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 46087,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 56.974,
+    "differingPixels": 46087,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 97821,
+     "2": 242,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 48.108,
+    "differingPixels": 98063,
+    "maxChannelDiff": 2,
+    "pixels": 203840
+   }
+  },
+  "EP@srgb vs A": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 100036,
+     "2": 7509,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 87.701,
+    "differingPixels": 107828,
+    "maxChannelDiff": 10,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 67625,
+     "2": 2371,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.531,
+    "differingPixels": 69996,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 153677,
+     "2": 11091,
+     "3": 218,
+     "4-7": 69,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 80.974,
+    "differingPixels": 165057,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   }
+  },
+  "EP@srgb vs A@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "EP@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "EPx vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 112468,
+     "2": 2754,
+     "3": 69,
+     "4-7": 41,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 56.581,
+    "differingPixels": 115334,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 66381,
+     "2": 2754,
+     "3": 69,
+     "4-7": 41,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 56.322,
+    "differingPixels": 69247,
+    "maxChannelDiff": 9,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 46087,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 56.974,
+    "differingPixels": 46087,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 112063,
+     "2": 2975,
+     "3": 76,
+     "4-7": 40,
+     "8+": 2
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 56.493,
+    "differingPixels": 115156,
+    "maxChannelDiff": 9,
+    "pixels": 203840
+   }
+  },
+  "EPx@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "OVD vs D1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 46059,
+     "2": 4730,
+     "3": 47,
+     "4-7": 1,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 24.94,
+    "differingPixels": 50837,
+    "maxChannelDiff": 4,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 34420,
+     "2": 4730,
+     "3": 47,
+     "4-7": 1,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     458,
+     338
+    ],
+    "differingPercent": 31.882,
+    "differingPixels": 39198,
+    "maxChannelDiff": 4,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 11639,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 14.388,
+    "differingPixels": 11639,
+    "maxChannelDiff": 1,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 116952,
+     "2": 4962,
+     "3": 324,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 59.968,
+    "differingPixels": 122238,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   }
+  },
+  "OVD@srgb vs D1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 24277,
+     "2": 489,
+     "3": 3,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 12.151,
+    "differingPixels": 24769,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 24277,
+     "2": 489,
+     "3": 3,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 20.146,
+    "differingPixels": 24769,
+    "maxChannelDiff": 3,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 28308,
+     "2": 4151,
+     "3": 50,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     455,
+     327
+    ],
+    "differingPercent": 15.948,
+    "differingPixels": 32509,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   }
+  },
+  "OVE vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 13863,
+     "2": 5,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 6.803,
+    "differingPixels": 13868,
+    "maxChannelDiff": 2,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 13863,
+     "2": 5,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 11.279,
+    "differingPixels": 13868,
+    "maxChannelDiff": 2,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 28128,
+     "2": 323,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     455,
+     327
+    ],
+    "differingPercent": 13.958,
+    "differingPixels": 28451,
+    "maxChannelDiff": 2,
+    "pixels": 203840
+   }
+  },
+  "OVE@srgb vs E1@srgb": {
+   "all": {
+    "byMaxDiff": {
+     "1": 24277,
+     "2": 489,
+     "3": 3,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 12.151,
+    "differingPixels": 24769,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 24277,
+     "2": 489,
+     "3": 3,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     454,
+     327
+    ],
+    "differingPercent": 20.146,
+    "differingPixels": 24769,
+    "maxChannelDiff": 3,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   },
+   "overBackdrop": {
+    "byMaxDiff": {
+     "1": 28308,
+     "2": 4151,
+     "3": 50,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     33,
+     455,
+     327
+    ],
+    "differingPercent": 15.948,
+    "differingPixels": 32509,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   }
+  }
+ },
+ "partition": {
+  "baseElements": 1,
+  "groupPixels": 122949,
+  "groups": 19,
+  "largestGroupPixels": 40128,
+  "tiles": 38,
+  "windowPixels": 203840
+ },
+ "vsOfflineSRGBReferenceConvertedByCG": {
+  "A": {
+   "byMaxDiff": {
+    "1": 167529,
+    "2": 10487,
+    "3": 253,
+    "4-7": 65,
+    "8+": 2
+   },
+   "differingBounds": [
+    0,
+    0,
+    520,
+    392
+   ],
+   "differingPercent": 87.488,
+   "differingPixels": 178336,
+   "maxChannelDiff": 10,
+   "pixels": 203840
+  },
+  "A@srgb": {
+   "byMaxDiff": {
+    "1": 30400,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 14.914,
+   "differingPixels": 30400,
+   "maxChannelDiff": 1,
+   "pixels": 203840
+  },
+  "D1": {
+   "byMaxDiff": {
+    "1": 30400,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 14.914,
+   "differingPixels": 30400,
+   "maxChannelDiff": 1,
+   "pixels": 203840
+  },
+  "D1@srgb": {
+   "byMaxDiff": {
+    "1": 30400,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 14.914,
+   "differingPixels": 30400,
+   "maxChannelDiff": 1,
+   "pixels": 203840
+  },
+  "E1": {
+   "byMaxDiff": {
+    "1": 112468,
+    "2": 2754,
+    "3": 69,
+    "4-7": 41,
+    "8+": 2
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 56.581,
+   "differingPixels": 115334,
+   "maxChannelDiff": 9,
+   "pixels": 203840
+  },
+  "E1@srgb": {
+   "byMaxDiff": {
+    "1": 30400,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 14.914,
+   "differingPixels": 30400,
+   "maxChannelDiff": 1,
+   "pixels": 203840
+  },
+  "EP": {
+   "byMaxDiff": {
+    "1": 24323,
+    "2": 1223,
+    "3": 47,
+    "4-7": 42,
+    "8+": 2
+   },
+   "differingBounds": [
+    36,
+    33,
+    455,
+    327
+   ],
+   "differingPercent": 12.577,
+   "differingPixels": 25637,
+   "maxChannelDiff": 9,
+   "pixels": 203840
+  },
+  "EP@srgb": {
+   "byMaxDiff": {
+    "1": 30401,
+    "2": 1,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    518,
+    390
+   ],
+   "differingPercent": 14.915,
+   "differingPixels": 30402,
+   "maxChannelDiff": 2,
+   "pixels": 203840
+  }
+ },
+ "widget": "system (260 × 196 pt), tick 7"
+}

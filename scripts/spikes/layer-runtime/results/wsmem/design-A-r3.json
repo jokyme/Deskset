@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "A",
+  "--window-cs",
+  "default",
+  "--out",
+  "results/wsmem/design-A-r3.json"
+ ],
+ "command": "wsmem",
+ "config": "A",
+ "footprintIncreasePerWidgetMB": 35.816,
+ "loadAverageAtEnd": [
+  7.99,
+  8.96,
+  7.57
+ ],
+ "loadAverageAtStart": [
+  7.87,
+  8.97,
+  7.53
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.36,
+  "freeGB": 0.11,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "A",
+ "oneBitmapOfTheWindowMB": 1.978,
+ "scenario": "design",
+ "updateIntervalMs": 1000,
+ "widgets": 5,
+ "windowServerBeforeMB": 1476,
+ "windowServerCloseStepMB": -8,
+ "windowServerOpenStepMB": -105,
+ "windowServerOpenStepPerWidgetMB": -21
+}

@@ -1,0 +1,33 @@
+{
+ "arguments": [
+  "--out",
+  "results/probes.json"
+ ],
+ "command": "probes",
+ "describeContext": {
+  "bytesPerCall": 214,
+  "calls": 100000,
+  "controlColorSpaceFootprintIncreaseMB": 0.02,
+  "footprintIncreaseMB": 20.39,
+  "microsecondsPerCall": 2.8
+ },
+ "imagesFromReleasedContexts": {
+  "bytesEachMB": 9.77,
+  "footprintIncreaseAfterCoreGraphicsReadThemMB": 78.89,
+  "footprintIncreaseAfterMakingMB": 0.36,
+  "images": 8,
+  "liveUniformContextAfter3sMB": 9.8,
+  "liveUniformContextMB": 9.8
+ },
+ "loadAverageAtEnd": [
+  5.83,
+  7.27,
+  7.17
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 11.34,
+  "freeGB": 0.13,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ }
+}

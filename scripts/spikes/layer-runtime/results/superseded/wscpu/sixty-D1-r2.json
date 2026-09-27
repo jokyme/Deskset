@@ -1,0 +1,536 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--seconds",
+  "2",
+  "--pairs",
+  "10",
+  "--settle",
+  "5",
+  "--ws-cycles",
+  "0",
+  "--no-top",
+  "--reshow-wait",
+  "1",
+  "--backdrop",
+  "--mode",
+  "D1",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wscpu/sixty-D1-r2.json"
+ ],
+ "backdrop": true,
+ "command": "cost",
+ "config": "D1@srgb",
+ "contexts": {},
+ "cpu": {
+  "framesPerSecond": 60.056,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 60.588,
+  "processPercentOfOneCore": 7.986,
+  "provisional": true,
+  "windowServerPercentOfOneCore": 47.33,
+  "windowServerPercentOfOneCoreIncrease": 0.208,
+  "windowServerPercentOfOneCoreOff": 47.122
+ },
+ "frameCost": {
+  "p50us": 1026,
+  "p99us": 3177,
+  "updates": 2268
+ },
+ "frames": {
+  "commits": 129,
+  "frameCostP50us": 1026,
+  "frameCostP99us": 3170,
+  "intervalMaxMs": 17.75,
+  "intervalP50ms": 16.7,
+  "intervalP99ms": 17.71
+ },
+ "loadAverageAtEnd": [
+  7.84,
+  6.46,
+  6.26
+ ],
+ "memory": {
+  "backingStores": {
+   "IOSurface 520x240 BGRA": 1
+  },
+  "footprintAfterCloseMB": 13.16,
+  "footprintAfterSettleMB": 13.66,
+  "footprintAtEndMB": 14.14,
+  "footprintBeforeMB": 12.58,
+  "footprintCategoriesAfterSettleMB": {
+   "CG raster data": 0.56,
+   "CoreAnimation": 0.56,
+   "IOSurface": 1.5,
+   "MALLOC metadata": 0.66,
+   "MALLOC_SMALL": 5.72,
+   "MALLOC_TINY": 0.28,
+   "Owned physical footprint (unmapped)": 0.5,
+   "TOTAL": 14,
+   "__DATA": 0.59,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.31,
+   "page table": 0.5,
+   "stack": 0.28,
+   "total": "14 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.31,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "CG raster data": 0.56,
+   "CoreAnimation": 0.56,
+   "MALLOC metadata": 0.66,
+   "MALLOC_SMALL": 6.06,
+   "MALLOC_TINY": 0.28,
+   "Owned physical footprint (unmapped)": 0.5,
+   "TOTAL": 13,
+   "__DATA": 0.57,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.28,
+   "page table": 0.5,
+   "stack": 0.34,
+   "total": "13 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.3,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 1.563,
+  "footprintIncreaseMB": 1.078,
+  "footprintIncreasePerWidgetMB": 1.078,
+  "layerBitmapsPerWidgetMB": 0.5,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 11.12,
+   "freeGB": 0.59,
+   "pressureLevel": 2,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 10.51,
+   "freeGB": 0.13,
+   "pressureLevel": 2,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 0.476,
+  "ownedBitmapsPerWidgetMB": 1.5,
+  "windowServerCloseStepsMB": [
+   0
+  ],
+  "windowServerIncreaseMB": 27,
+  "windowServerIncreasePerWidgetMB": 27,
+  "windowServerOpenStepsMB": [
+   27
+  ]
+ },
+ "mode": "D1",
+ "openAllMs": 7.1,
+ "pairs": 10,
+ "phaseSeconds": 2,
+ "phases": [
+  {
+   "framesPerSecond": 60.03,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.52,
+   "loadAverageAfter": [
+    9.51,
+    6.33,
+    6.2
+   ],
+   "loadAverageBefore": [
+    9.99,
+    6.37,
+    6.21
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 7.481,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 47.93
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.96,
+   "loadAverageAfter": [
+    9.51,
+    6.33,
+    6.2
+   ],
+   "loadAverageBefore": [
+    9.51,
+    6.33,
+    6.2
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.1,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 43.38
+  },
+  {
+   "framesPerSecond": 60,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.48,
+   "loadAverageAfter": [
+    9.07,
+    6.29,
+    6.19
+   ],
+   "loadAverageBefore": [
+    9.51,
+    6.33,
+    6.2
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 9.847,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 45
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    9.07,
+    6.29,
+    6.19
+   ],
+   "loadAverageBefore": [
+    9.07,
+    6.29,
+    6.19
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.057,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 47.9
+  },
+  {
+   "framesPerSecond": 60.02,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.5,
+   "loadAverageAfter": [
+    10.18,
+    6.56,
+    6.28
+   ],
+   "loadAverageBefore": [
+    9.07,
+    6.29,
+    6.19
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 7.034,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 49.85
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    10.18,
+    6.56,
+    6.28
+   ],
+   "loadAverageBefore": [
+    10.18,
+    6.56,
+    6.28
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.038,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 52.26
+  },
+  {
+   "framesPerSecond": 60.02,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.51,
+   "loadAverageAfter": [
+    9.85,
+    6.55,
+    6.28
+   ],
+   "loadAverageBefore": [
+    9.85,
+    6.55,
+    6.28
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 6.538,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 45.98
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    9.54,
+    6.54,
+    6.28
+   ],
+   "loadAverageBefore": [
+    9.85,
+    6.55,
+    6.28
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.036,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 46.96
+  },
+  {
+   "framesPerSecond": 60.02,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.99,
+   "loadAverageAfter": [
+    9.54,
+    6.54,
+    6.28
+   ],
+   "loadAverageBefore": [
+    9.54,
+    6.54,
+    6.28
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 8.607,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 47.44
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.96,
+   "loadAverageAfter": [
+    9.5,
+    6.59,
+    6.29
+   ],
+   "loadAverageBefore": [
+    9.54,
+    6.54,
+    6.28
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.101,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 45.82
+  },
+  {
+   "framesPerSecond": 59.99,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.47,
+   "loadAverageAfter": [
+    9.5,
+    6.59,
+    6.29
+   ],
+   "loadAverageBefore": [
+    9.5,
+    6.59,
+    6.29
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 9.838,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 48.38
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    9.14,
+    6.56,
+    6.29
+   ],
+   "loadAverageBefore": [
+    9.5,
+    6.59,
+    6.29
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.046,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 48.33
+  },
+  {
+   "framesPerSecond": 60.04,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.53,
+   "loadAverageAfter": [
+    9.14,
+    6.56,
+    6.29
+   ],
+   "loadAverageBefore": [
+    9.14,
+    6.56,
+    6.29
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 6.225,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 51.33
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.96,
+   "loadAverageAfter": [
+    8.8,
+    6.53,
+    6.28
+   ],
+   "loadAverageBefore": [
+    8.8,
+    6.53,
+    6.28
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.087,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 48.72
+  },
+  {
+   "framesPerSecond": 60,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.48,
+   "loadAverageAfter": [
+    8.5,
+    6.51,
+    6.27
+   ],
+   "loadAverageBefore": [
+    8.8,
+    6.53,
+    6.28
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 7.343,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 44.03
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    8.5,
+    6.51,
+    6.27
+   ],
+   "loadAverageBefore": [
+    8.5,
+    6.51,
+    6.27
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.041,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 43.53
+  },
+  {
+   "framesPerSecond": 60.03,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.51,
+   "loadAverageAfter": [
+    8.54,
+    6.55,
+    6.29
+   ],
+   "loadAverageBefore": [
+    8.5,
+    6.51,
+    6.27
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 9.488,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 46.48
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    8.54,
+    6.55,
+    6.29
+   ],
+   "loadAverageBefore": [
+    8.54,
+    6.55,
+    6.29
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.033,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 46.47
+  },
+  {
+   "framesPerSecond": 60.41,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 60.89,
+   "loadAverageAfter": [
+    8.18,
+    6.51,
+    6.27
+   ],
+   "loadAverageBefore": [
+    8.54,
+    6.55,
+    6.29
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 7.464,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 46.88
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    8.18,
+    6.51,
+    6.27
+   ],
+   "loadAverageBefore": [
+    8.18,
+    6.51,
+    6.27
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.034,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 47.85
+  }
+ ],
+ "scenario": "sixty",
+ "settleSeconds": 5,
+ "updateIntervalMs": 16.67,
+ "widgets": 1
+}

@@ -1,0 +1,52 @@
+{
+ "arguments": [
+  "--out",
+  "results/swap/r3.json"
+ ],
+ "both inside NSDisableScreenUpdates": {
+  "blank": 0,
+  "captureFailed": 0,
+  "doubled": 0,
+  "droppedWhileWindowListChanged": 19,
+  "ok": 1252,
+  "samples": 1252,
+  "swapMsP50": 61.9,
+  "swaps": 25
+ },
+ "command": "swap",
+ "loadAverageAtEnd": [
+  5.88,
+  5.96,
+  5.65
+ ],
+ "new above old, then old out": {
+  "blank": 0,
+  "captureFailed": 0,
+  "doubled": 0,
+  "droppedWhileWindowListChanged": 15,
+  "ok": 1283,
+  "samples": 1283,
+  "swapMsP50": 60.4,
+  "swaps": 25
+ },
+ "old out, then new in": {
+  "blank": 0,
+  "captureFailed": 0,
+  "doubled": 0,
+  "droppedWhileWindowListChanged": 11,
+  "ok": 1267,
+  "samples": 1267,
+  "swapMsP50": 63.5,
+  "swaps": 25
+ },
+ "same window, contentRoot replaced in one transaction": {
+  "blank": 0,
+  "captureFailed": 0,
+  "doubled": 0,
+  "droppedWhileWindowListChanged": 0,
+  "ok": 995,
+  "samples": 995,
+  "swapMsP50": 7.6,
+  "swaps": 25
+ }
+}

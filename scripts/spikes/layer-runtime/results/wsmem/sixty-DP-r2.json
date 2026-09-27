@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--mode",
+  "DP",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wsmem/sixty-DP-r2.json"
+ ],
+ "command": "wsmem",
+ "config": "DP+surfaceBase@srgb",
+ "footprintIncreasePerWidgetMB": 4.063,
+ "loadAverageAtEnd": [
+  12.49,
+  9.53,
+  7.53
+ ],
+ "loadAverageAtStart": [
+  12.25,
+  9.24,
+  7.38
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.81,
+  "freeGB": 0.09,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "DP",
+ "oneBitmapOfTheWindowMB": 0.476,
+ "scenario": "sixty",
+ "updateIntervalMs": 16.67,
+ "widgets": 5,
+ "windowServerBeforeMB": 1501,
+ "windowServerCloseStepMB": -38,
+ "windowServerOpenStepMB": -90,
+ "windowServerOpenStepPerWidgetMB": -18
+}

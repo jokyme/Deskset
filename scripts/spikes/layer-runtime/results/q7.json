@@ -1,0 +1,426 @@
+{
+ "arguments": [
+  "--out",
+  "results/q7.json"
+ ],
+ "command": "q7",
+ "contentHost": {
+  "allStepsWhereExpected": true,
+  "appKitWritesPerResize": [
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 300.0, 200.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": true,
+    "contentRootWrittenByOthers": [],
+    "resizeTo": "400x300"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 400.0, 300.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": true,
+    "contentRootWrittenByOthers": [],
+    "resizeTo": "250x150"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 250.0, 150.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": true,
+    "contentRootWrittenByOthers": [],
+    "resizeTo": "300x420"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 300.0, 420.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": true,
+    "contentRootWrittenByOthers": [],
+    "resizeTo": "520x180"
+   }
+  ],
+  "contentRootGeometryFlipped": false,
+  "drawInContextCTM(a,d)": [
+   2,
+   -2
+  ],
+  "foreignWritesFirst": [],
+  "foreignWritesTotal": 0,
+  "hostLayerClass": "NSViewBackingLayer",
+  "hostLayerGeometryFlipped": false,
+  "steps": [
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 160.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "initial",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x200"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(330.0, 260.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "400x300"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(180.0, 110.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "250x150"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 380.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x420"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(450.0, 140.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "520x180"
+   }
+  ]
+ },
+ "layerHostingControl": {
+  "allStepsWhereExpected": true,
+  "appKitWritesPerResize": [
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 400.0, 300.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "400x300"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 250.0, 150.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "250x150"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 300.0, 420.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "300x420"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 520.0, 180.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "520x180"
+   }
+  ],
+  "contentRootGeometryFlipped": false,
+  "drawInContextCTM(a,d)": [
+   2,
+   -2
+  ],
+  "foreignWritesFirst": [
+   "removeFromSuperlayer [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]",
+   "position [main]",
+   "hidden [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]",
+   "setNeedsLayout [main]",
+   "bounds [main]",
+   "position [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]"
+  ],
+  "foreignWritesTotal": 25,
+  "hostLayerClass": "spike.RecordingLayer",
+  "hostLayerGeometryFlipped": false,
+  "steps": [
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 160.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "initial",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x200"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(330.0, 260.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "400x300"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(180.0, 110.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "250x150"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 380.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x420"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(450.0, 140.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "520x180"
+   }
+  ]
+ },
+ "layerHostingControlRootFlippedByRuntime": {
+  "allStepsWhereExpected": true,
+  "appKitWritesPerResize": [
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 400.0, 300.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "400x300"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 250.0, 150.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "250x150"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 300.0, 420.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "300x420"
+   },
+   {
+    "contentRootAfterResize": {
+     "anchorPoint": "(0.0, 0.0)",
+     "bounds": "(0.0, 0.0, 520.0, 180.0)",
+     "contentsScale": 1,
+     "geometryFlipped": false,
+     "position": "(0.0, 0.0)",
+     "transformIsIdentity": true
+    },
+    "contentRootUnchanged": false,
+    "contentRootWrittenByOthers": [
+     "geometryFlipped [main]",
+     "anchorPoint [main]",
+     "setNeedsLayout [main]",
+     "bounds [main]",
+     "position [main]"
+    ],
+    "resizeTo": "520x180"
+   }
+  ],
+  "contentRootGeometryFlipped": false,
+  "drawInContextCTM(a,d)": [
+   2,
+   -2
+  ],
+  "foreignWritesFirst": [
+   "removeFromSuperlayer [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]",
+   "position [main]",
+   "hidden [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]",
+   "setNeedsLayout [main]",
+   "bounds [main]",
+   "position [main]",
+   "geometryFlipped [main]",
+   "anchorPoint [main]"
+  ],
+  "foreignWritesTotal": 25,
+  "hostLayerClass": "spike.RecordingLayer",
+  "hostLayerGeometryFlipped": false,
+  "steps": [
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 160.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "initial",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x200"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(330.0, 260.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "400x300"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(180.0, 110.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "250x150"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(230.0, 380.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "300x420"
+   },
+   {
+    "allWhereExpected": true,
+    "bottomMarkerBlueHalf": "(450.0, 140.0, 60.0, 15.0)",
+    "captureMatchesWindow": true,
+    "paintedGreenBar": "(100.0, 60.0, 80.0, 10.0)",
+    "step": "resized",
+    "topMarkerRedHalf": "(10.0, 10.0, 60.0, 15.0)",
+    "windowPoints": "520x180"
+   }
+  ]
+ },
+ "loadAverageAtEnd": [
+  5.08,
+  5.73,
+  5.78
+ ],
+ "screenChange": "not tested: this Mac has one screen (built-in, 2×)"
+}

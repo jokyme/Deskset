@@ -1,0 +1,55 @@
+{
+ "arguments": [
+  "--variant",
+  "shared-surface",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/q6/memory-shared-surface-srgb.json"
+ ],
+ "backingStores": {
+  "IOSurface 1600x1600 BGRA": 61
+ },
+ "command": "q6",
+ "footprintAfterCloseEachCycleMB": [
+  0.59,
+  2.5,
+  0.05
+ ],
+ "footprintIncreaseEachCycleMB": [
+  10.41,
+  12.28,
+  9.83
+ ],
+ "footprintIncreaseMedianMB": 10.41,
+ "holes": 20,
+ "imageMB": 9.77,
+ "imagePixels": "1600x1600",
+ "layerBitmapMB": 9.77,
+ "loadAverageAtEnd": [
+  7.74,
+  5.82,
+  5.57
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 9.21,
+  "freeGB": 0.11,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "noise": false,
+ "tiles": 61,
+ "variant": "shared-surface",
+ "windowColorSpace": "srgb",
+ "windowServerCloseStepsMB": [
+  -12,
+  -12,
+  -12
+ ],
+ "windowServerIncreaseMedianMB": 12,
+ "windowServerOpenStepsMB": [
+  13,
+  12,
+  12
+ ]
+}

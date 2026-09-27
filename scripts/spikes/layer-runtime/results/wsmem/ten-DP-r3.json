@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "DP",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wsmem/ten-DP-r3.json"
+ ],
+ "command": "wsmem",
+ "config": "DP+surfaceBase@srgb",
+ "footprintIncreasePerWidgetMB": 3.492,
+ "loadAverageAtEnd": [
+  7.87,
+  8.97,
+  7.53
+ ],
+ "loadAverageAtStart": [
+  9.14,
+  9.26,
+  7.6
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.05,
+  "freeGB": 0.16,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "DP",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "scenario": "ten",
+ "updateIntervalMs": 1000,
+ "widgets": 20,
+ "windowServerBeforeMB": 1227,
+ "windowServerCloseStepMB": -1,
+ "windowServerOpenStepMB": 254,
+ "windowServerOpenStepPerWidgetMB": 12.7
+}

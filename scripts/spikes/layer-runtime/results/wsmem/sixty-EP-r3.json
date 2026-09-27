@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--mode",
+  "EP",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wsmem/sixty-EP-r3.json"
+ ],
+ "command": "wsmem",
+ "config": "EP@srgb",
+ "footprintIncreasePerWidgetMB": 1.878,
+ "loadAverageAtEnd": [
+  6.05,
+  7.92,
+  7.35
+ ],
+ "loadAverageAtStart": [
+  6.32,
+  8.07,
+  7.39
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.89,
+  "freeGB": 0.14,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "EP",
+ "oneBitmapOfTheWindowMB": 0.476,
+ "scenario": "sixty",
+ "updateIntervalMs": 16.67,
+ "widgets": 5,
+ "windowServerBeforeMB": 1441,
+ "windowServerCloseStepMB": -31,
+ "windowServerOpenStepMB": 75,
+ "windowServerOpenStepPerWidgetMB": 15
+}

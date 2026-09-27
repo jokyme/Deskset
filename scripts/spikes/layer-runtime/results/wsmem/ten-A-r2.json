@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "A",
+  "--window-cs",
+  "default",
+  "--out",
+  "results/wsmem/ten-A-r2.json"
+ ],
+ "command": "wsmem",
+ "config": "A",
+ "footprintIncreasePerWidgetMB": 11.74,
+ "loadAverageAtEnd": [
+  11.64,
+  7.58,
+  6.49
+ ],
+ "loadAverageAtStart": [
+  8.7,
+  6.74,
+  6.17
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 10.27,
+  "freeGB": 0.16,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "A",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "scenario": "ten",
+ "updateIntervalMs": 1000,
+ "widgets": 20,
+ "windowServerBeforeMB": 1396,
+ "windowServerCloseStepMB": -13,
+ "windowServerOpenStepMB": 12,
+ "windowServerOpenStepPerWidgetMB": 0.6
+}

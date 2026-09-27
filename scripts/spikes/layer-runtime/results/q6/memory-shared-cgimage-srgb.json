@@ -1,0 +1,55 @@
+{
+ "arguments": [
+  "--variant",
+  "shared-cgimage",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/q6/memory-shared-cgimage-srgb.json"
+ ],
+ "backingStores": {
+  "CGImage 1600x1600 8bpc/32bpp kCGColorSpaceSRGB": 61
+ },
+ "command": "q6",
+ "footprintAfterCloseEachCycleMB": [
+  3.09,
+  2.52,
+  0.06
+ ],
+ "footprintIncreaseEachCycleMB": [
+  3.16,
+  2.55,
+  0.11
+ ],
+ "footprintIncreaseMedianMB": 2.55,
+ "holes": 20,
+ "imageMB": 9.77,
+ "imagePixels": "1600x1600",
+ "layerBitmapMB": 9.77,
+ "loadAverageAtEnd": [
+  6.18,
+  5.39,
+  5.41
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 9.67,
+  "freeGB": 0.08,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "noise": false,
+ "tiles": 61,
+ "variant": "shared-cgimage",
+ "windowColorSpace": "srgb",
+ "windowServerCloseStepsMB": [
+  -13,
+  -13,
+  -12
+ ],
+ "windowServerIncreaseMedianMB": 13,
+ "windowServerOpenStepsMB": [
+  13,
+  13,
+  12
+ ]
+}

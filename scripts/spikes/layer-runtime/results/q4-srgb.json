@@ -1,0 +1,967 @@
+{
+ "arguments": [
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/q4-srgb.json"
+ ],
+ "backingStoresAfterFirstFrame": {
+  "D1": {
+   "IOSurface 520x392 BGRA": 1
+  },
+  "E1/auto@srgb": {
+   "CABackingStore [520 392] BGRA8888": 1
+  },
+  "E1/rgba16f@srgb": {
+   "CABackingStore [520 392] RGBAh": 1
+  },
+  "E1@srgb": {
+   "CABackingStore [520 392] BGRA8888": 1
+  },
+  "EP+windowSpaceBase@srgb": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "EP/auto@srgb": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "EP/rgba16f+windowSpaceBase@srgb": {
+   "CABackingStore [101 45] RGBAh": 1,
+   "CABackingStore [126 34] RGBAh": 2,
+   "CABackingStore [170 38] RGBAh": 1,
+   "CABackingStore [225 68] RGBAh": 1,
+   "CABackingStore [298 44] RGBAh": 2,
+   "CABackingStore [454 18] RGBAh": 2,
+   "CABackingStore [456 88] RGBAh": 1,
+   "CABackingStore [66 34] RGBAh": 1,
+   "CGImage 14x28 16bpc/64bpp float kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 16bpc/64bpp float kCGColorSpaceSRGB": 38
+  },
+  "EP/rgba16f@srgb": {
+   "CABackingStore [101 45] RGBAh": 1,
+   "CABackingStore [126 34] RGBAh": 2,
+   "CABackingStore [170 38] RGBAh": 1,
+   "CABackingStore [225 68] RGBAh": 1,
+   "CABackingStore [298 44] RGBAh": 2,
+   "CABackingStore [454 18] RGBAh": 2,
+   "CABackingStore [456 88] RGBAh": 1,
+   "CABackingStore [66 34] RGBAh": 1,
+   "CGImage 14x28 16bpc/64bpp float kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38
+  },
+  "EP@srgb": {
+   "CABackingStore [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  }
+ },
+ "backingStoresAfterThreeMoreFrames": {
+  "D1 (sRGB IOSurface, today's window)": {
+   "IOSurface 520x392 BGRA": 1
+  },
+  "E1/auto": {
+   "CABackingStore [520 392] BGRA8888 + [520 392] BGRA8888": 1
+  },
+  "E1/rgba16f": {
+   "CABackingStore [520 392] RGBAh + [520 392] RGBAh": 1
+  },
+  "E1/rgba8": {
+   "CABackingStore [520 392] BGRA8888 + [520 392] BGRA8888": 1
+  },
+  "EP/auto": {
+   "CABackingStore [101 45] BGRA8888 + [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888 + [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888 + [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888 + [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "EP/rgba16f": {
+   "CABackingStore [101 45] RGBAh + [101 45] RGBAh": 1,
+   "CABackingStore [126 34] RGBAh": 2,
+   "CABackingStore [170 38] RGBAh": 1,
+   "CABackingStore [225 68] RGBAh": 1,
+   "CABackingStore [298 44] RGBAh + [298 44] RGBAh": 2,
+   "CABackingStore [454 18] RGBAh + [454 18] RGBAh": 2,
+   "CABackingStore [456 88] RGBAh + [456 88] RGBAh": 1,
+   "CABackingStore [66 34] RGBAh": 1,
+   "CGImage 14x28 16bpc/64bpp float kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38
+  },
+  "EP/rgba16f+windowSpaceBase": {
+   "CABackingStore [101 45] RGBAh + [101 45] RGBAh": 1,
+   "CABackingStore [126 34] RGBAh": 2,
+   "CABackingStore [170 38] RGBAh": 1,
+   "CABackingStore [225 68] RGBAh": 1,
+   "CABackingStore [298 44] RGBAh + [298 44] RGBAh": 2,
+   "CABackingStore [454 18] RGBAh + [454 18] RGBAh": 2,
+   "CABackingStore [456 88] RGBAh + [456 88] RGBAh": 1,
+   "CABackingStore [66 34] RGBAh": 1,
+   "CGImage 14x28 16bpc/64bpp float kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 16bpc/64bpp float kCGColorSpaceSRGB": 38
+  },
+  "EP/rgba8": {
+   "CABackingStore [101 45] BGRA8888 + [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888 + [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888 + [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888 + [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  },
+  "EP/rgba8+windowSpaceBase": {
+   "CABackingStore [101 45] BGRA8888 + [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888 + [298 44] BGRA8888": 2,
+   "CABackingStore [454 18] BGRA8888 + [454 18] BGRA8888": 2,
+   "CABackingStore [456 88] BGRA8888 + [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp kCGColorSpaceSRGB": 8,
+   "CGImage 520x392 8bpc/32bpp kCGColorSpaceSRGB": 38,
+   "CGImage 66x34 8bpc/32bpp kCGColorSpaceSRGB": 1
+  }
+ },
+ "captureFormat": {
+  "bitmapInfo": "2002",
+  "bitsPerComponent": 8,
+  "bitsPerPixel": 32,
+  "colorSpace": "Color LCD",
+  "height": 392,
+  "width": 520
+ },
+ "command": "q4",
+ "configs": {
+  "A": "A@srgb",
+  "A (today)": "A",
+  "D1 (sRGB IOSurface, today's window)": "D1",
+  "E1/auto": "E1/auto@srgb",
+  "E1/rgba16f": "E1/rgba16f@srgb",
+  "E1/rgba8": "E1@srgb",
+  "EP/auto": "EP/auto@srgb",
+  "EP/rgba16f": "EP/rgba16f@srgb",
+  "EP/rgba16f+windowSpaceBase": "EP/rgba16f+windowSpaceBase@srgb",
+  "EP/rgba8": "EP@srgb",
+  "EP/rgba8+windowSpaceBase": "EP+windowSpaceBase@srgb"
+ },
+ "contextsFirstFrames": {
+  "A [main] kCGContextTypeDisplayList": 1,
+  "A@srgb [main] kCGContextTypeDisplayList": 1,
+  "E1/auto@srgb [skin] kCGContextTypeCoreAnimationAutomatic": 1,
+  "E1/rgba16f@srgb [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 1,
+  "E1@srgb [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 1,
+  "EP+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 19,
+  "EP/auto@srgb group [skin] kCGContextTypeCoreAnimationAutomatic": 19,
+  "EP/rgba16f+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 11,
+  "EP/rgba16f+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 16bpc float": 8,
+  "EP/rgba16f@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 11,
+  "EP/rgba16f@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 16bpc float": 8,
+  "EP@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 19
+ },
+ "contextsNextThreeFrames": {
+  "A [main] kCGContextTypeDisplayList": 3,
+  "A@srgb [main] kCGContextTypeDisplayList": 3,
+  "E1/auto@srgb [skin] kCGContextTypeCoreAnimationAutomatic": 3,
+  "E1/rgba16f@srgb [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 3,
+  "E1@srgb [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 3,
+  "EP+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 38,
+  "EP/auto@srgb group [skin] kCGContextTypeCoreAnimationAutomatic": 38,
+  "EP/rgba16f+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 14,
+  "EP/rgba16f+windowSpaceBase@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 16bpc float": 24,
+  "EP/rgba16f@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceExtendedSRGB 16bpc float": 14,
+  "EP/rgba16f@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 16bpc float": 24,
+  "EP@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 38
+ },
+ "loadAverageAtEnd": [
+  6.06,
+  6.39,
+  5.97
+ ],
+ "pairs": {
+  "A vs A (today)": {
+   "byMaxDiff": {
+    "1": 167661,
+    "2": 9880,
+    "3": 214,
+    "4-7": 67,
+    "8+": 2
+   },
+   "differingBounds": [
+    0,
+    0,
+    520,
+    392
+   ],
+   "differingPercent": 87.237,
+   "differingPixels": 177824,
+   "maxChannelDiff": 10,
+   "pixels": 203840
+  },
+  "E1/auto": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "E1/rgba16f": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 18617,
+     "2": 5042,
+     "3": 3,
+     "4-7": 1,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 11.609,
+    "differingPixels": 23663,
+    "maxChannelDiff": 4,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 169428,
+     "2": 7470,
+     "3": 28,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.832,
+    "differingPixels": 176999,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 169428,
+     "2": 7470,
+     "3": 28,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.832,
+    "differingPixels": 176999,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   }
+  },
+  "E1/rgba8": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   }
+  },
+  "EP/auto": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs E1/auto": {
+    "all": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.003,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 203840
+    },
+    "inGroupBoxes": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.006,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 122949
+    },
+    "outsideGroups": {
+     "byMaxDiff": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingPercent": 0,
+     "differingPixels": 0,
+     "maxChannelDiff": 0,
+     "pixels": 80891
+    }
+   }
+  },
+  "EP/rgba16f": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 150114,
+     "2": 7491,
+     "3": 3,
+     "4-7": 2,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 77.32,
+    "differingPixels": 157610,
+    "maxChannelDiff": 4,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 94653,
+     "2": 1359,
+     "3": 19,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 47.147,
+    "differingPixels": 96104,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 94653,
+     "2": 1359,
+     "3": 19,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 47.147,
+    "differingPixels": 96104,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs E1/rgba16f": {
+    "all": {
+     "byMaxDiff": {
+      "1": 147401,
+      "2": 2455,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      0,
+      0,
+      520,
+      392
+     ],
+     "differingPercent": 73.516,
+     "differingPixels": 149856,
+     "maxChannelDiff": 2,
+     "pixels": 203840
+    },
+    "inGroupBoxes": {
+     "byMaxDiff": {
+      "1": 79796,
+      "2": 1,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      32,
+      25,
+      460,
+      338
+     ],
+     "differingPercent": 64.903,
+     "differingPixels": 79797,
+     "maxChannelDiff": 2,
+     "pixels": 122949
+    },
+    "outsideGroups": {
+     "byMaxDiff": {
+      "1": 67605,
+      "2": 2454,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      0,
+      0,
+      520,
+      392
+     ],
+     "differingPercent": 86.609,
+     "differingPixels": 70059,
+     "maxChannelDiff": 2,
+     "pixels": 80891
+    }
+   }
+  },
+  "EP/rgba16f+windowSpaceBase": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 18620,
+     "2": 5042,
+     "3": 3,
+     "4-7": 1,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 11.61,
+    "differingPixels": 23666,
+    "maxChannelDiff": 4,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 169429,
+     "2": 7469,
+     "3": 28,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.832,
+    "differingPixels": 176999,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 169429,
+     "2": 7469,
+     "3": 28,
+     "4-7": 71,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 86.832,
+    "differingPixels": 176999,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs E1/rgba16f": {
+    "all": {
+     "byMaxDiff": {
+      "1": 10,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      86,
+      434,
+      117
+     ],
+     "differingPercent": 0.005,
+     "differingPixels": 10,
+     "maxChannelDiff": 1,
+     "pixels": 203840
+    },
+    "inGroupBoxes": {
+     "byMaxDiff": {
+      "1": 10,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      86,
+      434,
+      117
+     ],
+     "differingPercent": 0.008,
+     "differingPixels": 10,
+     "maxChannelDiff": 1,
+     "pixels": 122949
+    },
+    "outsideGroups": {
+     "byMaxDiff": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingPercent": 0,
+     "differingPixels": 0,
+     "maxChannelDiff": 0,
+     "pixels": 80891
+    }
+   }
+  },
+  "EP/rgba8": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs E1/rgba8": {
+    "all": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.003,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 203840
+    },
+    "inGroupBoxes": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.006,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 122949
+    },
+    "outsideGroups": {
+     "byMaxDiff": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingPercent": 0,
+     "differingPixels": 0,
+     "maxChannelDiff": 0,
+     "pixels": 80891
+    }
+   }
+  },
+  "EP/rgba8+windowSpaceBase": {
+   "vs A (today)": {
+    "byMaxDiff": {
+     "1": 167661,
+     "2": 9880,
+     "3": 214,
+     "4-7": 67,
+     "8+": 2
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 87.237,
+    "differingPixels": 177824,
+    "maxChannelDiff": 10,
+    "pixels": 203840
+   },
+   "vs A in this window space": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs D1 (today's window)": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     62
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "vs E1/rgba8": {
+    "all": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.003,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 203840
+    },
+    "inGroupBoxes": {
+     "byMaxDiff": {
+      "1": 7,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingBounds": [
+      55,
+      141,
+      377,
+      62
+     ],
+     "differingPercent": 0.006,
+     "differingPixels": 7,
+     "maxChannelDiff": 1,
+     "pixels": 122949
+    },
+    "outsideGroups": {
+     "byMaxDiff": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4-7": 0,
+      "8+": 0
+     },
+     "differingPercent": 0,
+     "differingPixels": 0,
+     "maxChannelDiff": 0,
+     "pixels": 80891
+    }
+   }
+  }
+ },
+ "screenColorSpace": "Color LCD",
+ "widget": "system (260 × 196 pt), tick 7",
+ "windowColorSpace": "srgb",
+ "windowColorSpaces": {
+  "A": "sRGB IEC61966-2.1",
+  "A (today)": "Color LCD",
+  "D1 (sRGB IOSurface, today's window)": "Color LCD",
+  "E1/auto": "sRGB IEC61966-2.1",
+  "E1/rgba16f": "sRGB IEC61966-2.1",
+  "E1/rgba8": "sRGB IEC61966-2.1",
+  "EP/auto": "sRGB IEC61966-2.1",
+  "EP/rgba16f": "sRGB IEC61966-2.1",
+  "EP/rgba16f+windowSpaceBase": "sRGB IEC61966-2.1",
+  "EP/rgba8": "sRGB IEC61966-2.1",
+  "EP/rgba8+windowSpaceBase": "sRGB IEC61966-2.1"
+ }
+}

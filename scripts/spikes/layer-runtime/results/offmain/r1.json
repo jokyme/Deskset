@@ -1,0 +1,54 @@
+{
+ "DP+surfaceBase@srgb": {
+  "distinctFramesSeen": 180,
+  "framesCommitted": 180,
+  "layers": 65,
+  "longestSameFrameMs": 23.2,
+  "samples": 756,
+  "tornSamples(codeA != codeB)": 0,
+  "unreadable": 0
+ },
+ "DP+surfaceBase@srgb main stalled": {
+  "distinctFramesSeen": 223,
+  "distinctFramesSeenDuringStalls": 56,
+  "framesCommitted": 222,
+  "framesCommittedDuringStalls": 53,
+  "layers": 65,
+  "longestSameFrameMs": 25.2,
+  "mainThreadStalls": "3 × 300 ms",
+  "samples": 914,
+  "tornSamples(codeA != codeB)": 0,
+  "unreadable": 0
+ },
+ "EP@srgb": {
+  "distinctFramesSeen": 178,
+  "framesCommitted": 180,
+  "layers": 65,
+  "longestSameFrameMs": 36.2,
+  "samples": 821,
+  "tornSamples(codeA != codeB)": 0,
+  "unreadable": 0
+ },
+ "EP@srgb main stalled": {
+  "distinctFramesSeen": 223,
+  "distinctFramesSeenDuringStalls": 55,
+  "framesCommitted": 222,
+  "framesCommittedDuringStalls": 54,
+  "layers": 65,
+  "longestSameFrameMs": 24.9,
+  "mainThreadStalls": "3 × 300 ms",
+  "samples": 977,
+  "tornSamples(codeA != codeB)": 0,
+  "unreadable": 0
+ },
+ "arguments": [
+  "--out",
+  "results/offmain/r1.json"
+ ],
+ "command": "offmain",
+ "loadAverageAtEnd": [
+  5.59,
+  5.8,
+  5.8
+ ]
+}

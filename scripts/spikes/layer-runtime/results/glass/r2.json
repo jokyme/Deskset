@@ -1,0 +1,48 @@
+{
+ "arguments": [
+  "--out",
+  "results/glass/r2.json"
+ ],
+ "command": "glass",
+ "loadAverageAtEnd": [
+  5.42,
+  5.72,
+  5.77
+ ],
+ "main idle": {
+  "appliedByMain": 241,
+  "frames": 241,
+  "glass": "stand-in view",
+  "mainApplyLatencyMaxms": 0.2,
+  "mainApplyLatencyP50ms": 0.1,
+  "mainApplyLatencyP99ms": 0.2,
+  "maxVisibleGlassWidthPt": 0,
+  "reclaimedBySkin": 0,
+  "samples": 1044,
+  "samplesWithGlassVisibleBesideElement": 0
+ },
+ "main stalls 120 ms every 1 s": {
+  "appliedByMain": 213,
+  "frames": 217,
+  "glass": "stand-in view",
+  "mainApplyLatencyMaxms": 51.7,
+  "mainApplyLatencyP50ms": 0.1,
+  "mainApplyLatencyP99ms": 48.7,
+  "maxVisibleGlassWidthPt": 3,
+  "reclaimedBySkin": 4,
+  "samples": 1025,
+  "samplesWithGlassVisibleBesideElement": 67
+ },
+ "main stalls 30 ms every 250 ms": {
+  "appliedByMain": 230,
+  "frames": 230,
+  "glass": "stand-in view",
+  "mainApplyLatencyMaxms": 28.8,
+  "mainApplyLatencyP50ms": 0.1,
+  "mainApplyLatencyP99ms": 25.8,
+  "maxVisibleGlassWidthPt": 0,
+  "reclaimedBySkin": 0,
+  "samples": 1033,
+  "samplesWithGlassVisibleBesideElement": 0
+ }
+}

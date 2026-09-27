@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "DP",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/wsmem/design-DP-r2.json"
+ ],
+ "command": "wsmem",
+ "config": "DP+surfaceBase@srgb",
+ "footprintIncreasePerWidgetMB": 6.475,
+ "loadAverageAtEnd": [
+  12.48,
+  8.3,
+  6.9
+ ],
+ "loadAverageAtStart": [
+  6.91,
+  6.93,
+  6.39
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 9.19,
+  "freeGB": 0.08,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "DP",
+ "oneBitmapOfTheWindowMB": 1.978,
+ "scenario": "design",
+ "updateIntervalMs": 1000,
+ "widgets": 5,
+ "windowServerBeforeMB": 1397,
+ "windowServerCloseStepMB": -1,
+ "windowServerOpenStepMB": 4,
+ "windowServerOpenStepPerWidgetMB": 0.8
+}

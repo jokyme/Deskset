@@ -1,0 +1,40 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--mode",
+  "A",
+  "--window-cs",
+  "default",
+  "--out",
+  "results/wsmem/sixty-A-r2.json"
+ ],
+ "command": "wsmem",
+ "config": "A",
+ "footprintIncreasePerWidgetMB": 3.266,
+ "loadAverageAtEnd": [
+  11.71,
+  8.4,
+  6.97
+ ],
+ "loadAverageAtStart": [
+  12.48,
+  8.3,
+  6.9
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 8.99,
+  "freeGB": 0.08,
+  "pressureLevel": 2,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "A",
+ "oneBitmapOfTheWindowMB": 0.476,
+ "scenario": "sixty",
+ "updateIntervalMs": 16.67,
+ "widgets": 5,
+ "windowServerBeforeMB": 1400,
+ "windowServerCloseStepMB": 1,
+ "windowServerOpenStepMB": 3,
+ "windowServerOpenStepPerWidgetMB": 0.6
+}

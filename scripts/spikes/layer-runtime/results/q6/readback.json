@@ -1,0 +1,120 @@
+{
+ "arguments": [
+  "--readback",
+  "--out",
+  "results/q6/readback.json"
+ ],
+ "command": "q6",
+ "holes": 13,
+ "imagePixels": "800x600",
+ "loadAverageAtEnd": [
+  4.77,
+  5.6,
+  5.57
+ ],
+ "offscreenCARenderer": {
+  "holesTransparent(cgimage)": true,
+  "holesTransparent(iosurface)": true,
+  "metalDevice": "Apple M4 Pro",
+  "one layer vs image": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 480000
+  },
+  "tiles(cgimage) vs image": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 393220
+  },
+  "tiles(iosurface) vs image": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 393220
+  }
+ },
+ "onScreen": {
+  "tiles vs image converted by CG, window default": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 393220
+  },
+  "tiles vs image converted by CG, window srgb": {
+   "byMaxDiff": {
+    "1": 59495,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingBounds": [
+    1,
+    1,
+    798,
+    598
+   ],
+   "differingPercent": 15.13,
+   "differingPixels": 59495,
+   "maxChannelDiff": 1,
+   "pixels": 393220
+  },
+  "tiles vs one layer, window default": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 393220
+  },
+  "tiles vs one layer, window srgb": {
+   "byMaxDiff": {
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4-7": 0,
+    "8+": 0
+   },
+   "differingPercent": 0,
+   "differingPixels": 0,
+   "maxChannelDiff": 0,
+   "pixels": 393220
+  }
+ },
+ "tiles": 40
+}
