@@ -75,11 +75,16 @@ Substitute="^0\|.*$":"#BatteryUnplugged#","^1\|(.*)$":"\1 W"
 OnChangeAction=[!UpdateMeter MeterAdapterValue][!Redraw]
 
 [MeasureDetailsNow]
-; MacSensors answers one update late: read the sensors again 2 s after load rather than 10 s later
+; MacSensors answers one update late, and later still while the whole suite loads at once: read the sensors every 2 s
+; for the first 6 s after a load rather than waiting for the 10 s update, so "--" never lingers
 Measure=Calc
-Formula=1
-UpdateDivider=-1
-OnUpdateAction=[!Delay 2000][!UpdateMeasureGroup Sensors][!UpdateMeterGroup Rows][!Redraw]
+Formula=Min(MeasureDetailsNow + 1, 4)
+UpdateDivider=2
+IfConditionMode=1
+IfCondition=(MeasureDetailsNow >= 2) && (MeasureDetailsNow <= 3)
+IfTrueAction=[!UpdateMeasureGroup Sensors][!UpdateMeterGroup Rows][!Redraw]
+IfCondition2=MeasureDetailsNow = 4
+IfTrueAction2=[!UpdateMeasureGroup Sensors][!UpdateMeterGroup Rows][!Redraw][!DisableMeasure MeasureDetailsNow]
 
 ; ---------------------------------------------------------------- Health (baseline 47)
 [MeterHealthSymbol]
