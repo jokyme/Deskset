@@ -27,7 +27,7 @@ Measure=String
 String=#DemoTopCPU1#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopCPU1Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -36,7 +36,7 @@ Measure=String
 String=#DemoTopCPU2#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopCPU2Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -45,7 +45,7 @@ Measure=String
 String=#DemoTopCPU3#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopCPU3Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -54,7 +54,7 @@ Measure=String
 String=#DemoTopCPU4#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopCPU4Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -63,7 +63,7 @@ Measure=String
 String=#DemoTopMem1#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopMem1Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -72,7 +72,7 @@ Measure=String
 String=#DemoTopMem2#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopMem2Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -81,7 +81,7 @@ Measure=String
 String=#DemoTopMem3#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopMem3Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -90,7 +90,7 @@ Measure=String
 String=#DemoTopMem4#
 RegExpSubstitute=1
 Substitute="^.*$":"#DemoTopMem4Name#"
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 

@@ -3,16 +3,17 @@
 ; Original work, MIT licensed.
 
 ; ---------------------------------------------------------------- the busiest processes
-; UsageMonitor ranks the processes once a second (their share of the whole Mac, 0–100, with Alias=CPU; the memory
-; they use, in bytes, with Alias=RAM, which macOS gives only for your own processes). Same-named processes are added
-; up; the processes of other users and of macOS appear together as "System". Only the sort on show runs.
+; UsageMonitor ranks the processes every 4 s (Activity Monitor's default is 5 s): reading every process is the card's
+; costliest reading. The rank is their share of the whole Mac, 0–100, with Alias=CPU, or the memory they use, in
+; bytes, with Alias=RAM, which macOS gives only for your own processes. Same-named processes are added up; the
+; processes of other users and of macOS appear together as "System". Only the sort on show runs.
 
 [MeasureTopCPU1]
 Measure=Plugin
 Plugin=UsageMonitor
 Alias=CPU
 Index=1
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -21,7 +22,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=CPU
 Index=2
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -30,7 +31,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=CPU
 Index=3
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -39,7 +40,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=CPU
 Index=4
-UpdateDivider=2
+UpdateDivider=4
 Disabled=#SystemSortBy#
 Group=TopCPU
 
@@ -48,7 +49,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=RAM
 Index=1
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -57,7 +58,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=RAM
 Index=2
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -66,7 +67,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=RAM
 Index=3
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
@@ -75,7 +76,7 @@ Measure=Plugin
 Plugin=UsageMonitor
 Alias=RAM
 Index=4
-UpdateDivider=2
+UpdateDivider=4
 Disabled=(1 - #SystemSortBy#)
 Group=TopMem
 
