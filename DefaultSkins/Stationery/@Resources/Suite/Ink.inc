@@ -12,8 +12,9 @@
 ;   InkScrimA                        large white type only: a radial ellipse of black at this alpha at its centre, to 0
 ;   MoonSuffix                       the moon symbols' suffix for this ink
 ;   MeasureInkDark                   0 white ink, 1 dark ink
-; Read them in options with DynamicVariables=1. InkChangeAction (a piece sets it in its [Variables]) runs after each
-; switch; by default it updates the meters of group Ink and redraws.
+; Read them in options with DynamicVariables=1. InkChangeAction (a piece sets it in its [Variables], below the
+; @Include lines: the last value read wins) runs after each switch; by default it updates the meters of group Ink and
+; redraws.
 ;
 ; The switch: the wallpaper's mean luminance under the piece, sampled every 5 s (the picture is decoded only when it
 ; changes), with hysteresis: below 0.32 white ink, above 0.36 dark ink, in between the ink stays. A piece starts in
