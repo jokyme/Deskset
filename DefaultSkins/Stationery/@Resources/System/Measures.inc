@@ -116,6 +116,7 @@ Group=Swap
 Measure=Calc
 Formula=(MeasureDiskAvail < 0) ? -1 : Round(100 * (1 - MeasureDiskAvail / Max(1, MeasureDiskTotal)))
 UpdateDivider=30
+Group=Disk
 IfCondition=MeasureDiskUsedPct >= 95
 IfTrueAction=[!SetVariable DiskColor "#CriticalColor#"][!SetVariable DiskTextColor "#CriticalTextColor#"][!SetVariable DiskFull 1]
 IfFalseAction=[!SetVariable DiskColor "#StorageColor#"][!SetVariable DiskTextColor "#TextColor#"][!SetVariable DiskFull 0]
@@ -124,11 +125,13 @@ IfFalseAction=[!SetVariable DiskColor "#StorageColor#"][!SetVariable DiskTextCol
 Measure=Calc
 Formula=Clamp(MeasureDiskUsedPct * 3.6, 0.6, 359.4)
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskLarge]
 Measure=Calc
 Formula=MeasureDiskAngle > 180
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskText]
 ; "88%", or "--" while loading
@@ -138,6 +141,7 @@ DynamicVariables=1
 RegExpSubstitute=1
 Substitute="^-\d+$":"#Missing#","^(\d+)$":"\1%"
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskAvailPower]
 ; bytes as Finder writes them: 1 GB = 10⁹ bytes, one decimal below 100, none from 100 ("118 GB", "38.4 GB", "2 TB").
@@ -145,11 +149,13 @@ UpdateDivider=30
 Measure=Calc
 Formula=Clamp(Floor(Log(Max(MeasureDiskAvail, 1) / 0.9995) / 3), 0, 4)
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskAvailScaled]
 Measure=Calc
 Formula=((MeasureDiskAvail / 1000 ** MeasureDiskAvailPower) >= 99.95) ? Round(MeasureDiskAvail / 1000 ** MeasureDiskAvailPower) : Round(MeasureDiskAvail / 1000 ** MeasureDiskAvailPower, 1)
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskAvailText]
 Measure=String
@@ -158,16 +164,19 @@ DynamicVariables=1
 RegExpSubstitute=1
 Substitute="\.0(?= U)":""," U0$":" #SystemBytes#"," U1$":" KB"," U2$":" MB"," U3$":" GB"," U4$":" TB"
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskTotalPower]
 Measure=Calc
 Formula=Clamp(Floor(Log(Max(MeasureDiskTotal, 1) / 0.9995) / 3), 0, 4)
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskTotalScaled]
 Measure=Calc
 Formula=((MeasureDiskTotal / 1000 ** MeasureDiskTotalPower) >= 99.95) ? Round(MeasureDiskTotal / 1000 ** MeasureDiskTotalPower) : Round(MeasureDiskTotal / 1000 ** MeasureDiskTotalPower, 1)
 UpdateDivider=30
+Group=Disk
 
 [MeasureDiskTotalText]
 Measure=String
@@ -176,6 +185,16 @@ DynamicVariables=1
 RegExpSubstitute=1
 Substitute="\.0(?= U)":""," U0$":" #SystemBytes#"," U1$":" KB"," U2$":" MB"," U3$":" GB"," U4$":" TB"
 UpdateDivider=30
+Group=Disk
+
+[MeasureDiskLoading]
+; Finder's figure can take a moment to arrive: while it is missing, read the disk again every second instead of at the
+; next 30 s update, for at most half a minute
+Measure=Calc
+Formula=(Counter < 31) * (MeasureDiskAvail < 0)
+IfConditionMode=1
+IfCondition=MeasureDiskLoading = 1
+IfTrueAction=[!UpdateMeasure MeasureDiskAvail][!UpdateMeasure MeasureDiskTotal][!UpdateMeasureGroup Disk][!UpdateMeterGroup Disk][!Redraw]
 
 ; ---------------------------------------------------------------- GPU
 [MeasureGPUAngle]

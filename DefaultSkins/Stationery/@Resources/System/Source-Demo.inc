@@ -17,6 +17,8 @@ DemoSwapGB=1.2
 DemoDiskAvail=117520000000
 DemoDiskTotal=994662584320
 DemoDiskName=Macintosh HD
+; Finder's figure arrives after this many updates (0: at once)
+DemoDiskDelay=0
 DemoGPU=34
 ; the GPU's first reading arrives after this many updates (a large number: never)
 DemoGPUDelay=1
@@ -53,7 +55,7 @@ Group=Swap
 
 [MeasureDiskAvail]
 Measure=Calc
-Formula=#DemoDiskAvail#
+Formula=(MeasureDemoTick >= #DemoDiskDelay#) ? #DemoDiskAvail# : -1
 UpdateDivider=30
 
 [MeasureDiskTotal]

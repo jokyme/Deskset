@@ -64,6 +64,9 @@ Slot2EjectFill=#HoverColor#
 Slot3EjectFill=#HoverColor#
 Slot4EjectFill=#HoverColor#
 TrashPadColor=0,0,0,1
+; 1 once the Trash has been counted: the first count arrives a moment after load, and until then the row
+; says "--" rather than "Empty"
+TrashReady=0
 ; the Small: its colours (as the slots'), and its link back to the startup disk when its volume is not connected
 SmallColor=#StorageColor#
 SmallPctColor=#TertiaryTextColor#
@@ -820,6 +823,16 @@ IfMatchMode=1
 IfMatch=EJECT_FAILED
 IfMatchAction=#EjectFailed4#
 
+; ---------------------------------------------------------------- loading
+[MeasureSpaceLoading]
+; Finder's figure for a disk can take a moment (a network volume, a busy disk): while one is still missing, read the
+; disks again every second instead of at the next 30 s update, for at most half a minute
+Measure=Calc
+Formula=(Counter < 31) * ((MeasureSlot1Avail < 0) + (MeasureSlot2Avail < 0) + (MeasureSlot3Avail < 0) + (MeasureSlot4Avail < 0) + (MeasureSmallAvail < 0))
+IfConditionMode=1
+IfCondition=MeasureSpaceLoading > 0
+IfTrueAction=[!UpdateMeasureGroup Volumes][!UpdateMeterGroup Volumes][!Redraw]
+
 ; ---------------------------------------------------------------- the Small's volume
 [MeasureSmallUsed]
 Measure=Calc
@@ -943,13 +956,21 @@ IfTrueAction=[!HideMeterGroup SmallVolume][!ShowMeterGroup Notice][!Redraw]
 IfFalseAction=[!ShowMeterGroup SmallVolume][!HideMeterGroup Notice][!Redraw]
 
 ; ---------------------------------------------------------------- the Trash and the card's sentence
+[MeasureTrashFirst]
+; the first count arrives on a background queue a moment after load: read it then, not at the next 10 s update
+Measure=Calc
+Formula=1
+UpdateDivider=-1
+Disabled=(#StorageShowsTrash# = 0)
+OnUpdateAction=[!Delay 1500][!UpdateMeasure MeasureTrash][!SetVariable TrashReady 1][!UpdateMeasure MeasureTrashText][!UpdateMeasure MeasureTrashTip][!UpdateMeasure MeasureTrashSentence][!UpdateMeasure MeasureSentence][!UpdateMeterGroup Trash][!Redraw]
+
 [MeasureTrashText]
-; "12 items", "1 item", "1,248 items"
+; "12 items", "1 item", "1,248 items"; "--" until the first count
 Measure=String
-String=[MeasureTrash:0]
+String=#TrashReady#|[MeasureTrash:0]
 DynamicVariables=1
 RegExpSubstitute=1
-Substitute="^1$":"#StorageTrashOneItem#","^(\d+)$":"\1 #StorageTrashItems#","(\d)(?=(\d{3})+(?!\d))":"\1#DigitGroup#"
+Substitute="^0\|.*$":"#Missing#","^1\|1$":"#StorageTrashOneItem#","^1\|(\d+)$":"\1 #StorageTrashItems#","(\d)(?=(\d{3})+(?!\d))":"\1#DigitGroup#"
 UpdateDivider=10
 Disabled=(#StorageShowsTrash# = 0)
 
