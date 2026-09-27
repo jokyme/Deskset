@@ -53,3 +53,9 @@ SpectrumMotion=Full
 ShowSpectrumTrack=1
 ; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots
 HideSpectrumWhenIdle=1
+
+; ---------------------------------------------------------------- Photo Frame
+; How often a new photo comes, in seconds: 600 (every 10 minutes), 3600 (on the hour) or 86400 (at midnight)
+PhotoInterval=600
+; 1 shows the photo's file name at the bottom (a camera's name, such as IMG_4821, shows its folder's name)
+ShowPhotoFileName=0
