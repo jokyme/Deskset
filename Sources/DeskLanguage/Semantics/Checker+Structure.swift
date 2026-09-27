@@ -464,7 +464,7 @@ extension Checker {
             if body.kind == .ifStmt { checkViewIf(body, context) }
             else if body.kind == .block { checkViewStatements(body, inner) }
         }
-        reportModifiersAfterBlock(ifStmt.modifiers, construct: "if", statement: statement)
+        reportModifiersAfterBlock(ifStmt.modifiers, construct: "if", statement: statement, inViews: context.place != .menu)
     }
 
     func checkViewFor(_ statement: PositionedNode, _ context: ViewContext) {
@@ -482,7 +482,7 @@ extension Checker {
         pushLoop(variable, element)
         checkViewStatements(forStmt.block.node, inner)
         popLoop(variable)
-        reportModifiersAfterBlock(forStmt.modifiers, construct: "for", statement: statement)
+        reportModifiersAfterBlock(forStmt.modifiers, construct: "for", statement: statement, inViews: context.place != .menu)
     }
 
     /// `a * b` capped well above every element limit: the estimate only needs to know it is over the limit.
@@ -534,8 +534,15 @@ extension Checker {
     }
 
     /// DK2032: a modifier after the `}` of an `if`, `else` or `for`.
-    func reportModifiersAfterBlock(_ modifiers: [ModifierAppSyntax], construct: String, statement: PositionedNode) {
+    /// DK2032. The fix-its move the modifier into the branches or onto the loop's element, or wrap the construct
+    /// in `Column { }`; only among elements (`inViews`), since in an action block or a menu they would make new
+    /// errors (a look in an event, a Column in a menu).
+    func reportModifiersAfterBlock(_ modifiers: [ModifierAppSyntax], construct: String, statement: PositionedNode, inViews: Bool) {
         for modifier in modifiers {
+            guard inViews else {
+                report(.modifierAfterIfOrFor, range(modifier.node), ["name": .code(modifier.name.token.text), "construct": .code(construct)])
+                continue
+            }
             let r = range(modifier.node)
             var fixIts: [FixIt] = []
             let modifierText = text(r)
@@ -576,7 +583,13 @@ extension Checker {
                     fixIts.append(fix("moveIntoEachBranch", edits))
                 }
             }
-            fixIts.append(fix("wrapIn", [edit(start..<end, "Column {" + lineBreak + "    " + body + lineBreak + "}" + modifierText)],
+            // Wrapped at the construct's own indentation, its lines one level deeper (§3.7 rule 2).
+            let indent = indentation(at: start)
+            let bodyLines = body.components(separatedBy: lineBreak).enumerated().map { n, line in
+                line.isEmpty ? line : (n == 0 ? indent + "    " : "    ") + line
+            }
+            fixIts.append(fix("wrapIn", [edit(start..<end, "Column {" + lineBreak + bodyLines.joined(separator: lineBreak) + lineBreak
+                                                                  + indent + "}" + modifierText)],
                               ["text": .code("Column { }")]))
             report(.modifierAfterIfOrFor, r, ["name": .code(modifier.name.token.text), "construct": .code(construct)],
                    fixIts: fixIts)

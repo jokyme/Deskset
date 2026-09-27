@@ -364,4 +364,52 @@ func runDeskReviewTests(_ t: TestRunner) {
             t.check(!d.message(in: .english).isEmpty && !d.message(in: .simplifiedChinese).isEmpty, "\(d.id.rawValue) has a message")
         }
     }
+
+    t.suite("Desk: review — modifiers in action blocks and options (findings 1, 9, 31, 33, 64)") {
+        func ids(_ code: String) -> [String] { deskReviewIDs(code) }
+        // Modifiers on action calls, after a `for` in actions, on a Section (finding 1).
+        t.equal(ids("widget { Text(\"A\").onClick { open(\"x\").color(.red) } }"), ["DK7016"])
+        t.equal(ids("widget { Text(\"A\").onClick { open(\"x\").foo(1) } }"), ["DK3001"])
+        t.equal(deskCheck("info { name: \"T\", permissions: [.music] }\nwidget { Text(\"A\").onClick { music.next().bold() } }").diagnostics.map(\.id.rawValue), ["DK7016"])
+        t.equal(ids("widget { Text(\"A\").onClick { after(1s) { }.padding(3) } }"), ["DK7016"])
+        t.equal(ids("widget { Text(\"A\").onClick {\n for n in [\"a\"] { hide(n) }\n .bold()\n} }"), ["DK2032"])
+        t.equal(ids("options { Section(\"S\") { a = Toggle(\"A\") }.foo(1) }\nwidget { Text(\"{options.a}\") }"), ["DK3001"])
+        t.equal(ids("options { Section(\"S\") { a = Toggle(\"A\") }.bold() }\nwidget { Text(\"{options.a}\") }"), ["DK5003"])
+        let attached = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").onClick { open(\"x\").color(.red) } }")
+        let attachedFix = deskApplyFix(attached, "DK7016")
+        t.equal(attachedFix, "info { name: \"T\" }\nwidget {\n    variable alert = false\n    Text(\"A\").onClick { open(\"x\"); alert = true }.color(.red, if: alert) }")
+        t.equal(attachedFix.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        // A modifier on the line after an assignment whose value is not a bare name (finding 9).
+        let sum = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick {\n        page = page + 1\n        .color(.red)\n    }\n}")
+        t.equal(sum.diagnostics.map(\.id.rawValue), ["DK7016"])
+        let sumFix = deskApplyFix(sum, "DK7016")
+        t.equal(sumFix, "info { name: \"T\" }\nwidget {\n    variable alert = false\n    variable page = 0\n    Text(\"{page}\").onClick {\n        page = page + 1\n        alert = true\n    }.color(.red, if: alert)\n}")
+        t.equal(sumFix.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        t.equal(ids("widget {\n    variable page = 0\n    Text(\"{page}\").onClick {\n        page = 1\n        .color(.red)\n    }\n}"), ["DK7016"])
+        // DK2032 wraps only among elements, at the construct's indentation (finding 31).
+        let inAction = deskCheck("info { name: \"T\" }\nwidget {\n    variable a = false\n    Text(\"A\").onClick {\n        if a { a = false }\n        .color(.red)\n    }\n}")
+        t.equal(inAction.diagnostics.map(\.id.rawValue), ["DK2032"])
+        t.equal(inAction.diagnostics.first?.fixIts.count, 0)
+        let inMenu = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").menu { if true { Item(\"X\").onClick { } }.bold() } }")
+        t.equal(inMenu.diagnostics.first { $0.id.rawValue == "DK2032" }?.fixIts.count, 0)
+        let inViews = deskCheck("info { name: \"T\" }\nwidget {\n    variable a = false\n    Column {\n        if a {\n            Text(\"x\")\n        }\n        .bold()\n    }\n}")
+        t.equal(deskApplyFix(inViews, "DK2032", title: "Wrap"),
+                "info { name: \"T\" }\nwidget {\n    variable a = false\n    Column {\n        Column {\n            if a {\n                Text(\"x\")\n            }\n        }.bold()\n    }\n}")
+        // A modifier of elements on an option is DK5003, not "there's no" (finding 33).
+        let option = deskCheck("info { name: \"T\" }\noptions { a = Toggle(\"A\").bold() }\nwidget { Text(\"{options.a}\") }")
+        t.equal(option.diagnostics.map(\.id.rawValue), ["DK5003"])
+        t.equal(option.diagnostics.first?.message(in: .english), "`.bold` doesn't apply to an option. An option takes `.hidden` and `.help`.")
+        t.equal(ids("options { a = Toggle(\"A\").onClick { } }\nwidget { Text(\"{options.a}\") }"), ["DK5003"])
+        t.equal(ids("options { a = Toggle(\"A\").boldd() }\nwidget { Text(\"{options.a}\") }"), ["DK3001"])
+        // DK7016 with an argument-less modifier and a name in use (finding 64).
+        let bold = deskCheck("info { name: \"T\" }\nwidget {\n    variable alert = 0\n    Text(\"{alert}\").onClick { alert = alert + 1; .bold() }\n}")
+        let boldMessage = bold.diagnostics.first { $0.id.rawValue == "DK7016" }?.message(in: .english) ?? ""
+        t.check(boldMessage.contains("`.bold(if: alert2)`") && boldMessage.contains("`alert2 = true`"), boldMessage)
+        let boldFix = deskApplyFix(bold, "DK7016")
+        t.equal(boldFix, "info { name: \"T\" }\nwidget {\n    variable alert2 = false\n    variable alert = 0\n    Text(\"{alert}\").onClick { alert = alert + 1; alert2 = true }.bold(if: alert2)\n}")
+        t.equal(boldFix.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let two = deskCheck("info { name: \"T\" }\nwidget {\n    Column {\n        Text(\"A\").onClick { .bold() }\n        Text(\"B\").onClick { .italic() }\n    }\n}")
+        let variables = two.diagnostics.filter { $0.id.rawValue == "DK7016" }.map { $0.arguments["variable"].map { "\($0)" } ?? "" }
+        t.equal(Set(variables).count, 2, "each fix-it declares its own variable")
+    }
 }

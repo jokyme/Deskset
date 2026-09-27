@@ -236,6 +236,7 @@ extension CatalogData {
         dn("construct:action", "an action", "动作"),
         dn("construct:modifier", "a modifier", "修饰符"),
         dn("construct:option", "an option", "选项"),
+        dn("construct:section", "a section of options", "选项分组"),
         dn("construct:translation", "a translation", "翻译"),
     ]
 

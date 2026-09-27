@@ -111,6 +111,8 @@ struct ActionContext {
     /// The event record `event` holds.
     var eventRecord: String?
     var element: ElementNode?
+    /// The action statement being checked, when a diagnostic needs it (a modifier written on an action call).
+    var statement: PositionedNode? = nil
 }
 
 /// The context of an expression.
@@ -348,6 +350,8 @@ final class Checker {
     var stateStyleCalls: [(String, CandidateCondition, PositionedNode, ElementNode?)] = []
     var duplicateDropped = Set<Int>()
     var trailingActionBlocks = Set<Int>()
+    /// Names the DK7016 fix-its have declared so far (each fix-it gets its own).
+    var looksVariables: [String] = []
     var loopIdentities: [NodeID: String] = [:]
 
     init(tree: SyntaxTree, context: CheckContext) {

@@ -36,13 +36,14 @@ extension Checker {
                 if elseClause.body.kind == .ifStmt { checkAction(elseClause.body, action, loopIDs: loopIDs) }
                 else if elseClause.body.kind == .block { checkActionBlock(elseClause.body, action, loopIDs: loopIDs) }
             }
-            reportModifiersAfterBlock(ifStmt.modifiers, construct: "if", statement: statement)
+            reportModifiersAfterBlock(ifStmt.modifiers, construct: "if", statement: statement, inViews: false)
         case .forStmt:
             let forStmt = ForStmtSyntax(unchecked: statement)
             let (variable, element) = checkForHeader(forStmt, context, inAction: true, depth: 0)
             pushLoop(variable, element)
             checkActionBlock(forStmt.block.node, action, loopIDs: loopIDs + [id(statement)])
             popLoop(variable)
+            reportModifiersAfterBlock(forStmt.modifiers, construct: "for", statement: statement, inViews: false)
         case .modifierStmt:
             reportLooksInEvent(statement, action: action)
         case .declaration:
@@ -192,50 +193,127 @@ extension Checker {
         report(.notAssignable, r, arguments, fixIts: fixIts)
     }
 
-    /// `page = 1`↵`.color(.red)`: the modifier was read as a member of the value.
+    /// `page = page + 1`↵`.color(.red)`: the modifier was read as a member of the value, at the end of its right
+    /// spine (`1.color(.red)` inside the sum). Returns the member access (or its call) and the modifier's name.
     func trailingModifierInValue(_ node: PositionedNode) -> (node: PositionedNode, name: String)? {
-        var callee = node
-        if node.kind == .callExpr { callee = CallExprSyntax(unchecked: node).callee.node }
-        guard callee.kind == .memberExpr else { return nil }
-        let member = MemberExprSyntax(unchecked: callee)
-        let name = member.name.token.name
-        guard catalog.modifier(named: name) != nil, member.dot.token.leadingTrivia.containsLineBreak
-              || member.base.node.node.lastToken?.trailingTrivia.containsLineBreak == true else { return nil }
-        return (node, name)
+        var current = node
+        while true {
+            switch current.kind {
+            case .binaryExpr: current = BinaryExprSyntax(unchecked: current).right.node
+            case .prefixExpr: current = PrefixExprSyntax(unchecked: current).operand.node
+            case .ternaryExpr: current = TernaryExprSyntax(unchecked: current).otherwise.node
+            default:
+                var callee = current
+                if current.kind == .callExpr { callee = CallExprSyntax(unchecked: current).callee.node }
+                guard callee.kind == .memberExpr else { return nil }
+                let member = MemberExprSyntax(unchecked: callee)
+                let name = member.name.token.name
+                guard catalog.modifier(named: name) != nil, member.dot.token.leadingTrivia.containsLineBreak
+                      || member.base.node.node.lastToken?.trailingTrivia.containsLineBreak == true else { return nil }
+                return (current, name)
+            }
+        }
     }
 
-    /// DK7016: looks set in an event, with the fix-it that keeps a variable and uses `if:` on the element.
-    func reportLooksInEvent(_ statement: PositionedNode, action: ActionContext, modifierName: String? = nil) {
-        var name = modifierName ?? "color"
-        var modifierText = ""
-        if statement.kind == .modifierStmt, let first = ModifierStmtSyntax(unchecked: statement).modifiers.first {
-            name = first.name.token.text
-            modifierText = text(first.node)
+    /// A name for the yes/no variable of a DK7016 fix-it that nothing uses yet (`alert`, `alert2`…); each
+    /// diagnostic's fix-it gets its own, so applying two does not declare one twice.
+    func newLooksVariable() -> String {
+        var n = 1
+        while true {
+            let candidate = n == 1 ? "alert" : "alert\(n)"
+            if decls[candidate] == nil, preName(named: candidate) == nil, !loopStack.contains(where: { $0.name == candidate }),
+               !looksVariables.contains(candidate), !tree.text.contains(candidate) || n > 50 {
+                if mute == 0 { looksVariables.append(candidate) }
+                return candidate
+            }
+            n += 1
         }
-        let variable = "alert"
+    }
+
+    /// DK7016: looks set in an event, with the fix-it that keeps a variable and uses `if:` on the element. `node`
+    /// is a modifier statement, a modifier attached to an action call (`open("x").color(.red)`), or the member
+    /// access a trailing modifier became in an assignment's value.
+    func reportLooksInEvent(_ node: PositionedNode, action: ActionContext, modifierName: String? = nil) {
+        var name = modifierName ?? "color"
+        var argumentsText: String?
+        var looksRange = range(node)
+        var replacement: (range: Range<Int>, text: String)?
+        let variable = newLooksVariable()
+        switch node.kind {
+        case .modifierStmt:
+            if let first = ModifierStmtSyntax(unchecked: node).modifiers.first {
+                name = first.name.token.text
+                argumentsText = first.arguments.map { text(range($0.node)).dropFirst().dropLast().description } ?? ""
+            }
+            replacement = (range(node), "\(variable) = true")
+        case .modifierApp:
+            let modifier = ModifierAppSyntax(unchecked: node)
+            name = modifier.name.token.text
+            argumentsText = modifier.arguments.map { text(range($0.node)).dropFirst().dropLast().description } ?? ""
+            looksRange = range(node)
+            // Taken off the call; the assignment follows the call.
+            if let statement = action.statement {
+                let end = range(statement).upperBound
+                let rest = text(looksRange.upperBound..<end)
+                replacement = (looksRange.lowerBound..<end, rest + "; \(variable) = true")
+            }
+        case .callExpr, .memberExpr:
+            let callee = node.kind == .callExpr ? CallExprSyntax(unchecked: node).callee.node : node
+            let member = MemberExprSyntax(unchecked: callee)
+            if node.kind == .callExpr {
+                argumentsText = text(range(CallExprSyntax(unchecked: node).arguments.node)).dropFirst().dropLast().description
+            } else {
+                argumentsText = ""
+            }
+            looksRange = range(member.dot).lowerBound..<range(node).upperBound
+            replacement = (looksRange, "\(variable) = true")
+        default:
+            break
+        }
+        let conditional = (argumentsText ?? "").isEmpty ? ".\(name)(if: \(variable))" : ".\(name)(\(argumentsText!), if: \(variable))"
+        let usage = (argumentsText ?? "x").isEmpty ? ".\(name)(if: \(variable))" : ".\(name)(…, if: \(variable))"
         var fixIts: [FixIt] = []
-        if let element = action.element, !modifierText.isEmpty, let widget = widgetBlock?.firstChild(.block) {
+        if let element = action.element, argumentsText != nil, let replacement, let widget = widgetBlock?.firstChild(.block) {
             let body = BlockSyntax(unchecked: widget)
             let open = body.lBrace.textRange.upperBound
             let elementEnd = range(element.node).upperBound
-            let conditional = String(modifierText.dropLast()) + ", if: \(variable))"
-            let r = range(statement)
             let firstStatement = body.statements.first.map { textStart($0) } ?? open
             let sameLine = !text(open..<firstStatement).contains("\n") && !text(open..<firstStatement).contains("\r")
             let indent = sameLine ? "    " : indentation(at: firstStatement)
             let declaration = lineBreak + indent + "variable \(variable) = false" + (sameLine ? lineBreak + indent : "")
-            var edits = [edit(open..<(sameLine ? firstStatement : open), declaration),
-                         edit(r, "\(variable) = true")]
-            if elementEnd > r.upperBound || elementEnd <= r.lowerBound { edits.append(edit(elementEnd..<elementEnd, conditional)) }
+            var edits = [edit(open..<(sameLine ? firstStatement : open), declaration), edit(replacement.range, replacement.text)]
+            if elementEnd > replacement.range.upperBound || elementEnd <= replacement.range.lowerBound {
+                edits.append(edit(elementEnd..<elementEnd, conditional))
+            }
             fixIts.append(fix("rewrite", edits))
         }
-        report(.looksInEvent, range(statement), ["name": .code(name), "variable": .code(variable)], fixIts: fixIts)
+        report(.looksInEvent, looksRange, ["name": .code(name), "variable": .code(variable), "usage": .code(usage)], fixIts: fixIts)
+    }
+
+    /// Modifiers written on an action call (`open("x").color(.red)`, `after(1s) { }.padding(3)`): looks are not set
+    /// in events (DK7016), and a name that is no modifier is DK3001.
+    func reportActionCallModifiers(_ call: CallStmtSyntax, _ action: ActionContext) {
+        var inner = action
+        inner.statement = call.node
+        for modifier in call.modifiers {
+            let name = modifier.name.token.name
+            if modifier.name.token.isMissing { continue }
+            if catalog.modifier(named: name) != nil {
+                reportLooksInEvent(modifier.node, action: inner)
+            } else {
+                let suggestion = DidYouMean.suggest(name, candidates: catalog.modifiers.map(\.name))
+                var arguments: [String: DiagnosticArgument] = ["name": .code(name)]
+                if let best = suggestion.names.first { arguments["suggestion"] = .code(best) }
+                report(.unknownModifier, range(modifier.name), arguments)
+            }
+        }
     }
 
     // MARK: - Calls
 
     func checkActionCall(_ statement: PositionedNode, _ action: ActionContext, _ context: ExprContext, loopIDs: [NodeID]) {
         let call = CallStmtSyntax(unchecked: statement)
+        reportActionCallModifiers(call, action)
         let callee = call.callee
         let path = callee.path
         let calleeRange = range(callee.node)
@@ -253,7 +331,9 @@ extension Checker {
         }
         // Looks set in an event: a modifier written without its dot.
         if path.count == 1, catalog.modifier(named: path[0]) != nil, catalog.function(named: path[0]) == nil {
-            report(.looksInEvent, range(statement), ["name": .code(path[0]), "variable": .code("alert")])
+            let variable = newLooksVariable()
+            report(.looksInEvent, range(statement), ["name": .code(path[0]), "variable": .code(variable),
+                                                     "usage": .code(".\(path[0])(…, if: \(variable))")])
             return
         }
         var calleeContext = context

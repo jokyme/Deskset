@@ -2076,9 +2076,9 @@ extension CatalogData {
             id: .looksInEvent, severity: .error,
             trigger: #"`.onClick { .color(.red) }`; `page = 1`↵`.color(.red)` in an action block"#,
             template: LocalizedText(
-                #"Looks can't be set inside an event. Keep a yes/no variable and use `if:` on the element — `.{name}(…, if: {variable})` — then set `{variable} = true` here."#,
-                #"事件里不能改外观。用一个是/否变量，在元素上写 `if:`——`.{name}(…, if: {variable})`——然后在这里写 `{variable} = true`。"#),
-            placeholders: ["name": .code, "variable": .code],
+                #"Looks can't be set inside an event. Keep a yes/no variable and use `if:` on the element — `{usage}` — then set `{variable} = true` here."#,
+                #"事件里不能改外观。用一个是/否变量，在元素上写 `if:`——`{usage}`——然后在这里写 `{variable} = true`。"#),
+            placeholders: ["variable": .code, "usage": .code],
             fixIts: [
                 FixItSpec("rewrite"),
             ]

@@ -329,6 +329,10 @@ extension Checker {
                                      callRange: range(call.callee.node), context, owner: .control(spec))
                     }
                     if let inner = call.block { checkOptionItems(inner.node) }
+                    // A section takes no modifiers: its options take theirs.
+                    for modifier in call.modifiers where !modifier.name.token.isMissing {
+                        reportOptionsModifier(modifier, on: "construct:section")
+                    }
                     continue
                 }
                 if catalog.control(named: name) == nil {
@@ -643,6 +647,28 @@ extension Checker {
         report(.pickerDefaultNotAChoice, r, ["value": .code(text(node))], fixIts: fixIts)
     }
 
+    /// A modifier that does not belong on an option or a section: a modifier of elements is DK5003 (it exists, it
+    /// just does not apply here, §4.8.2), a foreign spelling its DK9xxx, anything else DK3001.
+    func reportOptionsModifier(_ modifier: ModifierAppSyntax, on what: String) {
+        let name = modifier.name.token.name
+        let nameRange = range(modifier.name)
+        let allowed = catalog.modifiers.filter { $0.context != .view }.map(\.name)
+        if catalog.modifier(named: name) != nil, !(what == "construct:option" && allowed.contains(name)) {
+            let hint = what == "construct:option"
+                ? LocalizedText("An option takes \(DeskCatalog.joinedList(allowed.map { "`.\($0)`" }, in: .english, or: false)).",
+                                "选项上只能写 \(DeskCatalog.joinedList(allowed.map { "`.\($0)`" }, in: .simplifiedChinese, or: false))。")
+                : LocalizedText("Put modifiers on the options inside it.", "修饰符写在里面的选项上。")
+            report(.notApplicable, nameRange, ["name": .code(name), "component": .name(what), "hint": .text(hint)],
+                   fixIts: [fix("remove", [edit(modifier.node.range.lowerBound..<range(modifier.node).upperBound, "")])])
+            return
+        }
+        if reportForeignModifier(modifier, element: nil) { return }
+        let suggestion = DidYouMean.suggest(name, candidates: allowed)
+        var arguments: [String: DiagnosticArgument] = ["name": .code(name)]
+        if let best = suggestion.names.first { arguments["suggestion"] = .code(best) }
+        report(.unknownModifier, nameRange, arguments)
+    }
+
     /// `.help("…")`, `.hidden(if:)` (options only), `.visible(if:)` (DK9108) on an option control.
     func checkOptionModifiers(_ modifiers: [ModifierAppSyntax], option: OptionInfo) {
         for modifier in modifiers {
@@ -651,12 +677,7 @@ extension Checker {
             var context = ExprContext()
             context.place = .options
             guard let spec = catalog.modifier(named: name), spec.context != .view else {
-                if reportForeignModifier(modifier, element: nil) { continue }
-                let names = catalog.modifiers.filter { $0.context != .view }.map(\.name)
-                let suggestion = DidYouMean.suggest(name, candidates: names)
-                var arguments: [String: DiagnosticArgument] = ["name": .code(name)]
-                if let best = suggestion.names.first { arguments["suggestion"] = .code(best) }
-                report(.unknownModifier, nameRange, arguments)
+                reportOptionsModifier(modifier, on: "construct:option")
                 continue
             }
             if name == "hidden" {
