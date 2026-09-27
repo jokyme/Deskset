@@ -752,8 +752,8 @@ extension Checker {
                 if mute == 0 { decl.used = true }
                 return v
             }
-            if preNames.contains(where: { $0.name == name }) {
-                symbols[id(node)] = .element(id(preNames.first { $0.name == name }!.call))
+            if preName(named: name) != nil {
+                symbols[id(node)] = .element(id(preName(named: name)!.call))
                 var v = Val(.elementName)
                 v.elementName = name
                 return v
@@ -771,7 +771,7 @@ extension Checker {
             return .error
         case .stringLiteral:
             let v = inferValue(node, context, expected: .string)
-            if let s = v.stringLiteral, preNames.contains(where: { $0.name == s }), Checker.isIdentifier(s) {
+            if let s = v.stringLiteral, preName(named: s) != nil, Checker.isIdentifier(s) {
                 let callee = context.callee ?? "show"
                 report(.quotedOwnName, r, ["fixed": .code("\(callee)(\(s))")],
                        fixIts: [fix("removeQuotes", [edit(r, s)], group: "quotedOwnName")])
@@ -1142,12 +1142,11 @@ extension Checker {
     func reportStyleCycles() {
         var graph: [String: [String]] = [:]
         for style in styleOrder { graph[style.name] = style.includes.map(\.style) }
-        var reported = Set<String>()
-        for style in styleOrder where !style.fromPackage {
-            guard !reported.contains(style.name), let cycle = Checker.findCycle(from: style.name, graph: graph) else { continue }
-            for n in cycle { reported.insert(n) }
+        let own = Set(styleOrder.filter { !$0.fromPackage }.map(\.name))
+        for cycle in Checker.cycles(in: graph, order: styleOrder.map(\.name), startingAt: { own.contains($0) }) {
+            guard let style = styleOrder.first(where: { $0.name == cycle[0] && !$0.fromPackage }) else { continue }
             let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
-            report(.styleCycle, style.nameRange, ["cycle": .list(list, joiner: .and)])
+            report(.styleCycle, style.nameRange, ["cycle": .list(list, joiner: .arrow)])
         }
     }
 }

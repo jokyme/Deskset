@@ -308,4 +308,37 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.check(elapsed < 3, "2,000 stray lines took \(elapsed) s")
         print(String(format: "    2,000 stray top-level lines: parse + check %.0f ms", elapsed * 1000))
     }
+
+    t.suite("Desk: review — cycles") {
+        // Printed as the cycle (finding 28).
+        let computed = deskCheck("info { name: \"T\" }\nwidget {\n    computed a = b + 1\n    computed b = a\n    Text(\"{a}\")\n}")
+        t.equal(computed.diagnostics.first { $0.id.rawValue == "DK4040" }?.message(in: .english),
+                "These values depend on each other: `a` → `b` → `a`.")
+        let styles = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").style(a) }\nstyle a { .style(b) }\nstyle b { .style(a) }")
+        t.equal(styles.diagnostics.first { $0.id.rawValue == "DK5006" }?.message(in: .english),
+                "These styles use each other: `a` → `b` → `a`.")
+        let freeform = deskCheck("info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"A\").name(a).position(x: b.right, y: 0)\n        Text(\"B\").name(b).position(x: a.right, y: 0)\n    }\n}")
+        t.equal(freeform.diagnostics.first { $0.id.rawValue == "DK6004" }?.message(in: .simplifiedChinese),
+                "这些位置互相依赖：`a` → `b` → `a`。")
+        // Long chains are linear and need no deep recursion (finding 53).
+        let n = 4_000
+        let chain = "info { name: \"T\" }\nwidget {\n    computed v0 = 1\n" + (1..<n).map { "    computed v\($0) = v\($0 - 1) + 1" }.joined(separator: "\n")
+            + "\n    Text(\"{v\(n - 1)}\")\n}\n"
+        var start = ProcessInfo.processInfo.systemUptime
+        let chainIDs = deskOnSmallStack { deskCheck(chain).diagnostics.map(\.id.rawValue) }
+        let chainTime = ProcessInfo.processInfo.systemUptime - start
+        t.equal(chainIDs, [])
+        var positions = "info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"0\").name(t0).position(x: 0, y: 0)\n"
+        for i in 1..<n { positions += "        Text(\"\(i)\").name(t\(i)).position(x: t\(i - 1).right + 4, y: 0)\n" }
+        positions += "    }\n}\n"
+        start = ProcessInfo.processInfo.systemUptime
+        let positionIDs = deskOnSmallStack { deskCheck(positions).diagnostics.map(\.id.rawValue) }
+        let positionTime = ProcessInfo.processInfo.systemUptime - start
+        t.check(!positionIDs.contains("DK6004"), "\(Set(positionIDs))")
+        print(String(format: "    %d chained computed values: %.0f ms; %d chained Freeform positions: %.0f ms", n, chainTime * 1000, n, positionTime * 1000))
+        t.check(chainTime < 5 && positionTime < 5, "chains took \(chainTime) s and \(positionTime) s")
+        // The cycle helper: one cycle per component, starting where asked.
+        t.equal(Checker.cycles(in: ["a": ["b"], "b": ["c"], "c": ["b"], "d": ["d"]], order: ["a", "b", "c", "d"]), [["b", "c"], ["d"]])
+        t.equal(Checker.cycles(in: ["a": ["b"], "b": ["a"]], order: ["a", "b"], startingAt: { $0 == "b" }), [["b", "a"]])
+    }
 }

@@ -318,7 +318,20 @@ final class Checker {
     var pendingLiteralReachesTranslatable: [NodeID] = []
     var foreignLineCount = 0
     var computedDepsCache: [String: Set<DepKey>] = [:]
-    var preNames: [PreName] = []
+    var preNames: [PreName] = [] {
+        didSet { preNameIndex = nil }
+    }
+    /// The first `PreName` of each name (built on first lookup: references are looked up once per use).
+    var preNameIndex: [String: Int]?
+
+    func preName(named name: String) -> PreName? {
+        if preNameIndex == nil {
+            var index: [String: Int] = [:]
+            for (i, pre) in preNames.enumerated() where index[pre.name] == nil { index[pre.name] = i }
+            preNameIndex = index
+        }
+        return preNameIndex![name].map { preNames[$0] }
+    }
     var pendingVariableFromData: [Decl] = []
     /// Picker choices that form a local enum (`Theme` → its cases).
     var localEnums: [String: [String]] = [:]

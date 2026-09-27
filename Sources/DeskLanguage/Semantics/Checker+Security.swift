@@ -361,26 +361,39 @@ extension Checker {
                 elementsByName[name] = child
                 graph[name] = Array(Set(child.geometryRefs.map(\.name).filter { $0 != name })).sorted()
             }
-            var reported = Set<String>()
-            for (name, _) in graph.sorted(by: { $0.key < $1.key }) where !reported.contains(name) {
-                if let cycle = Checker.findCycle(from: name, graph: graph) {
-                    for n in cycle { reported.insert(n) }
-                    let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
-                    let at = elementsByName[cycle[0]]?.geometryRefs.first?.range ?? range(freeform.node)
-                    report(.referenceCycle, at, ["cycle": .list(list, joiner: .and)])
-                }
+            for cycle in Checker.cycles(in: graph, order: graph.keys.sorted()) {
+                let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
+                let at = elementsByName[cycle[0]]?.geometryRefs.first?.range ?? range(freeform.node)
+                report(.referenceCycle, at, ["cycle": .list(list, joiner: .arrow)])
             }
-            // Order: named children in dependency order, then the others in file order.
+            // Order: named children in dependency order (depth first, without recursion; a reference back onto
+            // the current path is skipped), then the others in file order.
             var order: [NodeID] = []
             var done = Set<String>()
-            func visit(_ name: String, _ path: Set<String>) {
-                guard !done.contains(name), !path.contains(name), let element = elementsByName[name] else { return }
-                for dep in graph[name] ?? [] { visit(dep, path.union([name])) }
-                done.insert(name)
-                order.append(element.id)
+            var onPath = Set<String>()
+            func visit(_ start: String) {
+                guard !done.contains(start), elementsByName[start] != nil else { return }
+                var work: [(name: String, next: Int)] = [(start, 0)]
+                onPath.insert(start)
+                while let (name, i) = work.last {
+                    let deps = graph[name] ?? []
+                    if i < deps.count {
+                        work[work.count - 1].next += 1
+                        let dep = deps[i]
+                        if !done.contains(dep), !onPath.contains(dep), elementsByName[dep] != nil {
+                            onPath.insert(dep)
+                            work.append((dep, 0))
+                        }
+                    } else {
+                        work.removeLast()
+                        onPath.remove(name)
+                        done.insert(name)
+                        if let element = elementsByName[name] { order.append(element.id) }
+                    }
+                }
             }
             for child in freeform.children {
-                if let name = child.name { visit(name, []) } else { order.append(child.id) }
+                if let name = child.name { visit(name) } else { order.append(child.id) }
             }
             if mute == 0 { freeformOrders[freeform.id] = order }
         }

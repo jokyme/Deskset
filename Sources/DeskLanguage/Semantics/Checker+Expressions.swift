@@ -483,7 +483,7 @@ extension Checker {
             report(.unknownMember, nameRange, arguments)
             return .error
         }
-        guard let target = preNames.first(where: { $0.name == name }) else { return .error }
+        guard let target = preName(named: name) else { return .error }
         if target.quoted, !Checker.isIdentifier(name) {
             report(.nameNotReferable, r, ["name": .code(name)])
             return .error

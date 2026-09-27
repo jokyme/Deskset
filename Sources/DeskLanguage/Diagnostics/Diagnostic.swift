@@ -3,6 +3,8 @@ import Foundation
 /// How the items of a list argument are joined in a message: "a, b and c" / "a、b 和 c", or "a, b or c".
 public enum ListJoiner: String, Sendable, Hashable {
     case and, or
+    /// A path such as a cycle: "`a` → `b` → `a`".
+    case arrow
 }
 
 /// A typed value inserted into a message template. A diagnostic holds no text in any language; its message is

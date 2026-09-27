@@ -91,6 +91,7 @@ enum DiagnosticRenderer {
                 renderArgument($0, kind: .list, arguments: arguments, kinds: kinds, language: language, catalog: catalog,
                                inList: true)
             }
+            if joiner == .arrow { return rendered.joined(separator: " → ") }
             return DeskCatalog.joinedList(rendered, in: language, or: joiner == .or)
         }
     }

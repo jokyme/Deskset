@@ -427,7 +427,7 @@ extension Checker {
         } else if let outer = loopStack.last(where: { $0.name == name }) {
             reportNameClash(token, other: LocalizedText("an enclosing loop variable", "外层的循环变量"), otherRange: outer.range)
         }
-        if let pre = preNames.first(where: { $0.name == name }) {
+        if let pre = preName(named: name) {
             reportNameClash(token, other: LocalizedText("an element's name", "一个元素的名字"), otherRange: pre.range)
         }
         reportHidesBuiltIn(token)

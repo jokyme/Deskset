@@ -114,7 +114,7 @@ extension Checker {
                 reportNameClash(token, other: LocalizedText("another declaration", "另一个声明"), otherRange: other.nameRange)
                 continue
             }
-            if let element = preNames.first(where: { $0.name == name }) {
+            if let element = preName(named: name) {
                 reportNameClash(token, other: LocalizedText("an element's name", "一个元素的名字"), otherRange: element.range)
             }
             let d = Decl(name: name, keyword: decl.keyword.token.text.lowercased(), node: statement, nameRange: range(token),
@@ -224,41 +224,87 @@ extension Checker {
             }
             graph[decl.name] = targets.sorted()
         }
-        var reported = Set<String>()
-        for decl in declOrder {
-            guard !reported.contains(decl.name) else { continue }
-            if let cycle = Checker.findCycle(from: decl.name, graph: graph) {
-                guard cycle.contains(where: { decls[$0]?.keyword == "computed" }) else { continue }
-                for n in cycle { reported.insert(n) }
-                let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
-                report(.computedCycle, decls[cycle[0]]!.nameRange, ["cycle": .list(list, joiner: .and)])
-                for n in cycle { decls[n]?.poisoned = true; decls[n]?.val?.error = true }
-            }
+        let computedNames = Set(declOrder.filter { $0.keyword == "computed" }.map(\.name))
+        for cycle in Checker.cycles(in: graph, order: declOrder.map(\.name), startingAt: { computedNames.contains($0) }) {
+            let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
+            report(.computedCycle, decls[cycle[0]]!.nameRange, ["cycle": .list(list, joiner: .arrow)])
+            for n in cycle { decls[n]?.poisoned = true; decls[n]?.val?.error = true }
         }
     }
 
-    /// A cycle through `start`, in order, or nil.
-    static func findCycle(from start: String, graph: [String: [String]]) -> [String]? {
-        var path: [String] = []
-        var onPath = Set<String>()
-        var visited = Set<String>()
-        func visit(_ n: String) -> [String]? {
-            if onPath.contains(n) {
-                if n == start, let i = path.firstIndex(of: n) { return Array(path[i...]) }
-                return nil
-            }
-            if visited.contains(n) { return nil }
-            visited.insert(n)
-            onPath.insert(n)
-            path.append(n)
-            for m in graph[n] ?? [] {
-                if let c = visit(m) { return c }
-            }
-            path.removeLast()
-            onPath.remove(n)
-            return nil
+    /// The cycles of a graph, one per strongly connected component that holds one, found in a single iterative
+    /// pass (Tarjan's algorithm: linear, and no recursion however long a chain of names is). Each cycle starts at
+    /// the component's first node in `order` that `startingAt` accepts (components with none are left out) and is
+    /// the shortest way back to it; the cycles come in the order of their starts.
+    static func cycles(in graph: [String: [String]], order: [String], startingAt accepts: (String) -> Bool = { _ in true }) -> [[String]] {
+        var names = order
+        var position: [String: Int] = [:]
+        for (i, name) in names.enumerated() where position[name] == nil { position[name] = i }
+        for name in graph.keys.sorted() where position[name] == nil {
+            position[name] = names.count
+            names.append(name)
         }
-        return visit(start)
+        let n = names.count
+        let successors: [[Int]] = names.map { (graph[$0] ?? []).compactMap { position[$0] } }
+        var index = [Int](repeating: -1, count: n), low = [Int](repeating: 0, count: n)
+        var onStack = [Bool](repeating: false, count: n)
+        var stack: [Int] = []
+        var counter = 0
+        var components: [[Int]] = []
+        for root in 0..<n where index[root] == -1 {
+            var work: [(node: Int, next: Int)] = [(root, 0)]
+            index[root] = counter; low[root] = counter; counter += 1
+            stack.append(root); onStack[root] = true
+            while let (v, i) = work.last {
+                if i < successors[v].count {
+                    work[work.count - 1].next += 1
+                    let w = successors[v][i]
+                    if index[w] == -1 {
+                        index[w] = counter; low[w] = counter; counter += 1
+                        stack.append(w); onStack[w] = true
+                        work.append((w, 0))
+                    } else if onStack[w] {
+                        low[v] = min(low[v], index[w])
+                    }
+                } else {
+                    work.removeLast()
+                    if let parent = work.last?.node { low[parent] = min(low[parent], low[v]) }
+                    if low[v] == index[v] {
+                        var component: [Int] = []
+                        while let w = stack.popLast() {
+                            onStack[w] = false
+                            component.append(w)
+                            if w == v { break }
+                        }
+                        components.append(component)
+                    }
+                }
+            }
+        }
+        var result: [(start: Int, cycle: [String])] = []
+        for component in components {
+            let members = Set(component)
+            guard component.count > 1 || successors[component[0]].contains(component[0]) else { continue }
+            guard let start = component.sorted().first(where: { accepts(names[$0]) }) else { continue }
+            // The shortest way from `start` back to itself inside the component (breadth first).
+            var parent: [Int: Int] = [:]
+            var queue = [start]
+            var head = 0
+            var last: Int?
+            search: while head < queue.count {
+                let v = queue[head]; head += 1
+                for w in successors[v] where members.contains(w) {
+                    if w == start { last = v; break search }
+                    if parent[w] == nil { parent[w] = v; queue.append(w) }
+                }
+            }
+            guard var node = last else { continue }
+            var path: [Int] = []
+            while node != start { path.append(node); node = parent[node]! }
+            path.append(start)
+            result.append((start, path.reversed().map { names[$0] }))
+        }
+        return result.sorted { $0.start < $1.start }.map(\.cycle)
     }
 
     // MARK: - Loop variables
@@ -328,7 +374,12 @@ extension Checker {
             case "computed":
                 v.deps.insert(.computed(name))
                 v.bind = .computed(name)
-                v.deps.formUnion(decl.initializerDeps)
+                // What it reads, through every computed value it reads (§4.18: variables, options, data…); the
+                // computed values themselves only one level down, so a chain of computed values stays linear.
+                for dep in decl.initializerDeps {
+                    if case .computed = dep { continue }
+                    v.deps.insert(dep)
+                }
             case "saved":
                 v.deps.insert(.variable(name))
                 v.bind = .saved(name)
@@ -341,7 +392,7 @@ extension Checker {
             return v
         }
         // Element names, in the position and size arguments of a Freeform sibling.
-        if let element = preNames.first(where: { $0.name == name }) {
+        if let element = preName(named: name) {
             if context.styleName != nil {
                 reportStyleUsesVariable(name, at: r, style: context.styleName!)
                 return .error
