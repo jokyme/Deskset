@@ -46,6 +46,9 @@ struct Parser {
     /// Open `(` and `[` around the current expression: N7 recovery differs inside brackets.
     var bracketDepth = 0
     var depthReported = false
+    /// Set when an expression past the nesting limit was skipped: the expressions around it are incomplete, and
+    /// what they miss is not reported again. Cleared when the outermost expression ends.
+    var suppressMissing = false
     var foreignLineCount = 0
     var foreignFileReported = false
     /// Byte ranges of the foreign runs (line-level `foreignConstruct` nodes): the lexer's diagnostics inside them
@@ -156,6 +159,7 @@ struct Parser {
     /// DK2005 at the current position: the token there when it is on the same line, else just after the previous
     /// token. `insert` gives the fix-it text when there is exactly one thing to insert.
     mutating func expected(_ slot: SyntaxSlot, insert: String? = nil) {
+        if suppressMissing { return }
         let range: Range<Int> = (i < limit && !nl(i)) ? textRange(i) : insertionPoint..<insertionPoint
         var fixIts: [FixIt] = []
         if let insert {

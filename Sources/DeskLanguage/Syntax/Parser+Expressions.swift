@@ -19,7 +19,10 @@ extension Parser {
     mutating func parseExpr(condition: Bool = false) -> ParsedExpression {
         if expressionDepth >= SyntaxLimits.maxExpressionDepth { return skipDeepExpression() }
         expressionDepth += 1
-        defer { expressionDepth -= 1 }
+        defer {
+            expressionDepth -= 1
+            if expressionDepth == 0 { suppressMissing = false }
+        }
         return parseTernary(condition: condition)
     }
 
@@ -45,6 +48,7 @@ extension Parser {
     /// Past the nesting limit: the rest of this expression, up to its closing bracket, is one unexpected node.
     mutating func skipDeepExpression() -> ParsedExpression {
         let start = i
+        suppressMissing = true
         if !depthReported, i < limit {
             depthReported = true
             report(.nestingTooDeep, .error, textRange(i), ["limit": .number(SyntaxLimits.maxExpressionDepth)])
@@ -142,6 +146,7 @@ extension Parser {
     }
 
     mutating func reportMissingOperand(_ opIndex: Int) {
+        if suppressMissing { return }
         report(.missingOperand, .error, textRange(opIndex), ["op": .code(tokens[opIndex].text)])
     }
 
