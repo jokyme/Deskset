@@ -41,3 +41,15 @@ ClockBottomLine=Sun
 Player=Music
 ; Now Playing's card: Glass, or Artwork (the colour of the album cover)
 NowPlayingBackground=Glass
+
+; ---------------------------------------------------------------- Spectrum
+; The bars' colour: Media (pink), Cover (a colour of the album cover), Accent (the Mac's accent colour) or Mono
+SpectrumBars=Media
+; The Strip's bars: Ink (white or dark, as the wallpaper under it asks) or Cover
+SpectrumStripBars=Ink
+; How the bars move: Full, or Calm (they fall twice as slowly)
+SpectrumMotion=Full
+; 1 shows the playing track's name (Music or Spotify ask once for permission); 0 never reads a player
+ShowSpectrumTrack=1
+; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots
+HideSpectrumWhenIdle=1

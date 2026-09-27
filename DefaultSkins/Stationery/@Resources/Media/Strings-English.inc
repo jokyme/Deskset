@@ -9,6 +9,9 @@ PlayerName1=Music
 PlayerName2=Spotify
 MenuPlayerMusic=Player: Music
 MenuPlayerSpotify=Player: Spotify
+; opening the preferred player, by its index
+MediaOpen1=Open Music
+MediaOpen2=Open Spotify
 
 ; ---------------------------------------------------------------- Now Playing
 NowPlayingWidget=Now Playing
@@ -39,3 +42,31 @@ NowPlayingSeekTip=[MeasurePosition] of [MeasureDuration]. Click to jump there.
 ; how the artist and the album are joined and ended in the sentence
 NowPlayingComma=", "
 NowPlayingEnd=". "
+
+; ---------------------------------------------------------------- Spectrum
+SpectrumWidget=Spectrum
+SpectrumIdle=Nothing Playing
+SpectrumPaused=Paused
+SpectrumPlay=Play
+SpectrumAllowAudioTitle=Allow System Audio Recording
+SpectrumAllowAudioBody=Spectrum needs it to draw the sound your Mac plays.#CRLF#Nothing is recorded or saved.
+SpectrumAllowScreenTitle=Allow Screen Recording
+SpectrumAllowScreenBody=Spectrum hears system audio through Screen Recording.#CRLF#Allow Deskset, then quit and reopen it.
+; the tooltip: live, at rest, paused at rest, and the two permissions
+SpectrumTipLive=Showing the sound your Mac plays, from 40 Hz on the left to 16 kHz on the right.
+SpectrumTipRest=Nothing is playing.
+SpectrumTipPaused=Paused.
+SpectrumTipAudio=Deskset can’t hear your Mac’s sound. Allow System Audio Recording for Deskset in Privacy & Security.
+SpectrumTipScreen=Allow Screen Recording for Deskset in Privacy & Security, then quit and reopen Deskset.
+SpectrumMenuBarsMedia=Bars: Pink
+SpectrumMenuBarsCover=Bars: Album Art
+SpectrumMenuBarsAccent=Bars: Accent Color
+SpectrumMenuBarsMono=Bars: Mono
+SpectrumMenuStripBarsInk=Bars: Ink
+SpectrumMenuStripBarsCover=Bars: Album Art
+SpectrumMenuMotionFull=Motion: Full
+SpectrumMenuMotionCalm=Motion: Calm
+SpectrumMenuShowTrack1=Show Track: On
+SpectrumMenuShowTrack0=Show Track: Off
+SpectrumMenuHideWhenIdle1=Hide When Idle: On
+SpectrumMenuHideWhenIdle0=Hide When Idle: Off
