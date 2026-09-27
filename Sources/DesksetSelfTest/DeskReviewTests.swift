@@ -655,4 +655,20 @@ func runDeskReviewTests(_ t: TestRunner) {
         let lines = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick(if: cpu.usage > 5%) {\n        page = 1\n        page = 2\n    }\n}")
         t.equal(deskApplyFix(lines, "DK5004"), "info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick {\n        if cpu.usage > 5% {\n            page = 1\n            page = 2\n        }\n    }\n}")
     }
+
+    t.suite("Desk: review — event fields per event (finding 17)") {
+        func ids(_ modifier: String, _ field: String) -> [String] {
+            deskReviewIDs("widget {\n    Column {\n        Text(\"A\").\(modifier) { log(\"{event.\(field)}\") }\n        Text(\"B\")\n    }\n}")
+        }
+        t.equal(ids("onClick", "x"), [])
+        t.equal(ids("onClick", "dx"), ["DK3003"])
+        t.equal(ids("onClick", "direction"), ["DK3003"])
+        t.equal(ids("onDrag", "dx"), [])
+        t.equal(ids("onDrag", "files.joined(\", \")"), ["DK3003"])
+        t.equal(ids("onScroll", "direction"), [])
+        t.equal(ids("onDrop", "text"), [])
+        t.equal(ids("onDrop", "x"), ["DK3003"])
+        let message = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").onClick { log(\"{event.dx}\") } }").diagnostics.first
+        t.equal(message?.message(in: .english), "`event` has no `dx`. In `.onClick`, `event` has `x`, `y`, `xPercent` and `yPercent`.")
+    }
 }

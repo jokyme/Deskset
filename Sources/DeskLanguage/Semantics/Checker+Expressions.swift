@@ -253,11 +253,35 @@ extension Checker {
             v.dataPath = base.dataPath
             return v
         }
+        // `event` has the fields of the event it belongs to (§4.16): `dx` only in `.onDrag`, `files` only in `.onDrop`.
+        if base.bind == .event, !called, let owner = context.action?.owner, let fields = Checker.eventFields(owner),
+           !fields.contains(name), catalog.member(name, of: base.type, call: false) != nil {
+            var arguments: [String: DiagnosticArgument] = ["base": .code("event"), "name": .code(name), "event": .code("." + owner)]
+            if fields.isEmpty {
+                arguments["hint"] = hintText(.unknownMember, "noEventFields")
+            } else {
+                arguments["hint"] = hintText(.unknownMember, "eventFields")
+                arguments["fields"] = .list(fields.map { .code($0) }, joiner: .and)
+            }
+            report(.unknownMember, nameRange, arguments)
+            return .error
+        }
         if let m = catalog.member(name, of: base.type, call: called) {
             return typedMember(base, member: m, name: name, nameRange: nameRange, node: node)
         }
         return reportUnknownMember(base, baseNode: baseNode, name: name, nameRange: nameRange, context, called: called,
                                    expected: expected)
+    }
+
+    /// The `event` fields of a pointer event (§4.16), or nil for a block with no known event.
+    static func eventFields(_ owner: String) -> [String]? {
+        switch owner {
+        case "onClick", "onDoubleClick", "onRightClick": return ["x", "y", "xPercent", "yPercent"]
+        case "onDrag": return ["x", "y", "xPercent", "yPercent", "dx", "dy"]
+        case "onScroll": return ["direction"]
+        case "onDrop": return ["files", "text"]
+        default: return nil
+        }
     }
 
     /// A member of a value (a record's field, a list's member, a member of text, dates, colors or web data).

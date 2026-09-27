@@ -721,9 +721,11 @@ extension CatalogData {
             template: LocalizedText(
                 #"`{base}` has no `{name}`. Did you mean `{suggestion}`? {hint}"#,
                 #"`{base}` 没有 `{name}`，是不是想写 `{suggestion}`？{hint}"#),
-            placeholders: ["base": .code, "name": .code, "suggestion": .code, "hint": .text],
+            placeholders: ["base": .code, "name": .code, "suggestion": .code, "hint": .text, "event": .code, "fields": .list],
             hints: [
                 HintSpec(key: "hidesBuiltIn", text: LocalizedText(#"Your `{base}` hides the built-in `{base}` here."#, #"你起的 `{base}` 在这里盖住了内置的 `{base}`。"#)),
+                HintSpec(key: "eventFields", text: LocalizedText(#"In `{event}`, `event` has {fields}."#, #"在 `{event}` 里，`event` 有 {fields}。"#)),
+                HintSpec(key: "noEventFields", text: LocalizedText(#"`{event}` gives `event` no fields."#, #"`{event}` 里的 `event` 没有字段。"#)),
             ],
             fixIts: [
                 FixItSpec("fix", offeredWhen: LocalizedText(#"When one close name fits"#, #"只有一个相近的名字符合时"#)),
