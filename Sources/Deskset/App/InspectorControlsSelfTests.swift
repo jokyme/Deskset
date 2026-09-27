@@ -504,6 +504,7 @@ extension AppSelfTest {
             t.check(editor.inspectorStack.findSubview(where: { $0 === editing }) != nil, "not rebuilt while typing")
             window.makeFirstResponder(nil)
             editor.window?.close()
+            withExtendedLifetime(app) {}
         }
 
         t.suite("App: Shape editor") {

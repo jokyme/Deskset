@@ -2396,7 +2396,7 @@ extension InspectorWindowController {
 
     /// A color picked for several layers: previewed on all, written after a pause (or when the pick ends).
     func previewSeveralColor(_ key: String, rgba: RGBA, like: String, sections: [String], label: String, finished: Bool) {
-        guard let skin else { return }
+        guard skin != nil else { return }
         let text = ColorText.format(rgba, like: like.isEmpty ? nil : like)
         for s in sections { session?.preview(section: s, [key: text]) }
         canvas.needsDisplay = true
