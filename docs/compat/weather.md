@@ -123,10 +123,11 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   three letters or more finds a town when nothing matches exactly. Besides its name, a town is found by the other
   names GeoNames lists for it: older and other-language names (`Bombay`, `Peking`, `Saigon`, `Kristiania`) and names
   in other scripts (`Москва`, `東京`, `서울`, `北京`). Chinese names are matched in Traditional and Simplified
-  characters alike (`紐約` and `纽约`, `臺北` and `台北`), since the table often has only one. Gaps: abbreviations
-  (`NYC`, `LA`, airport codes) and names GeoNames does not list are not found. Smaller places: use coordinates. The
-  name shown (`Type=Place`) is the table's, or the user's own spelling when an alternate name matched ("北京");
-  coordinates show the nearest town within 50 km. Every coordinate is **rounded to two decimals** (about 1 km) before
+  characters alike (`紐約` and `纽约`, `臺北` and `台北`), since the table often has only one. Gaps: abbreviations are
+  found only where GeoNames lists them (`LA`; `NYC` finds Manhattan), and airport codes and names GeoNames does not
+  list are not found. Smaller places: use coordinates. The name shown (`Type=Place`) is the table's, or the user's
+  own spelling when an alternate name matched ("北京", and "臺北" although the table has "台北"); coordinates show the
+  nearest town within 50 km. Every coordinate is **rounded to two decimals** (about 1 km) before
   it is used or sent; places that round to the same point share one forecast.
 - Why: no online geocoder fits (terms that forbid commercial use or storing results, or wrong answers for foreign
   names from some regions), and an offline table keeps place names private.

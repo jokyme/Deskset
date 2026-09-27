@@ -140,26 +140,28 @@ public final class PlaceDirectory {
     /// Finds a place: exact name matches first (name, ASCII name or an alternate), filtered by up to two qualifiers
     /// after commas (a country code or English name, a region code or name), the largest place winning; then prefix
     /// matches (3 characters or more, 2 for CJK). CJK queries are tried again without a trailing 市 / 县 / 縣 / 區 / 区,
-    /// and Traditional Chinese ones in Simplified Chinese.
+    /// and Traditional Chinese ones in Simplified Chinese; the name shown is then still the user's spelling (臺北, not the
+    /// table's 台北).
     public func search(_ query: String) -> PlaceMatch? {
         let parts = query.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard let first = parts.first else { return nil }
         let name = String(first)
         let qualifiers = Array(parts.dropFirst().suffix(2))
-        var candidates = [name]
-        if let simplified = PlaceDirectory.simplifiedChinese(name) { candidates.append(simplified) }
-        for candidate in candidates where PlaceDirectory.isCJK(candidate) {
-            if let last = candidate.last, "市县縣區区".contains(last), candidate.count > 1 {
-                candidates.append(String(candidate.dropLast()))
+        // What is looked up, and the spelling shown when an alternate name matches.
+        var candidates: [(key: String, shown: String)] = [(name, name)]
+        if let simplified = PlaceDirectory.simplifiedChinese(name) { candidates.append((simplified, name)) }
+        for candidate in candidates where PlaceDirectory.isCJK(candidate.key) {
+            if let last = candidate.key.last, "市县縣區区".contains(last), candidate.key.count > 1 {
+                candidates.append((String(candidate.key.dropLast()), String(candidate.shown.dropLast())))
             }
         }
         for candidate in candidates {
-            let key = PlaceDirectory.fold(candidate)
+            let key = PlaceDirectory.fold(candidate.key)
             if let rows = index[key], let row = rows.first(where: { matches(places[$0], qualifiers) }) {
-                return match(places[row], typed: candidate)
+                return match(places[row], typed: candidate.shown)
             }
         }
-        for candidate in candidates {
+        for candidate in candidates.map(\.key) {
             let key = PlaceDirectory.fold(candidate)
             let minimum = PlaceDirectory.isCJK(candidate) ? 2 : 3
             guard key.count >= minimum else { continue }
