@@ -177,7 +177,7 @@ extension Checker {
         // A call whose parameters are all optional with no default, called with none (D133).
         let settable = signature.params.filter { $0.role != .condition }
         var takesBlock = false
-        if case .modifier(let m) = owner, m.block != .none { takesBlock = true }
+        if case .modifier(let m) = owner, m.block != .none || !m.fixedValues.isEmpty { takesBlock = true }
         if arguments.isEmpty, !settable.isEmpty, !takesBlock,
            settable.allSatisfy({ !$0.required && $0.defaultValue == nil && !$0.variadic }),
            case .modifier = owner {

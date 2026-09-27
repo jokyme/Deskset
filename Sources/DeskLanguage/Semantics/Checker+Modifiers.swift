@@ -1066,18 +1066,22 @@ extension Checker {
             report(.buttonWithoutAction, range(element.node.firstChild(.callee) ?? element.node),
                    fixIts: [fix("insert", [edit(end..<end, ".onClick { }")], ["text": .code(".onClick { }")])])
         }
-        if element.kind == .scroll, preset == "fit", !names.contains("height") && !names.contains("size") {
+        // DK6012 is about a vertical Scroll (its message offers `.height(200)`); a sideways one in a `.fit` widget is a
+        // strip whose width follows the widget's.
+        let horizontal = element.node.firstChild(.argumentClause).map { text($0).contains(".horizontal") } ?? false
+        let side = "height"
+        if element.kind == .scroll, !horizontal, preset == "fit", !names.contains(side) && !names.contains("size") {
             var ancestorSized = false
             var a = element.parent
             while let p = a {
                 let pn = Set(p.modifierNames)
-                if pn.contains("height") || pn.contains("size") { ancestorSized = true; break }
+                if pn.contains(side) || pn.contains("size") { ancestorSized = true; break }
                 a = p.parent
             }
             if !ancestorSized {
                 let end = range(element.node).upperBound
                 report(.scrollGrowsWithContent, range(element.node.firstChild(.callee) ?? element.node),
-                       fixIts: [fix("insert", [edit(end..<end, ".height(200)")], ["text": .code(".height(200)")])])
+                       fixIts: [fix("insert", [edit(end..<end, ".\(side)(200)")], ["text": .code(".\(side)(200)")])])
             }
         }
     }
