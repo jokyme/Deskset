@@ -640,7 +640,7 @@ For a selection **S** and a property, the edit is written to the narrowest targe
 
 ## 8. Inspector states (exact copy)
 
-Examples use `TestSkins/Audio/Visualizer`, except where System is named (`DefaultSkins/Deskset/System`).
+Examples use `TestSkins/Audio/Visualizer`, except where System is named (`TestSkins/Deskset/System`, the example skin of Deskset 0.1).
 
 ### 8.1 Nothing selected: the widget page
 
