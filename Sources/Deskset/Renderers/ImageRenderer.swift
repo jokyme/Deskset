@@ -118,8 +118,11 @@ extension SkinRenderer {
         let area = meter.contentFrame.cgRect
         // An SF Symbol is rendered for the area it covers (tiled: at its own size).
         let fit = meter.maskImagePath == nil && meter.preserveAspectRatio == 1
-        guard let path = meter.imagePath,
-              let prepared = PreparedImage(path: path, options: meter.imageOptions, drawn: meter.tile ? nil : area.size,
+        guard var path = meter.imagePath else { return }
+        if meter.decodesAtDrawnSize, !meter.tile {
+            path = drawnDecodePath(path, options: meter.imageOptions, drawn: area.size, fit: fit, in: ctx)
+        }
+        guard let prepared = PreparedImage(path: path, options: meter.imageOptions, drawn: meter.tile ? nil : area.size,
                                            fit: fit, in: ctx)
         else { return }
         guard area.width > 0, area.height > 0 else { return }
@@ -129,6 +132,26 @@ extension SkinRenderer {
         }
         drawImageFile(prepared, in: area, preserveAspectRatio: meter.preserveAspectRatio, tile: meter.tile,
                       scaleMargins: meter.scaleMargins, ctx)
+    }
+
+    /// `MacDecodeSize=Drawn`: the path that decodes the file `path` at the pixels it covers when drawn over `drawn`
+    /// points into `ctx` — the device scale times how much the shown image (after EXIF orientation, crop and rotation)
+    /// is scaled (`fit`: the smaller of the two scales, else the larger) — rounded up to 64 pixels so a size that
+    /// changes a little reuses the decode. The file's own path when that is no smaller than the file, or for a symbol.
+    static func drawnDecodePath(_ path: String, options: ImageOptions, drawn: CGSize, fit: Bool,
+                                in ctx: CGContext) -> String {
+        guard !MacSymbol.isSymbolPath(path), drawn.width > 0, drawn.height > 0, drawn.width.isFinite,
+              drawn.height.isFinite, let header = Images.header(atPath: path) else { return path }
+        let shown = options.displaySize(imageWidth: Double(header.width), imageHeight: Double(header.height),
+                                        exifOrientation: header.orientation)
+        guard shown.width > 0, shown.height > 0 else { return path }
+        let t = ctx.userSpaceToDeviceSpaceTransform
+        let device = Double(max(hypot(t.a, t.b), hypot(t.c, t.d)))
+        let scale = device.isFinite ? min(max(device, 1), 4) : 1
+        let sx = Double(drawn.width) / shown.width, sy = Double(drawn.height) / shown.height
+        let side = scale * (fit ? min(sx, sy) : max(sx, sy)) * Double(max(header.width, header.height))
+        guard side.isFinite, side > 0, side < Double(Images.maxDecodeSide) else { return path }
+        return Images.drawnPath(path, maxPixelSide: Int((side / 64).rounded(.up)) * 64)
     }
 
     /// Draws an image file with its general image options into `rect` (clipped to it):

@@ -627,6 +627,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
 - **状态：** 仅 Mac
 
+#### 按绘制尺寸解码图片（`MacDecodeSize=Drawn`）
+- **Windows：** 图片文件总是整张载入。
+- **Mac：** Image meter 上的 `MacDecodeSize=Drawn` 按图片实际绘制所覆盖的像素解码文件（W × H 乘以屏幕的
+  backing scale，不超过文件本身的像素）；`File`（默认）整张解码。尺寸、ImageCrop 和点击判定仍以文件的像素计；
+  平铺的图片和符号照常解码。400 万像素及以上的文件，其尺寸和 EXIF 方向从文件头读取，不需要解码。
+- **原因：** Deskset 扩展：一张 4800 万像素的照片整张解码约占 186 MB，按相框大小解码只需几 MB。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响，Windows 会忽略这个选项。
+- **状态：** 仅 Mac
+
 #### Bar、Bitmap、Button
 - **Windows：** 见 Bar、Bitmap 和 Button 页面。
 - **Mac：** Bar 的填充长度为整像素；BarImage 按其原尺寸绘制，BarBorder 两端始终绘制。Bitmap / Button 的图片条在宽大于高

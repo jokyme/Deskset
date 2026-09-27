@@ -689,6 +689,16 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** none for Windows skins; on Windows such images are missing.
 - **Status:** Mac-only
 
+#### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
+- **Windows:** image files are loaded whole.
+- **Mac:** `MacDecodeSize=Drawn` on an Image meter decodes the file at the pixels it covers where it is drawn (W × H
+  times the backing scale, never more than the file has); `File` (default) decodes it whole. Sizes, ImageCrop and hit
+  tests stay in the file's pixels; tiled images and symbols are decoded as usual. The size and EXIF orientation of a
+  file of 4 megapixels or more come from its header, without decoding it.
+- **Why:** Deskset extension: a 48-megapixel photo takes about 186 MB decoded whole, a few MB at a frame's size.
+- **Skin impact:** none for Windows skins, where the option is ignored.
+- **Status:** Mac-only
+
 #### Bar, Bitmap, Button
 - **Windows:** documented on the Bar, Bitmap and Button pages.
 - **Mac:** Bar fill lengths are whole pixels; BarImage is drawn at its own size and BarBorder ends are always drawn.

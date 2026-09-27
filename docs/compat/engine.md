@@ -703,6 +703,19 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: none for Windows skins. On Windows such a skin shows missing images.
 - Status: Deskset extension
 
+### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
+- Windows (Rainmeter): an image file is loaded whole; there is no option for its decoded size.
+- Mac (Deskset): `MacDecodeSize=Drawn` on an Image meter decodes the file at the pixels it covers where it is drawn:
+  W × H times the display's backing scale, the larger of the two scales (the smaller with PreserveAspectRatio=1),
+  rounded up to 64 pixels, never more than the file has; `File` (the default) decodes the whole file (up to 8192 px
+  per side). Sizes, ImageCrop and hit tests stay in the file's pixels; EXIF orientation, masks and the other image
+  options work as usual. Tiled images (`Tile=1`) and symbols are decoded as usual. Separately, the size and EXIF
+  orientation of a file of 4 megapixels or more are read from its header, so asking for them decodes nothing.
+- Why: Deskset extension — a 48-megapixel photo decoded whole takes about 186 MB and several hundred milliseconds;
+  shown in a 360-point frame it needs a few MB. Photo Frame, the default suite's slideshow, uses it.
+- Skin impact: none for Windows skins; on Windows the option is ignored and the file is loaded whole.
+- Status: Deskset extension
+
 ### Bar, Bitmap, Button
 - Windows (Rainmeter): /manual/meters/bar/, …/bitmap/, …/button/ and Tips → Button Images.
 - Mac (Deskset): Bar fill lengths are whole pixels; BarImage is drawn at its own size and BarBorder ends are always

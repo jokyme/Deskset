@@ -104,6 +104,46 @@ extension AppSelfTest {
             }
         }
 
+        t.suite("App: MacDecodeSize=Drawn decodes a photo at the size it is drawn") {
+            // A 3000 × 2000 file (6 MP): its left half red, its right half blue.
+            let root = t.temporaryDirectory("decode-size")
+            let file = root.appendingPathComponent("Photo.png")
+            guard let ctx = Images.bitmapContext(width: 3000, height: 2000) else { return t.check(false, "context") }
+            ctx.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: 1500, height: 2000))
+            ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 1500, y: 0, width: 1500, height: 2000))
+            guard let image = ctx.makeImage(),
+                  let dest = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil)
+            else { return t.check(false, "photo") }
+            CGImageDestinationAddImage(dest, image, nil)
+            t.check(CGImageDestinationFinalize(dest), "photo written")
+            let path = file.path
+            // The engine's size of a large file comes from its header: nothing is decoded for it.
+            t.equal(Images.size(atPath: path).map { [$0.width, $0.height] }, [3000, 2000])
+            t.equal(Images.exifOrientation(atPath: path), 1)
+            t.check(Images.cachedImage(path) == nil, "asking a large file's size decodes nothing")
+            // Filling 100 × 100 at 1 pixel per point: the larger scale is 100 / 2000, so 150 pixels, 192 in steps of 64.
+            let sized = Images.drawnPath(path, maxPixelSide: 192)
+            t.equal(Images.decodeRequest(sized)?.file, path)
+            t.equal(Images.drawnPath(path, maxPixelSide: 4000), path, "never more than the file")
+            let config = root.appendingPathComponent("Decode/Skin")
+            try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+            let ini = config.appendingPathComponent("Skin.ini")
+            try "[Rainmeter]\nUpdate=-1\n[Photo]\nMeter=Image\nImageName=\(path)\nW=100\nH=100\nPreserveAspectRatio=2\nMacDecodeSize=Drawn\n"
+                .write(to: ini, atomically: true, encoding: .utf8)
+            guard let skin = loadSkin(ini, config: "Decode\\Skin", skins: root),
+                  let rep = drawSkin(skin, width: 100, height: 100) else { return t.check(false, "the skin draws") }
+            t.equal((skin.meter(named: "Photo") as? ImageMeter)?.decodesAtDrawnSize, true)
+            t.equal(Images.cachedImage(sized).map { [$0.width, $0.height] }, [192, 128], "decoded at the drawn size")
+            t.check(Images.cachedImage(path) == nil, "the whole file is never decoded")
+            t.equal(Images.size(atPath: sized).map { [$0.width, $0.height] }, [3000, 2000], "sizes stay the file's")
+            // Filled and cropped in the middle as a full decode would be: red on the left, blue on the right.
+            let left = pixel(rep, 25, 50), right = pixel(rep, 75, 50)
+            t.check(left.r > 0.9 && left.b < 0.1, "red on the left")
+            t.check(right.b > 0.9 && right.r < 0.1, "blue on the right")
+        }
+
         t.suite("App: measured text is the drawn text (Layout)") {
             guard let testSkins = Paths.repositoryFolder("TestSkins"),
                   let skin = loadSkin(testSkins.appendingPathComponent("Engine/Layout/Layout.ini"), config: "Engine\\Layout",
