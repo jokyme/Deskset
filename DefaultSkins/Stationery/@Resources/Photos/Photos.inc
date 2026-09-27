@@ -129,19 +129,30 @@ UpdateDivider=-1
 
 ; ---------------------------------------------------------------- the photo
 [MeasurePhoto]
-; a random photo of the folder, never the same one twice in a row; every second until one shows, then only on a new
-; slot or a click
+; a random photo of the folder, never the same one twice in a row: at load, on a new slot, on a click, and every second
+; while none shows (MeasurePhotoWait)
 Measure=Plugin
 Plugin=QuotePlugin
 PathName=[MeasureFolderPath]
 FileFilter=#PhotoFilter#
 Subfolders=1
 DynamicVariables=1
-UpdateDivider=1
+UpdateDivider=-1
 IfMatch=#PhotoPattern#
-IfMatchAction=[!SetVariable HasPhoto 1][!SetOption MeasurePhoto UpdateDivider -1][!UpdateMeasureGroup Caption][!UpdateMeasure MeasureMode]
-IfNotMatchAction=[!SetVariable HasPhoto 0][!SetOption MeasurePhoto UpdateDivider 1][!UpdateMeasure MeasureMode]
+IfMatchAction=[!SetVariable HasPhoto 1][!UpdateMeasureGroup Caption][!UpdateMeasure MeasureMode]
+IfNotMatchAction=[!SetVariable HasPhoto 0][!UpdateMeasure MeasureMode]
 OnChangeAction=[!UpdateMeasureGroup Caption][!UpdateMeterGroup Photo][!Redraw]
+
+[MeasurePhotoWait]
+; while no photo shows, the folder is asked again every second: its list is read on a background thread, and a folder
+; that fills up shows its first photo within a minute. A measure of its own, because a measure that changes its own
+; UpdateDivider still updates once more, and that would replace the first photo a second after it shows
+Measure=Calc
+Formula=#HasPhoto#
+DynamicVariables=1
+IfConditionMode=1
+IfCondition=MeasurePhotoWait = 0
+IfTrueAction=[!UpdateMeasure MeasurePhoto]
 
 [MeasureNow]
 ; the wall clock (no Format: the number is the timestamp)
