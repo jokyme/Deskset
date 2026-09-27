@@ -233,15 +233,6 @@ ChronoTipReserve2=Battery [CalcReserveValue:0]% · plugged in
 ChronoTipReserve3=CPU [CalcReserveValue:0]%
 ChronoTipReserve4=Battery [CalcReserveValue:0]%
 
-; ---------------------------------------------------------------- the player (Collection/Player.inc)
-MenuPlayerMusic=Player: Music
-MenuPlayerSpotify=Player: Spotify
-MenuOpenPlayerMusic=Open Music
-MenuOpenPlayerSpotify=Open Spotify
-; the player's name, where a widget names it
-PlayerNameMusic=Music
-PlayerNameSpotify=Spotify
-
 ; ---------------------------------------------------------------- Turntable
 TurntableMenuVinyl1=Record Color: From the Cover
 TurntableMenuVinyl0=Record Color: Classic Black

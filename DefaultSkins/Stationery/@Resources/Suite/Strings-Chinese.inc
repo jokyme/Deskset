@@ -215,15 +215,6 @@ ChronoTipReserve2=电池 [CalcReserveValue:0]% · 已接通电源
 ChronoTipReserve3=CPU [CalcReserveValue:0]%
 ChronoTipReserve4=电池 [CalcReserveValue:0]%
 
-; ---------------------------------------------------------------- the player (Collection/Player.inc)
-MenuPlayerMusic=播放器：音乐
-MenuPlayerSpotify=播放器：Spotify
-MenuOpenPlayerMusic=打开音乐
-MenuOpenPlayerSpotify=打开 Spotify
-; the player's name, where a widget names it
-PlayerNameMusic=音乐
-PlayerNameSpotify=Spotify
-
 ; ---------------------------------------------------------------- Turntable
 TurntableMenuVinyl1=唱片颜色：取自封面
 TurntableMenuVinyl0=唱片颜色：经典黑

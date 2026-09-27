@@ -28,3 +28,8 @@ PlayerAppSpotify=/Applications/Spotify.app
 ;     ContextTitleN=#MenuPlayerTitle#    ContextActionN=#MenuPlayerAction#
 MenuPlayerTitle=[#MenuPlayer[#Player]]
 MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Variables.inc"][!RefreshGroup Stationery]
+
+; ---------------------------------------------------------------- for widgets that name the preferred player
+; the card's "Open …" item ("Open Music"), and the player's name ("Music"), as Turntable and Studio VU show them
+MenuOpenPlayerTitle=[#MediaOpen[#PlayerIndex[#Player]]]
+PlayerDisplayName=[#PlayerName[#PlayerIndex[#Player]]]
