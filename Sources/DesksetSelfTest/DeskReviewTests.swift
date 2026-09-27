@@ -890,4 +890,8 @@ func runDeskReviewTests(_ t: TestRunner) {
               fixed: head + "widget { Text(\"{time.now, format: \"yyyy-MM-dd\"}\") }", "YYYY-MM-DD")
         t.equal(deskReviewIDs("widget { Text(\"{time.now, format: \"YYYY-'W'ww\"}\") }"), [], "a week pattern is fine")
     }
+
+    t.suite("Desk: review — names read in failed expressions (finding 72)") {
+        t.equal(deskReviewIDs("widget {\n    computed m = calendar.month(offset: 0)\n    Text(\"{m.days[0]}\")\n}"), ["DK9006"])
+    }
 }

@@ -28,13 +28,25 @@ extension Checker {
             let inner = ParenExprSyntax(unchecked: node)
             val = infer(inner.value.node, context, expected: expected)
         default:
-            // `unexpected`, `foreignConstruct`: reported by the parser.
+            // `unexpected`, `foreignConstruct`: reported by the parser. The own names read inside still count as
+            // used (`m.days[0]` is DK9006, not also "`m` is never used", §4.1).
             val = .error
+            markNamesUsed(in: node)
         }
         if mute == 0 && !val.error && val.namespace == nil && val.qualifier == nil && val.component == nil {
             types[id(node)] = SemType(type: val.type, displayBase: val.base, range: val.range)
         }
         return val
+    }
+
+    /// Marks the declarations and options read anywhere inside `node` as used, without typing anything.
+    func markNamesUsed(in node: PositionedNode) {
+        let tokens = node.tokens.filter { !$0.token.isMissing }
+        for (k, token) in tokens.enumerated() where token.kind == .identifier {
+            let afterDot = k > 0 && tokens[k - 1].kind == .dot
+            if !afterDot { decls[token.token.name]?.used = true }
+            if afterDot, k > 1, tokens[k - 2].token.text == "options" { options[token.token.name]?.used = true }
+        }
     }
 
     /// Types `node` and reports DK3037 / DK3028 / DK6005 for names that are not values.
