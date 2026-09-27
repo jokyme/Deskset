@@ -129,14 +129,22 @@ public final class SyntaxNode: @unchecked Sendable {
     public let byteLength: Int
     /// For `foreignConstruct` nodes: what was recognised.
     public let foreignKind: ForeignKind?
+    /// The number of nodes on the longest path from this node down to a leaf (1 for a node with no child nodes).
+    /// Tree walkers that recurse budget their stack by it (StackGuard).
+    public let depth: Int
 
     public init(kind: SyntaxKind, children: [SyntaxChild], foreignKind: ForeignKind? = nil) {
         self.kind = kind
         self.children = children
         self.foreignKind = foreignKind
         var length = 0
-        for child in children { length += child.byteLength }
+        var deepest = 0
+        for child in children {
+            length += child.byteLength
+            if case .node(let n) = child, n.depth > deepest { deepest = n.depth }
+        }
         self.byteLength = length
+        self.depth = deepest + 1
     }
 
     // Deep trees (a long `else if` chain, a long sum) are released without recursion.

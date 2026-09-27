@@ -12,7 +12,7 @@ import Foundation
 extension Desk {
     /// Checks one file (§4.20). `package.desk` is recognised by its file name and checked as a package.
     public static func check(_ tree: SyntaxTree, context: CheckContext = CheckContext()) -> CheckedFile {
-        let needed = StackGuard.nestingEstimate(Array(tree.text.utf8)) * StackGuard.bytesPerNestingLevel
+        let needed = StackGuard.bytesNeeded(toWalk: tree)
         return StackGuard.run(needing: needed) {
             let checker = Checker(tree: tree, context: context)
             return checker.run()

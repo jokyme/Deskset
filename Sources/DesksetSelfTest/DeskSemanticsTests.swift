@@ -320,3 +320,109 @@ func runDeskSemanticEditTests(_ t: TestRunner) {
                 "info { name: \"T\" }\noptions { tint = ColorPicker(\"Accent\") }\nwidget { Text(\"A\").style(card).color(options.tint) }\nstyle card { .bold() }")
     }
 }
+
+/// Problems the checker has with one input: a crash is a crash; otherwise sorted, deterministic, renderable
+/// diagnostics whose ranges and fix-its lie inside the file, within the time budget (§9.3).
+func deskCheckFuzzProblems(_ text: String) -> (problems: [String], elapsed: Double) {
+    #if DEBUG
+    let budget = 1.0
+    #else
+    let budget = 0.1
+    #endif
+    func timed() -> (CheckedFile, Double) {
+        let start = ProcessInfo.processInfo.systemUptime
+        let checked = Desk.check(Desk.parse(text, fileName: "F.desk"))
+        return (checked, ProcessInfo.processInfo.systemUptime - start)
+    }
+    let (checked, first) = timed()
+    let elapsed = first > budget ? min(first, timed().1) : first
+    var problems: [String] = []
+    let length = text.utf8.count
+    let keys = checked.diagnostics.map { ($0.file.path, $0.range.lowerBound) }
+    if !zip(keys, keys.dropFirst()).allSatisfy({ $0.0 < $0.1 || ($0.0 == $0.1) || ($0.0.0 == $0.1.0 && $0.0.1 <= $0.1.1) }) {
+        problems.append("diagnostics not sorted")
+    }
+    for d in checked.diagnostics {
+        if d.range.lowerBound < 0 || d.range.upperBound > length { problems.append("\(d.id.rawValue) outside the file") }
+        for f in d.fixIts {
+            for e in f.edits where e.range.lowerBound < 0 || e.range.upperBound > length || e.range.lowerBound > e.range.upperBound {
+                problems.append("\(d.id.rawValue) fix-it outside the file")
+            }
+            _ = f.title(in: .english)
+        }
+        if d.message(in: .english).isEmpty || d.message(in: .simplifiedChinese).isEmpty { problems.append("\(d.id.rawValue) empty message") }
+    }
+    let again = Desk.check(Desk.parse(text, fileName: "F.desk"))
+    if again.diagnostics.map(\.description) != checked.diagnostics.map(\.description) { problems.append("not deterministic") }
+    if elapsed > budget { problems.append("took \(elapsed) s") }
+    return (problems, elapsed)
+}
+
+func runDeskCheckerFuzzTests(_ t: TestRunner) {
+    t.suite("Desk: checker fuzz") {
+        // DESK_CHECK_FUZZ_COUNT inputs (default 2,000), seeded like the syntax fuzz (DESK_FUZZ_SEED, the CI run number).
+        let environment = ProcessInfo.processInfo.environment
+        let seed = UInt64(environment["DESK_FUZZ_SEED"] ?? environment["GITHUB_RUN_NUMBER"] ?? "") ?? 7
+        let count = Int(environment["DESK_CHECK_FUZZ_COUNT"] ?? "") ?? 2_000
+        var random = DeskRandom(seed: seed)
+        let corpus = deskFixtureTexts().map(\.1) + deskExampleCorpus().filter { $0.count > 40 }
+            + DeskCatalog.current.documentedItems().map { DeskExampleHarness(catalog: .current).build($0.doc.example, context: $0.doc.exampleContext).text }
+        let pieces = ["{", "}", "(", ")", "[", "]", "\"", "“", ".", ",", ";", ":", "=", "==", "if", "else", "for", "in",
+                      "Text", "variable", "computed", "saved", "widget", "style", "options", "info", "\n", " ", "#", "\\",
+                      "&&", "!", "?", "...", "12px", "2 s", "5min", "50%", "2GB", "°F", ".font(", ".style(", ".name(",
+                      "options.", "event.", "cpu.", "music.", "Picker(\"A\", [.a, .b])", "show(", ".onClick {", ".hover {",
+                      "not ", " and ", " or ", "Freeform {", ".position(x: ", "title.right", "\"{", "}\"", "{{", "#Name#"]
+        var slowest = 0.0
+        var failures = 0
+        for n in 0..<count {
+            var chars = Array(random.pick(corpus).unicodeScalars)
+            for _ in 0..<(1 + random.int(6)) where !chars.isEmpty {
+                let at = random.int(chars.count)
+                switch random.int(5) {
+                case 0: chars.removeSubrange(at..<min(chars.count, at + 1 + random.int(12)))
+                case 1: chars.insert(contentsOf: Array(random.pick(pieces).unicodeScalars), at: at)
+                case 2:
+                    let end = min(chars.count, at + 1 + random.int(40))
+                    chars.insert(contentsOf: chars[at..<end], at: at)
+                case 3: chars.swapAt(at, random.int(chars.count))
+                default:
+                    if chars[at] == "{" { chars[at] = "}" } else if chars[at] == "}" { chars[at] = "{" } else { chars[at] = "(" }
+                }
+            }
+            let text = String(String.UnicodeScalarView(chars))
+            if let dump = environment["DESK_FUZZ_DUMP"] {
+                FileManager.default.createFile(atPath: dump + "/check-current.txt", contents: Data(text.utf8))
+            }
+            let (problems, elapsed) = deskCheckFuzzProblems(text)
+            slowest = max(slowest, elapsed)
+            if !problems.isEmpty {
+                failures += 1
+                if failures <= 3 { t.check(false, "seed \(seed) input \(n): \(problems)\n\(text.debugDescription.prefix(600))") }
+            }
+        }
+        t.equal(failures, 0, "checker fuzz failures (seed \(seed))")
+        print(String(format: "    checker fuzz: %d inputs, slowest parse + check %.1f ms (seed %llu)", count, slowest * 1000, seed))
+    }
+
+    t.suite("Desk: checker fuzz — pathological input") {
+        let cases: [(String, String)] = [
+            ("deep blocks", "widget {\n" + String(repeating: "Column {\n", count: 200) + String(repeating: "}\n", count: 200) + "}"),
+            ("deep expressions", "widget { Text(\"{" + String(repeating: "(", count: 300) + "1" + String(repeating: ")", count: 300) + "}\") }"),
+            ("long sums", "widget { Text(\"{" + String(repeating: "cpu.usage + ", count: 3_000) + "1}\") }"),
+            ("many modifiers", "widget { Text(\"A\")" + String(repeating: ".color(.red)", count: 3_000) + " }"),
+            ("many elements", "widget { Column {\n" + String(repeating: "Text(\"{cpu.usage}\").font(13).name(x)\n", count: 3_000) + "} }"),
+            ("style chains", (0..<500).map { "style s\($0) { .style(s\($0 + 1)) }" }.joined(separator: "\n") + "\nstyle s500 { .style(s0) }\nwidget { Text(\"A\").style(s0) }"),
+            ("computed chains", "widget {\n" + (0..<800).map { "    computed c\($0) = c\($0 + 1) + 1" }.joined(separator: "\n") + "\n    computed c800 = c0\n    Text(\"{c0}\")\n}"),
+            ("ternaries", "widget { Text(\"{" + String(repeating: "cpu.usage > 5 ? 1 : ", count: 400) + "2}\") }"),
+            ("nested fors", "widget { Column {" + String(repeating: " for a in 1...3 {", count: 60) + " Text(\"A\")" + String(repeating: " }", count: 60) + " } }"),
+            ("overloads", "widget { Text(\"A\")" + String(repeating: ".font(.headline).font(13, .bold).font(\"Futura\", 13)", count: 400) + " }"),
+        ]
+        for (name, text) in cases {
+            let start = ProcessInfo.processInfo.systemUptime
+            let checked = Desk.check(Desk.parse(text, fileName: "P.desk"))
+            let elapsed = ProcessInfo.processInfo.systemUptime - start
+            t.check(elapsed < 10, "\(name): check took \(elapsed) s")
+            t.check(!checked.diagnostics.isEmpty || name == "nested fors", "\(name): diagnostics")
+        }
+    }
+}

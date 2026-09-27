@@ -180,10 +180,12 @@ struct Parser {
         let lineStart = lines.starts[firstLine]
         let lineContentEnd = lines.contentEnd(ofLine: lastLine)
         let before = bytes[lineStart..<start].allSatisfy { $0 == 0x20 || $0 == 0x09 }
-        let after = bytes[end..<lineContentEnd].allSatisfy { $0 == 0x20 || $0 == 0x09 }
+        // A token that holds line breaks (an opaque `script {` block running to the end of the file) may end past
+        // its last line's content: nothing follows it on that line.
+        let after = end >= lineContentEnd || bytes[end..<lineContentEnd].allSatisfy { $0 == 0x20 || $0 == 0x09 }
         if before && after {
             // The whole line, with its line break.
-            var stop = lineContentEnd
+            var stop = max(lineContentEnd, end)
             if stop < bytes.count, bytes[stop] == 0x0D { stop += 1 }
             if stop < bytes.count, bytes[stop] == 0x0A { stop += 1 }
             return lineStart..<stop

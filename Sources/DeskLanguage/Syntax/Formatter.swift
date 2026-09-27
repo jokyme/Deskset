@@ -22,7 +22,7 @@ extension Desk {
     /// is removed). Code inside `unexpected` and `foreignConstruct` nodes is left as written. The result is
     /// checked: if the formatted text would not lex to the same tokens, no edits are returned.
     public static func format(_ tree: SyntaxTree, options: FormatOptions = .canonical) -> [TextEdit] {
-        let needed = StackGuard.nestingEstimate(Array(tree.text.utf8)) * StackGuard.bytesPerNestingLevel
+        let needed = StackGuard.bytesNeeded(toWalk: tree)
         return StackGuard.run(needing: needed) {
             let formatter = DeskFormatter(tree: tree, options: options)
             return formatter.edits()

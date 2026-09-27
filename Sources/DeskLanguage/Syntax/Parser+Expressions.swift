@@ -85,6 +85,18 @@ extension Parser {
         return ParsedExpression(node: node(.unexpected, children), start: start, end: i - 1)
     }
 
+    /// Whether one more chain link (a binary operator, a member access, a call) would pass the nesting limit. Each
+    /// link nests the tree one level deeper on its left side, and the checker and the formatter recurse once per
+    /// level, so links count toward the limit like brackets do (DK2028).
+    var chainAtLimit: Bool { expressionDepth >= SyntaxLimits.maxExpressionDepth }
+
+    /// Past the limit: `left` and the rest of the expression become one unexpected node.
+    mutating func skipLongChain(_ left: ParsedExpression, from start: Int) -> ParsedExpression {
+        let rest = skipDeepExpression()
+        if rest.isMissing { return left }
+        return ParsedExpression(node: node(.unexpected, [.node(left.node), .node(rest.node)]), start: start, end: i - 1)
+    }
+
     // MARK: - Precedence levels
 
     mutating func parseTernary(condition: Bool) -> ParsedExpression {
@@ -159,7 +171,10 @@ extension Parser {
         if left.isMissing { return left }
         var andOperands: [ParsedExpression] = left.isAnd ? [left] : []
         var sawOr = false
+        var links = 0
+        defer { expressionDepth -= links }
         while let opKind = orOperator(at: i) {
+            if chainAtLimit { left = skipLongChain(left, from: start); break }
             let opIndex = i
             if opKind == .identifier, let keyword = keywordVariant(i) { reportCaseVariant(i, keyword) }
             let op = take()
@@ -175,6 +190,8 @@ extension Parser {
             }
             left = ParsedExpression(node: node(.binaryExpr, [.node(left.node), op, .node(right.node)]),
                                     start: start, end: i - 1)
+            links += 1
+            expressionDepth += 1
             if tokens[opIndex].kind != .pipe && tokens[opIndex].kind != .caret { sawOr = true }
         }
         if sawOr && !andOperands.isEmpty { reportMixedAndOr(whole: left, andOperands: andOperands) }
@@ -195,7 +212,10 @@ extension Parser {
         var left = parseNot(condition: condition)
         if left.isMissing { return left }
         var isAnd = false
+        var links = 0
+        defer { expressionDepth -= links }
         while let opKind = andOperator(at: i) {
+            if chainAtLimit { left = skipLongChain(left, from: start); break }
             let opIndex = i
             if opKind == .identifier, let keyword = keywordVariant(i) { reportCaseVariant(i, keyword) }
             let op = take()
@@ -209,6 +229,8 @@ extension Parser {
             }
             left = ParsedExpression(node: node(.binaryExpr, [.node(left.node), op, .node(right.node)]),
                                     start: start, end: i - 1)
+            links += 1
+            expressionDepth += 1
             if tokens[opIndex].kind != .amp { isAnd = true }
         }
         left.isAnd = isAnd
@@ -305,7 +327,10 @@ extension Parser {
         if left.isMissing { return left }
         var operands: [ParsedExpression] = [left]
         var operators: [Int] = []
+        var links = 0
+        defer { expressionDepth -= links }
         while isCompareOperator(i) {
+            if chainAtLimit { left = skipLongChain(left, from: start); return left }
             let opIndex = i
             let op = take()
             let right = parseRange()
@@ -320,6 +345,8 @@ extension Parser {
             operators.append(opIndex)
             left = ParsedExpression(node: node(.binaryExpr, [.node(left.node), op, .node(right.node)]),
                                     start: start, end: i - 1)
+            links += 1
+            expressionDepth += 1
         }
         if operators.count >= 2 && !operands.contains(where: \.isMissing) {
             // `a < b < c` → `a < b and b < c`.
@@ -382,13 +409,18 @@ extension Parser {
         let start = i
         var left = parseProduct()
         if left.isMissing { return left }
+        var links = 0
+        defer { expressionDepth -= links }
         while kind(i) == .plus || kind(i) == .minus {
+            if chainAtLimit { left = skipLongChain(left, from: start); break }
             let opIndex = i
             let op = take()
             let right = parseProduct()
             if right.isMissing { reportMissingOperand(opIndex) }
             left = ParsedExpression(node: node(.binaryExpr, [.node(left.node), op, .node(right.node)]),
                                     start: start, end: i - 1)
+            links += 1
+            expressionDepth += 1
         }
         return left
     }
@@ -398,7 +430,10 @@ extension Parser {
         let start = i
         var left = parsePrefix()
         if left.isMissing { return left }
+        var links = 0
+        defer { expressionDepth -= links }
         while kind(i) == .star || kind(i) == .slash || kind(i) == .percent || kind(i) == .starStar {
+            if chainAtLimit { left = skipLongChain(left, from: start); break }
             let opIndex = i
             let leftSide = left
             let op = take()
@@ -415,6 +450,8 @@ extension Parser {
             }
             left = ParsedExpression(node: node(.binaryExpr, [.node(left.node), op, .node(right.node)]),
                                     start: start, end: i - 1)
+            links += 1
+            expressionDepth += 1
         }
         return left
     }
@@ -438,7 +475,13 @@ extension Parser {
         let start = i
         var value = parsePrimary()
         if value.isMissing { return value }
+        var links = 0
+        defer { expressionDepth -= links }
         loop: while i < limit {
+            if chainAtLimit, kind(i) == .dot || kind(i) == .lBracket || (kind(i) == .lParen && sameLine(i)) {
+                value = skipLongChain(value, from: start)
+                break loop
+            }
             switch kind(i) {
             case .dot:
                 let dot = take()
@@ -493,6 +536,8 @@ extension Parser {
             default:
                 break loop
             }
+            links += 1
+            expressionDepth += 1
         }
         return value
     }
@@ -538,8 +583,8 @@ extension Parser {
         if !index.isMissing {
             let n: String
             if index.start == index.end, tokens[index.start].kind == .number, tokens[index.start].unit == nil,
-               let value = Int(tokens[index.start].text) {
-                n = String(value + 1)
+               let value = Int(tokens[index.start].text), case let (next, false) = value.addingReportingOverflow(1) {
+                n = String(next)
             } else {
                 n = "\(text(index.start, index.end)) + 1"
             }

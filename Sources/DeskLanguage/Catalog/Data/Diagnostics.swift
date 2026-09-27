@@ -1190,7 +1190,7 @@ extension CatalogData {
                 #"`{number}` 这里要写单位：{readings}。"#),
             placeholders: ["number": .code, "readings": .text, "milliseconds": .text, "seconds": .text],
             hints: [
-                HintSpec(key: "time", placeholder: "readings", text: LocalizedText(#"`{number}ms` is {milliseconds}, `{number}s` is {seconds}"#, #"`{number}ms` 是 {milliseconds}，`{number}s` 是 {seconds}"#)),
+                HintSpec(key: "time", placeholder: "readings", text: LocalizedText(#"`{number}ms` {milliseconds}, `{number}s` {seconds}"#, #"`{number}ms` {milliseconds}，`{number}s` {seconds}"#)),
                 HintSpec(key: "temperature", placeholder: "readings", text: LocalizedText(#"`{number}°C` or `{number}°F`"#, #"`{number}°C` 或 `{number}°F`"#)),
                 HintSpec(key: "speed", placeholder: "readings", text: LocalizedText(#"`{number}km/h` or `{number}mph`"#, #"`{number}km/h` 或 `{number}mph`"#)),
                 HintSpec(key: "rainfall", placeholder: "readings", text: LocalizedText(#"`{number}mm` or `{number}inch`"#, #"`{number}mm` 或 `{number}inch`"#)),

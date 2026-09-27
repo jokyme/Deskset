@@ -244,31 +244,39 @@ extension Checker {
         report(.unitNeeded, r, arguments, fixIts: fixIts)
     }
 
-    /// "1 second", "about 17 minutes" / "1 秒", "大约 17 分钟".
+    /// "is 1 second", "is about 17 minutes" / "是 1 秒", "大约是 17 分钟" (the verb is part of the text so the Chinese
+    /// can put 大约 before it, as the spec's example does). Fractions of a millisecond are shown as written; huge or
+    /// non-finite values never reach an `Int` conversion.
     static func durationText(_ seconds: Double) -> LocalizedText {
-        func plural(_ n: Int, _ unit: String) -> String { n == 1 ? "1 \(unit)" : "\(n) \(unit)s" }
+        func plural(_ n: Double, _ unit: String) -> String { n == 1 ? "1 \(unit)" : "\(number(n)) \(unit)s" }
+        func number(_ n: Double) -> String {
+            if n == n.rounded(), abs(n) < 1e15 { return String(Int64(n)) }
+            var text = String(format: "%.3f", n)
+            while text.hasSuffix("0") { text.removeLast() }
+            if text.hasSuffix(".") { text.removeLast() }
+            return text
+        }
+        func phrase(_ exact: Bool, _ en: String, _ zh: String) -> LocalizedText {
+            LocalizedText((exact ? "is " : "is about ") + en, (exact ? "是 " : "大约是 ") + zh)
+        }
+        guard seconds.isFinite, seconds >= 0, seconds < 1e15 else {
+            return LocalizedText("is a very long time", "是很长的时间")
+        }
         if seconds < 1 {
-            let ms = Int((seconds * 1000).rounded())
-            return LocalizedText("\(ms) milliseconds", "\(ms) 毫秒")
+            let ms = seconds * 1000
+            let shown = ms >= 1 ? ms.rounded() : ms
+            let exact = ms < 1 || shown == ms
+            return phrase(exact, plural(exact ? ms : shown, "millisecond"), "\(number(exact ? ms : shown)) 毫秒")
         }
-        if seconds < 60 {
-            let s = Int(seconds.rounded())
-            let exact = seconds == seconds.rounded()
-            return LocalizedText((exact ? "" : "about ") + plural(s, "second"), (exact ? "" : "大约 ") + "\(s) 秒")
+        func unit(_ size: Double, _ en: String, _ zh: String) -> LocalizedText {
+            let n = (seconds / size).rounded()
+            let exact = seconds.truncatingRemainder(dividingBy: size) == 0
+            return phrase(exact, plural(n, en), "\(number(n)) \(zh)")
         }
-        if seconds < 3600 {
-            let m = Int((seconds / 60).rounded())
-            let exact = seconds.truncatingRemainder(dividingBy: 60) == 0
-            return LocalizedText((exact ? "" : "about ") + plural(m, "minute"), (exact ? "" : "大约 ") + "\(m) 分钟")
-        }
-        if seconds < 86_400 {
-            let h = Int((seconds / 3600).rounded())
-            let exact = seconds.truncatingRemainder(dividingBy: 3600) == 0
-            return LocalizedText((exact ? "" : "about ") + plural(h, "hour"), (exact ? "" : "大约 ") + "\(h) 小时")
-        }
-        let d = Int((seconds / 86_400).rounded())
-        let exact = seconds.truncatingRemainder(dividingBy: 86_400) == 0
-        return LocalizedText((exact ? "" : "about ") + plural(d, "day"), (exact ? "" : "大约 ") + "\(d) 天")
+        if seconds < 60 { return unit(1, "second", "秒") }
+        if seconds < 3600 { return unit(60, "minute", "分钟") }
+        if seconds < 86_400 { return unit(3600, "hour", "小时") }
+        return unit(86_400, "day", "天")
     }
 
     // MARK: - Arithmetic

@@ -33,8 +33,16 @@ public enum StackGuard {
         return here > bottom ? Int(here - bottom) : 0
     }
 
+    /// The stack a recursive walk over `tree` needs: its bracket nesting, or its node depth (long chains of
+    /// operators, members and calls, and `else if` chains, nest the tree without brackets), whichever is more.
+    public static func bytesNeeded(toWalk tree: SyntaxTree) -> Int {
+        let brackets = nestingEstimate(Array(tree.text.utf8)) * bytesPerNestingLevel
+        return max(brackets, (tree.root.depth + 4) * bytesPerNestingLevel)
+    }
+
     /// Runs `body` here when `neededBytes` (plus a margin) fit in the current stack, otherwise on a thread with
-    /// `largeStackSize` of stack, waiting for it.
+    /// `largeStackSize` of stack (more when `neededBytes` asks for more, up to 1 GiB of address space), waiting
+    /// for it.
     public static func run<T>(needing neededBytes: Int, _ body: () -> T) -> T {
         if remainingStackBytes() > neededBytes + (256 << 10) { return body() }
         return withoutActuallyEscaping(body) { escapable in
@@ -47,7 +55,7 @@ public enum StackGuard {
                 work.job = nil
                 done.signal()
             }
-            thread.stackSize = largeStackSize
+            thread.stackSize = max(largeStackSize, min(1 << 30, (neededBytes + (1 << 20) + 0xFFF) & ~0xFFF))
             thread.name = "Desk large stack"
             thread.start()
             done.wait()

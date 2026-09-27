@@ -31,7 +31,7 @@ extension Checker {
                                   insideIf: context.insideIf, insideFor: context.forDepth > 0)
         context.parent?.children.append(element)
         allElements.append(element)
-        estimatedElements += max(1, context.multiplier)
+        estimatedElements = Checker.saturatingSum(estimatedElements, max(1, context.multiplier))
         if spec.kind == .freeform { freeforms.append(element) }
         let calleeRange = range(call.callee.node)
 

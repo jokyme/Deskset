@@ -441,12 +441,26 @@ extension Checker {
         var inner = context
         inner.forDepth += 1
         inner.loopIDs.append(id(statement))
-        inner.multiplier = context.multiplier * forBound(forStmt.source.node)
+        inner.multiplier = Checker.saturatingProduct(context.multiplier, forBound(forStmt.source.node))
         pushLoop(variable, element)
         checkViewStatements(forStmt.block.node, inner)
         popLoop(variable)
         reportModifiersAfterBlock(forStmt.modifiers, construct: "for", statement: statement)
     }
+
+    /// `a * b` capped well above every element limit: the estimate only needs to know it is over the limit.
+    static func saturatingProduct(_ a: Int, _ b: Int) -> Int {
+        let (product, overflow) = a.multipliedReportingOverflow(by: b)
+        return overflow ? estimateCap : min(product, estimateCap)
+    }
+
+    /// `a + b` with the same cap.
+    static func saturatingSum(_ a: Int, _ b: Int) -> Int {
+        let (sum, overflow) = a.addingReportingOverflow(b)
+        return overflow ? estimateCap : min(sum, estimateCap)
+    }
+
+    static let estimateCap = 1_000_000_000
 
     /// How many instances a `for` makes at most: list literals and ranges exactly, data lists by their catalog
     /// maximum, at most 1,000.
@@ -458,7 +472,11 @@ extension Checker {
         case .rangeExpr:
             let r = RangeExprSyntax(unchecked: source)
             if let a = NumberLiteralSyntax(r.low.node)?.value, let b = NumberLiteralSyntax(r.high.node)?.value {
-                return min(limit, max(0, Int(b - a) + 1))
+                // Clamped in Double: literals may be far outside Int's range.
+                let span = b - a
+                guard span.isFinite else { return span > 0 ? limit : 0 }
+                if span < 0 { return 0 }
+                return span < Double(limit) ? Int(span) + 1 : limit
             }
             return limit
         default:
