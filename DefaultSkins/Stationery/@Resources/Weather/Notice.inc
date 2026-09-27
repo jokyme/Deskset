@@ -1,26 +1,19 @@
 ; Stationery · Weather — the notice of the Medium and Large (no place, place not found, Location off, no fix, weather
 ; turned off): the kit's notice, left-aligned under the header row, which stays. Original work, MIT licensed.
-; Included from [MeterCard] last. The whole card is the notice's action: one invisible target per kind of action.
+; Included from [MeterCard] last. The whole card is the notice's action: one invisible target per kind of action, in
+; the card's shape, so the space beyond its round corners stays the desktop's.
 
 [MeterNoticeHitCity]
-Meter=Image
-MeterStyle=sHit
-X=0
-Y=0
-W=#CardW#
-H=#CardH#
+Meter=Shape
+Shape=Rectangle 0,0,#CardW#,#CardH#,#CardRadius# | Fill Color 0,0,0,1 | StrokeWidth 0
 LeftMouseUpAction=#WxOpenCityField#
 Hidden=([MeasureWxNoticeKind:] <> 1)
 DynamicVariables=1
 Group=Weather
 
 [MeterNoticeHitPrivacy]
-Meter=Image
-MeterStyle=sHit
-X=0
-Y=0
-W=#CardW#
-H=#CardH#
+Meter=Shape
+Shape=Rectangle 0,0,#CardW#,#CardH#,#CardRadius# | Fill Color 0,0,0,1 | StrokeWidth 0
 LeftMouseUpAction=#WxOpenPrivacySettings#
 Hidden=([MeasureWxNoticeKind:] <> 2)
 DynamicVariables=1
