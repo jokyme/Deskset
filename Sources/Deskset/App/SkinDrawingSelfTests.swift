@@ -128,6 +128,13 @@ enum SkinDrawingSelfTests {
                       "[!SetOption MeterFront Shape \"Ellipse 40,45,20 | Fill Color 255,0,0 | StrokeWidth 0\"][!UpdateMeter MeterFront]")
             _ = frame("a container's content",
                       "[!SetOption MeterInBox Shape \"Rectangle 30,60,40,30 | Fill Color 0,0,255 | StrokeWidth 0\"][!UpdateMeter MeterInBox]")
+            _ = frame("resting", update: false)
+            _ = frame("the container itself (its content is kept only where it is solid)",
+                      "[!SetOption MeterBox Shape \"Rectangle 0,70,70,20 | Fill Color 0,0,0,255 | StrokeWidth 0\"][!UpdateMeter MeterBox][!Redraw]",
+                      update: false)
+            _ = frame("resting again", update: false)
+            _ = frame("the content hidden", "[!HideMeter MeterInBox][!Redraw]", update: false)
+            _ = frame("the content shown", "[!ShowMeter MeterInBox][!Redraw]", update: false)
             _ = frame("moved", "[!MoveMeter 50 20 MeterLast]")
             _ = frame("a redraw without an update", "[!SetOption MeterLast Text \"changed\"][!UpdateMeter MeterLast][!Redraw]",
                       update: false)
@@ -349,6 +356,52 @@ enum SkinDrawingSelfTests {
             let picture = frames.frame("another display's profile")
             t.equal(frames.drawing.lastStats.copied, 0, "nothing copied from the other color space")
             t.check(picture?.colorSpace == second, "the picture is in the window's color space")
+            skin.close()
+            withExtendedLifetime(host) {}
+        }
+
+        t.suite("App: skin drawing: a font registered while the skin runs starts the pictures again") {
+            let ini = """
+            [Rainmeter]
+            Update=1000
+            [MeterStatic]
+            Meter=String
+            Text=Fonts
+            FontFace=DesksetTstD
+            FontSize=20
+            FontColor=0,0,0
+            UpdateDivider=-1
+            [MeasureCount]
+            Measure=Calc
+            Formula=MeasureCount + 1
+            [MeterCount]
+            Meter=String
+            MeasureName=MeasureCount
+            Y=40
+            FontColor=0,0,0
+            """
+            guard let (skin, host, _) = load(t, ini, "fonts") else { return t.check(false, "the skin loads") }
+            let frames = Frames(t, skin)
+            frames.frame("first (a fallback font)")
+            frames.rest()
+            let folder = t.temporaryDirectory("drawing-fonts").appendingPathComponent("Fonts")
+            guard AppSelfTest.makeTestFont(family: "DesksetTstD", at: folder.appendingPathComponent("D.ttf")) else {
+                print("    (skipped: Courier New not found)")
+                return
+            }
+            let before = Fonts.generation
+            t.check(Fonts.rescanFolder(folder.path), "the font registers")
+            t.check(Fonts.generation != before, "the fonts moved on")
+            // Another skin's font, or one added to a folder, arrives between two frames of this one.
+            frames.frame("the font registered", "[!Redraw]")
+            t.equal(frames.drawing.lastStats.copied, 0, "nothing copied from before the font")
+            skin.fontsDidChange()
+            frames.frame("measured again")
+            frames.rest()
+            try FileManager.default.removeItem(at: folder)
+            _ = Fonts.rescanAllFolders()
+            frames.frame("the font removed", "[!Redraw]")
+            t.equal(frames.drawing.lastStats.copied, 0, "nothing copied from before")
             skin.close()
             withExtendedLifetime(host) {}
         }
