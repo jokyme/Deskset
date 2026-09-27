@@ -58,9 +58,10 @@ class MediaUIMeasure: Measure {
     /// The measure's own string for the current update (nil = number-only measure: meters format the number).
     private(set) var pluginString: String?
 
-    /// True when the skin runs in the menu bar app (a real skin window). Plugins that need a macOS permission
-    /// (Automation, Location) or that add windows only act for such skins — never for `--render` or self-tests.
-    var runsInApp: Bool { skin.host is SkinController }
+    /// True when the skin runs in the menu bar app on live data (`LiveSkinHost`: a skin window, or the Studio's own
+    /// instance of the widget it edits). Plugins that need a macOS permission (Automation, Location) only act for such
+    /// skins — never for `--render` or self-tests; those that add windows need the skin window (`controller`).
+    var runsInApp: Bool { skin.host is LiveSkinHost }
 
     /// The window controller of the skin, when it runs in the app.
     var controller: SkinController? { skin.host as? SkinController }
