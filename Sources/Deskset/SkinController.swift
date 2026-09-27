@@ -1197,6 +1197,11 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         return env
     }
 
+    /// `#SETTINGSPATH#` of every skin, with a trailing slash: the app's settings folder. The self-tests point it at a
+    /// temporary folder, so that skins keeping what people type there (the Stationery widgets' `Stationery.inc`)
+    /// never read or write the user's. Main thread.
+    static var settingsPath = Paths.appSupport.path + "/"
+
     /// Screens and window frame in skin coordinates (top-left origin at the primary screen's top-left).
     static func environment(windowFrame: CGRect?) -> SkinEnvironment {
         let screens = WindowGeometry.currentScreens()
@@ -1207,7 +1212,7 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         let list = screens.map { SkinScreen(area: topLeft($0.frame), workArea: topLeft($0.visibleFrame)) }
         return SkinEnvironment(windowFrame: windowFrame.map(topLeft) ?? SkinRect(),
                                screens: list.isEmpty ? SkinEnvironment().screens : list,
-                               settingsPath: Paths.appSupport.path + "/",
+                               settingsPath: settingsPath,
                                programPath: Bundle.main.bundleURL.path + "/",
                                configEditor: Workspace.configEditorPath,
                                appearance: MacAppearance.current.value())

@@ -12,6 +12,12 @@ enum AppSelfTest {
         // through the app's own service (the thread stress suite loads TestSkins/Plugins/Sensors) walk the keys
         // instead of reading or writing the user's cache.
         LiveSensorHardware.keyCacheURL.access { $0 = nil }
+        // Skins read and write #SETTINGSPATH# (the Stationery widgets keep what people type in its Stationery.inc,
+        // which the app makes): a temporary one, never the user's.
+        let settings = t.temporaryDirectory("settings")
+        FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
+                                       contents: Data(DefaultSkins.stationeryFileHeader.utf8))
+        SkinController.settingsPath = settings.path + "/"
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
