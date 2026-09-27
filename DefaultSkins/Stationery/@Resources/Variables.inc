@@ -45,3 +45,9 @@ SentenceGrid=0
 SentenceGlow=1
 ; The time in the footer: 1 shown, 0 hidden (the date stays)
 SentenceShowTime=1
+
+; ---------------------------------------------------------------- Almanac
+; Size: Small, Regular or Large (0.8, 1 and 1.25 times 411 × 148)
+AlmanacSize=Regular
+; Sunrise and sunset on the second data line: 1 shown, 0 hidden (the year and the weeks left instead)
+AlmanacShowSun=1

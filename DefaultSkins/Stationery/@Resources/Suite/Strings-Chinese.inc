@@ -150,3 +150,25 @@ SentenceMenuGlow1=深色模式发光：开
 SentenceMenuGlow0=深色模式发光：关
 SentenceMenuTime1=底部时间：显示
 SentenceMenuTime0=底部时间：隐藏
+
+; ---------------------------------------------------------------- Almanac
+AlmanacMenuOpen=打开日历
+AlmanacMenuSizeSmall=大小：小
+AlmanacMenuSizeRegular=大小：中
+AlmanacMenuSizeLarge=大小：大
+AlmanacMenuSun1=日出日落：显示
+AlmanacMenuSun0=日出日落：隐藏
+AlmanacWeekdaySuffix=
+AlmanacWeekText=第 %1 周
+AlmanacDayText=第 %1 天
+AlmanacToGoText=还剩 %1 天
+AlmanacDoneText=已过 [MeasureDaysPercent:0]%
+AlmanacLastDay=最后一天
+AlmanacSunriseText=日出 %1
+AlmanacSunsetText=日落 %1
+AlmanacYearText=%1 年
+AlmanacWeeksLeftText=还剩 %1 周
+AlmanacTipDay=[MeasureDateFull]#CRLF#第 [MeasureWeekNumber] 周 · 全年第 [MeasureDayOfYearNumber] 天，共 [MeasureDaysInYear:0] 天
+AlmanacTipSun0=
+AlmanacTipSun1=#CRLF#日出 [MeasureSunriseTip] · 日落 [MeasureSunsetTip]
+AlmanacTipProgress=今年已过 [MeasureDaysPercent:0]% · 还剩 [MeasureDaysTo:0] 天#CRLF#每个点代表剩下的一周。

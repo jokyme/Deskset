@@ -157,3 +157,28 @@ SentenceMenuGlow1=Glow in Dark Mode: On
 SentenceMenuGlow0=Glow in Dark Mode: Off
 SentenceMenuTime1=Footer Time: Show
 SentenceMenuTime0=Footer Time: Hide
+
+; ---------------------------------------------------------------- Almanac
+AlmanacMenuOpen=Open Calendar
+AlmanacMenuSizeSmall=Size: Small
+AlmanacMenuSizeRegular=Size: Regular
+AlmanacMenuSizeLarge=Size: Large
+AlmanacMenuSun1=Sunrise and Sunset: Show
+AlmanacMenuSun0=Sunrise and Sunset: Hide
+; the masthead's weekday ends with this ("Saturday,")
+AlmanacWeekdaySuffix=,
+; the data lines (capitals from the style); %1 is the number. The bold figure in the "to go" slot is its digits, or
+; the whole last-day text
+AlmanacWeekText=WEEK %1
+AlmanacDayText=DAY %1
+AlmanacToGoText=%1 TO GO
+AlmanacDoneText=[MeasureDaysPercent:0]% DONE
+AlmanacLastDay=LAST DAY
+AlmanacSunriseText=SUNRISE %1
+AlmanacSunsetText=SUNSET %1
+AlmanacYearText=YEAR %1
+AlmanacWeeksLeftText=%1 WEEKS LEFT
+AlmanacTipDay=[MeasureDateFull]#CRLF#Week [MeasureWeekNumber] · day [MeasureDayOfYearNumber] of [MeasureDaysInYear:0]
+AlmanacTipSun0=
+AlmanacTipSun1=#CRLF#Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]
+AlmanacTipProgress=[MeasureDaysPercent:0]% of the year done · [MeasureDaysTo:0] days to go#CRLF#Each dot is one week left.
