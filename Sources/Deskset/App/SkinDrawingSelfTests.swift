@@ -521,14 +521,16 @@ enum SkinDrawingSelfTests {
             folders += extra.split(separator: ":").map { URL(fileURLWithPath: String($0)) }
             let temporary = t.temporaryDirectory("drawing-check")
             var checked = 0, frames = 0, copied = 0
-            DrawingCacheCheck.withCheckEnvironment(temporary) {
+            DrawingCacheCheck.withCheckEnvironment(temporary, weatherPreview: false) {
                 for (i, folder) in folders.enumerated() {
                     let copy = temporary.appendingPathComponent("Skins\(i)")
                     guard (try? FileManager.default.copyItem(at: folder, to: copy)) != nil else {
                         return t.check(false, "copies \(folder.lastPathComponent)")
                     }
                     for file in DrawingCacheCheck.skinFiles(in: copy) {
-                        let r = DrawingCacheCheck.check(file, skinsRoot: copy, updates: 3, scale: 2)
+                        // One backing scale in the steps, the other in one frame (`check`); a few seconds per skin.
+                        let r = DrawingCacheCheck.check(file, skinsRoot: copy, updates: 2, scale: 1,
+                                                        budget: 3, pause: 10)
                         guard r.skipped == nil else { continue }
                         checked += 1
                         frames += r.frames

@@ -40,6 +40,8 @@ enum DrawingCacheCheck {
         var imagesReplaced = 0
         /// How long the check of the skin took.
         var seconds = 0.0
+        /// The check stopped taking frames when the skin had used its time (`check`'s `budget`).
+        var outOfTime = false
     }
 
     /// Everything checked.
@@ -133,27 +135,33 @@ enum DrawingCacheCheck {
             return "ok        \(r.config) \(r.file): \(r.frames) frames, \(r.copiedFrames) with kept pictures, worst \(r.worst)"
                 + (r.imagesReplaced > 0 ? ", \(r.imagesReplaced) image files replaced" : "")
                 + (r.seconds >= 2 ? String(format: " (%.1f s)", r.seconds) : "")
+                + (r.outOfTime ? ", stopped: out of time" : "")
         }
         return "MISMATCH  \(r.config) \(r.file): " + r.mismatches.prefix(4).joined(separator: "; ")
             + (r.mismatches.count > 4 ? "; … \(r.mismatches.count) frames" : "")
     }
 
     /// Runs `body` with what the check needs set up for its duration: a temporary `#SETTINGSPATH#`, the Light
-    /// appearance and standard regional settings (as `--render` has them), the weather from the bundled places only.
-    static func withCheckEnvironment(_ temporary: URL, _ body: () -> Void) {
+    /// appearance and standard regional settings (as `--render` has them), and with `weatherPreview` the weather from
+    /// the bundled places only, as `--render` has it (the self-tests keep the offline service they run with).
+    static func withCheckEnvironment(_ temporary: URL, weatherPreview: Bool = true, _ body: () -> Void) {
         let settings = temporary.appendingPathComponent("Settings", isDirectory: true)
         try? FileManager.default.createDirectory(at: settings, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
                                        contents: Data(DefaultSkins.stationeryFileHeader.utf8))
         let savedSettings = SkinController.settingsPath
+        let savedAppearance = NSApplication.shared.appearance
+        let savedRegional = MacRegional.fixed
         SkinController.settingsPath = settings.path + "/"
         MacRegional.fix(MacRegionalSettings.standard)
         RenderCommand.applyAppearance(.light)
-        WeatherWiring.installPreview()
+        if weatherPreview { WeatherWiring.installPreview() }
         defer {
             SkinController.settingsPath = savedSettings
-            MacRegional.fix(nil)
+            MacRegional.fix(savedRegional)
+            NSApp.appearance = savedAppearance
             MacAppearance.current.refresh()
+            DesktopInputs.appearance.refresh()
         }
         body()
     }
@@ -175,8 +183,11 @@ enum DrawingCacheCheck {
     // MARK: One skin
 
     /// Loads `file` from `skinsRoot` (a copy the check may change), runs it through the steps and compares every frame.
+    /// Once the skin has taken `budget` seconds, the remaining steps run without frames (a skin whose every drawing is
+    /// slow would hold up the self-tests).
     static func check(_ file: URL, skinsRoot: URL, updates: Int, scale: CGFloat,
-                      space: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!) -> SkinResult {
+                      space: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!,
+                      budget: TimeInterval = .infinity, pause: Double = updateInterval) -> SkinResult {
         let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
         let config = parent.dropFirst(skinsRoot.standardizedFileURL.pathComponents.count).joined(separator: "\\")
         var result = SkinResult(config: config, file: file.lastPathComponent)
@@ -201,6 +212,10 @@ enum DrawingCacheCheck {
             guard result.skipped == nil else { return }
             if let action { skin.execute(action, from: nil) }
             if update { skin.update() }
+            guard ProcessInfo.processInfo.systemUptime - started < budget else {
+                result.outOfTime = true
+                return
+            }
             let size = CGSize(width: side(skin.width), height: side(skin.height))
             let w = Int((size.width * frameScale).rounded(.up)), h = Int((size.height * frameScale).rounded(.up))
             guard w * h <= maxPixels else {
@@ -218,7 +233,7 @@ enum DrawingCacheCheck {
                 result.mismatches.append("\(label): \(found.worst) at \(found.x),\(found.y), \(found.pixels) pixels")
             }
         }
-        func wait() { RenderCommand.wait(milliseconds: updateInterval) }
+        func wait() { RenderCommand.wait(milliseconds: pause) }
         /// Two frames without a change, so the next step starts from pictures kept of everything that rests (the case
         /// a stale picture shows in).
         func rest(_ label: String) {

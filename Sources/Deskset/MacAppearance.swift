@@ -74,6 +74,9 @@ enum MacRegional {
         state.access { $0.fixed = settings }
     }
 
+    /// What `fix` set (nil: the Mac's settings), for putting it back.
+    static var fixed: MacRegionalSettings? { state.access { $0.fixed } }
+
     /// The self-tests: where "the Mac's settings" come from (nil: macOS). The next read works them out again.
     static func setSource(_ source: (() -> MacRegionalSettings)?) {
         state.access {
