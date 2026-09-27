@@ -395,6 +395,36 @@ func runDeskCatalogTests(_ t: TestRunner) {
                         || base == "apps.frontmost.windowTitle", "permission \(p.id): \(needed)")
             }
         }
+        // The records of §5.10, field by field.
+        let recordFields: [String: String] = [
+            "MonthGrid": "title year month weekdays days",
+            "DayCell": "number date inMonth isToday isWeekend weekday lunar",
+            "CalendarEvent": "id title calendar location start end allDay color",
+            "CPUCore": "number usage", "Disk": "name path free used total usage removable",
+            "NetworkInterface": "name download upload total downloaded uploaded",
+            "App": "name bundleId fullScreen windowTitle",
+            "WeatherNow": "temperature feelsLike dewPoint condition conditionCode symbol isDaylight humidity cloudCover fog "
+                + "chanceOfRain chanceOfThunder pressure uvIndex wind gust windDirection windFrom beaufort precipitation "
+                + "temperatureColor",
+            "HourForecast": "time temperature dewPoint condition conditionCode symbol isDaylight humidity cloudCover fog "
+                + "chanceOfRain chanceOfThunder pressure uvIndex wind gust windDirection windFrom beaufort precipitation "
+                + "temperatureColor",
+            "DayForecast": "date high low condition conditionCode symbol uvIndex wind gust beaufort precipitation chanceOfRain "
+                + "chanceOfThunder temperatureColor sunrise sunset solarNoon dayLength",
+            "Fan": "speed minimum maximum target", "Feed": "title items", "FeedItem": "title link summary date image",
+            "FileItem": "name path kind size modified isFolder icon", "FolderInfo": "size fileCount folderCount",
+            "CommandResult": "output lines number json exitCode running error", "Size": "width height preset",
+            "Event": "x y dx dy xPercent yPercent direction files text",
+        ]
+        for (record, fields) in recordFields {
+            t.equal(Set(c.record(record)?.fields.map(\.name) ?? []), Set(fields.split(separator: " ").map(String.init)), record)
+        }
+        // `weather` and `weather.at(…)` are both a Weather; `sun`, `sun.at(…)` and `sun.day(…)` a Sun.
+        for (namespace, record, functions) in [("weather", "Weather", ["at"]), ("sun", "Sun", ["at", "day"])] {
+            let members = Set(c.namespace(named: namespace)?.members.map(\.name) ?? []).subtracting(functions)
+            t.equal(Set(c.record(record)?.fields.map(\.name) ?? []), members, "\(record) has the members of \(namespace)")
+            t.check(c.record(record)?.fields.allSatisfy { $0.permission == nil } ?? false, "\(record)'s fields need no permission")
+        }
         // Identity fields for `for` (§4.15).
         let identities = ["DayCell": "date", "CalendarEvent": "id", "FileItem": "path", "FeedItem": "link",
                           "HourForecast": "time", "DayForecast": "date"]
@@ -572,6 +602,23 @@ func runDeskCatalogTests(_ t: TestRunner) {
             // A display name starts with a small letter: templates capitalize it where it starts a sentence.
             if let first = spec.name.en.first, first.isLetter { t.check(first.isLowercase, "\(spec.id): \(spec.name.en)") }
         }
+        // Rendering (§6.1): display names in each language, lists, a capital letter where a sentence starts.
+        t.equal(c.displayText("type:bool", in: .simplifiedChinese), "是或否（`true` 或 `false`）")
+        t.equal(c.displayText("type:nothing", in: .english), "a value", "an unknown id never shows")
+        t.equal(c.displayText("record:DayCell", in: .english, plural: true), "days of a month")
+        t.equal(DeskCatalog.joinedList(["a", "b", "c"], in: .english, or: true), "a, b or c")
+        t.equal(DeskCatalog.joinedList(["a", "b", "c"], in: .simplifiedChinese, or: false), "a、b 和 c")
+        t.equal(DeskCatalog.joinedList(["a"], in: .english, or: true), "a")
+        t.equal(DeskCatalog.joinedList((1...10).map(String.init), in: .english, or: true), "1, 2, 3, 4, 5, 6, 7, 8, …")
+        let mismatch = c.diagnostic(.typeMismatch)!
+        let values = ["what": c.displayText("facet:font.size", in: .english), "expected": c.displayText(for: .length, in: .english),
+                      "actual": c.displayText(for: .bool, in: .english)]
+        t.equal(mismatch.message(.english, values),
+                "The text size needs a length in points, such as `12`, but this is yes or no (`true` or `false`).")
+        let zhValues = ["what": c.displayText("facet:font.size", in: .simplifiedChinese),
+                        "expected": c.displayText(for: .length, in: .simplifiedChinese),
+                        "actual": c.displayText(for: .bool, in: .simplifiedChinese)]
+        t.equal(mismatch.message(.simplifiedChinese, zhValues), "字号要的是长度（单位是点），比如 `12`，这里是是或否（`true` 或 `false`）。")
         // §5.15's rows, as written.
         t.equal(row("type:bool")?.name, LocalizedText("yes or no (`true` or `false`)", "是或否（`true` 或 `false`）"))
         t.equal(row("component:Progress")?.name, LocalizedText("the progress bar", "进度条"))
