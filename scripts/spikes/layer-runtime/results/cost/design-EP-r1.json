@@ -1,0 +1,263 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "EP",
+  "--window-cs",
+  "srgb",
+  "--out",
+  "results/cost/design-EP-r1.json"
+ ],
+ "command": "cost",
+ "config": "EP@srgb",
+ "contexts": {
+  "EP@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 125
+ },
+ "cpu": {
+  "framesPerSecond": 0.997,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 3.773,
+  "processPercentOfOneCore": 0.118,
+  "provisional": false,
+  "windowServerIdleWakeupsPerSecond": 0.667,
+  "windowServerIdleWakeupsPerSecondIncrease": -1.3,
+  "windowServerIdleWakeupsPerSecondOff": 1.967,
+  "windowServerPercentOfOneCore": 48.073,
+  "windowServerPercentOfOneCoreIncrease": -0.393,
+  "windowServerPercentOfOneCoreOff": 48.467
+ },
+ "frameCost": {
+  "commitP50us": 24,
+  "commitP99us": 36,
+  "p50us": 410,
+  "p99us": 769,
+  "updates": 41,
+  "what": "drawing before the commit"
+ },
+ "loadAverageAtEnd": [
+  5.36,
+  5.37,
+  5.67
+ ],
+ "memory": {
+  "backingStores": {
+   "CABackingStore [166 78] BGRA8888": 1,
+   "CABackingStore [240 240] BGRA8888 + [240 240] BGRA8888 volatile": 1,
+   "CABackingStore [244 36] BGRA8888": 1,
+   "CABackingStore [255 116] BGRA8888": 1,
+   "CABackingStore [506 158] BGRA8888": 1,
+   "CABackingStore [582 46] BGRA8888": 1,
+   "CABackingStore [92 93] BGRA8888": 1,
+   "CABackingStore [98 82] BGRA8888 + [98 82] BGRA8888 volatile": 1,
+   "CGImage 720x720 8bpc/32bpp kCGColorSpaceSRGB": 25
+  },
+  "footprintAfterCloseMB": 13.13,
+  "footprintAfterSettleMB": 13.42,
+  "footprintAtEndMB": 13.13,
+  "footprintBeforeMB": 10.47,
+  "footprintCategoriesAfterSettleMB": {
+   "CG raster data": 1.06,
+   "CoreAnimation": 0.98,
+   "MALLOC metadata": 0.63,
+   "MALLOC_SMALL": 6.2,
+   "MALLOC_TINY": 0.28,
+   "TOTAL": 13,
+   "__DATA": 0.54,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.33,
+   "page table": 0.5,
+   "stack": 0.3,
+   "total": "13 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.28,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "MALLOC metadata": 0.61,
+   "MALLOC_SMALL": 5.95,
+   "MALLOC_TINY": 0.28,
+   "TOTAL": 10,
+   "__DATA": 0.53,
+   "__DATA_DIRTY": 1.06,
+   "page table": 0.5,
+   "stack": 0.3,
+   "total": "10 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.27,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 2.656,
+  "footprintIncreaseMB": 2.953,
+  "footprintIncreasePerWidgetMB": 2.953,
+  "layerBitmapsPerWidgetMB": 3.114,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 4.23,
+   "freeGB": 0.24,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 4.27,
+   "freeGB": 0.22,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 1.978,
+  "ownedBitmapsPerWidgetMB": 1.978,
+  "partitionMinimumMB": 2.863,
+  "windowServerCloseStepsMB": [
+   -2,
+   0
+  ],
+  "windowServerIncreaseMB": 1,
+  "windowServerIncreasePerWidgetMB": 1,
+  "windowServerOpenStepsMB": [
+   1,
+   0
+  ]
+ },
+ "mode": "EP",
+ "offPhases": "windows ordered out, updates stopped",
+ "openAllMs": 7.3,
+ "pairs": 3,
+ "partition": {
+  "baseElements": 1,
+  "groupPixels": 232224,
+  "groups": 8,
+  "largestGroupPixels": 79948,
+  "tiles": 25,
+  "windowPixels": 518400
+ },
+ "phaseSeconds": 5,
+ "phases": [
+  {
+   "framesPerSecond": 0.99,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 3.35,
+   "loadAverageAfter": [
+    4.87,
+    5.33,
+    5.68
+   ],
+   "loadAverageBefore": [
+    4.86,
+    5.34,
+    5.68
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.114,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 1.8,
+   "windowServerPercentOfOneCore": 47.75
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    4.64,
+    5.27,
+    5.65
+   ],
+   "loadAverageBefore": [
+    4.87,
+    5.33,
+    5.68
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.039,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 4.5,
+   "windowServerPercentOfOneCore": 48.94
+  },
+  {
+   "framesPerSecond": 1,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 4.38,
+   "loadAverageAfter": [
+    4.59,
+    5.25,
+    5.65
+   ],
+   "loadAverageBefore": [
+    4.64,
+    5.27,
+    5.65
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.117,
+   "provisional": false,
+   "seconds": 5.02,
+   "windowServerIdleWakeupsPerSecond": 0.2,
+   "windowServerPercentOfOneCore": 47.63
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.2,
+   "loadAverageAfter": [
+    4.65,
+    5.24,
+    5.64
+   ],
+   "loadAverageBefore": [
+    4.7,
+    5.27,
+    5.65
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.04,
+   "provisional": false,
+   "seconds": 5.01,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 48.29
+  },
+  {
+   "framesPerSecond": 1,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 3.59,
+   "loadAverageAfter": [
+    5,
+    5.31,
+    5.66
+   ],
+   "loadAverageBefore": [
+    4.65,
+    5.24,
+    5.64
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.124,
+   "provisional": false,
+   "seconds": 5.02,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 48.84
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.4,
+   "loadAverageAfter": [
+    4.92,
+    5.28,
+    5.65
+   ],
+   "loadAverageBefore": [
+    5,
+    5.31,
+    5.66
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.038,
+   "provisional": false,
+   "seconds": 5,
+   "windowServerIdleWakeupsPerSecond": 1.4,
+   "windowServerPercentOfOneCore": 48.17
+  }
+ ],
+ "scenario": "design",
+ "settleSeconds": 20,
+ "updateIntervalMs": 1000,
+ "widgets": 1
+}

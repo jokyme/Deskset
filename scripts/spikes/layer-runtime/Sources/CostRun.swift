@@ -377,7 +377,8 @@ func sampleFrames(_ w: SkinWindow, seconds: Double) -> JSON {
 /// `memtrace`: this process's footprint every second while one mode runs a scenario (after a warm-up window), with
 /// the footprint's categories every 10 s: when does the memory settle, and what is it?
 ///   --mode --scenario --window-cs --format as for `cost`; --seconds N (default 40); --hide-at S: order the windows
-///   out at S seconds and back in 5 s later; --interval S: update interval instead of the scenario's.
+///   out at S seconds and back in 5 s later; --interval S: update interval instead of the scenario's; --no-images:
+///   the widgets without their Image meters.
 func memTrace() -> JSON {
     let mode = choice("--mode", Mode.A)
     let scenario = scenarioOption()
@@ -437,7 +438,7 @@ func memTrace() -> JSON {
     let after = r((physFootprint() - base) / mb, 2)
     for t in threads { t.stop() }
     return ["config": config.label, "scenario": scenario, "widgets": count, "intervalMs": r(interval * 1000, 1),
-            "baselineMB": r(base / mb, 2),
+            "images": !Widgets.omitImages, "baselineMB": r(base / mb, 2),
             "increaseEverySecondMB": trace, "increaseAfterCloseMB": after, "categories": categories,
             "hideAt": hideAt]
 }

@@ -244,6 +244,9 @@ enum FrameCode {
 // MARK: Widgets
 
 enum Widgets {
+    /// `--no-images`: leave out the Image meters (the icons), to see which content moves today's view drawing onto
+    /// its GPU rendering path (memtrace).
+    static let omitImages = CommandLine.arguments.contains("--no-images")
     static let title = Fonts.system(11, .semibold)
     static let label = Fonts.system(8, .semibold)
     static let value = Fonts.system(11, .semibold)
@@ -266,9 +269,11 @@ enum Widgets {
         e.append(Element("MeterTitle", CGRect(x: pad, y: 14, width: 56, height: 19)) { ctx, _ in
             drawText(ctx, "System", title, Theme.text, in: CGRect(x: pad, y: 14, width: 56, height: 19))
         })
-        e.append(Element("MeterIcon", CGRect(x: 78.25, y: 15.5, width: 14, height: 14), spill: 1) { ctx, _ in
-            drawImage(ctx, iconImage, in: CGRect(x: 78.25, y: 15.5, width: 14, height: 14))
-        })
+        if !Widgets.omitImages {
+            e.append(Element("MeterIcon", CGRect(x: 78.25, y: 15.5, width: 14, height: 14), spill: 1) { ctx, _ in
+                drawImage(ctx, iconImage, in: CGRect(x: 78.25, y: 15.5, width: 14, height: 14))
+            })
+        }
         e.append(Element("MeterUptime", CGRect(x: 160, y: 16, width: 82, height: 16), period: 60) { ctx, s in
             drawText(ctx, "Up 3d \(4 + s % 20)h \(12 + s % 48)m", small, Theme.subtle,
                      in: CGRect(x: 160, y: 16, width: 82, height: 16), align: .right)
@@ -404,9 +409,12 @@ enum Widgets {
             drawText(ctx, "\(Int((0.35 + 0.6 * wave(4, s)) * 100))%", value, Theme.text,
                      in: CGRect(x: ringCenter.x - 30, y: ringCenter.y - 11, width: 60, height: 22), align: .center)
         })
-        e.append(Element("MeterWeatherIcon", CGRect(x: 40.5, y: 186.25, width: 44, height: 44), spill: 1) { ctx, _ in
-            drawImage(ctx, iconImage, in: CGRect(x: 40.5, y: 186.25, width: 44, height: 44))
-        })
+        if !Widgets.omitImages {
+            e.append(Element("MeterWeatherIcon", CGRect(x: 40.5, y: 186.25, width: 44, height: 44), spill: 1) {
+                ctx, _ in
+                drawImage(ctx, iconImage, in: CGRect(x: 40.5, y: 186.25, width: 44, height: 44))
+            })
+        }
         e.append(Element("MeterTemperature", CGRect(x: 94, y: 190, width: 80, height: 36), period: 30) { ctx, s in
             drawText(ctx, "\(12 + s % 9)°", big, Theme.text, in: CGRect(x: 94, y: 190, width: 80, height: 36))
         })
