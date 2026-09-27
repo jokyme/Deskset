@@ -186,10 +186,11 @@ Group=Battery | Rows
 
 ; ---------------------------------------------------------------- Power (baseline 125)
 [MeterPowerSymbol]
-; bolt, natural 13 × 18
+; bolt.fill, natural 13 × 18: filled, as in the Sensors rows, because a yellow outline bolt almost vanishes on light
+; glass (the row set already mixes: battery.100 has no outline pair)
 Meter=Image
 MeterStyle=sSymbolM
-ImageName=sf:bolt
+ImageName=sf:bolt.fill
 ImageTint=#PowerColor#
 X=179.5
 Y=111.4
