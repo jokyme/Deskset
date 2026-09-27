@@ -24,6 +24,7 @@ enum CommandLineTools {
                             "--cover-lookup", "--weather-report", "--verify-drawing-cache"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
+                                           "--settings-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
                                            "--clock-hours", "--first-weekday", "--temperature-unit",
                                            // The skin editor, library, code editor and Settings snapshots.
@@ -39,6 +40,7 @@ enum CommandLineTools {
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
                       [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
+                      [--settings-dir DIR]
                                         draw a skin without a window into a PNG
                Deskset --verify-drawing-cache SkinsFolder|Skin.ini… [--updates N] [--scale S] [--skins-dir DIR]
                                         check that skin windows' kept pictures match full drawings
@@ -60,6 +62,9 @@ enum CommandLineTools {
                Deskset --make-icon Output.iconset
                                         write the app icon images
                Deskset --help            print this help
+
+        Every mode gives skins a temporary #SETTINGSPATH# (removed at exit) unless --settings-dir DIR names one, so
+        skins that keep settings or caches there never read or write the app's real settings folder.
         """
 
     enum Validation: Equatable {
@@ -89,6 +94,23 @@ enum CommandLineTools {
         return .app
     }
 
+    /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
+    /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
+    /// missing), so the Stationery widgets save as they do in the app.
+    static func useHeadlessSettingsFolder(_ folder: String?) -> URL? {
+        let fm = FileManager.default
+        let temporary = folder == nil
+        let url = folder.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }
+            ?? fm.temporaryDirectory.appendingPathComponent("Deskset-settings-\(UUID().uuidString)", isDirectory: true)
+        try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        let suiteFile = url.appendingPathComponent(DefaultSkins.stationeryFileName)
+        if !fm.fileExists(atPath: suiteFile.path) {
+            fm.createFile(atPath: suiteFile.path, contents: Data(DefaultSkins.stationeryFileHeader.utf8))
+        }
+        SkinController.settingsPath = url.path + "/"
+        return temporary ? url : nil
+    }
+
     static func run(_ arguments: [String]) -> Int32? {
         switch validate(arguments) {
         case .app:
@@ -107,6 +129,11 @@ enum CommandLineTools {
                   !arguments[i + 1].hasPrefix("--") else { return nil }
             return arguments[i + 1]
         }
+        // #SETTINGSPATH# of every skin a mode loads: the folder --settings-dir names, else a temporary one. Skins keep
+        // what people type and cached icons there (the Stationery widgets' Stationery.inc), so a render must never
+        // write into the app's real settings folder. The self-tests and the drawing check set their own on top.
+        let temporarySettings = useHeadlessSettingsFolder(value(after: "--settings-dir"))
+        defer { if let temporarySettings { try? FileManager.default.removeItem(at: temporarySettings) } }
         if arguments.contains("--render") {
             return RenderCommand.run(arguments)
         }
