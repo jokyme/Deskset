@@ -123,6 +123,9 @@ extension Checker {
                 let call = CallStmtSyntax(unchecked: statement)
                 let path = call.callee.path
                 let first = call.callee.name.token
+                // A block word with parentheses (`info ({ … }`): already at the top level; the parser reports
+                // what is wrong with it, and it is neither an element to move into `widget` nor a block to move out.
+                if path.count == 1, Chars.blockWords.contains(first.name), call.arguments != nil { continue }
                 if path.count == 1, !first.isUpperName, call.arguments == nil, call.block != nil,
                    first.kind == .identifier {
                     // `settings { … }`: a name followed by a block is not a block of a Desk file.
@@ -143,7 +146,7 @@ extension Checker {
                 movable.append(statement)
             case .assignment:
                 movable.append(statement)
-                reportStrayTopLevel(statement, strays: [])
+                reportStrayTopLevel(statement, fixIt: nil)
             case .modifierStmt:
                 let modifiers = ModifierStmtSyntax(unchecked: statement).modifiers
                 if modifiers.count == 1, modifiers[0].arguments == nil, let block = modifiers[0].block,
@@ -163,44 +166,78 @@ extension Checker {
                 break
             }
         }
+        // One fix-it for all of them, built once and shared (its edits are one array, not one per diagnostic).
+        let strayFix = strayFixIt(movable.filter { $0.kind != .assignment })
         for statement in movable where statement.kind != .assignment {
-            reportStrayTopLevel(statement, strays: movable)
+            reportStrayTopLevel(statement, fixIt: strayFix)
         }
         return (elements, declarations)
     }
 
-    func reportStrayTopLevel(_ statement: PositionedNode, strays: [PositionedNode]) {
-        var fixIts: [FixIt] = []
-        if !strays.isEmpty {
-            if let widget = widgetBlock ?? tree.rootNode.childNodes.first(where: { $0.kind == .widgetBlock }),
-               let block = widget.firstChild(.block) {
-                // Move into the existing widget: declarations to its top, elements to its end.
-                let body = BlockSyntax(unchecked: block)
-                var edits: [TextEdit] = []
-                var declText = "", viewText = ""
-                for s in strays {
-                    let r = range(s)
-                    edits.append(edit(s.range.lowerBound..<r.upperBound, ""))
-                    let piece = "    " + text(r) + lineBreak
-                    if s.kind == .declaration { declText += piece } else { viewText += piece }
-                }
-                let open = body.lBrace.textRange.upperBound
-                let close = body.rBrace.textRange.lowerBound
-                if !declText.isEmpty { edits.append(edit(open..<open, lineBreak + declText.dropLast(lineBreak.count))) }
-                if !viewText.isEmpty { edits.append(edit(close..<close, viewText)) }
-                fixIts.append(fix("moveInto", edits, ["text": .code("widget")]))
+    func reportStrayTopLevel(_ statement: PositionedNode, fixIt: FixIt?) {
+        report(.strayTopLevel, range(statement), fixIts: fixIt.map { [$0] } ?? [])
+    }
+
+    /// DK2034's fix-it: the stray statements, each with the comment lines above it, wrapped in a new
+    /// `widget { }` where the first one stands (no widget block), or moved into the widget (declarations to its
+    /// top, elements to its end, on lines of their own). Styles, `info` and comments between them stay where they
+    /// are. None when the widget's `}` is missing (DK2001 inserts it first).
+    func strayFixIt(_ strays: [PositionedNode]) -> FixIt? {
+        guard !strays.isEmpty else { return nil }
+        let editor = SyntaxEditor(tree: tree)
+        let extents = strays.map(editor.extent(of:))
+        func pieceLines(_ e: SyntaxEditor.Extent, indent: Int) -> [String] {
+            if e.ownsLines { return editor.shifted(e, to: indent).lines }
+            return [String(repeating: " ", count: indent) + text(e.text)]
+        }
+        let widget = widgetBlock ?? tree.rootNode.childNodes.first(where: { $0.kind == .widgetBlock })
+        guard let widget, let block = widget.firstChild(.block) else {
+            // Wrap: the first stray's lines become the new widget holding all of them; the others are removed.
+            var inner: [String] = []
+            for e in extents { inner += pieceLines(e, indent: 4) }
+            let first = extents[0]
+            let wrapped = "widget {" + lineBreak + inner.joined(separator: lineBreak) + lineBreak + "}"
+            var edits: [TextEdit] = []
+            if first.ownsLines {
+                edits.append(edit(first.range, wrapped + lineBreak))
             } else {
-                let first = strays.map { $0.range.lowerBound }.min() ?? 0
-                let last = strays.map { range($0).upperBound }.max() ?? 0
-                var inner = ""
-                for s in strays { inner += "    " + text(range(s)) + lineBreak }
-                let replaced = "widget {" + lineBreak + inner + "}"
-                let start = strays.map { textStart($0) }.min() ?? first
-                fixIts.append(fix("wrapIn", [edit(start..<last, replaced)], ["text": .code("widget { }")]))
+                edits.append(edit(first.text, wrapped))
+            }
+            for e in extents.dropFirst() { edits.append(stripFile(editor.removal(of: e), editor)) }
+            return fix("wrapIn", edits, ["text": .code("widget { }")])
+        }
+        let body = BlockSyntax(unchecked: block)
+        guard body.isClosed else { return nil }
+        let singleLine = editor.isSingleLine(block)
+        let indent = singleLine ? editor.ownerIndent(of: block) + 4 : editor.contentIndent(of: block)
+        var declLines: [String] = [], viewLines: [String] = []
+        var edits: [TextEdit] = []
+        for (s, e) in zip(strays, extents) {
+            edits.append(stripFile(editor.removal(of: e), editor))
+            if s.kind == .declaration { declLines += pieceLines(e, indent: indent) } else { viewLines += pieceLines(e, indent: indent) }
+        }
+        if singleLine {
+            let pad = String(repeating: " ", count: indent)
+            let existing = editor.statements(of: block).map { pad + text(editor.extent(of: $0).text) }
+            let all = declLines + existing + viewLines
+            let replacement = "{" + lineBreak + all.joined(separator: lineBreak) + lineBreak
+                + String(repeating: " ", count: editor.ownerIndent(of: block)) + "}"
+            edits.append(edit(body.lBrace.textStart..<body.rBrace.textRange.upperBound, replacement))
+        } else {
+            let items = editor.statements(of: block)
+            for (lines, index) in [(declLines, 0), (viewLines, items.count)] where !lines.isEmpty {
+                let piece = SyntaxEditor.Lines(lines: lines, statementLine: 0, kind: nil, from: nil)
+                guard let insertion = editor.insertion(of: piece, into: block, index: index) else { return nil }
+                edits.append(stripFile(insertion.edit, editor))
             }
         }
-        report(.strayTopLevel, range(statement), fixIts: fixIts)
+        edits.sort { $0.range.lowerBound < $1.range.lowerBound }
+        for (a, b) in zip(edits, edits.dropFirst()) where a.range.upperBound > b.range.lowerBound { return nil }
+        return fix("moveInto", edits, ["text": .code("widget")])
     }
+
+    /// An editor edit in this file.
+    func stripFile(_ e: TextEdit, _ editor: SyntaxEditor) -> TextEdit { edit(e.range, e.replacement) }
 
     // MARK: - Element-name prewalk
 

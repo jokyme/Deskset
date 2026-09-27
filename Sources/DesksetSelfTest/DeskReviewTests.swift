@@ -279,4 +279,33 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.check(elapsed < 5, "formatting 200,000 blank lines took \(elapsed) s")
         print(String(format: "    formatter: 200,000 blank lines after `{` in %.0f ms", elapsed * 1000))
     }
+
+    t.suite("Desk: review — stray top-level statements (DK2034)") {
+        // Wrapping keeps styles, info blocks and comments between the strays (finding 46).
+        let scattered = deskCheck("Text(\"a\").style(s)\n\n// Styles\nstyle s { .bold() }\n\ninfo { name: \"Demo\" }\n\n// the second label\nText(\"b\")\n")
+        let wrapped = deskApplyFix(scattered, "DK2034")
+        t.equal(wrapped, "widget {\n    Text(\"a\").style(s)\n    // the second label\n    Text(\"b\")\n}\n\n// Styles\nstyle s { .bold() }\n\ninfo { name: \"Demo\" }\n")
+        t.equal(wrapped.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, ["DK2021"], "two roots, nothing else")
+        // Moving in keeps comments, starts a line of its own, and is not offered without the widget's `}` (48).
+        let comment = deskCheck("info { name: \"T\" }\nwidget {\n    Text(\"a\")\n}\n\n// explain b\nText(\"b\") // tail\n")
+        t.equal(deskApplyFix(comment, "DK2034"), "info { name: \"T\" }\nwidget {\n    Text(\"a\")\n    // explain b\n    Text(\"b\") // tail\n}\n")
+        let oneLine = deskCheck("info { name: \"T\" }\nwidget { Text(\"a\") }\nText(\"b\")\n")
+        let movedIn = deskApplyFix(oneLine, "DK2034")
+        t.equal(movedIn, "info { name: \"T\" }\nwidget {\n    Text(\"a\")\n    Text(\"b\")\n}\n")
+        t.equal(movedIn.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, ["DK2021"], "two roots, nothing else")
+        let declaration = deskCheck("info { name: \"T\" }\nvariable page = 0\nwidget {\n    Text(\"{page}\")\n}\n")
+        t.equal(deskApplyFix(declaration, "DK2034"), "info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\")\n}\n")
+        let unclosed = deskCheck("info { name: \"T\" }\nwidget {\n    Text(\"a\")\nText(\"b\")\n")
+        t.check(unclosed.diagnostics.first { $0.id.rawValue == "DK2034" }?.fixIts.isEmpty ?? true, deskDescribe(unclosed))
+        // A block word with parentheses at the top level is not an element to move in, nor a block to move out (57).
+        t.equal(deskReviewIDs("widget {\n    Text(\"a\")\n}\ninfo ({ name: \"T\" }\n", named: false), ["DK8003", "DK2003"])
+        // Many strays: the fix-it is built once (finding 47).
+        let many = String(repeating: "Text(\"CPU\").font(.caption)\n", count: 2_000)
+        let start = ProcessInfo.processInfo.systemUptime
+        let checked = deskCheck("info { name: \"T\" }\n" + many)
+        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        t.equal(checked.diagnostics.filter { $0.id.rawValue == "DK2034" }.count, 500)
+        t.check(elapsed < 3, "2,000 stray lines took \(elapsed) s")
+        print(String(format: "    2,000 stray top-level lines: parse + check %.0f ms", elapsed * 1000))
+    }
 }

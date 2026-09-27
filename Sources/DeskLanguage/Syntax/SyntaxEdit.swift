@@ -651,6 +651,8 @@ struct SyntaxEditor {
             let blankBefore = range.lowerBound > 0 && isBlankLine(before: range.lowerBound)
             let blankAfter = isBlankLine(at: range.upperBound)
             if blankBefore && blankAfter { range = range.lowerBound..<nextLineStart(after: range.upperBound) }
+            // The last lines of the file: the blank line before them goes too, so the file does not end in one.
+            else if blankBefore && range.upperBound == bytes.count { range = lineStart(of: range.lowerBound - 1)..<range.upperBound }
         }
         return edit(range, "")
     }
