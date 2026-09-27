@@ -62,35 +62,10 @@ final class InspectorState {
     var colorEditValue: RGBA?
     var colorEditTimer: Timer?
     /// The writes of one session in the color panel (from opening it on a color to closing it), one undo step: the
-    /// step so far, which later picks are folded into (`performEdit`).
+    /// step so far, which later picks are folded into (`performEdit`; the first pick's "before", the last pick's
+    /// "after"), as long as nothing else wrote the files in between and it was not undone.
     final class ColorSession {
-        var step: ColorStep?
-    }
-
-    /// The bytes an undo step of the color panel puts back (the first pick's "before", the last pick's "after").
-    final class ColorStep {
-        private(set) var changes: [EditorFileChange]
-        /// Undone once: a later pick is a new step (the redo holds its own copy of the changes).
-        var isSealed = false
-
-        init(_ changes: [EditorFileChange]) { self.changes = changes }
-
-        /// Folds a later write into the step: only when it was not undone and the write starts from what the step
-        /// left in its files (nothing else wrote them in between).
-        func merge(_ later: [EditorFileChange]) -> Bool {
-            guard !isSealed else { return false }
-            for c in later {
-                if let mine = changes.first(where: { $0.file == c.file }), mine.after != c.before { return false }
-            }
-            for c in later {
-                if let i = changes.firstIndex(where: { $0.file == c.file }) {
-                    changes[i].after = c.after
-                } else {
-                    changes.append(c)
-                }
-            }
-            return true
-        }
+        var step: GrowingStep?
     }
 
     var colorSession: ColorSession?

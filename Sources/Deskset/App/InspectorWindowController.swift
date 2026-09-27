@@ -6,12 +6,15 @@ import DesksetCore
 /// dragged, resized and nudged, and the built-in code editor showing the skin's files — and an inspector of cards for
 /// the selection. The mode control (Design | Split | Code) only decides what the centre shows.
 ///
-/// Every change goes the same way: a live preview while the user drags or picks a color (`Skin.preview`), then one
-/// write to the file that defines the value (geometry always to the meter's own section), one undo step (the bytes
-/// of the changed files, see `EditorFileChange`) and a refresh of the skin. Typed code is one more such change: the
-/// code pane commits its buffer through the same pipeline ("Edit Code"), and a dirty buffer is committed before any
-/// visual edit writes, so the files on disk stay the single source of truth. Files saved in another editor refresh
-/// the skin too. The skin on the desktop keeps working normally.
+/// The window edits the widget through its editing session (`EditingSession`): the canvas and the inspector show the
+/// Studio's own instance of the widget (`skin`, loaded from the session's text in memory), and every change goes the same
+/// way: a live preview while the user drags or picks a color (`EditingSession.preview`: in the Studio's instance and on
+/// the desktop), then one step (`EditingSession.apply`) — the edit made to the text in memory where the value is defined
+/// (geometry always in the meter's own section), written to the files, the Studio's instance loaded again, the widget on
+/// the desktop reloaded — and one entry on the widget's undo stack, which the app keeps. Typed code is one more such
+/// step: the code pane commits its buffer through the same pipeline ("Edit Code"), and a dirty buffer is committed
+/// before any visual edit, so the session's text stays the single truth. Files saved in another editor are found with
+/// FSEvents and reload the widget (live reload). The widget on the desktop keeps working normally.
 final class InspectorWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSToolbarDelegate,
                                        NSMenuItemValidation, NSToolbarItemValidation, NSSplitViewDelegate {
 
@@ -93,8 +96,14 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     var rows: [Row] = []
     var liveTimer: Timer?
     var canvasTimer: Timer?
-    var fileStamps: [String: Date] = [:]
+    /// The editing session of the widget shown (nil before the window shows one).
+    var session: EditingSession?
+    /// `!WriteKeyValue` bangs the desktop copy had run when the files were last looked at: a change on disk it made
+    /// itself does not reload the widget.
     var keyValueWrites = 0
+    /// A change on disk came in while a gesture, a color or the code's commit was being written: looked at again on the
+    /// next tick.
+    var pendingDiskCheck = false
     /// Until the user zooms, the canvas keeps fitting the skin whenever the canvas or the skin changes size.
     var autoFit = true
     /// Settings ▸ Editor ▸ "Refresh the skin when the file is saved elsewhere" (state.json).
@@ -210,7 +219,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     lazy var openInControl = NSSegmentedControl()
     /// Asked when the window closes with code edits that could not be saved (self-tests answer it; nil: an alert).
     var closeChoice: (() -> CloseChoice)?
-    /// The window's undo stack: pending edits are committed before an undo or redo (see `EditorUndoManager`).
+    /// The window's undo stack until it shows a widget (then the widget's, kept by its session: `undoManager`).
     let editorUndoManager = EditorUndoManager()
     /// Settings ▸ Editor ▸ "Show INI option names" as the inspector was last built with it.
     var shownIniNames = false
@@ -1229,12 +1238,19 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         libraryView.focusSearch()
     }
 
-    /// File ▸ Save (⌘S): writes pending nudges, colors and code now.
+    /// File ▸ Save (⌘S): writes pending nudges, colors and code now, and whatever of the session's text is not on
+    /// disk yet.
     @objc func saveSkinCode(_ sender: Any?) {
         commitPendingNudge()
         commitPendingColor()
         if !(loadedCodeView?.commitNow(explicit: true) ?? true) {
             toast.show("Could not save the code", error: true)
+            NSSound.beep()
+        }
+        do {
+            try session?.diskSync.flush()
+        } catch {
+            toast.show("Could not save: \(error)", error: true)
             NSSound.beep()
         }
     }
@@ -1329,6 +1345,66 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     func attach(_ c: SkinController) {
         // Refreshed (or another skin chosen) while the window is still being built: the rest is built first.
         finishOpening()
+        // The widget on the desktop was loaded again: the Studio's own instance goes on (`desktopReloaded`).
+        if let session, controller != nil, session.studioSkin != nil,
+           session.key == SkinLibrary.normalizedConfigName(c.config).lowercased() {
+            return desktopReloaded(c)
+        }
+        for part in attachParts(c) { part.work() }
+    }
+
+    /// The widget on the desktop was loaded again (a new controller). After a step the session wrote, only the link
+    /// changes; after any other refresh (the widget's menu, `!Refresh`, Refresh All, another variant) the Studio's
+    /// instance loads again too, as the editor showed the refreshed widget before (an image may have changed).
+    func desktopReloaded(_ c: SkinController) {
+        guard let session else { return }
+        controller = c
+        config = c.config
+        keyValueWrites = c.skin.keyValueWrites
+        let otherFile = session.bind(desktop: c)
+        guard !session.isRefreshingDesktop || otherFile else { return }
+        session.reloadStudioSkin()
+    }
+
+    /// The Studio edits `c`'s widget through the widget's editing session: this window becomes its client (the widget's
+    /// undo stack is the window's), and the Studio's own instance is loaded when the session has none or runs another
+    /// file.
+    func bindSession(to c: SkinController) {
+        let session = app.editingSession(for: c.config)
+        if self.session !== session {
+            unbindSession()
+            self.session = session
+            session.client = self
+            session.undoStack.commitPendingEdits = { [weak self] in self?.commitPendingEditsBeforeUndo() }
+            session.undoStack.hasPendingEdits = { [weak self] in self?.hasPendingVisualEdits ?? false }
+        }
+        let otherFile = session.bind(desktop: c)
+        keyValueWrites = c.skin.keyValueWrites
+        if session.studioSkin == nil || otherFile { session.reloadStudioSkin(notify: false) }
+    }
+
+    /// The window lets go of its widget's session (it closed, or shows another widget): the Studio's instance and the
+    /// watching of the files end; the text in memory and the undo stack stay with the app. What typing in the window's
+    /// fields left on the stack goes (it belongs to the window's field editor).
+    func unbindSession() {
+        guard let session else { return }
+        if let fieldEditor = window?.fieldEditor(false, for: nil) {
+            session.undoStack.removeAllActions(withTarget: fieldEditor)
+            if let storage = (fieldEditor as? NSTextView)?.textStorage {
+                session.undoStack.removeAllActions(withTarget: storage)
+            }
+        }
+        session.closeStudioSkin()
+        if session.client === self { session.client = nil }
+        session.undoStack.commitPendingEdits = nil
+        session.undoStack.hasPendingEdits = nil
+        self.session = nil
+    }
+
+    /// The Studio's instance was loaded again (a step, an undo, a change on disk): everything that shows it follows.
+    func studioSkinReloaded() {
+        guard let c = controller else { return }
+        finishOpening()
         for part in attachParts(c) { part.work() }
     }
 
@@ -1352,12 +1428,15 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             pendingApplied = editor.pendingSelection != nil
             editor.controller = c
             editor.config = c.config
+            // The Studio edits its own instance of the widget, loaded from the session's text in memory.
+            editor.bindSession(to: c)
             editor.canvas.isEditable = true
+            let skin: Skin = editor.skin ?? c.skin
             if newWidget {
-                editor.canvas.backdrop = editor.backdrop(for: c.skin, config: c.config)
+                editor.canvas.backdrop = editor.backdrop(for: skin, config: c.config)
                 editor.updateBackdropButton()
             }
-            let name = Self.skinName(c)
+            let name = Self.skinName(skin, config: c.config)
             editor.window?.title = name.isEmpty ? c.config : name
             // The widget's name only: "Audio\Visualizer" is an engine path (with Rainmeter Details, it is shown).
             editor.window?.subtitle = editor.app.state.editor.showIniNames ? c.config : ""
@@ -1371,23 +1450,24 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             if opening != nil { editor.fitIfAutomatic() }
         }
         if let opening {
-            part("layer cells") { $0.prepareListCells(in: opening, skin: c.skin) }
+            part("layer cells") { $0.prepareListCells(in: opening, skin: $0.skin ?? c.skin) }
         }
         part("layers") { editor in
             if let opening { editor.loadListRowsInSteps(opening) }
             editor.rebuildSidebar()
+            let skin: Skin = editor.skin ?? c.skin
             if let pending = editor.pendingSelection {
                 editor.pendingSelection = nil
-                let names = pending.filter { c.skin.meter(named: $0) != nil || c.skin.measure(named: $0) != nil }
-                let meters = names.filter { c.skin.meter(named: $0) != nil }
+                let names = pending.filter { skin.meter(named: $0) != nil || skin.measure(named: $0) != nil }
+                let meters = names.filter { skin.meter(named: $0) != nil }
                 editor.selectedMeters = meters.count > 1 ? meters : []
                 editor.selectedSection = names.last ?? editor.selectedSection
-                if let name = names.last, c.skin.measure(named: name) != nil, editor.sidebarTab == .layers {
+                if let name = names.last, skin.measure(named: name) != nil, editor.sidebarTab == .layers {
                     editor.sidebarTab = .data
                     editor.reloadList()
                 }
             }
-            editor.selectedMeters = editor.selectedMeters.filter { c.skin.meter(named: $0) != nil }
+            editor.selectedMeters = editor.selectedMeters.filter { skin.meter(named: $0) != nil }
             if editor.selectedMeters.count < 2 { editor.selectedMeters = [] }
             keep = editor.selectedSection.flatMap { name in
                 editor.allItems.first { $0.title.caseInsensitiveCompare(name) == .orderedSame }
@@ -1400,7 +1480,6 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             editor.fitIfAutomatic()
             editor.refreshInlineTextEditor()
             editor.updateCanvasOverlays()
-            editor.fileStamps = editor.stamps(for: c.skin.sourceFiles)
             editor.keyValueWrites = c.skin.keyValueWrites
             editor.startTimers()
         }
@@ -1414,8 +1493,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     }
 
     /// The name the window shows: the skin's `[Metadata] Name`, else its folder.
-    static func skinName(_ c: SkinController) -> String {
-        ManageModel.metadataValue(c.skin.metadata, "Name") ?? String(c.config.split(separator: "\\").last ?? "")
+    static func skinName(_ skin: Skin, config: String) -> String {
+        ManageModel.metadataValue(skin.metadata, "Name") ?? String(config.split(separator: "\\").last ?? "")
     }
 
     /// The edited skin was unloaded. What is still pending is written first, while the skin is known: typed code, a
@@ -1431,6 +1510,10 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         commitPendingColor()
         cancelPendingEdits()
         controller = nil
+        // The widget is gone from the desktop: so is the Studio's instance of it. The session stays bound, so the code
+        // pane's typing can still be saved (and undone).
+        session?.closeStudioSkin()
+        session?.desktop = nil
         liveTimer?.invalidate()
         liveTimer = nil
         canvasTimer?.invalidate()
@@ -1500,21 +1583,30 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     func windowWillClose(_ notification: Notification) {
         opening?.cancel()
         idleWork?.cancel()
+        // What waits for its pause is written while the widget is still shown (its session lets go of it below).
+        commitPendingPreview()
         commitPendingNudge()
         commitPendingColor()
+        commitColorEdit()
         InspectorColorPanel.shared.release(self)
         liveTimer?.invalidate()
         liveTimer = nil
         canvasTimer?.invalidate()
         canvasTimer = nil
+        // Anything still waiting is written (every step is written as it is made); the widget's instance and the watching
+        // of its files end, its undo stack stays with the app.
+        _ = try? session?.diskSync.flush()
+        unbindSession()
         controller = nil
         NotificationCenter.default.removeObserver(self)
         app.inspectorDidClose(self)
     }
 
-    var skin: Skin? { controller?.skin }
+    /// The Studio's own instance of the widget (its editing session's), which the canvas draws and the inspector reads.
+    var skin: Skin? { session?.studioSkin }
 
-    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { editorUndoManager }
+    /// The widget's undo stack (kept by the app with its session), or the window's own until it shows a widget.
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { session?.undoStack ?? editorUndoManager }
 
     /// Whether a visual edit waits for its pause (a nudge, a color, a preview).
     var hasPendingVisualEdits: Bool {
@@ -1769,14 +1861,13 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         refreshSkin()
     }
 
-    /// Reloads the edited skin — also after a refresh that failed to load it (the code may have fixed it since).
+    /// Reloads the edited widget — the Studio's instance from the text in memory (after taking what changed on disk)
+    /// and the desktop copy from the files — also after a refresh that failed to load it (the code may have fixed it
+    /// since).
     func refreshSkin() {
-        guard let c = controller else { return }
-        if app.controller(for: c.config) === c {
-            app.refresh(c)
-        } else if app.controller(for: c.config) == nil, c.isStopped {
-            app.activate(config: c.config, file: c.file)
-        }
+        guard let session, controller != nil else { return }
+        session.reloadStudioSkin()
+        session.refreshDesktop()
     }
 
     /// Where the selection is written: its section header (the `[Variables]` block for theme values, `[Rainmeter]`
@@ -1802,7 +1893,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         revealInCode(file: file, line: line)
     }
 
-    // MARK: Live values and file watching
+    // MARK: Live values and files changed elsewhere
 
     func startTimers() {
         liveTimer?.invalidate()
@@ -1827,35 +1918,46 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         canvasTimer = ct
     }
 
-    /// Live values, and live reload: a file changed on disk by something other than this editor (its own writes
-    /// update `fileStamps` as they happen) refreshes the skin; the code pane then re-reads its clean buffers.
-    ///
-    /// When the skin is not refreshed — it wrote its own files with `!WriteKeyValue` (Rainmeter does not refresh for
-    /// that either), or live reload is off — the code pane still re-reads them: a clean buffer holding the old text
-    /// would otherwise write it back over the change with the next keystroke's commit.
+    /// Live values (every half second), and a look at the files a change on disk was put off for (`checkFilesOnDisk`).
     func tick() {
         guard let c = controller, !c.isStopped else { return }
-        if geometryBases.isEmpty, colorValue == nil, !committingCode {
-            let now = stamps(for: c.skin.sourceFiles)
-            if now != fileStamps {
-                fileStamps = now
-                let skinWroteThem = c.skin.keyValueWrites != keyValueWrites
-                keyValueWrites = c.skin.keyValueWrites
-                if skinWroteThem || !liveReload {
-                    codeFilesChangedOnDisk()
-                    return refreshLiveValues()
-                }
-                toast.show("Files changed on disk — reloaded the widget")
-                app.refresh(c)
-                return
-            }
-        }
+        if pendingDiskCheck { checkFilesOnDisk() }
         refreshLiveValues()
         updateCanvasOverlays()
     }
 
-    /// The skin's files changed on disk and the skin is not refreshed: the code pane re-reads them (clean buffers
-    /// take the new text keeping caret and scroll; dirty ones ask at their commit), or does so when it is shown.
+    /// Live reload (FSEvents tells the session; `session(_:didChange:)` calls this — and so may anyone who changed the
+    /// files): a file of the widget changed on disk by something other than the session (its own writes are not changes)
+    /// reloads the widget — the Studio's instance and the desktop copy — and the code pane then re-reads its clean
+    /// buffers.
+    ///
+    /// When the widget is not reloaded — it wrote its own files with `!WriteKeyValue` (Rainmeter does not refresh for
+    /// that either), or live reload is off — the session's text and the code pane still take the change: a clean buffer
+    /// holding the old text would otherwise write it back over the change with the next keystroke's commit. Put off while
+    /// a gesture, a color or the code's commit is being written (the next tick looks again).
+    func checkFilesOnDisk() {
+        guard let session, let c = controller, !c.isStopped else { return }
+        guard geometryBases.isEmpty, colorValue == nil, !committingCode else {
+            pendingDiskCheck = true
+            return
+        }
+        pendingDiskCheck = false
+        guard !session.filesChangedOnDisk().isEmpty else { return }
+        let skinWroteThem = c.skin.keyValueWrites != keyValueWrites
+        keyValueWrites = c.skin.keyValueWrites
+        session.takeChangesFromDisk()
+        if skinWroteThem || !liveReload {
+            codeFilesChangedOnDisk()
+            return refreshLiveValues()
+        }
+        toast.show("Files changed on disk — reloaded the widget")
+        session.reloadStudioSkin()
+        session.refreshDesktop()
+    }
+
+    /// The skin's files changed on disk and the skin is not refreshed: the code pane re-reads them from the session
+    /// (clean buffers take the new text keeping caret and scroll; dirty ones ask at their commit), or does so when it
+    /// is shown.
     func codeFilesChangedOnDisk() {
         guard isCodeVisible, let codeView = loadedCodeView else {
             codeStale = true
@@ -1930,16 +2032,6 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         guard let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor,
               let field = editor.delegate as? NSView else { return false }
         return field.isDescendant(of: inspectorStack)
-    }
-
-    func stamps(for files: [URL]) -> [String: Date] {
-        var result: [String: Date] = [:]
-        for url in files {
-            let path = url.resolvingSymlinksInPath().path
-            result[path] = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
-                ?? .distantPast
-        }
-        return result
     }
 
     // MARK: Canvas (docs/editor-friendly.md §9)

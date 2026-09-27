@@ -142,13 +142,14 @@ enum with typed payloads, `GradientSpec` for named gradient options.
 - **Selection sync**: selecting a layer / data source scrolls the code to its section and tints the block (no
   focus steal); resting the caret in a section (150 ms) selects that layer / data source. Origin-tagged to avoid
   loops.
-- **Commit model** (disk file stays the source of truth): typing marks the buffer dirty (dot in the jump bar) and
-  registers on the code view's own undo manager. The buffer commits after ~0.8 s idle, on ⌘S, on focus loss and on
-  file switch, through `perform("Edit Code", files: [url])` — one EditorFileChange step on the window's undo stack,
-  then the skin refreshes. Before any visual edit commits, a dirty buffer is committed first. After a visual edit
-  or an external change — including the skin's own `!WriteKeyValue` and saves elsewhere with live reload off — the
-  clean buffer reloads keeping caret and scroll. A commit never writes over a change made on disk since the buffer was
-  read: it asks (Keep My Edits / Use the File on Disk / Decide Later).
+- **Commit model** (the widget's editing session holds the files' text, and every step is written to disk as it is
+  made): typing marks the buffer dirty (dot in the jump bar) and registers on the code view's own undo manager. The
+  buffer commits after ~0.8 s idle, on ⌘S, on focus loss and on file switch, through `perform("Edit Code")` — one step
+  of the session on the widget's undo stack (kept by the app, so closing the window keeps it), then the widget
+  reloads. Before any visual edit commits, a dirty buffer is committed first. After a visual edit or an external
+  change — including the skin's own `!WriteKeyValue` and saves elsewhere with live reload off — the clean buffer
+  reloads keeping caret and scroll. A commit never writes over a change made on disk since the buffer was read: it
+  asks (Keep My Edits / Use the File on Disk / Decide Later).
 - Encoding (UTF-8 / UTF-16LE BOM / ANSI) and line endings are preserved byte for byte; Return inserts the file's
   dominant line ending. A character the file's ANSI code page cannot hold offers conversion to UTF-16LE with BOM.
 

@@ -56,6 +56,10 @@ final class CodeEditorView: NSView {
 
     enum DiskConflictChoice { case keepEdits, takeDisk, decideLater }
 
+    /// Reads a file's bytes: the disk by default. The skin studio reads its editing session's text instead (the truth
+    /// the disk follows), so the buffers compare with — and re-read — what the Studio's instance of the widget shows.
+    var readData: (URL) throws -> Data = { try Data(contentsOf: $0) }
+
     static let defaultIdleCommitDelay: TimeInterval = 0.8
     /// How long typing must pause before the buffer is committed (self-tests set it; the idle commit can also be
     /// fired at once with `fireIdleCommit`).
@@ -322,7 +326,7 @@ final class CodeEditorView: NSView {
         if let existing = buffer(for: target) {
             targetFile = (existing.document, existing.base)
         } else {
-            let loaded = try Self.load(target)
+            let loaded = try load(target)
             targetFile = (loaded.document, loaded.bytes)
         }
 
@@ -332,7 +336,7 @@ final class CodeEditorView: NSView {
                 kept.append(existing)
             } else if url == target {
                 kept.append(FileBuffer(url: url, document: targetFile.document, base: targetFile.bytes))
-            } else if let file = try? Self.load(url) {
+            } else if let file = try? load(url) {
                 kept.append(FileBuffer(url: url, document: file.document, base: file.bytes))
             }
         }
@@ -385,7 +389,7 @@ final class CodeEditorView: NSView {
         apiChange {
             for buffer in buffers where buffer.isDirty {
                 // Re-read: the disk may have changed, and a refused commit may have switched the encoding already.
-                if let disk = try? Self.load(buffer.url) {
+                if let disk = try? load(buffer.url) {
                     buffer.document = disk.document
                     buffer.base = disk.bytes
                 }
@@ -454,7 +458,7 @@ final class CodeEditorView: NSView {
     func reloadFromDisk(keepCaret: Bool = true) {
         apiChange {
             for buffer in buffers {
-                guard let file = try? Self.load(buffer.url) else { continue }
+                guard let file = try? load(buffer.url) else { continue }
                 let disk = file.document
                 if buffer.isDirty {
                     buffer.document = disk
@@ -506,15 +510,15 @@ final class CodeEditorView: NSView {
         return buffers.first { $0.url == url }
     }
 
-    /// A file's text (decoded like `CodeDocument.load`) and its bytes.
-    private static func load(_ url: URL) throws -> (document: CodeDocument, bytes: Data) {
-        let bytes = try Data(contentsOf: url)
+    /// A file's text (decoded like `CodeDocument.load`) and its bytes (`readData`).
+    private func load(_ url: URL) throws -> (document: CodeDocument, bytes: Data) {
+        let bytes = try readData(url)
         return (CodeDocument(data: bytes), bytes)
     }
 
     /// Opens a file that was not in the list (e.g. revealed from an include the host did not pass).
     private func addBuffer(_ url: URL) throws -> FileBuffer {
-        let file = try Self.load(url)
+        let file = try load(url)
         let buffer = FileBuffer(url: url.standardizedFileURL, document: file.document, base: file.bytes)
         buffers.append(buffer)
         apiChange { updateJumpBar() }
@@ -628,7 +632,7 @@ final class CodeEditorView: NSView {
             return true
         }
         // The file changed on disk since the edits began: writing the buffer would silently undo that change.
-        if let base = buffer.base, let disk = try? Data(contentsOf: buffer.url), disk != base {
+        if let base = buffer.base, let disk = try? readData(buffer.url), disk != base {
             switch resolveDiskConflict(of: buffer, explicit: explicit) {
             case .keepEdits:
                 break
@@ -658,7 +662,7 @@ final class CodeEditorView: NSView {
         }
         if ok {
             buffer.document.text = text
-            buffer.base = (try? Data(contentsOf: buffer.url)) ?? buffer.document.data(for: text)
+            buffer.base = (try? readData(buffer.url)) ?? buffer.document.data(for: text)
             buffer.conflictPostponed = false
             let now = buffer === current ? textView.string : buffer.text
             buffer.isDirty = !(now as NSString).isEqual(to: text)

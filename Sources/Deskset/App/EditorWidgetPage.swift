@@ -775,14 +775,14 @@ extension InspectorWindowController {
             // A look in a file other widgets share: this widget gets its own [Look] after the includes (later wins).
             let file = skin.isOwnFile(defined) || appliesToAllWidgets ? defined : skin.fileURL
             let reach = sharedReach([file])
-            guard perform(reach.map { "\(name) in All \($0.count) Widgets" } ?? name, files: [file], message: nil, {
-                try IniWriter.writeValue(value, key: place.key, section: place.owner, fileURL: file)
+            guard perform(reach.map { "\(name) in All \($0.count) Widgets" } ?? name, message: nil, {
+                [.setValue(file: file, section: place.owner, key: place.key, value: value, afterIncludes: false)]
             }) else { return }
             showToast(reach.map { Self.widened(toast, count: $0.count, root: $0.root) } ?? toast)
         case .layer:
             let target = skin.ownTarget(section: place.owner, key: place.key)
-            guard perform(name, files: [target.file], message: nil, {
-                try IniWriter.writeValue(value, key: place.key, section: target.section, fileURL: target.file)
+            guard perform(name, message: nil, {
+                [.setValue(file: target.file, section: target.section, key: place.key, value: value, afterIncludes: false)]
             }) else { return }
             showToast(toast)
         }
@@ -939,7 +939,7 @@ extension InspectorWindowController {
         let verify: ((Skin) -> Bool)? = own.isEmpty ? nil : { reloaded in
             own.allSatisfy { w in reloaded.sources.location(section: w.section, key: w.key).map { reloaded.isOwnFile($0.file) } ?? false }
         }
-        guard perform(undoName, files: writes.map(\.file), message: nil, verify: verify, { try Self.apply(writes) }) else {
+        guard perform(undoName, message: nil, verify: verify, { Self.ops(writes) }) else {
             return false
         }
         showToast(toast + keptNote)

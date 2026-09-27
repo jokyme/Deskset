@@ -2,8 +2,9 @@ import AppKit
 import DesksetCore
 
 /// Preview-then-commit for the inspector's continuous controls (sliders, circular sliders, held steppers), the way
-/// color picking works: every step is shown at once with `Skin.preview` / `previewVariables` and nothing is written;
-/// the value is written once when the mouse goes up (or after a short pause for keyboard steps), as one undo step.
+/// color picking works: every step is shown at once with `EditingSession.preview` / `previewVariables` (in the
+/// Studio's instance and on the desktop) and nothing is written; the value is written once when the mouse goes up (or
+/// after a short pause for keyboard steps), as one undo step.
 extension InspectorWindowController {
     typealias PreviewTarget = InspectorState.PreviewTarget
 
@@ -13,32 +14,31 @@ extension InspectorWindowController {
         let state = inspectorState
         if codeHasUncommittedChanges, !committingCode { guard flushCode() else { return } }
         if let current = state.preview, current != target { commitPendingPreview() }
-        guard let skin else { return }
+        guard skin != nil else { return }
         if state.preview == nil {
             state.previewOriginal = writtenValue(of: target)
-            // Closing the window writes the value (or, when the skin is already gone, at least ends the preview, so
-            // the skin on the desktop does not keep showing it).
+            // Closing the window writes the value (`windowWillClose` commits it while the widget is still shown); when
+            // the widget is already gone, the preview at least ends, so the desktop copy does not keep showing it.
             if let observer = state.closeObserver { NotificationCenter.default.removeObserver(observer) }
-            let owner = controller
             state.closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window,
-                                                                         queue: nil) { [weak self, weak skin, weak owner] _ in
-                guard let self else { skin?.endPreview(); return }
+                                                                         queue: nil) { [weak self, weak session] _ in
+                guard let self else { session?.endPreview(); return }
                 if self.skin != nil {
                     self.commitPendingPreview()
-                } else if let skin {
-                    // The window let go of the skin first: write without an undo step (its undo stack closes too).
-                    self.writePendingPreview(to: skin, controller: owner)
+                } else {
+                    self.cancelPendingPreview()
+                    session?.endPreview()
                 }
             }
         }
         state.preview = target
         state.previewValue = value
         if let variable = target.variable {
-            skin.previewVariables([variable: value])
+            session?.previewVariables([variable: value])
         } else if target.section.caseInsensitiveCompare("Variables") == .orderedSame {
-            skin.previewVariables([target.key: value])
+            session?.previewVariables([target.key: value])
         } else {
-            skin.preview(section: target.section, [target.key: value])
+            session?.preview(section: target.section, [target.key: value])
         }
         // The live tick compares the rows with the skin's options: a previewed value must not look like a change made
         // elsewhere (that would rebuild the inspector under the pointer).
@@ -67,7 +67,7 @@ extension InspectorWindowController {
         state.previewValue = nil
         state.previewOriginal = nil
         if value == original {
-            skin?.endPreview()
+            session?.endPreview()
             rows = currentRows()
             canvas.needsDisplay = true
             return
@@ -89,30 +89,9 @@ extension InspectorWindowController {
         state.preview = nil
         state.previewValue = nil
         state.previewOriginal = nil
-        skin?.endPreview()
+        session?.endPreview()
         rows = currentRows()
         canvas.needsDisplay = true
-    }
-
-    /// Writes a pending preview straight to `skin` and refreshes it (the window is closing).
-    func writePendingPreview(to skin: Skin, controller owner: SkinController?) {
-        let state = inspectorState
-        state.previewTimer?.invalidate()
-        state.previewTimer = nil
-        stopObservingClose()
-        defer { state.preview = nil; state.previewValue = nil; state.previewOriginal = nil }
-        skin.endPreview()
-        guard let target = state.preview, let value = state.previewValue, value != state.previewOriginal else { return }
-        do {
-            if let variable = target.variable {
-                try skin.writeOption(section: "Variables", key: variable, value: value)
-            } else {
-                try skin.writeOption(section: target.section, key: target.key, value: value)
-            }
-            if let owner, !owner.isStopped { app.refresh(owner) }
-        } catch {
-            Log.write("Could not save \(target.key): \(error)", level: .warning)
-        }
     }
 
     private func stopObservingClose() {

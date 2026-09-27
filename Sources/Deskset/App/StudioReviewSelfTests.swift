@@ -98,7 +98,7 @@ enum StudioReviewSelfTests {
             spin { read(ini).contains("StudioTheme=dark") }
             t.check(read(ini).contains("StudioTheme=dark"), "the skin wrote its file")
             try touch(ini, 5)
-            editor.tick()
+            editor.checkFilesOnDisk()
             t.check(skin() === c, "no refresh for the skin's own write")
             t.check(editor.codeView.text.contains("StudioTheme=dark"), "the clean buffer shows the skin's write")
             t.check(!editor.codeView.hasUncommittedChanges)
@@ -114,7 +114,7 @@ enum StudioReviewSelfTests {
             try read(ini).replacingOccurrences(of: "Update=1000", with: "Update=3000").write(to: ini, atomically: true,
                                                                                              encoding: .utf8)
             try touch(ini, 10)
-            editor.tick()
+            editor.checkFilesOnDisk()
             t.check(skin() === running, "live reload off: no refresh")
             t.check(editor.codeView.text.contains("Update=3000"), "the code pane shows the other editor's save")
             t.check(EditorWindowSelfTests.type(editor, "?", after: "Text=CPU!\n", offset: 9), "typed")
@@ -126,7 +126,7 @@ enum StudioReviewSelfTests {
             try read(ini).replacingOccurrences(of: "Update=3000", with: "Update=4000").write(to: ini, atomically: true,
                                                                                              encoding: .utf8)
             try touch(ini, 15)
-            editor.tick()
+            editor.checkFilesOnDisk()
             editor.setMode(.split)
             t.check(editor.codeView.text.contains("Update=4000"), "the code pane re-reads the file when shown")
 
@@ -141,7 +141,7 @@ enum StudioReviewSelfTests {
             try read(ini).replacingOccurrences(of: "Update=4000", with: "Update=5000").write(to: ini, atomically: true,
                                                                                              encoding: .utf8)
             try touch(ini, 20)
-            editor.tick()
+            editor.checkFilesOnDisk()
             t.check(editor.codeView.text.contains("Text=CPU!?X") && editor.codeView.hasUncommittedChanges,
                     "the typing stays in the buffer")
             editor.saveSkinCode(nil)
@@ -352,7 +352,7 @@ enum StudioReviewSelfTests {
         t.suite("App: studio undo takes back the change just made") {
             guard let (_, editor, ini) = try AppSelfTest.makeKindsEditor(t) else { return }
             guard let undo = editor.window?.undoManager else { return t.check(false, "undo manager") }
-            t.check(undo === editor.editorUndoManager, "the window uses the editor's undo stack")
+            t.check(undo === editor.session?.undoStack, "the window uses the widget's undo stack")
             editor.select(section: "Pic")
             (editor.inspectorControl(for: "ImageAlpha") as? PercentControl)?.field.type("40")
             t.check(section("Pic", in: read(ini)).contains("ImageAlpha=102\n"), "a first change")
@@ -405,10 +405,10 @@ enum StudioReviewSelfTests {
                 Shape3=Rectangle 0,0,200,80,8 | Fill Color #CardColor#
 
                 """
-            guard let (app, editor, url) = try openSkin(t, "Card", ini) else { return }
-            // Hovering the widget on the desktop: its action set Shape3 with the variable already replaced.
-            app.controller(for: "Studio\\Card")?.skin
-                .execute("[!SetOption MeterCard Shape3 \"Rectangle 0,0,200,80,8 | Fill Color #Hover#\"]", from: nil)
+            guard let (_, editor, url) = try openSkin(t, "Card", ini) else { return }
+            // A hover action of the running widget (the Studio's instance, which the inspector shows) set Shape3 with
+            // the variable already replaced.
+            editor.skin?.execute("[!SetOption MeterCard Shape3 \"Rectangle 0,0,200,80,8 | Fill Color #Hover#\"]", from: nil)
             editor.select(section: "MeterCard")
             t.equal(editor.shapeItem("Shape3", of: "MeterCard")?.row.raw, "Rectangle 0,0,200,80,8 | Fill Color 255,255,255,40",
                     "the inspector shows the running value")
@@ -673,7 +673,7 @@ enum StudioReviewSelfTests {
 
     static func rebuildTests(_ t: AppTestRunner) {
         t.suite("App: studio inspector rebuilt only when it has to be") {
-            guard let (app, editor, ini) = try AppSelfTest.makeKindsEditor(t) else { return }
+            guard let (_, editor, ini) = try AppSelfTest.makeKindsEditor(t) else { return }
             editor.select(section: "Text")
             let control = editor.inspectorControl(for: "Text")
             var count = editor.inspectorRebuildCount
@@ -694,8 +694,9 @@ enum StudioReviewSelfTests {
             t.equal(editor.inspectorRebuildCount, count + 1, "a change of what it shows rebuilds it")
             count = editor.inspectorRebuildCount
 
-            // Values the running skin sets (!SetOption, often on every update) update in place.
-            let skin = { app.controller(for: "Studio\\Kinds")?.skin }
+            // Values the running skin sets (!SetOption, often on every update) update in place: the Studio's instance,
+            // which the inspector shows.
+            let skin = { editor.skin }
             skin()?.execute("[!SetOption Text FontColor \"1,100,100\"]", from: nil)
             editor.refreshLiveValues()
             t.equal(editor.inspectorRebuildCount, count + 1, "the value becoming a running one is shown once")

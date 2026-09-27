@@ -2,7 +2,8 @@ import AppKit
 import DesksetCore
 
 /// Everything that changes the skin: field and menu edits, colors, canvas geometry, alignment, adding,
-/// duplicating and deleting layers, and the undo pipeline they share.
+/// duplicating and deleting layers, and the pipeline they share — each a step of the widget's editing session
+/// (`EditingSession.apply`), on the widget's undo stack.
 extension InspectorWindowController {
     // MARK: Inspector actions
 
@@ -91,14 +92,14 @@ extension InspectorWindowController {
             let like = skin.document.section(named: "Variables")?.value(forKey: variable)
             let text = ColorText.format(rgba, like: like)
             colorValue = text
-            skin.previewVariables([variable: text])
+            session?.previewVariables([variable: text])
         } else {
             let text = ColorText.format(rgba, like: skin.resolve(target.raw, in: nil, sectionVariables: false))
             colorValue = text
             if target.section == "Variables" {
-                skin.previewVariables([target.key: text])
+                session?.previewVariables([target.key: text])
             } else {
-                skin.preview(section: target.section, [target.key: text])
+                session?.preview(section: target.section, [target.key: text])
             }
         }
         canvas.needsDisplay = true
@@ -198,7 +199,7 @@ extension InspectorWindowController {
             // First pass with the plain offset from the current values, then correct by the remaining error.
             var dx = target.x - f.x, dy = target.y - f.y
             var v = values(dx, dy)
-            skin.preview(section: base.meter, v)
+            session?.preview(section: base.meter, v)
             let ex = target.x - m.frame.x, ey = target.y - m.frame.y
             if abs(ex) >= 0.5 || abs(ey) >= 0.5 {
                 dx += ex
@@ -210,7 +211,7 @@ extension InspectorWindowController {
                 var shown = v
                 let written: [String: String?] = ["X": base.raw.x, "Y": base.raw.y, "W": base.raw.w, "H": base.raw.h]
                 for key in first.keys where v[key] == nil { shown[key] = (written[key] ?? nil) ?? "" }
-                skin.preview(section: base.meter, shown)
+                session?.preview(section: base.meter, shown)
             }
             geometryValues[base.meter] = v
         }
@@ -226,7 +227,7 @@ extension InspectorWindowController {
         let allValues = geometryValues
         geometryValues = [:]
         canvas.followers = [:]
-        skin?.endPreview()
+        session?.endPreview()
         canvas.needsDisplay = true
         guard keep else { return }
         var edits: [Edit] = []
@@ -328,7 +329,7 @@ extension InspectorWindowController {
         colorValue = nil
         geometryBases = []
         geometryValues = [:]
-        skin?.endPreview()
+        session?.endPreview()
     }
 
     // MARK: Writing and undo
@@ -369,9 +370,7 @@ extension InspectorWindowController {
             toast.show(note.trimmingCharacters(in: .whitespaces), error: true)
             return
         }
-        perform(name, files: writes.map(\.file), message: { _ in (message ?? Self.doneMessage(name)) + note }, growth: growth) {
-            try Self.apply(writes)
-        }
+        perform(name, message: { _ in (message ?? Self.doneMessage(name)) + note }, growth: growth) { Self.ops(writes) }
     }
 
     /// A finished edit in words, from its undo name (§10): "Change Color" → "Changed color", "Hide “Audio”" →
@@ -401,50 +400,49 @@ extension InspectorWindowController {
         ToastAction("Undo") { [weak self] in self?.window?.undoManager?.undo() }
     }
 
-    /// Runs a file change as one undo step (the bytes of `files` before and after) and refreshes the skin. A dirty
-    /// code buffer is committed first (`flushingCode`; not for the code's own commit). Returns false when nothing
-    /// could be written (the toast says why); true also when the files ended up unchanged.
+    /// Makes one step of the widget's editing session (`EditingSession.apply`): the edits `ops` lists (worked out from
+    /// the Studio's instance as it is now) made to the text in memory, written to the files, the Studio's instance loaded
+    /// again, the widget on the desktop reloaded, one undo step. A dirty code buffer is committed first (`flushingCode`;
+    /// not for the code's own commit). Returns false when nothing could be written (the toast says why); true also when
+    /// the files ended up unchanged.
     ///
     /// The toast (`message`, from the changed files' names; nil: none) gets `actions` and [Undo]; when the widget grew
     /// it also says "Widget grew to 240 × 196" (`growth`), with [Stretch Background] when the widget's Background no
     /// longer covers it (docs/editor-friendly.md §9.10, §10).
     ///
     /// Without a loaded skin (it was unloaded while the editor stayed open) the change is still written and
-    /// undoable — the code pane's buffers can always be saved; only the refresh is skipped. Visual edits need the skin
+    /// undoable — the code pane's buffers can always be saved; only the reload is skipped. Visual edits need the skin
     /// to compute their values and check for it themselves.
     ///
     /// `verify`: whether the reloaded skin shows the change (a value written for this widget alone must win over a
     /// shared file's); when it doesn't, the files are put back, no undo step is made, and the toast says why.
     @discardableResult
-    func perform(_ name: String, files: [URL], flushingCode: Bool = true, message: ((String) -> String)?,
+    func perform(_ name: String, flushingCode: Bool = true, message: ((String) -> String)?,
                  actions: [ToastAction] = [], growth: GrowthNote = .appended, verify: ((Skin) -> Bool)? = nil,
-                 _ body: () throws -> Void) -> Bool {
+                 _ ops: () throws -> [EditOp]) -> Bool {
         if flushingCode, !flushCode() { return false }
+        guard let session else { return false }
         let skin = self.skin
-        skin?.endPreview()
+        session.endPreview()
         let sizeBefore = skin.map { SkinSize(width: $0.width, height: $0.height) }
         // The Background as it was: once the widget grows past it, it covers too little of it to be found again.
         let backgroundBefore = skin.flatMap { LayerNaming.background(in: $0) }
+        // The widget's window moves with the files (Fit Widget to Content), back and forth.
+        let commands = widgetMove.map {
+            [TransactionCommand.moveWidget(from: WidgetPosition(x: $0.from.x, y: $0.from.y),
+                                           to: WidgetPosition(x: $0.to.x, y: $0.to.y))]
+        } ?? []
         do {
-            let changes = try EditorFileChange.record(files, body)
-            guard !changes.isEmpty else { return true }
-            let text = message?(Set(changes.map { $0.file.lastPathComponent }).sorted().joined(separator: ", "))
-            guard let skin else {
-                registerUndo(changes, name: name, undo: true, move: widgetMove)
+            let selection = isMultiSelection ? selectedMeters : selectedSection.map { [$0] } ?? []
+            guard let t = try session.apply(name, try ops(), commands: commands, selectionBefore: selection,
+                                            selectionAfter: pendingSelection ?? selection, verify: verify) else {
+                return true
+            }
+            let text = message?(Set(t.files.map(\.lastPathComponent)).sorted().joined(separator: ", "))
+            guard self.skin != nil else {
                 if let text { toast.show(text, actions: actions + [undoToastAction()]) }
                 return true
             }
-            // Our own writes are not "changed elsewhere" for live reload, even if the refresh fails to load the skin.
-            fileStamps = stamps(for: skin.sourceFiles)
-            refreshSkin()
-            if let verify, let reloaded = self.skin, !verify(reloaded) {
-                try EditorFileChange.restore(changes, undo: true)
-                fileStamps = stamps(for: reloaded.sourceFiles)
-                refreshSkin()
-                toast.show(Self.overrideLostMessage, error: true)
-                return false
-            }
-            registerUndo(changes, name: name, undo: true, move: widgetMove)
             guard var text else { return true }
             var buttons = actions
             if growth != .none, let before = sizeBefore, let now = self.skin,
@@ -458,6 +456,9 @@ extension InspectorWindowController {
             }
             toast.show(text, actions: buttons + [undoToastAction()])
             return true
+        } catch SessionError.notInEffect {
+            toast.show(Self.overrideLostMessage, error: true)
+            return false
         } catch {
             toast.show("Could not save: \(error)", error: true)
             NSSound.beep()
@@ -480,9 +481,7 @@ extension InspectorWindowController {
         let sections = EditorComponents.sections(for: id, x: spot.x, y: spot.y, existing: skin.sectionNames,
                                                  variables: skin.variableNames)
         pendingSelection = sections.filter { $0.options.contains { $0.key == "Meter" } }.map(\.name)
-        perform("Add \(component.title)", files: [skin.fileURL], message: { _ in "Added \(component.title)" }) {
-            try skin.appendSections(sections)
-        }
+        perform("Add \(component.title)", message: { _ in "Added \(component.title)" }) { [skin.op(appending: sections)] }
         dismissTip(.add)
     }
 
@@ -546,9 +545,7 @@ extension InspectorWindowController {
         let copies = names.compactMap { skin.duplicateSections($0, dx: 10, dy: 10, taken: &taken) }
         pendingSelection = copies.map(\.name)
         let label = layersLabel(names), words = layersLabel(names, title: false)
-        perform("Duplicate \(label)", files: [skin.fileURL], message: { _ in "Duplicated \(words)" }) {
-            try skin.appendSections(copies)
-        }
+        perform("Duplicate \(label)", message: { _ in "Duplicated \(words)" }) { [skin.op(appending: copies)] }
     }
 
     /// Delete: removes the selected meters (or the selected measure / style) from the files that define them — every
@@ -565,13 +562,10 @@ extension InspectorWindowController {
             toast.show(shared, error: true)
             return
         }
-        let files = names.flatMap { skin.definingFiles(ofSection: $0) }
         let label = layersLabel(names), words = layersLabel(names, title: false)
         selectedMeters = []
         selectedSection = nil
-        perform("Delete \(label)", files: files, message: { _ in "Deleted \(words)" }) {
-            for n in names { try skin.removeSection(n) }
-        }
+        perform("Delete \(label)", message: { _ in "Deleted \(words)" }) { names.map { skin.op(removingSection: $0) } }
     }
 
     /// The components by category, for the Insert menu (`target` nil: the key editor window, via the responder chain).
@@ -604,40 +598,8 @@ extension InspectorWindowController {
         if let id = sender.representedObject as? String { insertComponent(id) }
     }
 
-    /// `move`: the widget's window moved with this change (Fit Widget to Content); it moves back and forth with the
-    /// files — and never without them.
-    func registerUndo(_ changes: [EditorFileChange], name: String, undo: Bool, move: WidgetMove? = nil) {
-        guard let manager = window?.undoManager else { return }
-        manager.registerUndo(withTarget: self) { target in
-            target.restore(changes, name: name, undo: undo, move: move)
-        }
-        manager.setActionName(name)
-    }
-
-    /// Undo / redo of a file change. Edits still pending (a nudge, a color, a slider preview) were committed before
-    /// the undo manager got here (`EditorUndoManager`), so ⌘Z takes them back first; one still left now is dropped,
-    /// so no write lands behind the undo (and clears the redo it makes possible).
-    func restore(_ changes: [EditorFileChange], name: String, undo: Bool, move: WidgetMove? = nil) {
-        cancelPendingEdits()
-        cancelPendingPreview()
-        do {
-            try EditorFileChange.restore(changes, undo: undo)
-            registerUndo(changes, name: name, undo: !undo, move: move)
-            if let move {
-                let to = undo ? move.from : move.to
-                controller?.moveTo(x: to.x, y: to.y)
-            }
-            // "Undid Change Bar Color · [Redo]" (§10).
-            toast.show(undo ? "Undid \(name)" : "Redid \(name)", actions: [
-                undo ? ToastAction("Redo") { [weak self] in self?.window?.undoManager?.redo() } : undoToastAction(),
-            ])
-            if let skin { fileStamps = stamps(for: skin.sourceFiles) } else { codeFilesChangedOnDisk() }
-            refreshSkin()
-        } catch {
-            toast.show("Can't \(undo ? "undo" : "redo"): \(error)", error: true)
-            NSSound.beep()
-        }
-    }
+    // Undo and redo are the session's (`EditingSession.revert`, on the widget's undo stack); what the window does
+    // around them is in its `EditingSessionClient` conformance below.
 
     /// What a toast says when an edit made the widget grow (§9.10).
     enum GrowthNote {
@@ -850,16 +812,50 @@ extension InspectorWindowController {
             return false
         }
         pendingSelection = [name]
-        perform("Reorder Layers", files: [file], message: { "Drawing order saved to \($0)" }) {
-            _ = try skin.moveSection(name, before: before)
+        perform("Reorder Layers", message: { "Drawing order saved to \($0)" }) {
+            [skin.op(movingSection: name, before: before)].compactMap { $0 }
         }
         return true
     }
 }
 
-/// The skin editor's undo stack. Edits still waiting for their pause — a run of arrow-key nudges, a color being
-/// picked, a slider or stepper preview — are committed before an undo or redo runs, so ⌘Z takes back the change the
-/// user just made (instead of the one before it, with the pending one written afterwards over the redo).
+// MARK: - The widget's editing session
+
+extension InspectorWindowController: EditingSessionClient {
+    /// Before an undo or redo of the widget's stack changes the files. Edits still pending (a nudge, a color, a slider
+    /// preview) were committed before the undo manager got here (`EditorUndoManager`), so ⌘Z takes them back first; one
+    /// still left now is dropped, so no write lands behind the undo (and clears the redo it makes possible).
+    func sessionWillRevert(_ session: EditingSession) {
+        cancelPendingEdits()
+        cancelPendingPreview()
+    }
+
+    func session(_ session: EditingSession, didChange change: SessionChange) {
+        guard session === self.session else { return }
+        switch change {
+        case .reloaded:
+            studioSkinReloaded()
+        case .applied:
+            break
+        case .reverted(let t, let undo):
+            // "Undid Change Bar Color · [Redo]" (§10).
+            toast.show(undo ? "Undid \(t.name)" : "Redid \(t.name)", actions: [
+                undo ? ToastAction("Redo") { [weak self] in self?.window?.undoManager?.redo() } : undoToastAction(),
+            ])
+            if skin == nil { codeFilesChangedOnDisk() }
+        case .revertFailed(_, let undo, let error):
+            toast.show("Can't \(undo ? "undo" : "redo"): \(error)", error: true)
+            NSSound.beep()
+        case .filesChangedOnDisk:
+            checkFilesOnDisk()
+        }
+    }
+}
+
+/// The skin editor's undo stack — the widget's, kept by its editing session. Edits still waiting for their pause — a
+/// run of arrow-key nudges, a color being picked, a slider or stepper preview — are committed before an undo or redo
+/// runs, so ⌘Z takes back the change the user just made (instead of the one before it, with the pending one written
+/// afterwards over the redo).
 final class EditorUndoManager: UndoManager {
     /// Commits the pending edits (the window controller); not called while typing in a text field or the code, whose
     /// undo is the typing.

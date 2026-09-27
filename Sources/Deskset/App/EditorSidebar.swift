@@ -279,9 +279,10 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
     /// The first row of the layers: the widget itself (its colors, update speed, desktop settings).
     func skinRow() -> Item? {
         guard let c = controller else { return nil }
-        let name = Self.skinName(c)
+        let shown: Skin = skin ?? c.skin
+        let name = Self.skinName(shown, config: c.config)
         let n = EditorStyle.number
-        let item = Item(title: name.isEmpty ? c.config : name, detail: "\(n(c.skin.width)) × \(n(c.skin.height))",
+        let item = Item(title: name.isEmpty ? c.config : name, detail: "\(n(shown.width)) × \(n(shown.height))",
                         kind: .rainmeter, isSkin: true)
         item.display = item.title
         item.subtitle = "Whole widget · \(item.detail)"
@@ -1053,7 +1054,7 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
         }
         let changed = layers.filter { n in !shared.contains(n) && !following.contains(n) }
         let label = layersLabel(changed, title: true), sentence = layersLabel(changed, title: false)
-        let done = perform("\(hidden ? "Hide" : "Show") \(label)", files: writes.map(\.file), message: nil) { try Self.apply(writes) }
+        let done = perform("\(hidden ? "Hide" : "Show") \(label)", message: nil) { Self.ops(writes) }
         guard done else { return }
         inspectorState.eyeSaved = saved
         var text = "\(hidden ? "Hid" : "Showed") \(sentence)"
@@ -1194,7 +1195,6 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             return false
         }
         let fixes = LayerReorder.fixups(skin: skin, moving: ordered, to: before)
-        let files = [file] + fixes.map { skin.ownTarget(section: $0.section, key: $0.key).file }
         let label = layersLabel(ordered, title: true), sentence = layersLabel(ordered, title: false)
         let place: String
         let rest = skin.meters.map(\.name).filter { !moving.contains($0.lowercased()) }
@@ -1209,9 +1209,9 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             place = "behind \(before.map(displayName(ofSection:)) ?? "")"
         }
         pendingSelection = ordered
-        let done = perform("Move \(label)", files: files, message: nil) {
-            for e in fixes { _ = try skin.writeOwnOption(section: e.section, key: e.key, value: e.value) }
-            for name in ordered { _ = try skin.moveSection(name, before: before) }
+        let done = perform("Move \(label)", message: nil) {
+            fixes.map { skin.op(settingOwnOption: $0.key, of: $0.section, to: $0.value) }
+                + ordered.compactMap { skin.op(movingSection: $0, before: before) }
         }
         guard done else { return false }
         var text = "Moved \(sentence) \(place)."

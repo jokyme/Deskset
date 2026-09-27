@@ -57,7 +57,7 @@ extension AppSelfTest {
             let text = try String(contentsOf: ini, encoding: .utf8)
             try text.replacingOccurrences(of: "Update=1000", with: "Update=2000").write(to: ini, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: ini.path)
-            inspector.tick()
+            inspector.checkFilesOnDisk()
             guard let external = app.controller(for: "Deskset\\System"), external !== reloaded else {
                 return t.check(false, "refreshed after an external edit")
             }
@@ -66,7 +66,7 @@ extension AppSelfTest {
             // The skin writing its own file with !WriteKeyValue is not an edit.
             external.skin.execute("[!WriteKeyValue Variables Note hello]", from: nil)
             try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(10)], ofItemAtPath: ini.path)
-            inspector.tick()
+            inspector.checkFilesOnDisk()
             t.check(app.controller(for: "Deskset\\System") === external, "no refresh for !WriteKeyValue")
 
             app.deactivate(config: "Deskset\\System")

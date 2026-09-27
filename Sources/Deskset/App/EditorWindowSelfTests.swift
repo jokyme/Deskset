@@ -292,7 +292,7 @@ enum EditorWindowSelfTests {
             t.check(type(editor, "x", after: "Text=CPU!?\n", offset: 10), "typed")
             editor.saveSkinCode(nil)
             let committed = app.controller(for: "Deskset\\System")
-            editor.tick()
+            editor.checkFilesOnDisk()
             t.check(app.controller(for: "Deskset\\System") === committed, "no second refresh")
             t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
 
@@ -301,7 +301,7 @@ enum EditorWindowSelfTests {
             try text().replacingOccurrences(of: "Update=1000", with: "Update=2000").write(to: ini, atomically: true,
                                                                                          encoding: .utf8)
             try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: ini.path)
-            editor.tick()
+            editor.checkFilesOnDisk()
             t.equal(skin()?.settings.update, 2000, "live reload")
             t.check(editor.codeView.text.contains("Update=2000"), "the code pane follows")
             t.equal(editor.codeView.textView.selectedRange().location, caret.location, "the caret stays")
