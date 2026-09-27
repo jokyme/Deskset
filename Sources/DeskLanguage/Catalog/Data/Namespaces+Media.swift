@@ -9,7 +9,7 @@ extension CatalogData {
     static let nowPlayingAlternatives = [plugin("iTunesPlugin").approx(), plugin("WebNowPlaying").approx()]
 
     static func musicCommand(_ command: String) -> RainmeterMapping {
-        bang("!CommandMeasure", "NowPlaying \(command)").approx("sent to a NowPlaying measure")
+        commandMeasure("NowPlaying", command)
     }
 
     static let musicNamespace = namespace("music", "Music", "音乐", permission: "music", main: "title", [
@@ -92,7 +92,7 @@ extension CatalogData {
                 [plugin("NowPlaying")], keywords: ["NowPlaying", "music", "now playing", "音乐"], rank: 80))
 
     static func win7Audio(_ command: String) -> RainmeterMapping {
-        bang("!CommandMeasure", "Win7AudioPlugin \(command)").approx("sent to a Win7Audio measure")
+        commandMeasure("Win7AudioPlugin", command)
     }
 
     static let volumeNamespace = namespace("volume", "Volume", "音量", main: "level", [

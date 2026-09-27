@@ -32,7 +32,7 @@ extension CatalogData {
         function("round", "Round", "四舍五入", [sig(number(), arg("decimals", .plainNumber, def: "0", range: 0...10, whole: true,
                                                                   "How many decimals to keep", "保留几位小数"),
                                                   result: .sameAs(param: "x"))],
-                 doc: doc("Rounds, halves away from zero", "四舍五入", #"Text("{round(cpu.usage / 10)}")"#, [calc("Round(x, n)")],
+                 doc: doc("Rounds, halves away from zero", "四舍五入", #"Text("{round(cpu.usage / 10)}")"#, [calc("Round", "Round(x, n)")],
                           keywords: ["Round", "round", "rounding", "四舍五入"], rank: 60)),
         function("floor", "Round down", "向下取整", [sig(number(), result: .sameAs(param: "x"))],
                  doc: doc("Rounds down", "向下取整", #"Text("{floor(uptime / 1h)}")"#, [calc("Floor")],
@@ -145,7 +145,7 @@ extension CatalogData {
                userOnly: true, permission: "commands",
                doc: doc("Runs a command; its output is ignored. Option values in it reach the command as separate arguments, never as command text",
                         "运行一条命令，不用输出；命令里的选项值作为独立参数传入，不会变成命令文字", #".onClick { run("open -a Calculator") }"#,
-                        [plugin("RunCommand"), bang("!CommandMeasure", "RunCommand Run")],
+                        [plugin("RunCommand"), commandMeasure("RunCommand", "Run")],
                         keywords: ["RunCommand", "shell", "exec", "execute", "terminal", "运行命令"], rank: 30)),
         action("after", "After a delay", "等一会儿再做", [sig(
             pos("delay", .duration, range: 0...86_400, preview: "2s", "How long to wait, up to 24 hours", "等多久，最长 24 小时"))],

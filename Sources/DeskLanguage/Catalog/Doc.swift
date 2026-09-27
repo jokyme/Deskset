@@ -97,8 +97,11 @@ public struct RainmeterMapping: Sendable, Hashable {
     }
 
     /// How the mapping is written in Rainmeter, for search and hover help: `Meter=Bar`, `FontColor`,
-    /// `PowerState=Percent`, `!SetOption`.
+    /// `PowerState=Percent`, `[!SetOption …]`, `[!CommandMeasure … "Play"]`.
     public var spelling: String {
+        if case .bang = owner, let key {
+            return value.map { "[\(key) … \"\($0)\"]" } ?? "[\(key) …]"
+        }
         if let key {
             if let value { return "\(key)=\(value)" }
             return key
@@ -117,10 +120,11 @@ public struct RainmeterMapping: Sendable, Hashable {
         }
     }
 
-    /// The words of this mapping that people type when they look for it (key, value, meter or measure type).
+    /// The words of this mapping that people type when they look for it (key, value, meter or measure type); a
+    /// bang without its `!`.
     public var searchTerms: [String] {
         var terms: [String] = []
-        if let key { terms.append(key) }
+        if let key { terms.append(key.hasPrefix("!") ? String(key.dropFirst()) : key) }
         if let value { terms.append(value) }
         switch owner {
         case .meter(let type) where !type.isEmpty: terms.append(type)

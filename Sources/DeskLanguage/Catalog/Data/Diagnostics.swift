@@ -1703,7 +1703,7 @@ extension CatalogData {
             trigger: #"`.size(200, 100)` on the root of a `.small` widget"#,
             template: LocalizedText(
                 #"The widget's size comes from `info { size: .{preset} }`; `.{name}` on the outermost element is ignored."#,
-                #"组件的尺寸由 info 里的 size 决定；最外层元素上的 `.{name}` 不起作用。"#),
+                #"组件的尺寸由 `info { size: .{preset} }` 决定；最外层元素上的 `.{name}` 不起作用。"#),
             placeholders: ["preset": .code, "name": .code],
             fixIts: [
                 FixItSpec("remove"),

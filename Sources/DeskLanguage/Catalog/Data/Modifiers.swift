@@ -219,8 +219,8 @@ extension CatalogData {
                      context: ExampleContext(placement: .modifiers, attachTo: .circle))),
         mod("color", .shapesAndMeters, "Color", "颜色", [
             sig(pos("color", .color, facets: ["color"], preview: ".accent", "The color", "颜色")),
-            sig(arg("light", .color, required: true, facets: ["color"], "In light mode", "浅色模式下"),
-                arg("dark", .color, required: true, facets: ["color"], "In dark mode", "深色模式下"))],
+            sig(arg("light", .color, required: true, facets: ["color"], preview: ".black", "In light mode", "浅色模式下"),
+                arg("dark", .color, required: true, facets: ["color"], preview: ".white", "In dark mode", "深色模式下"))],
             colorKinds, "ISHC", card: .text,
             doc: doc("The main color: text, icon, bar or line", "主色：文字、图标、进度条或曲线", ".color(.dim)",
                      [meter("String", "FontColor"), meter("Bar", "BarColor"), meter("Line", "LineColor"),

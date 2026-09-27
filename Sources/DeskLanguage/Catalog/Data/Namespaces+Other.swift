@@ -61,11 +61,11 @@ extension CatalogData {
                        keywords: ["Size", "RecycleManager", "trash size", "bin size", "废纸篓大小"], rank: 25)),
         dataAction("open", "Open the Trash", "打开废纸篓", command: "OpenBin",
                    doc: doc("Opens the Trash", "打开废纸篓", ".onClick { trash.open() }",
-                            [bang("!CommandMeasure", "RecycleManager OpenBin").approx("sent to a RecycleManager measure")],
+                            [commandMeasure("RecycleManager", "OpenBin")],
                             keywords: ["OpenBin", "open trash", "打开废纸篓"], rank: 25)),
         dataAction("empty", "Empty the Trash", "清倒废纸篓", userOnly: true, command: "EmptyBin",
                    doc: doc("Empties the Trash (Finder asks first)", "清倒废纸篓（Finder 会先确认）", ".onClick { trash.empty() }",
-                            [bang("!CommandMeasure", "RecycleManager EmptyBin").approx("sent to a RecycleManager measure")],
+                            [commandMeasure("RecycleManager", "EmptyBin")],
                             keywords: ["EmptyBin", "empty trash", "clear bin", "清倒废纸篓"], rank: 25)),
     ], doc: doc("The Trash", "废纸篓", #"Text("{trash.count} items")"#, [plugin("RecycleManager")],
                 keywords: ["RecycleManager", "trash", "recycle bin", "废纸篓"], rank: 30))
@@ -102,7 +102,10 @@ extension CatalogData {
                      doc: doc(docText.0, docText.1, example, rm, keywords: keywords, rank: 20))
     }
 
-    static func calc(_ function: String) -> RainmeterMapping { measure("Calc", "Formula").noted(function) }
+    /// A function of Calc formulas (`Formula=Round(x, 1)`).
+    static func calc(_ function: String, _ note: String = "") -> RainmeterMapping {
+        RainmeterMapping(.measure(type: "Calc", plugin: nil), key: "Formula", value: function, note: note)
+    }
 
     static func angleArg() -> ParamSpec {
         pos("angle", .angle, preview: "45", "An angle: a plain number is degrees; other plain values need * 1° or * 1rad",
@@ -113,11 +116,11 @@ extension CatalogData {
 
     static let mathNamespace = namespace("math", "Maths", "数学", [
         mathFunction("sin", "Sine", "正弦", [angleArg()], .plainNumber, docText: ("The sine of an angle", "正弦"),
-                     example: #"Text("{math.sin(45)}")"#, rm: [calc("Sin (radians)")], keywords: ["Sin", "sine", "正弦"]),
+                     example: #"Text("{math.sin(45)}")"#, rm: [calc("Sin", "in radians")], keywords: ["Sin", "sine", "正弦"]),
         mathFunction("cos", "Cosine", "余弦", [angleArg()], .plainNumber, docText: ("The cosine of an angle", "余弦"),
-                     example: #"Text("{math.cos(45)}")"#, rm: [calc("Cos (radians)")], keywords: ["Cos", "cosine", "余弦"]),
+                     example: #"Text("{math.cos(45)}")"#, rm: [calc("Cos", "in radians")], keywords: ["Cos", "cosine", "余弦"]),
         mathFunction("tan", "Tangent", "正切", [angleArg()], .plainNumber, docText: ("The tangent of an angle", "正切"),
-                     example: #"Text("{math.tan(45)}")"#, rm: [calc("Tan (radians)")], keywords: ["Tan", "tangent", "正切"]),
+                     example: #"Text("{math.tan(45)}")"#, rm: [calc("Tan", "in radians")], keywords: ["Tan", "tangent", "正切"]),
         mathFunction("asin", "Arcsine", "反正弦", [plainArg()], .angle, docText: ("The angle whose sine is x", "反正弦"),
                      example: #"Text("{math.asin(0.5)}")"#, rm: [calc("Asin")], keywords: ["Asin", "arcsine", "反正弦"]),
         mathFunction("acos", "Arccosine", "反余弦", [plainArg()], .angle, docText: ("The angle whose cosine is x", "反余弦"),
@@ -134,7 +137,7 @@ extension CatalogData {
         mathFunction("log10", "Logarithm", "常用对数", [plainArg()], .plainNumber, docText: ("The base-10 logarithm", "以 10 为底的对数"),
                      example: #"Text("{math.log10(1000)}")"#, rm: [calc("Log")], keywords: ["Log", "log", "logarithm", "对数"]),
         mathFunction("power", "Power", "乘方", [plainArg("a"), plainArg("b")], .plainNumber, docText: ("a to the power b", "a 的 b 次方"),
-                     example: #"Text("{math.power(2, 10)}")"#, rm: [calc("**")], keywords: ["pow", "power", "exponent", "乘方"]),
+                     example: #"Text("{math.power(2, 10)}")"#, rm: [calc("**")], keywords: ["**", "pow", "power", "exponent", "乘方"]),
         mathFunction("sign", "Sign", "符号", [plainArg()], .plainNumber, docText: ("-1, 0 or 1 by the sign of x", "按 x 的正负返回 -1、0 或 1"),
                      example: #"Text("{math.sign(-5)}")"#, rm: [calc("Sgn")], keywords: ["Sgn", "sign", "符号"]),
         mathFunction("frac", "Fraction part", "小数部分", [plainArg()], .plainNumber, docText: ("The part after the point", "小数部分"),

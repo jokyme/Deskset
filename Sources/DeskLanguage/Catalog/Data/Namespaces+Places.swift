@@ -88,12 +88,13 @@ extension CatalogData {
                        keywords: ["LicenseURL", "MacWeather", "license link", "许可链接"], mac: true, rank: 10)),
             dataAction("refresh", "Retry the weather", "重新获取天气", command: "Refresh",
                        doc: doc("Tries again after a network failure", "网络失败后重试", ".onClick { weather.refresh() }",
-                                [bang("!CommandMeasure", "MacWeather Refresh").approx("sent to a MacWeather measure")],
+                                [commandMeasure("MacWeather", "Refresh")],
                                 keywords: ["Refresh", "retry", "reload", "update", "刷新"], mac: true, rank: 25)),
         ]
     }
 
-    static let weatherNamespace = namespace("weather", "Weather", "天气", instanceOf: "Weather", main: "now",
+    static let weatherNamespace = namespace("weather", "Weather", "天气", instanceOf: "Weather", permission: "location",
+                                            main: "now",
         weatherFields(automatic: true) + [
             dataFunction("at", "Weather for a place", "指定地点的天气", [sig(
                 pos("place", .string, role: .place, source: .literalOrOption, preview: #""Oslo""#,
@@ -175,7 +176,7 @@ extension CatalogData {
         ]
     }
 
-    static let sunNamespace = namespace("sun", "Sun", "太阳", instanceOf: "Sun", main: "sunrise",
+    static let sunNamespace = namespace("sun", "Sun", "太阳", instanceOf: "Sun", permission: "location", main: "sunrise",
         sunFields(automatic: true) + [
             dataFunction("at", "Sun at a place", "指定地点的太阳", [sig(
                 pos("place", .string, role: .place, source: .literalOrOption, preview: #""Reykjavík""#,

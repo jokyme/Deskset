@@ -60,7 +60,7 @@ extension CatalogData {
             doc: doc("Fills cells left to right, row by row", "网格：从左到右、一行一行地填",
                      #"Grid(columns: 7) { for day in month.days { Text("{day.number}") } }"#,
                      [anyMeter("X").approx("cells placed with hand-computed X and Y formulas")],
-                     keywords: ["LazyVGrid", "grid", "table", "cells", "matrix", "网格", "表格", "格子"], rank: 80)),
+                     keywords: ["X", "LazyVGrid", "grid", "table", "cells", "matrix", "网格", "表格", "格子"], rank: 80)),
         component("Freeform", .freeform, .containers, "Free layout", "自由摆放", [sig(
             arg("align", e("Alignment"), def: ".center", "Where children without a position are stacked",
                 "没有写位置的子元素叠放在哪里",
@@ -107,7 +107,8 @@ extension CatalogData {
                      [meter("String"), meter("String", "Text"), meter("String", "MeasureName")],
                      keywords: ["String", "label", "text", "string", "caption", "p", "span", "文字", "文本"], rank: 100)),
         component("Label", .label, .content, "Label", "图标文字", [sig(
-            pos("text", .string, role: .display, translatable: true, "The text after the icon", "图标后面的文字",
+            pos("text", .string, role: .display, translatable: true, preview: #""High load""#, "The text after the icon",
+                "图标后面的文字",
                 page: page(.content, "Text", "文字", .textField, .essential, long: #""High memory pressure""#)),
             arg("icon", .symbolName, required: true, preview: #""flame.fill""#, "The SF Symbol before the text",
                 "文字前面的 SF 符号", page: page(.content, "Symbol", "符号", .symbolPicker, .essential)))],
@@ -258,7 +259,7 @@ extension CatalogData {
 
     static let controlComponents: [ComponentSpec] = [
         component("Button", .button, .controls, "Button", "按钮", [sig(
-            pos("title", .string, role: .display, translatable: true, "The button's text", "按钮上的文字",
+            pos("title", .string, role: .display, translatable: true, preview: #""Next""#, "The button's text", "按钮上的文字",
                 page: page(.content, "Title", "标题", .textField, .essential, long: #""Open Activity Monitor""#)),
             arg("icon", .symbolName, "An SF Symbol before the text", "文字前面的 SF 符号",
                 page: page(.content, "Symbol", "符号", .symbolPicker)))],
@@ -268,9 +269,11 @@ extension CatalogData {
                            [meter("Button").approx("converted buttons become pictures with .hover and .pressed")],
                            keywords: ["Button", "button", "push button", "btn", "按钮"], mac: true, rank: 65)),
         component("Toggle", .toggle, .controls, "Switch", "开关", [sig(
-            pos("label", .string, role: .display, translatable: true, "The text next to the switch", "开关旁边的文字",
+            pos("label", .string, role: .display, translatable: true, preview: #""Show seconds""#, "The text next to the switch",
+                "开关旁边的文字",
                 page: page(.content, "Label", "标签", .textField, .essential)),
-            pos("isOn", .binding(.bool), "The yes/no value it shows and changes", "它显示并修改的是/否值",
+            pos("isOn", .binding(.bool), preview: "options.showSeconds", "The yes/no value it shows and changes",
+                "它显示并修改的是/否值",
                 page: page(.content, "Changes", "修改的值", .dataPicker, .essential)))],
                   backing: .native,
                   doc: doc("A system switch bound to a Bool", "系统开关，绑定一个是/否值",
@@ -279,7 +282,7 @@ extension CatalogData {
         component("Slider", .slider, .controls, "Slider", "滑块", [sig(
             pos("label", .string, required: false, role: .display, translatable: true, "Text shown before the slider",
                 "滑块前面的文字", page: page(.content, "Label", "标签", .textField)),
-            pos("value", .binding(.anyNumber), "The number it shows and changes", "它显示并修改的数",
+            pos("value", .binding(.anyNumber), preview: "volume.level", "The number it shows and changes", "它显示并修改的数",
                 page: page(.content, "Changes", "修改的值", .dataPicker, .essential)),
             arg("min", .anyNumber, system: .bindingMinimum, sameAs: "value", "The lowest value", "最小值",
                 page: page(.content, "Lowest", "最小值", .numberField)),
@@ -295,7 +298,7 @@ extension CatalogData {
         component("Input", .input, .controls, "Text field", "输入框", [sig(
             pos("label", .string, required: false, role: .display, translatable: true, "Text shown before the field",
                 "输入框前面的文字", page: page(.content, "Label", "标签", .textField)),
-            pos("text", .binding(.string), "The text it shows and changes", "它显示并修改的文字",
+            pos("text", .binding(.string), preview: "note", "The text it shows and changes", "它显示并修改的文字",
                 page: page(.content, "Changes", "修改的值", .dataPicker, .essential)),
             arg("placeholder", .string, def: #""""#, role: .display, translatable: true,
                 "Shown in the empty field", "输入框为空时显示的提示",
@@ -312,7 +315,8 @@ extension CatalogData {
 
     static let menuEntries: [ComponentSpec] = [
         component("Item", .item, .menuEntries, "Menu item", "菜单项", [sig(
-            pos("title", .string, role: .display, translatable: true, "The item's text", "菜单项的文字",
+            pos("title", .string, role: .display, translatable: true, preview: #""Open Calendar""#, "The item's text",
+                "菜单项的文字",
                 page: page(.content, "Title", "标题", .textField, .essential, long: #""Open Activity Monitor""#)),
             arg("checked", .bool, def: "false", "Shows a check mark", "显示勾选标记",
                 page: page(.content, "Checked", "打勾", .toggle)),
@@ -324,7 +328,7 @@ extension CatalogData {
                            keywords: ["ContextTitle", "ContextAction", "menu item", "context menu", "MenuItem", "菜单项"],
                            rank: 50, context: ExampleContext(parent: .menu))),
         component("Menu", .menu, .menuEntries, "Submenu", "子菜单", [sig(
-            pos("title", .string, role: .display, translatable: true, "The submenu's text", "子菜单的文字",
+            pos("title", .string, role: .display, translatable: true, preview: #""More""#, "The submenu's text", "子菜单的文字",
                 page: page(.content, "Title", "标题", .textField, .essential)))],
                   block: .menuItems(required: true), parents: .of(.menu),
                   doc: doc("A submenu", "子菜单",

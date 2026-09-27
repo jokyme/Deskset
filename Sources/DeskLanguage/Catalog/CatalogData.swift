@@ -93,6 +93,12 @@ enum CatalogData {
         RainmeterMapping(.bang, key: name, note: note)
     }
 
+    /// `[!CommandMeasure SomeMeasure "command"]` sent to a measure of `measureType`.
+    static func commandMeasure(_ measureType: String, _ command: String) -> RainmeterMapping {
+        RainmeterMapping(.bang, key: "!CommandMeasure", value: command, fidelity: .approximate,
+                         note: "sent to a \(measureType) measure")
+    }
+
     static func contextMenu(_ key: String, _ value: String? = nil) -> RainmeterMapping {
         RainmeterMapping(.contextMenu, key: key, value: value)
     }
