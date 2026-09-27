@@ -136,15 +136,18 @@ func runDeskScratch(_ t: TestRunner) {
             if !problems.isEmpty { print("    PROBLEMS: \(problems)") }
             if ProcessInfo.processInfo.environment["DESK_FORMAT"] != nil {
                 let formatted = Desk.formatted(tree)
+                let escaped = ProcessInfo.processInfo.environment["DESK_FORMAT"] == "escaped"
                 print("--- formatted:")
-                print(formatted.replacingOccurrences(of: " ", with: "·"))
+                print(escaped ? formatted.debugDescription : formatted.replacingOccurrences(of: " ", with: "·"))
                 let a = deskSignificantTokens(tree), b = deskSignificantTokens(deskParse(formatted))
                 if a != b {
                     let d = zip(a, b).enumerated().first { $0.element.0 != $0.element.1 }
                     print("!!! TOKENS DIFFER at \(d?.offset ?? -1): \(d.map { "\($0.element.0) vs \($0.element.1)" } ?? "counts \(a.count) vs \(b.count)")")
                 }
                 let again = Desk.formatted(deskParse(formatted))
-                if again != formatted { print("!!! NOT IDEMPOTENT:\n" + again.replacingOccurrences(of: " ", with: "·")) }
+                if again != formatted {
+                    print("!!! NOT IDEMPOTENT:\n" + (escaped ? again.debugDescription : again.replacingOccurrences(of: " ", with: "·")))
+                }
             }
         }
     }

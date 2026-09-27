@@ -72,7 +72,29 @@ final class LineTable: @unchecked Sendable {
             i += 1
         }
         self.starts = starts
-        newline = crlf > lf && crlf >= cr ? "\r\n" : cr > lf && cr > crlf ? "\r" : "\n"
+        newline = LineTable.dominant(lf: lf, crlf: crlf, cr: cr)
+    }
+
+    static func dominant(lf: Int, crlf: Int, cr: Int) -> String {
+        crlf > lf && crlf >= cr ? "\r\n" : cr > lf && cr > crlf ? "\r" : "\n"
+    }
+
+    /// The most frequent line break of a text (LF when tied).
+    static func dominantNewline(_ bytes: [UInt8]) -> String {
+        var lf = 0
+        var crlf = 0
+        var cr = 0
+        var i = 0
+        let n = bytes.count
+        while i < n {
+            if bytes[i] == 0x0A {
+                lf += 1
+            } else if bytes[i] == 0x0D {
+                if i + 1 < n, bytes[i + 1] == 0x0A { i += 1; crlf += 1 } else { cr += 1 }
+            }
+            i += 1
+        }
+        return dominant(lf: lf, crlf: crlf, cr: cr)
     }
 
     /// 0-based line index of `offset` (offsets past the end belong to the last line).

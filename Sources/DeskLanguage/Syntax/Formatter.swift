@@ -104,7 +104,9 @@ final class DeskFormatter {
     var topItems: [TopItem] = []
     /// Chain id by the index of its statement's first token.
     var chainByStart: [Int: Int] = [:]
-    let newline: String
+    /// The line break the formatter writes (F10): the file's most frequent one, settled on the output (see
+    /// `settleNewline`).
+    var newline: String
 
     // Decisions.
     var brokenBlocks: Set<Int> = []
@@ -127,7 +129,7 @@ final class DeskFormatter {
         self.tree = tree
         self.options = options
         bytes = Array(tree.text.utf8)
-        newline = DeskFormatter.dominantNewline(tree.root)
+        newline = tree.lines.newline
         annotate()
         // Where the parse used indentation to repair unbalanced braces, formatting would change what the repair
         // sees: those parts of the file are left as written.
@@ -141,28 +143,15 @@ final class DeskFormatter {
 
     // MARK: - Newlines
 
-    static func dominantNewline(_ root: SyntaxNode) -> String {
-        var lf = 0
-        var crlf = 0
-        var cr = 0
-        func count(_ pieces: [Trivia]) {
-            for piece in pieces {
-                guard case .newline(let kind) = piece else { continue }
-                switch kind {
-                case .lf: lf += 1
-                case .crlf: crlf += 1
-                case .cr: cr += 1
-                }
-            }
-        }
-        root.walkTokens { token, _ in
-            count(token.leadingTrivia)
-            count(token.trailingTrivia)
-            return true
-        }
-        if crlf > lf && crlf >= cr { return "\r\n" }
-        if cr > lf && cr > crlf { return "\r" }
-        return "\n"
+    /// Code left as written keeps its line breaks, so formatting can tip which line break is the most frequent (a
+    /// file ends with one line break instead of three): the output is then written with the line break that is the
+    /// most frequent in it, so formatting it again changes nothing. One more rendering always settles it, since the
+    /// number of line breaks the formatter writes does not depend on which it writes.
+    func settleNewline(_ output: inout Output) {
+        let settled = LineTable.dominantNewline(output.bytes)
+        guard settled != newline else { return }
+        newline = settled
+        output = render()
     }
 
     // MARK: - Annotation
@@ -1205,6 +1194,7 @@ final class DeskFormatter {
             layout()
             output = render()
         }
+        settleNewline(&output)
         // Already in the canonical style.
         if output.bytes == bytes { return [] }
         if verify(output) { return minimalEdits(output) }
@@ -1215,7 +1205,9 @@ final class DeskFormatter {
         brokenChains = []
         for k in toks.indices { toks[k].remove = false }
         layout()
+        newline = tree.lines.newline
         output = render()
+        settleNewline(&output)
         if output.bytes == bytes { return [] }
         if verify(output) { return minimalEdits(output) }
         if ProcessInfo.processInfo.environment["DESK_FORMAT_DEBUG"] != nil {

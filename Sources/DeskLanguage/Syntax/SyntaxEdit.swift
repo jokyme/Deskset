@@ -234,7 +234,7 @@ struct SyntaxEditor {
     init(tree: SyntaxTree) {
         self.tree = tree
         bytes = Array(tree.text.utf8)
-        newline = DeskFormatter.dominantNewline(tree.root)
+        newline = tree.lines.newline
     }
 
     func edit(_ range: Range<Int>, _ replacement: String) -> TextEdit {

@@ -136,6 +136,13 @@ func runDeskCorpusTests(_ t: TestRunner) {
                 t.check(false, "\(name): overlapping edits")
             }
         }
+        // Code left as written keeps its line breaks, which can tip the most frequent one once blank lines go: the
+        // formatter writes the line break that is the most frequent in its output (F10, found by fuzzing).
+        for tipping in [")\n)\nx = 1\r\r\r", ")\n)\n)\nx = 1\r\n\r\n\r\n\r\n", "x = 1\r)\n)\n\n\n"] {
+            let once = Desk.formatted(deskParse(tipping))
+            t.equal(Desk.formatted(deskParse(once)), once, tipping.debugDescription)
+        }
+        t.equal(Desk.formatted(deskParse(")\n)\nx = 1\r\r\r")), ")\n)\rx = 1\r")
         // On the whole corpus: idempotent, and the non-trivia tokens stay (apart from the separators turned into
         // line breaks and the normalised alternates), so translation keys never change.
         var inputs: [(String, String)] = deskFixtureTexts()
