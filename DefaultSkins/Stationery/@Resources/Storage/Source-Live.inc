@@ -322,6 +322,17 @@ Disabled=(#StorageShowsTrash# = 0)
 OnChangeAction=[!UpdateMeterGroup Trash][!Redraw]
 
 ; ---------------------------------------------------------------- the Small's volume
+[MeasureSmallPath]
+; "/" for the startup disk, "/Volumes/<name>" for another volume. The name is the user's, so it goes in String=,
+; which is taken literally. It comes before the measures that read it, so they find the volume on the first update
+; (after them, the first update read an empty Drive and showed "Not connected" for a second)
+Measure=String
+String=#StorageSmallVolume#
+RegExpSubstitute=1
+Substitute="^(.+)$":"/Volumes/\1","^$":"/"
+UpdateDivider=-1
+Disabled=(#StorageSlots# > 0)
+
 [MeasureSmallAvail]
 Measure=FreeDiskSpace
 Drive=[MeasureSmallPath]

@@ -276,16 +276,6 @@ Disabled=(#StorageSlots# = 0)
 Group=VolumeList
 
 ; ---------------------------------------------------------------- the Small's volume and its menu item
-[MeasureSmallPath]
-; "/" for the startup disk, "/Volumes/<name>" for another volume. The name is the user's, so it goes in String=,
-; which is taken literally
-Measure=String
-String=#StorageSmallVolume#
-RegExpSubstitute=1
-Substitute="^(.+)$":"/Volumes/\1","^$":"/"
-UpdateDivider=-1
-Disabled=(#StorageSlots# > 0)
-
 [MeasureSmallIndex]
 ; the chosen volume's entry, 0 for the startup disk (or when it is not in the list)
 Measure=Calc
