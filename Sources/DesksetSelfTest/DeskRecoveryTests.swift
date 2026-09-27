@@ -1,10 +1,12 @@
 import Foundation
 @testable import DeskLanguage
 
-/// Applies the first fix-it of the first diagnostic with `id` and returns the new tree.
+/// Applies the first fix-it that edits (skipping "Jump to line") of the first diagnostic with `id`; returns the new tree.
 private func fixed(_ tree: SyntaxTree, _ id: String, fixIt index: Int = 0) -> SyntaxTree? {
-    guard let d = tree.diagnostics.first(where: { $0.id.rawValue == id }), index < d.fixIts.count else { return nil }
-    return deskParse(TextEdit.apply(d.fixIts[index].edits, to: tree.text))
+    guard let d = tree.diagnostics.first(where: { $0.id.rawValue == id }) else { return nil }
+    let editing = d.fixIts.filter { !$0.edits.isEmpty }
+    guard index < editing.count else { return nil }
+    return deskParse(TextEdit.apply(editing[index].edits, to: tree.text))
 }
 
 func runDeskRecoveryTests(_ t: TestRunner) {
@@ -50,7 +52,7 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         for (text, ids, exact) in cases {
             let tree = deskParse(text)
             t.equal(deskIDs(tree), ids, text)
-            t.equal(deskTreeProblems(tree), [], text)
+            t.equal(deskTreeProblems(tree) + deskDiagnosticProblems(tree), [], text)
             if exact {
                 if let after = fixed(tree, ids[0]) {
                     t.equal(deskErrorIDs(after), [], "after the fix-it: \(after.text)")
@@ -83,6 +85,9 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         t.equal(deskIDs(tree), ["DK2001"])
         t.equal(tree.diagnostics[0].arguments["opener"], .code("Row {"))
         t.equal(tree.diagnostics[0].arguments["line"], .number(3))
+        t.equal(tree.diagnostics[0].fixIts.map(\.titleKey), ["jumpToLine", "insert"])
+        t.equal(tree.diagnostics[0].fixIts[0].titleArguments["line"], .number(3))
+        t.equal(tree.diagnostics[0].fixIts[0].edits, [], "a jump edits nothing")
         let column = tree.root.firstNode(.callStmt)!
         t.equal(column.children.last?.node?.kind, .modifierApp, "`.padding` stays on the Column")
         if let after = fixed(tree, "DK2001") {
@@ -141,7 +146,7 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         """
         let swiftTree = deskParse(swiftUI)
         t.equal(deskIDs(swiftTree), ["DK9105"])
-        t.equal(deskTreeProblems(swiftTree), [])
+        t.equal(deskTreeProblems(swiftTree) + deskDiagnosticProblems(swiftTree), [])
         // A pasted 300-line INI file: its lines merge, and one DK9015 stands for the rest.
         var ini = "[Rainmeter]\nUpdate=1000\nAccurateText=1\n\n[Variables]\nColor=255,255,255\n\n"
         var n = 0
@@ -155,7 +160,7 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         t.equal(iniTree.diagnostics.filter { $0.id == .foreignFile }.count, 1)
         t.equal(iniTree.location(of: iniTree.diagnostics[1].range.lowerBound).line, 21 + 3,
                 "DK9015 at the first foreign line past the twentieth (blank lines do not count)")
-        t.equal(deskTreeProblems(iniTree), [])
+        t.equal(deskTreeProblems(iniTree) + deskDiagnosticProblems(iniTree), [])
         // A foreign line that opens a block takes the block along, so its `}` is not left over.
         let function = deskParse("func total() -> Int {\n    let a = 1\n    return a\n}\nwidget {\n    Text(\"A\")\n}")
         t.equal(deskIDs(function), ["DK9012"])
@@ -185,6 +190,8 @@ func runDeskRecoveryTests(_ t: TestRunner) {
         let closure = deskParse("widget {\n    Text(\"x\").onChange(of: music.title) { newValue in log(newValue) }\n}")
         t.equal(deskIDs(closure), ["DK9111"])
         t.equal(fixed(closure, "DK9111")?.text, "widget {\n    Text(\"x\").onChange(of: music.title) { log(music.title) }\n}")
+        t.equal(closure.diagnostics.first?.fixIts.first?.titleArguments,
+                ["name": .code("newValue"), "value": .code("music.title")], "the title names both")
         // Words from other languages are ordinary names outside those patterns (D72).
         t.equal(deskIDs(deskParse("widget {\n    variable state = 0\n    state = state + 1\n    let = 3\n}")), [])
         // An INI line that parses as Desk stays Desk (the checker reports it); in a run it joins.
@@ -230,23 +237,23 @@ func runDeskRecoveryTests(_ t: TestRunner) {
             + String(repeating: "}\n", count: 80) + "}\n"
         let deepBlocks = deskParse(blocks)
         t.equal(deskIDs(deepBlocks), ["DK2028"])
-        t.equal(deskTreeProblems(deepBlocks), [])
+        t.equal(deskTreeProblems(deepBlocks) + deskDiagnosticProblems(deepBlocks), [])
         let parens = "widget {\n    Text(" + String(repeating: "(", count: 300) + "1" + String(repeating: ")", count: 300) + ")\n}\n"
         let deepParens = deskParse(parens)
         t.equal(deskIDs(deepParens), ["DK2028"])
-        t.equal(deskTreeProblems(deepParens), [])
+        t.equal(deskTreeProblems(deepParens) + deskDiagnosticProblems(deepParens), [])
         let prefixes = deskParse("widget {\n    computed x = " + String(repeating: "- ", count: 5000) + "1\n}\n")
         t.equal(deskIDs(prefixes), ["DK2028"])
-        t.equal(deskTreeProblems(prefixes), [])
+        t.equal(deskTreeProblems(prefixes) + deskDiagnosticProblems(prefixes), [])
         let elses = "widget {\n    if a { }" + String(repeating: " else if a { }", count: 2000) + "\n    Text(\"after\")\n}\n"
         let deepElses = deskParse(elses)
         t.equal(deskIDs(deepElses), ["DK2028"])
-        t.equal(deskTreeProblems(deepElses), [])
+        t.equal(deskTreeProblems(deepElses) + deskDiagnosticProblems(deepElses), [])
         t.equal(deepElses.root.allNodes(.callStmt).count, 1, "the statement after the chain survives")
         let ternaries = deskParse("widget {\n    computed x = " + String(repeating: "a ? b : ", count: 400) + "c\n}\n")
         t.equal(deskIDs(ternaries), ["DK2028"])
         let strings = deskParse("widget {\n    Text(" + String(repeating: "\"{", count: 60) + "x" + String(repeating: "}\"", count: 60) + ")\n}\n")
-        t.equal(deskTreeProblems(strings), [])
+        t.equal(deskTreeProblems(strings) + deskDiagnosticProblems(strings), [])
         // Diagnostics are sorted by position and the same on every parse.
         let noisy = deskParse("widget {\n    Text(“A”)。bold\n    x = a && b ||| c\n    #Name# ; ;\n}")
         let offsets = noisy.diagnostics.map(\.range.lowerBound)

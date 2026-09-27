@@ -895,9 +895,12 @@ struct Parser {
         // The `}` goes on its own line after the last line of the block's content.
         let at = i > open + 1 ? fullEnd(i - 1) : fullEnd(open)
         let insertion = edit(at..<at, "\n" + indent + "}")
+        let line = lineNumber(ofToken: open)
+        // "Jump to line {line}" has no edits: the editor moves to the opener, which is the diagnostic's range.
         report(.unclosedBlock, .error, textRange(open),
-               ["opener": .code(owner.head + " {"), "line": .number(lineNumber(ofToken: open))],
-               fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("}")], edits: [insertion])])
+               ["opener": .code(owner.head + " {"), "line": .number(line)],
+               fixIts: [FixIt(titleKey: "jumpToLine", titleArguments: ["line": .number(line)], edits: []),
+                        FixIt(titleKey: "insert", titleArguments: ["text": .code("}")], edits: [insertion])])
     }
 
     mutating func reportDepth(at j: Int) {

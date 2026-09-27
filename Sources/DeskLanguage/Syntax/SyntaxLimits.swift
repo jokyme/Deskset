@@ -47,11 +47,14 @@ public enum SyntaxSlot: String, Sendable, Hashable, CaseIterable {
 }
 
 /// The fix-it title keys and note keys the syntax layer uses. The catalog holds their text in both languages; its
-/// consistency test checks that every key listed here exists.
+/// consistency test checks that every key listed here exists. A fix-it without edits ("jumpToLine") is a navigation:
+/// the editor goes to the line in its `line` argument.
 public enum SyntaxMessageKeys {
     public static let fixItTitles: [String] = [
-        "insert", "replaceWith", "replaceWithSpace", "remove", "removeText", "addQuotes", "showBackslash",
-        "rewrite", "joinLines", "newLine", "useBraces", "moveNameToInfo", "removeClosureParameter",
+        "insert", "insertParentheses", "replaceWith", "replaceWithSpace", "remove", "removeText", "removeSpace",
+        "addQuotes", "showBackslash", "rewrite", "joinLines", "newLine", "jumpToLine", "moveNameToInfo",
+        "removeClosureParameter",
     ]
-    public static let notes: [String] = ["openedHere"]
+    /// The syntax layer reports every bracket problem at the opener, so it needs no secondary locations.
+    public static let notes: [String] = []
 }

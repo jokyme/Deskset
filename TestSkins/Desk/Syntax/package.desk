@@ -1,0 +1,16 @@
+package {
+    name: "Clocks"
+    author: "Deskset"
+    deskVersion: 1
+}
+
+options {
+    accent = ColorPicker("Accent", default: .accent)
+}
+
+style card { .padding(12).background(.glass).rounded(16) }
+style base { .font(.body).color(.text) }
+
+translations {
+    "zh-Hans" { "Accent": "强调色" }
+}

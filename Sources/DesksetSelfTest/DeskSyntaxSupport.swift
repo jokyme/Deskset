@@ -86,6 +86,45 @@ func deskTriviaProblem(_ piece: Trivia) -> String? {
     return nil
 }
 
+/// The shape of a tree's diagnostics: ranges inside the text on character boundaries; fix-it title and note keys the
+/// catalog knows (`SyntaxMessageKeys`); edits in the same file, inside the text, on character boundaries and not
+/// overlapping; the only fix-it without edits is "Jump to line", with its line.
+func deskDiagnosticProblems(_ tree: SyntaxTree) -> [String] {
+    let bytes = Array(tree.text.utf8)
+    func boundary(_ offset: Int) -> Bool {
+        offset >= 0 && offset <= bytes.count && (offset == bytes.count || bytes[offset] & 0xC0 != 0x80)
+    }
+    let titles = Set(SyntaxMessageKeys.fixItTitles)
+    let notes = Set(SyntaxMessageKeys.notes)
+    var problems: [String] = []
+    for d in tree.diagnostics {
+        let name = d.id.rawValue
+        if d.file != tree.file { problems.append("\(name) in another file") }
+        if !boundary(d.range.lowerBound) || !boundary(d.range.upperBound) { problems.append("\(name) range \(d.range)") }
+        for note in d.notes where !notes.contains(note.messageKey) { problems.append("\(name) note \(note.messageKey)") }
+        for fixIt in d.fixIts {
+            if !titles.contains(fixIt.titleKey) { problems.append("\(name) fix-it title \(fixIt.titleKey)") }
+            if fixIt.edits.isEmpty {
+                if fixIt.titleKey != "jumpToLine" || fixIt.titleArguments["line"] == nil {
+                    problems.append("\(name) \(fixIt.titleKey) has no edits")
+                }
+                continue
+            }
+            let edits = fixIt.edits.sorted { $0.range.lowerBound < $1.range.lowerBound }
+            var end = 0
+            for edit in edits {
+                if edit.file != tree.file { problems.append("\(name) edit in another file") }
+                if !boundary(edit.range.lowerBound) || !boundary(edit.range.upperBound) {
+                    problems.append("\(name) \(fixIt.titleKey) edit \(edit.range)")
+                }
+                if edit.range.lowerBound < end { problems.append("\(name) \(fixIt.titleKey) edits overlap") }
+                end = max(end, edit.range.upperBound)
+            }
+        }
+    }
+    return problems
+}
+
 /// Applies a fix-it's edits to a text.
 func deskApply(_ fixIt: FixIt, to text: String) -> String { TextEdit.apply(fixIt.edits, to: text) }
 

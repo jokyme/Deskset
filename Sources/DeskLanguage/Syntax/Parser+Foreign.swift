@@ -475,6 +475,10 @@ extension Parser {
                 var arguments: [String: DiagnosticArgument] = [:]
                 if match.fixTitle == "replaceWith", match.fixEdits.count == 1 {
                     arguments["text"] = .code(match.fixEdits[0].replacement)
+                } else if match.fixTitle == "removeClosureParameter" {
+                    // "Remove `{name} in` and use `{value}`".
+                    arguments["name"] = match.arguments["name"]
+                    arguments["value"] = match.arguments["value"]
                 }
                 fixIts.append(FixIt(titleKey: match.fixTitle ?? "rewrite", titleArguments: arguments,
                                     edits: match.fixEdits, group: matches.count > 1 ? group : nil))
