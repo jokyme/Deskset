@@ -346,6 +346,10 @@ extension Checker {
             }
             return mismatch()
         }
+        // `t * 9 / 5 + 32`: the °F formula by hand (DK4044), not a temperature plus a number needing a unit.
+        if kind == .plus, l.dimension == .temperature, r.plainLiteral == 32, reportManualConversion(node, dimension: .temperature) {
+            return result(l)
+        }
         // Temperatures (rows 3–5).
         if isAdd, kind != .percent {
             var ld = l.dimension, rd = r.dimension
@@ -446,30 +450,111 @@ extension Checker {
     /// DK4044 (info): dividing or multiplying a value with a unit by 100, 1000, 1024 or their powers.
     func checkManualConversion(_ kind: TokenKind, _ l: Val, _ leftNode: PositionedNode, _ r: Val,
                                _ rightNode: PositionedNode, _ node: PositionedNode) {
-        guard let d = l.dimension, d != .plain, let factor = r.plainLiteral else { return }
-        if manualConversionReported.contains(where: { leftNode.range.lowerBound <= $0.lowerBound && $0.upperBound <= leftNode.range.upperBound }) {
-            manualConversionReported.append(range(node))
-            return
+        guard let d = l.dimension, d != .plain, r.plainLiteral != nil else { return }
+        _ = reportManualConversion(node, dimension: d)
+    }
+
+    /// DK4044 for the conversion that ends at `node`, written by hand: `x / 1024 / 1024`, `cpu.usage / 100`,
+    /// `t * 9 / 5 + 32`. The whole chain is reported once (a longer chain replaces the report of its inner part),
+    /// with the Desk way of writing it; the rewrite is offered only where it is Desk: the content of an
+    /// interpolation, the value of `Text(…)` (which becomes `Text("{x, unit: …}")`), or a percentage anywhere.
+    @discardableResult
+    func reportManualConversion(_ node: PositionedNode, dimension d: Dimension) -> Bool {
+        // The steps, outermost first, down the left spine: `* n`, `/ n` and a final `+ 32`.
+        var steps: [(op: TokenKind, value: Double)] = []
+        var current = node
+        while current.kind == .binaryExpr {
+            let binary = BinaryExprSyntax(unchecked: current)
+            let op = binary.operator.token.kind
+            guard op == .star || op == .slash || (op == .plus && steps.isEmpty),
+                  let number = NumberLiteralSyntax(binary.right.node), number.unit == nil, let value = number.value else { break }
+            steps.append((op, value))
+            current = binary.left.node
         }
-        let powers: [Double] = [100, 1000, 1024, 1_000_000, 1_048_576, 1e9, 1_073_741_824]
-        let leftText = text(leftNode)
-        var fixed: String?
-        if powers.contains(factor) && (kind == .slash || kind == .star) {
-            switch d {
-            case .bytes, .bytesPerSecond:
-                let unit = factor >= 1e9 || factor == 1_073_741_824 ? ".gb" : factor >= 1_000_000 ? ".mb" : ".kb"
-                fixed = "{\(leftText), unit: \(unit)}"
-            case .percent:
-                fixed = leftText
-            default:
-                fixed = nil
+        guard !steps.isEmpty, current.range != node.range else { return false }
+        let base = current
+        let baseText = text(base)
+        var unit: String?
+        var plain = false
+        let inner = Array(steps.reversed())   // innermost first
+        switch d {
+        case .bytes, .bytesPerSecond:
+            guard !inner.contains(where: { $0.op == .plus }) else { return false }
+            var factor = 1.0
+            for step in inner { factor = step.op == .slash ? factor * step.value : factor / step.value }
+            let powers: [Double] = [1000, 1024, 1_000_000, 1_048_576, 1e9, 1_073_741_824, 1e12, 1_099_511_627_776]
+            if !powers.contains(factor) {
+                // `x * 1024` and the like: still a conversion by hand, shown as the unit it is closest to.
+                guard inner.allSatisfy({ [1000, 1024].contains($0.value) || [1_000_000, 1_048_576].contains($0.value) }) else { return false }
+                factor = inner.reduce(1.0) { $0 * $1.value }
             }
+            unit = factor >= 1e12 ? ".tb" : factor >= 1e9 ? ".gb" : factor >= 1e6 ? ".mb" : ".kb"
+        case .percent:
+            guard inner.count == 1, inner[0].value == 100, inner[0].op != .plus else { return false }
+            plain = true
+        case .temperature:
+            let shape = inner.map { "\($0.op == .star ? "*" : $0.op == .slash ? "/" : "+")\(Checker.numberText($0.value))" }
+            guard [["*9", "/5", "+32"], ["*9", "/5"], ["*1.8", "+32"], ["*1.8"], ["*9"]].contains(shape) else { return false }
+            unit = ".fahrenheit"
+        default:
+            return false
         }
-        if d == .temperature, kind == .star, factor == 1.8 || factor == 9 { fixed = "{\(leftText), unit: .fahrenheit}" }
-        guard let fixed else { return }
-        manualConversionReported.append(range(node))
-        report(.manualConversion, range(node), ["fixed": .code(fixed)],
-               fixIts: [fix("rewrite", [edit(range(node), fixed)])])
+        let fixed = plain ? baseText : "{\(baseText), unit: \(unit!)}"
+        // Where the rewrite is Desk.
+        var fixIts: [FixIt] = []
+        let ancestors = ancestorPath(of: node)
+        if plain {
+            fixIts.append(fix("rewrite", [edit(range(node), baseText)]))
+        } else if let parent = ancestors.last, parent.kind == .interpolation,
+                  InterpolationSyntax(unchecked: parent).value.node.range == node.range {
+            let options = InterpolationSyntax(unchecked: parent).formatOptions
+            if !options.contains(where: { $0.label.name == "unit" }) {
+                var edits = [edit(range(node), "\(baseText), unit: \(unit!)")]
+                // The unit written after it by hand (`{x / 1024 / 1024} MB`) is now part of the value's text.
+                let end = range(parent).upperBound
+                let after = text(end..<min(end + 4, tree.text.utf8.count))
+                let symbol = unit == ".fahrenheit" ? "°F" : unit!.dropFirst().uppercased()
+                for written in [" " + symbol, symbol] where after.uppercased().hasPrefix(written.uppercased()) {
+                    let length = written.utf8.count
+                    let next = text((end + length)..<min(end + length + 1, tree.text.utf8.count))
+                    if next.isEmpty || !(next.first!.isLetter || next.first!.isNumber) {
+                        edits.append(edit(end..<(end + length), ""))
+                    }
+                    break
+                }
+                fixIts.append(fix("rewrite", edits))
+            }
+        } else if ancestors.count >= 4, ancestors[ancestors.count - 1].kind == .argument,
+                  ArgumentSyntax(unchecked: ancestors[ancestors.count - 1]).label == nil,
+                  ancestors[ancestors.count - 2].kind == .argumentClause,
+                  let call = ancestors[ancestors.count - 3] as PositionedNode?,
+                  call.kind == .callStmt || call.kind == .callExpr,
+                  text(call).hasPrefix("Text("),
+                  ArgumentClauseSyntax(unchecked: ancestors[ancestors.count - 2]).arguments.first?.node.range == ancestors[ancestors.count - 1].range {
+            fixIts.append(fix("rewrite", [edit(range(node), "\"{\(baseText), unit: \(unit!)}\"")]))
+        }
+        // A longer chain replaces the report of its inner part.
+        let r = range(node)
+        let replaced = diagnostics.filter { $0.id == .manualConversion && r.contains($0.range.lowerBound) && $0.range != r }
+        if !replaced.isEmpty {
+            diagnostics.removeAll { d in replaced.contains { $0.range == d.range && $0.id == d.id } }
+            for d in replaced { reportedKeys.remove(diagnosticKey(d)) }
+        }
+        report(.manualConversion, r, ["fixed": .code(fixed)], fixIts: fixIts)
+        manualConversionReported.append(r)
+        return true
+    }
+
+    /// The nodes from the root down to `node`'s parent.
+    func ancestorPath(of node: PositionedNode) -> [PositionedNode] {
+        var path: [PositionedNode] = []
+        var current = tree.rootNode
+        while true {
+            guard let next = current.childNodes.first(where: { $0.range.lowerBound <= node.range.lowerBound && node.range.upperBound <= $0.range.upperBound }) else { return path }
+            path.append(current)
+            if next.range == node.range && next.kind == node.kind { return path }
+            current = next
+        }
     }
 
     // MARK: - Prefix

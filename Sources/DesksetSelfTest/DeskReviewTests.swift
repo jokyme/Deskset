@@ -516,4 +516,29 @@ func runDeskReviewTests(_ t: TestRunner) {
         let doubled = deskCheck("info { name: \"T\" }\n" + #"widget { Text("A").onClick { open("C:\\Program Files\\Steam\\steam.exe") } }"#)
         t.check(!doubled.diagnostics.contains { $0.message(in: .english).contains("C:Program") }, deskDescribe(doubled))
     }
+
+    t.suite("Desk: review — conversions by hand (findings 7, 60)") {
+        let cases: [(String, String, String?)] = [
+            ("Text(memory.used / 1024)", "{memory.used, unit: .kb}", #"Text("{memory.used, unit: .kb}")"#),
+            (#"Text("{memory.used / 1024 / 1024}")"#, "{memory.used, unit: .mb}", #"Text("{memory.used, unit: .mb}")"#),
+            (#"Text("{memory.used / 1024 / 1024} MB")"#, "{memory.used, unit: .mb}", #"Text("{memory.used, unit: .mb}")"#),
+            (#"Text("{memory.used / 1024} KB")"#, "{memory.used, unit: .kb}", #"Text("{memory.used, unit: .kb}")"#),
+            (#"Text("{sensors.cpuTemperature * 9 / 5 + 32}")"#, "{sensors.cpuTemperature, unit: .fahrenheit}",
+             #"Text("{sensors.cpuTemperature, unit: .fahrenheit}")"#),
+            (#"Text("{cpu.usage / 100}")"#, "cpu.usage", #"Text("{cpu.usage}")"#),
+            (#"Text("{memory.used / 1024, decimals: 1}")"#, "{memory.used, unit: .kb}", #"Text("{memory.used, unit: .kb, decimals: 1}")"#),
+        ]
+        for (code, fixed, rewritten) in cases {
+            let checked = deskCheck("info { name: \"T\" }\nwidget { \(code) }")
+            t.equal(checked.diagnostics.map(\.id.rawValue), ["DK4044"], code)
+            t.equal(checked.diagnostics.first?.message(in: .english), "Desk keeps the unit through arithmetic, so this converts twice. Write `\(fixed)`.", code)
+            let applied = deskApplyFix(checked, "DK4044")
+            t.equal(applied, rewritten.map { "info { name: \"T\" }\nwidget { \($0) }" }, code)
+            t.equal(applied.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [], "\(code) after the fix")
+        }
+        // Outside a string: the message only.
+        let computed = deskCheck("info { name: \"T\" }\nwidget {\n    computed x = memory.used / 1024 / 1024\n    Text(\"{x}\")\n}")
+        t.equal(computed.diagnostics.map(\.id.rawValue), ["DK4044"])
+        t.equal(computed.diagnostics.first?.fixIts.count, 0)
+    }
 }
