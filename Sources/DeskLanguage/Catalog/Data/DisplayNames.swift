@@ -184,6 +184,9 @@ extension CatalogData {
     static let slotNames: [DisplayNameSpec] = [
         dn("slot:expression", "a value", "一个值"),
         dn("slot:pickerChoice", "a Picker's choice", "Picker 的选项"),
+        dn("kind:fixedValue", "a value written out, such as text in quotes, a number or `.small`",
+           "直接写出的值，比如带引号的文字、数字或 `.small`"),
+        dn("kind:changingValue", "a value that changes (data, an option or an interpolation)", "会变的值（数据、选项或插值）"),
         dn("kind:pickerChoice", "a case such as `.sunday`, text in quotes, a number or `Choice(value, \"Label\")`",
            "`.sunday` 这样的名字、带引号的文字、数字或 `Choice(value, \"Label\")`"),
         dn("slot:modifier", "a modifier, such as `.font(…)`", "修饰符，比如 `.font(…)`"),

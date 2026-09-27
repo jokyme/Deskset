@@ -10,6 +10,9 @@ public enum PlaceholderKind: String, Sendable, Hashable {
     case code
     /// A display name from the catalog ("a number" / "数字").
     case displayName
+    /// A display name without the examples it carries ("a text style", not "a text style, such as `.caption`"), for
+    /// templates that list the choices themselves or put the name in the middle of a clause (§6.1).
+    case shortName
     /// A sentence or phrase in both languages.
     case text
     /// Text shown as it is in every language, without backquotes: a version, a language tag, a font or file name.

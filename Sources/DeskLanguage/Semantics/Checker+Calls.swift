@@ -259,6 +259,21 @@ extension Checker {
             break
         }
         if case .binding = param.type { return infer(node, context, expected: param.type) }
+        // `if:` is a Bool context like `if` (§4.3): DK4018 for a value that is not yes or no, DK4043 for `not` around
+        // a comparison with a value that can be missing. `1` and `0` keep the DK4001 mix-up (→ `true` / `false`).
+        if param.role == .condition, param.type == .bool {
+            var inner = context
+            inner.display = false
+            var v = inferValue(node, inner, expected: .bool)
+            checkNotWithMissing(node)
+            let openType = v.open.map { $0 < openSlots.count && openSlots[$0].kind == .type } ?? false
+            if !v.error, !v.isJson, v.type != .bool, v.type != .any, !openType,
+               !(v.plainLiteral == 0 || v.plainLiteral == 1) {
+                report(.conditionNotBool, range(node), ["text": .code(text(node))])
+                v.error = true
+            }
+            return v
+        }
         return inferValue(node, context, expected: param.type)
     }
 
@@ -714,7 +729,8 @@ extension Checker {
     /// How a use settles an open value ("used as a text size").
     func usedAs(param: ParamSpec?, type: DeskType, what: DiagnosticArgument) -> LocalizedText {
         let name = catalog.displayName(for: type)
-        return LocalizedText("used as \(name.en)", "用作\(name.zh)")
+        return LocalizedText("used as \(DiagnosticRenderer.shortName(name.en, .english))",
+                             "用作\(DiagnosticRenderer.shortName(name.zh, .simplifiedChinese))")
     }
 
     // MARK: - Label mix-ups (D132)

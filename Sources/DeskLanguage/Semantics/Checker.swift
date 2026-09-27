@@ -363,6 +363,8 @@ final class Checker {
     /// uses resolve to it and are renamed with it).
     var lastRefusedAsReserved = false
     var pendingReservedName: (index: Int, declaration: Range<Int>, newName: String)?
+    /// DK5007 fix-its completed at the end: the diagnostic, the style, the condition and where it is removed.
+    var styleConditionMoves: [(index: Int, style: String, condition: String, removal: Range<Int>)] = []
     /// Diagnostics left to the folder check (see `CheckedFile.folderPending`).
     var folderPending: [Diagnostic] = []
     /// Names the DK7016 fix-its have declared so far (each fix-it gets its own).
@@ -403,6 +405,7 @@ final class Checker {
             }
             checkStructure()
             completeReservedRenames()
+            completeStyleConditionMoves()
             enrichParserDiagnostics()
             root = rootElements.count == 1 ? rootElements[0].id : nil
             finish()

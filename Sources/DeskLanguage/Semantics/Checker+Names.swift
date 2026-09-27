@@ -566,6 +566,43 @@ extension Checker {
     }
 
     func reportStyleUsesVariable(_ name: String, at r: Range<Int>, style: String) {
-        report(.styleUsesVariable, r, ["name": .code(name), "fixed": .code(".style(\(style), if: …)")])
+        // The `if:` of a modifier in the style that reads it: the condition moves to where the style is used.
+        var condition: (text: String, removal: Range<Int>)?
+        if let info = styles[style], info.file == file {
+            var stack = [info.node]
+            while let node = stack.popLast(), condition == nil {
+                if node.kind == .modifierApp, let clause = ModifierAppSyntax(unchecked: node).arguments {
+                    let all = clause.arguments
+                    if let argument = all.first(where: { $0.label?.name == "if" && range($0.value.node).contains(r.lowerBound) }) {
+                        condition = (text(argument.value.node), argumentRemovalRange(argument, in: all))
+                    }
+                }
+                stack += node.childNodes
+            }
+        }
+        let fixed = ".style(\(style), if: \(condition?.text ?? "…"))"
+        guard report(.styleUsesVariable, r, ["name": .code(name), "fixed": .code(fixed)]) else { return }
+        if let condition {
+            styleConditionMoves.append((diagnostics.count - 1, style, condition.text, condition.removal))
+        }
+    }
+
+    /// Completes DK5007's fix-it once the style's uses are known: the condition leaves the style and goes on every
+    /// `.style(s)` (none when a use already has a condition).
+    func completeStyleConditionMoves() {
+        for move in styleConditionMoves where move.index < diagnostics.count {
+            guard let style = styles[move.style] else { continue }
+            var edits = [edit(move.removal, "")]
+            var ok = true
+            for (use, symbol) in symbols {
+                guard case .style(let id, let f) = symbol, id == style.id, f == file, use.kind == .identifierExpr else { continue }
+                let end = use.utf8Start + move.style.utf8.count
+                // Only a plain `.style(s)`: its `)` follows the name.
+                guard text(end..<(end + 1)) == ")" else { ok = false; break }
+                edits.append(edit(end..<end, ", if: \(move.condition)"))
+            }
+            guard ok, edits.count > 1 else { continue }
+            diagnostics[move.index].fixIts = [fix("moveConditionToStyle", edits)]
+        }
     }
 }

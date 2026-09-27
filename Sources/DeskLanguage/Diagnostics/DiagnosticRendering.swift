@@ -57,7 +57,7 @@ enum DiagnosticRenderer {
         if capitalize && language == .english {
             // A value that starts a sentence gets a capital letter.
             for name in DiagnosticSpec.placeholderNames(in: text)
-                where kinds[name] == .displayName || kinds[name] == .text || kinds[name] == .list {
+                where kinds[name] == .displayName || kinds[name] == .shortName || kinds[name] == .text || kinds[name] == .list {
                 guard startsSentence(name, in: text) else { continue }
                 if let value = values[name], let first = value.first, first.isLowercase {
                     let capitalized = first.uppercased() + value.dropFirst()
@@ -81,9 +81,11 @@ enum DiagnosticRenderer {
             return render(t.text(in: language), arguments: arguments, kinds: kinds, language: language, catalog: catalog,
                           capitalize: false)
         case .name(let id):
-            return catalog.displayText(id, in: language)
+            let full = catalog.displayText(id, in: language)
+            return kind == .shortName ? shortName(full, language) : full
         case .type(let t):
-            return catalog.displayText(for: t, in: language)
+            let full = catalog.displayText(for: t, in: language)
+            return kind == .shortName ? shortName(full, language) : full
         case .number(let n):
             return String(n)
         case .list(let items, let joiner):
@@ -94,6 +96,16 @@ enum DiagnosticRenderer {
             if joiner == .arrow { return rendered.joined(separator: " → ") }
             return DeskCatalog.joinedList(rendered, in: language, or: joiner == .or)
         }
+    }
+
+    /// A display name without its examples: up to ", such as" or ":" (English), "，比如" or "：" (Chinese).
+    static func shortName(_ name: String, _ language: DiagnosticLanguage) -> String {
+        let cuts = language == .english ? [", such as ", ": "] : ["，比如", "：", "，例如"]
+        var end = name.endIndex
+        for cut in cuts {
+            if let r = name.range(of: cut), r.lowerBound < end { end = r.lowerBound }
+        }
+        return String(name[..<end])
     }
 
     /// Whether `{name}` starts a sentence of `template` (not inside backquotes).

@@ -720,4 +720,47 @@ func runDeskReviewTests(_ t: TestRunner) {
             t.equal(applied.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [], "\(code) after the fix")
         }
     }
+
+    t.suite("Desk: review — style conditions, Bool contexts and message rendering (findings 24, 25, 26, 66)") {
+        // DK5007 moves the condition to the style's uses (finding 24).
+        let style = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"A\").style(s).onClick { page = 1 }\n}\nstyle s { .hidden(if: page > 0) }")
+        t.equal(style.diagnostics.first?.message(in: .english),
+                "Styles can use options and data, not `page`. Put the condition where the style is used: `.style(s, if: page > 0)`.")
+        let moved = deskApplyFix(style, "DK5007")
+        t.equal(moved, "info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"A\").style(s, if: page > 0).onClick { page = 1 }\n}\nstyle s { .hidden() }")
+        t.equal(moved.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        // `if:` is a Bool context (finding 25).
+        t.equal(deskCheck("info { name: \"T\", permissions: [.music] }\nwidget { Text(\"A\").hidden(if: not (music.player == \"Spotify\")) }")
+                    .diagnostics.map(\.id.rawValue), ["DK4043"])
+        let count = deskCheck("info { name: \"T\" }\nwidget {\n    variable count = 3\n    Text(\"A\").hidden(if: count)\n}")
+        t.equal(count.diagnostics.map(\.id.rawValue), ["DK4018"])
+        t.equal(count.diagnostics.first?.message(in: .english), "A condition must be yes or no; compare it, for example `count > 0`.")
+        t.equal(deskReviewIDs("widget { Text(\"A\").hidden(if: 1) }"), ["DK4001"], "1 keeps its true/false mix-up")
+        // Messages that list choices once, name duplicated data, and say why a value is not fixed (26, 66).
+        let size = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").hidden(if: widget.size == .huge) }")
+        t.equal(size.diagnostics.first?.message(in: .english), "`.huge` is not one of the choices for a widget size: `.small`, `.medium`, `.large` or `.fit`.")
+        t.equal(size.diagnostics.first?.message(in: .simplifiedChinese), "`.huge` 不是组件尺寸可选的值。可选：`.small`、`.medium`、`.large` 或 `.fit`。")
+        let font = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").font(.cation) }")
+        t.check(font.diagnostics.first?.message(in: .simplifiedChinese).hasPrefix("`.cation` 不是文字预设可选的值。可选：") == true,
+                font.diagnostics.first?.message(in: .simplifiedChinese) ?? "")
+        let decimal = deskCheck("info { name: \"T\" }\nwidget { Text(\"{cpu.usage, decimal: 1}%\") }")
+        t.check(decimal.diagnostics.first?.message(in: .simplifiedChinese).hasPrefix("`decimal:` 不是百分比的格式选项。") == true,
+                decimal.diagnostics.first?.message(in: .simplifiedChinese) ?? "")
+        let angle = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").rotate(50%) }")
+        t.check(angle.diagnostics.first?.message(in: .english).hasSuffix("but this is a percentage.") == true, angle.diagnostics.first?.message(in: .english) ?? "")
+        let twice = deskCheck("info { name: \"T\" }\nwidget { Text(\"{cpu.usage}% used\") }\ntranslations { \"zh-Hans\" { \"{cpu.usage}% used\": \"{cpu.usage}{cpu.usage}%\" } }")
+        t.equal(twice.diagnostics.first?.message(in: .english), "The translation must contain the same data as the original: `{cpu.usage}`.")
+        let fixed = deskCheck("info { name: \"T\", description: \"{cpu.usage}\" }\nwidget { Text(\"A\") }")
+        t.equal(fixed.diagnostics.first?.message(in: .english),
+                "`description` needs a value written out, such as text in quotes, a number or `.small`, but this is a value that changes (data, an option or an interpolation).")
+        // No rendered message has "，比如 `…`" directly followed by a Chinese character.
+        for (name, text) in deskFixtureTexts() {
+            for d in deskCheck(text, file: "F.desk").diagnostics {
+                let zh = d.message(in: .simplifiedChinese)
+                if let r = zh.range(of: #"，比如 `[^`]*`[\x{4E00}-\x{9FFF}]"#, options: .regularExpression) {
+                    t.check(false, "\(name): \(d.id.rawValue): \(zh[r])")
+                }
+            }
+        }
+    }
 }

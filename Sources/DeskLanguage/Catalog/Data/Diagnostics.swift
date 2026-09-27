@@ -748,7 +748,7 @@ extension CatalogData {
             template: LocalizedText(
                 #"`.{name}` is not one of the choices for {what}: {choices}."#,
                 #"`.{name}` 不是{what}可选的值。可选：{choices}。"#),
-            placeholders: ["name": .code, "what": .displayName, "choices": .list],
+            placeholders: ["name": .code, "what": .shortName, "choices": .list],
             fixIts: [
                 FixItSpec("didYouMean", offeredWhen: LocalizedText(#"When one close name fits"#, #"只有一个相近的名字符合时"#)),
             ]
@@ -1096,7 +1096,7 @@ extension CatalogData {
             template: LocalizedText(
                 #"{what} needs {expected}, but this is {actual}. {hint}"#,
                 #"{what}要的是{expected}，这里是{actual}。{hint}"#),
-            placeholders: ["what": .displayName, "expected": .displayName, "actual": .displayName, "hint": .text,
+            placeholders: ["what": .displayName, "expected": .displayName, "actual": .shortName, "hint": .text,
                            "width": .code, "height": .code],
             hints: [
                 HintSpec(key: "percentWidth", text: LocalizedText(#"Desk has no percentage widths; use `.fill` or a number."#, #"Desk 没有百分比宽度；用 `.fill` 或数字。"#)),
@@ -1192,7 +1192,7 @@ extension CatalogData {
             template: LocalizedText(
                 #"Can't {op} {a} and {b}: they measure different things."#,
                 #"{a}和{b}量的不是同一种东西，不能{op}。"#),
-            placeholders: ["op": .text, "a": .displayName, "b": .displayName]
+            placeholders: ["op": .text, "a": .shortName, "b": .shortName]
         ),
         DiagnosticSpec(
             id: .unitNeeded, severity: .error,
@@ -1348,7 +1348,7 @@ extension CatalogData {
             template: LocalizedText(
                 #"`{label}:` is not a format option for {type}. Options: {list}."#,
                 #"`{label}:` 不是{type}的格式选项。可用：{list}。"#),
-            placeholders: ["label": .code, "type": .displayName, "list": .list],
+            placeholders: ["label": .code, "type": .shortName, "list": .list],
             fixIts: [
                 FixItSpec("didYouMean", offeredWhen: LocalizedText(#"When one close name fits"#, #"只有一个相近的名字符合时"#)),
             ]

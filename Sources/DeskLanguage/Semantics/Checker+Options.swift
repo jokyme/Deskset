@@ -103,7 +103,9 @@ extension Checker {
             let val = inferValue(value, context, expected: spec.type)
             if val.error { continue }
             if !val.isConstant && !val.error {
-                report(.typeMismatch, range(value), ["what": .code(name), "expected": .type(spec.type), "actual": .type(val.type)])
+                // `info` fields are fixed values (§4.19): the type is right, the value changes.
+                report(.typeMismatch, range(value), ["what": .code(name), "expected": .name("kind:fixedValue"),
+                                                     "actual": .name("kind:changingValue")])
                 continue
             }
             if name == "size", val.isNumber {
@@ -834,7 +836,13 @@ extension Checker {
                 if original.sorted() != translated.sorted() {
                     let missing = original.filter { o in !translated.contains(o) }.map { DiagnosticArgument.code("{" + $0 + "}") }
                     let extra = translated.filter { t in !original.contains(t) }.map { DiagnosticArgument.code("{" + $0 + "}") }
-                    report(.translationDataMismatch, range(valueString.node), ["missing": .list(missing.isEmpty ? extra : missing, joiner: .and)])
+                    // Neither missing nor extra: one is written twice.
+                    var twice: [DiagnosticArgument] = []
+                    for key in Set(translated) where translated.filter({ $0 == key }).count != original.filter({ $0 == key }).count {
+                        twice.append(.code("{" + key + "}"))
+                    }
+                    let shown = !missing.isEmpty ? missing : !extra.isEmpty ? extra : twice
+                    report(.translationDataMismatch, range(valueString.node), ["missing": .list(shown, joiner: .and)])
                 }
             }
             translationTable.languages[normalized] = table
