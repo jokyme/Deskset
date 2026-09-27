@@ -33,6 +33,8 @@ Location=timezone
 DigitGroup=,
 ; The player the media widgets prefer and open: Music or Spotify (they show whichever of the two is playing)
 Player=Music
+; Network speeds: Bytes (KB/s, MB/s, as Activity Monitor) or Bits (Kbit/s, Mbit/s); totals stay in bytes
+NetUnit=Bytes
 
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
@@ -58,6 +60,12 @@ CalendarShowMoon=1
 ; Stationery.inc (right-click › Edit Cities…)
 ShowWorldClockSeconds=0
 
+; ---------------------------------------------------------------- Weather
+; The place to go back to after "Stop Using My Location"; every city typed into the city field is kept here too
+LastCity=timezone
+; 0 until you keep or change the place: a place taken from this Mac's time zone asks "Not your city?" until then
+LocationConfirmed=0
+
 ; ---------------------------------------------------------------- Now Playing
 ; Now Playing's card: Glass, or Artwork (the colour of the album cover)
 NowPlayingBackground=Glass
@@ -73,6 +81,39 @@ SpectrumMotion=Full
 ShowSpectrumTrack=1
 ; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots
 HideSpectrumWhenIdle=1
+
+; ---------------------------------------------------------------- System
+; The medium and large sizes' fourth ring: GPU (the graphics processor's load) or Swap (memory swapped to disk)
+SystemFourthRing=GPU
+; The large size's middle band: History (the CPU over the last 5 minutes) or Cores (the load of every core)
+SystemCPUView=History
+; The large size's Top Processes: 0 by CPU, 1 by memory
+SystemSortBy=0
+
+; ---------------------------------------------------------------- Network
+; 1 shows the Wi-Fi network's name in the header, which macOS allows only with Location Services (it asks once)
+ShowWiFiName=0
+; The medium size's last row: IP (this Mac's address), Router (the latency to the router, every 5 s) or Public (the
+; address the Internet sees, asked of api.ipify.org every 30 minutes)
+NetworkBottomRow=IP
+
+; ---------------------------------------------------------------- Storage
+; The small size's volume: its folder name in /Volumes (empty: the startup disk), and its name as Finder shows it,
+; kept for when the disk is not connected
+StorageSmallVolume=
+StorageSmallVolumeName=
+
+; ---------------------------------------------------------------- To Do
+; Completed items: 0 hidden, 1 shown (the items themselves are kept with what you type, in Stationery.inc)
+ToDoShowCompleted=0
+
+; ---------------------------------------------------------------- Launcher
+; The medium size's labels under the tiles: 1 shown, 0 hidden
+LaunchShowLabels=1
+
+; ---------------------------------------------------------------- Timer
+; A chime when the time is up: 1 on, 0 off
+TimerSound=1
 
 ; ---------------------------------------------------------------- Photo Frame
 ; How often a new photo comes, in seconds: 600 (every 10 minutes), 3600 (on the hour) or 86400 (at midnight)
