@@ -172,3 +172,19 @@ AlmanacTipDay=[MeasureDateFull]#CRLF#第 [MeasureWeekNumber] 周 · 全年第 [M
 AlmanacTipSun0=
 AlmanacTipSun1=#CRLF#日出 [MeasureSunriseTip] · 日落 [MeasureSunsetTip]
 AlmanacTipProgress=今年已过 [MeasureDaysPercent:0]% · 还剩 [MeasureDaysTo:0] 天#CRLF#每个点代表剩下的一周。
+
+; ---------------------------------------------------------------- Daybreak
+DaybreakMenuOpen=打开时钟
+DaybreakMenuTint1=数字天色：开
+DaybreakMenuTint0=数字天色：关
+DaybreakMenuCity0=城市…
+DaybreakMenuCity1=城市：[MeasurePlaceMenu]…
+DaybreakMenuCity2=选择城市…
+DaybreakNeedPlace=选择城市后显示日出和日落
+DaybreakNextSunrise=[MeasureNextText]后日出
+DaybreakNextSunset=[MeasureNextText]后日落
+DaybreakGoldenPrefix="黄金时刻 · "
+DaybreakTip0=选择城市后显示日出和日落。
+DaybreakTip1=日出 [MeasureSunriseTip] · 日落 [MeasureSunsetTip]#CRLF#昼长 [MeasureDayLengthText] · 黄金时刻从 [MeasureGoldenStartTip] 开始
+DaybreakTip2=极昼：今天太阳不落。
+DaybreakTip3=极夜：今天太阳不升。

@@ -182,3 +182,22 @@ AlmanacTipDay=[MeasureDateFull]#CRLF#Week [MeasureWeekNumber] · day [MeasureDay
 AlmanacTipSun0=
 AlmanacTipSun1=#CRLF#Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]
 AlmanacTipProgress=[MeasureDaysPercent:0]% of the year done · [MeasureDaysTo:0] days to go#CRLF#Each dot is one week left.
+
+; ---------------------------------------------------------------- Daybreak
+DaybreakMenuOpen=Open Clock
+DaybreakMenuTint1=Sky-Tinted Digits: On
+DaybreakMenuTint0=Sky-Tinted Digits: Off
+; the City item by the place's state: looking it up, found (the name, at most 21 characters), none
+DaybreakMenuCity0=City…
+DaybreakMenuCity1=City: [MeasurePlaceMenu]…
+DaybreakMenuCity2=Choose City…
+DaybreakNeedPlace=Choose a city for sunrise and sunset
+; the line in place of the date while the pointer is over the ruler
+DaybreakNextSunrise=Sunrise in [MeasureNextText]
+DaybreakNextSunset=Sunset in [MeasureNextText]
+DaybreakGoldenPrefix="Golden hour · "
+; the ruler's tooltip by state: 0 no place, 1 sunrise and sunset, 2 midnight sun, 3 polar night
+DaybreakTip0=Choose a city for sunrise and sunset.
+DaybreakTip1=Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]#CRLF#[MeasureDayLengthText] of daylight · golden hour from [MeasureGoldenStartTip]
+DaybreakTip2=Midnight sun: the sun does not set today.
+DaybreakTip3=Polar night: the sun does not rise today.

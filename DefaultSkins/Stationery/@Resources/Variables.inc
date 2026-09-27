@@ -51,3 +51,7 @@ SentenceShowTime=1
 AlmanacSize=Regular
 ; Sunrise and sunset on the second data line: 1 shown, 0 hidden (the year and the weeks left instead)
 AlmanacShowSun=1
+
+; ---------------------------------------------------------------- Daybreak
+; The base of the digits takes the sky's colour in twilight, the golden hours and at night: 1 on, 0 off (plain ink)
+DaybreakSkyTint=1
