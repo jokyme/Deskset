@@ -384,6 +384,7 @@ struct Lexer {
             return
         case 0x3B where !inInterpolation && isFirstOnLine(start): // ; at the start of a line
             let end = lineEnd(from: start)
+            checkCommentCharacters(start, end)
             emit(.foreignRainmeterComment, start, end, leading: leading, flags: .foreign, limit: limit)
             return
         case 0x3C where start + 3 < bytes.count && bytes[start + 1] == 0x21 && bytes[start + 2] == 0x2D
@@ -467,7 +468,7 @@ struct Lexer {
                              limit: Int) {
         let original = text(start, end)
         report(.fullWidthPunctuation, .error, start..<end, ["char": .code(original), "ascii": .code(ascii)],
-               fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code(ascii)],
+               fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(ascii)],
                               edits: [edit(start..<end, ascii)], group: "fullWidth")])
         emit(kind, start, end, leading: leading, flags: .fullWidth, limit: limit)
     }
@@ -649,7 +650,7 @@ struct Lexer {
         }
         if fullWidth {
             report(.fullWidthPunctuation, .error, start..<i, ["char": .code(written), "ascii": .code(name)],
-                   fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code(name)],
+                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(name)],
                                   edits: [edit(start..<i, name)], group: "fullWidth")])
         }
         if !inInterpolation, kind == .identifier, name == "script", braceDepth == 0 {
@@ -746,7 +747,7 @@ struct Lexer {
         if fullWidth {
             let ascii = digitText + (unit?.text ?? "")
             report(.fullWidthPunctuation, .error, start..<i, ["char": .code(text(start, i)), "ascii": .code(ascii)],
-                   fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code(ascii)],
+                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(ascii)],
                                   edits: [edit(start..<i, ascii)], group: "fullWidth")])
         }
         let significant = digitText.filter { $0 != "." }.drop { $0 == "0" }.count
@@ -781,7 +782,7 @@ struct Lexer {
             switch id {
             case .pxUnit:
                 report(.pxUnit, .error, range, ["number": .code(digits)],
-                       fixIts: [FixIt(titleKey: "removeUnit", titleArguments: ["text": .code("px")],
+                       fixIts: [FixIt(titleKey: "removeText", titleArguments: ["text": .code("px")],
                                       edits: [edit(unitRange, "")])])
             case .cssUnit:
                 var arguments: [String: DiagnosticArgument] = ["unit": .code(unit.text)]
@@ -792,18 +793,18 @@ struct Lexer {
                 let value = (Double(digits.hasPrefix(".") ? "0" + digits : digits) ?? 0) / 8
                 let number = Lexer.shortNumber(value)
                 report(.bitsUnit, .error, range, ["number": .code(number), "bytes": .code(bytesUnit)],
-                       fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code(number + bytesUnit)],
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(number + bytesUnit)],
                                       edits: [edit(range, number + bytesUnit)])])
             default:
                 let fixed = unit.suggestion ?? unit.text
                 report(.unitSpelling, .error, range, ["number": .code(digits), "unit": .code(fixed)],
-                       fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code(digits + fixed)],
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(digits + fixed)],
                                       edits: [edit(unitRange, fixed)])])
             }
         case .unknown:
             var fixIts: [FixIt] = []
             if let s = unit.suggestion {
-                fixIts.append(FixIt(titleKey: "replace", titleArguments: ["text": .code(digits + s)],
+                fixIts.append(FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(digits + s)],
                                     edits: [edit(unitRange, s)]))
             }
             report(.unknownUnit, .error, range,
@@ -839,12 +840,14 @@ struct Lexer {
                        fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("\"#")],
                                       edits: [edit(j..<j, "\"#")])])
             }
+            checkCommentCharacters(start, j)
             emit(.rawString, start, j, leading: leading, flags: closed ? [.raw] : [.raw, .unterminated], limit: limit)
             return
         }
         // `# note` at the start of a line: a comment from another language.
         if !inInterpolation, isFirstOnLine(start), start + 1 < bytes.count, bytes[start + 1] == 0x20 || bytes[start + 1] == 0x09 {
             let end = lineEnd(from: start)
+            checkCommentCharacters(start, end)
             emit(.foreignHashComment, start, end, leading: leading, flags: .foreign, limit: limit)
             return
         }
@@ -879,7 +882,9 @@ struct Lexer {
             if bytes[j] == 0x2D, bytes[j + 1] == 0x2D, bytes[j + 2] == 0x3E { end = j + 3; break }
             j += 1
         }
-        emit(.htmlComment, start, min(max(end, start + 4), bytes.count), leading: leading, flags: .foreign, limit: limit)
+        let stop = min(max(end, start + 4), bytes.count)
+        checkCommentCharacters(start, stop)
+        emit(.htmlComment, start, stop, leading: leading, flags: .foreign, limit: limit)
     }
 
     mutating func lexTripleQuote(leading: [Trivia], limit: Int) {
@@ -896,6 +901,7 @@ struct Lexer {
             flags.insert(.unterminated)
         }
         report(.tripleQuote, .error, start..<(start + 3))
+        checkCommentCharacters(start, end)
         emit(.tripleQuoteString, start, end, leading: leading, flags: flags, limit: limit)
     }
 
@@ -951,6 +957,7 @@ struct Lexer {
                 i += 1
             }
         }
+        checkCommentCharacters(start, min(end, n))
         emit(.opaqueBlock, start, min(end, n), leading: leading, limit: bytes.count)
     }
 
@@ -1248,7 +1255,7 @@ struct Lexer {
             case 0x7D:
                 if i + 1 < lineLimit, bytes[i + 1] == 0x7D { i += 2; continue }
                 report(.loneClosingBrace, .warning, i..<(i + 1),
-                       fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("}}")],
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("}}")],
                                       edits: [edit(i..<(i + 1), "}}")])])
                 i += 1
             default:
@@ -1273,14 +1280,14 @@ struct Lexer {
             if let c = closerRange { edits.append(edit(c, "\"")) }
             let content = text(start + openLength, closerRange?.lowerBound ?? result.end)
             report(.wrongQuoteStyle, .error, start..<result.end, ["text": .code(content)],
-                   fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("\"")], edits: edits)])
+                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("\"")], edits: edits)])
         default:
             var edits: [TextEdit] = []
             if !opener.isASCII { edits.append(edit(openerRange, "\"")) }
             if let c = closerRange, bytes[c.lowerBound] >= 0x80 { edits.append(edit(c, "\"")) }
             if !edits.isEmpty {
                 report(.fullWidthQuote, .error, edits[0].range,
-                       fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("\"")], edits: edits,
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("\"")], edits: edits,
                                       group: "fullWidth")])
             }
         }
@@ -1298,7 +1305,7 @@ struct Lexer {
         report(.unterminatedInterpolation, .error, i..<(i + 1),
                fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("}")],
                               edits: [edit(lineLimit..<lineLimit, "}")]),
-                        FixIt(titleKey: "replace", titleArguments: ["text": .code("{{")],
+                        FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{")],
                               edits: [edit(i..<(i + 1), "{{")])])
     }
 
@@ -1352,17 +1359,17 @@ struct Lexer {
             if j < lineLimit, bytes[j] == 0x7D {
                 let inner = text(next + 1, j)
                 report(.invalidEscape, .error, i..<(j + 1), ["c": .code("{")],
-                       fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("{{\(inner)}}")],
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{\(inner)}}")],
                                       edits: [edit(i..<(j + 1), "{{\(inner)}}")])])
                 return j + 1
             }
             report(.invalidEscape, .error, i..<(next + 1), ["c": .code("{")],
-                   fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("{{")],
+                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{")],
                                   edits: [edit(i..<(next + 1), "{{")])])
             return next + 1
         case 0x7D: // \}
             report(.invalidEscape, .error, i..<(next + 1), ["c": .code("}")],
-                   fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("}}")],
+                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("}}")],
                                   edits: [edit(i..<(next + 1), "}}")])])
             return next + 1
         case 0x28: // \(…): Swift interpolation
@@ -1428,7 +1435,7 @@ struct Lexer {
                 pos = at + length
                 if first {
                     report(.emptyInterpolation, .error, brace..<pos,
-                           fixIts: [FixIt(titleKey: "replace", titleArguments: ["text": .code("{{}}")],
+                           fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{}}")],
                                           edits: [edit(brace..<pos, "{{}}")])])
                 }
                 return pos

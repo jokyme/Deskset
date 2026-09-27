@@ -51,12 +51,17 @@ public enum SyntaxKind: String, Sendable, Hashable, CaseIterable {
 
 /// What a `foreignConstruct` node holds: a recognised line, fragment or block from another language.
 public enum ForeignKind: String, Sendable, Hashable, CaseIterable {
+    /// `[MeterCPU]` (DK9302), `Key=Value` (DK9301), `[!Bang …]` (DK9304), `; note` (DK9013), `#Name#` in an
+    /// expression (DK9303).
     case rainmeterSection, rainmeterOption, rainmeterBang, rainmeterComment, rainmeterVariable
+    /// `# note` (DK9014).
     case hashComment
+    /// `<div>` (DK9201), `<!-- note -->` (DK9014), `flex-direction: row;` (DK9202), `#clock {` (DK9203).
     case htmlTag, htmlComment, cssDeclaration, cssSelector
+    /// `let x = 1` (DK9104), `struct X: View {`, `import SwiftUI`, `return` (DK9105), `@State var` (DK9103),
+    /// `if let` (DK9110), `func f()`, `while … {` (DK9012), `\(…)` in text (DK9010), `{ value in` (DK9111).
     case swiftDeclaration, swiftStructure, swiftPropertyWrapper, swiftIfLet, functionSyntax, swiftInterpolation
-    case indexing
-    case otherDeclaration
+    case closureParameter
 
     /// Consecutive foreign lines of one family merge into one node.
     public var family: ForeignFamily {
@@ -65,9 +70,9 @@ public enum ForeignKind: String, Sendable, Hashable, CaseIterable {
         case .htmlTag, .htmlComment: return .html
         case .cssDeclaration, .cssSelector: return .css
         case .swiftDeclaration, .swiftStructure, .swiftPropertyWrapper, .swiftIfLet, .functionSyntax,
-             .swiftInterpolation, .indexing:
+             .swiftInterpolation, .closureParameter:
             return .swift
-        case .hashComment, .otherDeclaration: return .other
+        case .hashComment: return .other
         }
     }
 }
