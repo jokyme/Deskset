@@ -1288,6 +1288,9 @@ struct Lexer {
         var segment = i
         var closerRange: Range<Int>?
         var result: (end: Int, closed: Bool)
+        // Escapes, doubled braces and interpolations stay before a forced end (the curly-quote slip), so no token
+        // reaches past the string's closing mark.
+        let contentLimit = min(lineLimit, forcedEnd ?? lineLimit)
         loop: while true {
             if let f = forcedEnd, i >= f {
                 flushText(&segment, f)
@@ -1318,13 +1321,13 @@ struct Lexer {
             }
             switch b {
             case 0x5C:
-                i = lexEscape(at: i, lineLimit: lineLimit, windows: windows, segment: &segment)
+                i = lexEscape(at: i, lineLimit: contentLimit, windows: windows, segment: &segment)
             case 0x7B:
-                if i + 1 < lineLimit, bytes[i + 1] == 0x7B { i += 2; continue }
+                if i + 1 < contentLimit, bytes[i + 1] == 0x7B { i += 2; continue }
                 let beforeFlush = checkpoint()
                 let segmentBefore = segment
                 flushText(&segment, i)
-                let interpolationLimit = min(lineEnd(from: i), lineLimit, forcedEnd ?? lineLimit)
+                let interpolationLimit = min(lineEnd(from: i), contentLimit)
                 if depth < Lexer.maxStringDepth, !failedInterpolations.contains(i), interpolationWork < interpolationBudget,
                    let end = lexInterpolation(at: i, lineLimit: interpolationLimit, depth: depth + 1) {
                     i = end
@@ -1339,7 +1342,7 @@ struct Lexer {
                     i += 1
                 }
             case 0x7D:
-                if i + 1 < lineLimit, bytes[i + 1] == 0x7D { i += 2; continue }
+                if i + 1 < contentLimit, bytes[i + 1] == 0x7D { i += 2; continue }
                 report(.loneClosingBrace, .warning, i..<(i + 1),
                        fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("}}")],
                                       edits: [edit(i..<(i + 1), "}}")])])

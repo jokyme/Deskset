@@ -157,6 +157,12 @@ func runDeskLexerTests(_ t: TestRunner) {
         t.equal(lexIDs(slip), ["DK1001"])
         t.equal(kinds(slip), [.identifier, .lParen, .stringStart, .stringText, .stringEnd, .rParen, .dot,
                               .identifier, .lParen, .dot, .identifier, .rParen])
+        // Nothing in the string reaches past a closing mark found that way (found by fuzzing: `\(` ran past it).
+        for source in ["\"\\(”,\"\")", "Text(\"a\\u{41”)", "Text(\"a{x”)", "Text(\"a\\”)"] {
+            let tree = deskParse(source)
+            t.equal(deskTreeProblems(tree), [], source)
+            _ = Desk.formatted(tree)
+        }
         let broken = "Text(\"first\nsecond\")\n"
         t.equal(lexIDs(broken), ["DK1016"])
         t.equal(kinds(broken), [.identifier, .lParen, .stringStart, .stringText, .stringEnd, .rParen])

@@ -50,6 +50,37 @@ func deskVariants(_ text: String) -> [String] {
     return variants
 }
 
+/// The fuzz invariants (§9.3) for one input, and how long its parse took: the tree invariants, sorted and
+/// deterministic diagnostics, wrappers that read every slot, a formatter that keeps the tokens and is idempotent, and
+/// the time bound (100 ms per input in a release build, ten times that in a debug build).
+func deskFuzzProblems(_ text: String) -> (problems: [String], elapsed: Double) {
+    func timedParse() -> (SyntaxTree, Double) {
+        let start = ProcessInfo.processInfo.systemUptime
+        let tree = deskParse(text)
+        return (tree, ProcessInfo.processInfo.systemUptime - start)
+    }
+    #if DEBUG
+    let budget = 1.0
+    #else
+    let budget = 0.1
+    #endif
+    let (tree, firstTime) = timedParse()
+    // A parse over budget is timed again, so that a machine that paused the process is not taken for slow code.
+    let elapsed = firstTime > budget ? min(firstTime, timedParse().1) : firstTime
+    var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
+    let offsets = tree.diagnostics.map(\.range.lowerBound)
+    if offsets != offsets.sorted() { problems.append("diagnostics not sorted") }
+    if deskParse(text).diagnostics != tree.diagnostics { problems.append("not deterministic") }
+    // The formatter never breaks a file either (it may decline to format it).
+    let formatted = Desk.formatted(tree)
+    if deskSignificantTokens(deskParse(formatted)) != deskSignificantTokens(tree) {
+        problems.append("formatting changed tokens")
+    }
+    if Desk.formatted(deskParse(formatted)) != formatted { problems.append("formatting not idempotent") }
+    if elapsed > budget { problems.append("took \(elapsed) s") }
+    return (problems, elapsed)
+}
+
 func runDeskCorpusTests(_ t: TestRunner) {
     t.suite("Desk: round trip") {
         var inputs: [(String, String)] = deskFixtureTexts()
@@ -154,7 +185,19 @@ func runDeskCorpusTests(_ t: TestRunner) {
 
     t.suite("Desk: fuzz") {
         // 10,000 inputs per run, seeded by the CI run number (or DESK_FUZZ_SEED); DESK_FUZZ_COUNT for longer runs.
+        // DESK_FUZZ_DUMP=folder keeps the failing inputs (and, with DESK_FUZZ_TRACE, the one being checked);
+        // DESK_FUZZ_REPLAY=folder checks the inputs kept there instead.
         let environment = ProcessInfo.processInfo.environment
+        if let replay = environment["DESK_FUZZ_REPLAY"] {
+            let names = ((try? FileManager.default.contentsOfDirectory(atPath: replay)) ?? []).filter { $0.hasSuffix(".txt") }
+            for name in names.sorted() {
+                guard let data = FileManager.default.contents(atPath: replay + "/" + name) else { continue }
+                let (problems, elapsed) = deskFuzzProblems(String(decoding: data, as: UTF8.self))
+                print(String(format: "    %@: %.1f ms %@", name as NSString, elapsed * 1000, problems.description as NSString))
+                t.equal(problems, [], name)
+            }
+            return
+        }
         let seed = UInt64(environment["DESK_FUZZ_SEED"] ?? environment["GITHUB_RUN_NUMBER"] ?? "") ?? 1
         let count = Int(environment["DESK_FUZZ_COUNT"] ?? "") ?? 10_000
         var random = DeskRandom(seed: seed)
@@ -249,27 +292,18 @@ func runDeskCorpusTests(_ t: TestRunner) {
                 }
                 text = String(String.UnicodeScalarView(chars))
             }
-            let start = ProcessInfo.processInfo.systemUptime
-            let tree = deskParse(text)
-            let elapsed = ProcessInfo.processInfo.systemUptime - start
-            slowest = max(slowest, elapsed)
-            var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
-            let offsets = tree.diagnostics.map(\.range.lowerBound)
-            if offsets != offsets.sorted() { problems.append("diagnostics not sorted") }
-            if deskParse(text).diagnostics != tree.diagnostics { problems.append("not deterministic") }
-            // The formatter never breaks a file either (it may decline to format it).
-            let formatted = Desk.formatted(tree)
-            if deskSignificantTokens(deskParse(formatted)) != deskSignificantTokens(tree) {
-                problems.append("formatting changed tokens")
+            if let dump = environment["DESK_FUZZ_DUMP"], environment["DESK_FUZZ_TRACE"] != nil {
+                // The input being checked, so that a crash leaves it behind.
+                FileManager.default.createFile(atPath: dump + "/current.txt", contents: Data(text.utf8))
             }
-            if Desk.formatted(deskParse(formatted)) != formatted { problems.append("formatting not idempotent") }
-            // 100 ms per input in a release build, ten times that in a debug build (§9.3).
-            if elapsed > 1.0 { problems.append("took \(elapsed) s") }
+            let (problems, elapsed) = deskFuzzProblems(text)
+            slowest = max(slowest, elapsed)
             if !problems.isEmpty {
                 failures += 1
                 if failures <= 3 { t.check(false, "seed \(seed) input \(n): \(problems)\n\(text.debugDescription.prefix(600))") }
-                if let dump = ProcessInfo.processInfo.environment["DESK_FUZZ_DUMP"] {
+                if let dump = environment["DESK_FUZZ_DUMP"] {
                     FileManager.default.createFile(atPath: dump + "/input-\(n).txt", contents: Data(text.utf8))
+                    FileHandle.standardError.write(Data("input \(n): \(problems)\n".utf8))
                 }
             }
         }

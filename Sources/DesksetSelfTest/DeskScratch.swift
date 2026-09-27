@@ -132,7 +132,7 @@ func runDeskScratch(_ t: TestRunner) {
                 let fixes = d.fixIts.map { f in "\(f.titleKey){" + f.edits.map { "\($0.range)→\($0.replacement.debugDescription)" }.joined(separator: ",") + "}" }
                 print("    \(d.id.rawValue) \(d.severity) \(loc) \(d.arguments.keys.sorted().map { "\($0)=\(d.arguments[$0]!)" }.joined(separator: " ")) \(fixes.joined(separator: " "))")
             }
-            let problems = deskTreeProblems(tree)
+            let problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
             if !problems.isEmpty { print("    PROBLEMS: \(problems)") }
             if ProcessInfo.processInfo.environment["DESK_FORMAT"] != nil {
                 let formatted = Desk.formatted(tree)
