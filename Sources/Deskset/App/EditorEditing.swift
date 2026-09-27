@@ -705,12 +705,10 @@ extension InspectorWindowController {
         // The window moves with the files, on ⌘Z and ⌘⇧Z too — and only when they do (`widgetMove`).
         widgetMove = (before, target)
         defer { widgetMove = nil; fixedSizeGrowth = [] }
+        // Written: the window follows once the desktop copy loaded the files (the session moves it: `widgetMove`).
         endGeometry(keep: true, message: onDesktop
             ? "Moved everything \(content) and the widget \(widget), so nothing jumps on your desktop."
             : "Moved everything \(content) so nothing is cut off.", growth: .none)
-        // Written and reloaded (a new controller): the window follows.
-        guard let now = controller, now !== c else { return }
-        now.moveTo(x: target.x, y: target.y)
     }
 
     /// Whether the widget's Background (§5.2) no longer covers it: the widget grew past it.

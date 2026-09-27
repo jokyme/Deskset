@@ -12,6 +12,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
     /// it opens (`InspectorWindowController.queueOpening`). Headless it is built at once, unless a self-test asks.
     var opensEditorInSteps: Bool
+    /// The widget on the desktop follows the Studio a moment later (`EditingSession`): a step's reload waits for the
+    /// next turn of the run loop, after the canvas drew the step, and a gesture's previews reach it at most about 20
+    /// times a second. Headless it follows at once, unless a self-test asks.
+    var defersDesktopUpdates: Bool
 
     /// Running skins keyed by lowercased config name.
     private(set) var controllers: [String: SkinController] = [:]
@@ -60,6 +64,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.backupsDirectory = backupsDirectory
         self.presentsWindows = presentsWindows
         opensEditorInSteps = presentsWindows
+        defersDesktopUpdates = presentsWindows
         super.init()
     }
 

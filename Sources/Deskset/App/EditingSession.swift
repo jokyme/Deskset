@@ -82,8 +82,13 @@ final class EditingSession {
     private var awaitedReload: (key: String, deadline: Date)?
     static let ownReloadTimeout: TimeInterval = 5
     /// How long the phases of the last step, undo or redo took (milliseconds): `plan`, `apply`, `write`, `studio`
-    /// (loading the Studio's instance and the Studio following it), `desktop`, `total`.
+    /// (loading the Studio's instance and the Studio following it), `total` — and, once it ran, `desktop` (the reload of
+    /// the desktop copy, on the next turn of the run loop).
     private(set) var lastTimings: [String: Double] = [:]
+    /// The reload of the desktop copy waiting for the next turn of the run loop (`scheduleDesktopRefresh`), and where
+    /// the widget's window goes once it ran (a step that moves it with the files).
+    private var scheduledRefresh: Timer?
+    private var placeAfterRefresh: WidgetPosition?
 
     private static let signposter = OSSignposter(subsystem: "app.deskset.Deskset", category: "Studio")
 
@@ -97,6 +102,7 @@ final class EditingSession {
 
     deinit {
         updates?.cancel()
+        scheduledRefresh?.invalidate()
         watcher.stop()
     }
 
@@ -307,9 +313,10 @@ final class EditingSession {
             throw SessionError.notInEffect
         }
 
-        t0 = DispatchTime.now().uptimeNanoseconds
-        refreshDesktop()
-        lap("desktop", t0)
+        // The desktop copy loads the files on the next turn: the canvas shows the step first.
+        var place: WidgetPosition?
+        for case .moveWidget(_, let to) in commands { place = to }
+        scheduleDesktopRefresh(thenMoveTo: place)
         let t = Transaction(name: name, changes: changes, selectionBefore: selectionBefore, selectionAfter: selectionAfter,
                             commands: commands)
         if registersUndo { registerUndo(t) }
@@ -367,19 +374,13 @@ final class EditingSession {
             return
         }
         registerUndo(t, undo: !undo)
-        for command in t.commands {
-            switch command {
-            case .moveWidget(let from, let to):
-                let place = undo ? from : to
-                runningDesktop?.moveTo(x: place.x, y: place.y)
-            }
-        }
-        var t0 = DispatchTime.now().uptimeNanoseconds
+        var place: WidgetPosition?
+        for case .moveWidget(let from, let to) in t.commands { place = undo ? from : to }
+        let t0 = DispatchTime.now().uptimeNanoseconds
         if studioSkin != nil { reloadStudioSkin() }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
-        t0 = DispatchTime.now().uptimeNanoseconds
-        refreshDesktop()
-        timings["desktop"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+        // The window moves with the files once the desktop copy loaded them (next turn).
+        scheduleDesktopRefresh(thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))
     }
 
@@ -411,22 +412,79 @@ final class EditingSession {
 
     // MARK: Previews (a gesture in progress)
 
-    /// Shows option values without writing them, in the Studio's instance and on the desktop (`Skin.preview`).
+    /// How often a gesture's previews reach the desktop copy at most (design §9.1: about 20 times a second).
+    static let desktopPreviewInterval: TimeInterval = 0.05
+
+    /// Previews waiting for the desktop copy: the latest values of each section (in the order they came) and variable.
+    private var pendingSections: [(section: String, values: [String: String])] = []
+    private var pendingVariables: [String: String] = [:]
+    private var desktopPreviewTimer: Timer?
+    private var lastDesktopPreview: UInt64 = 0
+    /// How many previews reached the desktop copy (for the self-tests).
+    private(set) var desktopPreviewsSent = 0
+
+    /// Shows option values without writing them (`Skin.preview`): at once in the Studio's instance, which the canvas
+    /// draws; on the desktop at most `desktopPreviewInterval` apart, always with the latest values, and not while the
+    /// desktop copy cannot be seen (the step reloads it when the gesture ends).
     func preview(section: String, _ values: [String: String]) {
         studioSkin?.preview(section: section, values)
-        desktopSkin { $0.preview(section: section, values) }
+        if let i = pendingSections.firstIndex(where: { $0.section.caseInsensitiveCompare(section) == .orderedSame }) {
+            pendingSections[i].values.merge(values) { _, new in new }
+        } else {
+            pendingSections.append((section, values))
+        }
+        scheduleDesktopPreview()
     }
 
-    /// Shows `[Variables]` values without writing them (`Skin.previewVariables`).
+    /// Shows `[Variables]` values without writing them (`Skin.previewVariables`), as `preview` does.
     func previewVariables(_ values: [String: String]) {
         studioSkin?.previewVariables(values)
-        desktopSkin { $0.previewVariables(values) }
+        pendingVariables.merge(values) { _, new in new }
+        scheduleDesktopPreview()
     }
 
-    /// Ends every preview, here and on the desktop.
+    /// Ends every preview, here and on the desktop (what still waits for the desktop is dropped).
     func endPreview() {
         studioSkin?.endPreview()
+        desktopPreviewTimer?.invalidate()
+        desktopPreviewTimer = nil
+        pendingSections = []
+        pendingVariables = [:]
         desktopSkin { $0.endPreview() }
+    }
+
+    /// Sends the waiting previews now when the last ones went at least `desktopPreviewInterval` ago, else once that
+    /// much time has passed.
+    private func scheduleDesktopPreview() {
+        guard app.defersDesktopUpdates else { return flushDesktopPreview() }
+        guard desktopPreviewTimer == nil else { return }
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- lastDesktopPreview) / 1e9
+        let wait = Self.desktopPreviewInterval - elapsed
+        guard wait > 0 else { return flushDesktopPreview() }
+        let timer = Timer(timeInterval: wait, repeats: false) { [weak self] _ in
+            self?.desktopPreviewTimer = nil
+            self?.flushDesktopPreview()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        desktopPreviewTimer = timer
+    }
+
+    /// Sends the waiting previews to the desktop copy — unless its window cannot be seen (behind the Studio's, on
+    /// another space): they wait for the next preview then.
+    func flushDesktopPreview() {
+        desktopPreviewTimer?.invalidate()
+        desktopPreviewTimer = nil
+        guard !pendingSections.isEmpty || !pendingVariables.isEmpty, let c = runningDesktop else { return }
+        guard !app.presentsWindows || c.window.occlusionState.contains(.visible) else { return }
+        let sections = pendingSections, variables = pendingVariables
+        pendingSections = []
+        pendingVariables = [:]
+        lastDesktopPreview = DispatchTime.now().uptimeNanoseconds
+        desktopPreviewsSent += 1
+        desktopSkin { skin in
+            if !variables.isEmpty { skin.previewVariables(variables) }
+            for (section, values) in sections { skin.preview(section: section, values) }
+        }
     }
 
     /// Runs `work` on the desktop copy of the widget, where it is owned.
@@ -444,9 +502,17 @@ final class EditingSession {
     /// one's OnRefreshAction or first update — is its own write (`absorbDesktopWrites`), not a change made elsewhere
     /// that would reload it again (and again, when it writes something new each time it loads).
     func refreshDesktop() {
+        scheduledRefresh?.invalidate()
+        scheduledRefresh = nil
+        let place = placeAfterRefresh
+        placeAfterRefresh = nil
         guard let c = currentDesktop ?? desktop else { return }
         let state = Self.signposter.beginInterval("desktop.refresh")
-        defer { Self.signposter.endInterval("desktop.refresh", state) }
+        let start = DispatchTime.now().uptimeNanoseconds
+        defer {
+            Self.signposter.endInterval("desktop.refresh", state)
+            lastTimings["desktop"] = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+        }
         let key = SkinLibrary.normalizedConfigName(c.config).lowercased()
         awaitedReload = (key, Date().addingTimeInterval(Self.ownReloadTimeout))
         if app.controller(for: c.config) === c {
@@ -458,11 +524,39 @@ final class EditingSession {
         let loaded = app.controller(for: c.config)
         if loaded == nil || loaded === c { awaitedReload = nil }
         absorbDesktopWrites()
+        if let place { runningDesktop?.moveTo(x: place.x, y: place.y) }
     }
 
-    /// Whether a reload of the desktop copy the session asked for is still on its way (changes on disk wait for it: they
-    /// may be what it writes as it loads).
+    /// Reloads the desktop copy on the next turn of the run loop (`refreshDesktop`), once for a burst of steps, then
+    /// moves its window to `place` when given. On that turn AppKit draws the canvas first — it shows the Studio's
+    /// instance, loaded from memory — so a step reaches the canvas without waiting for the second load.
+    func scheduleDesktopRefresh(thenMoveTo place: WidgetPosition? = nil) {
+        if let place { placeAfterRefresh = place }
+        guard app.defersDesktopUpdates else { return refreshDesktop() }
+        guard scheduledRefresh == nil else { return }
+        // A timer, not the main queue: the run loop draws the windows before it waits for the timer, while it runs
+        // the main queue's work before drawing.
+        let timer = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
+            guard let self, self.scheduledRefresh != nil else { return }
+            self.refreshDesktop()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        scheduledRefresh = timer
+    }
+
+    /// Whether a reload of the desktop copy waits for its turn.
+    var hasScheduledDesktopRefresh: Bool { scheduledRefresh != nil }
+
+    /// Runs a reload of the desktop copy that waits for its turn now.
+    func flushDesktopRefresh() {
+        guard scheduledRefresh != nil else { return }
+        refreshDesktop()
+    }
+
+    /// Whether a reload of the desktop copy the session asked for is still on its way — waiting for its turn, or not
+    /// arrived yet (changes on disk wait for it: they may be what it writes as it loads).
     var isAwaitingOwnReload: Bool {
+        if scheduledRefresh != nil { return true }
         guard let awaited = awaitedReload else { return false }
         guard Date() < awaited.deadline else {
             awaitedReload = nil
@@ -473,7 +567,7 @@ final class EditingSession {
 
     /// The desktop copy `c` arrived: true when it is the reload the session asked for (which then ends).
     func takeOwnReload(_ c: SkinController) -> Bool {
-        guard isAwaitingOwnReload, let awaited = awaitedReload,
+        guard isAwaitingOwnReload, awaitedReload.map({ Date() < $0.deadline }) == true, let awaited = awaitedReload,
               awaited.key == SkinLibrary.normalizedConfigName(c.config).lowercased() else { return false }
         awaitedReload = nil
         return true

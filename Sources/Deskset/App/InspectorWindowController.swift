@@ -1974,7 +1974,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         }
         toast.show("Files changed on disk — reloaded the widget")
         session.reloadStudioSkin()
-        session.refreshDesktop()
+        session.scheduleDesktopRefresh()
     }
 
     /// The widget on the desktop wrote its files while the session reloaded it (`SessionChange.desktopWroteFiles`): the

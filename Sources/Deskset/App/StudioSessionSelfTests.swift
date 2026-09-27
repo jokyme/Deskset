@@ -14,6 +14,7 @@ enum StudioSessionSelfTests {
         filesElsewhereTests(t)
         ownWritesTests(t)
         followTests(t)
+        laterTests(t)
         insideTests(t)
         failureTests(t)
         typingTests(t)
@@ -479,6 +480,63 @@ enum StudioSessionSelfTests {
             editor.window?.close()
             // The window closed: the desktop copy's input goes nowhere.
             t.check(app.controller(for: "Studio\\Paged")?.skin.inputMirror == nil, "no mirror without a Studio")
+        }
+    }
+
+    static func laterTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: the desktop copy follows a moment later") {
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Later", ini) else { return }
+            guard let session = editor.session, let c = app.controller(for: "Studio\\Later") else {
+                return t.check(false, "loaded")
+            }
+            // As in the app (headless, the desktop copy follows at once).
+            app.defersDesktopUpdates = true
+            defer { app.defersDesktopUpdates = false }
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+            t.check(read(url).contains("FontSize=20\n"), "written")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20", "the canvas shows the step at once")
+            t.check(app.controller(for: "Studio\\Later") === c, "the desktop copy loads it on the next turn")
+            t.check(session.hasScheduledDesktopRefresh)
+            editor.checkFilesOnDisk()
+            t.check(editor.pendingDiskCheck, "changes on disk wait for it")
+            // A burst of steps: one reload.
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+            t.equal(reloads(app, "Studio\\Later", during: 0.3), 1, "one reload for both steps")
+            t.check(!session.hasScheduledDesktopRefresh)
+            t.equal(app.controller(for: "Studio\\Later")?.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "21")
+            t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
+            // Undo the same way (both steps came in one event: one undo step).
+            let before = app.controller(for: "Studio\\Later")
+            editor.window?.undoManager?.undo()
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
+            t.check(app.controller(for: "Studio\\Later") === before, "the desktop copy on the next turn")
+            // (After what else waits on the main thread: the inspector follows the undo first.)
+            t.check(AppSelfTest.spin(timeout: 5) { !session.hasScheduledDesktopRefresh }, "reloaded")
+            t.equal(app.controller(for: "Studio\\Later")?.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "12")
+            settle()
+
+            // A gesture: the first preview reaches the desktop at once, later ones at most 20 times a second — always
+            // the latest values; the Studio's instance shows every one.
+            guard let box = editor.skin?.meter(named: "MeterBox") else { return t.check(false, "box") }
+            editor.canvasSelectionChanged(["MeterBox"])
+            let start = NSPoint(x: editor.canvas.origin.x + CGFloat(box.frame.x + 5),
+                                y: editor.canvas.origin.y + CGFloat(box.frame.y + 5))
+            func desktopX() -> Double? { app.controller(for: "Studio\\Later")?.skin.meter(named: "MeterBox")?.frame.x }
+            editor.canvas.beginGesture(.move, at: start)
+            editor.canvas.drag(to: NSPoint(x: start.x + 10, y: start.y), snapping: false)
+            t.equal(desktopX(), 10, "the first preview at once")
+            editor.canvas.drag(to: NSPoint(x: start.x + 20, y: start.y), snapping: false)
+            editor.canvas.drag(to: NSPoint(x: start.x + 30, y: start.y), snapping: false)
+            t.equal(editor.skin?.meter(named: "MeterBox")?.frame.x, 30, "the canvas follows every event")
+            t.equal(desktopX(), 10, "the desktop copy waits")
+            _ = AppSelfTest.spin(timeout: 2) { desktopX() == 30 }
+            t.equal(desktopX(), 30, "then gets the latest values")
+            editor.canvas.endGesture(keep: false)
+            t.equal(desktopX(), 0, "a cancelled gesture ends the previews there too")
+            t.check(app.controller(for: "Studio\\Later")?.skin.isPreviewing == false)
+            t.check(!read(url).contains("X=30"), "nothing written")
+            editor.window?.close()
         }
     }
 
