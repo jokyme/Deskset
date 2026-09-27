@@ -742,6 +742,7 @@ func runSessionTests(_ t: TestRunner) {
               io.output(SKIN:MakePathAbsolute('out.txt'))
               io.write('x')
               io.close()
+              os.execute('open https://example.com')
             end
             function Update() return readBack .. '|' .. removed .. '|' .. gone .. '|' .. renamed .. '|' .. moved end
             """
@@ -784,6 +785,9 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(policy.recorded.filter { $0.kind == .file }.map(\.name), ["write", "write", "remove", "rename", "write", "write"],
                 "each recorded: \(policy.recorded.map(\.text))")
         t.check(policy.recorded.contains { $0.text.hasSuffix("Gen.inc") && $0.kind == .file })
+        t.check(policy.recorded.contains { $0.kind == .execute && $0.name == "https://example.com" },
+                "os.execute opening a page is recorded like an action's")
+        t.equal(host.executed.count, 0, "and not opened")
         // A new instance starts from the real files again.
         policy.resetFiles()
         t.check(!policy.fileSandbox!.holdsChange(of: dir.appendingPathComponent("log.txt").path), "forgotten")
@@ -798,6 +802,7 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(read("new.txt"), "old")
         t.equal(read("out.txt"), "x")
         t.equal(read("DownloadFile/logo.png"), "LOGO")
+        t.equal(host.executed.count, 1, "the page opens")
         desktop.close()
     }
 }

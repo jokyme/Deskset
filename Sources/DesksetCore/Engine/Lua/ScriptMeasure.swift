@@ -816,7 +816,10 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             }
         }
         if let target = tokens.first?.text, !target.isEmpty, isOpenable(target) {
-            skin.host?.skin(skin, execute: target, arguments: tokens.dropFirst().map(\.text))
+            let arguments = tokens.dropFirst().map(\.text)
+            // Like `["target"]` in an action: an instance that must not act outside the widget records it instead.
+            if let policy = skin.actionPolicy, !policy.skin(skin, allowsExecuting: target, arguments: arguments) { return 0 }
+            skin.host?.skin(skin, execute: target, arguments: arguments)
             return 0
         }
         if !loggedExecute {

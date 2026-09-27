@@ -240,15 +240,15 @@ final class EditingSession {
         updates = skin.executor.timer(interval: interval, leeway: SkinController.timerTolerance(interval), repeats: true) {
             [weak self, weak skin] in
             guard let self, let skin, self.studioSkin === skin else { return }
-            let stamps = self.diskSync.modificationDates()
             skin.update()
-            self.takeOwnWrites(since: stamps)
         }
     }
 
-    /// A safety net: a file of the widget the Studio's instance changed while it loaded or updated (its scripts and
-    /// downloads write to a private copy, so nothing should) is the session's own write — the text in memory takes it
-    /// and no live reload follows, which would load the instance again, and it would write again.
+    /// A safety net: a file of the widget the Studio's instance changed while it loaded (its scripts and downloads write
+    /// to a private copy, so nothing should) is the session's own write — the text in memory takes it (the Studio then
+    /// shows it: `reloaded`) and no live reload follows, which would load the instance again, and it would write again.
+    /// Not for its later updates: a save in another app landing in one of them (every 16 ms for a visualizer) would be
+    /// taken for the instance's and not reload the widget.
     private func takeOwnWrites(since stamps: [SourceFileID: Date]) {
         let now = diskSync.modificationDates(stamps.keys.map(\.url))
         let written = stamps.filter { now[$0.key] != $0.value }.map(\.key.url)
@@ -521,9 +521,10 @@ final class EditingSession {
         } else if app.controller(for: c.config) == nil, c.isStopped {
             app.activate(config: c.config, file: c.file)
         }
-        // Nothing loaded (the file is broken): no copy will arrive.
+        // Nothing loaded (the file is broken), or a copy on the main thread, which arrived inside the call when a
+        // Studio window follows it (none follows: nobody waits for it): nothing more will arrive.
         let loaded = app.controller(for: c.config)
-        if loaded == nil || loaded === c { awaitedReload = nil }
+        if loaded == nil || loaded === c || loaded?.skin.executor.isCurrent == true { awaitedReload = nil }
         absorbDesktopWrites()
         if let place { runningDesktop?.moveTo(x: place.x, y: place.y) }
     }
