@@ -1,0 +1,15 @@
+// DK4040 computedCycle
+//== expect: DK4040
+info { name: "T" }
+widget {
+    computed a = b + 1
+    computed b = a
+    Text("{a}")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed a = 1
+    computed b = a
+    Text("{b}")
+}

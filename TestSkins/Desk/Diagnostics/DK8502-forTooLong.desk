@@ -1,0 +1,7 @@
+// DK8502 forTooLong
+//== expect: DK8502
+info { name: "T" }
+widget { Column { for i in 1...2000 { Text("{i}") } } }
+//== negative
+info { name: "T" }
+widget { Column { for i in 1...200 { Text("{i}") } } }

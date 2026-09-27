@@ -1,0 +1,8 @@
+// DK9110 swiftIfLet
+//== expect: DK9110
+//== also: DK8102
+info { name: "T", permissions: [.music] }
+widget { if let t = music.title { Text(t) } }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { if not music.title.isMissing { Text(music.title) } }

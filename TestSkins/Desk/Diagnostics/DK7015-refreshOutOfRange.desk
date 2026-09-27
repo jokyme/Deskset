@@ -1,0 +1,7 @@
+// DK7015 refreshOutOfRange
+//== expect: DK7015
+info { name: "T", refresh: 100ms }
+widget { Text("A") }
+//== negative
+info { name: "T", refresh: 1s }
+widget { Text("A") }

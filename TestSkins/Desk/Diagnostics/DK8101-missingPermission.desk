@@ -1,0 +1,7 @@
+// DK8101 missingPermission
+//== expect: DK8101
+info { name: "T" }
+widget { Text("{music.title}") }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { Text("{music.title}") }

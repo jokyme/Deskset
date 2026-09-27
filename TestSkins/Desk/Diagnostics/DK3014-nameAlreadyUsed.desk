@@ -1,0 +1,15 @@
+// DK3014 nameAlreadyUsed
+//== expect: DK3014
+info { name: "T" }
+widget {
+    variable page = 0
+    variable page = 1
+    Text("{page}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    variable page2 = 1
+    Text("{page} {page2}")
+}

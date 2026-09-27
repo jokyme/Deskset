@@ -1,0 +1,7 @@
+// DK5014 buttonWithoutAction
+//== expect: DK5014
+info { name: "T" }
+widget { Button("Next") }
+//== negative
+info { name: "T" }
+widget { Button("Next").onClick { log("next") } }

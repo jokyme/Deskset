@@ -1,0 +1,7 @@
+// DK3017 componentLowercase
+//== expect: DK3017
+info { name: "T" }
+widget { Column { text("A") } }
+//== negative
+info { name: "T" }
+widget { Column { Text("A") } }

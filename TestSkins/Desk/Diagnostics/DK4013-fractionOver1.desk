@@ -1,0 +1,7 @@
+// DK4013 fractionOver1
+//== expect: DK4013
+info { name: "T" }
+widget { Text("A").opacity(60) }
+//== negative
+info { name: "T" }
+widget { Text("A").opacity(60%) }

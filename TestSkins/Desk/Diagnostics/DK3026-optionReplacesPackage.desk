@@ -1,0 +1,12 @@
+// DK3026 optionReplacesPackage
+//== expect: DK3026
+info { name: "T" }
+options { accent = ColorPicker("Accent") }
+widget { Text("A").color(options.accent) }
+//== negative
+info { name: "T" }
+options { accent2 = ColorPicker("Accent") }
+widget { Text("A").color(options.accent).background(options.accent2) }
+//== package
+package { name: "P" }
+options { accent = ColorPicker("Accent") }

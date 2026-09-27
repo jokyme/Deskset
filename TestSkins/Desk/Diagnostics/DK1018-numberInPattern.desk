@@ -1,0 +1,9 @@
+// DK1018 numberInPattern
+//== expect: DK1018
+info { name: "T" }
+options { code = Input("Code") }
+widget { Text("A").hidden(if: not options.code.matches("\\d{3}")) }
+//== negative
+info { name: "T" }
+options { code = Input("Code") }
+widget { Text("A").hidden(if: not options.code.matches(#"\d{3}"#)) }

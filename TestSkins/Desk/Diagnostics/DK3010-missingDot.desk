@@ -1,0 +1,7 @@
+// DK3010 missingDot
+//== expect: DK3010
+info { name: "T" }
+widget { Text("A").font(caption) }
+//== negative
+info { name: "T" }
+widget { Text("A").font(.caption) }

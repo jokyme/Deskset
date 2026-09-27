@@ -1,0 +1,7 @@
+// DK1021 pxUnit
+//== expect: DK1021
+info { name: "T" }
+widget { Text("A").padding(18px) }
+//== negative
+info { name: "T" }
+widget { Text("A").padding(18) }

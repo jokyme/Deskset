@@ -1,0 +1,8 @@
+// DK2015 unknownBlock
+//== expect: DK2015
+info { name: "T" }
+settings { a: 1 }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

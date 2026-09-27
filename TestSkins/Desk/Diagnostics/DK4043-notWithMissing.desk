@@ -1,0 +1,7 @@
+// DK4043 notWithMissing
+//== expect: DK4043
+info { name: "T", permissions: [.music] }
+widget { if not (music.player == "Spotify") { Text("A") } }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { if music.player != "Spotify" { Text("A") } }

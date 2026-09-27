@@ -1,0 +1,15 @@
+// DK4006 notAssignable
+//== expect: DK4006
+info { name: "T" }
+widget {
+    variable page = 0
+    computed next = page + 1
+    Text("{next}").onClick { next = 0 }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    computed next = page + 1
+    Text("{next}").onClick { page = 0 }
+}

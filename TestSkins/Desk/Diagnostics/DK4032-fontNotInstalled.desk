@@ -1,0 +1,8 @@
+// DK4032 fontNotInstalled
+//== expect: DK4032
+//== context: fonts
+info { name: "T" }
+widget { Text("A").font("Futur", 13) }
+//== negative
+info { name: "T" }
+widget { Text("A").font("Futura", 13) }

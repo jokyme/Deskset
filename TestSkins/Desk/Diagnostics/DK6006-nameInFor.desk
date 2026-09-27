@@ -1,0 +1,7 @@
+// DK6006 nameInFor
+//== expect: DK6006
+info { name: "T" }
+widget { Column { for d in disks { Text(d.name).name(cell) } } }
+//== negative
+info { name: "T" }
+widget { Column { for d in disks { Text(d.name) } } }

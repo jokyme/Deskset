@@ -1,0 +1,13 @@
+// DK2026 assignmentInCondition
+//== expect: DK2026
+info { name: "T" }
+widget {
+    variable page = 0
+    if page = 3 { Text("A") }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    if page == 3 { Text("A") }
+}

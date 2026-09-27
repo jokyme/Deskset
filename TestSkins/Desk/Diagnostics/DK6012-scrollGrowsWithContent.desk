@@ -1,0 +1,7 @@
+// DK6012 scrollGrowsWithContent
+//== expect: DK6012
+info { name: "T" }
+widget { Scroll { Text("A") } }
+//== negative
+info { name: "T" }
+widget { Scroll { Text("A") }.height(200) }

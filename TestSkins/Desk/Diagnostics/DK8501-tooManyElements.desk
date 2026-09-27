@@ -1,0 +1,7 @@
+// DK8501 tooManyElements
+//== expect: DK8501
+info { name: "T" }
+widget { Column { for a in 1...100 { for b in 1...100 { Text("{a}{b}") } } } }
+//== negative
+info { name: "T" }
+widget { Column { for a in 1...10 { for b in 1...10 { Text("{a}{b}") } } } }

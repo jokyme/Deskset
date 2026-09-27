@@ -1,0 +1,7 @@
+// DK5024 backgroundOnShape
+//== expect: DK5024
+info { name: "T" }
+widget { Circle().background(.red) }
+//== negative
+info { name: "T" }
+widget { Circle().fill(.red) }

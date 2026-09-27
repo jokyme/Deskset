@@ -1,0 +1,8 @@
+// DK1008 invalidEncoding
+//== expect: DK1008
+//== generate: invalidUTF8
+info { name: "T" }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

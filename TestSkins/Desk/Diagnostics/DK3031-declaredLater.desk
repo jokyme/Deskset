@@ -1,0 +1,15 @@
+// DK3031 declaredLater
+//== expect: DK3031
+info { name: "T" }
+widget {
+    variable total = count * 2
+    variable count = 0
+    Text("{total}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable count = 0
+    variable total = count * 2
+    Text("{total}")
+}

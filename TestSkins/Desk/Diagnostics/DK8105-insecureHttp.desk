@@ -1,0 +1,7 @@
+// DK8105 insecureHttp
+//== expect: DK8105
+info { name: "T", network: ["x.com"] }
+widget { Text("{web.json("http://x.com/a").b}") }
+//== negative
+info { name: "T", network: ["x.com"] }
+widget { Text("{web.json("https://x.com/a").b}") }

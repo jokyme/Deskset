@@ -1,0 +1,7 @@
+// DK8104 unusedHost
+//== expect: DK8104
+info { name: "T", network: ["x.com"] }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

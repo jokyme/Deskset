@@ -1,0 +1,8 @@
+// DK2019 packageInWidget
+//== expect: DK2019
+info { name: "T" }
+package { name: "P" }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

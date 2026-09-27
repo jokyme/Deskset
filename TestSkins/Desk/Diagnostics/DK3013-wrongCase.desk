@@ -1,0 +1,7 @@
+// DK3013 wrongCase
+//== expect: DK3013
+info { name: "T" }
+widget { Text("{Cpu.usage}") }
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}") }

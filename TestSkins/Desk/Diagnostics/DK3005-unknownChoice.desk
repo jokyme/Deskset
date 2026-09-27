@@ -1,0 +1,7 @@
+// DK3005 unknownChoice
+//== expect: DK3005
+info { name: "T" }
+widget { Text("A").font(.cation) }
+//== negative
+info { name: "T" }
+widget { Text("A").font(.caption) }

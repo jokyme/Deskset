@@ -1,0 +1,8 @@
+// DK8503 fileTooLarge
+//== expect: DK8503
+//== generate: hugeFile
+info { name: "T" }
+
+//== negative
+info { name: "T" }
+widget { Text("A") }

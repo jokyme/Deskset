@@ -1,0 +1,7 @@
+// DK9002 symbolicOr
+//== expect: DK9002
+info { name: "T" }
+widget { if cpu.usage > 5 || memory.usage > 5 { Text("A") } }
+//== negative
+info { name: "T" }
+widget { if cpu.usage > 5 or memory.usage > 5 { Text("A") } }

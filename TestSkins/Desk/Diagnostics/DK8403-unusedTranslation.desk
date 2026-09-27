@@ -1,0 +1,13 @@
+// DK8403 unusedTranslation
+//== expect: DK8403
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "Memory": "内存" }
+}
+//== negative
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "CPU": "处理器" }
+}

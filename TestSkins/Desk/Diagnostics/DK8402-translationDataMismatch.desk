@@ -1,0 +1,13 @@
+// DK8402 translationDataMismatch
+//== expect: DK8402
+info { name: "T" }
+widget { Text("{cpu.usage}% used") }
+translations {
+    "zh-Hans" { "{cpu.usage}% used": "已用" }
+}
+//== negative
+info { name: "T" }
+widget { Text("{cpu.usage}% used") }
+translations {
+    "zh-Hans" { "{cpu.usage}% used": "已用 {cpu.usage}%" }
+}

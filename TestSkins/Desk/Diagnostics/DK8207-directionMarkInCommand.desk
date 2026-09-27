@@ -1,0 +1,7 @@
+// DK8207 directionMarkInCommand
+//== expect: DK8207
+info { name: "T", permissions: [.commands] }
+widget { Text("A").onClick { run("say a‮b") } }
+//== negative
+info { name: "T", permissions: [.commands] }
+widget { Text("A").onClick { run("say ab") } }

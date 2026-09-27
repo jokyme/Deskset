@@ -1,0 +1,17 @@
+// DK6004 referenceCycle
+//== expect: DK6004
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(a).position(x: b.right)
+        Text("B").name(b).position(x: a.right)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(a).position(x: 10)
+        Text("B").name(b).position(x: a.right)
+    }
+}

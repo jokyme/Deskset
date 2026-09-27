@@ -1,0 +1,13 @@
+// DK3029 hidesBuiltIn
+//== expect: DK3029
+info { name: "T" }
+widget {
+    variable time = 0
+    Text("{time}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable clockTime = 0
+    Text("{clockTime}")
+}

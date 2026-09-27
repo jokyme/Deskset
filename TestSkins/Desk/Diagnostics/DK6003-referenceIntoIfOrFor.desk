@@ -1,0 +1,17 @@
+// DK6003 referenceIntoIfOrFor
+//== expect: DK6003
+info { name: "T" }
+widget {
+    Freeform {
+        if cpu.usage > 5 { Text("A").name(title) }
+        Text("B").position(x: title.right)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(title).hidden(if: cpu.usage > 5)
+        Text("B").position(x: title.right)
+    }
+}

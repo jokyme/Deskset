@@ -1,0 +1,7 @@
+// DK4028 invalidPathData
+//== expect: DK4028
+info { name: "T" }
+widget { Path("M 0 0 X 5") }
+//== negative
+info { name: "T" }
+widget { Path("M 0 0 L 5 5") }

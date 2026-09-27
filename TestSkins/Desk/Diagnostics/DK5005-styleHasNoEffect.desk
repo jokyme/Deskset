@@ -1,0 +1,9 @@
+// DK5005 styleHasNoEffect
+//== expect: DK5005
+info { name: "T" }
+widget { Rectangle().style(caps) }
+style caps { .uppercase() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(caps) }
+style caps { .uppercase() }

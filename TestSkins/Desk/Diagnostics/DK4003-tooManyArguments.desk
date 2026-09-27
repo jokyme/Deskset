@@ -1,0 +1,7 @@
+// DK4003 tooManyArguments
+//== expect: DK4003
+info { name: "T" }
+widget { Text("A", "B") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

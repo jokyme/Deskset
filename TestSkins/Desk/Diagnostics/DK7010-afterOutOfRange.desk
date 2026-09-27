@@ -1,0 +1,7 @@
+// DK7010 afterOutOfRange
+//== expect: DK7010
+info { name: "T" }
+widget { Text("A").onClick { after(2d) { log("x") } } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { after(2s) { log("x") } } }

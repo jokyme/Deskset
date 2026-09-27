@@ -1,0 +1,7 @@
+// DK2025 chainedComparison
+//== expect: DK2025
+info { name: "T" }
+widget { if 0 < cpu.usage < 10 { Text("A") } }
+//== negative
+info { name: "T" }
+widget { if 0 < cpu.usage and cpu.usage < 10 { Text("A") } }

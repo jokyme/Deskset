@@ -1,0 +1,7 @@
+// DK4020 unknownRange
+//== expect: DK4020
+info { name: "T", network: ["x.com"] }
+widget { Progress(web.json("https://x.com/a").count) }
+//== negative
+info { name: "T", network: ["x.com"] }
+widget { Progress(web.json("https://x.com/a").count, total: 100) }

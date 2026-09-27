@@ -1,0 +1,7 @@
+// DK2013 modifierWithoutElement
+//== expect: DK2013
+info { name: "T" }
+widget { Row { Text("A"); .bold() } }
+//== negative
+info { name: "T" }
+widget { Row { Text("A").bold() } }

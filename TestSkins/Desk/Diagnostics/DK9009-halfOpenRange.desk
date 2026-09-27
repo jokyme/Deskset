@@ -1,0 +1,7 @@
+// DK9009 halfOpenRange
+//== expect: DK9009
+info { name: "T" }
+widget { Column { for i in 0..<32 { Text("{i}") } } }
+//== negative
+info { name: "T" }
+widget { Column { for i in 0...31 { Text("{i}") } } }

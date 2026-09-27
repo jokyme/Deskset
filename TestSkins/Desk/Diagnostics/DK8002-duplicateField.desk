@@ -1,0 +1,7 @@
+// DK8002 duplicateField
+//== expect: DK8002
+info { name: "T", name: "U" }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

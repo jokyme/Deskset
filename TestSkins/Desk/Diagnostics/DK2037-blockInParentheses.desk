@@ -1,0 +1,13 @@
+// DK2037 blockInParentheses
+//== expect: DK2037
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick(page = page + 1)
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").onClick { page = page + 1 }
+}

@@ -1,0 +1,9 @@
+// DK2007 missingComma
+//== expect: DK2007
+info { name: "T" }
+options { day = Picker("Day" [.sunday, .monday]) }
+widget { Text("{options.day}") }
+//== negative
+info { name: "T" }
+options { day = Picker("Day", [.sunday, .monday]) }
+widget { Text("{options.day}") }

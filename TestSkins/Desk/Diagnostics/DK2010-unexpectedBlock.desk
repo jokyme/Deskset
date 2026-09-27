@@ -1,0 +1,7 @@
+// DK2010 unexpectedBlock
+//== expect: DK2010
+info { name: "T" }
+widget { Text("A") { } }
+//== negative
+info { name: "T" }
+widget { Text("A") }

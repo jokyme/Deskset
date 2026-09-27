@@ -1,0 +1,9 @@
+// DK9303 rainmeterVariable
+//== expect: DK9303
+info { name: "T" }
+options { color = ColorPicker("Color") }
+widget { Text("A").color(#Color#) }
+//== negative
+info { name: "T" }
+options { color = ColorPicker("Color") }
+widget { Text("A").color(options.color) }

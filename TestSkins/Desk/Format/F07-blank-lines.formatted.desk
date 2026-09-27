@@ -1,0 +1,14 @@
+// Leading comment
+
+info { name: "A" }
+
+widget {
+    Text("A")
+
+    Text("B")
+}
+
+style a { .bold() }
+
+style b { .italic() }
+style c { .bold() }

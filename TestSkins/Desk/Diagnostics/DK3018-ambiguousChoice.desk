@@ -1,0 +1,13 @@
+// DK3018 ambiguousChoice
+//== expect: DK3018
+info { name: "T" }
+widget {
+    variable side = .left
+    Text("{side}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable side = HAlign.left
+    Text("{side}")
+}

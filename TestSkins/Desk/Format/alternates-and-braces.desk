@@ -1,0 +1,12 @@
+translations {
+    "zh-Hans": {
+        "CPU" = "处理器"
+    }
+}
+widget
+{
+    Row
+    {
+        Text("A")
+    }
+}

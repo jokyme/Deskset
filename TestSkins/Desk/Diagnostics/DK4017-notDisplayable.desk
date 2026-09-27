@@ -1,0 +1,13 @@
+// DK4017 notDisplayable
+//== expect: DK4017
+info { name: "T" }
+widget {
+    computed month = calendar.month(offset: 0)
+    Text(month.days)
+}
+//== negative
+info { name: "T" }
+widget {
+    computed month = calendar.month(offset: 0)
+    Text(month.weekdays.joined(", "))
+}

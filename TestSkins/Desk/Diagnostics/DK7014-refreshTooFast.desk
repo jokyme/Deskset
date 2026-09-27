@@ -1,0 +1,7 @@
+// DK7014 refreshTooFast
+//== expect: DK7014
+info { name: "T", network: ["x.com"] }
+widget { Text("{web.json("https://x.com/a", every: 10s).a}") }
+//== negative
+info { name: "T", network: ["x.com"] }
+widget { Text("{web.json("https://x.com/a", every: 10min).a}") }

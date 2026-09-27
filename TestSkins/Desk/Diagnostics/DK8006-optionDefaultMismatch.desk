@@ -1,0 +1,9 @@
+// DK8006 optionDefaultMismatch
+//== expect: DK8006
+info { name: "T" }
+options { seconds = Toggle("A", default: 1) }
+widget { Text("A").hidden(if: options.seconds) }
+//== negative
+info { name: "T" }
+options { seconds = Toggle("A", default: true) }
+widget { Text("A").hidden(if: options.seconds) }

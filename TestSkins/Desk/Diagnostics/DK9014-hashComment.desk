@@ -1,0 +1,13 @@
+// DK9014 hashComment
+//== expect: DK9014
+info { name: "T" }
+widget {
+    # note
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    // note
+    Text("A")
+}

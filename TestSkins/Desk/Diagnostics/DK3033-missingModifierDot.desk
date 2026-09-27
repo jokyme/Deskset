@@ -1,0 +1,13 @@
+// DK3033 missingModifierDot
+//== expect: DK3033
+info { name: "T" }
+widget {
+    Text("A")
+    font(.caption)
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A")
+    .font(.caption)
+}

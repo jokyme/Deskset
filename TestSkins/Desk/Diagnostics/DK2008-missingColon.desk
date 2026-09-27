@@ -1,0 +1,7 @@
+// DK2008 missingColon
+//== expect: DK2008
+info { name "CPU" }
+widget { Text("A") }
+//== negative
+info { name: "CPU" }
+widget { Text("A") }

@@ -1,0 +1,7 @@
+// DK1004 unusualSpace
+//== expect: DK1004
+info { name: "T" }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

@@ -1,0 +1,7 @@
+// DK1027 bitsUnit
+//== expect: DK1027
+info { name: "T" }
+widget { Text("A").hidden(if: network.download > 100Mbps) }
+//== negative
+info { name: "T" }
+widget { Text("A").hidden(if: network.download > 100MB/s) }

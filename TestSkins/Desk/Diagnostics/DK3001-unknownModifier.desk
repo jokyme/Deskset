@@ -1,0 +1,7 @@
+// DK3001 unknownModifier
+//== expect: DK3001
+info { name: "T" }
+widget { Text("A").colr(.red) }
+//== negative
+info { name: "T" }
+widget { Text("A").color(.red) }

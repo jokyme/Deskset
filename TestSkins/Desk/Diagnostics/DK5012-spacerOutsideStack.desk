@@ -1,0 +1,7 @@
+// DK5012 spacerOutsideStack
+//== expect: DK5012
+info { name: "T" }
+widget { Freeform { Text("A"); Spacer() } }
+//== negative
+info { name: "T" }
+widget { Row { Text("A"); Spacer() } }

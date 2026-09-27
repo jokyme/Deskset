@@ -1,0 +1,7 @@
+// DK7003 viewInAction
+//== expect: DK7003
+info { name: "T" }
+widget { Text("A").onClick { Text("B") } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { log("B") } }

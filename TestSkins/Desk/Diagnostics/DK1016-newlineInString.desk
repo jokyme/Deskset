@@ -1,0 +1,12 @@
+// DK1016 newlineInString
+//== expect: DK1016
+info { name: "T" }
+widget {
+    Text("CPU
+    usage")
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("CPU\nusage")
+}

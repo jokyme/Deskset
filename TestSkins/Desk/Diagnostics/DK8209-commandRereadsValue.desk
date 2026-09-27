@@ -1,0 +1,9 @@
+// DK8209 commandRereadsValue
+//== expect: DK8209
+info { name: "T", permissions: [.commands] }
+options { snippet = Input("Snippet") }
+widget { Text("A").onClick { run("eval {options.snippet}") } }
+//== negative
+info { name: "T", permissions: [.commands] }
+options { snippet = Input("Snippet") }
+widget { Text("A").onClick { run("say {options.snippet}") } }

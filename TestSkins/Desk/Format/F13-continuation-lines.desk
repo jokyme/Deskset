@@ -1,0 +1,19 @@
+widget {
+    computed x = a +
+  b
+    Grid(columns: 7,
+                spacing: 4) {
+            Text("A")
+        }
+    Picker(
+  "Day",
+        [.sunday]
+            )
+    computed m = calendar
+  .month(offset: 0)
+    if a
+  and b {
+    }
+    else {
+    }
+}

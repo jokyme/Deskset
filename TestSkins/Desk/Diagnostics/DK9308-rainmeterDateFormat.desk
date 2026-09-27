@@ -1,0 +1,7 @@
+// DK9308 rainmeterDateFormat
+//== expect: DK9308
+info { name: "T" }
+widget { Text("{time.now, format: "%H:%M"}") }
+//== negative
+info { name: "T" }
+widget { Text("{time.now, format: "HH:mm"}") }

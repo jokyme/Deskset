@@ -1,0 +1,9 @@
+// DK3007 unknownStyle
+//== expect: DK3007
+info { name: "T" }
+widget { Text("A").style(dateCel) }
+style dateCell { .bold() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(dateCell) }
+style dateCell { .bold() }

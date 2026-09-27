@@ -1,0 +1,8 @@
+// DK2023 reservedBlock
+//== expect: DK2023
+info { name: "T" }
+component StatRow() { Text("A") }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }
