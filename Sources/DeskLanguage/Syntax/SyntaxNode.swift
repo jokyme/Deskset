@@ -452,19 +452,22 @@ extension SyntaxNode {
     /// tokens as `‹kind›`, the end of file left out. Trivia are not shown.
     public var outline: String {
         var out = ""
+        var justOpened = true
         var stack: [(SyntaxChild, Bool)] = [(.node(self), false)]   // (child, closing marker)
         while let (child, closing) = stack.popLast() {
-            if closing { out += "]"; continue }
+            if closing { out += "]"; justOpened = false; continue }
             switch child {
             case .token(let token):
                 if token.kind == .eof { continue }
-                if !out.isEmpty && !out.hasSuffix("[") { out += " " }
+                if !justOpened { out += " " }
                 out += token.isMissing ? "‹\(token.kind.rawValue)›" : token.text
+                justOpened = false
             case .node(let node):
-                if !out.isEmpty && !out.hasSuffix("[") { out += " " }
+                if !justOpened { out += " " }
                 out += node.kind.rawValue
                 if let foreign = node.foreignKind { out += ":" + foreign.rawValue }
                 out += "["
+                justOpened = true
                 stack.append((.node(node), true))
                 for grandchild in node.children.reversed() { stack.append((grandchild, false)) }
             }
