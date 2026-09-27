@@ -1039,7 +1039,8 @@ final class DeskFormatter {
 
     private func trimBlankRows(_ rows: [[String]], leading: Bool, trailing: Bool) -> [[String]] {
         var rows = rows
-        if leading { while let first = rows.first, first.isEmpty { rows.removeFirst() } }
+        if leading, let first = rows.firstIndex(where: { !$0.isEmpty }), first > 0 { rows = Array(rows[first...]) }
+        else if leading, rows.allSatisfy(\.isEmpty) { rows = [] }
         if trailing { while let last = rows.last, last.isEmpty { rows.removeLast() } }
         return rows
     }

@@ -102,10 +102,11 @@ extension Desk {
         var regions: [String] = []
         var from = extents[0].range.lowerBound
         for e in extents {
-            var text = editor.text(from..<e.range.upperBound)
-            while text.hasPrefix("\n") || text.hasPrefix("\r") { text.removeFirst() }
-            while text.hasSuffix("\n") || text.hasSuffix("\r") { text.removeLast() }
-            regions.append(text)
+            // Trimmed scalar by scalar: "\r\n" is one Character, which `hasPrefix("\n")` never matches.
+            var scalars = Substring(editor.text(from..<e.range.upperBound)).unicodeScalars
+            while let f = scalars.first, f == "\n" || f == "\r" { scalars.removeFirst() }
+            while let l = scalars.last, l == "\n" || l == "\r" { scalars.removeLast() }
+            regions.append(String(scalars))
             from = e.range.upperBound
         }
         let nl = editor.newline
@@ -188,11 +189,14 @@ enum OffsetText {
     static func number(_ value: Double, unit: String) -> String {
         let rounded = (value * 100).rounded() / 100
         var text: String
-        if rounded == rounded.rounded(), abs(rounded) < 1e15 {
+        if rounded == rounded.rounded(), abs(rounded) < 9e18 {
             text = String(Int64(rounded))
         } else {
             text = String(format: "%.2f", rounded)
-            while text.hasSuffix("0") { text.removeLast() }
+            if text.contains(".") {
+                while text.hasSuffix("0") { text.removeLast() }
+                if text.hasSuffix(".") { text.removeLast() }
+            }
         }
         if text == "-0" { text = "0" }
         return text + unit
@@ -289,12 +293,28 @@ struct SyntaxEditor {
         bytes[lineStart(of: offset)..<offset].allSatisfy { $0 == 0x20 || $0 == 0x09 }
     }
 
-    /// Only blanks and a comment between `offset` and the end of its line.
-    func endsLine(_ offset: Int) -> Bool {
+    /// Only blanks and comments between `offset` and the end of its line (a block comment may run over several
+    /// lines; the line that ends is then the comment's last one).
+    func endsLine(_ offset: Int) -> Bool { lineEnd(after: offset) != nil }
+
+    /// When only blanks and comments follow `offset` up to a line break, the offset of that line break (or of the
+    /// end of the text). A block comment is skipped, even over line breaks, and scanning goes on after it; nil
+    /// when code follows (`Text("a") /* x */ ; Text("b")`, or `/* spans⏎ lines */ Text("b")`).
+    func lineEnd(after offset: Int) -> Int? {
         var k = offset
-        while k < bytes.count, bytes[k] == 0x20 || bytes[k] == 0x09 { k += 1 }
-        if k >= bytes.count || bytes[k] == 0x0A || bytes[k] == 0x0D { return true }
-        return k + 1 < bytes.count && bytes[k] == 0x2F && (bytes[k + 1] == 0x2F || bytes[k + 1] == 0x2A)
+        while true {
+            while k < bytes.count, bytes[k] == 0x20 || bytes[k] == 0x09 { k += 1 }
+            if k >= bytes.count || bytes[k] == 0x0A || bytes[k] == 0x0D { return k }
+            guard k + 1 < bytes.count, bytes[k] == 0x2F else { return nil }
+            if bytes[k + 1] == 0x2F {
+                while k < bytes.count, bytes[k] != 0x0A, bytes[k] != 0x0D { k += 1 }
+                return k
+            }
+            guard bytes[k + 1] == 0x2A else { return nil }
+            k += 2
+            while k + 1 < bytes.count, !(bytes[k] == 0x2A && bytes[k + 1] == 0x2F) { k += 1 }
+            k = min(bytes.count, k + 2)   // an unclosed comment runs to the end of the text
+        }
     }
 
     func leadingWidth<S: StringProtocol>(_ line: S) -> Int {
@@ -360,7 +380,7 @@ struct SyntaxEditor {
         guard let first = tokens.first, let last = tokens.last else {
             return Extent(range: textRange, text: textRange, ownsLines: false, lines: [], statementLine: 0, kind: node.kind)
         }
-        if startsLine(first.textStart) && endsLine(last.textRange.upperBound) {
+        if startsLine(first.textStart), let lineBreak = lineEnd(after: last.textRange.upperBound) {
             // Comment lines directly above (no blank line between them and the statement) move with it.
             var rows: [Bool] = []   // true: a comment row
             var currentHasComment = false
@@ -376,12 +396,14 @@ struct SyntaxEditor {
                 }
             }
             var commentRows = 0
-            for isComment in rows.dropFirst().reversed() {
+            // The first row is the end of the previous token's line, except for the file's first token, whose
+            // leading trivia starts the file.
+            for isComment in (first.offset == 0 ? rows[...] : rows.dropFirst()).reversed() {
                 if isComment { commentRows += 1 } else { break }
             }
             var start = lineStart(of: first.textStart)
             for _ in 0..<commentRows where start > 0 { start = lineStart(of: start - 1) }
-            let end = nextLineStart(after: last.textRange.upperBound)
+            let end = nextLineStart(after: lineBreak)
             var lines = splitLines(text(start..<end))
             if lines.count > 1, lines.last == "" { lines.removeLast() }
             return Extent(range: start..<end, text: textRange, ownsLines: true, lines: lines,
@@ -406,6 +428,17 @@ struct SyntaxEditor {
     /// The statements of a block, or the items of the source file.
     func statements(of container: PositionedNode) -> [PositionedNode] {
         container.childNodes.filter { $0.kind != .unexpected }
+    }
+
+    /// The leading blanks of a block's first statement standing on its own line, as written (tabs stay tabs;
+    /// §3.7 rule 2 detects the indentation from the block's lines). Nil when no statement stands on its own line.
+    func contentIndentText(of block: PositionedNode) -> String? {
+        if block.kind == .sourceFile { return "" }
+        for statement in statements(of: block) where startsLine(statement.textRange.lowerBound) {
+            let start = lineStart(of: statement.textRange.lowerBound)
+            return text(start..<statement.textRange.lowerBound)
+        }
+        return nil
     }
 
     /// Indentation of a block's statements: that of its first statement standing on its own line, else the
@@ -462,6 +495,9 @@ struct SyntaxEditor {
                trimmed.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }), Double(trimmed) != nil {
                 replacement = trimmed + unit.text
             }
+            guard SyntaxEditor.isLoneValue(replacement) else {
+                return .failure(.notApplicable("the new text is not one value"))
+            }
             let range = value.node.textRange
             if range.isEmpty {
                 // A missing value: insert after the label's colon.
@@ -477,6 +513,7 @@ struct SyntaxEditor {
         case .failure(let f): return .failure(f)
         case .success(let node):
             guard let field = FieldSyntax(node) else { return .failure(.notFound) }
+            guard SyntaxEditor.isLoneValue(newText) else { return .failure(.notApplicable("the new text is not one value")) }
             let range = field.value.node.textRange
             if range.isEmpty {
                 let at = field.colon.token.isMissing ? field.label.token.textRange.upperBound : field.colon.textRange.upperBound
@@ -507,7 +544,7 @@ struct SyntaxEditor {
         let items = statements(of: block)
         let pieceText = piece.lines.joined(separator: newline)
         let statementOffsetInPiece = piece.lines.prefix(piece.statementLine).reduce(0) { $0 + $1.utf8.count + newline.utf8.count }
-            + leadingWidth(piece.lines.isEmpty ? "" : piece.lines[piece.statementLine])
+            + (piece.lines.isEmpty ? 0 : piece.lines[piece.statementLine].utf8.prefix { $0 == 0x20 || $0 == 0x09 }.count)
         if block.kind == .sourceFile {
             // Top-level items are separated by one blank line (F7).
             if index < items.count {
@@ -584,7 +621,16 @@ struct SyntaxEditor {
             let items = statements(of: block)
             guard index >= 0 && index <= items.count else { return .failure(.notApplicable("index out of range")) }
             let indent = isSingleLine(block) ? ownerIndent(of: block) + 4 : contentIndent(of: block)
-            guard let result = insertion(of: newStatementLines(statementText, indent: indent), into: block, index: index) else {
+            var piece = newStatementLines(statementText, indent: indent)
+            // Keep the block's own kind of indentation (tabs in a tab-indented block).
+            if !isSingleLine(block), let written = contentIndentText(of: block), written.contains("\t") {
+                piece.lines = piece.lines.map { line in
+                    let width = leadingWidth(line)
+                    return String(repeating: "\t", count: width / 4) + String(repeating: " ", count: width % 4)
+                        + line.drop { $0 == " " || $0 == "\t" }
+                }
+            }
+            guard let result = insertion(of: piece, into: block, index: index) else {
                 return .failure(.notApplicable("the block has no braces"))
             }
             return .edits([result.edit], [])
@@ -746,6 +792,7 @@ struct SyntaxEditor {
                 return .edits([edit(e.text, replacement)], moves)
             }
             let indent = indentation(ofLineAt: node.textRange.lowerBound)
+            if let result = unwrapWholeLines(node, block: block, extent: e, indent: indent) { return result }
             // Comments above the container stay above its first child.
             var replacement = e.lines.prefix(e.statementLine).map { $0 + newline }.joined()
             var moves: [PendingMove] = []
@@ -766,6 +813,78 @@ struct SyntaxEditor {
             }
             return .edits([edit(e.range, replacement)], moves)
         }
+    }
+
+    /// Unwraps a container whose `{` ends its line and whose `}` starts one: the lines between the braces move
+    /// out one level as they are, so every comment and blank line among the children stays; the comment after
+    /// `{` goes above the first child and the comment after the container's last line below the last one.
+    func unwrapWholeLines(_ node: PositionedNode, block: BlockSyntax, extent e: Extent, indent: Int) -> Outcome? {
+        let braces = block.node.childTokens
+        guard let open = braces.first, let close = braces.last, !open.token.isMissing, !close.token.isMissing,
+              let openBreak = lineEnd(after: open.textRange.upperBound), startsLine(close.textStart),
+              let last = node.tokens.last(where: { !$0.token.isMissing }),
+              let lastBreak = lineEnd(after: last.textRange.upperBound) else { return nil }
+        let pad = String(repeating: " ", count: indent)
+        func comment(_ r: Range<Int>) -> String { text(r).trimmingCharacters(in: .whitespaces) }
+        var replacement = e.lines.prefix(e.statementLine).map { $0 + newline }.joined()
+        let openComment = comment(open.textRange.upperBound..<openBreak)
+        if !openComment.isEmpty { replacement += pad + openComment + newline }
+        let innerStart = nextLineStart(after: openBreak)
+        let innerEnd = lineStart(of: close.textStart)
+        var inner = innerStart < innerEnd ? splitLines(text(innerStart..<innerEnd)) : []
+        if inner.last == "" { inner.removeLast() }
+        let firstLine = tree.lines.lineIndex(of: innerStart)
+        let blank: (String) -> Bool = { $0.allSatisfy { $0 == " " || $0 == "\t" } }
+        let keptFrom = inner.firstIndex { !blank($0) } ?? inner.count
+        let keptTo = inner.lastIndex { !blank($0) }.map { $0 + 1 } ?? keptFrom
+        let delta = indent - contentIndent(of: block.node)
+        var lineOffsets: [Int: (newStart: Int, oldLead: Int, newLead: Int)] = [:]
+        var cursor = e.range.lowerBound + replacement.utf8.count
+        for index in keptFrom..<max(keptFrom, keptTo) {
+            let line = inner[index]
+            let shiftedLine = shift([line], by: delta)[0]
+            let oldLead = line.utf8.prefix { $0 == 0x20 || $0 == 0x09 }.count
+            let newLead = shiftedLine.utf8.prefix { $0 == 0x20 }.count
+            lineOffsets[firstLine + index] = (cursor, oldLead, newLead)
+            replacement += shiftedLine + newline
+            cursor += shiftedLine.utf8.count + newline.utf8.count
+        }
+        let tailComment = comment(last.textRange.upperBound..<lastBreak)
+        if !tailComment.isEmpty { replacement += pad + tailComment + newline }
+        var moves: [PendingMove] = []
+        for child in block.statements {
+            let start = child.textRange.lowerBound
+            let line = tree.lines.lineIndex(of: start)
+            guard let mapped = lineOffsets[line] else { continue }
+            let column = start - tree.lines.starts[line]
+            moves.append(PendingMove(from: child.textRange, newStart: mapped.newStart + column - mapped.oldLead + mapped.newLead,
+                                     kind: child.kind))
+        }
+        return .edits([edit(e.range, replacement)], moves)
+    }
+
+    // MARK: - Validating new text
+
+    /// The arguments `text` reads as when written between `Text(` and `)`, or nil when it does not read cleanly
+    /// or does not stay inside the parentheses (`1) } widget { Text("evil"` would close the list, the block and
+    /// start another widget). Values the editor passes are checked this way before they are spliced in.
+    static func arguments(of text: String) -> [ArgumentSyntax]? {
+        let head = "widget {\n    Text("
+        let probe = head + text + ")\n}\n"
+        let tree = Desk.parse(probe, fileName: "Probe.desk")
+        guard !tree.diagnostics.contains(where: { $0.severity == .error }),
+              let widget = tree.rootNode.childNodes.first(where: { $0.kind == .widgetBlock }),
+              let statements = TopLevelBlockSyntax(widget)?.block.statements, statements.count == 1,
+              let call = CallStmtSyntax(statements[0]), call.block == nil, call.modifiers.isEmpty,
+              let clause = call.arguments,
+              clause.node.textRange == (head.utf8.count - 1)..<(head.utf8.count + text.utf8.count + 1) else { return nil }
+        return clause.arguments
+    }
+
+    /// Whether `text` is one value without a label.
+    static func isLoneValue(_ text: String) -> Bool {
+        guard let arguments = arguments(of: text), arguments.count == 1 else { return false }
+        return arguments[0].label == nil
     }
 
     /// The block (or source file) a statement is directly in.

@@ -33,6 +33,27 @@ func deskApplyFix(_ checked: CheckedFile, _ id: String, title: String? = nil) ->
     return TextEdit.apply(f.edits.filter { $0.file == checked.tree.file }, to: checked.tree.text)
 }
 
+
+/// The first statement (document order) whose trimmed text starts with `prefix`.
+func deskReviewStatement(_ tree: SyntaxTree, _ prefix: String) -> PositionedNode? {
+    var stack: [PositionedNode] = [tree.rootNode]
+    while let node = stack.popLast() {
+        if node.kind.isStatement, node.node.trimmedText.hasPrefix(prefix) { return node }
+        stack.append(contentsOf: node.childNodes.reversed())
+    }
+    return nil
+}
+
+/// The `n`-th block of a statement found by prefix.
+func deskReviewBlock(_ tree: SyntaxTree, _ prefix: String) -> PositionedNode? {
+    deskReviewStatement(tree, prefix)?.childNodes.first { $0.kind == .block }
+}
+
+/// The syntax errors of a tree.
+func deskReviewSyntaxErrors(_ tree: SyntaxTree) -> [String] {
+    tree.diagnostics.filter { $0.severity == .error }.map(\.id.rawValue)
+}
+
 func runDeskReviewTests(_ t: TestRunner) {
     t.suite("Desk: review — robustness of the checker") {
         // A `for` over a range far outside Int's range (finding 38).
@@ -103,5 +124,159 @@ func runDeskReviewTests(_ t: TestRunner) {
         let elses = "widget {\n    variable a = 0\n    Column {\n        " + Array(repeating: "if a == 1 { Text(\"x\") }", count: 3_000).joined(separator: " else ") + "\n    }\n}"
         let elseIDs = deskOnSmallStack { deskReviewIDs(elses) }
         t.check(!elseIDs.contains("DK0000"), "else chain")
+    }
+
+    t.suite("Desk: review — editing API") {
+        // A multi-line block comment after a statement (finding 44).
+        let spanning = "widget {\n    Column {\n        Text(\"a\") /* spans\n        lines */ Text(\"b\")\n    }\n    Row {\n    }\n}\n"
+        let tree = deskParse(spanning)
+        let a = deskReviewStatement(tree, "Text(\"a\")")!
+        let row = deskReviewBlock(tree, "Row")!
+        let moved = Desk.apply(.moveStatement(tree.id(of: a), to: tree.id(of: row), index: 0), to: tree)
+        t.equal(deskReviewSyntaxErrors(moved.tree), [], moved.tree.text)
+        t.check(moved.tree.text.contains("/* spans\n        lines */ Text(\"b\")"), moved.tree.text)
+        let removed = Desk.apply(.removeStatement(tree.id(of: a)), to: tree)
+        t.equal(deskReviewSyntaxErrors(removed.tree), [], removed.tree.text)
+        t.check(removed.tree.text.contains("lines */ Text(\"b\")") && !removed.tree.text.contains("Text(\"a\")"), removed.tree.text)
+        let tail = deskParse("widget {\n    Column {\n        Text(\"a\")\n        Text(\"b\") /* tail\n         b */\n        Text(\"c\")\n    }\n}\n")
+        let wrapped = Desk.apply(.wrap([tail.id(of: deskReviewStatement(tail, "Text(\"a\")")!), tail.id(of: deskReviewStatement(tail, "Text(\"b\")")!)],
+                                       container: "Row"), to: tail)
+        t.equal(deskReviewSyntaxErrors(wrapped.tree), [], wrapped.tree.text)
+        t.check(wrapped.tree.text.contains("b */\n        }\n        Text(\"c\")"), wrapped.tree.text)
+
+        // A trailing `/* … */` before `;` (finding 45).
+        let semicolon = deskParse("widget {\n    Column {\n        Text(\"a\") /* x */ ; Text(\"b\")\n    }\n    Row {\n    }\n}\n")
+        let first = deskReviewStatement(semicolon, "Text(\"a\")")!
+        let removedFirst = Desk.apply(.removeStatement(semicolon.id(of: first)), to: semicolon)
+        t.check(removedFirst.tree.text.contains("Text(\"b\")") && !removedFirst.tree.text.contains("Text(\"a\")"), removedFirst.tree.text)
+        let movedFirst = Desk.apply(.moveStatement(semicolon.id(of: first), to: semicolon.id(of: deskReviewBlock(semicolon, "Row")!), index: 0), to: semicolon)
+        t.check(movedFirst.tree.text.contains("Column {\n        Text(\"b\")") && movedFirst.tree.text.contains("Row {\n        Text(\"a\")\n    }"),
+                movedFirst.tree.text)
+        let pair = deskParse("widget {\n    Row {\n        Text(\"a\") /* x */ ; Text(\"b\")\n    }\n}\n")
+        let unwrappedPair = Desk.apply(.unwrap(pair.id(of: deskReviewStatement(pair, "Row")!)), to: pair)
+        t.equal(unwrappedPair.tree.text.components(separatedBy: "Text(\"b\")").count, 2, unwrappedPair.tree.text)
+
+        // unwrap keeps the container's comments (finding 49).
+        let commented = deskParse("""
+        widget {
+            Column {
+                Row { // the pair
+                    Text("a")
+                    // before b
+                    Text("b")
+                    /* x
+                     */ Text("c")
+                    // last words
+                } // after row
+            }
+        }
+
+        """)
+        let unwrapped = Desk.apply(.unwrap(commented.id(of: deskReviewStatement(commented, "Row")!)), to: commented)
+        t.equal(unwrapped.tree.text, """
+        widget {
+            Column {
+                // the pair
+                Text("a")
+                // before b
+                Text("b")
+                /* x
+                 */ Text("c")
+                // last words
+                // after row
+            }
+        }
+
+        """)
+        t.equal(unwrapped.moves.count, 3)
+        for move in unwrapped.moves {
+            let text = String(decoding: Array(unwrapped.tree.text.utf8)[move.to], as: UTF8.self)
+            t.check(text.hasPrefix("Text("), text)
+        }
+
+        // rename refuses names that clash or that the checker rejects (finding 50).
+        let source = "info { name: \"T\" }\nwidget {\n    variable page = 0\n    variable other = 1\n    Text(\"{page}\").onClick { page = page + other }\n}"
+        let file = deskCheck(source)
+        let page = file.symbols.values.compactMap { symbol -> NodeID? in
+            if case .declaration(let id) = symbol, file.tree.resolve(id).map({ DeclarationSyntax(unchecked: $0).name.token.text }) == "page" { return id }
+            return nil
+        }.first!
+        for name in ["other", "widget", "info", "options", "style", "script", "component", String(repeating: "a", count: 201), "cpu"] {
+            let result = Desk.apply(.rename(page, to: name), to: file)
+            if name == "cpu" {
+                t.equal(result.failure, nil, "cpu is not used in the file")
+            } else {
+                t.check(result.failure != nil, "rename to \(name.prefix(20)) is refused")
+            }
+        }
+        let usesCPU = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page} {cpu.usage}\")\n}")
+        let page2 = usesCPU.symbols.values.compactMap { symbol -> NodeID? in
+            if case .declaration(let id) = symbol { return id }
+            return nil
+        }.first!
+        t.check(Desk.apply(.rename(page2, to: "cpu"), to: usesCPU).failure != nil, "renaming to a built-in the file reads")
+
+        // sortBlocks in a CRLF file, with the first block's comment (finding 51).
+        let crlf = "// the widget\r\nwidget {\r\n    Text(\"a\")\r\n}\r\n\r\n// info\r\ninfo { name: \"X\" }\r\n"
+        t.equal(TextEdit.apply(Desk.sortBlocks(deskParse(crlf)), to: crlf),
+                "// info\r\ninfo { name: \"X\" }\r\n\r\n// the widget\r\nwidget {\r\n    Text(\"a\")\r\n}\r\n")
+        let lf = "// the widget\nwidget {\n    Text(\"a\")\n}\n\n// info\ninfo { name: \"X\" }\n"
+        t.equal(TextEdit.apply(Desk.sortBlocks(deskParse(lf)), to: lf),
+                "// info\ninfo { name: \"X\" }\n\n// the widget\nwidget {\n    Text(\"a\")\n}\n")
+
+        // offsetText past 1e15 stays a number (finding 54).
+        let big = deskParse("widget {\n    Text(\"a\").padding(999999999999999pt)\n}\n")
+        var argument: PositionedNode?
+        var stack = [big.rootNode]
+        while let node = stack.popLast() {
+            if node.kind == .argument { argument = node; break }
+            stack += node.childNodes
+        }
+        let offset = Desk.offsetText(of: ArgumentSyntax(unchecked: argument!).value, by: 8)
+        t.equal(offset, "1000000000000007pt")
+        t.equal(OffsetText.number(1e20 + 0.5, unit: ""), "100000000000000000000")
+
+        // setArgument, setField and setModifier refuse text that is not what it stands for (finding 55).
+        let frame = deskCheck("info { name: \"T\" }\nwidget {\n    Text(\"a\").frame(width: 10, height: 5)\n}\n")
+        var width: PositionedNode?
+        stack = [frame.tree.rootNode]
+        while let node = stack.popLast() {
+            if node.kind == .argument, ArgumentSyntax(unchecked: node).label?.name == "width" { width = node; break }
+            stack += node.childNodes
+        }
+        let widthID = frame.tree.id(of: width!)
+        for bad in ["1) } widget { Text(\"evil\"", "", "a: 5", "1, 2"] {
+            t.check(Desk.apply(.setArgument(widthID, newText: bad), to: frame.tree).failure != nil, "setArgument \(bad.debugDescription)")
+        }
+        t.equal(Desk.apply(.setArgument(widthID, newText: "cpu.usage * 2"), to: frame.tree).failure, nil)
+        let element = frame.elements.first { $0.value.component == "Text" }!.key
+        t.check(Desk.apply(.setModifier(element, name: "color", argumentsText: ".red", condition: "cpu.usage > 80) }\nText(\"x\""), to: frame).failure != nil)
+        t.check(Desk.apply(.setModifier(element, name: "color", argumentsText: ".red) }", condition: nil), to: frame).failure != nil)
+        t.equal(Desk.apply(.setModifier(element, name: "color", argumentsText: ".red", condition: "cpu.usage > 80"), to: frame).failure, nil)
+        let info = deskParse("info { name: \"T\" }\nwidget { Text(\"a\") }\n")
+        var field: PositionedNode?
+        stack = [info.rootNode]
+        while let node = stack.popLast() {
+            if node.kind == .field { field = node; break }
+            stack += node.childNodes
+        }
+        t.check(Desk.apply(.setField(info.id(of: field!), newText: "\"X\" }\nwidget {"), to: info).failure != nil)
+        t.equal(Desk.apply(.setField(info.id(of: field!), newText: "\"X\""), to: info).tree.text, "info { name: \"X\" }\nwidget { Text(\"a\") }\n")
+
+        // insertStatement keeps a tab-indented block's tabs (finding 56).
+        let tabs = deskParse("widget {\n\tColumn {\n\t\tText(\"a\")\n\t}\n}\n")
+        let inserted = Desk.apply(.insertStatement(tabs.id(of: deskReviewBlock(tabs, "Column")!), index: 1, text: "Text(\"x\")"), to: tabs)
+        t.equal(inserted.tree.text, "widget {\n\tColumn {\n\t\tText(\"a\")\n\t\tText(\"x\")\n\t}\n}\n")
+    }
+
+    t.suite("Desk: review — formatter on many blank lines") {
+        // Blank lines after `{` are dropped in linear time (finding 52).
+        let text = "widget {" + String(repeating: "\n", count: 200_000) + "    Text(\"b\")\n}\n"
+        let start = ProcessInfo.processInfo.systemUptime
+        let formatted = Desk.formatted(deskParse(text))
+        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        t.equal(formatted, "widget {\n    Text(\"b\")\n}\n")
+        t.check(elapsed < 5, "formatting 200,000 blank lines took \(elapsed) s")
+        print(String(format: "    formatter: 200,000 blank lines after `{` in %.0f ms", elapsed * 1000))
     }
 }

@@ -31,15 +31,26 @@ extension Desk {
             guard ref.treeVersion == tree.version else { return refuse(.staleReference) }
             guard let node = tree.resolve(ref), node.kind == .callStmt else { return refuse(.notFound) }
             guard let spec = catalog.modifier(named: name) else { return refuse(.notApplicable("unknown modifier .\(name)")) }
+            // The pieces are spliced into the file: each must read as what it stands for, and stay inside the
+            // parentheses.
+            guard SyntaxEditor.arguments(of: argumentsText) != nil, condition.map(SyntaxEditor.isLoneValue) ?? true else {
+                return refuse(.notApplicable("the arguments are not Desk arguments"))
+            }
             return finish(ModifierPlacement(tree: tree, call: node, catalog: catalog)
                 .edits(spec: spec, argumentsText: argumentsText, condition: condition))
         case .rename(let ref, let newName):
             guard ref.treeVersion == tree.version else { return refuse(.staleReference) }
+            // The checker's rules for own names: no reserved or block word (DK3015), at most 128 bytes (DK1009),
+            // and no name already in use where the renamed one is visible (DK3014, or a silent merge).
             guard Checker.isIdentifier(newName), let first = newName.unicodeScalars.first, !("A"..."Z").contains(first),
-                  Chars.reservedWords[newName] == nil else {
+                  Chars.reservedWords[newName] == nil, !Chars.blockWords.contains(newName), newName.utf8.count <= 128 else {
                 return refuse(.notApplicable("\(newName) is not an own name"))
             }
-            guard let edits = RenamePlan(file: file).edits(for: ref, to: newName), !edits.isEmpty else { return refuse(.notFound) }
+            let plan = RenamePlan(file: file)
+            guard let edits = plan.edits(for: ref, to: newName), !edits.isEmpty else { return refuse(.notFound) }
+            if let clash = plan.clash(renaming: ref, to: newName, editing: Set(edits.map(\.range.lowerBound))) {
+                return refuse(.notApplicable("\(newName) is already \(clash)"))
+            }
             return finish(edits)
         }
     }
@@ -98,6 +109,38 @@ struct ModifierPlacement {
 /// Every place an own name is written: its declaration and the uses that resolve to it.
 struct RenamePlan {
     let file: CheckedFile
+
+    /// Why `newName` cannot be taken, or nil. Styles and options clash with their own kind; declarations, loop
+    /// variables and element names with any name written in the file (a declaration, a loop variable, an
+    /// element name, a read of a built-in value such as `cpu`) outside the places being renamed.
+    func clash(renaming ref: NodeID, to newName: String, editing: Set<Int>) -> String? {
+        let tree = file.tree
+        guard let declaration = tree.resolve(ref) else { return nil }
+        switch declaration.kind {
+        case .styleDecl:
+            return file.styles[newName] != nil ? "a style" : nil
+        case .optionDecl:
+            return file.options[newName] != nil ? "an option" : nil
+        default:
+            break
+        }
+        var stack = [tree.rootNode]
+        while let node = stack.popLast() {
+            var tokens: [PositionedToken] = []
+            switch node.kind {
+            case .identifierExpr: tokens = [IdentifierExprSyntax(unchecked: node).token]
+            case .declaration: tokens = [DeclarationSyntax(unchecked: node).name]
+            case .forStmt: tokens = [ForStmtSyntax(unchecked: node).variable]
+            case .target: tokens = [TargetSyntax(unchecked: node).name]
+            default: break
+            }
+            for token in tokens where token.token.name == newName && !editing.contains(token.textStart) {
+                return "a name in this file"
+            }
+            stack += node.childNodes
+        }
+        return nil
+    }
 
     func edits(for ref: NodeID, to newName: String) -> [TextEdit]? {
         let tree = file.tree
