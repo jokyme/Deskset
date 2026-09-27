@@ -1,13 +1,15 @@
 ; Stationery · Photo Frame — what the three sizes share: the settings, every measure, the card and the photo.
 ; Original work, MIT licensed.
 ;
-; Photos from a folder on this Mac: PhotoFolder (in Stationery.inc, Deskset's settings folder); empty means the
-; Pictures folder, which asks for nothing. The folder is listed on a background thread, subfolders included; hidden
+; Photos from a folder on this Mac: PhotoFolder (in Stationery.inc, Deskset's settings folder). Until one is chosen the
+; frame shows the Choose a Folder notice and reads no folder: Pictures often holds screenshots and other private
+; images, which a desktop shows to anyone looking (and to screen sharing). The path field suggests Pictures, which asks
+; for nothing. The folder is listed on a background thread, subfolders included; hidden
 ; files and packages are skipped, so the Photos and Photo Booth libraries are never entered. A random photo shows, and
 ; a new one comes on each slot of the clock (every 10 minutes, on the hour or at midnight: PhotoInterval) and on a
 ; click. A folder in Desktop, Documents or Downloads, or on another disk, makes macOS ask once.
 ;
-; MeasureMode: 1 a photo · 2 choose (nothing chosen, and Pictures has no photos) · 3 none found (a chosen folder shows
+; MeasureMode: 1 a photo · 2 choose (no folder chosen yet) · 3 none found (a chosen folder shows
 ; nothing) · 4 loading (at most the first 3 s) · 5 the path field (choosing a folder). The photo has no glass under
 ; it: the card (MeterCard, the glass) shows only with a Notice.
 
@@ -87,16 +89,16 @@ PhotoMenu10_0=
 
 ; ---------------------------------------------------------------- the folder
 [MeasureChosen]
-; 1 once a folder is chosen (tested before the default is put in its place)
+; 1 once a folder is chosen; until then no folder is read at all
 Measure=String
 String=#PhotoFolder#
 IfMatch=\S
 IfMatchAction=[!SetVariable PhotoChosen 1]
-IfNotMatchAction=[!SetVariable PhotoChosen 0]
+IfNotMatchAction=[!SetVariable PhotoChosen 0][!DisableMeasure MeasurePhoto][!DisableMeasure MeasurePhotoWait]
 UpdateDivider=-1
 
 [MeasureFolderPath]
-; the chosen folder, or Pictures
+; the chosen folder; before one is chosen, Pictures, which the path field suggests
 Measure=String
 String=#PhotoFolder#
 RegExpSubstitute=1
@@ -256,7 +258,7 @@ IfTrueAction=[!SetOption MeasureTick UpdateDivider -1][!UpdateMeasure MeasureMod
 [MeasureMode]
 ; 1 photo · 2 choose · 3 none found · 4 loading · 5 path field
 Measure=Calc
-Formula=(#Pasting# = 1) ? 5 : ((#HasPhoto# = 1) ? 1 : ((MeasureTick < 4) ? 4 : ((#PhotoChosen# = 1) ? 3 : 2)))
+Formula=(#Pasting# = 1) ? 5 : ((#PhotoChosen# = 0) ? 2 : ((#HasPhoto# = 1) ? 1 : ((MeasureTick < 4) ? 4 : 3)))
 DynamicVariables=1
 UpdateDivider=-1
 OnChangeAction=[!UpdateMeterGroup Photo][!UpdateMeterGroup Notice][!Redraw]
@@ -283,7 +285,7 @@ OnDismissAction=[!SetVariable Pasting 0][!Delay 500][!EnableMouseAction MeterCar
 
 [MeasurePasted]
 ; a typed, pasted or dropped path, cleaned: trimmed, quotes and Terminal's escapes ("My\ Photos") taken away, a
-; relative path taken from home, a photo's path giving its folder; "~" or "/" alone goes back to Pictures
+; relative path taken from home, a photo's path giving its folder; "~" or "/" alone chooses nothing
 Measure=String
 String=#PastedPath#
 DynamicVariables=1

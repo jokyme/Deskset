@@ -4,9 +4,9 @@
 
 [Variables]
 PhotoWidget=Photo Frame
-; the default folder, ~/Pictures, by the name Finder gives it
+; the folder the path field suggests, ~/Pictures, by the name Finder gives it
 PhotoPictures=Pictures
-; the Notice by mode (2 nothing chosen and Pictures empty, 3 a chosen folder shows nothing, 5 the path field): the
+; the Notice by mode (2 no folder chosen yet, 3 a chosen folder shows nothing, 5 the path field): the
 ; Small's title (S) and the Medium's and Large's
 PhotoTitleS2=Choose a Folder
 PhotoTitle2=Choose a Folder of Photos
@@ -40,7 +40,7 @@ PhotoMenuFileName1=File Name: On
 PhotoTip=In [MeasureParentName]. Click for the next photo; a new one comes [MeasureEveryLower].
 PhotoTipLoading=Looking for photos in [MeasureFolderName]…
 PhotoTipTitle2=Photo Frame
-PhotoTip2=Your Pictures folder has no photos yet. Click to choose a folder. Photos in the Photos app can’t be shown; export them to a folder first.
+PhotoTip2=Choose the folder whose photos the frame shows: click, then paste its path. Photos in the Photos app can’t be shown; export them to a folder first.
 PhotoTipTitle3=No Photos Found
 PhotoTip3=Nothing to show from “[MeasureFolderName]”. The folder may be empty, missing or unreadable, or hold no JPEG, PNG, HEIC or WebP files. Click to choose another.[MeasureHint]
 PhotoTipTitle5=Photo Frame
