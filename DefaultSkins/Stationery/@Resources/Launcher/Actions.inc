@@ -85,17 +85,18 @@ IfTrueAction12=[!MacMoveToTrash]
 ; …and on any other cell the first dropped item becomes the cell's item
 IfCondition13=(MeasureAct = 70) || (MeasureAct = 71) || (MeasureAct = 72) || (MeasureAct = 74) || (MeasureAct = 75)
 IfTrueAction13=[!WriteKeyValue Variables Launch#FiredCell# "[#DropItem]" "#StationeryFile#"][!WriteKeyValue Variables LaunchLabel#FiredCell# "" "#StationeryFile#"][!WriteKeyValue Variables LaunchSymbol#FiredCell# "" "#StationeryFile#"][!WriteKeyValue Variables LaunchColor#FiredCell# "" "#StationeryFile#"][!Refresh]
-; the card (cell 0): kind 9 in the Medium, 8 in the Small. Labels: On / Off
-IfCondition14=MeasureAct = 91
+; the card (cell 0): kind 9 in the Medium, 8 in the Small, so the card's item N is N × 10 + 9 or 8. Labels: On / Off
+; (the Medium's first item)
+IfCondition14=MeasureAct = 19
 IfTrueAction14=[!WriteKeyValue Variables LaunchShowLabels [#LaunchShowLabelsNext[#LaunchShowLabels]] "#@#Variables.inc"][!Refresh]
-; Edit Items as Text…
-IfCondition15=(MeasureAct = 81) || (MeasureAct = 92)
+; Edit Items as Text… (the Small's first item, the Medium's second)
+IfCondition15=(MeasureAct = 18) || (MeasureAct = 29)
 IfTrueAction15=["#CONFIGEDITOR#" "#StationeryFile#"]
-; the suite's Look item (82 and 93 are separators)
-IfCondition16=(MeasureAct = 83) || (MeasureAct = 94)
+; the suite's Look item (28 and 39 are separators)
+IfCondition16=(MeasureAct = 38) || (MeasureAct = 49)
 IfTrueAction16=#MenuLookAction#
 ; the suite's Cards item
-IfCondition17=(MeasureAct = 84) || (MeasureAct = 95)
+IfCondition17=(MeasureAct = 48) || (MeasureAct = 59)
 IfTrueAction17=#MenuCardsAction#
 
 [MeasureEdit]
