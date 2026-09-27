@@ -32,6 +32,8 @@ LinkDiv1=1000000
 LinkDiv2=1000000000
 LinkUnit1=Mbit/s
 LinkUnit2=Gbit/s
+; a rate before the first reading ("-- MB/s"), the unit kept so the line does not jump when the value comes
+SpeedMissing=#Missing# [#SpeedUnit[#NetUnit]2]
 ; the graph: 138 samples at 1 s (2 min); its scale never drops below 1 Mbit/s (125 KB/s)
 ChartFloor=125000
 
@@ -94,7 +96,7 @@ Measure=NetOut
 Interface=0
 
 [MeasureReady]
-; a Net measure reads 0 on its first update (it has no earlier sample): the rates say "--" until the second. The
+; a Net measure reads 0 on its first update (it has no earlier sample): the rates say "-- MB/s" until the second. The
 ; Wi-Fi signal, read in the background since the first update, is read again then, rather than 5 s after load
 Measure=Calc
 Formula=Min(MeasureReady + 1, 2)

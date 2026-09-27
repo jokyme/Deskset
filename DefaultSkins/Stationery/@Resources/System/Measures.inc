@@ -2,7 +2,7 @@
 ; Source-Demo.inc). Every size includes it after its source. Original work, MIT licensed.
 ;
 ; Loading: the CPU's first value needs a second reading and the GPU answers one update late, so for a second or two
-; their values read "--" and their rings show only the track. The Disk ring waits for Finder's figure the same way.
+; their values read "--%" and their rings show only the track. The Disk ring waits for Finder's figure the same way.
 
 [Variables]
 ; the Swap ring's colour: Teal (Sensors uses Teal for fans, but never next to System's rings); white in the Clear
@@ -43,12 +43,12 @@ Measure=Calc
 Formula=MeasureCPUAngle > 180
 
 [MeasureCPUText]
-; "21%", or "--" before the second reading
+; "21%", or "--%" before the second reading
 Measure=String
 String=#CPUReady#|[MeasureCPU:0]
 DynamicVariables=1
 RegExpSubstitute=1
-Substitute="^0\|.*$":"#Missing#","^1\|(.*)$":"\1%"
+Substitute="^0\|.*$":"#Missing#%","^1\|(.*)$":"\1%"
 
 ; ---------------------------------------------------------------- memory
 [MeasureMemAngle]
@@ -134,12 +134,12 @@ UpdateDivider=30
 Group=Disk
 
 [MeasureDiskText]
-; "88%", or "--" while loading
+; "88%", or "--%" while loading
 Measure=String
 String=[MeasureDiskUsedPct:0]
 DynamicVariables=1
 RegExpSubstitute=1
-Substitute="^-\d+$":"#Missing#","^(\d+)$":"\1%"
+Substitute="^-\d+$":"#Missing#%","^(\d+)$":"\1%"
 UpdateDivider=30
 Group=Disk
 
@@ -208,12 +208,12 @@ Formula=MeasureGPUAngle > 180
 UpdateDivider=2
 
 [MeasureGPUText]
-; "34%", or "--" before the first reading
+; "34%", or "--%" before the first reading
 Measure=String
 String=#GPUReady#|[MeasureGPU:0]
 DynamicVariables=1
 RegExpSubstitute=1
-Substitute="^0\|.*$":"#Missing#","^1\|(.*)$":"\1%"
+Substitute="^0\|.*$":"#Missing#%","^1\|(.*)$":"\1%"
 UpdateDivider=2
 
 [MeasureGPUWatch]

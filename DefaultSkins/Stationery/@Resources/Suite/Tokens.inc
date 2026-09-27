@@ -81,7 +81,9 @@ DigitRun=(?:−|\+)?\d(?:\d|:|\.|,)*(?:%|°)?
 ; The group is the unit; the spaced form takes the space with it, so the gap is set at the unit's size
 UnitRun=(?:^|\s)(\p{L}+(?:/\p{L}+)?)
 UnitRunSpaced=((?:^|\s)\p{L}+(?:/\p{L}+)?)
-; a missing or loading value, at the value's own size, in TertiaryTextColor (never 0 for data that is missing)
+; a missing or loading value, at the value's own size, in TertiaryTextColor (never 0 for data that is missing). It
+; keeps the prefix and suffix the value will have, "--%", "--°", "-- W", "-- MB/s", "L--°", so the text keeps its width
+; and alignment when the data arrives
 Missing=--
 
 ; ---------------------------------------------------------------- times and dates

@@ -38,11 +38,11 @@ H=17
 UpdateDivider=-1
 
 [MeterDown]
-; 22 pt on baseline 56, its unit 11 pt: "2.7 MB/s". "--" in the tertiary ink until the second update (MeasureReady)
+; 22 pt on baseline 56, its unit 11 pt: "2.7 MB/s". "-- MB/s" in the tertiary ink until the second update (MeasureReady)
 Meter=String
 MeterStyle=sMetricM | sUnit
 MeasureName=MeasureDownText
-Text=--
+Text=#SpeedMissing#
 FontColor=#TertiaryTextColor#
 X=41
 Y=(56 - #Ascent22#)
@@ -65,7 +65,7 @@ UpdateDivider=-1
 Meter=String
 MeterStyle=sMetricM | sUnit
 MeasureName=MeasureUpText
-Text=--
+Text=#SpeedMissing#
 FontColor=#TertiaryTextColor#
 X=41
 Y=(89 - #Ascent22#)
@@ -76,7 +76,7 @@ Group=Rate
 Meter=String
 MeterStyle=sCaptionNum
 MeasureName=MeasurePeakText
-Text=#NetworkPeak# -- · #NetworkChartWindow#
+Text=#NetworkPeak# #SpeedMissing# · #NetworkChartWindow#
 StringAlign=Right
 X=154
 Y=(110 - #Ascent11#)
