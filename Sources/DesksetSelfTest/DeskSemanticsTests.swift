@@ -277,3 +277,46 @@ func runDeskSemanticsTests(_ t: TestRunner) {
         t.check(both < 300 * factor / 2, String(format: "parse + check of %d lines took %.0f ms", lineCount, both))
     }
 }
+
+func runDeskSemanticEditTests(_ t: TestRunner) {
+    t.suite("Desk: edits — setModifier and rename") {
+        func element(_ checked: CheckedFile, _ component: String) -> NodeID? {
+            checked.elements.first { $0.value.component == component }?.key
+        }
+        // Inline chain: inserted by sort key.
+        let inline = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").font(.caption).padding(4) }")
+        let color = Desk.apply(.setModifier(element(inline, "Text")!, name: "color", argumentsText: ".dim", condition: nil), to: inline)
+        t.equal(color.tree.text, "info { name: \"T\" }\nwidget { Text(\"A\").font(.caption).color(.dim).padding(4) }")
+        // Replacing the arguments of the same modifier; a conditional one is separate.
+        let replaced = Desk.apply(.setModifier(element(inline, "Text")!, name: "font", argumentsText: ".headline", condition: nil), to: inline)
+        t.equal(replaced.tree.text, "info { name: \"T\" }\nwidget { Text(\"A\").font(.headline).padding(4) }")
+        let conditional = Desk.apply(.setModifier(element(inline, "Text")!, name: "font", argumentsText: ".title", condition: "cpu.usage > 80"), to: inline)
+        t.equal(conditional.tree.text, "info { name: \"T\" }\nwidget { Text(\"A\").font(.caption).font(.title, if: cpu.usage > 80).padding(4) }")
+        // A multi-line chain: on its own line, at the chain's indentation.
+        let lines = deskCheck("info { name: \"T\" }\nwidget {\n    Text(\"A\")\n        .font(.caption)\n        .padding(4)\n}")
+        let added = Desk.apply(.setModifier(element(lines, "Text")!, name: "background", argumentsText: ".glass", condition: nil), to: lines)
+        t.equal(added.tree.text, "info { name: \"T\" }\nwidget {\n    Text(\"A\")\n        .font(.caption)\n        .padding(4)\n        .background(.glass)\n}")
+        t.equal(Desk.check(added.tree).diagnostics.map(\.id.rawValue), [])
+        // A stale reference is refused.
+        let stale = Desk.apply(.setModifier(element(inline, "Text")!, name: "bold", argumentsText: "", condition: nil), to: deskCheck(inline.tree.text))
+        t.equal(stale.failure, .staleReference)
+        // Rename: the declaration and every use, not a field of the same spelling nor text.
+        let source = "info { name: \"T\" }\nwidget {\n    variable title = 0\n    computed month = calendar.month()\n    Text(\"{title} title {month.title}\").onClick { title = title + 1 }\n}"
+        let file = deskCheck(source)
+        let decl = file.symbols.values.compactMap { symbol -> NodeID? in
+            if case .declaration(let id) = symbol, file.tree.resolve(id).map({ DeclarationSyntax(unchecked: $0).name.token.text }) == "title" { return id }
+            return nil
+        }.first!
+        let renamed = Desk.apply(.rename(decl, to: "count"), to: file)
+        t.equal(renamed.tree.text, "info { name: \"T\" }\nwidget {\n    variable count = 0\n    computed month = calendar.month()\n    Text(\"{count} title {month.title}\").onClick { count = count + 1 }\n}")
+        t.equal(Desk.apply(.rename(decl, to: "if"), to: file).failure, .notApplicable("if is not an own name"))
+        // Styles and options.
+        let styled = deskCheck("info { name: \"T\" }\noptions { accent = ColorPicker(\"Accent\") }\nwidget { Text(\"A\").style(card).color(options.accent) }\nstyle card { .bold() }")
+        let card = styled.styles["card"]!
+        t.equal(Desk.apply(.rename(card, to: "panel"), to: styled).tree.text,
+                "info { name: \"T\" }\noptions { accent = ColorPicker(\"Accent\") }\nwidget { Text(\"A\").style(panel).color(options.accent) }\nstyle panel { .bold() }")
+        let accent = styled.options["accent"]!.node
+        t.equal(Desk.apply(.rename(accent, to: "tint"), to: styled).tree.text,
+                "info { name: \"T\" }\noptions { tint = ColorPicker(\"Accent\") }\nwidget { Text(\"A\").style(card).color(options.tint) }\nstyle card { .bold() }")
+    }
+}

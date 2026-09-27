@@ -1,0 +1,144 @@
+import Foundation
+
+/// An editor operation that needs the catalog or resolved names (§3.7): text-only edits, adding or replacing a
+/// modifier at the place the catalog's `sortKey` gives it, and renaming an own name everywhere it is read.
+public enum DeskEdit: Sendable {
+    case syntax(SyntaxEdit)
+    /// Adds the modifier, or replaces the arguments of the one of the same name and condition. `condition` is the
+    /// `if:` value as Desk text, or nil for the unconditional one.
+    case setModifier(ElementRef, name: String, argumentsText: String, condition: String?)
+    /// Renames a declaration, loop variable, element name, style or option: its declaration and every use that
+    /// resolves to it (never a field of the same spelling, such as `item.title`, nor text in a string).
+    case rename(SymbolRef, to: String)
+}
+
+extension Desk {
+    /// Applies an edit to a checked file and parses the result.
+    public static func apply(_ edit: DeskEdit, to file: CheckedFile, catalog: DeskCatalog = .current) -> EditResult {
+        let tree = file.tree
+        func refuse(_ failure: EditFailure) -> EditResult {
+            EditResult(edits: [], tree: tree, diagnostics: tree.diagnostics, moves: [], failure: failure)
+        }
+        func finish(_ edits: [TextEdit]) -> EditResult {
+            let text = TextEdit.apply(edits, to: tree.text)
+            let newTree = Desk.parse(text, file: tree.file)
+            return EditResult(edits: edits, tree: newTree, diagnostics: newTree.diagnostics, moves: [])
+        }
+        switch edit {
+        case .syntax(let syntaxEdit):
+            return apply(syntaxEdit, to: tree)
+        case .setModifier(let ref, let name, let argumentsText, let condition):
+            guard ref.treeVersion == tree.version else { return refuse(.staleReference) }
+            guard let node = tree.resolve(ref), node.kind == .callStmt else { return refuse(.notFound) }
+            guard let spec = catalog.modifier(named: name) else { return refuse(.notApplicable("unknown modifier .\(name)")) }
+            return finish(ModifierPlacement(tree: tree, call: node, catalog: catalog)
+                .edits(spec: spec, argumentsText: argumentsText, condition: condition))
+        case .rename(let ref, let newName):
+            guard ref.treeVersion == tree.version else { return refuse(.staleReference) }
+            guard Checker.isIdentifier(newName), let first = newName.unicodeScalars.first, !("A"..."Z").contains(first),
+                  Chars.reservedWords[newName] == nil else {
+                return refuse(.notApplicable("\(newName) is not an own name"))
+            }
+            guard let edits = RenamePlan(file: file).edits(for: ref, to: newName), !edits.isEmpty else { return refuse(.notFound) }
+            return finish(edits)
+        }
+    }
+}
+
+/// Where a modifier goes among an element's modifiers (§3.7 rule 4).
+struct ModifierPlacement {
+    let tree: SyntaxTree
+    let call: PositionedNode
+    let catalog: DeskCatalog
+
+    func text(_ r: Range<Int>) -> String {
+        let utf8 = tree.text.utf8
+        return String(tree.text[utf8.index(utf8.startIndex, offsetBy: r.lowerBound)..<utf8.index(utf8.startIndex, offsetBy: r.upperBound)])
+    }
+
+    func edits(spec: ModifierSpec, argumentsText: String, condition: String?) -> [TextEdit] {
+        let modifiers = call.children(.modifierApp).map(ModifierAppSyntax.init(unchecked:))
+        let arguments = condition.map { argumentsText.isEmpty ? "if: \($0)" : "\(argumentsText), if: \($0)" } ?? argumentsText
+        // Replace the one of the same name and condition.
+        for modifier in modifiers where modifier.name.token.text == spec.name {
+            let conditionArgument = modifier.arguments?.arguments.first { $0.label?.name == "if" }
+            let sameCondition: Bool
+            if let condition { sameCondition = conditionArgument.map { $0.value.node.node.trimmedText == condition } ?? false }
+            else { sameCondition = conditionArgument == nil }
+            guard sameCondition else { continue }
+            if let clause = modifier.arguments {
+                return [TextEdit(file: tree.file, range: clause.node.textRange, replacement: "(\(arguments))")]
+            }
+            let end = modifier.name.textRange.upperBound
+            return [TextEdit(file: tree.file, range: end..<end, replacement: "(\(arguments))")]
+        }
+        // Insert by sort key: before the first modifier that sorts after it, else after the last.
+        let newText = ".\(spec.name)(\(arguments))"
+        let multiLine = modifiers.contains { $0.dot.token.leadingTrivia.containsLineBreak }
+        let indent: String
+        if let lined = modifiers.first(where: { $0.dot.token.leadingTrivia.containsLineBreak }) {
+            indent = lined.dot.token.leadingTrivia.filter { !$0.isNewline }.text
+        } else {
+            indent = ""
+        }
+        let newline = tree.lines.newline
+        if let next = modifiers.first(where: { (catalog.modifier(named: $0.name.token.text)?.sortKey ?? Int.max) > spec.sortKey }) {
+            let at = next.dot.textStart
+            if multiLine && next.dot.token.leadingTrivia.containsLineBreak {
+                return [TextEdit(file: tree.file, range: at..<at, replacement: newText + newline + indent)]
+            }
+            return [TextEdit(file: tree.file, range: at..<at, replacement: newText)]
+        }
+        let end = call.textRange.upperBound
+        if multiLine { return [TextEdit(file: tree.file, range: end..<end, replacement: newline + indent + newText)] }
+        return [TextEdit(file: tree.file, range: end..<end, replacement: newText)]
+    }
+}
+
+/// Every place an own name is written: its declaration and the uses that resolve to it.
+struct RenamePlan {
+    let file: CheckedFile
+
+    func edits(for ref: NodeID, to newName: String) -> [TextEdit]? {
+        let tree = file.tree
+        guard let declaration = tree.resolve(ref) else { return nil }
+        var ranges: [Range<Int>] = []
+        // The declaration's own name.
+        switch declaration.kind {
+        case .declaration: ranges.append(DeclarationSyntax(unchecked: declaration).name.textRange)
+        case .forStmt: ranges.append(ForStmtSyntax(unchecked: declaration).variable.textRange)
+        case .styleDecl: ranges.append(StyleDeclSyntax(unchecked: declaration).name.textRange)
+        case .optionDecl: ranges.append(OptionDeclSyntax(unchecked: declaration).target.name.textRange)
+        case .callStmt:
+            // An element named with `.name(x)`.
+            for modifier in declaration.children(.modifierApp).map(ModifierAppSyntax.init(unchecked:))
+            where modifier.name.token.text == "name" {
+                if let value = modifier.arguments?.arguments.first?.value.node, value.kind == .identifierExpr {
+                    ranges.append(IdentifierExprSyntax(unchecked: value).token.textRange)
+                }
+            }
+        default:
+            return nil
+        }
+        // Every use that resolves to it.
+        for (use, symbol) in file.symbols {
+            let target: NodeID?
+            switch symbol {
+            case .declaration(let id), .loopVariable(let id), .element(let id): target = id
+            case .style(let id, let f), .option(let id, let f): target = f == tree.file ? id : nil
+            default: target = nil
+            }
+            guard target == ref, let node = tree.resolve(use) else { continue }
+            switch node.kind {
+            case .identifierExpr: ranges.append(IdentifierExprSyntax(unchecked: node).token.textRange)
+            case .memberExpr: ranges.append(MemberExprSyntax(unchecked: node).name.textRange)
+            case .target:
+                let target = TargetSyntax(unchecked: node)
+                ranges.append((target.members.last ?? target.name).textRange)
+            default: break
+            }
+        }
+        let unique = Set(ranges.map { [$0.lowerBound, $0.upperBound] }).map { $0[0]..<$0[1] }
+        return unique.sorted { $0.lowerBound < $1.lowerBound }.map { TextEdit(file: tree.file, range: $0, replacement: newName) }
+    }
+}
