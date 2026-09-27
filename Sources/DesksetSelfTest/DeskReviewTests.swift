@@ -565,4 +565,16 @@ func runDeskReviewTests(_ t: TestRunner) {
             }
         }
     }
+
+    t.suite("Desk: review — names where text or a case is expected (findings 11, 22)") {
+        let category = deskCheck("info { name: \"T\", category: time }\nwidget { Text(\"A\") }")
+        t.equal(category.diagnostics.map(\.id.rawValue), ["DK3010"])
+        t.equal(deskApplyFix(category, "DK3010"), "info { name: \"T\", category: .time }\nwidget { Text(\"A\") }")
+        let name = deskCheck("info { name: CPU }\nwidget { Text(\"A\") }")
+        t.equal(name.diagnostics.map(\.id.rawValue), ["DK3034"])
+        t.equal(deskApplyFix(name, "DK3034"), "info { name: \"CPU\" }\nwidget { Text(\"A\") }")
+        t.equal(deskReviewIDs("widget { Text(month.days) }"), ["DK3002"])
+        t.equal(deskReviewIDs("widget { Text(month.days(1)) }"), ["DK3002"])
+        t.equal(deskReviewIDs("widget { Text(Hello) }"), ["DK3034"])
+    }
 }

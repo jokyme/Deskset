@@ -143,6 +143,9 @@ struct ExprContext {
     var callee: String?
     /// A translatable `info` field (`name`, `description`).
     var translatableField = false
+    /// The base of a member access or call (`month` in `month.days`): never the text itself, even where text is
+    /// expected (no DK3034 for it).
+    var isBase = false
     /// The parameter the expression is passed to.
     var param: ParamSpec?
     var usage: DataUsage = .display

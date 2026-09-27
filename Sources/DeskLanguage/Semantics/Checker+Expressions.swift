@@ -40,6 +40,15 @@ extension Checker {
     /// Types `node` and reports DK3037 / DK3028 / DK6005 for names that are not values.
     func inferValue(_ node: PositionedNode, _ context: ExprContext, expected: DeskType?) -> Val {
         let val = infer(node, context, expected: expected)
+        // A data namespace where the expected choice has a case of the same name (`info { category: time }`):
+        // the dot is missing (DK3010), not a group of data used as a value (§4.2).
+        if !val.error, let ns = val.namespace, node.kind == .identifierExpr, let expected,
+           catalog.namespace(named: ns)?.value == nil, implicitCaseFits(ns, expected: expected) {
+            let r = range(node)
+            report(.missingDot, r, ["name": .code(ns)],
+                   fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, ".")], ["text": .code(".")])])
+            return .error
+        }
         return requireValue(val, node, context)
     }
 
@@ -155,7 +164,9 @@ extension Checker {
         let baseNode = member.base.node
         // `.text.opacity(50%)`: the base of a chain whose members return its own type takes the chain's type.
         let baseExpected: DeskType? = baseNode.kind == .implicitMemberExpr ? expected : nil
-        let base = infer(baseNode, context, expected: baseExpected)
+        var baseContext = context
+        baseContext.isBase = true
+        let base = infer(baseNode, baseContext, expected: baseExpected)
         if base.error { return .error }
         return memberOf(base, name: name, nameRange: range(nameToken), node: node, baseNode: baseNode, context,
                         called: false, expected: expected)
@@ -705,7 +716,9 @@ extension Checker {
             let baseNode = member.base.node
             let name = member.name.token.name
             let baseExpected: DeskType? = baseNode.kind == .implicitMemberExpr ? expected : nil
-            let base = infer(baseNode, context, expected: baseExpected)
+            var baseContext = context
+            baseContext.isBase = true
+            let base = infer(baseNode, baseContext, expected: baseExpected)
             if base.error {
                 for arg in arguments.arguments { _ = speculate { infer(arg.value.node, context, expected: nil) } }
                 return .error

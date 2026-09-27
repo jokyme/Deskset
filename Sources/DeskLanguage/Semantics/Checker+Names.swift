@@ -478,7 +478,9 @@ extension Checker {
                    fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, "options.")], ["text": .code("options.")])])
             return .error
         }
-        if context.display && context.param?.role == .display && context.param?.translatable == true {
+        // Text is expected: the content of `Text`, a title, an option label, `info.name` and the other translatable
+        // fields (§4.2).
+        if !context.isBase && (context.display && context.param?.role == .display && context.param?.translatable == true || context.translatableField) {
             var fixIts = [fix("addQuotes", [edit(r, "\"\(name)\"")])]
             if let caseFix = caseVariantSuggestion(name, context),
                catalog.namespace(named: caseFix) == nil || catalog.namespace(named: caseFix)?.value != nil {
@@ -492,7 +494,7 @@ extension Checker {
                    fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, ".")], ["text": .code(".")])])
             return .error
         }
-        if expected == nil, catalog.implicitMemberTypes(name).count == 1, catalog.namespace(named: name) == nil {
+        if expected == nil, !context.isBase, catalog.implicitMemberTypes(name).count == 1, catalog.namespace(named: name) == nil {
             report(.missingDot, r, ["name": .code(name)],
                    fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, ".")], ["text": .code(".")])])
             return .error
