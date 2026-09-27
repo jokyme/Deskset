@@ -111,22 +111,3 @@ FontColor=#TertiaryTextColor#
 Hidden=([MeasureWxStale:] = 0)
 DynamicVariables=1
 Group=Weather
-
-[MeterPromptS]
-; the Small's first-run check, on the high/low line (its header has no room): "Not your city? Change…"
-Meter=String
-MeterStyle=sCaption
-Text=#WeatherNotYourCity# #WeatherChange#
-InlineSetting7=Color | #AccentTextColor#
-InlinePattern7=#WeatherChange#
-X=16
-Y=(145 - #Ascent11# - 7)
-W=138
-Padding=0,7,0,7
-ClipString=1
-SolidColor=0,0,0,1
-LeftMouseUpAction=#WxOpenCityField#
-ToolTipText=#WeatherPromptTip#
-Hidden=(([MeasureWxPrompt:] = 0) || (#CardW# > 200))
-DynamicVariables=1
-Group=Weather
