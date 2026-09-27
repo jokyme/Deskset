@@ -143,10 +143,11 @@ MoonSymbol6=moonphase.last.quarter
 MoonSymbol7=moonphase.waning.crescent
 
 ; ---------------------------------------------------------------- the suite's menu items
-; A widget lists its own items first, then a separator and these two (titles from the Strings, current value shown):
-;     ContextTitleN=#MenuLookTitle#       ContextActionN=#MenuLookAction#
-;     ContextTitleN+1=#MenuCardsTitle#    ContextActionN+1=#MenuCardsAction#
-; Pieces without a card show the Ink item instead. The Clock, Week Starts and Temperature items go in the widgets that
+; A widget lists its own items first, then a separator and these three (titles from the Strings, current value shown):
+;     ContextTitleN=#MenuLookTitle#           ContextActionN=#MenuLookAction#
+;     ContextTitleN+1=#MenuCardsTitle#        ContextActionN+1=#MenuCardsAction#
+;     ContextTitleN+2=#MenuLanguageTitle#     ContextActionN+2=#MenuLanguageAction#
+; Pieces without a card show the Ink item instead of Look and Cards. The Clock, Week Starts and Temperature items go in the widgets that
 ; show them. Every item writes Variables.inc and refreshes the whole suite (Group=Stationery).
 MenuLookTitle=[#MenuLook[#Look]]
 ; until Deskset can set a widget's look itself, the item opens System Settings › Appearance, which Auto follows
@@ -178,6 +179,13 @@ MenuTempAction=[!WriteKeyValue Variables TempUnit [#TempUnitNext[#TempUnit]] "#@
 TempUnitNextAuto=C
 TempUnitNextC=F
 TempUnitNextF=Auto
+; the widgets' words and the day and month names change together: English with en_US, Chinese with zh_CN
+MenuLanguageTitle=[#MenuLanguage[#Language]]
+MenuLanguageAction=[!WriteKeyValue Variables Language [#LanguageNext[#Language]] "#@#Variables.inc"][!WriteKeyValue Variables Locale [#LanguageNextLocale[#Language]] "#@#Variables.inc"][!RefreshGroup Stationery]
+LanguageNextEnglish=Chinese
+LanguageNextChinese=English
+LanguageNextLocaleEnglish=zh_CN
+LanguageNextLocaleChinese=en_US
 
 ; ---------------------------------------------------------------- files
 ; what a widget's user types (to-do items, cities, launcher items, the countdown's event, the timer's state) lives

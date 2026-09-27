@@ -17,3 +17,5 @@ SentenceSuiteTitle1=#MenuLookTitle#
 SentenceSuiteAction1=#MenuLookAction#
 SentenceSuiteTitle2=#MenuCardsTitle#
 SentenceSuiteAction2=#MenuCardsAction#
+SentenceSuiteTitle3=#MenuLanguageTitle#
+SentenceSuiteAction3=#MenuLanguageAction#

@@ -16,7 +16,8 @@ Look=Auto
 UseSolidCards=0
 ; Ink of the pieces without a card: Auto (chosen from the wallpaper under them), White or Dark
 Ink=Auto
-; Words in the widgets: English or Chinese (Simplified)
+; Words in the widgets: English or Chinese (Simplified). The Language item of every widget's menu switches it and
+; Locale together
 Language=English
 ; Day and month names: en_US for English, zh_CN for Chinese, or Local for this Mac's region
 Locale=en_US

@@ -98,6 +98,9 @@ IfTrueAction16=#MenuLookAction#
 ; the suite's Cards item
 IfCondition17=(MeasureAct = 48) || (MeasureAct = 59)
 IfTrueAction17=#MenuCardsAction#
+; the suite's Language item
+IfCondition18=(MeasureAct = 58) || (MeasureAct = 69)
+IfTrueAction18=#MenuLanguageAction#
 
 [MeasureEdit]
 ; Change Item… and Rename…: a field over the cell's label row, for the cell that asked (#EditCell# is read when the

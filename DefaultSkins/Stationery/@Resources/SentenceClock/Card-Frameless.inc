@@ -27,8 +27,10 @@ RuleHaloOuter=HaloOuterA
 RuleHaloInner=HaloInnerA
 ; after each switch of ink: the resting alpha of the unlit words follows, and the words, footer and rule redraw
 InkChangeAction=[!SetVariable OffNow "#OffRest#"][!UpdateMeterGroup Words][!UpdateMeterGroup Footer][!UpdateMeterGroup Rule][!Redraw]
-; the menu shows the suite's Ink item instead of Look and Cards
+; the menu shows the suite's Ink item instead of Look and Cards, then Language (a blank title ends the list)
 SentenceSuiteTitle1=#MenuInkTitle#
 SentenceSuiteAction1=#MenuInkAction#
-SentenceSuiteTitle2=
-SentenceSuiteAction2=
+SentenceSuiteTitle2=#MenuLanguageTitle#
+SentenceSuiteAction2=#MenuLanguageAction#
+SentenceSuiteTitle3=
+SentenceSuiteAction3=

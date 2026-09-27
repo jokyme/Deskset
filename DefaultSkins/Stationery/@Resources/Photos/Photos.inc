@@ -73,6 +73,7 @@ PhotoMenu6_1=[MeasureTitleFileName]
 PhotoMenu7_1=---
 PhotoMenu8_1=#MenuLookTitle#
 PhotoMenu9_1=#MenuCardsTitle#
+PhotoMenu10_1=#MenuLanguageTitle#
 PhotoMenu1_0=#PhotoMenuChoose#
 PhotoMenu2_0=#PhotoMenuFinder#
 PhotoMenu3_0=---
@@ -81,7 +82,8 @@ PhotoMenu5_0=[MeasureTitleFileName]
 PhotoMenu6_0=---
 PhotoMenu7_0=#MenuLookTitle#
 PhotoMenu8_0=#MenuCardsTitle#
-PhotoMenu9_0=
+PhotoMenu9_0=#MenuLanguageTitle#
+PhotoMenu10_0=
 
 ; ---------------------------------------------------------------- the folder
 [MeasureChosen]
@@ -320,6 +322,8 @@ IfCondition7=(MeasureMenu = 81) || (MeasureMenu = 70)
 IfTrueAction7=#MenuLookAction#
 IfCondition8=(MeasureMenu = 91) || (MeasureMenu = 80)
 IfTrueAction8=#MenuCardsAction#
+IfCondition9=(MeasureMenu = 101) || (MeasureMenu = 90)
+IfTrueAction9=#MenuLanguageAction#
 
 ; ---------------------------------------------------------------- meters
 [MeterCard]
