@@ -330,7 +330,18 @@ extension Checker {
         if token.token.isMissing { return .error }
         if token.kind == .invalidIdentifier { return .error }
         if token.kind == .eventKeyword { return resolveEvent(node, context) }
-        if token.token.flags.contains(.keywordCaseVariant) { return .error }
+        if token.token.flags.contains(.keywordCaseVariant) {
+            // `If`, `Event`, `True` used as a value (§1.5). The parser reports the spellings it reads as keywords;
+            // the rest are reported here: DK3013 when the keyword is itself a value (`event`, `true`, `false`),
+            // otherwise the ordinary "finds nothing" rules (`Text(Else)` → put the word in quotes).
+            if tree.diagnostics.contains(where: { $0.id == .wrongCase && $0.range == r }) { return .error }
+            let lower = name.lowercased()
+            if ["true", "false"].contains(lower) || (lower == "event" && context.action?.eventAvailable == true) {
+                report(.wrongCase, r, ["suggestion": .code(lower), "name": .code(name)],
+                       fixIts: [fix("replaceWith", [edit(r, lower)], ["text": .code(lower)])])
+                return .error
+            }
+        }
 
         // Loop variables, innermost first.
         if let loop = loopStack.last(where: { $0.name == name }) {

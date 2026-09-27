@@ -434,4 +434,18 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(deskReviewIDs("options { d = Picker(\"Look\", [Choice(.mono, \"One color\"), Choice(.full, \"Full color\")]) }\nwidget { Text(\"{options.d}\") }"), [])
         t.equal(deskReviewIDs("options { d = Picker(\"N\", [1, 2, -3]) }\nwidget { Text(\"{options.d}\") }"), [])
     }
+
+    t.suite("Desk: review — keyword case variants used as values (finding 3)") {
+        t.equal(deskReviewIDs("widget { Text(\"A\").hidden(if: Or) }"), ["DK3002"])
+        t.equal(deskReviewIDs("widget { Text(\"{If}\") }"), ["DK3002"])
+        t.equal(deskReviewIDs("widget { Text(Else) }"), ["DK3034"])
+        t.equal(deskReviewIDs("widget {\n    variable x = Event\n    Text(\"{x}\")\n}"), ["DK3002"])
+        let event = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").onClick { log(\"{Event.x}\") } }")
+        t.equal(event.diagnostics.map(\.id.rawValue), ["DK3013"])
+        t.equal(deskApplyFix(event, "DK3013").map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let yes = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").hidden(if: True) }")
+        t.equal(yes.diagnostics.map(\.id.rawValue), ["DK3013"])
+        t.equal(deskApplyFix(yes, "DK3013"), "info { name: \"T\" }\nwidget { Text(\"A\").hidden(if: true) }")
+        t.equal(deskReviewIDs("widget { Text(\"A\").hidden(if: Computed) }"), ["DK3002"])
+    }
 }
