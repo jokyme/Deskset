@@ -554,4 +554,15 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(flipped, "info { name: \"T\" }\nwidget {\n    variable isOpen = false\n    Text(\"{isOpen}\").onClick { isOpen = not isOpen }\n}")
         t.equal(flipped.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
     }
+
+    t.suite("Desk: review — repeat counts in patterns (finding 10)") {
+        for count in ["2,3", "3", "2,"] {
+            let checked = deskCheck("info { name: \"T\" }\nwidget {\n    variable s = \"123\"\n    Text(\"A\").hidden(if: s.matches(\"\\\\d{\(count)}\"))\n}")
+            t.equal(checked.diagnostics.map(\.id.rawValue), ["DK1018"], count)
+            for fix in checked.diagnostics.first?.fixIts ?? [] {
+                let applied = TextEdit.apply(fix.edits, to: checked.tree.text)
+                t.equal(deskCheck(applied).diagnostics.map(\.id.rawValue), [], "\(count): \(applied)")
+            }
+        }
+    }
 }

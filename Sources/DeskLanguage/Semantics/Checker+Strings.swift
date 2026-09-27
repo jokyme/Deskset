@@ -28,9 +28,11 @@ extension Checker {
             inner.display = true
             inner.param = context.param.map { p in var q = p; q.type = .any; q.role = .display; q.translatable = false; return q }
             let value = interpolation.value.node
-            // DK1018: `{3}` in a pattern would put in a number.
-            if role == .pattern, value.kind == .numberLiteral, interpolation.formatOptions.isEmpty,
-               NumberLiteralSyntax(unchecked: value).unit == nil {
+            // DK1018: `{3}`, `{2,3}` or `{2,}` in a pattern would put in a number (the parser read `, 3` as a
+            // format option with no name; that reading is not reported).
+            if role == .pattern, isRepeatCount(interpolation) {
+                let r = range(interpolation.node)
+                for d in tree.diagnostics where r.contains(d.range.lowerBound) { droppedParserDiagnostics.insert(diagnosticKey(d)) }
                 reportNumberInPattern(string, interpolation)
                 v.error = true
                 continue
@@ -78,6 +80,21 @@ extension Checker {
             recordStringEntry(node, string: string, context)
         }
         return v
+    }
+
+    /// Whether an interpolation is only a whole number, or `n,m` / `n,` (a regular expression's repeat count).
+    func isRepeatCount(_ interpolation: InterpolationSyntax) -> Bool {
+        let tokens = interpolation.node.tokens.filter { !$0.token.isMissing }.dropFirst().dropLast()
+        func whole(_ t: PositionedToken) -> Bool {
+            t.kind == .number && t.token.unit == nil && t.token.text.allSatisfy { $0.isASCII && $0.isNumber }
+        }
+        let list = Array(tokens)
+        switch list.count {
+        case 1: return whole(list[0])
+        case 2: return whole(list[0]) && list[1].kind == .comma
+        case 3: return whole(list[0]) && list[1].kind == .comma && whole(list[2])
+        default: return false
+        }
     }
 
     /// DK1018: an interpolation that is only a whole number, in a pattern.
