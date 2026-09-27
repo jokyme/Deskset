@@ -704,6 +704,18 @@ public final class Skin {
         if !m.onUpdateAction.isEmpty { execute(m.onUpdateAction, from: m) }
     }
 
+    /// Meters updated by a bang (`!UpdateMeter`, `!UpdateMeterGroup`), in file order. The layout is marked stale after
+    /// each one, not only at the end: a later meter of the same bang that reads an earlier one's geometry
+    /// (`W=([A:W] + 1)`, `X=([B:W] + 10)`) sees it laid out anew, as in an update. Nothing is laid out unless such a
+    /// read happens (`layoutIfPending`).
+    private func updateMetersNow(_ list: [Meter]) {
+        for m in list {
+            updateMeterNow(m)
+            layoutPending = true
+        }
+        layoutPending = true
+    }
+
     /// A measure updated by a bang (`!UpdateMeasure`, `!UpdateMeasureGroup`): options re-read when needed.
     private func updateMeasureNow(_ m: Measure) {
         burstWork += 1
@@ -1536,11 +1548,9 @@ public final class Skin {
         case "redraw":
             redraw()
         case "updatemeter":
-            meters(matching: arg(0)).forEach(updateMeterNow)
-            layoutPending = true
+            updateMetersNow(meters(matching: arg(0)))
         case "updatemetergroup":
-            meters.filter { $0.isInGroup(arg(0)) }.forEach(updateMeterNow)
-            layoutPending = true
+            updateMetersNow(meters.filter { $0.isInGroup(arg(0)) })
         case "updatemeasure":
             measures(matching: arg(0)).forEach(updateMeasureNow)
         case "updatemeasuregroup":

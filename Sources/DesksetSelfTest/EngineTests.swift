@@ -2564,6 +2564,47 @@ private func runEngineReviewTests(_ t: TestRunner) {
         t.close(frame(skin, "S1").width, 21, "bangs performed by the host are laid out too")
     }
 
+    t.suite("Engine review: a meter of !UpdateMeterGroup reads the new size of one updated before it") {
+        let host = FakeHost()
+        host.textSizer = { text, _, _ in (Double(text.count) * 7, 14) }
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [A]
+        Meter=String
+        Text=short
+        Group=G
+        [B]
+        Meter=String
+        Text=b
+        W=([A:W] + 1)
+        Group=G
+        DynamicVariables=1
+        [C]
+        Meter=String
+        Text=c
+        X=([B:W] + 10)
+        Group=G
+        DynamicVariables=1
+        [D]
+        Meter=String
+        Text=d
+        X=([A:W])
+        DynamicVariables=1
+        """, host: host)
+        skin.update()
+        t.close(frame(skin, "B").width, 36)
+        t.close(frame(skin, "C").x, 46)
+        // One bang updates the three in file order: B sees A's new width and C sees B's, as in an update.
+        run(skin, "[!SetOption A Text abcdefghij][!UpdateMeterGroup G]")
+        t.close(frame(skin, "A").width, 70)
+        t.close(frame(skin, "B").width, 71, "B read A as laid out after A's update")
+        t.close(frame(skin, "C").x, 81, "C read B as laid out after B's update")
+        t.close(frame(skin, "D").x, 35, "a meter outside the group keeps what it read at its last update")
+        run(skin, "[!SetOption A Text abc][!UpdateMeter *]")
+        t.close(frame(skin, "B").width, 22, "!UpdateMeter * too")
+        t.close(frame(skin, "C").x, 32)
+        t.close(frame(skin, "D").x, 21)
+    }
+
     t.suite("Engine review: an action that unloads the skin stops the update") {
         let host = UnloadingHost()
         let (skin, _, _) = try makeEngineSkin(t, """
