@@ -1,8 +1,8 @@
 import Foundation
 @testable import DeskLanguage
 
-/// Every example of the language specification and DESK-DESIGN §4–8 (code spans and code blocks), extracted into
-/// TestSkins/Desk/Corpus/examples.json.
+/// Every Desk example of the language's design documents (their code spans and code blocks, valid and invalid
+/// alike), collected in TestSkins/Desk/Corpus/examples.json.
 func deskExampleCorpus() -> [String] {
     let url = deskFixtures.appendingPathComponent("Corpus/examples.json")
     guard let data = try? Data(contentsOf: url),
