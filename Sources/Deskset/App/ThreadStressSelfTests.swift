@@ -306,7 +306,7 @@ enum ThreadStressSelfTests {
             }
         }
         t.equal(problems, [], "every default skin loads cleanly, at its size")
-        print("    \(skins.count) default skins: no notes, no warnings, each at its size")
+        print("    \(skins.count) default skins checked for notes, warnings and their size")
     }
 
     /// What the fixtures in TestSkins/Threads computed on their threads.
