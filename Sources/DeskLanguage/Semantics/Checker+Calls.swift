@@ -634,7 +634,9 @@ extension Checker {
         }
         guard let name = candidates.first else { return false }
         let r = range(node)
-        report(.quotedChoice, r, ["text": .code(name)], fixIts: [fix("replaceWith", [edit(r, "." + name)], ["text": .code("." + name)])])
+        // The text quoted as it was written (`"GB"`), the choice as Desk writes it (`.gb`).
+        report(.quotedChoice, r, ["text": .code(name), "written": .code(text(node))],
+               fixIts: [fix("replaceWith", [edit(r, "." + name)], ["text": .code("." + name)])])
         return true
     }
 
@@ -657,6 +659,11 @@ extension Checker {
             fixIts.append(fix("convert", [edit(r, rgb)], ["text": .code(rgb)]))
         } else if [6, 8].contains(s.count), s.allSatisfy({ hex.contains($0) }) {
             fixIts.append(fix("convert", [edit(r, "\"#\(s)\"")], ["text": .code("\"#\(s)\"")]))
+        } else if let exact = catalog.namedValues.filter({ $0.type == "Color" }).map(\.name).first(where: { $0.lowercased() == s.lowercased() }) {
+            // `"red"`: a built-in color in quotes (DK4045, §4.5).
+            report(.quotedChoice, r, ["text": .code(exact), "written": .code(text(node))],
+                   fixIts: [fix("replaceWith", [edit(r, "." + exact)], ["text": .code("." + exact)])])
+            return false
         } else {
             let names = catalog.namedValues.filter { $0.type == "Color" }.map(\.name)
             let suggestion = DidYouMean.suggest(s, candidates: names)

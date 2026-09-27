@@ -447,9 +447,15 @@ extension CatalogData {
             id: .modifierWithoutElement, severity: .error,
             trigger: #"a block starting with `.font(…)`"#,
             template: LocalizedText(
-                #"A modifier needs an element before it."#,
-                #"修饰符前面要有一个元素。"#),
-            placeholders: [:]
+                #"A modifier needs an element before it. {hint}"#,
+                #"修饰符前面要有一个元素。{hint}"#),
+            placeholders: ["hint": .text, "modifier": .code],
+            hints: [
+                HintSpec(key: "afterWidget", text: LocalizedText(#"`widget { }` takes no modifiers; put `{modifier}` on its outermost element."#, #"`widget { }` 不带修饰符；把 `{modifier}` 写在最外层的元素上。"#)),
+            ],
+            fixIts: [
+                FixItSpec("moveOntoElement", offeredWhen: LocalizedText(#"After the `}` of `widget`"#, #"写在 `widget` 的 `}` 后面时"#)),
+            ]
         ),
         DiagnosticSpec(
             id: .notAllowedHere, severity: .error,
@@ -1095,7 +1101,7 @@ extension CatalogData {
             trigger: #"`.font(true)`"#,
             template: LocalizedText(
                 #"{what} needs {expected}, but this is {actual}. {hint}"#,
-                #"{what}要的是{expected}，这里是{actual}。{hint}"#),
+                #"{what}要填{expected}，但这里填了{actual}。{hint}"#),
             placeholders: ["what": .displayName, "expected": .displayName, "actual": .shortName, "hint": .text,
                            "width": .code, "height": .code],
             hints: [
@@ -1529,9 +1535,9 @@ extension CatalogData {
             id: .quotedChoice, severity: .error,
             trigger: #"`.font("headline")`, `info { size: "small" }`"#,
             template: LocalizedText(
-                #"`"{text}"` is a built-in choice: write `.{text}` without quotes."#,
-                #"`"{text}"` 是内置的选项：去掉引号，写成 `.{text}`。"#),
-            placeholders: ["text": .code],
+                #"`{written}` is a built-in choice: write `.{text}` without quotes."#,
+                #"`{written}` 是内置的选项：去掉引号，写成 `.{text}`。"#),
+            placeholders: ["text": .code, "written": .code],
             fixIts: [
                 FixItSpec("replaceWith"),
             ]
@@ -1562,11 +1568,15 @@ extension CatalogData {
         ),
         DiagnosticSpec(
             id: .monthInTimePattern, severity: .warning,
-            trigger: #"`format: "HH:MM"`"#,
+            trigger: #"`format: "HH:MM"`, `format: "YYYY-MM-DD"`"#,
             template: LocalizedText(
-                #"`MM` is the month; minutes are `mm`. You can also use `.time`."#,
-                #"`MM` 表示月份，分钟要写 `mm`。也可以直接用 `.time`。"#),
-            placeholders: [:],
+                #"{explanation}"#,
+                #"{explanation}"#),
+            placeholders: ["explanation": .text, "fixed": .code],
+            hints: [
+                HintSpec(key: "monthForMinutes", placeholder: "explanation", text: LocalizedText(#"`MM` is the month; minutes are `mm`. You can also use `.time`."#, #"`MM` 表示月份，分钟要写 `mm`。也可以直接用 `.time`。"#)),
+                HintSpec(key: "weekYear", placeholder: "explanation", text: LocalizedText(#"`DD` is the day of the year and `YYYY` the year of the week; for a date write `{fixed}`, or use `.date`."#, #"`DD` 是一年中的第几天，`YYYY` 是按周计算的年份；日期要写 `{fixed}`，也可以直接用 `.date`。"#)),
+            ],
             fixIts: [
                 FixItSpec("replaceWith", arguments: ["text": #"mm"#]),
             ]
@@ -2806,7 +2816,7 @@ extension CatalogData {
             trigger: #"`<div>`, `<span>`, `<img src=…>`"#,
             template: LocalizedText(
                 #"This is HTML; in Desk use {desk}."#,
-                #"这是 HTML；Desk 里用{desk}。"#),
+                #"这是 HTML；Desk 里用 {desk}。"#),
             placeholders: ["desk": .text]
         ),
         DiagnosticSpec(
@@ -2840,9 +2850,17 @@ extension CatalogData {
             id: .rainmeterOption, severity: .error,
             trigger: #"`FontColor=255,255,255`, `IfCondition=MeasureCPU > 80`"#,
             template: LocalizedText(
-                #"This is Rainmeter; in Desk write `{desk}`."#,
-                #"这是 Rainmeter 的写法；Desk 里写 `{desk}`。"#),
-            placeholders: ["desk": .code],
+                #"This is Rainmeter; in Desk write `{desk}`. {hint}"#,
+                #"这是 Rainmeter 的写法；Desk 里写 `{desk}`。{hint}"#),
+            placeholders: ["desk": .code, "hint": .text],
+            hints: [
+                HintSpec(key: "inFreeform", text: LocalizedText(#"Positions are given inside a `Freeform { }`."#, #"位置要写在 `Freeform { }` 里。"#)),
+                HintSpec(key: "orWhen", text: LocalizedText(#"To run actions instead, write `.when(…) { … }`."#, #"要执行动作，就写 `.when(…) { … }`。"#)),
+                HintSpec(key: "orMouseEnter", text: LocalizedText(#"To run actions instead, write `.onMouseEnter { … }`."#, #"要执行动作，就写 `.onMouseEnter { … }`。"#)),
+                HintSpec(key: "meterKinds", text: LocalizedText(#"Each kind of meter is its own element: `Image`, `Progress`, `Gauge`, `Graph` or a shape."#, #"每种 meter 都是自己的元素：`Image`、`Progress`、`Gauge`、`Graph` 或形状。"#)),
+                HintSpec(key: "measureData", text: LocalizedText(#"Data is read where it is shown, with no measure in between."#, #"数据在显示它的地方直接读取，中间不需要 measure。"#)),
+                HintSpec(key: "severalLines", text: LocalizedText(#"The other lines have their own fix-its."#, #"其他几行各有修正。"#)),
+            ],
             fixIts: [
                 FixItSpec("replace", offeredWhen: LocalizedText(#"When the Desk spelling is exact"#, #"Desk 的写法完全对应时"#)),
             ]
@@ -2851,9 +2869,15 @@ extension CatalogData {
             id: .rainmeterSection, severity: .error,
             trigger: #"`[MeterCPU]` at a line start"#,
             template: LocalizedText(
-                #"`[{name}]` is a Rainmeter section; in Desk you write the element itself, e.g. `{desk}`."#,
-                #"`[{name}]` 是 Rainmeter 的节；Desk 里直接写元素，比如 `{desk}`。"#),
-            placeholders: ["name": .code, "desk": .code]
+                #"`[{name}]` is a Rainmeter section; {advice}."#,
+                #"`[{name}]` 是 Rainmeter 的节；{advice}。"#),
+            placeholders: ["name": .code, "desk": .code, "advice": .text],
+            hints: [
+                HintSpec(key: "element", placeholder: "advice", text: LocalizedText(#"in Desk you write the element itself, e.g. `{desk}`"#, #"Desk 里直接写元素，比如 `{desk}`"#)),
+                HintSpec(key: "rainmeter", placeholder: "advice", text: LocalizedText(#"its settings go in `info { }`, such as `info { refresh: 1s }`, and the widget in `widget { }`"#, #"它的设置写在 `info { }` 里，比如 `info { refresh: 1s }`，组件本身写在 `widget { }` 里"#)),
+                HintSpec(key: "variables", placeholder: "advice", text: LocalizedText(#"settings people change go in `options { … }` and values the widget changes are `variable`s"#, #"用户可以改的设置写在 `options { … }` 里，组件自己改的值写成 `variable`"#)),
+                HintSpec(key: "metadata", placeholder: "advice", text: LocalizedText(#"write it in `info { name: …, author: … }`"#, #"写在 `info { name: …, author: … }` 里"#)),
+            ]
         ),
         DiagnosticSpec(
             id: .rainmeterVariable, severity: .error,
@@ -2870,9 +2894,9 @@ extension CatalogData {
             id: .rainmeterBang, severity: .error,
             trigger: #"`[!SetVariable Page 1]`, `[!SetOption MeterCPU FontColor 255,0,0]`"#,
             template: LocalizedText(
-                #"`[!{bang} …]` is a Rainmeter action; in Desk write `{desk}`."#,
-                #"`[!{bang} …]` 是 Rainmeter 的动作；Desk 里写 `{desk}`。"#),
-            placeholders: ["bang": .code, "desk": .code],
+                #"`{written}` is a Rainmeter action; in Desk write `{desk}`."#,
+                #"`{written}` 是 Rainmeter 的动作；Desk 里写 `{desk}`。"#),
+            placeholders: ["written": .code, "desk": .code],
             fixIts: [
                 FixItSpec("replace", offeredWhen: LocalizedText(#"When the Desk spelling is exact"#, #"Desk 的写法完全对应时"#)),
             ]

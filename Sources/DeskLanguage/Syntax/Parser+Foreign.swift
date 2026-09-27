@@ -218,6 +218,11 @@ extension Parser {
         guard let closeIndex = close, closeIndex > j + 1 else { return nil }
         let inner = String(decoding: bytes[textEnd(j)..<starts[closeIndex]], as: UTF8.self)
             .trimmingCharacters(in: .whitespaces)
+        // `["https://…"]`: Rainmeter's action that opens an address or a program (DK9304).
+        if inner.hasPrefix("\""), inner.hasSuffix("\""), inner.count >= 2, !inner.dropFirst().dropLast().contains("\"") {
+            return ForeignLineMatch(kind: .rainmeterBang, start: j, end: lineEnd, diagnostic: .rainmeterBang,
+                                    severity: .error, arguments: ["bang": .code(""), "target": .code(inner)])
+        }
         if kind(j + 1) == .bang || kind(j + 1) == .bangEqual {
             let bang = inner.dropFirst().prefix { $0.isLetter || $0.isNumber }
             return ForeignLineMatch(kind: .rainmeterBang, start: j, end: lineEnd, diagnostic: .rainmeterBang,

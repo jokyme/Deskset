@@ -717,7 +717,7 @@ func runDeskCatalogTests(_ t: TestRunner) {
         let zhValues = ["what": c.displayText("facet:font.size", in: .simplifiedChinese),
                         "expected": c.displayText(for: .length, in: .simplifiedChinese),
                         "actual": c.displayText(for: .bool, in: .simplifiedChinese), "hint": ""]
-        t.equal(mismatch.message(.simplifiedChinese, zhValues), "字号要的是长度（单位是点），比如 `12`，这里是是或否（`true` 或 `false`）。")
+        t.equal(mismatch.message(.simplifiedChinese, zhValues), "字号要填长度（单位是点），比如 `12`，但这里填了是或否（`true` 或 `false`）。")
         // §5.15's rows, as written.
         t.equal(row("type:bool")?.name, LocalizedText("yes or no (`true` or `false`)", "是或否（`true` 或 `false`）"))
         t.equal(row("component:Progress")?.name, LocalizedText("the progress bar", "进度条"))

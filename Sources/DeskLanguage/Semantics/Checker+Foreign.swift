@@ -18,6 +18,17 @@ extension Checker {
             case .rainmeterSection:
                 var copy = d
                 if copy.arguments["desk"] == nil { copy.arguments["desk"] = .code("Text(\"…\")") }
+                // The built-in sections hold settings and variables, not an element.
+                var advice = "element"
+                if case .code(let name)? = d.arguments["name"] {
+                    switch name.lowercased() {
+                    case "rainmeter": advice = "rainmeter"
+                    case "variables": advice = "variables"
+                    case "metadata": advice = "metadata"
+                    default: break
+                    }
+                }
+                copy.arguments["advice"] = hintText(.rainmeterSection, advice)
                 replaced = copy
             case .rainmeterBang:
                 replaced = enrichBang(d)
@@ -120,19 +131,88 @@ extension Checker {
         return s..<end
     }
 
-    /// `FontColor=255,255,255` → `.color("#FFFFFF")`; the keys Desk does not need become DK9306.
+    /// `FontColor=255,255,255` → `.color("#FFFFFF")`; the keys Desk does not need become DK9306. A run of several
+    /// option lines is one diagnostic whose fix-its (one per line, one "Fix all" group) rewrite each line (§2.11
+    /// rule 5); a rewrite is offered only where it attaches to an element (the statement before is an element).
     func enrichIniOption(_ d: Diagnostic) -> Diagnostic? {
-        guard case .code(let key)? = d.arguments["name"] else { return nil }
-        var value = ""
-        if case .code(let v)? = d.arguments["value"] { value = v }
+        var lines = iniLines(in: d.range)
+        if lines.isEmpty, case .code(let key)? = d.arguments["name"] {
+            var value = ""
+            if case .code(let v)? = d.arguments["value"] { value = v }
+            lines = [(key, value, lineRange(at: d.range.lowerBound))]
+        }
+        guard let first = lines.first else { return nil }
         var copy = d
+        let attaches = previousStatementIsElement(before: d.range.lowerBound)
+        let group = lines.count > 1 ? "rainmeter-\(d.range.lowerBound)" : nil
+        var fixIts: [FixIt] = []
+        var desks: [String] = []
+        for line in lines {
+            let reading = iniReading(key: line.key, value: line.value)
+            if reading.notNeeded {
+                fixIts.append(fix("remove", [edit(wholeLineRange(at: line.range.lowerBound), "")], group: group))
+                continue
+            }
+            desks.append(reading.desk)
+            if reading.exact && attaches {
+                fixIts.append(fix("replace", [edit(line.range, reading.desk)], group: group))
+            }
+        }
+        let lead = iniReading(key: first.key, value: first.value)
+        if lines.count == 1 && lead.notNeeded {
+            return Diagnostic(id: .rainmeterNotNeeded, severity: .error, file: d.file, range: d.range,
+                              arguments: ["option": .code(first.key), "why": .text(lead.why ?? LocalizedText("", ""))],
+                              fixIts: fixIts)
+        }
+        copy.arguments["desk"] = .code(desks.isEmpty ? lead.desk : desks.joined(separator: ""))
+        if let hint = lead.hint { copy.arguments["hint"] = hintText(.rainmeterOption, hint) }
+        if copy.fixIts.isEmpty { copy.fixIts = fixIts }
+        return copy
+    }
+
+    /// The `Key=Value` lines of a range (a run of Rainmeter option lines): key, value and the line's text range.
+    func iniLines(in r: Range<Int>) -> [(key: String, value: String, range: Range<Int>)] {
+        var result: [(String, String, Range<Int>)] = []
+        var offset = r.lowerBound
+        while offset < r.upperBound {
+            let lineR = lineRange(at: offset)
+            let line = text(lineR)
+            if let eq = line.firstIndex(of: "=") {
+                let key = line[..<eq].trimmingCharacters(in: .whitespaces)
+                let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+                if !key.isEmpty, key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) { result.append((key, value, lineR)) }
+            }
+            let next = wholeLineRange(at: lineR.lowerBound).upperBound
+            offset = max(next, lineR.upperBound + 1)
+        }
+        return result
+    }
+
+    /// Whether the statement before `offset` is an element, so a modifier written there attaches to it (N3).
+    func previousStatementIsElement(before offset: Int) -> Bool {
+        var parent = tree.rootNode
+        while let child = parent.childNodes.first(where: { $0.range.contains(offset) }), child.kind != .foreignConstruct {
+            parent = child
+        }
+        let siblings = parent.childNodes
+        guard let index = siblings.firstIndex(where: { $0.range.contains(offset) }), index > 0 else { return false }
+        return siblings[index - 1].kind == .callStmt
+    }
+
+    /// What one Rainmeter option line is in Desk.
+    func iniReading(key: String, value: String) -> (desk: String, exact: Bool, notNeeded: Bool, why: LocalizedText?, hint: String?) {
         let rows = index.foreignRows(key).filter { if case .iniKey = $0.pattern { return true }; return false }
-        let row = rows.first { $0.context == .any } ?? rows.first
-        guard let row else {
-            // No row: the catalog's Rainmeter mappings, else "no direct form".
-            let mapping = catalogDeskName(forRainmeterKey: key)
-            copy.arguments["desk"] = .code(mapping ?? "no direct form; see the language reference")
-            return copy
+        let hint: String?
+        switch key {
+        case "X", "Y": hint = "inFreeform"
+        case "IfCondition": hint = "orWhen"
+        case "MouseOverAction": hint = "orMouseEnter"
+        case "Meter": hint = "meterKinds"
+        case "Measure", "Plugin": hint = "measureData"
+        default: hint = nil
+        }
+        guard let row = rows.first(where: { $0.context == .any }) ?? rows.first else {
+            return (catalogDeskName(forRainmeterKey: key) ?? "no direct form; see the language reference", false, false, nil, hint)
         }
         if row.diagnostic == .rainmeterNotNeeded {
             let why: LocalizedText
@@ -145,18 +225,12 @@ extension Checker {
                 why = LocalizedText("write `info { refresh: \(ms)ms }` to change how often data updates",
                                     "要改数据刷新的频率，写 `info { refresh: \(ms)ms }`")
             }
-            // The whole line goes, with its indentation and line break.
-            let lineR = wholeLineRange(at: d.range.lowerBound)
-            return Diagnostic(id: .rainmeterNotNeeded, severity: .error, file: d.file, range: d.range,
-                              arguments: ["option": .code(key), "why": .text(why)],
-                              fixIts: [fix("remove", [edit(lineR, "")])])
+            return ("", false, true, why, nil)
         }
-        var desk = row.deskText
-        desk = desk.replacingOccurrences(of: "{value}", with: value)
+        var desk = row.deskText.replacingOccurrences(of: "{value}", with: value)
         if desk.contains("{hex}") {
             guard let hex = Checker.rainmeterHex(value) else {
-                copy.arguments["desk"] = .code(row.deskText.replacingOccurrences(of: "{hex}", with: "#…"))
-                return copy
+                return (row.deskText.replacingOccurrences(of: "{hex}", with: "#…"), false, false, nil, hint)
             }
             desk = desk.replacingOccurrences(of: "{hex}", with: hex)
         }
@@ -168,11 +242,7 @@ extension Checker {
             let v = value.lowercased()
             desk = v.contains("right") ? ".align(.right)" : v.contains("center") ? ".align(.center)" : ".align(.left)"
         }
-        copy.arguments["desk"] = .code(desk)
-        if row.exact && copy.fixIts.isEmpty {
-            copy.fixIts = [fix("replace", [edit(lineRange(at: d.range.lowerBound), desk)])]
-        }
-        return copy
+        return (desk, row.exact, false, nil, hint)
     }
 
     /// `255,107,0` → `#FF6B00`; `255,107,0,128` → `#FF6B0080`.
@@ -199,6 +269,22 @@ extension Checker {
     func enrichBang(_ d: Diagnostic) -> Diagnostic? {
         guard case .code(let bang)? = d.arguments["bang"] else { return nil }
         var copy = d
+        copy.arguments["written"] = .code("[!\(bang) …]")
+        // `["https://apple.com"]` opens the address: `open("https://apple.com")`; `["App.exe"]` a program, by name.
+        if case .code(let target)? = d.arguments["target"] {
+            copy.arguments["written"] = .code("[\(target)]")
+            let value = String(target.dropFirst().dropLast())
+            if value.contains("://") {
+                let desk = "open(\(target))"
+                copy.arguments["desk"] = .code(desk)
+                copy.fixIts = [fix("replace", [edit(d.range, desk)])]
+            } else {
+                let name = value.split(whereSeparator: { $0 == "\\" || $0 == "/" }).last.map(String.init) ?? value
+                let app = name.lowercased().hasSuffix(".exe") ? String(name.dropLast(4)) : name
+                copy.arguments["desk"] = .code("open(\"\(app.prefix(1).uppercased() + app.dropFirst())\")")
+            }
+            return copy
+        }
         let line = lineText(at: d.range.lowerBound).trimmingCharacters(in: .whitespaces)
         let rows = index.foreignRows("!" + bang)
         guard let row = rows.first else {
@@ -265,7 +351,8 @@ extension Checker {
                 }
             }
             copy.arguments["desk"] = .code(desk)
-            if row.exact && !desk.contains("{") && copy.fixIts.isEmpty {
+            // A modifier only where it attaches to an element (N3): not as the first statement of a block.
+            if row.exact && !desk.contains("{") && copy.fixIts.isEmpty && (!desk.hasPrefix(".") || previousStatementIsElement(before: d.range.lowerBound)) {
                 copy.fixIts = [fix("replace", [edit(lineRange(at: d.range.lowerBound), desk)])]
             }
             return copy
@@ -299,7 +386,12 @@ extension Checker {
             desk = desk.replacingOccurrences(of: "{0}", with: first)
             if let clause = call?.arguments ?? callArguments { replaced = r.lowerBound..<range(clause.node).upperBound }
         }
-        let fixIts: [FixIt] = row.exact && !desk.contains("…") && !desk.contains(" ") ? [fix("replace", [edit(replaced, desk)])] : []
+        var fixIts: [FixIt] = row.exact && !desk.contains("…") && !desk.contains(" ") ? [fix("replace", [edit(replaced, desk)])] : []
+        // `VStack(alignment: .leading, spacing: 4)` → `Column(align: .left, spacing: 4)`: the head in one fix-it.
+        if !fixIts.isEmpty, replaced == r, let clause = call?.arguments ?? callArguments {
+            let more = foreignArgumentEdits(clause.arguments)
+            if !more.isEmpty { fixIts = [fix("replace", [edit(r, desk)] + more)] }
+        }
         switch row.diagnostic {
         case .swiftUIComponent:
             report(.swiftUIComponent, r, ["desk": .code(desk)], fixIts: fixIts)
@@ -453,7 +545,26 @@ extension Checker {
         index.foreignRows("." + name).first { if case .implicitMember = $0.pattern { return true }; return false }
     }
 
+    /// Edits that turn a call's foreign labels and implicit members into Desk (`alignment: .leading` →
+    /// `align: .left`), marking the members as handled so they are not reported again.
+    func foreignArgumentEdits(_ arguments: [ArgumentSyntax]) -> [TextEdit] {
+        var edits: [TextEdit] = []
+        for argument in arguments {
+            if let label = argument.label, let row = index.foreignRows(label.name + ":").first, row.diagnostic == .swiftName,
+               let colon = argument.colon {
+                edits.append(edit(range(label.node).lowerBound..<range(colon).upperBound, row.deskText))
+            }
+            if let implicit = ImplicitMemberExprSyntax(argument.value.node), let row = foreignImplicitRow(implicit.name.token.name), row.exact {
+                let r = range(argument.value.node)
+                edits.append(edit(r, row.deskText))
+                foreignArgumentsHandled.insert(r.lowerBound)
+            }
+        }
+        return edits
+    }
+
     func reportForeignImplicit(_ row: ForeignSpec, at r: Range<Int>, name: String) {
+        if foreignArgumentsHandled.contains(r.lowerBound) { return }
         let desk = row.deskText
         let fixIts = row.exact ? [fix("replace", [edit(r, desk)])] : []
         if row.diagnostic == .olderDeskName {
@@ -485,10 +596,16 @@ extension Checker {
             report(.swiftBinding, labelRange, ["name": .code(value)], fixIts: [fix("removeLabels", edits)])
             return
         }
+        // The label and a foreign value with it (`alignment: .leading` → `align: .left`), in one fix-it.
         let desk = row.deskText
         let colonEnd = argument.colon.map { range($0).upperBound } ?? labelRange.upperBound
-        report(.swiftName, labelRange, ["desk": .code(desk), "swift": .code(name + ":")],
-               fixIts: [fix("replace", [edit(labelRange.lowerBound..<colonEnd, desk)])])
+        var edits = [edit(labelRange.lowerBound..<colonEnd, desk)]
+        if let implicit = ImplicitMemberExprSyntax(argument.value.node), let valueRow = foreignImplicitRow(implicit.name.token.name), valueRow.exact {
+            let r = range(argument.value.node)
+            edits.append(edit(r, valueRow.deskText))
+            foreignArgumentsHandled.insert(r.lowerBound)
+        }
+        report(.swiftName, labelRange, ["desk": .code(desk), "swift": .code(name + ":")], fixIts: [fix("replace", edits)])
     }
 
     /// A foreign modifier: `.foregroundColor(…)`, `.fontSize(…)`, `.corner(…)`, `.colour(…)`. Returns true when

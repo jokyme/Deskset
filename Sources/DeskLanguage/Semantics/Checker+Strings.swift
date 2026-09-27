@@ -211,8 +211,15 @@ extension Checker {
             report(.invalidDatePattern, r, ["pattern": .code(pattern), "reason": .text(reason)])
             return
         }
+        // `YYYY-MM-DD`, the Moment.js habit: in Unicode patterns the week year and the day of the year.
+        if let fixed = Checker.weekYearForYear(pattern) {
+            report(.monthInTimePattern, r, ["explanation": hintText(.monthInTimePattern, "weekYear"), "fixed": .code(fixed)],
+                   fixIts: [fix("replaceWith", [edit(r, "\"" + fixed + "\"")], ["text": .code(fixed)])])
+            return
+        }
         if let fixed = Checker.monthForMinutes(pattern) {
-            report(.monthInTimePattern, r, fixIts: [fix("replaceWith", [edit(r, "\"" + fixed + "\"")], ["text": .code(fixed)])])
+            report(.monthInTimePattern, r, ["explanation": hintText(.monthInTimePattern, "monthForMinutes")],
+                   fixIts: [fix("replaceWith", [edit(r, "\"" + fixed + "\"")], ["text": .code(fixed)])])
         }
     }
 
@@ -259,6 +266,28 @@ extension Checker {
     }
 
     /// `HH:MM` → `HH:mm` (DK4050), or nil.
+    /// `YYYY` / `YY` (week year) and `DD` / `D` (day of the year) written for a calendar date, outside quoted text:
+    /// the pattern with `yyyy` and `dd`, or nil.
+    static func weekYearForYear(_ pattern: String) -> String? {
+        var out = ""
+        var quoted = false
+        var sawDay = false, sawWeekYear = false, sawMonth = false, sawWeekOfYear = false
+        for c in pattern {
+            if c == "'" { quoted.toggle(); out.append(c); continue }
+            if quoted { out.append(c); continue }
+            switch c {
+            case "Y": sawWeekYear = true; out.append("y")
+            case "D": sawDay = true; out.append("d")
+            case "M", "L": sawMonth = true; out.append(c)
+            case "w": sawWeekOfYear = true; out.append(c)
+            default: out.append(c)
+            }
+        }
+        // A week-based pattern (`YYYY-'W'ww`) is meant; a date is not.
+        guard (sawDay || sawWeekYear) && sawMonth && !sawWeekOfYear else { return nil }
+        return out
+    }
+
     static func monthForMinutes(_ pattern: String) -> String? {
         let scalars = Array(pattern)
         var out = scalars

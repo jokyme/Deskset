@@ -113,7 +113,7 @@ extension Checker {
                 reportUppercaseName(target.name, declared: false)
                 assignable = false
             } else {
-                reportUndeclaredAssignment(assignment)
+                reportUndeclaredAssignment(assignment, inAction: true)
                 assignable = false
             }
         } else if path.count == 2 && path[0] == "options" {

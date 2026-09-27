@@ -498,6 +498,7 @@ extension Checker {
                            expected: DeskType?) -> Val {
         let name = token.token.name
         let r = range(token)
+        if provisionalNames.contains(name) { return .error }
         if let requires = requiresNewer {
             report(.newerName, r, ["name": .code(name), "version": .code(requires.description)])
             return .error

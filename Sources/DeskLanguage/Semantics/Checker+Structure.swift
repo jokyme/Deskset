@@ -96,6 +96,18 @@ extension Checker {
         if let widget = widgetBlock, let block = widget.firstChild(.block) { collectDeclarations(block, strays: strayItems.declarations) }
         else { collectDeclarations(nil, strays: strayItems.declarations) }
         prewalkElementNames()
+        // Names assigned without a declaration anywhere in the widget (DK3035 at the assignment): reads of them,
+        // before or after, are not "there's no `page`" too.
+        if let widget = widgetBlock {
+            var stack = [widget]
+            while let node = stack.popLast() {
+                if node.kind == .assignment {
+                    let target = AssignmentSyntax(unchecked: node).target
+                    if target.path.count == 1, !target.name.token.isUpperName, decls[target.path[0]] == nil { provisionalNames.insert(target.path[0]) }
+                }
+                stack += node.childNodes
+            }
+        }
 
         if let info = infoBlock ?? packageBlock { checkInfo(info) }
         if let options = optionsBlock { checkOptions(options) }
@@ -173,6 +185,27 @@ extension Checker {
                 if modifiers.count == 1, modifiers[0].arguments == nil, let block = modifiers[0].block,
                    block.statements.contains(where: { $0.kind == .field }) {
                     report(.cssSelector, range(statement), ["name": .code(modifiers[0].name.token.name)])
+                } else if let widget = tree.rootNode.childNodes.first(where: { $0.kind == .widgetBlock }),
+                          let close = widget.firstChild(.block).map({ BlockSyntax(unchecked: $0).rBrace }), !close.token.isMissing,
+                          line(close.textStart) == line(textStart(statement)), close.textRange.upperBound <= textStart(statement) {
+                    // `widget { … }.padding(10)`: one diagnostic, with the modifier moved onto the widget's element.
+                    let modifierText = text(range(statement))
+                    let r = range(statement)
+                    for d in tree.diagnostics where d.id == .missingSeparator && d.range.lowerBound == r.lowerBound {
+                        droppedParserDiagnostics.insert(diagnosticKey(d))
+                    }
+                    var fixIts: [FixIt] = []
+                    if let block = widget.firstChild(.block) {
+                        let views = BlockSyntax(unchecked: block).statements.filter { $0.kind == .callStmt }
+                        let others = BlockSyntax(unchecked: block).statements.filter { $0.kind != .callStmt && $0.kind != .declaration }
+                        if views.count == 1, others.isEmpty {
+                            let end = range(views[0]).upperBound
+                            fixIts.append(fix("moveOntoElement", [edit(end..<end, modifierText),
+                                                                  edit(close.textRange.upperBound..<r.upperBound, "")]))
+                        }
+                    }
+                    report(.modifierWithoutElement, r, ["hint": hintText(.modifierWithoutElement, "afterWidget"),
+                                                        "modifier": .code(modifierText)], fixIts: fixIts)
                 } else {
                     report(.modifierWithoutElement, range(statement))
                 }
@@ -640,12 +673,36 @@ extension Checker {
         report(.assignmentOutsideEvent, range(statement), ["text": .code(text(statement))])
     }
 
-    func reportUndeclaredAssignment(_ assignment: AssignmentSyntax) {
+    /// DK3035. Among the widget's statements the assignment becomes the declaration; in an action block (the
+    /// JavaScript and Python habit) a declaration with a starting value is added at the top of `widget` and the
+    /// assignment stays. Either way the name counts as declared for its reads (no DK3002 cascade).
+    func reportUndeclaredAssignment(_ assignment: AssignmentSyntax, inAction: Bool = false) {
         let name = assignment.target.name.token.text
         let start = textStart(assignment.node)
-        let fixIts = ["variable", "saved", "computed"].map { keyword in
-            fix("declareWith", [edit(start..<start, keyword + " ")], ["text": .code(keyword)])
+        var fixIts: [FixIt] = []
+        if inAction, let widget = widgetBlock?.firstChild(.block) {
+            let v = speculate { infer(assignment.value.node, ExprContext(), expected: nil) }
+            let initial: String
+            switch v.type {
+            case .string: initial = "\"\""
+            case .bool: initial = "false"
+            default: initial = assignment.value.node.kind == .stringLiteral ? "\"\"" : "0"
+            }
+            let body = BlockSyntax(unchecked: widget)
+            let open = body.lBrace.textRange.upperBound
+            let firstStatement = body.statements.first.map { textStart($0) } ?? open
+            let sameLine = !text(open..<firstStatement).contains("\n") && !text(open..<firstStatement).contains("\r")
+            let indent = sameLine ? "    " : indentation(at: firstStatement)
+            for keyword in ["variable", "saved"] {
+                let declaration = lineBreak + indent + "\(keyword) \(name) = \(initial)" + (sameLine ? lineBreak + indent : "")
+                fixIts.append(fix("declareWith", [edit(open..<(sameLine ? firstStatement : open), declaration)], ["text": .code(keyword)]))
+            }
+        } else {
+            fixIts = ["variable", "saved", "computed"].map { keyword in
+                fix("declareWith", [edit(start..<start, keyword + " ")], ["text": .code(keyword)])
+            }
         }
+        provisionalNames.insert(name)
         report(.undeclaredAssignment, range(assignment.target.node), ["name": .code(name)], fixIts: fixIts)
     }
 

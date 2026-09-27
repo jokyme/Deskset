@@ -376,7 +376,7 @@ struct Lexer {
                     while pos < limit, scalar(at: pos).0 == s { pos += length }
                     pieces.append(.unusualSpace(text(start, pos)))
                     let count = (pos - start) / length
-                    report(.unusualSpace, .warning, start..<pos, ["name": .code(Lexer.scalarName(s))],
+                    report(.unusualSpace, .warning, start..<pos, ["name": Lexer.spaceName(s)],
                            fixIts: [FixIt(titleKey: "replaceWithSpace",
                                           edits: [edit(start..<pos, String(repeating: " ", count: count))],
                                           group: "unusualSpace")])
@@ -392,6 +392,17 @@ struct Lexer {
             }
         }
         return pieces
+    }
+
+    /// How a message names an unusual space: the everyday name where there is one (全角空格 for U+3000, 不换行空格
+    /// for U+00A0), else the character's name.
+    static func spaceName(_ s: Unicode.Scalar) -> DiagnosticArgument {
+        let name = "`" + scalarName(s) + "`"
+        switch s.value {
+        case 0x3000: return .text(LocalizedText(en: "a full-width space, " + name, zh: "全角空格，" + name))
+        case 0x00A0: return .text(LocalizedText(en: "a no-break space, " + name, zh: "不换行空格，" + name))
+        default: return .text(LocalizedText(en: name, zh: name))
+        }
     }
 
     static func scalarName(_ s: Unicode.Scalar) -> String {
@@ -707,6 +718,18 @@ struct Lexer {
             return
         }
         let written = text(start, i)
+        // An address written without quotes (`open(https://apple.com)`, the Rainmeter `[https://…]` habit): read as
+        // one token up to a blank or a closing bracket, not as a label and a `//` comment that swallows the line.
+        if !fullWidth, ["http", "https", "file", "ftp"].contains(written.lowercased()), i + 2 < limit,
+           bytes[i] == 0x3A, bytes[i + 1] == 0x2F, bytes[i + 2] == 0x2F {
+            var end = i + 3
+            while end < limit, ![0x20, 0x09, 0x0A, 0x0D, 0x29, 0x2C, 0x5D, 0x7D, 0x22, 0x3B].contains(bytes[end]) { end += 1 }
+            let address = text(start, end)
+            report(.textWithoutQuotes, .error, start..<end, ["fixed": .code("\"\(address)\"")],
+                   fixIts: [FixIt(titleKey: "addQuotes", edits: [edit(start..<end, "\"\(address)\"")])])
+            emit(.invalidIdentifier, start, end, leading: leading, limit: limit)
+            return
+        }
         let name = fullWidth ? String(String.UnicodeScalarView(written.unicodeScalars.map { asciiEquivalent(of: $0) ?? $0 })) : written
         var kind = TokenKind.identifier
         var flags: TokenFlags = fullWidth ? [.fullWidth] : []

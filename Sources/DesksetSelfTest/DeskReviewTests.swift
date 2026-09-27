@@ -818,4 +818,76 @@ func runDeskReviewTests(_ t: TestRunner) {
         let pythonMessage = python.diagnostics.first { $0.id.rawValue == "DK8209" }?.message(in: .english) ?? ""
         t.check(pythonMessage.contains("python3 -c 'import sys; … sys.argv[1] …' {options.snippet}"), pythonMessage)
     }
+
+    t.suite("Desk: review — novice habits (findings 63, 65, 68, 69, 70, 71, 73, 75, 76, 78, 79, 82, 84)") {
+        func check(_ code: String, _ ids: [String], fixed: String? = nil, title: String? = nil, _ label: String) {
+            let checked = deskCheck(code)
+            t.equal(checked.diagnostics.map(\.id.rawValue), ids, label)
+            if let fixed, let id = ids.first {
+                let applied = deskApplyFix(checked, id, title: title)
+                t.equal(applied, fixed, "\(label): fix-it")
+                t.equal(applied.map { deskCheck($0).diagnostics.filter { $0.severity == .error }.map(\.id.rawValue) }, [], "\(label): after the fix")
+            }
+        }
+        let head = "info { name: \"T\" }\n"
+        // An address without quotes (63).
+        check(head + "widget {\n    Text(\"A\").onClick { open(https://apple.com) }\n}", ["DK3034"],
+              fixed: head + "widget {\n    Text(\"A\").onClick { open(\"https://apple.com\") }\n}", "unquoted address")
+        // A value assigned without a declaration (65).
+        check(head + "widget {\n    Text(\"A\").onClick { page = page + 1 }\n}", ["DK3035"],
+              fixed: head + "widget {\n    variable page = 0\n    Text(\"A\").onClick { page = page + 1 }\n}", "assigned in an event")
+        check(head + "widget {\n    page = 0\n    Text(\"{page}\")\n}", ["DK3035"],
+              fixed: head + "widget {\n    variable page = 0\n    Text(\"{page}\")\n}", "assigned among elements")
+        // Foreign lines with nothing to attach to (68).
+        t.equal(deskCheck(head + "FontColor=255,255,255\nwidget {\n    Text(\"CPU\")\n}").diagnostics.first?.fixIts.count, 0)
+        t.equal(deskCheck(head + "widget {\n    color: red;\n    Text(\"A\")\n}").diagnostics.first?.fixIts.count, 0)
+        // A run of Rainmeter lines: every line has its fix-it, in one group (69).
+        let run = deskCheck(head + "widget {\n    Text(\"A\")\n    FontColor=255,255,255\n    FontSize=12\n}")
+        t.equal(run.diagnostics.map(\.id.rawValue), ["DK9301"])
+        let fixes = run.diagnostics.first?.fixIts ?? []
+        t.equal(fixes.count, 2)
+        t.check(fixes.allSatisfy { $0.group != nil } && Set(fixes.map(\.group)).count == 1, "one Fix all group")
+        t.equal(TextEdit.apply(fixes.flatMap(\.edits), to: run.tree.text), head + "widget {\n    Text(\"A\")\n    .color(\"#FFFFFF\")\n    .font(16)\n}")
+        t.equal(run.diagnostics.first?.message(in: .english), "This is Rainmeter; in Desk write `.color(\"#FFFFFF\").font(16)`.")
+        // A Rainmeter action that opens an address (70).
+        check(head + "widget { Text(\"A\").onClick { [\"https://apple.com\"] } }", ["DK9304"],
+              fixed: head + "widget { Text(\"A\").onClick { open(\"https://apple.com\") } }", "address bang")
+        // No English prose inside code in Chinese messages (71).
+        let condition = deskCheck(head + "widget {\n    Text(\"A\")\n    IfCondition=MeasureCPU > 80\n}")
+        t.equal(condition.diagnostics.first?.message(in: .simplifiedChinese), "这是 Rainmeter 的写法；Desk 里写 `.color(.red, if: cpu.usage > 80)`。要执行动作，就写 `.when(…) { … }`。")
+        let x = deskCheck(head + "widget {\n    Text(\"A\")\n    X=10\n}")
+        t.equal(x.diagnostics.first?.message(in: .simplifiedChinese), "这是 Rainmeter 的写法；Desk 里写 `.position(x: …)`。位置要写在 `Freeform { }` 里。")
+        for row in DeskCatalog.current.foreign {
+            guard case .iniKey = row.pattern else { continue }
+            for prose in [" or ", " in a ", " the ", " such as ", " — ", " with "] {
+                t.check(!row.deskText.contains(prose), "Rainmeter row \(row.deskText) holds prose")
+            }
+        }
+        // SwiftUI heads in one fix-it (73).
+        check(head + "widget { VStack(alignment: .leading, spacing: 4) { Text(\"A\") } }", ["DK9101"],
+              fixed: head + "widget { Column(align: .left, spacing: 4) { Text(\"A\") } }", "VStack head")
+        check(head + "widget { Column(alignment: .leading) { Text(\"A\") } }", ["DK9107"],
+              fixed: head + "widget { Column(align: .left) { Text(\"A\") } }", "alignment and .leading")
+        // A modifier on the widget block (75).
+        check(head + "widget {\n    Text(\"A\").font(.caption)\n}.padding(10)", ["DK2013"],
+              fixed: head + "widget {\n    Text(\"A\").font(.caption).padding(10)\n}", "modifier after widget")
+        // A quoted color name (76) and text quoted as written (82).
+        check(head + "widget { Text(\"A\").color(\"red\") }", ["DK4045"], fixed: head + "widget { Text(\"A\").color(.red) }", "quoted color")
+        t.equal(deskCheck(head + "widget { Text(\"{memory.used, unit: \"GB\"}\") }").diagnostics.first?.message(in: .english),
+                "`\"GB\"` is a built-in choice: write `.gb` without quotes.")
+        // Rainmeter's own sections (78).
+        t.check(deskCheck("[Rainmeter]\nUpdate=1000\n").diagnostics.first?.message(in: .english).contains("info { refresh: 1s }") == true, "[Rainmeter]")
+        t.check(deskCheck("[Variables]\nTextColor=255,255,255\n").diagnostics.first?.message(in: .english).contains("options { … }") == true, "[Variables]")
+        // `50 %` (79).
+        check(head + "widget { Text(\"A\").opacity(50 %) }", ["DK1028"], fixed: head + "widget { Text(\"A\").opacity(50%) }", "50 %")
+        // Wording (82).
+        t.check(deskCheck(head + "widget { Text(\"A\")\u{3000}.bold() }").diagnostics.first?.message(in: .simplifiedChinese).contains("全角空格") == true, "全角空格")
+        t.equal(deskCheck(head + "widget { Text(\"A\").hidden(if: 1) }").diagnostics.first?.message(in: .simplifiedChinese),
+                "是否隐藏要填是或否（`true` 或 `false`），但这里填了数字。")
+        t.equal(deskCheck(head + "widget {\n    <div>\n}").diagnostics.first?.message(in: .simplifiedChinese), "这是 HTML；Desk 里用 `Column { … }` 或 `Row { … }`。")
+        // A Moment.js date pattern (84).
+        check(head + "widget { Text(\"{time.now, format: \"YYYY-MM-DD\"}\") }", ["DK4050"],
+              fixed: head + "widget { Text(\"{time.now, format: \"yyyy-MM-dd\"}\") }", "YYYY-MM-DD")
+        t.equal(deskReviewIDs("widget { Text(\"{time.now, format: \"YYYY-'W'ww\"}\") }"), [], "a week pattern is fine")
+    }
 }

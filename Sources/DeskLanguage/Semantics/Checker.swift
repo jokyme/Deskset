@@ -363,6 +363,11 @@ final class Checker {
     /// uses resolve to it and are renamed with it).
     var lastRefusedAsReserved = false
     var pendingReservedName: (index: Int, declaration: Range<Int>, newName: String)?
+    /// Implicit members (by start) whose foreign spelling an enclosing fix-it already rewrites (`.leading` in
+    /// `VStack(alignment: .leading)`): not reported again.
+    var foreignArgumentsHandled = Set<Int>()
+    /// Names assigned without a declaration (DK3035): their reads are not reported again (DK3002).
+    var provisionalNames = Set<String>()
     /// Cases assigned to a declaration whose type was still open (`side = .right`), checked once it settles.
     var casesForOpenSlots: [(slot: Int, name: String, range: Range<Int>)] = []
     /// DK5007 fix-its completed at the end: the diagnostic, the style, the condition and where it is removed.

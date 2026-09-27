@@ -679,6 +679,19 @@ extension Parser {
                 children.append(.node(node(.unexpected, [take()])))
             }
         }
+        // `50 %`: a percent sign after a space, with nothing after it, is the unit (DK1028), not a remainder.
+        if tokens[start].unit == nil, kind(i) == .percent, sameLine(i), !tokens[i].leadingTrivia.isEmpty
+            || (start < tokens.count && !tokens[start].trailingTrivia.isEmpty) {
+            let next = i + 1
+            if next >= limit || !sameLine(next) || [.rParen, .comma, .rBracket, .rBrace, .semicolon, .eof, .interpolationEnd].contains(kind(next)) {
+                let percentIndex = i
+                let gap = textEnd(start)..<starts[percentIndex]
+                report(.spaceBeforeUnit, .error, starts[start]..<textEnd(percentIndex),
+                       ["number": .code(tokens[start].text), "unit": .code("%")],
+                       fixIts: [FixIt(titleKey: "removeSpace", edits: [edit(gap, "")])])
+                children.append(.node(node(.unexpected, [take()])))
+            }
+        }
         return ParsedExpression(node: node(.numberLiteral, children), start: start, end: i - 1)
     }
 

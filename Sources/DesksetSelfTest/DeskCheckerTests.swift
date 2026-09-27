@@ -55,7 +55,7 @@ func runDeskCheckerTests(_ t: TestRunner) {
             ("widget {\n    Text(\"A\")\n    FontColor=255,255,255\n}", "DK9301",
              "This is Rainmeter; in Desk write `.color(\"#FFFFFF\")`.", "这是 Rainmeter 的写法；Desk 里写 `.color(\"#FFFFFF\")`。"),
             ("widget {\n    <div>\n    Text(\"A\")\n}", "DK9201",
-             "This is HTML; in Desk use `Column { … }` or `Row { … }`.", "这是 HTML；Desk 里用`Column { … }` 或 `Row { … }`。"),
+             "This is HTML; in Desk use `Column { … }` or `Row { … }`.", "这是 HTML；Desk 里用 `Column { … }` 或 `Row { … }`。"),
             ("widget {\n    Text(\"A\")\n    flex-direction: row;\n}", "DK9202",
              "This is CSS; in Desk write `Row { … }`.", "这是 CSS；Desk 里写 `Row { … }`。"),
             ("widget { Text(\"{music.title}\") }", "DK8101",
