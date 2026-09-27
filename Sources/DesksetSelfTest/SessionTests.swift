@@ -633,6 +633,73 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(host.handled.map(\.name), ["move"])
     }
 
+    t.suite("Session: the Studio's instance follows the input the widget on the desktop takes") {
+        let ini = """
+            [Rainmeter]
+            [Variables]
+            Theme=light
+            [Tab2]
+            Meter=Image
+            SolidColor=0,0,0
+            W=20
+            H=20
+            LeftMouseUpAction=[!HideMeterGroup Page1][!ShowMeterGroup Page2][!SetVariable Theme dark][!WriteKeyValue Variables Theme dark]
+            MouseOverAction=[!SetOption Tab2 SolidColor 255,0,0][!UpdateMeter Tab2]
+            MouseLeaveAction=[!SetOption Tab2 SolidColor 0,0,0][!UpdateMeter Tab2]
+            [P1]
+            Meter=String
+            Y=30
+            Text=one
+            Group=Page1
+            [P2]
+            Meter=String
+            Y=30
+            Text=two
+            Group=Page2
+            Hidden=1
+            """
+        let (desktop, _) = try makeSkin(t, ini)
+        let studioHost = FakeHost()
+        let studio = Skin(config: desktop.config, fileURL: desktop.fileURL, skinsDirectory: desktop.skinsDirectory,
+                          system: FakeSystem(), host: studioHost)
+        let policy = StudioActionPolicy()
+        studio.actionPolicy = policy
+        try studio.load()
+        studio.update()
+        desktop.update()
+        var mirrored = 0
+        desktop.inputMirror = { input in
+            mirrored += 1
+            studio.replay(input)
+        }
+        desktop.mouseMoved(x: 5, y: 5)
+        t.equal(studio.meter(named: "Tab2")?.rawOption("SolidColor"), "255,0,0", "a hover on the desktop shows in the Studio")
+        desktop.mouseEvent(.leftUp, x: 5, y: 5)
+        t.equal(studio.meter(named: "P2")?.hidden, false, "a click turns the page there too")
+        t.equal(studio.meter(named: "P1")?.hidden, true)
+        t.equal(studio.variable("Theme"), "dark", "and picks the theme")
+        t.equal(policy.recorded.map(\.name), ["writekeyvalue"], "its file write is left to the desktop copy")
+        desktop.mouseExited()
+        t.equal(studio.meter(named: "Tab2")?.rawOption("SolidColor"), "0,0,0", "the hover ends")
+        // A bang another widget sent, a context menu item, what was typed into InputText.
+        desktop.performSent(Bang(name: "setvariable", args: ["Theme", "blue"]))
+        t.equal(studio.variable("Theme"), "blue", "a bang from another widget")
+        desktop.executeInput("[!SetVariable Theme green]", from: desktop.rainmeterSection)
+        t.equal(studio.variable("Theme"), "green", "an action run for the person")
+        // What the desktop copy runs by itself is not passed on: the Studio's instance runs its own.
+        let count = mirrored
+        desktop.execute("[!SetVariable Theme red]", from: nil)
+        desktop.update()
+        t.equal(mirrored, count, "nothing passed on")
+        t.equal(studio.variable("Theme"), "green")
+        // No mirror (the widget with no Studio open): input works as before.
+        desktop.inputMirror = nil
+        desktop.mouseMoved(x: 5, y: 5)
+        t.equal(desktop.meter(named: "Tab2")?.rawOption("SolidColor"), "255,0,0")
+        t.equal(studio.meter(named: "Tab2")?.rawOption("SolidColor"), "0,0,0")
+        studio.close()
+    }
+
     t.suite("Session: the Studio's instance writes files in a copy of its own") {
         let skins = t.temporaryDirectory("sandbox").appendingPathComponent("Skins")
         let dir = skins.appendingPathComponent("Root/Sub")

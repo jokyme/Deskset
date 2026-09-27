@@ -307,6 +307,25 @@ public protocol SkinHost: AnyObject {
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion])
 }
 
+/// Input a skin took (`Skin.inputMirror`), which another instance of the same widget can take too (`Skin.replay`): the
+/// Studio's instance follows the clicks, hovers and bangs the widget on the desktop gets.
+public enum SkinInput {
+    /// `Skin.mouseEvent`.
+    case mouse(MouseEventKind, x: Double, y: Double)
+    /// `Skin.mouseMoved`.
+    case moved(x: Double, y: Double)
+    /// `Skin.mouseExited`.
+    case exited
+    /// `Skin.cancelMousePress`.
+    case pressCancelled
+    /// `Skin.pointerEvent` (`Plugin=Mouse`).
+    case pointer(PointerEvent, x: Double, y: Double)
+    /// An action run for the person from a section (by name): a context menu item, text typed into InputText.
+    case action(String, section: String?)
+    /// A bang another widget sent.
+    case bang(Bang)
+}
+
 /// Decides, action by action, what a skin runs of its own actions (its options' actions, mouse actions, scripts,
 /// plugins' finish actions): `Skin.actionPolicy`. What it refuses is skipped, as if the action were not there; the
 /// policy keeps a record of it if it wants one. Asked on the skin's owner, with the bang's arguments resolved.

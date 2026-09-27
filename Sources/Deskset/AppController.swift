@@ -1044,7 +1044,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
               !entry.action.isEmpty else { return }
-        c.skin.execute(entry.action, from: c.skin.rainmeterSection)
+        c.skin.executeInput(entry.action, from: c.skin.rainmeterSection)
     }
 
     @objc private func zPositionAction(_ sender: NSMenuItem) {

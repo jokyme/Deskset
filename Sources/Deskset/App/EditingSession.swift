@@ -103,7 +103,23 @@ final class EditingSession {
         let url = c.skin.fileURL
         let other = fileURL.map { SourceFileID($0) != SourceFileID(url) } ?? true
         fileURL = url
+        followInput(of: c)
         return other
+    }
+
+    /// The input the widget on the desktop takes reaches the Studio's instance too (`Skin.inputMirror`): what a click,
+    /// a hover or another widget's bang shows there — a page turned, a theme picked — the canvas shows, as it did when
+    /// it drew the desktop copy.
+    private func followInput(of c: SkinController) {
+        let skin: Skin = c.skin
+        let mirror: (SkinInput) -> Void = { [weak self, weak skin] input in
+            let replay = {
+                guard let self, let skin, self.desktop?.skin === skin, let studio = self.studioSkin else { return }
+                studio.replay(input)
+            }
+            if Thread.isMainThread { replay() } else { DispatchQueue.main.async(execute: replay) }
+        }
+        if skin.executor.isCurrent { skin.inputMirror = mirror } else { skin.async { skin.inputMirror = mirror } }
     }
 
     /// The widget on the desktop now: the linked one, or — after it was loaded again while no Studio window followed it
@@ -176,6 +192,9 @@ final class EditingSession {
         updates?.cancel()
         updates = nil
         watcher.stop()
+        if let skin = desktop?.skin {
+            if skin.executor.isCurrent { skin.inputMirror = nil } else { skin.async { skin.inputMirror = nil } }
+        }
         let old = studioSkin
         studioSkin = nil
         old?.close()

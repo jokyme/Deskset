@@ -1066,7 +1066,7 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
                 if now.isEmpty {
                     Log.write("!\(bang.name): config \"\(config)\" is not active", level: .warning, source: sender)
                 }
-                for target in now { target.skin.perform(bang) }
+                for target in now { target.skin.performSent(bang) }
             }
             return
         }
@@ -1084,7 +1084,7 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         }
         SkinController.forwardDepth += 1
         defer { SkinController.forwardDepth -= 1 }
-        for target in targets where !target.isStopped { target.skin.perform(bang) }
+        for target in targets where !target.isStopped { target.skin.performSent(bang) }
     }
 
     /// Bangs forwarded between skins that are running inside one another right now.
