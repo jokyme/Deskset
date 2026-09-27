@@ -253,8 +253,8 @@ Y=(151 - #Ascent13#)
 UpdateDivider=-1
 Group=Battery | Rows
 
-; ---------------------------------------------------------------- the rows' hit areas: each row's tooltip, and the card's click
-; (the rows are not controls: no hover pad)
+; ---------------------------------------------------------------- the rows' hit areas
+; each row's tooltip, and the card's click (the rows are not controls: no hover pad)
 [MeterPadHealth]
 Meter=Image
 MeterStyle=sHit

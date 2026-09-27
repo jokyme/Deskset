@@ -190,8 +190,9 @@ UpdateDivider=-1
 Group=VolumeList
 
 [MeasureSlot2Index]
-; the index of the 1st kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 1). An
-; empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its hover
+; the index of the 1st kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 1).
+; An empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its
+; hover
 Measure=Calc
 Formula=1*#Keep1#*((#Keep1#) = 1) + 2*#Keep2#*((#Keep1#+#Keep2#) = 1) + 3*#Keep3#*((#Keep1#+#Keep2#+#Keep3#) = 1) + 4*#Keep4#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#) = 1) + 5*#Keep5#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#) = 1) + 6*#Keep6#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#) = 1) + 7*#Keep7#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#) = 1) + 8*#Keep8#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#+#Keep8#) = 1)
 DynamicVariables=1
@@ -203,8 +204,9 @@ IfTrueAction=[!HideMeterGroup Slot2][!SetVariable Slot2Hover 0][!SetVariable Slo
 IfFalseAction=[!ShowMeterGroup Slot2]
 
 [MeasureSlot3Index]
-; the index of the 2nd kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 2). An
-; empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its hover
+; the index of the 2nd kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 2).
+; An empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its
+; hover
 Measure=Calc
 Formula=1*#Keep1#*((#Keep1#) = 2) + 2*#Keep2#*((#Keep1#+#Keep2#) = 2) + 3*#Keep3#*((#Keep1#+#Keep2#+#Keep3#) = 2) + 4*#Keep4#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#) = 2) + 5*#Keep5#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#) = 2) + 6*#Keep6#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#) = 2) + 7*#Keep7#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#) = 2) + 8*#Keep8#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#+#Keep8#) = 2)
 DynamicVariables=1
@@ -216,8 +218,9 @@ IfTrueAction=[!HideMeterGroup Slot3][!SetVariable Slot3Hover 0][!SetVariable Slo
 IfFalseAction=[!ShowMeterGroup Slot3]
 
 [MeasureSlot4Index]
-; the index of the 3rd kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 3). An
-; empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its hover
+; the index of the 3rd kept entry, 0 when there is none: Σ i · Keep_i · (Keep_1 + … + Keep_i = 3).
+; An empty slot is hidden (FileView reads entry 1 for an index of 0), and one that empties under the pointer drops its
+; hover
 Measure=Calc
 Formula=1*#Keep1#*((#Keep1#) = 3) + 2*#Keep2#*((#Keep1#+#Keep2#) = 3) + 3*#Keep3#*((#Keep1#+#Keep2#+#Keep3#) = 3) + 4*#Keep4#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#) = 3) + 5*#Keep5#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#) = 3) + 6*#Keep6#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#) = 3) + 7*#Keep7#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#) = 3) + 8*#Keep8#*((#Keep1#+#Keep2#+#Keep3#+#Keep4#+#Keep5#+#Keep6#+#Keep7#+#Keep8#) = 3)
 DynamicVariables=1

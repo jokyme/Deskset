@@ -6,9 +6,9 @@
 BatteryMenuOpen=Open Battery Settings
 BatteryMenuOpenEnergy=Open Energy Settings
 
-; ---------------------------------------------------------------- the status line under the percentage, by state (%1 is a
-; duration such as "4 h 12 min"): 1 charging, 2 charging with an estimate, 3 on battery, 4 on battery while macOS
-; estimates, 5 fully charged, 6 charging paused, 7 Low Power Mode
+; ---------------------------------------------------------------- the status line under the percentage
+; by state (%1 is a duration such as "4 h 12 min"): 1 charging, 2 charging with an estimate, 3 on battery, 4 on
+; battery while macOS estimates, 5 fully charged, 6 charging paused, 7 Low Power Mode
 BatteryStatus0=
 BatteryStatus1=Charging
 BatteryStatus2=%1 until full
