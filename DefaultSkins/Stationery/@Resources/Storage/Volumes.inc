@@ -340,6 +340,17 @@ Disabled=(#StorageSlots# > 0)
 IfMatch=^$
 IfMatchAction=[!SetVariable StorageSmallVolumeName "[MeasureSlot1Label]"]
 
+[MeasureSmallMenuName]
+; the volume's name in the menu title: titles stop at 30 characters, so a long name ends in "…" after 21 of them
+; ("Volume: Samsung Portable SSD…"), never in the menu's own "..."
+Measure=String
+String=#StorageSmallVolumeName#
+RegExpSubstitute=1
+Substitute="^(.{21}).+$":"\1…","\s+…$":"…"
+DynamicVariables=1
+UpdateDivider=10
+Disabled=(#StorageSlots# > 0)
+
 ; ---------------------------------------------------------------- each volume's space, colours and words
 
 [MeasureSlot1Used]
