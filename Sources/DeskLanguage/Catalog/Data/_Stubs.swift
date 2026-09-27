@@ -1,8 +1,5 @@
 import Foundation
 extension CatalogData {
-    static let enums: [EnumSpec] = []
-    static let namedValues: [NamedValueSpec] = []
-    static let fields: [FieldSpec] = []
     static let units: [UnitSpec] = []
     static let unitMisspellings: [UnitMisspellingSpec] = []
     static let formatOptions: [FormatOptionSpec] = []
