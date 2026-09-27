@@ -713,6 +713,11 @@ func runDeskCatalogTests(_ t: TestRunner) {
                 t.check(reference.contains("处理器占用率") && reference.contains("内边距"), "the Chinese reference is in Chinese")
             }
             print("  note    reference (\(language.rawValue)): \(reference.utf8.count / 1024) KiB, \(tables.count) table rows")
+            // DESK_REFERENCE_DIR=<folder> writes the reference there, to read it or check it in.
+            if let folder = ProcessInfo.processInfo.environment["DESK_REFERENCE_DIR"] {
+                let url = URL(fileURLWithPath: folder).appendingPathComponent("desk-reference.\(language.rawValue).md")
+                t.check((try? reference.write(to: url, atomically: true, encoding: .utf8)) != nil, "writing \(url.path)")
+            }
         }
         t.check(DeskReference.parameter(c.component(named: "Grid")!.signatures[0].params[0]) == "columns: Number (1…64) whole",
                 "a parameter reads as in the listings")

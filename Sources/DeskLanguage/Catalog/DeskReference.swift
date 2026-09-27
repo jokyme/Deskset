@@ -13,7 +13,7 @@ public enum DeskReference {
         func example(_ d: Doc) -> String { code(d.example) }
         func rainmeter(_ d: Doc) -> String {
             let spellings = d.rainmeter.map { m -> String in
-                "`\(m.spelling)`" + (m.fidelity == .exact ? "" : t(" (approx.)", "（近似）"))
+                "`\(m.qualifiedSpelling)`" + (m.fidelity == .exact ? "" : t(" (approx.)", "（近似）"))
             }
             return spellings.isEmpty ? "—" : cell(spellings.joined(separator: ", "))
         }
@@ -65,7 +65,7 @@ public enum DeskReference {
                             rainmeter(value.doc), value.doc.since.description, mac(value.doc)])
             }
             for m in ns.members {
-                let name = m.kind == .field ? "`\(ns.name).\(m.name)`" : "`\(ns.name).\(m.name)(…)`"
+                let name = "`\(ns.name).\(m.name)\(parentheses(m))`"
                 let type = m.kind == .action ? t("action", "动作") : code(m.type.description)
                 out += row([name, type, docText(m.doc), example(m.doc), rainmeter(m.doc), m.doc.since.description, mac(m.doc)])
             }
@@ -87,7 +87,7 @@ public enum DeskReference {
         out += header([t("On", "类型"), t("Member", "成员"), t("Description", "说明"), t("Example", "例子")])
         for tm in catalog.typeMembers {
             for m in tm.members {
-                out += row([tm.type, "`.\(m.name)\(m.kind == .field ? "" : "(…)")`", docText(m.doc), example(m.doc)])
+                out += row([tm.type, "`.\(m.name)\(parentheses(m))`", docText(m.doc), example(m.doc)])
             }
         }
         out += "\n"
@@ -188,6 +188,12 @@ public enum DeskReference {
             .reuse: LocalizedText("Reuse, accessibility, compatibility, options", "复用、无障碍、兼容和选项"),
         ]
         return titles[group]!.text(in: language)
+    }
+
+    /// Nothing for a field, `()` for a call without values, `(…)` for one with values.
+    static func parentheses(_ m: MemberSpec) -> String {
+        if m.kind == .field { return "" }
+        return m.signatures.allSatisfy { $0.params.isEmpty } ? "()" : "(…)"
     }
 
     /// `_ value: Number or Fraction, total: Number?` — signatures separated by `·`.

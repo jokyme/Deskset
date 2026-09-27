@@ -120,6 +120,24 @@ public struct RainmeterMapping: Sendable, Hashable {
         }
     }
 
+    /// The spelling with where it belongs, for the reference and hover help: `Meter=Bar BarOrientation`,
+    /// `Measure=CPU Processor=0`, `Plugin=PowerPlugin PowerState=Percent`, `[Rainmeter] Update`, `#MACACCENTCOLOR#`.
+    public var qualifiedSpelling: String {
+        guard let key else { return spelling }
+        let keyValue = value.map { "\(key)=\($0)" } ?? key
+        switch owner {
+        case .meter(let type): return type.isEmpty ? keyValue : "Meter=\(type) \(keyValue)"
+        case .measure(let type, let plugin):
+            if let plugin { return key == "Plugin" ? "Plugin=\(plugin)" : "Plugin=\(plugin) \(keyValue)" }
+            return type.isEmpty ? keyValue : "Measure=\(type) \(keyValue)"
+        case .skin: return "[Rainmeter] \(keyValue)"
+        case .window: return "Rainmeter.ini \(keyValue)"
+        case .metadata: return "[Metadata] \(key)"
+        case .variables: return "#\(key)#"
+        case .bang, .contextMenu: return spelling
+        }
+    }
+
     /// The words of this mapping that people type when they look for it (key, value, meter or measure type); a
     /// bang without its `!`.
     public var searchTerms: [String] {
