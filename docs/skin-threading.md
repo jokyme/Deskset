@@ -69,6 +69,16 @@ moves to one thread per skin. The estimate is 26–38 engineer-days without the 
    the view keeps pictures of the runs of meters that did not change since the previous frame (`Meter.drawGeneration`)
    and draws only the ones that did (Studio VU playing: 11.9 % → 2.9 % of a core; Spectrum 6.7 % → 4.0 %). For §7 this
    means frames are now bitmaps, as in options C and D.
+   A picture is also drawn again when something outside the meters changes what a full drawing shows: an image file
+   it was drawn from is replaced on disk (each picture keeps the files it looked up, checked with one `stat` each per
+   frame, as a full drawing's own lookups cost), a meter's inputs read when drawn change (`Meter.hashDrawInputs`: a
+   Histogram's measure range), the skin's size or glass changes (the base), and everything starts again for another
+   size, backing scale, color space (compared as color spaces: a display's own profile has no name), appearance or set
+   of fonts. The bitmap is in the window's color space, the display's profile, as AppKit's own drawing was: sRGB colors
+   come out the same, and Display P3 pictures are not clipped as they would be in an sRGB bitmap.
+   `Deskset --verify-drawing-cache Skins…` runs skins without a window through updates, the mouse, clicks, meter
+   groups, options and replaced image files, and compares every frame with a full drawing (a self-test suite does it
+   for every default and test skin; `DESKSET_RUNCACHE_VERIFY=1` does it in the running app).
 
 The main thread also runs:
 - mouse events, which call `Skin.mouseEvent` synchronously and use its result;
