@@ -201,3 +201,34 @@ DaybreakTip0=Choose a city for sunrise and sunset.
 DaybreakTip1=Sunrise [MeasureSunriseTip] · sunset [MeasureSunsetTip]#CRLF#[MeasureDayLengthText] of daylight · golden hour from [MeasureGoldenStartTip]
 DaybreakTip2=Midnight sun: the sun does not set today.
 DaybreakTip3=Polar night: the sun does not rise today.
+
+; ---------------------------------------------------------------- Chronograph
+ChronoMenuOpen=Open Clock
+ChronoMenuDial0=Right Dial: Automatic
+ChronoMenuDial1=Right Dial: Battery
+ChronoMenuDial2=Right Dial: CPU
+ChronoMenuSeconds1=Running Seconds: On
+ChronoMenuSeconds0=Running Seconds: Off
+ChronoMenuDialText=Dial Text…
+; the City item by the weather's place: looking it up, found (the name, at most 21 characters), none
+ChronoMenuCity0=City…
+ChronoMenuCity1=City: [MeasureWxPlaceMenu]…
+ChronoMenuCity2=Choose City…
+; the wordmark under 12 until Dial Text… sets another (empty hides it)
+ChronoDialTextDefault=Deskset
+; the time with seconds, in the seconds register's tooltip and the dial's
+ChronoTimeSeconds24=%H:%M:%S
+ChronoTimeSeconds12=%#I:%M:%S %p
+ChronoTipDate=[MeasureDateFull] · Week [MeasureWeekNumber]
+; the weather register's tooltip by state: 0 ready, 1 no forecast yet, 2 no place, 3 location off, 4 not up to date
+ChronoTipWeather0=[#Cond[&MeasureWxCondition:0]], [MeasureWx:0]° (feels like [MeasureWxFeels:0]°). Today [MeasureWxLow:0]° to [MeasureWxHigh:0]°; the dot marks now.
+ChronoTipWeather1=[#Status[&MeasureWxStatus:0]]
+ChronoTipWeather2=[#Status[&MeasureWxStatus:0]]. Click to choose a city.
+ChronoTipWeather3=[#Status[&MeasureWxStatus:0]]. Click to open Privacy Settings.
+ChronoTipWeather4=[#Cond[&MeasureWxCondition:0]], [MeasureWx:0]° (feels like [MeasureWxFeels:0]°). Today [MeasureWxLow:0]° to [MeasureWxHigh:0]°.#CRLF#[#Status[&MeasureWxStatus:0]]
+; the power reserve's tooltip by state: 0 on battery, 1 charging, 2 plugged in, 3 CPU, 4 on battery (time unknown)
+ChronoTipReserve0=Battery [CalcReserveValue:0]% · [MeasureBattLifeText] left
+ChronoTipReserve1=Battery [CalcReserveValue:0]% · charging
+ChronoTipReserve2=Battery [CalcReserveValue:0]% · plugged in
+ChronoTipReserve3=CPU [CalcReserveValue:0]%
+ChronoTipReserve4=Battery [CalcReserveValue:0]%

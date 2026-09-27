@@ -55,3 +55,9 @@ AlmanacShowSun=1
 ; ---------------------------------------------------------------- Daybreak
 ; The base of the digits takes the sky's colour in twilight, the golden hours and at night: 1 on, 0 off (plain ink)
 DaybreakSkyTint=1
+
+; ---------------------------------------------------------------- Chronograph
+; The dial at 3 o'clock: 0 automatic (the battery, or the CPU on a Mac without one), 1 battery, 2 CPU
+ChronoRightDial=0
+; The running seconds at 6 o'clock: 1 on, 0 off (the register stays as a dial)
+ChronoSeconds=1
