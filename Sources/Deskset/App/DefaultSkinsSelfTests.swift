@@ -159,18 +159,11 @@ enum DefaultSkinsSelfTests {
         }
 
         t.suite("App: default skins: without a first-run layout a new user gets the Clock") {
-            guard let repository = Paths.repositoryFolder("DefaultSkins") else {
-                print("    (skipped: DefaultSkins not found; run from the repository)")
-                return
-            }
+            // Today's default skins, as far as the first launch sees them: Deskset\Clock with Clock.ini.
             for layout in [nil, "[Nowhere\\Nothing]\nX=20\nY=20\n"] {
-                let root = t.temporaryDirectory("default-skins-plain")
-                try FileManager.default.copyItem(at: repository.appendingPathComponent("Deskset"),
-                                                 to: root.appendingPathComponent("Deskset"))
-                if let layout {
-                    try layout.write(to: root.appendingPathComponent(DefaultSkins.firstRunFileName), atomically: true,
-                                     encoding: .utf8)
-                }
+                var files = ["Deskset/Clock/Clock.ini": widget, "Deskset/System/System.ini": widget]
+                if let layout { files[DefaultSkins.firstRunFileName] = layout }
+                let root = try source(t, files)
                 let app = try app(t, source: root)
                 app.installDefaultSkinsIfNeeded()
                 app.loadActiveSkins()
