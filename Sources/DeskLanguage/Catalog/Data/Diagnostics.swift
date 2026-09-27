@@ -1111,11 +1111,12 @@ extension CatalogData {
             id: .tooManyArguments, severity: .error,
             trigger: #"`Text("A", "B")`; `.hidden(not day.inMonth)`; `Line(cpu.usage)`"#,
             template: LocalizedText(
-                #"`{name}` takes {count} value(s) here. {hint}"#,
-                #"`{name}` 这里只能写 {count} 个值。{hint}"#),
-            placeholders: ["name": .code, "count": .number, "hint": .text, "fixed": .code],
+                #"`{name}` takes {values} here. {hint}"#,
+                #"`{name}` 这里{values}。{hint}"#),
+            placeholders: ["name": .code, "values": .text, "hint": .text, "fixed": .code],
             hints: [
                 HintSpec(key: "addLabel", text: LocalizedText(#"Write `{fixed}`."#, #"写成 `{fixed}`。"#)),
+                HintSpec(key: "sides", text: LocalizedText(#"For different sides, name them: `{fixed}`."#, #"要给不同的边设不同的值，写上名字：`{fixed}`。"#)),
                 HintSpec(key: "lineMeter", text: LocalizedText(#"Rainmeter's Line meter is `Graph` in Desk."#, #"Rainmeter 的 Line 在 Desk 里是 `Graph`。"#)),
                 HintSpec(key: "colorNumbers", text: LocalizedText(#"For a color from red, green and blue, write `{fixed}`."#, #"要用红绿蓝数值写颜色，写成 `{fixed}`。"#)),
             ],

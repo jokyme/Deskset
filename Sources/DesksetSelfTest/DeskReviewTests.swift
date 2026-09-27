@@ -577,4 +577,20 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(deskReviewIDs("widget { Text(month.days(1)) }"), ["DK3002"])
         t.equal(deskReviewIDs("widget { Text(Hello) }"), ["DK3034"])
     }
+
+    t.suite("Desk: review — extra values (findings 12, 80)") {
+        let border = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").border(.gray, 2) }")
+        t.equal(border.diagnostics.first?.message(in: .english), "`.border` takes 1 value here. Write `width: 2`.")
+        let labelled = deskApplyFix(border, "DK4003")
+        t.equal(labelled, "info { name: \"T\" }\nwidget { Text(\"A\").border(.gray, width: 2) }")
+        t.equal(labelled.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let padding = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").padding(10, 20) }")
+        t.equal(deskApplyFix(padding, "DK4003"), "info { name: \"T\" }\nwidget { Text(\"A\").padding(vertical: 10, horizontal: 20) }")
+        let bold = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").bold(true) }")
+        t.equal(bold.diagnostics.first?.message(in: .english), "`.bold` takes no value here. Write `if: true`.")
+        t.equal(bold.diagnostics.first?.message(in: .simplifiedChinese), "`.bold` 这里不带值。写成 `if: true`。")
+        let two = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").size(1, 2, 3) }")
+        t.check(two.diagnostics.first { $0.id.rawValue == "DK4003" }?.message(in: .english).hasPrefix("`.size` takes 2 values here.") == true,
+                deskDescribe(two))
+    }
 }

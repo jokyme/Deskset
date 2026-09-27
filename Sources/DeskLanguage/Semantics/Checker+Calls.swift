@@ -768,7 +768,13 @@ extension Checker {
         let positionalCount = signature.params.filter { $0.label == nil }.count
         let firstExtra = arguments[extra[0]]
         let r = range(firstExtra.node)
-        var args: [String: DiagnosticArgument] = ["name": .code(calleeName), "count": .number(positionalCount)]
+        let values: LocalizedText
+        switch positionalCount {
+        case 0: values = LocalizedText("no value", "不带值")
+        case 1: values = LocalizedText("1 value", "只能写 1 个值")
+        default: values = LocalizedText("\(positionalCount) values", "只能写 \(positionalCount) 个值")
+        }
+        var args: [String: DiagnosticArgument] = ["name": .code(calleeName), "values": .text(values)]
         var fixIts: [FixIt] = []
         // `Line(cpu.usage)`: Rainmeter's Line meter is `Graph`.
         if calleeName == "Line", case .component = owner, let clauseNode = clause?.node {
@@ -806,12 +812,29 @@ extension Checker {
             report(.tooManyArguments, r, args, fixIts: fixIts)
             return ["min", "max"]
         }
-        var fitting: [ParamSpec] = []
+        // `.padding(10, 20)`, the CSS habit: vertical, then horizontal.
+        if extra.count == 1, ["padding", "margin"].contains(calleeName.drop { $0 == "." }), allArgs.count == 2,
+           allArgs.allSatisfy({ $0.label == nil }) {
+            let fixed = "vertical: \(text(allArgs[0].value.node)), horizontal: \(text(allArgs[1].value.node))"
+            args["hint"] = hintText(.tooManyArguments, "sides")
+            args["fixed"] = .code("\(calleeName)(\(fixed))")
+            let start = textStart(allArgs[0].node), end = range(allArgs[1].node).upperBound
+            fixIts.append(fix("replaceWith", [edit(start..<end, fixed)], ["text": .code(fixed)]))
+            report(.tooManyArguments, r, args, fixIts: fixIts)
+            return ["*"]
+        }
+        // A plain number is points where a length is expected (cost 2): it fits `width:`.
+        var candidates: [(param: ParamSpec, cost: Int)] = []
         for p in unfilled {
             let param = signature.params[p]
             let val = speculate { infer(valueNode, argumentContext(context, param, owner), expected: param.type) }
-            if !val.error, cost(val, param) != nil, cost(val, param)! <= 1 || param.type == .bool { fitting.append(param) }
+            if !val.error, let c = cost(val, param), c <= 2 && param.type != .bool || param.type == .bool && c <= 1 {
+                candidates.append((param, c))
+            }
         }
+        // The one that fits best, when it is the only one at that cost (a required `columns:` before `spacing:`).
+        let best = candidates.map(\.cost).min()
+        let fitting = candidates.filter { $0.cost == best }.map(\.param)
         var covered: Set<String> = []
         if fitting.count == 1, let label = fitting[0].label {
             let fixed = "\(label): \(text(valueNode))"
