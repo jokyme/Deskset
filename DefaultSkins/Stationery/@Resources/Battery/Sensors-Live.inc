@@ -7,6 +7,7 @@
 Measure=Plugin
 Plugin=MacSensors
 Sensor=battery
+MacOptional=1
 Scale=#TempScale#
 UpdateDivider=10
 Group=Sensors
@@ -15,6 +16,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=battery.voltage
+MacOptional=1
 UpdateDivider=10
 Group=Sensors
 
@@ -23,6 +25,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=battery.current
+MacOptional=1
 UpdateDivider=10
 Group=Sensors
 
@@ -31,5 +34,6 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=battery.health
+MacOptional=1
 UpdateDivider=600
 Group=Sensors

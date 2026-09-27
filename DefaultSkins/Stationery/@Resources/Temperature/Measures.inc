@@ -1,7 +1,9 @@
 ; Stationery · Temperature — the measures both sizes share. Original work, MIT licensed.
 ; Every reading comes from MacSensors (the Mac's own sensors: nothing asks for a permission) every 2 s, the skin's
 ; update. A sensor's string is empty until its first reading, one update after load, and stays empty on a Mac that
-; lacks the sensor; a stopped fan reads "0 RPM". So a row is chosen by its sensor's string, never by a 0.
+; lacks the sensor; a stopped fan reads "0 RPM". So a row is chosen by its sensor's string, never by a 0. Every sensor
+; but the CPU's is missing on some Macs (no fans, one fan, no battery), so they are MacOptional: a Mac without one
+; logs nothing about it.
 
 ; ---------------------------------------------------------------- sensors
 [MeasureCPU]
@@ -23,6 +25,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=gpu
+MacOptional=1
 Scale=#TempScale#
 RegExpSubstitute=1
 Substitute="^(-?\d+) °[CFK]$":"\1°","^$":"--°"
@@ -35,6 +38,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=ssd
+MacOptional=1
 Scale=#TempScale#
 RegExpSubstitute=1
 Substitute="^(-?\d+) °[CFK]$":"\1°","^$":"--°"
@@ -47,6 +51,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=battery
+MacOptional=1
 Scale=#TempScale#
 RegExpSubstitute=1
 Substitute="^(-?\d+) °[CFK]$":"\1°","^$":"--°"
@@ -60,6 +65,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=fan.1
+MacOptional=1
 IfMatch=.
 IfMatchAction=[!SetVariable Seen1 1][!UpdateMeasureGroup Slots][!UpdateMeterGroup Rows][!Redraw]
 IfNotMatchAction=[!SetVariable Seen1 0][!UpdateMeasureGroup Slots][!UpdateMeterGroup Rows][!Redraw]
@@ -70,6 +76,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=fan.2
+MacOptional=1
 IfMatch=.
 IfMatchAction=[!SetVariable HasFan2 1][!UpdateMeasureGroup Slots][!UpdateMeterGroup Rows][!Redraw]
 IfNotMatchAction=[!SetVariable HasFan2 0][!UpdateMeasureGroup Slots][!UpdateMeterGroup Rows][!Redraw]
@@ -80,6 +87,7 @@ Group=Sensors
 Measure=Plugin
 Plugin=MacSensors
 Sensor=power.system
+MacOptional=1
 RegExpSubstitute=1
 Substitute="^$":"-- W"
 IfMatch=^\d

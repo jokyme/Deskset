@@ -55,6 +55,7 @@ UpdateDivider=-1
 Measure=Plugin
 Plugin=MacSensors
 Sensor=gpu.usage
+MacOptional=1
 UpdateDivider=2
 IfMatch=^$
 IfMatchAction=[!SetVariable GPUReady 0]
