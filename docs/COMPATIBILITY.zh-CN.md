@@ -1468,7 +1468,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   `battery.voltage`、`battery.current`（编号从 1 开始）。温度可用 `Scale=C` / `F` / `K`。数值为读数，字符串为带单位的读数
   （“52 °C”、“2317 RPM”），没有读数时为空。默认范围：0–100 °C 和 0–100 %，风扇自己的最低和最高转速，簇的最低和最高频率；
   其他种类按出现过的数值。`!CommandMeasure <measure> List` 会在日志中列出这台 Mac 的所有传感器。`Sensor=thermal` 为 macOS 的
-  散热状态：0–3，字符串为“Nominal”“Fair”“Serious”或“Critical”。
+  散热状态：0–3，字符串为“Nominal”“Fair”“Serious”或“Critical”。这台 Mac 没有的传感器读数为 0，并在日志中记一次；
+  加上 `MacOptional=1`（第二个风扇、电池等）则不记日志。
 - **原因：** Deskset 为新皮肤提供的插件；Skin Studio 中作为“Temperature”实时数据提供。
 - **对皮肤的影响：** Rainmeter 中没有；使用它的皮肤只能在 Mac 上运行。
 - **状态：** 仅 Mac

@@ -537,6 +537,11 @@ func runSensorPluginTests(_ t: TestRunner) {
         Measure=Plugin
         Plugin=MacSensors
         Sensor=fan.3
+        [Quiet]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=fan.4
+        MacOptional=1
         [Bogus]
         Measure=Plugin
         Plugin=MacSensors
@@ -572,6 +577,9 @@ func runSensorPluginTests(_ t: TestRunner) {
         t.equal(value(skin, "Missing"), 0)
         t.equal(string(skin, "Missing"), "", "no reading: empty text")
         t.check(host.logs.contains { $0.contains("[Missing]: this Mac has no sensor \"fan.3\"") })
+        t.equal(value(skin, "Quiet"), 0)
+        t.equal(string(skin, "Quiet"), "", "MacOptional=1: missing reads as missing")
+        t.check(!host.logs.contains { $0.contains("[Quiet]") }, "MacOptional=1: no note for a missing sensor")
         t.equal(value(skin, "Bogus"), 0)
         t.check(host.logs.contains { $0.contains("\"warp.core\" is not a sensor name") })
         t.check(!s.asked.contains("warp.core"), "an unknown name is never asked for")
