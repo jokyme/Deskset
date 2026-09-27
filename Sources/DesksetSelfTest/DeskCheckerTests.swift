@@ -1,8 +1,8 @@
 import Foundation
 @testable import DeskLanguage
 
-// The checker (the language specification §4, §6, §8, §9.1 "Desk: checker …"): DESK-DESIGN §7's examples with their
-// messages in both languages, the acceptance examples of DESK-DESIGN §5.1 and §5.3, and the rules of §4 one by one.
+// The checker (the language specification §4, §6, §8, §9.1 "Desk: checker …"): the design's error-message examples
+// with their messages in both languages, the design's acceptance examples, and the rules of §4 one by one.
 
 /// The type of the first interpolation's expression in `Text("{…}")`.
 func deskInterpolationType(_ expression: String, declarations: String = "", options: String = "", info: String = "",
@@ -25,7 +25,7 @@ func deskIDs(of snippet: String, context: CheckContext = CheckContext()) -> [Str
 }
 
 func runDeskCheckerTests(_ t: TestRunner) {
-    t.suite("Desk: checker — DESK-DESIGN §7 examples and their messages") {
+    t.suite("Desk: checker — the design's error-message examples and their messages") {
         // (code, id, English message, Chinese message)
         let cases: [(String, String, String, String)] = [
             ("widget { Text(\"A\").colour(.red) }", "DK3001",
@@ -92,7 +92,7 @@ func runDeskCheckerTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Desk: acceptance — DESK-DESIGN §5.1 and §5.3") {
+    t.suite("Desk: acceptance — the design's acceptance examples") {
         for name in ["CPU", "MonthView"] {
             let url = deskFixtures.appendingPathComponent("Acceptance/\(name).desk")
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { t.check(false, "missing \(name)"); continue }
