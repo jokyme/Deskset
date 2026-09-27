@@ -1,6 +1,8 @@
 ; Stationery · Clock — the measures both sizes share. Original work, MIT licensed.
 ; Everything is worked out on the Mac: the time (Time measures) and the sun and moon (MacSun, from the place's
-; position; never the network). Nothing asks for a permission, except Location=auto, which is the user's choice.
+; position; never the network). The place is the suite's Location: by default the city of the Mac's time zone
+; (timezone), found in Deskset's own place table. Nothing asks for a permission, except Location=auto, which is the
+; user's choice.
 ;
 ; Only the clock tick, the place and the load timer run every second. Everything in group Clock updates when the
 ; minute changes (and when the place arrives), so the widget draws once a minute. The day rolls over with that tick.
@@ -80,8 +82,9 @@ UpdateDivider=-1
 
 ; ---------------------------------------------------------------- sun and moon
 [MeasureSun]
-; the place (empty until it is found); the sun measures below follow it. It runs every second only to notice the
-; place arriving, which is cheap
+; the place's name, empty until it is found and when there is none (a name the place table does not know, or a time
+; zone without a city, such as UTC); the sun measures below follow it. It runs every second only to notice the place
+; arriving, which is cheap
 Measure=Plugin
 Plugin=MacSun
 Location=#Location#
@@ -228,8 +231,8 @@ UpdateDivider=-1
 
 [MeasureCityInput]
 ; "City…" in the menu (and "Choose City…" in the Medium) opens this field where the size puts it (CityField…).
-; Return writes the suite's Location (a city, "latitude,longitude" or auto) and refreshes every Stationery widget;
-; Escape cancels
+; Return writes the suite's Location (a city, "latitude,longitude", timezone or auto) and refreshes every Stationery
+; widget; Escape cancels
 Measure=Plugin
 Plugin=InputText
 X=#CityFieldX#
