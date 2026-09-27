@@ -59,6 +59,11 @@ open class Meter: SkinSection {
 
     /// Something the meter draws may have changed (see `drawGeneration`).
     public func noteDrawChange() { drawGeneration &+= 1 }
+
+    /// Adds what the meter's drawing reads when it is drawn, besides the meter's own state that `drawGeneration`
+    /// counts: nothing for most meters; a Histogram's bound measures' value range. A kept picture of the meter stays
+    /// right while the generation and these inputs stay.
+    open func hashDrawInputs(into hasher: inout Hasher) {}
     public internal(set) var solidColor = RGBA.clear
     public internal(set) var solidColor2: RGBA?
     public internal(set) var gradientAngle = 0.0
