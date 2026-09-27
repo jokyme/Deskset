@@ -7,6 +7,9 @@ import Foundation
 /// - `changedOnDisk` finds files whose bytes differ from what the buffers last read or wrote (another editor saved,
 ///   the widget ran `!WriteKeyValue`) — by the bytes, not the dates: a save of the same size within the same tick of
 ///   the clock, or on a volume that keeps dates to the second, is found too;
+/// - `touchedOnDisk` finds files saved again with the same bytes, or only touched (their modification date moved):
+///   the Studio reloads the widget for such a save too, as it did when it looked at the dates (an image or a font the
+///   widget uses may have changed);
 /// - `adoptChanges` puts those files' new text into buffers that have no edits of their own.
 ///
 /// When it writes: for now the Studio writes at the end of every step (each step is "a gesture's end", so the widget on
@@ -48,17 +51,18 @@ public final class DiskSync {
             guard let buffer = buffers.buffer(id.url) else { continue }
             let bytes = buffer.data
             let outcome = Self.writer.sync {
-                Result { () throws -> Bool in
+                Result { () throws -> (wrote: Bool, date: Date?) in
                     // The same bytes on disk already (the edit was undone before it was written): nothing to write.
-                    if let now = try? Data(contentsOf: id.url), now == bytes { return false }
-                    try SourceDisk.write(bytes, to: id)
-                    return true
+                    if let now = try? Data(contentsOf: id.url), now == bytes {
+                        return (false, SourceDisk.modificationDate(id))
+                    }
+                    return (true, try SourceDisk.write(bytes, to: id))
                 }
             }
             switch outcome {
-            case .success(let wrote):
-                buffers.markWritten(id, bytes: bytes)
-                if wrote { written.append(id.url) }
+            case .success(let result):
+                buffers.markWritten(id, bytes: bytes, date: result.date)
+                if result.wrote { written.append(id.url) }
             case .failure(let error):
                 if failure == nil { failure = error }
             }
@@ -89,7 +93,8 @@ public final class DiskSync {
     public var hasScheduledFlush: Bool { scheduled != nil }
 
     /// The held files (or those of `files`) whose bytes on disk differ from what the buffers last saw: saved elsewhere,
-    /// written by the widget, or gone. The same bytes written again (or a file only touched) are no change.
+    /// written by the widget, or gone (a file that was not there and still is not: no change). The same bytes written
+    /// again (or a file only touched) are no change: `touchedOnDisk`.
     public func changedOnDisk(_ files: [URL]? = nil) -> [URL] {
         let ids = files.map { $0.map(SourceFileID.init) } ?? buffers.files
         var changed: [URL] = []
@@ -99,6 +104,41 @@ public final class DiskSync {
             if bytes != buffer.disk { changed.append(id.url) }
         }
         return changed
+    }
+
+    /// The held files (or those of `files`) saved again with the bytes the buffers last saw, or only touched: their
+    /// modification date moved. Each is reported once (the date is taken as seen). Files whose bytes changed are left
+    /// to `changedOnDisk`.
+    public func touchedOnDisk(_ files: [URL]? = nil) -> [URL] {
+        let ids = files.map { $0.map(SourceFileID.init) } ?? buffers.files
+        var touched: [URL] = []
+        for id in ids {
+            guard let buffer = buffers.buffer(id.url), let disk = buffer.disk else { continue }
+            let date = SourceDisk.modificationDate(id)
+            guard date != buffer.diskDate else { continue }
+            guard (try? SourceDisk.read(id, reportingAs: id.url)) == disk else { continue }
+            buffers.markSeen(id, date: date)
+            touched.append(id.url)
+        }
+        return touched
+    }
+
+    /// The modification dates of the held files (or of `files`) as they are now: what a skin writes while it runs
+    /// is found by comparing two of these (`restamp`: taken as seen).
+    public func modificationDates(_ files: [URL]? = nil) -> [SourceFileID: Date] {
+        let ids = files.map { $0.map(SourceFileID.init) } ?? buffers.files
+        var dates: [SourceFileID: Date] = [:]
+        for id in ids { dates[id] = SourceDisk.modificationDate(id) }
+        return dates
+    }
+
+    /// The held files' modification dates are taken as seen: saves of the same bytes made until now are not reported
+    /// by `touchedOnDisk` (a widget's own writes, which the session took as they came).
+    public func restamp() {
+        for id in buffers.files {
+            guard buffers.buffer(id.url)?.disk != nil else { continue }
+            buffers.markSeen(id, date: SourceDisk.modificationDate(id))
+        }
     }
 
     /// Takes the disk's version of the changed files (`changedOnDisk`) into buffers without edits of their own; a file
@@ -115,7 +155,7 @@ public final class DiskSync {
                 adopted.append(url)
                 continue
             }
-            buffers.adopt(id, bytes: bytes)
+            buffers.adopt(id, bytes: bytes, date: SourceDisk.modificationDate(id))
             adopted.append(url)
         }
         return adopted

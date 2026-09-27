@@ -52,16 +52,25 @@ public struct TextEdit: Equatable, CustomStringConvertible {
     public var description: String { "\(range.lowerBound)..<\(range.upperBound) → \(replacement.debugDescription)" }
 }
 
-/// A fingerprint of a text — its length in UTF-8 bytes and a 64-bit FNV-1a hash of those bytes — to tell whether a
-/// file still holds what an undo step left in it without keeping the whole text around.
+/// A fingerprint of a text — its length in UTF-8 bytes and a 64-bit FNV-1a hash of those bytes — or of a file's bytes,
+/// to tell whether a file still holds what an undo step left in it without keeping the whole text around.
 public struct TextDigest: Equatable, Hashable, CustomStringConvertible {
     public let length: Int
     public let hash: UInt64
 
     public init(_ text: String) {
+        self.init(fingerprinting: text.utf8)
+    }
+
+    /// The fingerprint of bytes as they are (`TextDigest(bytes: Data(text.utf8)) == TextDigest(text)`).
+    public init(bytes: Data) {
+        self.init(fingerprinting: bytes)
+    }
+
+    private init<Bytes: Sequence>(fingerprinting bytes: Bytes) where Bytes.Element == UInt8 {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         var length = 0
-        for byte in text.utf8 {
+        for byte in bytes {
             hash ^= UInt64(byte)
             hash = hash &* 0x0000_0100_0000_01b3
             length += 1
@@ -75,7 +84,12 @@ public struct TextDigest: Equatable, Hashable, CustomStringConvertible {
 
 /// What one step did to one file: the edit that made it (from the text before to the text after), the edit that takes
 /// it back, the encodings on both sides (an ANSI file that could not hold an edit became UTF-16), and fingerprints of
-/// both texts, so the step is undone only on the text it left behind.
+/// both texts and of the bytes on both sides, so the step is undone only on the file it left behind — the same text
+/// saved again in other bytes (another encoding, the BOM dropped) is a change made elsewhere, as it always was.
+///
+/// A file whose bytes do not survive decoding (a stray byte its encoding cannot read, a lone surrogate: they become
+/// U+FFFD) is written as its text by the step, as `IniWriter` always wrote it; the bytes it held before are kept
+/// (`exactBefore`), so undoing the step puts them back exactly.
 public struct SourceChange: Equatable, CustomStringConvertible {
     public var file: SourceFileID
     public var edit: TextEdit
@@ -84,12 +98,25 @@ public struct SourceChange: Equatable, CustomStringConvertible {
     public var encodingAfter: TextFileEncoding
     public var digestBefore: TextDigest
     public var digestAfter: TextDigest
+    /// Fingerprints of the file's bytes: those the step found, and those it left.
+    public var bytesBefore: TextDigest
+    public var bytesAfter: TextDigest
+    /// The bytes the file held before the step when they are not what its text gives in its encoding (nil: they
+    /// are): written back as they were when the step is undone.
+    public var exactBefore: Data?
+    /// The same for the bytes the step left (set on a change reversed: `reversed`).
+    public var exactAfter: Data?
 
-    /// The change from `before` to `after` (nil when neither the text nor the encoding changes).
+    /// The change from `before` to `after`. `bytesBefore`: what the file held (nil: its text in `encodingBefore`); the
+    /// step writes `after` in `encodingAfter`. nil when nothing would change: the same text in the same encoding (and,
+    /// with `bytesBefore`, the same bytes).
     public init?(file: SourceFileID, before: String, after: String, encodingBefore: TextFileEncoding,
-                 encodingAfter: TextFileEncoding) {
+                 encodingAfter: TextFileEncoding, bytesBefore: Data? = nil) {
         let edit = TextEdit.between(before, after)
-        guard edit != nil || encodingBefore != encodingAfter else { return nil }
+        let encodedBefore = TextDecoding.encodeForWriting(before, preferring: encodingBefore)
+        let original = bytesBefore ?? encodedBefore
+        let encodedAfter = TextDecoding.encodeForWriting(after, preferring: encodingAfter)
+        guard edit != nil || encodingBefore != encodingAfter || original != encodedAfter else { return nil }
         let made = edit ?? TextEdit(range: 0..<0, replacement: "")
         self.file = file
         self.edit = made
@@ -98,6 +125,10 @@ public struct SourceChange: Equatable, CustomStringConvertible {
         self.encodingAfter = encodingAfter
         digestBefore = TextDigest(before)
         digestAfter = TextDigest(after)
+        self.bytesBefore = TextDigest(bytes: original)
+        bytesAfter = TextDigest(bytes: encodedAfter)
+        exactBefore = original == encodedBefore ? nil : original
+        exactAfter = nil
     }
 
     /// The change in the other direction (undo as a change of its own).
@@ -109,6 +140,10 @@ public struct SourceChange: Equatable, CustomStringConvertible {
         r.encodingAfter = encodingBefore
         r.digestBefore = digestAfter
         r.digestAfter = digestBefore
+        r.bytesBefore = bytesAfter
+        r.bytesAfter = bytesBefore
+        r.exactBefore = exactAfter
+        r.exactAfter = exactBefore
         return r
     }
 

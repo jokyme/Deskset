@@ -341,6 +341,137 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(try String(contentsOf: later, encoding: .utf8), "[A]\nX=3\n", "written after the pause")
     }
 
+    t.suite("Session: undo looks at the bytes, and puts them back") {
+        let dir = t.temporaryDirectory("bytes")
+        func fontSize(_ value: String, _ url: URL) -> EditOp {
+            .setValue(file: url, section: "M", key: "FontSize", value: value, afterIncludes: false)
+        }
+
+        // The same text saved elsewhere in another encoding (VS Code's "Save with Encoding"): the step is not undone
+        // over it, as the editor always refused ("changed in another app").
+        let probe = dir.appendingPathComponent("Probe.ini")
+        let text = "[Rainmeter]\r\nUpdate=1000\r\n[M]\r\nFontSize=12\r\n"
+        try (Data([0xFF, 0xFE]) + text.data(using: .utf16LittleEndian)!).write(to: probe)
+        let buffers = SourceBuffers()
+        let sync = DiskSync(buffers: buffers)
+        let step = try IniBackend.plan([fontSize("20", probe)], in: buffers)
+        try buffers.apply(step)
+        try sync.flush()
+        let edited = text.replacingOccurrences(of: "=12", with: "=20")
+        try Data(edited.utf8).write(to: probe)
+        t.equal(sync.adoptChanges().map(SourceFileID.init), [SourceFileID(probe)], "another app saved it as UTF-8")
+        t.equal(buffers.buffer(probe)?.text, edited, "the same text")
+        t.equal(buffers.buffer(probe)?.encoding, .utf8(bom: false))
+        do {
+            try buffers.apply(step, reverse: true)
+            t.check(false, "undone over another app's conversion")
+        } catch {
+            t.equal(error as? SourceBuffers.Failure, .changedElsewhere(SourceFileID(probe).url))
+        }
+        t.equal(try Data(contentsOf: probe), Data(edited.utf8), "the other app's file is left alone")
+        t.check(!sync.hasUnwrittenChanges)
+        // Only the BOM dropped is a change too.
+        let bom = dir.appendingPathComponent("Bom.ini")
+        try (Data([0xEF, 0xBB, 0xBF]) + Data(text.utf8)).write(to: bom)
+        let bomStep = try IniBackend.plan([fontSize("20", bom)], in: buffers)
+        try buffers.apply(bomStep)
+        try sync.flush()
+        try Data(edited.utf8).write(to: bom)
+        sync.adoptChanges()
+        t.throwsError("the BOM dropped elsewhere") { try buffers.apply(bomStep, reverse: true) }
+
+        // Bytes that do not survive decoding (a stray Windows-1252 "°" in a UTF-8 file with a BOM): the step writes the
+        // text as IniWriter always wrote it; undoing it puts the original bytes back exactly, and redo the step's.
+        let ansi = dir.appendingPathComponent("Ansi.ini")
+        let raw = Data([0xEF, 0xBB, 0xBF]) + Data("; 20".utf8) + Data([0xB0]) + Data("C\r\n[M]\r\nFontSize=12\r\n".utf8)
+        try raw.write(to: ansi)
+        t.check(try buffers.text(of: ansi).contains("\u{FFFD}"), "decoded with a replacement character")
+        let lossy = try IniBackend.plan([fontSize("13", ansi)], in: buffers)
+        t.check(lossy.first?.exactBefore == raw, "the original bytes are kept with the step")
+        try buffers.apply(lossy)
+        try sync.flush()
+        let stepBytes = try Data(contentsOf: ansi)
+        t.check(stepBytes != raw && String(decoding: stepBytes, as: UTF8.self).contains("FontSize=13"), "written")
+        try buffers.apply(lossy, reverse: true)
+        try sync.flush()
+        t.equal(try Data(contentsOf: ansi), raw, "undo: byte for byte")
+        t.equal(sync.changedOnDisk(), [], "what undo wrote is what the buffer knows")
+        try buffers.apply(lossy)
+        try sync.flush()
+        t.equal(try Data(contentsOf: ansi), stepBytes, "redo: the step's bytes")
+        // A later step on the restored bytes keeps them too.
+        try buffers.apply(lossy, reverse: true)
+        try sync.flush()
+        let again = try IniBackend.plan([fontSize("14", ansi)], in: buffers)
+        try buffers.apply(again)
+        try sync.flush()
+        try buffers.apply(again, reverse: true)
+        try sync.flush()
+        t.equal(try Data(contentsOf: ansi), raw, "undo of a step made on the restored bytes")
+
+        // Typed code for a file deleted meanwhile (a git checkout, the Trash): saved as a new file, as the editor always
+        // saved it; its undo leaves the file empty (the editor wrote back empty bytes), and redo writes it again.
+        let styles = dir.appendingPathComponent("Styles.inc")
+        try "[S]\nA=1\n".write(to: styles, atomically: true, encoding: .utf8)
+        _ = try buffers.load(styles)
+        try FileManager.default.removeItem(at: styles)
+        sync.adoptChanges()
+        t.check(!buffers.contains(styles), "forgotten")
+        let typed = try IniBackend.plan([.editSource(file: styles, text: "[S]\nA=2\n", encoding: .utf8(bom: false))],
+                                        in: buffers)
+        t.equal(typed.count, 1, "a change")
+        try buffers.apply(typed)
+        try sync.flush()
+        t.equal(try String(contentsOf: styles, encoding: .utf8), "[S]\nA=2\n", "created again")
+        try buffers.apply(typed, reverse: true)
+        try sync.flush()
+        t.equal(try Data(contentsOf: styles), Data(), "undo: empty")
+        try buffers.apply(typed)
+        try sync.flush()
+        t.equal(try String(contentsOf: styles, encoding: .utf8), "[S]\nA=2\n", "redo")
+        // In a file's own encoding with a BOM: the BOM is written with the text, and undo still leaves nothing.
+        let wide = dir.appendingPathComponent("Wide.inc")
+        let wideStep = try IniBackend.plan([.editSource(file: wide, text: "[S]\r\n",
+                                                         encoding: .utf16LittleEndian(bom: true))], in: buffers)
+        try buffers.apply(wideStep)
+        try sync.flush()
+        t.equal(try Data(contentsOf: wide), Data([0xFF, 0xFE]) + "[S]\r\n".data(using: .utf16LittleEndian)!)
+        try buffers.apply(wideStep, reverse: true)
+        try sync.flush()
+        t.equal(try Data(contentsOf: wide), Data(), "undo: empty")
+        // A visual edit of a file that is not there still refuses.
+        t.throwsError("a missing file for a visual edit") {
+            _ = try IniBackend.plan([fontSize("9", dir.appendingPathComponent("Missing.inc"))], in: buffers)
+        }
+        t.check(!buffers.contains(dir.appendingPathComponent("Missing.inc")), "and holds nothing for it")
+
+        // A file saved again with the same bytes, or only touched: found by its date, once (the Studio reloads the
+        // widget for it, as it did when it looked at the dates); a change of the bytes is `changedOnDisk`'s.
+        let touched = dir.appendingPathComponent("Touched.ini")
+        try "[A]\nX=1\n".write(to: touched, atomically: true, encoding: .utf8)
+        _ = try buffers.load(touched)
+        t.equal(sync.touchedOnDisk([touched]), [], "not touched yet")
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(40)], ofItemAtPath: touched.path)
+        t.equal(sync.touchedOnDisk([touched]).map(SourceFileID.init), [SourceFileID(touched)], "touched")
+        t.equal(sync.touchedOnDisk([touched]), [], "reported once")
+        t.equal(sync.changedOnDisk([touched]), [], "the same bytes")
+        try "[A]\nX=2\n".write(to: touched, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(50)], ofItemAtPath: touched.path)
+        t.equal(sync.touchedOnDisk([touched]), [], "other bytes are not a touch")
+        t.equal(sync.changedOnDisk([touched]).map(SourceFileID.init), [SourceFileID(touched)])
+        sync.adoptChanges()
+        t.equal(sync.touchedOnDisk([touched]), [], "adopted with its date")
+        // Taken as seen (a widget's own write of the same bytes): no touch.
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: touched.path)
+        sync.restamp()
+        t.equal(sync.touchedOnDisk([touched]), [], "restamped")
+        // The session's own write is no touch either.
+        try buffers.apply(try IniBackend.plan([.setValue(file: touched, section: "A", key: "X", value: "3",
+                                                          afterIncludes: false)], in: buffers))
+        try sync.flush()
+        t.equal(sync.touchedOnDisk([touched]), [], "its own write")
+    }
+
     t.suite("Session: a skin loads from the text in memory") {
         let ini = "[Rainmeter]\n[Variables]\n@Include=#@#Vars.inc\n[M]\nMeter=String\nText=#Word#\nFontSize=10\n"
         let (skin, host) = try makeSkin(t, ini, files: ["Root/@Resources/Vars.inc": "[Variables]\nWord=disk\n"])

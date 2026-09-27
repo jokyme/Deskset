@@ -350,8 +350,9 @@ final class EditingSession {
             guard mine.digestAfter == change.digestBefore, let now = buffers.buffer(change.file.url)?.text,
                   TextDigest(now) == change.digestAfter else { return nil }
             let before = mine.inverse.applied(to: change.inverse.applied(to: now))
+            // What the file held before the first step, exactly (bytes that did not survive decoding come back too).
             if let combined = SourceChange(file: change.file, before: before, after: now, encodingBefore: mine.encodingBefore,
-                                           encodingAfter: change.encodingAfter) {
+                                           encodingAfter: change.encodingAfter, bytesBefore: mine.exactBefore) {
                 result.changes[i] = combined
             } else {
                 result.changes.remove(at: i)

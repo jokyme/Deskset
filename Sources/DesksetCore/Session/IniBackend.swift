@@ -51,19 +51,42 @@ public enum IniBackend {
 
     /// The files' texts while a plan is worked out.
     struct Scratch {
+        struct File {
+            var before: String
+            var text: String
+            var encodingBefore: TextFileEncoding
+            var encoding: TextFileEncoding
+            /// What the file holds (or is to hold) before the plan: the change starts from these bytes.
+            var bytesBefore: Data
+            /// Typed code (`editSource`): kept exactly, in the encoding the code pane gave.
+            var source = false
+        }
+
         let buffers: SourceBuffers
-        var files: [SourceFileID: (before: String, text: String, encodingBefore: TextFileEncoding,
-                                   encoding: TextFileEncoding, source: Bool)] = [:]
+        var files: [SourceFileID: File] = [:]
         var order: [SourceFileID] = []
 
         init(buffers: SourceBuffers) { self.buffers = buffers }
 
-        /// The current text of `url` in the plan (read into the buffers the first time).
-        mutating func text(_ url: URL) throws -> (id: SourceFileID, text: String) {
+        /// The current text of `url` in the plan (read into the buffers the first time). `creating`: a file that is
+        /// not on disk starts empty in that encoding (typed code for a file deleted meanwhile is saved as a new file,
+        /// as the editor always saved it; its undo leaves it empty); without it a missing file throws.
+        mutating func text(_ url: URL, creating encoding: TextFileEncoding? = nil) throws -> (id: SourceFileID, text: String) {
             let id = SourceFileID(url)
             if let file = files[id] { return (id, file.text) }
-            let buffer = try buffers.load(url)
-            files[id] = (buffer.text, buffer.text, buffer.encoding, buffer.encoding, false)
+            let buffer: SourceBuffers.Buffer
+            do {
+                buffer = try buffers.load(url)
+            } catch IniWriterError.fileNotFound(let path) {
+                guard let encoding else { throw IniWriterError.fileNotFound(path) }
+                var isDirectory: ObjCBool = false
+                guard !FileManager.default.fileExists(atPath: id.url.path, isDirectory: &isDirectory) else {
+                    throw IniWriterError.fileNotFound(path)
+                }
+                buffer = buffers.holdAbsent(url, encoding: encoding)
+            }
+            files[id] = File(before: buffer.text, text: buffer.text, encodingBefore: buffer.encoding,
+                             encoding: buffer.encoding, bytesBefore: buffer.bytes)
             order.append(id)
             return (id, buffer.text)
         }
@@ -100,25 +123,29 @@ public enum IniBackend {
                 let (id, text) = try self.text(file)
                 if let moved = IniWriter.movingSection(text, section: section, before: before) { set(id, moved) }
             case .editSource(let file, let text, let encoding):
-                let (id, _) = try self.text(file)
+                let (id, _) = try self.text(file, creating: encoding ?? .utf8(bom: false))
                 set(id, text)
                 if let encoding { files[id]?.encoding = encoding }
                 files[id]?.source = true
             }
         }
 
-        /// One change per file that differs. An INI edit the file's ANSI code page cannot hold makes it UTF-16 LE with a
-        /// BOM (as `IniWriter` writes it); typed code must fit the encoding the code pane gave it (`UnencodableText`).
+        /// One change per file whose text or encoding differs. An INI edit the file's ANSI code page cannot hold makes
+        /// it UTF-16 LE with a BOM (as `IniWriter` writes it); typed code must fit the encoding the code pane gave it
+        /// (`UnencodableText`).
         func changes() throws -> [SourceChange] {
             try order.compactMap { id in
                 guard let file = files[id] else { return nil }
+                guard !file.text.utf8.elementsEqual(file.before.utf8) || file.encoding != file.encodingBefore else {
+                    return nil
+                }
                 var encoding = file.encoding
                 if TextDecoding.encode(file.text, as: encoding) == nil {
                     if file.source { throw UnencodableText(file: id.url) }
                     encoding = .utf16LittleEndian(bom: true)
                 }
                 return SourceChange(file: id, before: file.before, after: file.text, encodingBefore: file.encodingBefore,
-                                    encodingAfter: encoding)
+                                    encodingAfter: encoding, bytesBefore: file.bytesBefore)
             }
         }
     }
