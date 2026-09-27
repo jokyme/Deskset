@@ -156,7 +156,17 @@ public struct ForStmtSyntax: SyntaxWrapper {
     public var forKeyword: PositionedToken { node.childTokens[0] }
     public var variable: PositionedToken { node.childTokens[1] }
     public var inKeyword: PositionedToken { node.childTokens[2] }
-    public var source: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes[0]) }
+    /// The node after the `in` slot (a group written in place of the loop variable, `for (i, x) in`, comes before).
+    public var source: ExpressionSyntax {
+        var tokens = 0
+        for child in node.children {
+            switch child {
+            case .token: tokens += 1
+            case .node(let n): if tokens >= 3 { return ExpressionSyntax(unchecked: n) }
+            }
+        }
+        return ExpressionSyntax(unchecked: node.childNodes[0])
+    }
     public var block: BlockSyntax { BlockSyntax(unchecked: node.firstChild(.block)!) }
     public var modifiers: [ModifierAppSyntax] { node.children(.modifierApp).map(ModifierAppSyntax.init(unchecked:)) }
 }

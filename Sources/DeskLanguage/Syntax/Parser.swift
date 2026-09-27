@@ -813,6 +813,20 @@ struct Parser {
         var reported = false
         if isNameLike(i) && sameLine(i) && !isKeyword(i, .inKeyword) {
             children.append(take())
+        } else if kind(i) == .lParen && sameLine(i) {
+            // `for (i, x) in list`: Desk has no index variable (D23). The group is reported once, where the loop
+            // variable belongs, and the rest of the `for` is read as usual.
+            let open = i
+            var group: [SyntaxChild] = []
+            var depth = 0
+            repeat {
+                if kind(i) == .lParen { depth += 1 } else if kind(i) == .rParen { depth -= 1 }
+                group.append(take())
+            } while i < limit && depth > 0 && sameLine(i) && kind(i) != .lBrace && kind(i) != .rBrace
+            children.append(.node(node(.unexpected, group)))
+            children.append(missing(.identifier))
+            report(.expected, .error, starts[open]..<textEnd(i - 1), ["expected": .name(SyntaxSlot.loopVariable.rawValue)])
+            reported = true
         } else {
             children.append(missing(.identifier))
             expected(.loopVariable)

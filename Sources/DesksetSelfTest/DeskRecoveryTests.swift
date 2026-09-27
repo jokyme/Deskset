@@ -53,6 +53,8 @@ func runDeskRecoveryTests(_ t: TestRunner) {
             // One missing piece per interpolation.
             ("widget {\n    Text(\"{,}\")\n}", ["DK2005"], false),
             ("widget {\n    Text(\"{x, decimals}\")\n}", ["DK2005"], false),
+            // A destructured loop variable is one mistake; the rest of the `for` still reads.
+            ("widget {\n    for (i, x) in list { Text(x) }\n}", ["DK2005"], false),
         ]
         for (text, ids, exact) in cases {
             let tree = deskParse(text)
