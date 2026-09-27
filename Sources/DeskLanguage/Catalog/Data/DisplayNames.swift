@@ -183,6 +183,9 @@ extension CatalogData {
     /// Grammar slots, for "Expected {expected} here" (DK2005). The parser reports them by id, without the catalog.
     static let slotNames: [DisplayNameSpec] = [
         dn("slot:expression", "a value", "一个值"),
+        dn("slot:pickerChoice", "A Picker's choice", "Picker 的选项"),
+        dn("kind:pickerChoice", "a case such as `.sunday`, text in quotes, a number or `Choice(value, \"Label\")`",
+           "`.sunday` 这样的名字、带引号的文字、数字或 `Choice(value, \"Label\")`"),
         dn("slot:modifier", "a modifier, such as `.font(…)`", "修饰符，比如 `.font(…)`"),
         dn("slot:label", "a name followed by `:`", "名字加冒号"),
         dn("slot:closingBrace", "`}`", "`}`"), dn("slot:openingBrace", "`{`", "`{`"),

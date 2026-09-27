@@ -412,4 +412,26 @@ func runDeskReviewTests(_ t: TestRunner) {
         let variables = two.diagnostics.filter { $0.id.rawValue == "DK7016" }.map { $0.arguments["variable"].map { "\($0)" } ?? "" }
         t.equal(Set(variables).count, 2, "each fix-it declares its own variable")
     }
+
+    t.suite("Desk: review — Picker choices (finding 2)") {
+        let lines = deskCheck("info { name: \"T\" }\noptions {\n    weekStart = Picker(\"Day\", [\n        .sunday\n        .monday\n    ], default: .sunday)\n}\nwidget { Text(\"{options.weekStart}\") }")
+        t.equal(lines.diagnostics.map(\.id.rawValue), ["DK2007"])
+        let fixed = deskApplyFix(lines, "DK2007")
+        t.equal(fixed, "info { name: \"T\" }\noptions {\n    weekStart = Picker(\"Day\", [\n        .sunday,\n        .monday\n    ], default: .sunday)\n}\nwidget { Text(\"{options.weekStart}\") }")
+        t.equal(fixed.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        t.equal(lines.options["weekStart"]?.choices, ["sunday", "monday"])
+        t.equal(deskReviewIDs("options {\n    d = Picker(\"Day\", [\n        .sunday\n        .monday\n        .tuesday\n    ])\n}\nwidget { Text(\"{options.d}\") }"), ["DK2007", "DK2007"])
+        t.equal(deskReviewIDs("options { d = Picker(\"Day\", [.sunday.foo]) }\nwidget { Text(\"{options.d}\") }"), ["DK3003"])
+        t.equal(deskReviewIDs("options { d = Picker(\"Flag\", [true, false]) }\nwidget { Text(\"{options.d}\") }"), ["DK4001", "DK4001"])
+        t.equal(deskReviewIDs("options { d = Picker(\"A\", [Choice(.a, \"A\", \"B\"), Choice()]) }\nwidget { Text(\"{options.d}\") }"), ["DK4003", "DK4002"])
+        let data = deskCheck("info { name: \"T\" }\noptions { d = Picker(\"Flag\", [cpu.usage]) }\nwidget { Text(\"{options.d}\") }")
+        t.equal(data.diagnostics.map(\.id.rawValue), ["DK4001"])
+        t.check(data.diagnostics.first?.message(in: .english).hasPrefix("A Picker's choice needs a case such as `.sunday`") == true,
+                data.diagnostics.first?.message(in: .english) ?? "")
+        // The usual forms stay clean.
+        t.equal(deskReviewIDs("options { d = Picker(\"Day\", [.sunday, .monday]) }\nwidget { Text(\"{options.d}\") }"), [])
+        t.equal(deskReviewIDs("options { d = Picker(\"Day\", [Weekday.sunday, .monday]) }\nwidget { Text(\"{options.d}\") }"), [])
+        t.equal(deskReviewIDs("options { d = Picker(\"Look\", [Choice(.mono, \"One color\"), Choice(.full, \"Full color\")]) }\nwidget { Text(\"{options.d}\") }"), [])
+        t.equal(deskReviewIDs("options { d = Picker(\"N\", [1, 2, -3]) }\nwidget { Text(\"{options.d}\") }"), [])
+    }
 }

@@ -520,13 +520,28 @@ extension Checker {
         var names: [(String, Range<Int>)] = []
         var qualified: String?
         var labels: [PositionedNode] = []
+        var unusable = false
         for element in ListLiteralSyntax(unchecked: choicesNode).elements {
             var value = element.node
             if value.kind == .callExpr, text(CallExprSyntax(unchecked: value).callee.node) == "Choice" {
-                let args = CallExprSyntax(unchecked: value).arguments.arguments
-                if args.count > 1 { labels.append(args[1].value.node) }
-                guard let first = args.first else { continue }
-                value = first.value.node
+                let clause = CallExprSyntax(unchecked: value).arguments
+                let args = clause.arguments
+                // `Choice(value, "Label")` exactly: anything else is bound against its signature for the message.
+                if args.count != 2 || args.contains(where: { $0.label != nil }), let spec = catalog.control(named: "Choice") {
+                    let before = diagnostics.count
+                    _ = bindCall(spec.signatures, arguments: clause, calleeName: "Choice", what: .code("Choice"),
+                                 callRange: range(value), context, owner: .control(spec))
+                    // A case as the value is typed by the Picker, not by `Choice`: no "can't tell what `.a` is".
+                    if let valueRange = args.first.map({ range($0.value.node) }) {
+                        let added = diagnostics[before...].filter { !($0.id == .choiceNeedsContext && valueRange.contains($0.range.lowerBound)) }
+                        diagnostics.removeSubrange(before...)
+                        diagnostics += added
+                    }
+                    unusable = true
+                    continue
+                }
+                labels.append(args[1].value.node)
+                value = args[0].value.node
             }
             switch value.kind {
             case .implicitMemberExpr:
@@ -534,15 +549,40 @@ extension Checker {
                 names.append((ImplicitMemberExprSyntax(unchecked: value).name.token.name, range(value)))
             case .memberExpr:
                 let member = MemberExprSyntax(unchecked: value)
-                kinds.insert("case")
-                if member.base.node.kind == .identifierExpr {
+                if member.base.node.kind == .identifierExpr, IdentifierExprSyntax(unchecked: member.base.node).token.token.isUpperName {
+                    // A qualified case: `HAlign.left`, `Theme.dark`.
+                    kinds.insert("case")
                     qualified = qualified ?? IdentifierExprSyntax(unchecked: member.base.node).name
+                    names.append((member.name.token.name, range(value)))
+                } else if let parts = lineBrokenCases(value) {
+                    // `.sunday`↵`.monday` inside the brackets reads `.sunday.monday`: a missing comma (D85).
+                    kinds.insert("case")
+                    for (n, part) in parts.enumerated() {
+                        names.append((part.name, part.range))
+                        if n > 0 {
+                            let previousEnd = parts[n - 1].range.upperBound
+                            report(.missingComma, part.range,
+                                   fixIts: [fix("insert", [edit(previousEnd..<previousEnd, ",")], ["text": .code(",")], group: "missingComma")])
+                        }
+                    }
+                } else {
+                    // Some other member access (`.sunday.foo`, `cpu.usage`): its own diagnostic, else not a choice.
+                    let v = inferValue(value, context, expected: nil)
+                    if !v.error { reportUnusableChoice(value, v) }
+                    unusable = true
                 }
-                names.append((member.name.token.name, range(value)))
             case .stringLiteral: kinds.insert("string")
-            case .numberLiteral, .prefixExpr: kinds.insert("number")
-            default: kinds.insert("other")
+            case .numberLiteral: kinds.insert("number")
+            case .prefixExpr where PrefixExprSyntax(unchecked: value).operand.node.kind == .numberLiteral: kinds.insert("number")
+            default:
+                let v = inferValue(value, context, expected: nil)
+                if !v.error { reportUnusableChoice(value, v) }
+                unusable = true
             }
+        }
+        if unusable {
+            option.val = .error
+            return
         }
         var labelContext2 = context
         labelContext2.param = ParamSpec(label: nil, name: "label", type: .string, role: .display, translatable: true, doc: LocalizedText("", ""))
@@ -636,6 +676,30 @@ extension Checker {
                                 signature: control.signatures[0], calleeName: control.name, callRange: range(call.node),
                                 clause: call.arguments, context)
         }
+    }
+
+    /// `.sunday`↵`.monday`(↵`.tuesday`…): a chain of member accesses, each after a line break, on an implicit
+    /// member — the cases of a list whose commas are missing. Nil for any other shape.
+    func lineBrokenCases(_ node: PositionedNode) -> [(name: String, range: Range<Int>)]? {
+        var parts: [(name: String, range: Range<Int>)] = []
+        var current = node
+        while current.kind == .memberExpr {
+            let member = MemberExprSyntax(unchecked: current)
+            let broken = member.dot.token.leadingTrivia.containsLineBreak
+                || member.base.node.node.lastToken?.trailingTrivia.containsLineBreak == true
+            guard broken, !member.name.token.isMissing else { return nil }
+            parts.insert((member.name.token.name, range(member.dot).lowerBound..<range(member.name).upperBound), at: 0)
+            current = member.base.node
+        }
+        guard current.kind == .implicitMemberExpr else { return nil }
+        parts.insert((ImplicitMemberExprSyntax(unchecked: current).name.token.name, range(current)), at: 0)
+        return parts
+    }
+
+    /// A Picker choice that is neither a case, text, a number nor `Choice(…)` (DK4001).
+    func reportUnusableChoice(_ node: PositionedNode, _ v: Val) {
+        report(.typeMismatch, range(node), ["what": .name("slot:pickerChoice"), "expected": .name("kind:pickerChoice"),
+                                            "actual": .type(v.type)])
     }
 
     func reportDefaultNotAChoice(_ node: PositionedNode, choicesNode: PositionedNode) {
