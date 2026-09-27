@@ -42,12 +42,12 @@ WxDotRingColorLightRegular=0,0,0,90
 WxDotRingColorDarkRegular=0,0,0,150
 WxDotRingColorDarkClear=0,0,0,120
 WxAreaAlpha=[#WxAreaAlpha[#LookTheme][#Glass]]
+WxDotRingColor=[#WxDotRingColor[#LookTheme][#Glass]]
 ; Clear's temperature bars and curve area in white, once MacWeather takes ScaleColor (until then the scale's colours)
 WxScaleColorLightRegular=
 WxScaleColorDarkRegular=
 WxScaleColorDarkClear=255,255,255
 WxScaleColor=[#WxScaleColor[#LookTheme][#Glass]]
-WxDotRingColor=[#WxDotRingColor[#LookTheme][#Glass]]
 
 ; ---------------------------------------------------------------- notices, by MacWeather's Status (0–13)
 ; the symbol and its natural size at 20 pt (so it is drawn at its own size: left-aligned in the Medium and Large,
