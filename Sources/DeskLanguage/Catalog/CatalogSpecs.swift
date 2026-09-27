@@ -582,6 +582,28 @@ public struct FormatOptionSpec: Sendable, Hashable {
     }
 }
 
+/// How a value of a type shows in text when no format option says otherwise (§4.11). Data members may carry their
+/// own default (`MemberSpec.defaultFormat`), which wins.
+public struct TypeFormatSpec: Sendable, Hashable {
+    public var type: DeskType
+    /// A fixed number of decimals; nil: the rule says.
+    public var decimals: Int?
+    /// The style or pattern used when the type has one (durations `.full`, dates `.time`).
+    public var style: FormatDefault?
+    /// The rule, in both languages.
+    public var rule: LocalizedText
+    /// What it looks like: `12.3 GB`, `512 MB`.
+    public var examples: [String]
+
+    public init(type: DeskType, decimals: Int? = nil, style: FormatDefault? = nil, rule: LocalizedText, examples: [String]) {
+        self.type = type
+        self.decimals = decimals
+        self.style = style
+        self.rule = rule
+        self.examples = examples
+    }
+}
+
 // MARK: - Permissions, features, security
 
 public struct PermissionSpec: Sendable, Hashable {

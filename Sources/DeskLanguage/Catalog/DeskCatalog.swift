@@ -30,6 +30,8 @@ public struct DeskCatalog: Sendable {
     public var units: [UnitSpec] { didSet { invalidate() } }
     public var unitMisspellings: [UnitMisspellingSpec] { didSet { invalidate() } }
     public var formatOptions: [FormatOptionSpec] { didSet { invalidate() } }
+    /// How each type shows in text by default (§4.11).
+    public var typeFormats: [TypeFormatSpec]
     public var permissions: [PermissionSpec] { didSet { invalidate() } }
     /// What `supports(…)` can ask about.
     public var features: [FeatureSpec] { didSet { invalidate() } }
@@ -53,7 +55,8 @@ public struct DeskCatalog: Sendable {
                 typeMembers: [TypeMembersSpec], enums: [EnumSpec],
                 namedValues: [NamedValueSpec], controls: [ControlSpec], infoFields: [FieldSpec],
                 packageFields: [FieldSpec], units: [UnitSpec], unitMisspellings: [UnitMisspellingSpec],
-                formatOptions: [FormatOptionSpec], permissions: [PermissionSpec], features: [FeatureSpec],
+                formatOptions: [FormatOptionSpec], typeFormats: [TypeFormatSpec] = [], permissions: [PermissionSpec],
+                features: [FeatureSpec],
                 foreign: [ForeignSpec], displayNames: [DisplayNameSpec], compatDetails: [CompatDetailSpec],
                 rereadingCommands: [RereadSpec], diagnostics: [DiagnosticSpec], fixItTitles: [FixItTitleSpec],
                 notes: [NoteSpec], limits: CatalogLimits = CatalogLimits()) {
@@ -72,6 +75,7 @@ public struct DeskCatalog: Sendable {
         self.units = units
         self.unitMisspellings = unitMisspellings
         self.formatOptions = formatOptions
+        self.typeFormats = typeFormats
         self.permissions = permissions
         self.features = features
         self.foreign = foreign
@@ -93,7 +97,7 @@ public struct DeskCatalog: Sendable {
             functions: D.functions, records: D.records, typeMembers: D.typeMembers, enums: D.enums,
             namedValues: D.namedValues,
             controls: D.controls, infoFields: D.fields.filter(\.inInfo), packageFields: D.fields.filter(\.inPackage),
-            units: D.units, unitMisspellings: D.unitMisspellings, formatOptions: D.formatOptions,
+            units: D.units, unitMisspellings: D.unitMisspellings, formatOptions: D.formatOptions, typeFormats: D.typeFormats,
             permissions: D.permissions, features: D.features, foreign: D.foreign, displayNames: D.displayNames,
             compatDetails: D.compatDetails, rereadingCommands: D.rereadingCommands, diagnostics: D.diagnostics,
             fixItTitles: D.fixItTitles, notes: D.notes)

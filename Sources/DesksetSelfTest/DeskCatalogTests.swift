@@ -421,6 +421,39 @@ func runDeskCatalogTests(_ t: TestRunner) {
         t.equal(c.member(path: "weather.at")?.permission, nil, "weather.at needs no permission")
     }
 
+    t.suite("Desk: catalog Mac marks and default formats") {
+        // 🍎 in the listings of §5.4–§5.8: Mac-specific items, no Rainmeter counterpart or a Deskset extension.
+        func macOnly(_ items: [DocumentedItem]) -> Set<String> {
+            Set(items.filter(\.doc.macOnly).map(\.path.description))
+        }
+        let items = c.documentedItems()
+        t.equal(macOnly(items.filter { if case .component = $0.path { return true } else { return false } }),
+                ["Label", "Icon", "Button", "Toggle", "Slider", "Input"])
+        t.equal(macOnly(items.filter { if case .modifier = $0.path { return true } else { return false } }),
+                [".background", ".iconColors", ".iconEffect", ".onDrop", ".onSubmit"])
+        t.equal(macOnly(items.filter { if case .control = $0.path { return true } else { return false } }), ["Secret", "FolderPicker"])
+        t.equal(macOnly(items.filter { if case .function = $0.path { return true } else { return false } }), ["notify"])
+        let macData = macOnly(items.filter { if case .member = $0.path { return true } else { return false } })
+        let expectedOutsidePlaces: Set<String> = ["calendar.events", "memory.pressure", "battery.health", "battery.cycles",
+                                                  "system.dark", "system.accentColor", "system.model", "apps.frontmost"]
+        t.equal(macData.filter { !["weather.", "sun.", "moon.", "sensors."].contains(where: $0.hasPrefix) }, expectedOutsidePlaces)
+        for ns in ["weather", "sun", "moon", "sensors"] {
+            for m in c.namespace(named: ns)?.members ?? [] { t.check(macData.contains("\(ns).\(m.name)"), "\(ns).\(m.name) is 🍎") }
+        }
+        // Every dimension has its default format (§4.11), and so do the other displayable types.
+        let formatted = Set(c.typeFormats.map(\.type))
+        for d in Dimension.allCases { t.check(formatted.contains(.number(d)), "no default format for \(d)") }
+        for type in [DeskType.bool, .string, .date, .json] { t.check(formatted.contains(type), "no default format for \(type)") }
+        for f in c.typeFormats {
+            t.check(f.rule.isComplete && !f.examples.isEmpty, "\(f.type): rule and examples")
+        }
+        t.equal(c.typeFormats.first { $0.type == .percent }?.decimals, 0, "a percentage is a whole number")
+        t.equal(c.member(path: "uptime")?.defaultFormat, nil)
+        t.equal(c.namespace(named: "uptime")?.value?.defaultFormat, .style(".full"))
+        t.equal(c.member(path: "music.position")?.defaultFormat, .style(".clock"))
+        t.equal(c.member(path: "time.now")?.defaultFormat, .style(".time"))
+    }
+
     t.suite("Desk: catalog enums and implicit members") {
         t.equal(Set(c.implicitMemberTypes("left")), ["HAlign", "Alignment", "Direction", "ScrollDirection"], "§4.13 rule 3")
         t.equal(c.implicitMemberTypes("sunday"), ["Weekday"])
