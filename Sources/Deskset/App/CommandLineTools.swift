@@ -49,7 +49,7 @@ enum CommandLineTools {
                       [--scroll "CARD TITLE"]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
-               Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]
+               Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
                       [--offline FILE] [--now ISO8601]
                                         get one forecast from MET Norway (sends the place's rounded coordinates)
                Deskset --cover-lookup ARTIST TITLE [ALBUM]

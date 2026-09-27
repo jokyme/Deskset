@@ -565,10 +565,11 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   weather is on, the User-Agent, the units `Units=Auto` gives, the place table, the disk cache, the Location Services
   status (only the status: the report never reads the location and never makes macOS ask), and for each place in an
   active skin how it resolves offline and today's sunrise and sunset. Otherwise one line says weather is not set up.
-  `Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]` makes one real request to MET
-  Norway with the real User-Agent (default place: the sample "Oslo, NO"; `auto` is refused, the report never uses this
-  Mac's location; nothing is read from or written to the weather cache) and prints the request, the response headers,
-  now, the next hours, the days, the sun and the credit; exit status 0 with data, 1 without, 2 for a wrong argument.
+  `Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]` makes one real request
+  to MET Norway with the real User-Agent (default place: the sample "Oslo, NO"; `auto` is refused, the report never
+  uses this Mac's location; `timezone` is the city of this Mac's time zone from the place table; nothing is read from or
+  written to the weather cache) and prints the request, the response headers, now, the next hours, the days, the sun
+  and the credit; exit status 0 with data, 1 without, 2 for a wrong argument.
   `--offline FILE [--now 2026-09-26T12:00:00Z]` reads a saved response instead (no network).
 - Why: checking the weather setup and MET Norway's answers without a skin.
 - Skin impact: none (developer tool).
