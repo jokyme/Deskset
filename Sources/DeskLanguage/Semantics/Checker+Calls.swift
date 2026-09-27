@@ -59,7 +59,8 @@ extension Checker {
                 let name = label.name
                 if let colon = argument.colon, colon.kind == .equal {
                     report(.equalsInField, range(colon), ["label": .code(name), "fixed": .code("\(name): \(text(argument.value.node))")],
-                           fixIts: [fix("replaceWith", [edit(range(colon), ":")], ["text": .code(":")], group: "equalsInField")])
+                           fixIts: [fix("replaceWith", [edit(range(label.node).upperBound..<range(colon).upperBound, ":")],
+                                        ["text": .code(":")], group: "equalsInField")])
                 }
                 if let first = seenLabels[name] {
                     report(.duplicateLabel, range(label.node), ["label": .code(name)], notes: [note("otherCopy", first)],

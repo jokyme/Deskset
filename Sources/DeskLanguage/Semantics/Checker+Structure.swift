@@ -386,8 +386,11 @@ extension Checker {
             let body = BlockSyntax(unchecked: block)
             let open = body.lBrace.textRange.upperBound
             let r = range(statement)
-            let indent = indentation(at: r.lowerBound)
-            fixIts.append(fix("moveToTop", [edit(statement.range.lowerBound..<r.upperBound, ""),
+            // At the indentation of the widget's statements (§3.7 rule 2), the whole line removed where it was.
+            let editor = SyntaxEditor(tree: tree)
+            let indent = String(repeating: " ", count: editor.isSingleLine(block) ? editor.ownerIndent(of: block) + 4 : editor.contentIndent(of: block))
+            let removal = editor.removal(of: editor.extent(of: statement))
+            fixIts.append(fix("moveToTop", [edit(removal.range, removal.replacement),
                                             edit(open..<open, lineBreak + indent + text(r))]))
         }
         report(.declarationAfterView, range(statement), ["keyword": .code(decl.keyword.token.text),

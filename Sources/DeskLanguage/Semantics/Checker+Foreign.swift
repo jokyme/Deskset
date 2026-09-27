@@ -65,6 +65,15 @@ extension Checker {
                     }
                 }
                 replaced = copy
+            case .namedWidget:
+                // `widget CPU { … }` with an `info` block that has no name: move the name into it (DK2022).
+                guard d.fixIts.isEmpty, infoFields["name"] == nil, let widget = widgetBlock,
+                      case .code(let name)? = d.arguments["name"],
+                      let insertion = infoFieldInsertion("name: \"\(name)\"", first: true) else { replaced = nil; break }
+                var copy = d
+                let keywordEnd = keyword(widget).upperBound
+                copy.fixIts = [fix("moveNameToInfo", [insertion, edit(keywordEnd..<d.range.upperBound, "")])]
+                replaced = copy
             case .closureParameter:
                 var copy = d
                 copy.arguments["advice"] = hintText(.closureParameter, d.arguments["value"] == nil ? "remove" : "useValue")
@@ -85,6 +94,20 @@ extension Checker {
         while start > 0, bytes[start - 1] != 0x0A, bytes[start - 1] != 0x0D { start -= 1 }
         while end < bytes.count, bytes[end] != 0x0A, bytes[end] != 0x0D { end += 1 }
         return String(decoding: bytes[start..<end], as: UTF8.self)
+    }
+
+    /// The line holding `offset`, from its start through its line break (when only blanks precede the offset's
+    /// text; otherwise just the text from `offset` to the end of the line).
+    func wholeLineRange(at offset: Int) -> Range<Int> {
+        let content = lineRange(at: offset)
+        let bytes = Array(tree.text.utf8)
+        var start = content.lowerBound
+        while start > 0, bytes[start - 1] == 0x20 || bytes[start - 1] == 0x09 { start -= 1 }
+        guard start == 0 || bytes[start - 1] == 0x0A || bytes[start - 1] == 0x0D else { return content }
+        var end = content.upperBound
+        if end < bytes.count, bytes[end] == 0x0D { end += 1 }
+        if end < bytes.count, bytes[end] == 0x0A { end += 1 }
+        return start..<end
     }
 
     func lineRange(at offset: Int) -> Range<Int> {
@@ -122,7 +145,8 @@ extension Checker {
                 why = LocalizedText("write `info { refresh: \(ms)ms }` to change how often data updates",
                                     "要改数据刷新的频率，写 `info { refresh: \(ms)ms }`")
             }
-            let lineR = lineRange(at: d.range.lowerBound)
+            // The whole line goes, with its indentation and line break.
+            let lineR = wholeLineRange(at: d.range.lowerBound)
             return Diagnostic(id: .rainmeterNotNeeded, severity: .error, file: d.file, range: d.range,
                               arguments: ["option": .code(key), "why": .text(why)],
                               fixIts: [fix("remove", [edit(lineR, "")])])

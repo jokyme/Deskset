@@ -17,7 +17,8 @@ extension Checker {
                 let name = target.name.token.name
                 let equal = range(assignment.equal)
                 report(.equalsInField, equal, ["label": .code(name), "fixed": .code("\(name): \(text(assignment.value.node))")],
-                       fixIts: [fix("replaceWith", [edit(equal, ":")], ["text": .code(":")], group: "equalsInField")])
+                       fixIts: [fix("replaceWith", [edit(range(target.node).upperBound..<equal.upperBound, ":")],
+                                    ["text": .code(":")], group: "equalsInField")])
                 if infoFields[name] == nil, (isPackageBlock ? index.packageFields[name] : index.infoFields[name]) != nil {
                     infoFields[name] = (statement, assignment.value.node)
                     if name == "size", assignment.value.node.kind == .implicitMemberExpr {
@@ -32,8 +33,11 @@ extension Checker {
             let r = range(field.label.node)
             if infoFields[name] != nil {
                 let fr = range(statement)
+                _ = fr
+                let editor = SyntaxEditor(tree: tree)
+                let removal = editor.removal(of: editor.extent(of: statement))
                 report(.duplicateField, r, ["name": .code(name)], notes: [note("otherCopy", range(infoFields[name]!.node))],
-                       fixIts: [fix("removeOne", [edit(statement.range.lowerBound..<fr.upperBound, "")])], dropped: .field(id(statement)))
+                       fixIts: [fix("removeOne", [edit(removal.range, removal.replacement)])], dropped: .field(id(statement)))
                 continue
             }
             let spec = isPackageBlock ? index.packageFields[name] : index.infoFields[name]

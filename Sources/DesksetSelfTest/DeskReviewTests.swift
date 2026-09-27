@@ -795,4 +795,27 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(fixed, "info { name: \"T\" }\nwidget {\n    variable on = false\n    Toggle(\"A\", on)\n}")
         t.equal(fixed.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
     }
+
+    t.suite("Desk: review — fix-its in canonical style, the widget's name, commands (findings 35, 36, 37, 81)") {
+        func fixed(_ text: String, _ id: String, title: String? = nil) -> String? { deskApplyFix(deskCheck(text), id, title: title) }
+        t.equal(fixed("info { name: \"T\" }\nwidget { Text(\"A\").onClick { music.next() } }", "DK8101"),
+                "info { name: \"T\", permissions: [.music] }\nwidget { Text(\"A\").onClick { music.next() } }")
+        t.equal(fixed("info {\n    name: \"T\"\n}\nwidget { Text(\"A\").onClick { music.next() } }", "DK8101"),
+                "info {\n    name: \"T\"\n    permissions: [.music]\n}\nwidget { Text(\"A\").onClick { music.next() } }")
+        t.equal(fixed("info { name = \"CPU\" }\nwidget { Text(\"A\") }", "DK2035"), "info { name: \"CPU\" }\nwidget { Text(\"A\") }")
+        t.equal(fixed("info { name: \"T\" }\nwidget { Text(\"{cpu.usage, decimals = 1}\") }", "DK2035"),
+                "info { name: \"T\" }\nwidget { Text(\"{cpu.usage, decimals: 1}\") }")
+        t.equal(fixed("info { name: \"A\", name: \"B\" }\nwidget { Text(\"A\") }", "DK8002"), "info { name: \"A\" }\nwidget { Text(\"A\") }")
+        t.equal(fixed("widget CPU { Text(\"A\") }", "DK2022"), "info { name: \"CPU\" }\n\nwidget { Text(\"A\") }")
+        t.equal(fixed("info { author: \"me\" }\nwidget CPU { Text(\"A\") }", "DK2022"), "info { name: \"CPU\", author: \"me\" }\nwidget { Text(\"A\") }")
+        t.equal(fixed("info { name: \"T\" }\nwidget {\n    Text(\"A\")\n        variable x = 0\n    Text(\"{x}\")\n}", "DK2020"),
+                "info { name: \"T\" }\nwidget {\n    variable x = 0\n    Text(\"A\")\n    Text(\"{x}\")\n}")
+        t.equal(fixed("info { name: \"T\" }\nwidget {\n    Text(\"A\")\n    Update=1000\n}", "DK9306"), "info { name: \"T\" }\nwidget {\n    Text(\"A\")\n}")
+        let eval = deskCheck("info { name: \"T\", permissions: [.commands] }\noptions { snippet = Input(\"S\") }\nwidget { Text(\"A\").onClick { run(\"eval {options.snippet}\") } }")
+        let message = eval.diagnostics.first { $0.id.rawValue == "DK8209" }?.message(in: .english) ?? ""
+        t.check(message.hasSuffix("`sh -c '… \"$1\" …' _ {options.snippet}`.") && !message.contains("say"), message)
+        let python = deskCheck("info { name: \"T\", permissions: [.commands] }\noptions { snippet = Input(\"S\") }\nwidget { Text(\"A\").onClick { run(\"python3 -c \\\"print({options.snippet})\\\"\") } }")
+        let pythonMessage = python.diagnostics.first { $0.id.rawValue == "DK8209" }?.message(in: .english) ?? ""
+        t.check(pythonMessage.contains("python3 -c 'import sys; … sys.argv[1] …' {options.snippet}"), pythonMessage)
+    }
 }

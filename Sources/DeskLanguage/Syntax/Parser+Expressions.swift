@@ -968,7 +968,7 @@ extension Parser {
                     report(.equalsInField, .error, textRange(eq),
                            ["label": .code(labelText), "fixed": .code("\(labelText):")],
                            fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(":")],
-                                          edits: [edit(textRange(eq), ":")], group: "equalsInField")])
+                                          edits: [edit(textEnd(eq - 1)..<textEnd(eq), ":")], group: "equalsInField")])
                 } else {
                     option.append(missing(.colon))
                     if !quiet { expected(.colon, insert: ":"); quiet = true }

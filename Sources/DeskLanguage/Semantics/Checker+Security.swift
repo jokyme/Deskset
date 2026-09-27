@@ -150,11 +150,26 @@ extension Checker {
         for word in split.rereadingPlaceholders(catalog.rereadingCommands) {
             let command = word.command
             let placeholderText = text(word.placeholder.range)
+            // The argument form of the command that was written (§8.2): the value goes after the code, which reads
+            // it as its first argument.
+            let program = command.split(separator: " ").first.map(String.init) ?? command
             let fixed: String
-            if command.hasPrefix("osascript") {
+            switch program {
+            case "osascript":
                 fixed = "osascript -e 'on run argv' -e 'display dialog (item 1 of argv)' -e 'end run' \(placeholderText)"
-            } else {
-                fixed = "sh -c 'say \"$1\"' _ \(placeholderText)"
+            case "sh", "bash", "zsh", "dash", "fish":
+                fixed = "\(program) -c '… \"$1\" …' _ \(placeholderText)"
+            case "python", "python3":
+                fixed = "\(program) -c 'import sys; … sys.argv[1] …' \(placeholderText)"
+            case "perl":
+                fixed = "perl -e '… $ARGV[0] …' \(placeholderText)"
+            case "ruby":
+                fixed = "ruby -e '… ARGV[0] …' \(placeholderText)"
+            case "node":
+                fixed = "node -e '… process.argv[1] …' \(placeholderText)"
+            default:
+                // `eval`, `source`, `ssh`, `su -c`: run the code through a shell that takes the value as `$1`.
+                fixed = "sh -c '… \"$1\" …' _ \(placeholderText)"
             }
             report(.commandRereadsValue, word.placeholder.range, ["command": .code(command), "text": .code(placeholderText),
                                                                   "fixed": .code(fixed)])
@@ -291,6 +306,31 @@ extension Checker {
         }
     }
 
+    /// A field added to the `info` block in canonical style (§3.7 rule 2): after the last field on a one-line block
+    /// (`info { name: "T", permissions: [.music] }`), on a line of its own in a multi-line one; first when `first`.
+    func infoFieldInsertion(_ field: String, first: Bool = false) -> TextEdit? {
+        guard let info = infoBlock ?? packageBlock, let body = info.firstChild(.block), BlockSyntax(unchecked: body).isClosed else { return nil }
+        let block = BlockSyntax(unchecked: body)
+        let fields = block.statements
+        let editor = SyntaxEditor(tree: tree)
+        if editor.isSingleLine(body) {
+            if fields.isEmpty {
+                let open = block.lBrace.textRange.upperBound, close = block.rBrace.textRange.lowerBound
+                return edit(open..<close, " \(field) ")
+            }
+            if first {
+                let at = textStart(fields[0])
+                return edit(at..<at, field + ", ")
+            }
+            let at = range(fields[fields.count - 1]).upperBound
+            return edit(at..<at, ", " + field)
+        }
+        let indent = fields.isEmpty ? editor.ownerIndent(of: body) + 4 : editor.contentIndent(of: body)
+        let piece = SyntaxEditor.Lines(lines: [String(repeating: " ", count: indent) + field], statementLine: 0, kind: nil, from: nil)
+        guard let insertion = editor.insertion(of: piece, into: body, index: first ? 0 : editor.statements(of: body).count) else { return nil }
+        return edit(insertion.edit.range, insertion.edit.replacement)
+    }
+
     /// The "Add" fix-it of DK8101: edits `info`, creating it when needed.
     func addPermissionFix(_ permission: String) -> FixIt {
         if let field = infoFields["permissions"], field.value.kind == .listLiteral {
@@ -299,11 +339,8 @@ extension Checker {
             let insert = list.elements.isEmpty ? ".\(permission)" : ", .\(permission)"
             return fix("add", [edit(close..<close, insert)])
         }
-        if let info = infoBlock, let body = info.firstChild(.block) {
-            let close = BlockSyntax(unchecked: body).rBrace.textRange.lowerBound
-            let multiLine = text(range(body)).contains("\n")
-            let insert = multiLine ? "    permissions: [.\(permission)]" + lineBreak : ", permissions: [.\(permission)] "
-            return fix("add", [edit(close..<close, insert)])
+        if let insertion = infoFieldInsertion("permissions: [.\(permission)]") {
+            return fix("add", [insertion])
         }
         let start = widgetBlock.map { textStart($0) } ?? 0
         return fix("add", [edit(start..<start, "info { permissions: [.\(permission)] }" + lineBreak + lineBreak)])
@@ -322,9 +359,8 @@ extension Checker {
                 let list = ListLiteralSyntax(unchecked: field.value)
                 let close = list.rBracket.textRange.lowerBound
                 edits.append(edit(close..<close, list.elements.isEmpty ? "\"\(host)\"" : ", \"\(host)\""))
-            } else if let info = infoBlock, let body = info.firstChild(.block) {
-                let close = BlockSyntax(unchecked: body).rBrace.textRange.lowerBound
-                edits.append(edit(close..<close, ", network: [\"\(host)\"] "))
+            } else if let insertion = infoFieldInsertion("network: [\"\(host)\"]") {
+                edits.append(insertion)
             } else {
                 let start = widgetBlock.map { textStart($0) } ?? 0
                 edits.append(edit(start..<start, "info { network: [\"\(host)\"] }" + lineBreak + lineBreak))

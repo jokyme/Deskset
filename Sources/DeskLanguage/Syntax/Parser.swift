@@ -573,7 +573,7 @@ struct Parser {
     /// `widget CPU { … }`: the name moves to `info { name: "CPU" }` (created when the file has no `info` block).
     mutating func namedWidgetFixIts(keyword: Int, name: Int) -> [FixIt] {
         guard !fileHasTopLevelBlock("info") else { return [] }
-        let removeName = edit(fullEnd(keyword)..<textEnd(name), "")
+        let removeName = edit(textEnd(keyword)..<textEnd(name), "")
         let lineStart = lines.starts[lineIndex(ofToken: keyword)]
         let quoted = "\"" + tokens[name].text + "\""
         let insertInfo = edit(lineStart..<lineStart, "info { name: \(quoted) }" + lines.newline + lines.newline)
