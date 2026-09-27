@@ -360,6 +360,37 @@ enum SkinDrawingSelfTests {
             withExtendedLifetime(host) {}
         }
 
+        t.suite("App: skin drawing: a meter that never updates moves with the one it is placed after") {
+            let ini = """
+            [Rainmeter]
+            Update=1000
+            DynamicWindowSize=1
+            [Variables]
+            Word=a
+            [MeterGrowing]
+            Meter=String
+            Text=#Word#
+            FontSize=16
+            FontColor=0,0,0
+            DynamicVariables=1
+            [MeterAfter]
+            Meter=Shape
+            X=4R
+            Shape=Rectangle 0,0,20,20 | Fill Color 200,40,40 | StrokeWidth 0
+            UpdateDivider=-1
+            """
+            guard let (skin, host, _) = load(t, ini, "relative") else { return t.check(false, "the skin loads") }
+            let frames = Frames(t, skin)
+            frames.frame("first")
+            frames.rest()
+            let x = skin.meter(named: "MeterAfter")?.frame.x ?? 0
+            frames.frame("the first meter grew", "[!SetVariable Word \"a much longer text\"]", update: true)
+            t.check((skin.meter(named: "MeterAfter")?.frame.x ?? 0) > x + 20, "the second meter moved")
+            frames.frame("kept")
+            skin.close()
+            withExtendedLifetime(host) {}
+        }
+
         t.suite("App: skin drawing: a font registered while the skin runs starts the pictures again") {
             let ini = """
             [Rainmeter]
