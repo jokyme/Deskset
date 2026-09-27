@@ -413,7 +413,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 / 0) and, as `R,G,B,A` for the current appearance,
   `#MACACCENTCOLOR#`, `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` and
   `#MACSEPARATORCOLOR#`. They cannot be overridden in `[Variables]` or by `!SetVariable`, in `@Include` paths
-  either. When the Mac switches between light and dark or the accent color changes, each skin that uses one runs
+  either. When the Mac switches between light and dark, the accent color changes or a clock, week or temperature
+  setting does (next entry), each skin that uses one of them or of those variables runs
   `[Rainmeter] MacOnAppearanceChangeAction` (default `[!Refresh]`; written empty, nothing runs); other skins are left
   alone unless they write an action of their own. The action's variables are resolved when it runs (the new colors),
   and `[Variables]` built from the appearance variables are updated first, so `[!UpdateMeter *][!Redraw]` recolors
@@ -427,10 +428,11 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** `#MACCLOCKHOURS#` is `12` or `24` (Date & Time → 24-hour time, else the region's clock);
   `#MACFIRSTWEEKDAY#` is the first day of the week, `0` (Sunday) … `6` (Saturday), as `%w` counts (Language &
   Region); `#MACTEMPERATUREUNIT#` is `C` or `F` (Language & Region → Temperature, else the region's unit for weather).
-  They behave like the appearance variables: they cannot be overridden, they are dynamic, and when one of these
-  settings changes each skin that uses one runs `MacOnAppearanceChangeAction` (default `[!Refresh]`). The weather
-  plugins' default times and `Units=Auto` follow the same settings. `--render` uses 24-hour, Sunday and °C unless
-  `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise ([§7.5](#75-deskset---render-for-skin-authors-and-testing)).
+  They behave like the appearance variables and share their trigger: they cannot be overridden, they are dynamic, and
+  a change of one of these settings counts as an appearance change, so each skin that uses any `#MAC…#` variable runs
+  `MacOnAppearanceChangeAction` (default `[!Refresh]`). The weather plugins' default times and `Units=Auto` follow the
+  same settings. `--render` uses 24-hour, Sunday and °C unless `--clock-hours`, `--first-weekday` or
+  `--temperature-unit` say otherwise ([§7.5](#75-deskset---render-for-skin-authors-and-testing)).
 - **Why:** Deskset extension: "Automatic" settings in skins need the Mac's own choices.
 - **Skin impact:** none for Windows skins; give an `Auto` value of your own (`ClockHoursAuto=#MACCLOCKHOURS#`).
 - **Status:** Mac-only

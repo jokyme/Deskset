@@ -378,9 +378,10 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Mac：** 描述 Mac 外观的动态内置变量：`#MACAPPEARANCE#`（`Dark` / `Light`，可用于
   `@Include=#@#Theme-#MACAPPEARANCE#.inc`）、`#MACDARKMODE#`（1 / 0），以及按当前外观给出的 `R,G,B,A` 颜色
   `#MACACCENTCOLOR#`、`#MACLABELCOLOR#`、`#MACSECONDARYLABELCOLOR#`、`#MACTERTIARYLABELCOLOR#` 和 `#MACSEPARATORCOLOR#`。
-  它们不能被 `[Variables]` 或 `!SetVariable` 覆盖，在 `@Include` 路径中也一样。Mac 在浅色与深色之间切换或强调色改变时，用到
-  其中任何一个的皮肤会执行 `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做）；其他皮肤
-  不受影响，除非皮肤自己写了这个动作。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
+  它们不能被 `[Variables]` 或 `!SetVariable` 覆盖，在 `@Include` 路径中也一样。Mac 在浅色与深色之间切换、强调色改变，或者时钟、
+  每周首日、温度单位设置改变（见下一条）时，用到其中任何一个或那三个变量的皮肤会执行
+  `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做）；其他皮肤不受影响，除非皮肤自己写了
+  这个动作。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
   所以 `[!UpdateMeter *][!Redraw]` 无需重新加载就能为 DynamicVariables 的 meter 换色；由 `#MACAPPEARANCE#` 选择的 `@Include`
   只有刷新后才会改变。
 - **原因：** Deskset 扩展：Mac 上的小组件应当跟随外观和强调色。
@@ -392,7 +393,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Mac：** `#MACCLOCKHOURS#` 为 `12` 或 `24`（“日期与时间”中的“24 小时制时间”，未设置时按地区习惯）；
   `#MACFIRSTWEEKDAY#` 为每周第一天，`0`（星期日）…… `6`（星期六），与 `%w` 的计法相同（“语言与地区”）；
   `#MACTEMPERATUREUNIT#` 为 `C` 或 `F`（“语言与地区”中的“温度”，未设置时按地区的天气单位）。它们的行为与外观变量相同：
-  不能被覆盖，是动态变量；其中任一设置改变时，用到它们的皮肤会执行 `MacOnAppearanceChangeAction`（默认 `[!Refresh]`）。
+  不能被覆盖，是动态变量；并且共用外观变量的触发方式：其中任一设置改变都算作外观改变，用到任何一个 `#MAC…#` 变量的皮肤都会执行
+  `MacOnAppearanceChangeAction`（默认 `[!Refresh]`）。
   天气插件的默认时间格式和 `Units=Auto` 也跟随同样的设置。`--render` 默认使用 24 小时制、星期日和 °C，除非用
   `--clock-hours`、`--first-weekday` 或 `--temperature-unit` 另行指定（[§7.5](#75-deskset---render供皮肤作者和测试使用)）。
 - **原因：** Deskset 扩展：皮肤中的“自动”设置需要知道 Mac 自己的选择。
