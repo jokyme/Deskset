@@ -16,9 +16,10 @@ import DesksetCore
 /// second). The app's own timing of the desktop copy is used (`AppController.defersDesktopUpdates`).
 /// `DESKSET_STUDIO_LATENCY_SAMPLES` sets the number of samples of each kind (default 12).
 enum StudioLatencySelfTests {
-    /// The reference widgets: config and the repository folder it comes from.
+    /// The reference widgets: config and the repository folder it comes from (0.1's example widgets, now test skins:
+    /// the numbers stay comparable with earlier runs).
     static let references: [(config: String, folder: String)] = [
-        ("Deskset\\Clock", "DefaultSkins"), ("Deskset\\System", "DefaultSkins"), ("Deskset\\Calendar", "DefaultSkins"),
+        ("Deskset\\Clock", "TestSkins"), ("Deskset\\System", "TestSkins"), ("Deskset\\Calendar", "TestSkins"),
         ("Audio\\Visualizer", "TestSkins"), ("Mac\\Glass", "TestSkins"),
     ]
 
