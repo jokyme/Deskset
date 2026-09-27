@@ -488,6 +488,6 @@ func runDeskReviewTests(_ t: TestRunner) {
             t.equal(checked.options["theme"]?.localEnum, "Theme", use)
         }
         // Still ambiguous when nothing decides.
-        t.equal(deskReviewIDs(theme + "    Text(\"{lastTheme}\")\n}"), ["DK3018"])
+        t.equal(deskReviewIDs(theme + "    Text(\"{lastTheme} {options.theme}\")\n}"), ["DK3018"])
     }
 }
