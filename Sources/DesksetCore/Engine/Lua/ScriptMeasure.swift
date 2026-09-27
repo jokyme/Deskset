@@ -606,14 +606,38 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             printLine(try args("print").string(0))
             return []
         case .readScript:
-            let path = fixPath(try args("dofile").string(0))
+            let path = sandboxed(fixPath(try args("dofile").string(0)), .read)
             guard let source = readScriptSource(atPath: path) else { return [.none, .text("cannot open \(path)")] }
             return [.text(source), .text("@" + displayName(ofPath: path))]
         case .fixPath:
-            return [.text(fixPath(try args("open").string(0)))]
+            let a = args("open")
+            let access: SkinFileSandbox.Access
+            switch a[1] {
+            case .string("w", _): access = .write
+            case .string("u", _): access = .update
+            default: access = .read
+            }
+            return [.text(sandboxed(fixPath(try a.string(0)), access))]
         case .execute:
             return [.number(osExecute(try args("execute").string(0)))]
+        case .removeFile:
+            let path = fixPath(try args("remove").string(0))
+            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(path)] }
+            if sandbox.remove(path) { return [.text(path), .boolean(true)] }
+            return [.text(path), .boolean(false), .text("\(path): No such file or directory")]
+        case .renameFile:
+            let a = args("rename")
+            let from = fixPath(try a.string(0)), to = fixPath(try a.string(1))
+            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(from), .text(to)] }
+            if sandbox.rename(from, to: to) { return [.text(from), .text(to), .boolean(true)] }
+            return [.text(from), .text(to), .boolean(false), .text("\(from): No such file or directory")]
         }
+    }
+
+    /// `path` as the skin's scripts open it for `access`: the file itself, or — for an instance of the widget that must
+    /// not change its files (`SkinActionPolicy.fileSandbox`, the Studio's) — its private copy.
+    private func sandboxed(_ path: String, _ access: SkinFileSandbox.Access) -> String {
+        skin.actionPolicy?.fileSandbox?.path(for: path, access: access) ?? path
     }
 
     /// The measure named `name` (this script itself included, even before the skin knows it).

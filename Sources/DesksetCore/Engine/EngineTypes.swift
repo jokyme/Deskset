@@ -315,6 +315,14 @@ public protocol SkinActionPolicy: AnyObject {
     func skin(_ skin: Skin, allows bang: Bang) -> Bool
     /// Whether the skin hands `["target" arguments…]` (a web page, a file, a program) to its host.
     func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool
+    /// Where the files the skin's scripts write (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and its
+    /// WebParser `DownloadFile` downloads go: nil (the default) for the files themselves, or a private copy that keeps
+    /// them away from the widget's files (`SkinFileSandbox`).
+    var fileSandbox: SkinFileSandbox? { get }
+}
+
+extension SkinActionPolicy {
+    public var fileSandbox: SkinFileSandbox? { nil }
 }
 
 extension SkinHost {

@@ -23,8 +23,10 @@ enum LuaHostOp: Int {
     case meterSetText = 18       // (meter, text)
     case print = 19              // (text)
     case readScript = 20         // (path) → source, chunk name | nil, message
-    case fixPath = 21            // (path) → path
+    case fixPath = 21            // (path[, access 'r'|'w'|'u']) → path (a sandboxed skin's copy for a write)
     case execute = 22            // (command) → status
+    case removeFile = 23         // (path) → path[, done, message] (done: a sandboxed skin removed its copy)
+    case renameFile = 24         // (from, to) → from, to[, done, message]
 }
 
 /// Section kinds passed to `getOption` / `getNumberOption`.
@@ -184,9 +186,18 @@ print = function(...)
   host(19, concat(parts, '\t'))
 end
 
-local function fixPath(path)
-  if type(path) == 'string' then return host(21, path) end
+-- `access`: 'r' (read), 'w' (written from nothing) or 'u' (written keeping what it holds). An instance of a widget
+-- that must not change the widget's files (the Studio's) gets a private copy for a write (SkinFileSandbox).
+local function fixPath(path, access)
+  if type(path) == 'string' then return host(21, path, access or 'r') end
   return path
+end
+
+local function openAccess(mode)
+  if type(mode) ~= 'string' then return 'r' end
+  if find(mode, 'w', 1, true) then return 'w' end
+  if find(mode, 'a', 1, true) or find(mode, '+', 1, true) then return 'u' end
+  return 'r'
 end
 
 local open, lines, input, output = io.open, io.lines, io.input, io.output
@@ -223,7 +234,7 @@ fileMethods.lines = function(file, ...)
 end
 
 io.open = function(path, mode, ...)
-  local file, message, code = open(fixPath(path), mode, ...)
+  local file, message, code = open(fixPath(path, openAccess(mode)), mode, ...)
   if file and type(mode) == 'string' and find(mode, 'b', 1, true) then binaryFiles[file] = true end
   return file, message, code
 end
@@ -234,9 +245,25 @@ io.lines = function(path, ...)
 end
 io.read = function(...) return fileMethods.read(input(), ...) end
 io.input = function(file) return input(fixPath(file)) end
-io.output = function(file) return output(fixPath(file)) end
-os.remove = function(path) return remove(fixPath(path)) end
-os.rename = function(from, to) return rename(fixPath(from), fixPath(to)) end
+io.output = function(file) return output(fixPath(file, 'w')) end
+os.remove = function(path)
+  if type(path) ~= 'string' then return remove(path) end
+  local target, done, message = host(23, path)
+  if done ~= nil then
+    if done then return true end
+    return nil, message
+  end
+  return remove(target)
+end
+os.rename = function(from, to)
+  if type(from) ~= 'string' or type(to) ~= 'string' then return rename(from, to) end
+  local a, b, done, message = host(24, from, to)
+  if done ~= nil then
+    if done then return true end
+    return nil, message
+  end
+  return rename(a, b)
+end
 -- Nothing may read the app's standard input (io.read() without io.input, or io.stdin:read(), would wait for it
 -- when the app runs from a terminal): the default input and io.stdin read /dev/null.
 if pcall(input, '/dev/null') then io.stdin = input() end

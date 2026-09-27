@@ -8,6 +8,10 @@ import Foundation
 /// outside the widget (`RunCommand`, players, the volume, the Trash…). A bang whose Config argument names another
 /// widget is recorded too.
 ///
+/// What its scripts write to files (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and what its WebParser
+/// measures save to a `DownloadFile` goes to a private copy (`fileSandbox`): the scripts go on as they would, reading
+/// back what they wrote, and the widget's files are left to the desktop copy. Each such write is recorded too.
+///
 /// While the Studio designs, clicks never reach the instance: only its measures' actions (OnUpdateAction,
 /// IfCondition…) and scripts run. The same policy guards the interactive preview of later stages, where clicks do.
 public final class StudioActionPolicy: SkinActionPolicy {
@@ -17,6 +21,8 @@ public final class StudioActionPolicy: SkinActionPolicy {
             case bang
             /// A web page, file or program (`["https://…"]`).
             case execute
+            /// A file a script or a download wrote, removed or renamed: kept in the private copy (`fileSandbox`).
+            case file
         }
 
         public var kind: Kind
@@ -36,6 +42,28 @@ public final class StudioActionPolicy: SkinActionPolicy {
     public var onRecord: ((Recorded) -> Void)?
 
     public init() {}
+
+    /// Where the instance's file writes go (made on first use).
+    public var fileSandbox: SkinFileSandbox? {
+        hasFiles = true
+        return files
+    }
+
+    private lazy var files: SkinFileSandbox = {
+        let sandbox = SkinFileSandbox()
+        sandbox.onRecord = { [weak self] change in
+            self?.record(Recorded(kind: .file, text: change.description, name: change.operation))
+        }
+        return sandbox
+    }()
+    private var hasFiles = false
+
+    /// A new instance starts from the widget's real files (as the desktop copy does when it reloads): the private copy
+    /// of the files is forgotten.
+    public func resetFiles() {
+        guard hasFiles else { return }
+        files.reset()
+    }
 
     public func skin(_ skin: Skin, allows bang: Bang) -> Bool {
         guard Self.staysInside(bang, in: skin) else {

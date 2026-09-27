@@ -632,4 +632,105 @@ func runSessionTests(_ t: TestRunner) {
         skin.execute("[!Move 1 2]", from: nil)
         t.equal(host.handled.map(\.name), ["move"])
     }
+
+    t.suite("Session: the Studio's instance writes files in a copy of its own") {
+        let skins = t.temporaryDirectory("sandbox").appendingPathComponent("Skins")
+        let dir = skins.appendingPathComponent("Root/Sub")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("img"), withIntermediateDirectories: true)
+        let ini = """
+            [Rainmeter]
+            [Variables]
+            @Include=Gen.inc
+            [MeasureScript]
+            Measure=Script
+            ScriptFile=s.lua
+            [MeasureLogo]
+            Measure=WebParser
+            URL=file://#CURRENTPATH#img/logo.png
+            Download=1
+            DownloadFile=logo.png
+            [M]
+            Meter=String
+            MeasureName=MeasureScript
+            """
+        // A script that writes an included file on load (with what changes from load to load), keeps a log, clears a
+        // cache and renames a file — what the Studio's instance must not do to the widget's files a second time.
+        let lua = """
+            function Initialize()
+              local f = io.open(SKIN:MakePathAbsolute('Gen.inc'), 'w')
+              f:write('[Variables]\\nGen=' .. os.time() .. '\\n')
+              f:close()
+              local a = io.open(SKIN:MakePathAbsolute('log.txt'), 'a')
+              a:write('second\\n')
+              a:close()
+              local r = io.open(SKIN:MakePathAbsolute('log.txt'), 'r')
+              readBack = r:read('*a')
+              r:close()
+              removed = tostring(os.remove(SKIN:MakePathAbsolute('cache.txt')))
+              gone = tostring(io.open(SKIN:MakePathAbsolute('cache.txt'), 'r'))
+              renamed = tostring(os.rename(SKIN:MakePathAbsolute('old.txt'), SKIN:MakePathAbsolute('new.txt')))
+              local n = io.open(SKIN:MakePathAbsolute('new.txt'), 'r')
+              moved = n and n:read('*a') or 'none'
+              if n then n:close() end
+              io.output(SKIN:MakePathAbsolute('out.txt'))
+              io.write('x')
+              io.close()
+            end
+            function Update() return readBack .. '|' .. removed .. '|' .. gone .. '|' .. renamed .. '|' .. moved end
+            """
+        let files: [String: String] = ["Skin.ini": ini, "s.lua": lua, "Gen.inc": "[Variables]\nGen=0\n",
+                                       "log.txt": "first\n", "cache.txt": "cached", "old.txt": "old", "img/logo.png": "LOGO"]
+        func reset() throws {
+            for (name, text) in files { try text.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+            for name in ["new.txt", "out.txt", "DownloadFile"] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(name)) }
+        }
+        func read(_ name: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8) }
+        func load(_ policy: SkinActionPolicy?) throws -> Skin {
+            let skin = Skin(config: "Root\\Sub", fileURL: dir.appendingPathComponent("Skin.ini"), skinsDirectory: skins,
+                            system: FakeSystem(), host: host)
+            skin.actionPolicy = policy
+            try skin.load()
+            skin.update()
+            let deadline = Date().addingTimeInterval(10)
+            while (skin.measure(named: "MeasureLogo") as? WebParserMeasure)?.isDownloading == true, Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+            return skin
+        }
+        let host = FakeHost()
+        try reset()
+        let policy = StudioActionPolicy()
+        let studio = try load(policy)
+        t.equal(read("Gen.inc"), "[Variables]\nGen=0\n", "the included file is left alone")
+        t.equal(read("log.txt"), "first\n", "nothing appended")
+        t.equal(read("cache.txt"), "cached", "nothing removed")
+        t.equal(read("old.txt"), "old", "nothing renamed")
+        t.equal(read("new.txt"), nil)
+        t.equal(read("out.txt"), nil, "io.output wrote nothing")
+        t.equal(read("DownloadFile/logo.png"), nil, "the download is not saved in the widget's folder")
+        t.equal(studio.measure(named: "MeasureScript")?.stringValue, "first\nsecond\n|true|nil|true|old",
+                "the script goes on as it would: it reads back what it wrote, removed and renamed")
+        let saved = studio.measure(named: "MeasureLogo")?.stringValue ?? ""
+        t.check(saved.hasPrefix(policy.fileSandbox!.directory.path), "the download is in the copy: \(saved)")
+        t.equal(try? String(contentsOfFile: saved, encoding: .utf8), "LOGO")
+        t.equal(policy.recorded.filter { $0.kind == .file }.map(\.name), ["write", "write", "remove", "rename", "write", "write"],
+                "each recorded: \(policy.recorded.map(\.text))")
+        t.check(policy.recorded.contains { $0.text.hasSuffix("Gen.inc") && $0.kind == .file })
+        // A new instance starts from the real files again.
+        policy.resetFiles()
+        t.check(!policy.fileSandbox!.holdsChange(of: dir.appendingPathComponent("log.txt").path), "forgotten")
+        studio.close()
+
+        // The widget on the desktop (no policy) writes for real, as before.
+        let desktop = try load(nil)
+        t.check(read("Gen.inc")?.hasPrefix("[Variables]\nGen=") == true && read("Gen.inc") != "[Variables]\nGen=0\n",
+                "written")
+        t.equal(read("log.txt"), "first\nsecond\n")
+        t.equal(read("cache.txt"), nil)
+        t.equal(read("new.txt"), "old")
+        t.equal(read("out.txt"), "x")
+        t.equal(read("DownloadFile/logo.png"), "LOGO")
+        desktop.close()
+    }
 }
