@@ -391,24 +391,48 @@ extension Checker {
     /// A string that looks like a Windows path: DK9307 where a path or program is meant, DK1012 in text people read.
     func reportWindowsPath(_ string: StringLiteralSyntax, node: PositionedNode, _ context: ExprContext) {
         let r = range(node)
-        let value = string.literalValue ?? text(node)
         let callee = context.callee ?? ""
         let pathLike = [ParamRole.command, .folderPath].contains(context.param?.role)
             || ["open", "run", "command", "files", "folder", "disk.at", "Image"].contains(callee)
+        // The path as written between the quotes: the cooked value has lost the backslashes of unknown escapes.
+        var raw = text(node)
+        if raw.hasPrefix("\""), raw.hasSuffix("\""), raw.count >= 2 { raw = String(raw.dropFirst().dropLast()) }
         if pathLike {
-            let fileName = value.split(whereSeparator: { $0 == "\\" || $0 == "/" }).last.map(String.init) ?? value
+            let parts = raw.split(whereSeparator: { $0 == "\\" || $0 == "/" }).map(String.init)
+            let fileName = parts.last ?? raw
             let isProgram = fileName.lowercased().hasSuffix(".exe")
-            let app = String(fileName.dropLast(isProgram ? 4 : 0))
+            var app = String(fileName.dropLast(isProgram ? 4 : 0))
+            // The Mac app's name: the folder's spelling when it names the program (`Steam\steam.exe` → `Steam`),
+            // else the program's name with a capital letter.
+            if parts.count >= 2, parts[parts.count - 2].lowercased() == app.lowercased() {
+                app = parts[parts.count - 2]
+            } else if let first = app.first, app == app.lowercased() {
+                app = first.uppercased() + app.dropFirst()
+            }
             var fixIts: [FixIt] = []
             if isProgram && callee == "open" { fixIts.append(fix("replaceWith", [edit(r, "\"\(app)\"")], ["text": .code("\"\(app)\"")])) }
             report(.windowsPath, r, ["hint": hintText(.windowsPath, isProgram ? "program" : "file"), "app": .code(app),
                                      "file": .code(fileName)], fixIts: fixIts)
         } else {
-            let raw = text(node)
-            let doubled = raw.replacingOccurrences(of: "\\", with: "\\\\")
+            // Every single backslash was meant as one; `\\` and `\"` are already written the Desk way.
+            var doubled = ""
             var c = ""
-            if let slash = raw.firstIndex(of: "\\"), raw.index(after: slash) < raw.endIndex { c = String(raw[raw.index(after: slash)]) }
-            report(.invalidEscape, r, ["c": .code(c)], fixIts: [fix("showBackslash", [edit(r, doubled)])])
+            var chars = Array(raw)
+            var k = 0
+            while k < chars.count {
+                if chars[k] == "\\" {
+                    if k + 1 < chars.count, chars[k + 1] == "\\" || chars[k + 1] == "\"" {
+                        doubled.append(chars[k]); doubled.append(chars[k + 1]); k += 2; continue
+                    }
+                    if c.isEmpty, k + 1 < chars.count { c = String(chars[k + 1]) }
+                    doubled += "\\\\"
+                } else {
+                    doubled.append(chars[k])
+                }
+                k += 1
+            }
+            chars = []
+            report(.invalidEscape, r, ["c": .code(c)], fixIts: [fix("showBackslash", [edit(r, "\"" + doubled + "\"")])])
         }
     }
 

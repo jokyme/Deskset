@@ -490,4 +490,30 @@ func runDeskReviewTests(_ t: TestRunner) {
         // Still ambiguous when nothing decides.
         t.equal(deskReviewIDs(theme + "    Text(\"{lastTheme} {options.theme}\")\n}"), ["DK3018"])
     }
+
+    t.suite("Desk: review — backslashes and Windows paths (findings 6, 58, 59, 83)") {
+        // Correct escapes are not reported (finding 58).
+        for text in [#"Text("\\")"#, #"Text("\\n starts a new line")"#, #"Text("C:\\")"#, #"Text("C:\\Users\\me")"#] {
+            t.equal(deskReviewIDs("widget { \(text) }"), [], text)
+        }
+        // A Windows path in display text: one DK1012 whose fix-it converges (58, 83).
+        for (text, fixed) in [(#"Text("C:\Users\me")"#, #"Text("C:\\Users\\me")"#), (#"Text("Path C:\Users\me")"#, #"Text("Path C:\\Users\\me")"#),
+                              (#"Text("C:\\Users\me")"#, #"Text("C:\\Users\\me")"#)] {
+            let checked = deskCheck("info { name: \"T\" }\nwidget { \(text) }")
+            t.equal(checked.diagnostics.map(\.id.rawValue), ["DK1012"], text)
+            let applied = deskApplyFix(checked, "DK1012")
+            t.equal(applied, "info { name: \"T\" }\nwidget { \(fixed) }", text)
+            t.equal(applied.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [], "\(text) after the fix")
+        }
+        // DK9307 names the app and the file from the path as written (findings 6, 59).
+        let steam = deskCheck("info { name: \"T\" }\n" + #"widget { Text("A").onClick { open("C:\Program Files\Steam\steam.exe") } }"#)
+        t.equal(steam.diagnostics.first?.message(in: .english), #"Windows paths don't exist on a Mac. Open the app by name: `open("Steam")`."#)
+        t.equal(deskApplyFix(steam, "DK9307"), "info { name: \"T\" }\n" + #"widget { Text("A").onClick { open("Steam") } }"#)
+        let image = deskCheck("info { name: \"T\" }\n" + #"widget { Image("C:\Skins\bg.png") }"#)
+        t.equal(image.diagnostics.first?.message(in: .english), #"Windows paths don't exist on a Mac. Put it in the widget's folder and write `"bg.png"`."#)
+        let appData = deskCheck("info { name: \"T\" }\n" + #"widget { Text("A").onClick { open("%APPDATA%\foo.exe") } }"#)
+        t.equal(appData.diagnostics.first?.message(in: .english), #"Windows paths don't exist on a Mac. Open the app by name: `open("Foo")`."#)
+        let doubled = deskCheck("info { name: \"T\" }\n" + #"widget { Text("A").onClick { open("C:\\Program Files\\Steam\\steam.exe") } }"#)
+        t.check(!doubled.diagnostics.contains { $0.message(in: .english).contains("C:Program") }, deskDescribe(doubled))
+    }
 }

@@ -1419,13 +1419,26 @@ struct Lexer {
     }
 
     /// Whether a string's text looks like a Windows path: a drive letter and `:\`, a leading `\\`, or `%NAME%`.
+    /// A Windows path (§1.8): a drive letter and `:\` at the start or after a blank, a leading `\\`, or a
+    /// `%VAR%` variable — and at least one backslash that is not already written as `\\` or `\"`. A string whose
+    /// backslashes are all doubled (`"C:\\Users"`, `"\\"`) is fine as it is.
     private func looksLikeWindowsPath(_ from: Int, _ to: Int) -> Bool {
         let n = to - from
         guard n >= 2 else { return false }
-        var hasBackslash = false
-        for i in from..<to where bytes[i] == 0x5C { hasBackslash = true; break }
-        guard hasBackslash else { return false }
-        if n >= 3, Chars.isASCIILetter(bytes[from]), bytes[from + 1] == 0x3A, bytes[from + 2] == 0x5C { return true }
+        var single = false
+        var k = from
+        while k < to {
+            if bytes[k] == 0x5C {
+                if k + 1 < to, bytes[k + 1] == 0x5C || bytes[k + 1] == 0x22 { k += 2; continue }
+                single = true
+                break
+            }
+            k += 1
+        }
+        guard single else { return false }
+        for i in from..<(to - 2) where Chars.isASCIILetter(bytes[i]) && bytes[i + 1] == 0x3A && bytes[i + 2] == 0x5C {
+            if i == from || bytes[i - 1] == 0x20 || bytes[i - 1] == 0x09 || bytes[i - 1] == 0x28 { return true }
+        }
         if bytes[from] == 0x5C, bytes[from + 1] == 0x5C { return true }
         var i = from
         while i < to {
