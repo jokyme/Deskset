@@ -73,6 +73,48 @@ extension Desk {
     }
 }
 
+extension Desk {
+    /// The formatter's "Sort blocks" command (§2.1), never applied implicitly: the top-level blocks in the
+    /// canonical order `info`/`package`, `options`, `widget`, `style`…, `translations` (reserved `component` and
+    /// `script` blocks after the styles), each with the comments above it, one blank line between them. A file
+    /// whose top level holds anything else (stray statements, code that failed to parse) is left alone.
+    public static func sortBlocks(_ tree: SyntaxTree) -> [TextEdit] {
+        let editor = SyntaxEditor(tree: tree)
+        let items = tree.rootNode.childNodes
+        func rank(_ kind: SyntaxKind) -> Int? {
+            switch kind {
+            case .infoBlock, .packageBlock: return 0
+            case .optionsBlock: return 1
+            case .widgetBlock: return 2
+            case .styleDecl: return 3
+            case .componentDecl: return 4
+            case .scriptBlock: return 5
+            case .translationsBlock: return 6
+            default: return nil
+            }
+        }
+        guard items.count > 1, items.allSatisfy({ rank($0.kind) != nil }) else { return [] }
+        let extents = items.map(editor.extent(of:))
+        guard extents.allSatisfy(\.ownsLines) else { return [] }
+        let order = items.indices.sorted { (rank(items[$0].kind)!, $0) < (rank(items[$1].kind)!, $1) }
+        guard order != Array(items.indices) else { return [] }
+        // Each item takes what stands between the previous item and itself (blank lines, loose comments).
+        var regions: [String] = []
+        var from = extents[0].range.lowerBound
+        for e in extents {
+            var text = editor.text(from..<e.range.upperBound)
+            while text.hasPrefix("\n") || text.hasPrefix("\r") { text.removeFirst() }
+            while text.hasSuffix("\n") || text.hasSuffix("\r") { text.removeLast() }
+            regions.append(text)
+            from = e.range.upperBound
+        }
+        let nl = editor.newline
+        let sorted = order.map { regions[$0] }.joined(separator: nl + nl) + nl
+        let range = extents[0].range.lowerBound..<extents[extents.count - 1].range.upperBound
+        return [TextEdit(file: tree.file, range: range, replacement: sorted)]
+    }
+}
+
 extension SyntaxTree {
     /// The node of `kind` whose text starts at `offset`.
     func statement(startingAt offset: Int, kind: SyntaxKind) -> PositionedNode? {

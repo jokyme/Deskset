@@ -153,8 +153,10 @@ func runDeskCorpusTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: fuzz") {
-        let seed = UInt64(ProcessInfo.processInfo.environment["DESK_FUZZ_SEED"] ?? "") ?? 1
-        let count = Int(ProcessInfo.processInfo.environment["DESK_FUZZ_COUNT"] ?? "") ?? 3000
+        // 10,000 inputs per run, seeded by the CI run number (or DESK_FUZZ_SEED); DESK_FUZZ_COUNT for longer runs.
+        let environment = ProcessInfo.processInfo.environment
+        let seed = UInt64(environment["DESK_FUZZ_SEED"] ?? environment["GITHUB_RUN_NUMBER"] ?? "") ?? 1
+        let count = Int(environment["DESK_FUZZ_COUNT"] ?? "") ?? 10_000
         var random = DeskRandom(seed: seed)
         let corpus = deskFixtureTexts().map(\.1) + deskExampleCorpus().filter { $0.count > 40 }
         let pieces = ["{", "}", "(", ")", "[", "]", "\"", "“", "”", "「", "」", "（", "）", "｛", "：", "，", "。", ".", ",",
@@ -165,11 +167,55 @@ func runDeskCorpusTests(_ t: TestRunner) {
         let scalars: [Unicode.Scalar] = Array("abcXYZ019_ {}()[]\"'.,;:=+-*/%!?<>#@$\\`~&|^\n\t".unicodeScalars)
             + ["“", "”", "「", "」", "（", "）", "：", "，", "。", "页", "é", "😀", "\u{0301}", "\u{202E}", "\u{200B}",
                "\u{3000}", "\u{00A0}", "\u{FEFF}", "\u{0007}", "\u{2028}", "\r"]
+        // One spelling of every token kind the lexer knows.
+        let tokenTexts = ["name", "Text", "if", "else", "for", "in", "and", "or", "not", "true", "false", "variable",
+                          "saved", "computed", "event", "12", "50%", "2s", "\"a\"", "\"{x}\"", "#\"r\"#", "(", ")", "{", "}", "[",
+                          "]", ",", ":", ";", ".", "...", "=", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%",
+                          "?", "&&", "||", "!", "+=", "-=", "*=", "/=", "++", "--", "**", "&", "|", "^", "~", "??", "..",
+                          "..<", "->", "=>", "::", "@", "$", "\\", "`x`", "'x'", "</", "<!-- c -->", "#Name#", "#FFF",
+                          "0xFF6B00", "\"\"\"t\"\"\"", "\n# c", "\n; c", "页", "§", "（", "「"]
         var slowest = 0.0
         var failures = 0
         for n in 0..<count {
             var text: String
-            switch random.int(4) {
+            switch random.int(5) {
+            case 4:
+                // Token-level mutations (§9.3): delete, duplicate or swap tokens, insert a token of any kind, flip
+                // braces. Edits are made from the end so earlier offsets stay valid.
+                let base = random.pick(corpus)
+                let lexed = Lexer.lex(Array(base.utf8), file: DeskFileID(path: "M.desk"))
+                var ranges: [Range<Int>] = []
+                for (k, token) in lexed.tokens.enumerated() where !token.isMissing && token.kind != .eof {
+                    ranges.append(lexed.starts[k]..<(lexed.starts[k] + token.text.utf8.count))
+                }
+                guard !ranges.isEmpty else { continue }
+                var edits: [TextEdit] = []
+                var used = Set<Int>()
+                for _ in 0..<(1 + random.int(5)) {
+                    let k = random.int(ranges.count)
+                    guard !used.contains(k), !used.contains(k + 1) else { continue }
+                    used.insert(k)
+                    let range = ranges[k]
+                    let piece = String(decoding: Array(base.utf8)[range], as: UTF8.self)
+                    switch random.int(5) {
+                    case 0: edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: range, replacement: ""))
+                    case 1: edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: range, replacement: piece + piece))
+                    case 2 where k + 1 < ranges.count:
+                        used.insert(k + 1)
+                        let next = ranges[k + 1]
+                        let nextPiece = String(decoding: Array(base.utf8)[next], as: UTF8.self)
+                        edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: range, replacement: nextPiece))
+                        edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: next, replacement: piece))
+                    case 3:
+                        let kind = random.pick(tokenTexts)
+                        edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: range.lowerBound..<range.lowerBound,
+                                              replacement: kind + " "))
+                    default:
+                        let flipped = piece == "{" ? "}" : piece == "}" ? "{" : piece == "(" ? ")" : piece == ")" ? "(" : "{"
+                        edits.append(TextEdit(file: DeskFileID(path: "M.desk"), range: range, replacement: flipped))
+                    }
+                }
+                text = TextEdit.apply(edits, to: base)
             case 0:
                 // Random Unicode.
                 var s = String.UnicodeScalarView()

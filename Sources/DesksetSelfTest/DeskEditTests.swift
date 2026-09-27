@@ -202,4 +202,19 @@ func runDeskEditTests(_ t: TestRunner) {
         checkResult(t, flat, from: tree, "unwrap one line")
         t.check(flat.tree.text.contains("    Text(\"A\")\n    Text(\"B\")\n"), flat.tree.text)
     }
+
+    t.suite("Desk: edits — sort blocks") {
+        let unsorted = "// Deskset widget\n\ntranslations {\n    \"zh-Hans\" { \"CPU\": \"处理器\" }\n}\n\n"
+            + "// Styles\nstyle big { .font(20) }\nwidget {\n    Text(\"CPU\").style(big)\n}\n\n"
+            + "// Loose comment\n\ninfo { name: \"CPU\" }\noptions { accent = ColorPicker(\"Accent\") }\n"
+        let tree = deskParse(unsorted)
+        let sorted = TextEdit.apply(Desk.sortBlocks(tree), to: unsorted)
+        t.equal(sorted, "// Deskset widget\n\n// Loose comment\n\ninfo { name: \"CPU\" }\n\n"
+                + "options { accent = ColorPicker(\"Accent\") }\n\nwidget {\n    Text(\"CPU\").style(big)\n}\n\n"
+                + "// Styles\nstyle big { .font(20) }\n\ntranslations {\n    \"zh-Hans\" { \"CPU\": \"处理器\" }\n}\n")
+        t.equal(deskSignificantTokens(deskParse(sorted)).sorted(), deskSignificantTokens(tree).sorted())
+        t.equal(Desk.sortBlocks(deskParse(sorted)), [], "sorted blocks stay")
+        // A file with stray code at the top level is left alone.
+        t.equal(Desk.sortBlocks(deskParse("widget { }\nText(\"A\")\ninfo { }\n")), [])
+    }
 }
