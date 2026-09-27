@@ -230,7 +230,8 @@ extension Checker {
                     return typedMember(asValue, member: m, name: name, nameRange: nameRange, node: node)
                 }
             }
-            return reportUnknownMember(base, baseNode: baseNode, name: name, nameRange: nameRange, context, called: called)
+            return reportUnknownMember(base, baseNode: baseNode, name: name, nameRange: nameRange, context, called: called,
+                                       expected: expected)
         }
         // A named element's geometry.
         if let elementName = base.elementName {
@@ -255,7 +256,8 @@ extension Checker {
         if let m = catalog.member(name, of: base.type, call: called) {
             return typedMember(base, member: m, name: name, nameRange: nameRange, node: node)
         }
-        return reportUnknownMember(base, baseNode: baseNode, name: name, nameRange: nameRange, context, called: called)
+        return reportUnknownMember(base, baseNode: baseNode, name: name, nameRange: nameRange, context, called: called,
+                                   expected: expected)
     }
 
     /// A member of a value (a record's field, a list's member, a member of text, dates, colors or web data).
@@ -355,7 +357,7 @@ extension Checker {
 
     /// DK3003 with did-you-mean among the type's members, their keywords and one level down.
     func reportUnknownMember(_ base: Val, baseNode: PositionedNode, name: String, nameRange: Range<Int>,
-                             _ context: ExprContext, called: Bool) -> Val {
+                             _ context: ExprContext, called: Bool, expected: DeskType? = nil) -> Val {
         let baseText = text(baseNode)
         if let requires = requiresNewer {
             report(.newerName, nameRange, ["name": .code(name), "version": .code(requires.description)])
@@ -435,14 +437,34 @@ extension Checker {
             let suggestion = DidYouMean.suggest(name, candidates: candidates, keywords: { _ in keywordTargets })
             if let best = suggestion.names.first {
                 arguments["suggestion"] = .code("\(baseText).\(best)")
-                // In a display position only distance 1 qualifies (§6.2).
+                // In a display position only distance 1 qualifies; elsewhere a farther name also qualifies when it
+                // has the type the position expects (§6.2 step 5).
+                var fits = false
+                if !context.display, let expected, let type = memberType(of: base, named: best) {
+                    fits = (cost(Val(type), expected) ?? 9) <= 1
+                }
                 let fixable = suggestion.via == .keyword ? suggestion.fixable
-                    : (suggestion.fixable && (suggestion.distance ?? 9) <= 1)
+                    : (suggestion.fixable && (suggestion.distance ?? 9) <= 1) || (suggestion.unique && fits)
                 if fixable { fixIts.append(fix("fix", [edit(nameRange, best)])) }
             }
         }
+        // `for disk in disks { disk.at("/") }`: the own name hides the built-in that has this member (§4.2).
+        if baseNode.kind == .identifierExpr, base.namespace == nil, let ns = catalog.namespace(named: baseText),
+           ns.member(named: name) != nil || catalog.namespace(named: "\(baseText).\(name)") != nil {
+            arguments["hint"] = hintText(.unknownMember, "hidesBuiltIn")
+        }
         report(.unknownMember, nameRange, arguments, fixIts: fixIts)
         return .error
+    }
+
+    /// The type of a member of a value (a namespace's member or field, or a member of its type).
+    func memberType(of base: Val, named name: String) -> DeskType? {
+        if let ns = base.namespace, let spec = catalog.namespace(named: ns) {
+            if let m = spec.member(named: name), m.kind == .field { return m.type }
+            if let record = spec.instanceOf.flatMap({ catalog.record($0) }), let f = record.field(named: name) { return f.type }
+            return nil
+        }
+        return catalog.members(of: base.type).first { $0.name == name }.map(\.type)
     }
 
     // MARK: - Options

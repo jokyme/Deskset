@@ -711,12 +711,12 @@ func runDeskCatalogTests(_ t: TestRunner) {
         t.equal(DeskCatalog.joinedList((1...10).map(String.init), in: .english, or: true), "1, 2, 3, 4, 5, 6, 7, 8, …")
         let mismatch = c.diagnostic(.typeMismatch)!
         let values = ["what": c.displayText("facet:font.size", in: .english), "expected": c.displayText(for: .length, in: .english),
-                      "actual": c.displayText(for: .bool, in: .english)]
-        t.equal(mismatch.message(.english, values),
+                      "actual": c.displayText(for: .bool, in: .english), "hint": ""]
+        t.equal(mismatch.message(.english, values).trimmingCharacters(in: .whitespaces),
                 "The text size needs a length in points, such as `12`, but this is yes or no (`true` or `false`).")
         let zhValues = ["what": c.displayText("facet:font.size", in: .simplifiedChinese),
                         "expected": c.displayText(for: .length, in: .simplifiedChinese),
-                        "actual": c.displayText(for: .bool, in: .simplifiedChinese)]
+                        "actual": c.displayText(for: .bool, in: .simplifiedChinese), "hint": ""]
         t.equal(mismatch.message(.simplifiedChinese, zhValues), "字号要的是长度（单位是点），比如 `12`，这里是是或否（`true` 或 `false`）。")
         // §5.15's rows, as written.
         t.equal(row("type:bool")?.name, LocalizedText("yes or no (`true` or `false`)", "是或否（`true` 或 `false`）"))

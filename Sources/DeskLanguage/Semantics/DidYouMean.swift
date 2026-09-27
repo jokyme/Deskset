@@ -12,6 +12,9 @@ enum DidYouMean {
         var fixable: Bool
         var via: Via?
         var distance: Int?
+        /// Whether the best candidate is the only one at its distance (a farther one may still be fixed when it has
+        /// the type the position expects, §6.2 step 5).
+        var unique = false
     }
 
     /// Optimal string alignment (restricted Damerau–Levenshtein) distance on lower-cased names, stopping early once
@@ -86,7 +89,7 @@ enum DidYouMean {
         guard let best = scored.first else { return Suggestion(names: [], fixable: false, via: nil, distance: nil) }
         let uniqueBest = scored.filter { $0.distance == best.distance }.count == 1
         return Suggestion(names: scored.prefix(3).map(\.name), fixable: uniqueBest && best.distance == 1, via: .distance,
-                          distance: best.distance)
+                          distance: best.distance, unique: uniqueBest)
     }
 
     /// The single closest name, or nil.

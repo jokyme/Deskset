@@ -654,10 +654,13 @@ extension Checker {
                             param: ParamSpec?, _ context: ExprContext) {
         let r = range(node)
         var fixIts: [FixIt] = []
-        // `.width(100%)`.
-        if isLengthType(type), v.dimension == .percent, let value = v.literalValue {
-            if value == 100, type == .lengthSpec || type.components.contains(.lengthSpec) {
+        var arguments: [String: DiagnosticArgument] = [:]
+        // `.width(100%)`; other percentages: Desk has no percentage widths.
+        if isLengthType(type), v.dimension == .percent {
+            if v.literalValue == 100, type == .lengthSpec || type.components.contains(.lengthSpec) {
                 fixIts.append(fix("convert", [edit(r, ".fill")], ["text": .code(".fill")]))
+            } else {
+                arguments["hint"] = hintText(.typeMismatch, "percentWidth")
             }
         }
         // A number where text is expected: add quotes.
@@ -669,12 +672,32 @@ extension Checker {
             let word = value == 1 ? "true" : "false"
             fixIts.append(fix("convert", [edit(r, word)], ["text": .code(word)]))
         }
-        // A percentage where an angle is expected: x * 360°.
+        // A percentage where an angle is expected: x * 360° — replacing a factor written by hand (`x * 3.6`,
+        // `x / 100 * 360`), which would otherwise apply twice.
         if case .number(.angle) = type, v.dimension == .percent {
-            let fixed = "\(text(node)) * 360°"
+            let fixed = percentAsAngle(node)
             fixIts.append(fix("convert", [edit(r, fixed)], ["text": .code(fixed)]))
         }
-        report(.typeMismatch, r, ["what": what, "expected": .type(type), "actual": .type(v.type)], fixIts: fixIts)
+        arguments["what"] = what
+        arguments["expected"] = .type(type)
+        arguments["actual"] = .type(v.type)
+        report(.typeMismatch, r, arguments, fixIts: fixIts)
+    }
+
+    /// `x * 360°` for a percentage `node`: a hand-written factor (`* 3.6`, `/ 100 * 360`, `* 360 / 100`) is replaced,
+    /// anything that binds looser than a product is put in parentheses.
+    func percentAsAngle(_ node: PositionedNode) -> String {
+        var factor = 1.0
+        var current = node
+        while let binary = BinaryExprSyntax(current), let number = NumberLiteralSyntax(binary.right.node), number.unit == nil,
+              let value = number.value, binary.operator.token.kind == .star || binary.operator.token.kind == .slash {
+            factor *= binary.operator.token.kind == .star ? value : 1 / value
+            current = binary.left.node
+        }
+        if current.range != node.range, abs(factor - 3.6) < 1e-9 {
+            return OffsetText.bindsTighterThanProduct(current) ? "\(text(current)) * 360°" : "(\(text(current))) * 360°"
+        }
+        return OffsetText.bindsTighterThanProduct(node) ? "\(text(node)) * 360°" : "(\(text(node))) * 360°"
     }
 
     /// The display name of what a parameter sets or means, for messages.

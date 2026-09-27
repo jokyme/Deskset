@@ -719,9 +719,12 @@ extension CatalogData {
             id: .unknownMember, severity: .error,
             trigger: #"`music.playpause()`"#,
             template: LocalizedText(
-                #"`{base}` has no `{name}`. Did you mean `{suggestion}`?"#,
-                #"`{base}` 没有 `{name}`，是不是想写 `{suggestion}`？"#),
-            placeholders: ["base": .code, "name": .code, "suggestion": .code],
+                #"`{base}` has no `{name}`. Did you mean `{suggestion}`? {hint}"#,
+                #"`{base}` 没有 `{name}`，是不是想写 `{suggestion}`？{hint}"#),
+            placeholders: ["base": .code, "name": .code, "suggestion": .code, "hint": .text],
+            hints: [
+                HintSpec(key: "hidesBuiltIn", text: LocalizedText(#"Your `{base}` hides the built-in `{base}` here."#, #"你起的 `{base}` 在这里盖住了内置的 `{base}`。"#)),
+            ],
             fixIts: [
                 FixItSpec("fix", offeredWhen: LocalizedText(#"When one close name fits"#, #"只有一个相近的名字符合时"#)),
             ]
@@ -1088,9 +1091,14 @@ extension CatalogData {
             id: .typeMismatch, severity: .error,
             trigger: #"`.font(true)`"#,
             template: LocalizedText(
-                #"{what} needs {expected}, but this is {actual}."#,
-                #"{what}要的是{expected}，这里是{actual}。"#),
-            placeholders: ["what": .displayName, "expected": .displayName, "actual": .displayName],
+                #"{what} needs {expected}, but this is {actual}. {hint}"#,
+                #"{what}要的是{expected}，这里是{actual}。{hint}"#),
+            placeholders: ["what": .displayName, "expected": .displayName, "actual": .displayName, "hint": .text,
+                           "width": .code, "height": .code],
+            hints: [
+                HintSpec(key: "percentWidth", text: LocalizedText(#"Desk has no percentage widths; use `.fill` or a number."#, #"Desk 没有百分比宽度；用 `.fill` 或数字。"#)),
+                HintSpec(key: "exactSize", text: LocalizedText(#"For an exact size, leave `size` out and put `.size({width}, {height})` on the outermost element."#, #"要指定确切大小，就不写 `size`，在最外层元素上写 `.size({width}, {height})`。"#)),
+            ],
             fixIts: [
                 FixItSpec("convert", offeredWhen: LocalizedText(#"When the value can be converted"#, #"值可以转换时"#)),
                 FixItSpec("replaceWith", arguments: ["text": #"x = not x"#], offeredWhen: LocalizedText(#"For `showOrHide(x)` or `toggle(x)` with a yes/no value"#, #"对带是/否值的 `showOrHide(x)` 或 `toggle(x)`"#)),

@@ -114,8 +114,11 @@ enum DiagnosticRenderer {
         let startMarkers: [String] = language == .english ? [". ", "? ", "! ", ": "] : ["。", "？", "！", "，", "："]
         var start = text.startIndex
         for marker in startMarkers {
-            if let m = before.range(of: marker, options: .backwards), m.upperBound > start {
-                start = language == .english ? m.upperBound : m.lowerBound
+            // English keeps the mark before the sentence; Chinese keeps a sentence's end (。？！) but drops the
+            // clause mark (，：) that joined the clause.
+            if let m = before.range(of: marker, options: .backwards) {
+                let candidate = language == .english || "。？！".contains(marker) ? m.upperBound : m.lowerBound
+                if candidate > start { start = candidate }
             }
         }
         let endMarkers: [Character] = language == .english ? [".", "?", "!"] : ["。", "？", "！"]
@@ -131,8 +134,19 @@ enum DiagnosticRenderer {
             }
             index = after.index(after: index)
         }
-        var result = String(text[..<start]) + String(text[end...])
+        var head = String(text[..<start])
+        let tail = String(text[end...])
+        // A clause removed with its sentence's end (`，是不是想写 …？`) leaves the sentence before it open.
+        if language == .simplifiedChinese, let removedLast = text[start..<end].last, "。？！".contains(removedLast),
+           let headLast = head.last, !"。？！".contains(headLast), !tail.trimmingCharacters(in: .whitespaces).isEmpty {
+            head += "。"
+        }
+        var result = head + tail
         result = result.trimmingCharacters(in: .whitespaces)
+        // A sentence that follows as a placeholder (`{hint}`) brings its own full stop.
+        if result.hasSuffix("}"), DiagnosticSpec.placeholderNames(in: String(result.suffix(24))).last.map({ result.hasSuffix("{\($0)}") }) == true {
+            return result
+        }
         if language == .simplifiedChinese, !result.isEmpty, let last = result.last, !"。？！".contains(last) { result += "。" }
         if language == .english, !result.isEmpty, let last = result.last, !".?!".contains(last) { result += "." }
         return result

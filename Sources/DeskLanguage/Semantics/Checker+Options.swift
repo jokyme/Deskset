@@ -107,7 +107,9 @@ extension Checker {
                 continue
             }
             if name == "size", val.isNumber {
-                report(.typeMismatch, range(value), ["what": .code("size"), "expected": .type(spec.type), "actual": .type(val.type)])
+                let n = text(value)
+                report(.typeMismatch, range(value), ["what": .code("size"), "expected": .type(spec.type), "actual": .type(val.type),
+                                                     "hint": hintText(.typeMismatch, "exactSize"), "width": .code(n), "height": .code(n)])
                 continue
             }
             var paramForCoerce = context.param!

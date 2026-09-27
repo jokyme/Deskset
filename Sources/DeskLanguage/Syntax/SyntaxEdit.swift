@@ -165,6 +165,20 @@ enum OffsetText {
         return nil
     }
 
+    /// Whether ` * n` can follow the expression without parentheses: products and everything that binds tighter.
+    static func bindsTighterThanProduct(_ node: PositionedNode) -> Bool {
+        switch node.kind {
+        case .binaryExpr:
+            guard let binary = BinaryExprSyntax(node) else { return false }
+            return [.star, .slash, .percent].contains(binary.operator.token.kind)
+        case .memberExpr, .callExpr, .implicitMemberExpr, .identifierExpr, .numberLiteral, .parenExpr, .listLiteral,
+             .stringLiteral, .boolLiteral:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Whether ` + n` can follow the expression without parentheses: sums, products, prefix `-`, and everything
     /// that binds tighter (§2.9).
     static func bindsAtLeastAsTightAsSum(_ node: PositionedNode) -> Bool {

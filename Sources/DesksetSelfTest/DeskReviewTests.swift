@@ -593,4 +593,34 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.check(two.diagnostics.first { $0.id.rawValue == "DK4003" }?.message(in: .english).hasPrefix("`.size` takes 2 values here.") == true,
                 deskDescribe(two))
     }
+
+    t.suite("Desk: review — targeted type messages and did-you-mean (findings 13, 27, 29)") {
+        // A percentage for an angle: a hand-written factor is replaced (finding 13).
+        for (value, fixed) in [("cpu.usage * 3.6", "cpu.usage * 360°"), ("cpu.usage", "cpu.usage * 360°"),
+                               ("cpu.usage + 5%", "(cpu.usage + 5%) * 360°")] {
+            let checked = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").rotate(\(value)) }")
+            t.equal(deskApplyFix(checked, "DK4001"), "info { name: \"T\" }\nwidget { Text(\"A\").rotate(\(fixed)) }", value)
+        }
+        // The mix-up hints of §4.5 and the hidden built-in of §4.2 (finding 27).
+        let size = deskCheck("info { name: \"T\", size: 200 }\nwidget { Text(\"A\") }")
+        t.check(size.diagnostics.first?.message(in: .english).hasSuffix("For an exact size, leave `size` out and put `.size(200, 200)` on the outermost element.") == true,
+                size.diagnostics.first?.message(in: .english) ?? "")
+        let width = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").width(50%) }")
+        t.check(width.diagnostics.first?.message(in: .english).hasSuffix("Desk has no percentage widths; use `.fill` or a number.") == true,
+                width.diagnostics.first?.message(in: .english) ?? "")
+        let full = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").width(100%) }")
+        t.equal(deskApplyFix(full, "DK4001"), "info { name: \"T\" }\nwidget { Text(\"A\").width(.fill) }")
+        let hidden = deskCheck("info { name: \"T\" }\nwidget { Column { for disk in disks { Text(\"{disk.at(\"/\").free}\") } } }")
+        let member = hidden.diagnostics.first { $0.id.rawValue == "DK3003" }
+        t.equal(member?.message(in: .english), "`disk` has no `at`. Your `disk` hides the built-in `disk` here.")
+        t.equal(member?.message(in: .simplifiedChinese), "`disk` 没有 `at`。你起的 `disk` 在这里盖住了内置的 `disk`。")
+        // A farther name is fixed when it has the type the position expects, never in text (finding 29).
+        let progress = deskCheck("info { name: \"T\" }\nwidget { Progress(cpu.usagxx) }")
+        t.equal(deskApplyFix(progress, "DK3003"), "info { name: \"T\" }\nwidget { Progress(cpu.usage) }")
+        t.equal(progress.diagnostics.first?.message(in: .simplifiedChinese), "`cpu` 没有 `usagxx`，是不是想写 `cpu.usage`？")
+        let text = deskCheck("info { name: \"T\" }\nwidget { Text(\"{cpu.usagxx}\") }")
+        t.equal(text.diagnostics.first?.fixIts.count, 0)
+        let none = deskCheck("info { name: \"T\" }\nwidget { Text(\"{battery.qqqqqq}\") }")
+        t.equal(none.diagnostics.first?.message(in: .simplifiedChinese), "`battery` 没有 `qqqqqq`。")
+    }
 }
