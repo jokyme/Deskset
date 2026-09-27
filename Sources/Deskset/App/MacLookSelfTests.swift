@@ -536,14 +536,23 @@ enum MacLookSelfTests {
             t.check(!WeatherWiring.liveEnvironment().uses24HourClock())
 
             // The preference keys behind them are watched as well (another process writes them).
-            let suite = "deskset.regional.test.\(UUID().uuidString)"
+            // A suite named by a path keeps its file in the test's own folder: a named one would leave a file in
+            // ~/Library/Preferences, which the preferences daemon writes again even after it is removed.
+            let suite = t.temporaryDirectory("regional-defaults").appendingPathComponent("regional").path
             guard let defaults = UserDefaults(suiteName: suite) else { return t.check(false, "a defaults suite") }
-            t.atSuiteEnd { UserDefaults().removePersistentDomain(forName: suite) }
             var heard = 0
             let observer = RegionalDefaultsObserver(defaults: defaults) { heard += 1 }
             defaults.set("Fahrenheit", forKey: "AppleTemperatureUnit")
             defaults.set(true, forKey: "AppleICUForce24HourTime")
             t.check(AppSelfTest.spin(timeout: 2) { heard >= 2 }, "each change is heard: \(heard)")
+            // Written by another process, as System Settings writes them.
+            let writer = Process()
+            writer.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            writer.arguments = ["write", suite, "AppleFirstWeekday", "-dict", "gregorian", "-int", "2"]
+            try writer.run()
+            writer.waitUntilExit()
+            t.equal(writer.terminationStatus, 0)
+            t.check(AppSelfTest.spin(timeout: 5) { heard >= 3 }, "another process's change is heard: \(heard)")
             withExtendedLifetime(observer) {}
             app.stopAllForTermination()
         }
