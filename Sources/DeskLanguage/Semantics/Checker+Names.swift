@@ -159,8 +159,60 @@ extension Checker {
 
     /// Types every declaration's initializer in declaration order (§4.14), then finds cycles (DK4040).
     func checkDeclarations() {
+        // Initializers are typed dependencies first, found without recursion, so a long chain of computed values
+        // that read later ones (`computed c0 = c1 + 1`, `computed c1 = c2 + 1`, …) never nests one typing inside
+        // the next (§2.11 rule 7). A cycle is left to `declarationValue`'s guard and DK4040.
+        let graph = declarationGraph()
+        // Values in a cycle through a computed value (DK4040) are not typed at all: typing one would type the whole
+        // cycle inside it.
+        for component in Checker.cyclicComponents(in: graph, order: declOrder.map(\.name))
+        where component.contains(where: { decls[$0]?.keyword == "computed" }) {
+            for name in component {
+                decls[name]?.poisoned = true
+                decls[name]?.val = .error
+            }
+        }
+        var done = Set<String>()
+        var onPath = Set<String>()
+        for start in declOrder where !done.contains(start.name) {
+            var work: [(name: String, next: Int)] = [(start.name, 0)]
+            onPath.insert(start.name)
+            while let (name, i) = work.last {
+                let deps = graph[name] ?? []
+                if i < deps.count {
+                    work[work.count - 1].next += 1
+                    let dep = deps[i]
+                    if !done.contains(dep), !onPath.contains(dep), decls[dep] != nil {
+                        onPath.insert(dep)
+                        work.append((dep, 0))
+                    }
+                } else {
+                    work.removeLast()
+                    onPath.remove(name)
+                    done.insert(name)
+                    if let decl = decls[name], decl.index >= 0 { _ = declarationValue(decl) }
+                }
+            }
+        }
         for decl in declOrder { _ = declarationValue(decl) }
-        reportComputedCycles()
+        reportComputedCycles(graph)
+    }
+
+    /// The own names each declaration's initializer reads.
+    func declarationGraph() -> [String: [String]] {
+        var graph: [String: [String]] = [:]
+        for decl in declOrder {
+            var targets = Set<String>()
+            let initializer = DeclarationSyntax(unchecked: decl.node).initializer.node
+            var previous: TokenKind?
+            initializer.node.walkTokens { token, _ in
+                if token.kind == .identifier, previous != .dot, decls[token.text] != nil { targets.insert(token.text) }
+                previous = token.kind
+                return true
+            }
+            graph[decl.name] = targets.sorted()
+        }
+        return graph
     }
 
     /// The value of a declaration, typing its initializer on first use.
@@ -242,19 +294,7 @@ extension Checker {
     }
 
     /// DK4040: computed values (and variables' initializers) that depend on each other.
-    func reportComputedCycles() {
-        var graph: [String: [String]] = [:]
-        for decl in declOrder {
-            var targets = Set<String>()
-            let initializer = DeclarationSyntax(unchecked: decl.node).initializer.node
-            var previous: TokenKind?
-            initializer.node.walkTokens { token, _ in
-                if token.kind == .identifier, previous != .dot, decls[token.text] != nil { targets.insert(token.text) }
-                previous = token.kind
-                return true
-            }
-            graph[decl.name] = targets.sorted()
-        }
+    func reportComputedCycles(_ graph: [String: [String]]) {
         let computedNames = Set(declOrder.filter { $0.keyword == "computed" }.map(\.name))
         for cycle in Checker.cycles(in: graph, order: declOrder.map(\.name), startingAt: { computedNames.contains($0) }) {
             let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
@@ -268,6 +308,16 @@ extension Checker {
     /// the component's first node in `order` that `startingAt` accepts (components with none are left out) and is
     /// the shortest way back to it; the cycles come in the order of their starts.
     static func cycles(in graph: [String: [String]], order: [String], startingAt accepts: (String) -> Bool = { _ in true }) -> [[String]] {
+        cycleSearch(graph, order: order, accepts: accepts).cycles
+    }
+
+    /// The members of every strongly connected component that holds a cycle, each in `order`.
+    static func cyclicComponents(in graph: [String: [String]], order: [String]) -> [[String]] {
+        cycleSearch(graph, order: order, accepts: { _ in true }).components
+    }
+
+    private static func cycleSearch(_ graph: [String: [String]], order: [String], accepts: (String) -> Bool)
+        -> (cycles: [[String]], components: [[String]]) {
         var names = order
         var position: [String: Int] = [:]
         for (i, name) in names.enumerated() where position[name] == nil { position[name] = i }
@@ -313,9 +363,11 @@ extension Checker {
             }
         }
         var result: [(start: Int, cycle: [String])] = []
+        var cyclic: [[String]] = []
         for component in components {
             let members = Set(component)
             guard component.count > 1 || successors[component[0]].contains(component[0]) else { continue }
+            cyclic.append(component.sorted().map { names[$0] })
             guard let start = component.sorted().first(where: { accepts(names[$0]) }) else { continue }
             // The shortest way from `start` back to itself inside the component (breadth first).
             var parent: [Int: Int] = [:]
@@ -335,7 +387,7 @@ extension Checker {
             path.append(start)
             result.append((start, path.reversed().map { names[$0] }))
         }
-        return result.sorted { $0.start < $1.start }.map(\.cycle)
+        return (result.sorted { $0.start < $1.start }.map(\.cycle), cyclic)
     }
 
     // MARK: - Loop variables

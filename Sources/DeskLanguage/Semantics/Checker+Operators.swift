@@ -144,7 +144,8 @@ extension Checker {
 
     func comparedWith(_ v: Val) -> LocalizedText {
         let name = catalog.displayName(for: v.type)
-        return LocalizedText("compared with \(name.en)", "和\(name.zh)比较")
+        return LocalizedText("compared with \(DiagnosticRenderer.shortName(name.en, .english))",
+                             "和\(DiagnosticRenderer.shortName(name.zh, .simplifiedChinese))比较")
     }
 
     enum Operation { case compare, add, multiply }

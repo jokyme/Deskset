@@ -690,7 +690,7 @@ extension CatalogData {
             template: LocalizedText(
                 #"`.{name}` takes {what} in braces: `{fixed}`."#,
                 #"`.{name}` 后面的{what}要写在花括号里：`{fixed}`。"#),
-            placeholders: ["name": .code, "what": .displayName, "fixed": .code],
+            placeholders: ["name": .code, "what": .shortName, "fixed": .code],
             fixIts: [
                 FixItSpec("useBraces"),
             ]

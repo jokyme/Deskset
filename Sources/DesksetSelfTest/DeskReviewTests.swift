@@ -894,4 +894,16 @@ func runDeskReviewTests(_ t: TestRunner) {
     t.suite("Desk: review — names read in failed expressions (finding 72)") {
         t.equal(deskReviewIDs("widget {\n    computed m = calendar.month(offset: 0)\n    Text(\"{m.days[0]}\")\n}"), ["DK9006"])
     }
+
+    t.suite("Desk: review — a long cycle of computed values on a small stack") {
+        // Typing one value of a cycle used to type the whole cycle inside it (recursion per link).
+        let cycle = "info { name: \"T\" }\nwidget {\n" + (0..<800).map { "    computed c\($0) = c\($0 + 1) + 1" }.joined(separator: "\n")
+            + "\n    computed c800 = c0\n    Text(\"{c0}\")\n}"
+        let ids = deskOnSmallStack { deskCheck(cycle).diagnostics.map(\.id.rawValue) }
+        t.equal(ids, ["DK4040"])
+        // Chains that read later values are typed dependencies first.
+        let chain = "info { name: \"T\" }\nwidget {\n" + (0..<800).map { "    computed c\($0) = c\($0 + 1) + 1" }.joined(separator: "\n")
+            + "\n    computed c800 = 1\n    Text(\"{c0}\")\n}"
+        t.equal(deskOnSmallStack { deskCheck(chain).diagnostics.map(\.id.rawValue) }, [])
+    }
 }
