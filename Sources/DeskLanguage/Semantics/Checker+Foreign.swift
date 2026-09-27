@@ -613,7 +613,9 @@ extension Checker {
     /// A foreign-table row keyed on a modifier's first argument (`.padding(.horizontal, …)`, `.font(.system(…))`),
     /// for a modifier that exists in Desk too.
     func foreignArgumentRow(_ modifier: ModifierAppSyntax) -> ForeignSpec? {
-        guard let first = modifier.arguments?.arguments.first, first.label == nil else { return nil }
+        let name = modifier.name.token.name
+        guard foreignArgumentNames.modifiers.contains(name) || foreignArgumentNames.modifiers.contains("." + name),
+              let first = modifier.arguments?.arguments.first, first.label == nil else { return nil }
         let written = text(first.value.node)
         for row in index.foreignRows("." + modifier.name.token.name) {
             guard case .modifierWithArgument(_, let argument) = row.pattern, argument.hasPrefix(".") else { continue }
@@ -625,7 +627,7 @@ extension Checker {
     /// `Image(systemName: "wifi")`, `Label("Wi-Fi", systemImage: "wifi")`: a Desk component written with a foreign
     /// label. Reports the foreign table's rewrite; false when there is no such row.
     func reportForeignCallLabel(_ call: CallStmtSyntax) -> Bool {
-        guard call.callee.path.count == 1 else { return false }
+        guard call.callee.path.count == 1, foreignArgumentNames.components.contains(call.callee.name.token.name) else { return false }
         let labels = call.arguments?.arguments.compactMap { $0.label?.name } ?? []
         guard !labels.isEmpty else { return false }
         for row in index.foreignRows(call.callee.path[0]) {

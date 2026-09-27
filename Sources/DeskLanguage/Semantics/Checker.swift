@@ -363,6 +363,19 @@ final class Checker {
     /// uses resolve to it and are renamed with it).
     var lastRefusedAsReserved = false
     var pendingReservedName: (index: Int, declaration: Range<Int>, newName: String)?
+    /// Names with a foreign-table row keyed on their arguments: modifiers (`.padding(.horizontal, …)`) and
+    /// components (`Image(systemName:)`); most calls have none, so the rows are only read for these.
+    lazy var foreignArgumentNames: (modifiers: Set<String>, components: Set<String>) = {
+        var modifiers = Set<String>(), components = Set<String>()
+        for row in catalog.foreign {
+            switch row.pattern {
+            case .modifierWithArgument(let name, let argument) where argument.hasPrefix("."): modifiers.insert(name)
+            case .call(let name, let label) where !label.isEmpty: components.insert(name)
+            default: break
+            }
+        }
+        return (modifiers, components)
+    }()
     /// Implicit members (by start) whose foreign spelling an enclosing fix-it already rewrites (`.leading` in
     /// `VStack(alignment: .leading)`): not reported again.
     var foreignArgumentsHandled = Set<Int>()

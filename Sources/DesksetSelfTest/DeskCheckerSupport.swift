@@ -38,6 +38,11 @@ func runDeskCheckScratch(_ t: TestRunner) {
     guard let path = ProcessInfo.processInfo.environment["DESK_CHECK"],
           let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
     t.suite("Desk: check scratch") {
+        // `DESK_CHECK_LOOP=n` checks each snippet n more times first (for a sampling profiler).
+        if let loops = Int(ProcessInfo.processInfo.environment["DESK_CHECK_LOOP"] ?? "") {
+            let tree = Desk.parse(text, fileName: "Loop.desk")
+            for _ in 0..<loops { _ = Desk.check(tree) }
+        }
         for snippet in text.components(separatedBy: "\n----\n") {
             let start = ProcessInfo.processInfo.systemUptime
             let checked = deskCheck(snippet)
@@ -49,4 +54,10 @@ func runDeskCheckScratch(_ t: TestRunner) {
             }
         }
     }
+}
+
+/// `DESK_LARGE_WIDGET=file`: writes the 2,000-line widget of the performance suite to `file` (for profiling).
+func runDeskWriteLargeWidget(_ t: TestRunner) {
+    guard let path = ProcessInfo.processInfo.environment["DESK_LARGE_WIDGET"] else { return }
+    try? deskLargeWidget(lines: 2_000).write(toFile: path, atomically: true, encoding: .utf8)
 }

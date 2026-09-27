@@ -80,34 +80,32 @@ extension Checker {
         if let package = context.package, !isPackage { importPackage(package) }
         if let options = optionsBlock { collectOptions(options) }
         for style in styleDecls { collectStyle(style) }
-        // A style written inside `widget` (DK2014) still names a style, so `.style(big)` finds it (no DK3007).
+        // One walk over the widget's statements (not into expressions): a style written inside `widget` (DK2014)
+        // still names a style, so `.style(big)` finds it (no DK3007); a name assigned without a declaration
+        // (DK3035 at the assignment) is not also "there's no `page`" where it is read.
+        var assignedNames: [String] = []
         if let widget = widgetBlock {
             var stack = widget.childNodes
             while let node = stack.popLast() {
-                if node.kind == .styleDecl {
+                switch node.kind {
+                case .styleDecl:
                     collectStyle(node)
                     // Its one diagnostic is DK2014: not also "never used".
                     styles[StyleDeclSyntax(unchecked: node).name.token.name]?.used = true
-                    continue
+                case .assignment:
+                    let target = AssignmentSyntax(unchecked: node).target
+                    if target.path.count == 1, !target.name.token.isUpperName { assignedNames.append(target.path[0]) }
+                case .block, .callStmt, .ifStmt, .elseClause, .forStmt, .modifierApp, .modifierStmt:
+                    stack += node.childNodes.filter { Checker.holdsStatements($0.kind) }
+                default:
+                    break
                 }
-                stack += node.childNodes
             }
         }
         if let widget = widgetBlock, let block = widget.firstChild(.block) { collectDeclarations(block, strays: strayItems.declarations) }
         else { collectDeclarations(nil, strays: strayItems.declarations) }
         prewalkElementNames()
-        // Names assigned without a declaration anywhere in the widget (DK3035 at the assignment): reads of them,
-        // before or after, are not "there's no `page`" too.
-        if let widget = widgetBlock {
-            var stack = [widget]
-            while let node = stack.popLast() {
-                if node.kind == .assignment {
-                    let target = AssignmentSyntax(unchecked: node).target
-                    if target.path.count == 1, !target.name.token.isUpperName, decls[target.path[0]] == nil { provisionalNames.insert(target.path[0]) }
-                }
-                stack += node.childNodes
-            }
-        }
+        for name in assignedNames where decls[name] == nil { provisionalNames.insert(name) }
 
         if let info = infoBlock ?? packageBlock { checkInfo(info) }
         if let options = optionsBlock { checkOptions(options) }
@@ -133,6 +131,14 @@ extension Checker {
         for element in strayItems.elements { checkViewStatement(element, strayContext) }
         if let translations = translationsBlock { checkTranslations(translations) }
         for dropped in strayItems.declarations { _ = dropped }
+    }
+
+    /// Node kinds that are statements or hold statements (the walk over statements skips expressions).
+    static func holdsStatements(_ kind: SyntaxKind) -> Bool {
+        switch kind {
+        case .block, .callStmt, .ifStmt, .elseClause, .forStmt, .modifierApp, .modifierStmt, .styleDecl, .assignment: return true
+        default: return false
+        }
     }
 
     /// `info { … }`, `options { … }`: a block word followed by a block, written as a call among statements.
