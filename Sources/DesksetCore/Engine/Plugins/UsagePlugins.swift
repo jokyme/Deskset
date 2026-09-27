@@ -182,10 +182,12 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
     func select(_ all: [PerfValue], spec: PerfCounterSpec) -> (Double, String) {
         var values = all
         if percent {
-            guard let total = values.first(where: { $0.name == "_Total" })?.value, total > 0 else {
+            guard let total = values.first(where: { $0.name == "_Total" })?.value else {
                 report("percent", "UsageMonitor [\(name)]: Percent=1 needs a _Total instance; the value is 0")
                 return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
             }
+            // Nothing counted yet (a rate's first sample has no interval) or nothing at all: every share is 0 %.
+            guard total > 0 else { return (0, index == 0 ? "Total" : index == -1 ? "Average" : "") }
             values = values.map { PerfValue(name: $0.name, value: $0.value / total * 100) }
         }
         func matches(_ list: [String], _ name: String) -> Bool {
