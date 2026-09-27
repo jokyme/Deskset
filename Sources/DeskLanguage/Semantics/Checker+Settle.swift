@@ -82,15 +82,47 @@ extension Checker {
 
     private func settleGroup(_ group: [Int]) {
         let uses = group.flatMap { openSlots[$0].uses }
-        for s in group {
+        func isOption(_ s: Int) -> Bool { if case .option = openSlots[s].owner { return true }; return false }
+        // Options first: a declaration linked with an option (`lastTheme == options.theme`,
+        // `options.theme = lastTheme`) takes the type the option settles to when nothing else decides (§4.3).
+        for s in group.filter(isOption) + group.filter({ !isOption($0) }) {
             let slot = openSlots[s]
             switch slot.kind {
             case .dimension: settleDimension(s, uses: uses)
             case .base: settleBase(s, uses: uses)
-            case .type: settleType(s, uses: uses.filter { use in
-                if case .enumeration(let id) = use.expected, localEnums[id] != nil { return false }
-                return true
-            })
+            case .type:
+                guard case .declaration = slot.owner else {
+                    // A Picker's local enum is its own provisional type: it decides nothing for a Picker.
+                    settleType(s, uses: uses.filter { use in
+                        if case .enumeration(let id) = use.expected, localEnums[id] != nil { return false }
+                        return true
+                    })
+                    continue
+                }
+                // For a declaration, a local enum's case decides like any other (§4.13: `lastTheme = Theme.dark`).
+                var own = uses
+                let deciding = own.contains { use in
+                    switch use.expected {
+                    case .enumeration, .color, .paint, .binding(.enumeration): return true
+                    default: return false
+                    }
+                }
+                if !deciding {
+                    for other in group where other != s && isOption(other) {
+                        guard case .option(let option) = openSlots[other].owner else { continue }
+                        let id: String?
+                        switch option.val.type {
+                        case .enumeration(let e): id = e
+                        case .color: id = "Color"
+                        case .paint: id = "Paint"
+                        default: id = nil
+                        }
+                        guard let id, slot.candidates.contains(id) else { continue }
+                        own.append(OpenSlot.Use(expected: option.val.type, base: nil, range: option.nameRange,
+                                                description: LocalizedText("linked with options.\(option.name)", "与 options.\(option.name) 关联")))
+                    }
+                }
+                settleType(s, uses: own)
             }
         }
     }

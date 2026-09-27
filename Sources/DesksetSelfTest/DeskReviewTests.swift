@@ -477,4 +477,17 @@ func runDeskReviewTests(_ t: TestRunner) {
                                           file: DeskFileID(path: "package.desk")))
         t.equal(alone.diagnostics.map(\.id.rawValue), [])
     }
+
+    t.suite("Desk: review — settling by local enums (finding 5)") {
+        let theme = "options { theme = Picker(\"Theme\", [.light, .dark, .sepia]) }\nwidget {\n    saved lastTheme = .light\n"
+        for use in ["Text(\"{options.theme}\").onClick { lastTheme = Theme.dark }",
+                    "Text(\"{options.theme}\").hidden(if: lastTheme == options.theme)",
+                    "Text(\"{options.theme}\").onClick { options.theme = lastTheme }"] {
+            let checked = deskCheck("info { name: \"T\" }\n" + theme + "    " + use + "\n}")
+            t.equal(checked.diagnostics.map(\.id.rawValue), [], use)
+            t.equal(checked.options["theme"]?.localEnum, "Theme", use)
+        }
+        // Still ambiguous when nothing decides.
+        t.equal(deskReviewIDs(theme + "    Text(\"{lastTheme}\")\n}"), ["DK3018"])
+    }
 }
