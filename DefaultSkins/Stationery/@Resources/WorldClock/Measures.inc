@@ -34,6 +34,9 @@ DayGlyph1=sun.max.fill
 ; the weekday shows (%1) only when the city's date is not today's here
 TagDay0=%1
 TagDay1=
+; the tag's first word: the weekday (text-safe accent) when it shows, else AM or PM, which stays Secondary
+TagDayInk0=#AccentTextColor#
+TagDayInk1=#SecondaryTextColor#
 ; this Mac's own zone: named by the suite's place when that place keeps this Mac's time, else "Local" over "UTC+2"
 HomeName0=#WorldClockLocal#
 HomeName1=[MeasureHome]
