@@ -2265,9 +2265,10 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
   rounded to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced
   accuracy), only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused:
   `Status` 5 and a compatibility note that goes away once allowed. `timezone` is the city of this Mac's time zone
-  from the same table (Asia/Shanghai → Shanghai, Asia/Kolkata → Kolkata), without Location Services; zones without a
-  city (UTC, `Etc/…`) give `Status` 3. `Type=LocationSource` says where the place came from (4, "TimeZone"), so a skin
-  can ask "Not your city?".
+  from the same table (Asia/Shanghai → Shanghai, Asia/Kolkata → Kolkata; for a zone named after no town in the table,
+  the nearest town keeping its time to the zone's place in macOS's time zone database), without Location Services;
+  zones without a city (UTC, `Etc/…`, Antarctica) give `Status` 3. `Type=LocationSource` says where the place came
+  from (4, "TimeZone"), so a skin can ask "Not your city?".
 - **Why:** privacy; no online geocoder fits; weather on a first run without a prompt.
 - **Skin impact:** a one-time prompt for `auto`; small villages need coordinates; the time zone's city is only a guess.
 - **Status:** Mac-only

@@ -202,28 +202,56 @@ public final class PlaceDirectory {
 
     // MARK: Time zones
 
+    /// How far from a zone's own place (`TimeZoneLocations`) a town may be to stand for the zone.
+    public static let zoneTownRadius: Double = 200
+
     /// The town of a time zone (`Location=timezone`: the city of this Mac's time zone), from the zone's name and the
     /// table:
     /// 1. the town the zone is named after, in that zone (Asia/Shanghai → Shanghai, America/New_York → New York City,
     ///    America/Argentina/Buenos_Aires → Buenos Aires);
     /// 2. else the zone's largest town (zones named after a small town or an island: Europe/Isle_of_Man → Douglas);
     /// 3. else, for an older name of a zone that the table lists under its new name (Asia/Calcutta, Europe/Kiev,
-    ///    Asia/Saigon), the town of that name whose own zone keeps the same time in January and July.
-    /// nil for zones without a place (UTC, GMT, Etc/GMT-8, Factory) and zones whose towns are all smaller than the
-    /// table's (a few in Antarctica, Alaska and the Pacific).
-    public func place(forTimeZone identifier: String, near date: Date = Date()) -> PlaceMatch? {
+    ///    Asia/Saigon), the town of that name whose own zone keeps the same time in January and July;
+    /// 4. else the zone's own place in the time zone database (`locations`, macOS's `zone.tab`): for another name of a
+    ///    listed zone (America/Godthab), that zone's town by 1–3; otherwise the nearest town within `zoneTownRadius`
+    ///    kilometres whose own zone keeps the same time (America/Indiana/Knox → La Porte, Europe/Busingen →
+    ///    Schaffhausen).
+    /// nil for zones without a place (UTC, GMT, Etc/GMT-8, Factory) and zones without such a town nearby (Antarctica,
+    /// small islands, the far north).
+    public func place(forTimeZone identifier: String, near date: Date = Date(),
+                      locations: TimeZoneLocations = .system) -> PlaceMatch? {
         let id = identifier.trimmingCharacters(in: .whitespaces)
-        let parts = id.split(separator: "/").map(String.init)
-        guard parts.count >= 2, let city = parts.last, parts[0].lowercased() != "etc" else { return nil }
-        let named = index[PlaceDirectory.fold(city.replacingOccurrences(of: "_", with: " "))] ?? []
-        if let row = named.first(where: { places[$0].timeZone == id }) ?? zoneLeaders[id] {
+        guard let city = PlaceDirectory.zoneCity(id) else { return nil }
+        if let row = row(forZone: id, named: city, near: date) { return match(places[row], typed: nil) }
+        guard let rules = TimeZone(identifier: id), let (listed, spot) = locations.location(of: id) else { return nil }
+        if listed != id, let listedCity = PlaceDirectory.zoneCity(listed),
+           let row = row(forZone: listed, named: listedCity, near: date) {
             return match(places[row], typed: nil)
         }
+        let center = RoundedCoordinate(latitude: spot.latitude, longitude: spot.longitude)
+        let town = nearest(to: center, within: PlaceDirectory.zoneTownRadius) { place in
+            TimeZone(identifier: place.timeZone).map { PlaceDirectory.keepsSameTime(rules, $0, near: date) } ?? false
+        }
+        return town.map { match($0, typed: nil) }
+    }
+
+    /// A zone name with a place in it (`Region/City`, `America/Argentina/Buenos_Aires`): the city part, spaces for
+    /// underscores; nil for `UTC`, `Etc/…` and names without a slash.
+    static func zoneCity(_ id: String) -> String? {
+        let parts = id.split(separator: "/").map(String.init)
+        guard parts.count >= 2, let city = parts.last, !city.isEmpty, parts[0].lowercased() != "etc" else { return nil }
+        return city.replacingOccurrences(of: "_", with: " ")
+    }
+
+    /// Steps 1–3 of `place(forTimeZone:)`: the row of the town named `city` in zone `id`, else the zone's largest town,
+    /// else a town named `city` whose own zone keeps the same time.
+    private func row(forZone id: String, named city: String, near date: Date) -> Int? {
+        let named = index[PlaceDirectory.fold(city)] ?? []
+        if let row = named.first(where: { places[$0].timeZone == id }) ?? zoneLeaders[id] { return row }
         guard let zone = TimeZone(identifier: id) else { return nil }
-        let row = named.first { row in
+        return named.first { row in
             TimeZone(identifier: places[row].timeZone).map { PlaceDirectory.keepsSameTime(zone, $0, near: date) } ?? false
         }
-        return row.map { match(places[$0], typed: nil) }
     }
 
     /// Whether two zones are the same distance from UTC in the middle of January and of July of `date`'s year.
@@ -238,15 +266,16 @@ public final class PlaceDirectory {
     }
 
     /// The nearest place within `limit` kilometres (for coordinates and this Mac's location: offline, so nothing but
-    /// MET ever sees them).
-    public func nearest(to coordinate: RoundedCoordinate, within limit: Double) -> WeatherPlace? {
+    /// MET ever sees them) that `accept` takes (every place by default; asked only of places nearer than the best so far).
+    public func nearest(to coordinate: RoundedCoordinate, within limit: Double,
+                        where accept: (WeatherPlace) -> Bool = { _ in true }) -> WeatherPlace? {
         var best: (distance: Double, place: WeatherPlace)?
         let lat = coordinate.latitude
         // A cheap box test before the great-circle distance (1° of latitude ≈ 111 km).
         let latBox = limit / 111 + 0.01
         for p in places where abs(p.latitude - lat) <= latBox {
             let d = coordinate.distance(toLatitude: p.latitude, longitude: p.longitude)
-            if d <= limit, best.map({ d < $0.distance }) ?? true { best = (d, p) }
+            if d <= limit, best.map({ d < $0.distance }) ?? true, accept(p) { best = (d, p) }
         }
         return best?.place
     }

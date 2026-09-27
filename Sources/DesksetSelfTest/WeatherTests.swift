@@ -483,7 +483,9 @@ private func runWeatherLocationTests(_ t: TestRunner) {
 
         // The city of a time zone (Location=timezone): the town the zone is named after, else the zone's largest
         // town, else (an older name of the zone) the town of that name keeping the same time.
-        func city(_ zone: String) -> String? { d.place(forTimeZone: zone)?.place.name }
+        // Without the time zone database's places (step 4, tested below), so this part does not depend on macOS's.
+        let noLocations = TimeZoneLocations(text: "")
+        func city(_ zone: String) -> String? { d.place(forTimeZone: zone, locations: noLocations)?.place.name }
         t.equal(city("Asia/Shanghai"), "Shanghai", "the whole of China is Asia/Shanghai")
         t.equal(city("Asia/Kolkata"), "Kolkata", "the zone's own town, though Mumbai is larger")
         t.equal(city("Asia/Calcutta"), "Kolkata", "an older name of the zone")
@@ -492,17 +494,63 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(city("Europe/Zurich"), "Zürich")
         t.equal(city("America/St_Johns"), "St. John's", "the zone's largest town when the name is spelled differently")
         t.equal(city("America/Toronto"), "London", "the zone's largest town in the table")
-        t.equal(d.place(forTimeZone: "America/Toronto")?.place.country, "CA")
+        t.equal(d.place(forTimeZone: "America/Toronto", locations: noLocations)?.place.country, "CA")
         t.equal(city("Pacific/Honolulu"), "Honolulu")
         for zone in ["UTC", "GMT", "Etc/UTC", "Etc/GMT-8", "Etc/GMT+5", "Factory", "", "Asia", "America/Indiana/Tell_City",
                      "Nowhere/Atlantis"] {
             t.equal(city(zone), nil, "no city: \(zone)")
         }
-        t.equal(d.place(forTimeZone: "Asia/Shanghai")?.detail, "Shanghai, Shanghai, China")
+        t.equal(d.place(forTimeZone: "Asia/Shanghai", locations: noLocations)?.detail, "Shanghai, Shanghai, China")
         t.equal(PlaceDirectory.keepsSameTime(TimeZone(identifier: "Asia/Calcutta")!, TimeZone(identifier: "Asia/Kolkata")!,
                                              near: WeatherFixtures.clock), true)
         t.equal(PlaceDirectory.keepsSameTime(TimeZone(identifier: "Europe/London")!, TimeZone(identifier: "Africa/Accra")!,
                                              near: WeatherFixtures.clock), false, "the same in winter, not in summer")
+
+        // Step 4: the zone's own place in the time zone database (zone.tab), for zones named after no town in the table.
+        let zoneTab = TimeZoneLocations(text: """
+        # country\tcoordinates\tzone\tcomment
+        US\t+375711-0864541\tAmerica/Indiana/Tell_City\tCentral - IN (Perry)
+        GL\t+6411-05144\tAmerica/Nuuk\tmost of Greenland
+        US\t+515248-1763929\tAmerica/Adak\tAlaska - western Aleutians
+        DE\t+4742+00841\tEurope/Busingen\tBusingen
+        CH\t+4723+00832\tEurope/Zurich
+        a line that is not one
+        XX\t+9960+00000\tBad/Minutes
+        XX\t47N 8E\tBad/Format
+        """)
+        t.equal(zoneTab.entries.keys.sorted(), ["America/Adak", "America/Indiana/Tell_City", "America/Nuuk", "Europe/Busingen",
+                                               "Europe/Zurich"], "comments and unreadable lines are skipped")
+        t.close(zoneTab.entries["America/Indiana/Tell_City"]?.latitude ?? 0, 37 + 57.0 / 60 + 11.0 / 3600, accuracy: 1e-9)
+        t.close(zoneTab.entries["America/Indiana/Tell_City"]?.longitude ?? 0, -(86 + 45.0 / 60 + 41.0 / 3600), accuracy: 1e-9)
+        t.close(zoneTab.entries["America/Nuuk"]?.longitude ?? 0, -(51 + 44.0 / 60), accuracy: 1e-9)
+        for bad in ["", "+4742", "4742+00841", "+4742+0084", "+47x2+00841", "+9100+00000", "+4760+00841", "+4742+18100",
+                    "+4742+00841+"] {
+            t.check(TimeZoneLocations.coordinate(bad) == nil, "not a zone.tab point: \(bad)")
+        }
+        t.close(TimeZoneLocations.coordinate("-3133+15905")?.latitude ?? 0, -(31 + 33.0 / 60), accuracy: 1e-9)
+        t.equal(zoneTab.location(of: "America/Nuuk")?.zone, "America/Nuuk", "listed")
+        t.equal(zoneTab.location(of: "America/Godthab")?.zone, "America/Nuuk", "another name of a listed zone: same rules")
+        t.equal(zoneTab.location(of: "Etc/UTC")?.zone, nil)
+        t.equal(zoneTab.location(of: "Nowhere/Atlantis")?.zone, nil)
+        if TimeZoneLocations.rules("Europe/Vaduz") == TimeZoneLocations.rules("Europe/Zurich") {
+            t.equal(zoneTab.location(of: "Europe/Vaduz")?.zone, nil, "the rules of two listed zones: which one is unknown")
+        }
+        func zoneCity(_ zone: String, _ locations: TimeZoneLocations = zoneTab) -> WeatherPlace? {
+            d.place(forTimeZone: zone, locations: locations)?.place
+        }
+        t.equal(zoneCity("America/Indiana/Tell_City")?.admin1, "TN",
+                "the nearest town within 200 km keeping the zone's time: Springfield, Tennessee, 160 km")
+        t.equal(zoneCity("America/Godthab")?.name, "Nuuk", "another name of America/Nuuk: its town")
+        t.equal(zoneCity("Europe/Busingen")?.name, "Zürich")
+        t.equal(zoneCity("America/Adak")?.name, nil, "no town within 200 km")
+        t.equal(zoneCity("Etc/GMT-8")?.name, nil)
+        let nearNewYork = TimeZoneLocations(text: "US\t+4043-07400\tAmerica/Indiana/Tell_City\n")
+        t.equal(zoneCity("America/Indiana/Tell_City", nearNewYork)?.name, nil,
+                "towns nearby that keep another time are passed over (New York is Eastern)")
+        t.equal(zoneCity("America/Indiana/Tell_City", noLocations)?.name, nil, "without the database: none")
+        t.equal(zoneCity("Asia/Shanghai")?.name, "Shanghai", "steps 1–3 come first")
+        t.equal(d.nearest(to: RoundedCoordinate(latitude: 59.95, longitude: 10.80), within: 100) { $0.name != "Oslo" }?.name,
+                "Drammen", "nearest skips the places it is told to")
 
         // Nearest places.
         t.equal(d.nearest(to: RoundedCoordinate(latitude: 59.95, longitude: 10.80), within: 50)?.name, "Oslo")
@@ -547,6 +595,12 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(fullCity("Europe/Isle_of_Man"), "Douglas")
         t.equal(fullCity("Europe/Oslo"), "Oslo")
         t.equal(fullCity("Etc/UTC"), nil)
+        // From macOS's own zone.tab: the town of another name of a listed zone, and the nearest town keeping the time.
+        t.equal(fullCity("America/Godthab"), "Nuuk")
+        t.equal(fullCity("Europe/Busingen"), "Schaffhausen")
+        t.equal(full.place(forTimeZone: "America/Indiana/Knox")?.place.country, "US")
+        t.equal(full.place(forTimeZone: "America/North_Dakota/Center")?.place.country, "US")
+        t.equal(fullCity("Pacific/Chatham"), nil, "no other zone keeps New Zealand's Chatham Islands' time")
         var found = 0
         var wrongTime: [String] = []
         for zone in TimeZone.knownTimeZoneIdentifiers {
@@ -557,7 +611,8 @@ private func runWeatherLocationTests(_ t: TestRunner) {
                 wrongTime.append("\(zone) → \(m.place.name)")
             }
         }
-        t.check(found * 10 >= TimeZone.knownTimeZoneIdentifiers.count * 8, "most zones have a city: \(found)")
+        t.check(found * 100 >= TimeZone.knownTimeZoneIdentifiers.count * 85,
+                "most zones have a city: \(found) of \(TimeZone.knownTimeZoneIdentifiers.count)")
         t.equal(wrongTime, [], "each city keeps its zone's time")
     }
 }

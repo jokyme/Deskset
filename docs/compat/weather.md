@@ -138,13 +138,17 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
 - Mac (Deskset): `timezone` is the city this Mac's time zone is named after, found in the same offline table: the town
   of the zone's name in that zone (Asia/Shanghai → Shanghai, America/New_York → New York City, Asia/Kolkata → Kolkata
   although Mumbai is larger); else the zone's largest town (Europe/Isle_of_Man → Douglas); else, for an older name of a
-  zone (Asia/Calcutta, Europe/Kiev, Asia/Saigon), the town of that name whose zone keeps the same time. It needs no
-  Location Services and works in previews and `--render` too (`TZ=Europe/Oslo` picks a zone for a render). Zones
-  without a city (UTC, GMT, `Etc/…`) and the few whose towns are all smaller than the table's give `Status` 3
-  (NoLocation) and a line in the skin's log. `Type=LocationSource` is 4 ("TimeZone") for it (1 a place name,
-  2 coordinates, 3 `auto`, 0 none), whatever the state, so a skin can ask "Not your city? Change…": a zone covers whole
-  countries (all of China is Asia/Shanghai, all of India Asia/Kolkata). The zone is looked at again at every update of
-  the measure with the place, so the city follows the Mac to another zone.
+  zone (Asia/Calcutta, Europe/Kiev, Asia/Saigon), the town of that name whose zone keeps the same time; else the
+  zone's own place in the time zone database (macOS's `/usr/share/zoneinfo/zone.tab`): the town of the zone it is
+  another name for (America/Godthab → Nuuk), or the nearest town within 200 km whose zone keeps the same time
+  (America/Indiana/Knox → La Porte, Europe/Busingen → Schaffhausen). It needs no Location Services and works in
+  previews and `--render` too (`TZ=Europe/Oslo` picks a zone for a render). Zones without a city (UTC, GMT, `Etc/…`)
+  and zones without such a town nearby (Antarctica, small islands such as Pacific/Chatham, the far north) give
+  `Status` 3 (NoLocation) and a line in the skin's log (387 of the 443 zones macOS 26 knows have a city).
+  `Type=LocationSource` is 4 ("TimeZone") for it (1 a place name, 2 coordinates, 3 `auto`, 0 none), whatever the
+  state, so a skin can ask "Not your city? Change…": a zone covers whole countries (all of China is Asia/Shanghai, all
+  of India Asia/Kolkata). The zone is looked at again at every update of the measure with the place, so the city
+  follows the Mac to another zone.
 - Why: weather and sun times on a first run without a Location Services prompt.
 - Skin impact: a good first guess for most people, wrong for many in large zones; let the user confirm or change it.
 - Status: Deskset extension
