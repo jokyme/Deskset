@@ -35,3 +35,9 @@ DigitGroup=,
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
 ClockBottomLine=Sun
+
+; ---------------------------------------------------------------- Now Playing (and the other media widgets)
+; The player the media widgets prefer and open: Music or Spotify (whichever of the two is playing is shown)
+Player=Music
+; Now Playing's card: Glass, or Artwork (the colour of the album cover)
+NowPlayingBackground=Glass
