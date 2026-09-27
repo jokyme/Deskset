@@ -694,6 +694,31 @@ func runDeskCatalogTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Desk: catalog language reference") {
+        // The reference is generated from the catalog in both languages (§5.1, §9.7); nothing is left out.
+        for language in DiagnosticLanguage.allCases {
+            let reference = DeskReference.markdown(c, language: language)
+            t.equal(reference, DeskReference.markdown(c, language: language), "the same every time")
+            for x in c.components { t.check(reference.contains("`\(x.name)`"), "\(language): component \(x.name)") }
+            for m in c.modifiers { t.check(reference.contains("`.\(m.name)`"), "\(language): modifier .\(m.name)") }
+            for ns in c.namespaces {
+                for m in ns.members { t.check(reference.contains("`\(ns.name).\(m.name)"), "\(language): \(ns.name).\(m.name)") }
+            }
+            for f in c.functions { t.check(reference.contains("`\(f.name)`"), "\(language): \(f.name)") }
+            for x in c.controls { t.check(reference.contains("`\(x.name)`"), "\(language): control \(x.name)") }
+            for d in c.diagnostics { t.check(reference.contains("| \(d.id.rawValue) |"), "\(language): \(d.id.rawValue)") }
+            let tables = reference.split(separator: "\n").filter { $0.hasPrefix("|") }
+            t.check(tables.count > 700, "\(language): \(tables.count) table rows")
+            if language == .simplifiedChinese {
+                t.check(reference.contains("处理器占用率") && reference.contains("内边距"), "the Chinese reference is in Chinese")
+            }
+            print("  note    reference (\(language.rawValue)): \(reference.utf8.count / 1024) KiB, \(tables.count) table rows")
+        }
+        t.check(DeskReference.parameter(c.component(named: "Grid")!.signatures[0].params[0]) == "columns: Number (1…64) whole",
+                "a parameter reads as in the listings")
+        t.equal(DeskReference.parameter(c.modifier(named: "padding")!.signatures[0].params[0]), "_ all: Length?")
+    }
+
     t.suite("Desk: catalog lookups are fast enough for the editor") {
         // The editor re-checks 0.3 s after typing stops, parsing and checking the whole file each time (§0.4). The
         // catalog's part of a check is name lookups: here the lookups a checker makes for a 2,000-line widget, and
