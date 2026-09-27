@@ -433,8 +433,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   name; unknown codes (`%Q`) are shown as written; an empty Format is `%H:%M:%S`; with Format set, the number value
   is the leading number of the text; TimeZone accepts fractional hours (5.5) and is clamped to ±18 h; TimeStamp
   parsing is lenient (fewer digits, any case, trailing text ignored); AddDaysToHours defaults to 1 as documented.
-  Locale formats (`%c`, `%x`, `locale-date`) come from macOS (ICU) data and can differ from Windows' (e.g. a two-digit
-  year in German `%c`).
+  Uptime's number keeps fractions of a second (`[MeasureUptime:]` is 1234567.891…), so a skin can time an
+  animation with it. Locale formats (`%c`, `%x`, `locale-date`) come from macOS (ICU) data and can differ from
+  Windows' (e.g. a two-digit year in German `%c`).
 - Why: judgment calls where the manual is silent; macOS locale data.
 - Skin impact: localized dates may be spelled slightly differently.
 - Status: emulated

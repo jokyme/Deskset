@@ -442,7 +442,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   FormatLocale 使用 Windows 的区域数据。
 - **Mac：** 格式码相同。取舍判断：`%r` 为大写的 “10:55:03 PM”；`%Z` 为英文时区名；未知格式码原样输出；Format 为空时
   等同 `%H:%M:%S`；设置了 Format 时，数值取文字开头的数字；TimeZone 接受小数小时，且不作用于 TimeStamp 的值（数字形式的
-  也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1。区域格式（`%c`、`%x`）来自 macOS（ICU）数据。
+  也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1；Uptime 的数值保留秒的小数部分。区域格式（`%c`、`%x`）来自
+  macOS（ICU）数据。
   FormatLocale / TimeStampLocale 通过内置的常用区域表识别 Windows 的三字母语言代码（`DEU`、`CHS`……）和 `Language_Country`
   名称。
 - **原因：** macOS 的区域数据；手册没有规定细节。

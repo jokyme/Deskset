@@ -597,6 +597,10 @@ enum AppSelfTest {
             let up = m.uptime()
             let boot = SystemMonitor.sysctlTime("kern.boottime") ?? 0
             t.close(up, Date().timeIntervalSince1970 - boot, accuracy: 5)
+            // Fractions of a second count: the Turntable times its turning label with an Uptime measure.
+            Thread.sleep(forTimeInterval: 0.05)
+            let later = m.uptime()
+            t.check(later - up > 0.04 && later - up < 1, "the uptime has fractions of a second: \(later - up)")
             let a = m.networkCounters(interface: nil)
             RenderCommand.wait(milliseconds: 600)
             let b = m.networkCounters(interface: nil)

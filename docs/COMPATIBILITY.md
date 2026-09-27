@@ -483,7 +483,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** the same codes. Judgment calls: `%r` is upper-case "10:55:03 PM"; `%Z` is the English zone name; unknown
   codes are shown as written; an empty Format means `%H:%M:%S`; with Format set, the number is the leading number
   of the text; TimeZone accepts fractional hours and is not applied to TimeStamp values (numeric ones included);
-  TimeStamp parsing is lenient; AddDaysToHours defaults to 1. Locale formats (`%c`, `%x`) come from macOS (ICU) data.
+  TimeStamp parsing is lenient; AddDaysToHours defaults to 1; Uptime's number keeps fractions of a second. Locale
+  formats (`%c`, `%x`) come from macOS (ICU) data.
   FormatLocale / TimeStampLocale understand Windows' three-letter language codes (`DEU`, `CHS`…) and `Language_Country`
   names from a built-in table of common locales.
 - **Why:** macOS locale data; the manual is silent on the details.
