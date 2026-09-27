@@ -105,14 +105,11 @@ enum SkinDrawingSelfTests {
             let size = CGSize(width: skin.width, height: skin.height), scale: CGFloat = 2
             let w = Int(size.width * scale), h = Int(size.height * scale)
             let drawing = SkinBitmapDrawing()
-            var now = 100.0
-            /// One frame 50 ms after the previous one, after `action`; its picture against a full drawing.
+            /// One frame after `action`; its picture against a full drawing.
             func frame(_ label: String, _ action: String? = nil, update: Bool = true) -> SkinBitmapDrawing {
                 if let action { skin.execute(action, from: nil) }
                 if update { skin.update() }
-                now += 0.05
-                let picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: "test",
-                                              now: now)
+                let picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: "test")
                 let worst = difference(picture, fullDrawing(skin, w, h, scale: scale, space))
                 t.check(worst <= SkinBitmapDrawing.tolerance, "\(label): differs by \(worst)")
                 return drawing
@@ -134,18 +131,10 @@ enum SkinDrawingSelfTests {
                       update: false)
             for i in 0..<3 { _ = frame("again \(i)") }
             t.check(drawing.lastStats.copied >= 2, "and copies again once they rest: \(drawing.lastStats)")
-            // Frames a second apart keep nothing.
-            for _ in 0..<3 {
-                skin.update()
-                now += 1
-                _ = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: "test", now: now)
-            }
-            t.equal(drawing.lastStats.copied + drawing.lastStats.made, 0, "slow frames draw everything")
-            t.equal(drawing.keptRuns, 0, "and keep no picture")
             // Another look (or fonts, size, scale) starts again.
-            now += 0.05
-            _ = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: "other", now: now)
+            _ = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: "other")
             t.equal(drawing.lastStats.copied, 0)
+            t.equal(drawing.keptRuns, 0, "nothing kept from before")
             skin.close()
         }
     }
@@ -196,20 +185,20 @@ enum SkinDrawingSelfTests {
                 skins.append(skin)
             }
             let drawings = skins.map { _ in SkinBitmapDrawing() }
-            func draw(_ frames: Int, from start: Double) {
-                for f in 0..<frames {
+            func draw(_ frames: Int) {
+                for _ in 0..<frames {
                     for (skin, drawing) in zip(skins, drawings) {
                         skin.update()
                         _ = drawing.picture(of: skin, size: CGSize(width: skin.width, height: skin.height), scale: 2,
-                                            space: space, appearance: "test", now: start + Double(f))
+                                            space: space, appearance: "test")
                     }
                 }
             }
-            draw(3, from: 0)
+            draw(3)
             let before = physicalFootprint()
-            draw(30, from: 10)
+            draw(30)
             let grown = physicalFootprint() - before
-            // Each skin holds two bitmaps of its own size (at most 360 × 360 pt at 2x: 1 MB each); nothing piles up.
+            // Each skin holds two bitmaps of its own size and at most `maxRuns` pictures; nothing piles up.
             t.check(grown < 24 << 20, "grew \(grown >> 20) MB")
             skins.forEach { $0.close() }
         }

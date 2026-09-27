@@ -9,11 +9,11 @@ import DesksetCore
 /// graphics memory per process. Measured on the release build (2026-09-27): the first-run four (Clock S, Calendar S,
 /// Weather M, System M) took 187 MB with `draw(_:)` and 44 MB drawn here, for 0.55 % CPU instead of 0.32 %.
 ///
-/// Skins that redraw often (frames 250 ms apart or closer: a turning Turntable label, Spectrum's bars, Studio VU's
-/// needles, a pointer followed by the Mouse plugin) also keep pictures of runs of meters that did not change since
-/// the previous frame (`Meter.drawGeneration`): a frame draws the meters that changed and copies the rest. Their
-/// software drawing would otherwise cost more than the accelerated path (the playing Turntable: 19 % of a core drawn
-/// in full, 14 % with `draw(_:)`).
+/// It also keeps pictures of runs of meters that did not change since the previous frame (`Meter.drawGeneration`): a
+/// frame draws the meters that changed and copies the rest. Skins that redraw 30 times a second (a turning Turntable
+/// label, Spectrum's bars, Studio VU's needles) would otherwise cost more than on the accelerated path (the playing
+/// Turntable: 19 % of a core drawn in full, 14 % with `draw(_:)`, 6–7 % with kept pictures), and the ones that redraw
+/// once a second save their static faces too (Studio VU at rest: 1.5 % → 0.7 %; System L 1.5 % → 1.1 %), for a few MB.
 final class SkinBitmapDrawing {
     /// One step of the drawing: the base (glass hit areas and background, `id` the skin) or a top-level meter (a
     /// container with its content), and the generation it was drawn at.
@@ -30,8 +30,6 @@ final class SkinBitmapDrawing {
 
     /// Pictures kept per skin; runs beyond these are drawn every frame.
     static let maxRuns = 4
-    /// Frames closer than this keep pictures of the unchanged runs.
-    static let fastInterval: TimeInterval = 0.25
     /// `DESKSET_RUNCACHE_VERIFY=1`: every frame that copies a picture is also drawn in full, and a difference is
     /// logged (once per skin). A check for development, never on by default.
     static var verifies = ProcessInfo.processInfo.environment["DESKSET_RUNCACHE_VERIFY"] == "1"
@@ -39,9 +37,6 @@ final class SkinBitmapDrawing {
     /// but each 8-bit step rounds (4 measured where a turning label meets the ring over it). A stale picture differs
     /// by far more.
     static let tolerance = 8
-    /// `DESKSET_RUNCACHE_ALWAYS=1`: pictures are kept whatever the frame rate (with `verifies`, a check of every
-    /// skin's pictures; tests). Never on by default.
-    static var alwaysKeeps = ProcessInfo.processInfo.environment["DESKSET_RUNCACHE_ALWAYS"] == "1"
 
     /// Two bitmaps, used in turn: the layer still shows the picture of one while the next frame is drawn into the
     /// other, so drawing never has to copy a picture Core Animation holds.
@@ -54,8 +49,6 @@ final class SkinBitmapDrawing {
     private var drawnFor: ResetKey?
     private var baseGeneration = 0
     private var lastGlass: [GlassRegion] = []
-    private var lastFrame: TimeInterval = -.infinity
-    private var closeFrames = 0
     private var reportedDifference = false
 
     /// What a picture was drawn for: another skin (a refresh), size, scale, colour space, appearance or fonts.
@@ -77,8 +70,7 @@ final class SkinBitmapDrawing {
     private(set) var differences = 0
 
     /// The skin as it is now, `size` points at `scale` pixels per point; nil for an empty size.
-    func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String,
-                 now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> CGImage? {
+    func picture(of skin: Skin, size: CGSize, scale: CGFloat, space: CGColorSpace, appearance: String) -> CGImage? {
         let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
         guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
         let key = ResetKey(skin: ObjectIdentifier(skin), width: w, height: h, scale: scale,
@@ -94,8 +86,6 @@ final class SkinBitmapDrawing {
         guard bitmaps.count == 2 else { return nil }
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
-        closeFrames = now - lastFrame < SkinBitmapDrawing.fastInterval ? min(closeFrames + 1, 10) : 0
-        lastFrame = now
         let meters = SkinRenderer.topLevelMeters(skin)
         if skin.glassRegions != lastGlass {
             lastGlass = skin.glassRegions
@@ -106,7 +96,6 @@ final class SkinBitmapDrawing {
         let stable = items.map { previous[$0.id] == $0.generation }
         previous = Dictionary(items.map { ($0.id, $0.generation) }, uniquingKeysWith: { a, _ in a })
 
-        let keeps = closeFrames >= 2 || SkinBitmapDrawing.alwaysKeeps
         var kept: [Run] = []
         var stats = (copied: 0, made: 0, drawn: 0)
         // The bitmap still holds an older frame: the first picture replaces all of it, else it is cleared first.
@@ -123,7 +112,7 @@ final class SkinBitmapDrawing {
         }
         var index = 0
         while index < items.count {
-            guard keeps, stable[index] else {
+            guard stable[index] else {
                 drawDirectly(index..<index + 1)
                 index += 1
                 continue

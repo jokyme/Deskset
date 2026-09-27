@@ -65,7 +65,7 @@ moves to one thread per skin. The estimate is 26–38 engineer-days without the 
    `NSViewBackingLayerContents`): the drawing was recorded in Deskset and rasterized through Core Animation's
    accelerated path. Measured on the release build, that path held 110–150 MB of graphics memory per process as soon
    as a visible skin redrew every second (the first-run four: 187 MB; drawn into bitmaps: 44 MB, for 0.55 % CPU
-   instead of 0.32 %). Rasterizing in Deskset costs more CPU for skins that redraw 30 times a second, so for those
+   instead of 0.32 %). Rasterizing in Deskset costs more CPU, above all for skins that redraw 30 times a second, so
    the view keeps pictures of the runs of meters that did not change since the previous frame (`Meter.drawGeneration`)
    and draws only the ones that did (Studio VU playing: 11.9 % → 2.9 % of a core; Spectrum 6.7 % → 4.0 %). For §7 this
    means frames are now bitmaps, as in options C and D.
