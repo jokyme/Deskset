@@ -72,9 +72,11 @@ func deskTriviaProblem(_ piece: Trivia) -> String? {
     case .tabs(let n): return n > 0 ? nil : "empty tabs"
     case .newline: return nil
     case .lineComment(let s):
-        if !s.hasPrefix("//") || s.contains("\n") || s.contains("\r") { return "bad line comment \(s.debugDescription)" }
+        if !s.utf8.starts(with: "//".utf8) || s.utf8.contains(0x0A) || s.utf8.contains(0x0D) {
+            return "bad line comment \(s.debugDescription)"
+        }
     case .blockComment(let s):
-        if !s.hasPrefix("/*") { return "bad block comment \(s.debugDescription)" }
+        if !s.utf8.starts(with: "/*".utf8) { return "bad block comment \(s.debugDescription)" }
     case .unusualSpace(let s):
         if s.isEmpty || !s.unicodeScalars.allSatisfy({ $0.value > 0x7F }) { return "bad unusual space" }
     case .invisible(let s):
@@ -100,4 +102,27 @@ struct DeskRandom {
     mutating func int(_ n: Int) -> Int { n <= 1 ? 0 : Int(next() % UInt64(n)) }
     mutating func pick<T>(_ items: [T]) -> T { items[int(items.count)] }
     mutating func chance(_ percent: Int) -> Bool { int(100) < percent }
+}
+
+/// The tokens formatting must keep (F12), in order: every non-trivia token, except the `;` and `,` separators of
+/// blocks (which may become line breaks) and a language group's `:` (removed); a translation entry's `=` reads as `:`.
+func deskSignificantTokens(_ tree: SyntaxTree) -> [String] {
+    var out: [String] = []
+    var stack: [(node: SyntaxNode, next: Int)] = [(tree.root, 0)]
+    while !stack.isEmpty {
+        let (node, next) = stack[stack.count - 1]
+        guard next < node.children.count else { stack.removeLast(); continue }
+        stack[stack.count - 1].next += 1
+        switch node.children[next] {
+        case .node(let child):
+            stack.append((child, 0))
+        case .token(let t):
+            if t.isMissing || t.kind == .eof { continue }
+            if (node.kind == .block || node.kind == .sourceFile) && (t.kind == .semicolon || t.kind == .comma) { continue }
+            if node.kind == .group && t.kind == .colon { continue }
+            if node.kind == .entry && t.kind == .equal { out.append("colon::"); continue }
+            out.append("\(t.kind.rawValue):\(t.text)")
+        }
+    }
+    return out
 }

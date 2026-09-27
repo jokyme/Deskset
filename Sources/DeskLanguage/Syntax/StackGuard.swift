@@ -38,17 +38,20 @@ public enum StackGuard {
     public static func run<T>(needing neededBytes: Int, _ body: () -> T) -> T {
         if remainingStackBytes() > neededBytes + (256 << 10) { return body() }
         return withoutActuallyEscaping(body) { escapable in
-            let box = ResultBox<T>()
+            // The thread holds only the box; the box lets go of the closure before the waiter wakes up, so the
+            // closure never outlives this call.
+            let work = Work<T>(escapable)
             let done = DispatchSemaphore(value: 0)
-            let thread = Thread {
-                box.value = escapable()
+            let thread = Thread { [work] in
+                work.result = work.job?()
+                work.job = nil
                 done.signal()
             }
             thread.stackSize = largeStackSize
             thread.name = "Desk large stack"
             thread.start()
             done.wait()
-            return box.value!
+            return work.result!
         }
     }
 
@@ -93,7 +96,9 @@ public enum StackGuard {
         return min(deepest + questions, levels) + 4
     }
 
-    private final class ResultBox<T>: @unchecked Sendable {
-        var value: T?
+    private final class Work<T>: @unchecked Sendable {
+        var job: (() -> T)?
+        var result: T?
+        init(_ job: @escaping () -> T) { self.job = job }
     }
 }

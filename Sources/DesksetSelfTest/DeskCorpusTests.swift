@@ -118,9 +118,9 @@ func runDeskCorpusTests(_ t: TestRunner) {
                 continue
             }
             if once != text { formattedCount += 1 }
-            let before = deskTokens(text).filter { !$0.hasPrefix("semicolon:") && !$0.hasPrefix("comma:") && !$0.hasPrefix("colon:") && !$0.hasPrefix("equal:") }
-            let after = deskTokens(once).filter { !$0.hasPrefix("semicolon:") && !$0.hasPrefix("comma:") && !$0.hasPrefix("colon:") && !$0.hasPrefix("equal:") }
-            if before != after { t.check(false, "\(name): tokens changed") }
+            if deskSignificantTokens(deskParse(text)) != deskSignificantTokens(deskParse(once)) {
+                t.check(false, "\(name): tokens changed")
+            }
             let strings = deskTokens(text).filter { $0.hasPrefix("stringText:") || $0.hasPrefix("rawString:") }
             if strings != deskTokens(once).filter({ $0.hasPrefix("stringText:") || $0.hasPrefix("rawString:") }) {
                 t.check(false, "\(name): text changed")
@@ -143,8 +143,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
             let onceTree = deskParse(once)
             if !onceTree.diagnostics.isEmpty { problems.append("formatted diagnostics \(onceTree.diagnostics.map(\.description))") }
             if Desk.formatted(onceTree) != once { problems.append("not idempotent") }
-            let tokens = { (s: String) in deskTokens(s).filter { !$0.hasPrefix("semicolon:") } }
-            if tokens(text) != tokens(once) { problems.append("tokens changed") }
+            if deskSignificantTokens(tree) != deskSignificantTokens(onceTree) { problems.append("tokens changed") }
             if !problems.isEmpty {
                 failures += 1
                 if failures <= 3 { t.check(false, "seed \(seed) file \(n): \(problems)\n\(text)") }
@@ -214,8 +213,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
             if deskParse(text).diagnostics != tree.diagnostics { problems.append("not deterministic") }
             // The formatter never breaks a file either (it may decline to format it).
             let formatted = Desk.formatted(tree)
-            if deskTokens(formatted).filter({ !$0.hasPrefix("semicolon:") && !$0.hasPrefix("comma:") && !$0.hasPrefix("colon:") && !$0.hasPrefix("equal:") })
-                != deskTokens(text).filter({ !$0.hasPrefix("semicolon:") && !$0.hasPrefix("comma:") && !$0.hasPrefix("colon:") && !$0.hasPrefix("equal:") }) {
+            if deskSignificantTokens(deskParse(formatted)) != deskSignificantTokens(tree) {
                 problems.append("formatting changed tokens")
             }
             if Desk.formatted(deskParse(formatted)) != formatted { problems.append("formatting not idempotent") }
@@ -224,6 +222,9 @@ func runDeskCorpusTests(_ t: TestRunner) {
             if !problems.isEmpty {
                 failures += 1
                 if failures <= 3 { t.check(false, "seed \(seed) input \(n): \(problems)\n\(text.debugDescription.prefix(600))") }
+                if let dump = ProcessInfo.processInfo.environment["DESK_FUZZ_DUMP"] {
+                    FileManager.default.createFile(atPath: dump + "/input-\(n).txt", contents: Data(text.utf8))
+                }
             }
         }
         t.equal(failures, 0, "fuzz failures (seed \(seed))")

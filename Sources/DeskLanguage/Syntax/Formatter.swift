@@ -109,6 +109,9 @@ final class DeskFormatter {
     // Decisions.
     var brokenBlocks: Set<Int> = []
     var brokenChains: Set<Int> = []
+    /// Keeps every line break as written and adds none (no block, chain or separator is split): the fallback
+    /// when the full layout would change how a file with errors parses.
+    var conservative = false
 
     // Layout of one pass.
     var mustBreak: [Bool] = []
@@ -123,6 +126,14 @@ final class DeskFormatter {
         bytes = Array(tree.text.utf8)
         newline = DeskFormatter.dominantNewline(tree.root)
         annotate()
+        // Where the parse used indentation to repair unbalanced braces, formatting would change what the repair
+        // sees: those parts of the file are left as written.
+        for segment in tree.repair.segments {
+            for k in toks.indices where toks[k].start >= segment.lowerBound && toks[k].start < segment.upperBound
+                && toks[k].role != .eof {
+                toks[k].frozen = true
+            }
+        }
     }
 
     // MARK: - Newlines
@@ -520,9 +531,14 @@ final class DeskFormatter {
         cursor = 0
         layoutNode(tree.root, blockIndent: 0, unitIndent: 0)
         for item in topItems where item.first < n { indentOf[item.first] = 0 }
+        if conservative {
+            mustBreak = [Bool](repeating: false, count: n)
+            mustJoin = [Bool](repeating: false, count: n)
+            for k in toks.indices { toks[k].remove = false }
+        }
         // Top-level items each start a line; between two blocks there is exactly one blank line (F7).
         for (index, item) in topItems.enumerated() where item.first < n && index > 0 {
-            if !toks[item.first].frozen { mustBreak[item.first] = true }
+            if !toks[item.first].frozen && !conservative { mustBreak[item.first] = true }
             let previous = topItems[index - 1]
             let bothStyles = isSingleLineStyle(previous) && isSingleLineStyle(item)
             if item.isBlock && previous.isBlock && !bothStyles { exactBlankBefore[item.first] = true }
@@ -530,7 +546,8 @@ final class DeskFormatter {
     }
 
     func isSingleLineStyle(_ item: TopItem) -> Bool {
-        item.block >= 0 && !brokenBlocks.contains(item.block) && !blocks[item.block].frozen
+        item.block >= 0 && blocks[item.block].singleLine && !brokenBlocks.contains(item.block)
+            && !blocks[item.block].frozen
     }
 
     private var indentWidth: Int { options.indentWidth }
@@ -737,10 +754,22 @@ final class DeskFormatter {
         var starts: [Int]
     }
 
-    /// Whether a gap is left exactly as written: next to frozen code or a missing token.
+    /// Whether a gap is left exactly as written: next to frozen code or a missing token, or before the end of a
+    /// file that ends inside an unclosed block comment (anything added there would become part of the comment).
     func gapIsVerbatim(_ p: Int, _ k: Int) -> Bool {
         if p >= 0 && toks[p].frozen { return true }
         if toks[k].frozen || toks[k].missingBefore { return true }
+        if toks[k].role == .eof && endsInUnclosedComment(p, k) { return true }
+        return false
+    }
+
+    func endsInUnclosedComment(_ p: Int, _ k: Int) -> Bool {
+        for piece in gapPieces(p, k).reversed() {
+            switch piece {
+            case .blockComment(let s): return !(s.count >= 4 && s.hasSuffix("*/"))
+            case .lineComment, .newline, .spaces, .tabs, .unusualSpace, .invisible, .byteOrderMark: continue
+            }
+        }
         return false
     }
 
@@ -770,7 +799,7 @@ final class DeskFormatter {
             if toks[k].remove { continue }
             let gap: String
             if p >= 0, toks[p].frozen, !toks[k].frozen, !toks[k].missingBefore, toks[p].end < toks[k].start,
-               let partial = renderAfterFrozen(p, k) {
+               !(toks[k].role == .eof && endsInUnclosedComment(p, k)), let partial = renderAfterFrozen(p, k) {
                 // After code left as written: its line stays as it is; the next line is indented as usual.
                 gap = partial
             } else if gapIsVerbatim(p, k) {
@@ -1088,13 +1117,49 @@ final class DeskFormatter {
             output = render()
             if !breakOverflowingLines(output) { break }
         }
-        guard verify(output.text) else {
-            if ProcessInfo.processInfo.environment["DESK_FORMAT_DEBUG"] != nil {
-                FileHandle.standardError.write(Data(("formatter: verification failed for:\n" + output.text + "\n").utf8))
-            }
-            return []
+        let original = DeskFormatter.structure(tree)
+        if verify(output.text, against: original) { return minimalEdits(output) }
+        // A file with errors can read differently once lines are split (a line that failed to parse may look like
+        // another language's on its own): keep its line breaks as written and only normalise the rest.
+        conservative = true
+        brokenBlocks = []
+        brokenChains = []
+        for k in toks.indices { toks[k].remove = false }
+        layout()
+        output = render()
+        if verify(output.text, against: original) { return minimalEdits(output) }
+        if ProcessInfo.processInfo.environment["DESK_FORMAT_DEBUG"] != nil {
+            FileHandle.standardError.write(Data(("formatter: verification failed for:\n" + output.text + "\n").utf8))
         }
-        return minimalEdits(output)
+        return []
+    }
+
+    /// The shape of a parse, for checking that formatting kept it (F12): node kinds and token texts in order,
+    /// without the separators a formatter may turn into line breaks and with the alternates it normalises.
+    static func structure(_ tree: SyntaxTree) -> [String] {
+        var out: [String] = []
+        var stack: [(node: SyntaxNode, next: Int)] = [(tree.root, 0)]
+        while !stack.isEmpty {
+            let (node, next) = stack[stack.count - 1]
+            guard next < node.children.count else {
+                out.append(")")
+                stack.removeLast()
+                continue
+            }
+            stack[stack.count - 1].next += 1
+            switch node.children[next] {
+            case .node(let child):
+                out.append(child.kind.rawValue + (child.foreignKind.map { ":" + $0.rawValue } ?? "") + "(")
+                stack.append((child, 0))
+            case .token(let t):
+                if t.kind == .eof { continue }
+                if (node.kind == .block || node.kind == .sourceFile) && (t.kind == .semicolon || t.kind == .comma) { continue }
+                if node.kind == .group && t.kind == .colon { continue }
+                if node.kind == .entry && t.kind == .equal { out.append(":"); continue }
+                out.append(t.isMissing ? "<\(t.kind.rawValue)>" : t.text)
+            }
+        }
+        return out
     }
 
     /// Breaks the outermost single-line block or modifier chain on each line wider than `maxWidth`. Returns
@@ -1146,19 +1211,11 @@ final class DeskFormatter {
         return changed
     }
 
-    /// The formatted text must lex to the same tokens as the original, apart from removed separators and
-    /// normalised alternates (F12).
-    func verify(_ formatted: String) -> Bool {
-        let lexed = Lexer.lex(Array(formatted.utf8), file: tree.file)
-        var expected: [(TokenKind, String)] = []
-        for tok in toks where !tok.remove {
-            let text = tok.replacement ?? tok.token.text
-            expected.append((tok.replacement == ":" ? .colon : tok.token.kind, text))
-        }
-        let actual = lexed.tokens.filter { !$0.isMissing }.map { ($0.kind, $0.text) }
-        guard actual.count == expected.count else { return false }
-        for (x, y) in zip(actual, expected) where x.0 != y.0 || x.1 != y.1 { return false }
-        return true
+    /// The formatted text must parse to the same structure and tokens as the original, apart from separators
+    /// turned into line breaks and normalised alternates (F12).
+    func verify(_ formatted: String, against original: [String]) -> Bool {
+        let reparsed = SyntaxParsing.parse(formatted, file: tree.file, version: 0)
+        return DeskFormatter.structure(reparsed) == original
     }
 
     /// Edits that turn the original text into the rendered one, one per changed gap (bytes outside them never

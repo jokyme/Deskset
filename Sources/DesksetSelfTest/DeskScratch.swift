@@ -56,6 +56,11 @@ func runDeskScratch(_ t: TestRunner) {
                 let formatted = Desk.formatted(tree)
                 print("--- formatted:")
                 print(formatted.replacingOccurrences(of: " ", with: "·"))
+                let a = deskSignificantTokens(tree), b = deskSignificantTokens(deskParse(formatted))
+                if a != b {
+                    let d = zip(a, b).enumerated().first { $0.element.0 != $0.element.1 }
+                    print("!!! TOKENS DIFFER at \(d?.offset ?? -1): \(d.map { "\($0.element.0) vs \($0.element.1)" } ?? "counts \(a.count) vs \(b.count)")")
+                }
                 let again = Desk.formatted(deskParse(formatted))
                 if again != formatted { print("!!! NOT IDEMPOTENT:\n" + again.replacingOccurrences(of: " ", with: "·")) }
             }
