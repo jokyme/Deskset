@@ -141,6 +141,14 @@ enum DefaultSkinsSelfTests {
                 t.close(clock.topLeftPosition.y, Double(height - visible.maxY) + 20, accuracy: 0.5)
                 t.close(weather.topLeftPosition.y, Double(height - visible.maxY) + 210, accuracy: 0.5)
                 t.equal(app.state.skin("Stationery\\Weather")?.y, weather.topLeftPosition.y, "saved like a drag")
+                // The windows have their size by now, so the Manage window can be placed beside them.
+                t.equal(clock.window.frame.size, NSSize(width: 100, height: 40))
+                t.equal(weather.window.frame.size, NSSize(width: 100, height: 40))
+                let column = clock.window.frame.union(weather.window.frame)
+                if let beside = ManageWindowController.frame(beside: column, size: NSSize(width: 900, height: 692),
+                                                             minSize: NSSize(width: 780, height: 520), visible: visible) {
+                    t.check(!beside.intersects(column), "the Manage window leaves the first widgets uncovered")
+                }
             }
             t.equal(app.state.activeConfigs.map(\.config).sorted(), ["Stationery\\Clock", "Stationery\\Weather"])
 

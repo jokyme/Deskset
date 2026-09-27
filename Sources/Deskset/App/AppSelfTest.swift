@@ -978,6 +978,33 @@ enum AppSelfTest {
                     "the detail grids never pull the window narrower")
             manage.close()
         }
+        t.suite("App: manage window: on the first launch it opens beside the first widgets") {
+            let size = NSSize(width: 900, height: 692), minSize = NSSize(width: 780, height: 520)
+            // A 1512 × 982 MacBook with the Dock on the left: the column is at x 62–422, so the window goes right.
+            let visible = NSRect(x: 42, y: 0, width: 1470, height: 949)
+            let column = NSRect(x: 62, y: 359, width: 360, height: 570)
+            let right = ManageWindowController.frame(beside: column, size: size, minSize: minSize, visible: visible)
+            t.equal(right, NSRect(x: 442, y: 237, width: 900, height: 692), "20 pt right of the column, top 20 pt down")
+            if let right { t.check(!right.intersects(column), "the widgets stay uncovered") }
+            // Too little room for the full width: narrower, down to its minimum.
+            let narrow = NSRect(x: 0, y: 0, width: 1280, height: 775)
+            let squeezed = ManageWindowController.frame(beside: NSRect(x: 20, y: 185, width: 360, height: 570),
+                                                        size: size, minSize: minSize, visible: narrow)
+            t.equal(squeezed, NSRect(x: 400, y: 63, width: 860, height: 692))
+            // A column on the right: the window goes to its left.
+            let leftOf = ManageWindowController.frame(beside: NSRect(x: 1100, y: 359, width: 360, height: 570),
+                                                      size: size, minSize: minSize, visible: visible)
+            t.equal(leftOf?.maxX, 1080)
+            t.equal(leftOf?.width, 900)
+            // No room on either side: nil (the window stays centred).
+            t.equal(ManageWindowController.frame(beside: NSRect(x: 300, y: 200, width: 360, height: 500), size: size,
+                                                 minSize: minSize, visible: NSRect(x: 0, y: 0, width: 1024, height: 740)),
+                    nil)
+            // A short screen shortens it, but not below its minimum.
+            let short = ManageWindowController.frame(beside: column, size: size, minSize: minSize,
+                                                     visible: NSRect(x: 42, y: 0, width: 1470, height: 540))
+            t.equal(short?.height, 520)
+        }
         t.suite("App: manage window: the details' page has a place as well as a width") {
             guard let app = try makeApp(t) else { return }
             let manage = ManageWindowController(app: app)

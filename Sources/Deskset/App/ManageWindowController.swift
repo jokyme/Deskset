@@ -47,6 +47,8 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private var skinSections: [NSView] = []
     /// Width of the label column shared by the metadata and settings grids, so their labels line up.
     private static let labelColumnWidth: CGFloat = 104
+    /// The window had no saved frame and was centered: `placeBeside` may still move it.
+    private var placedByDefault = false
 
     init(app: AppController) {
         self.app = app
@@ -61,7 +63,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         window.delegate = self
         buildInterface()
         window.setFrameAutosaveName("DesksetManageWindow")
-        if !window.setFrameUsingName("DesksetManageWindow") { window.center() }
+        if !window.setFrameUsingName("DesksetManageWindow") {
+            window.center()
+            placedByDefault = true
+        }
         keepMinimumSize()
         reload()
         NotificationCenter.default.addObserver(self, selector: #selector(skinsChanged), name: .desksetSkinsChanged,
@@ -71,6 +76,39 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     required init?(coder: NSCoder) { fatalError("not used") }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    /// First launch: moves the window, while it has no saved frame, beside the skins in `frames` (the first-run widget
+    /// column, top left), so it does not cover them: to their right when it fits there at least at its minimum width,
+    /// else to their left; otherwise it stays centered.
+    func placeBeside(_ frames: [NSRect]) {
+        guard placedByDefault, let window, let first = frames.first else { return }
+        let column = frames.dropFirst().reduce(first) { $0.union($1) }
+        let screen = NSScreen.screens.first { $0.frame.intersects(column) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame,
+              let frame = ManageWindowController.frame(beside: column, size: window.frame.size,
+                                                       minSize: window.minSize, visible: visible)
+        else { return }
+        window.setFrame(frame, display: false)
+    }
+
+    /// A window frame of `size` (narrowed, and shortened to fit, but never below `minSize`) beside `column` within
+    /// `visible`, 20 points from the column and from the visible frame's edges, its top 20 points below the visible
+    /// frame's top: to the column's right, else to its left; nil when neither side has room.
+    static func frame(beside column: NSRect, size: NSSize, minSize: NSSize, visible: NSRect) -> NSRect? {
+        let margin: CGFloat = 20, minWidth = minSize.width
+        let height = max(min(size.height, visible.height - 2 * margin), minSize.height)
+        let y = visible.maxY - margin - height
+        let rightRoom = visible.maxX - margin - (column.maxX + margin)
+        if rightRoom >= minWidth {
+            return NSRect(x: column.maxX + margin, y: y, width: min(size.width, rightRoom), height: height)
+        }
+        let leftRoom = column.minX - margin - (visible.minX + margin)
+        if leftRoom >= minWidth {
+            let width = min(size.width, leftRoom)
+            return NSRect(x: column.minX - margin - width, y: y, width: width, height: height)
+        }
+        return nil
+    }
 
     /// The window never gets smaller than `minSize`, which AppKit only enforces while the user drags its edges: a
     /// saved frame from an older version, or anything else that resizes it, would squeeze the detail column until its

@@ -101,7 +101,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             installer.open(CodeEditorRouter.routeOpenedFiles(pendingOpenURLs, app: self))
             pendingOpenURLs = []
         } else if firstRun {
-            // First launch: show where things are (the menu bar icon can be hidden by macOS).
+            // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
+            // rather than over them.
+            let manage = manageWindow ?? ManageWindowController(app: self)
+            manageWindow = manage
+            manage.placeBeside(controllers.values.map { $0.window.frame })
             showManageWindow(selecting: firstRunSelection, file: nil)
         }
     }
