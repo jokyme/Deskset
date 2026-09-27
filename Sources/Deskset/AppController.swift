@@ -54,7 +54,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var updatesPaused: Bool { systemAsleep || screensAsleep || sessionInactive }
 
     /// The config the Manage window shows on a first launch (the first one the first-run layout loaded).
-    private(set) var firstRunSelection = "Deskset\\Clock"
+    private(set) var firstRunSelection = DefaultSkins.firstClock.config
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
@@ -221,7 +221,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 restack()
                 return
             }
-            state.update("Deskset\\Clock") { $0.file = "Clock.ini"; $0.active = true }
+            state.update(DefaultSkins.firstClock.config) { $0.file = DefaultSkins.firstClock.file; $0.active = true }
             active = state.activeConfigs
         }
         for (config, s) in active { activate(config: config, file: s.file, fade: true, restack: false) }

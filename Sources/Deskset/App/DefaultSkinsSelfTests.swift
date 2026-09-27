@@ -159,17 +159,20 @@ enum DefaultSkinsSelfTests {
         }
 
         t.suite("App: default skins: without a first-run layout a new user gets the Clock") {
-            // Today's default skins, as far as the first launch sees them: Deskset\Clock with Clock.ini.
+            // The Stationery Clock, small, as far as the first launch sees it.
+            t.equal(DefaultSkins.firstClock.config, "Stationery\\Clock")
+            t.equal(DefaultSkins.firstClock.file, "Small.ini")
             for layout in [nil, "[Nowhere\\Nothing]\nX=20\nY=20\n"] {
-                var files = ["Deskset/Clock/Clock.ini": widget, "Deskset/System/System.ini": widget]
+                var files = ["Stationery/Clock/Medium.ini": widget, "Stationery/Clock/Small.ini": widget,
+                             "Stationery/System/Medium.ini": widget]
                 if let layout { files[DefaultSkins.firstRunFileName] = layout }
                 let root = try source(t, files)
                 let app = try app(t, source: root)
                 app.installDefaultSkinsIfNeeded()
                 app.loadActiveSkins()
-                t.equal(app.controller(for: "Deskset\\Clock")?.file, "Clock.ini", layout ?? "no layout file")
-                t.equal(app.state.activeConfigs.map(\.config), ["Deskset\\Clock"])
-                t.equal(app.firstRunSelection, "Deskset\\Clock")
+                t.equal(app.controller(for: "Stationery\\Clock")?.file, "Small.ini", layout ?? "no layout file")
+                t.equal(app.state.activeConfigs.map(\.config), ["Stationery\\Clock"])
+                t.equal(app.firstRunSelection, "Stationery\\Clock")
             }
             // The root configs: folders only, not files, hidden or @ folders.
             let mixed = try source(t, ["A/A.ini": widget, "FirstRun.ini": "", ".Hidden/H.ini": widget, "@Vault/x.txt": "x"])
@@ -265,19 +268,53 @@ enum DefaultSkinsSelfTests {
         }
 
         t.suite("App: default skins: 0.1's Variables.inc is what the app remembers of it") {
-            // The table the first upgrade compares with must be the file version 2 shipped. Until the new suite
-            // replaces it, that file is still the one in DefaultSkins.
-            guard let repository = Paths.repositoryFolder("DefaultSkins") else {
-                print("    (skipped: DefaultSkins not found; run from the repository)")
+            // The table an upgrade of a Deskset root compares with must be the file version 2 shipped: the example
+            // skins of Deskset 0.1, kept in TestSkins since the Stationery suite replaced them in DefaultSkins.
+            guard let repository = Paths.repositoryFolder("TestSkins") else {
+                print("    (skipped: TestSkins not found; run from the repository)")
                 return
             }
-            let current = DefaultSkins.variables(in: repository.appendingPathComponent("Deskset/@Resources/Variables.inc"))
-            let remembered = DefaultSkins.variables(inText: DefaultSkins.version2Variables)
-            if current?["theme"] != nil {
-                t.equal(remembered, current, "the remembered table matches the shipped file")
-            } else {
-                t.check(remembered?["clockhours"] == "24", "the new suite has replaced 0.1's file")
+            let shipped = DefaultSkins.variables(in: repository.appendingPathComponent("Deskset/@Resources/Variables.inc"))
+            t.equal(DefaultSkins.variables(inText: DefaultSkins.version2Variables), shipped,
+                    "the remembered table matches 0.1's file")
+            t.equal(shipped?["clockhours"], "24")
+        }
+
+        t.suite("App: default skins: an upgrade from 0.1 adds Stationery and leaves the old example skins alone") {
+            // What Deskset 0.1 left: its example skins in the Skins folder, the Clock loaded, version 2 installed.
+            let fm = FileManager.default
+            let source = try source(t, [
+                "Stationery/Clock/Small.ini": widget, "Stationery/Weather/Medium.ini": widget,
+                "Stationery/@Resources/Variables.inc": "[Variables]\nClockHours=Auto\n",
+                "FirstRun.ini": "[Stationery\\Clock]\nFile=Small.ini\nX=20\nY=20\n",
+            ])
+            let app = try app(t, source: source, state: #"{"defaultSkinsInstalled": 2, "skins": {"Deskset\\Clock": {"file": "Clock.ini", "active": true}}}"#)
+            let old = app.skinsDirectory.appendingPathComponent("Deskset")
+            let files = ["Clock/Clock.ini": widget, "@Resources/Variables.inc": "[Variables]\nClockHours=12\nTheme=Light\n",
+                         "Clock/Edited.ini": widget + "; the user's own variant\n"]
+            for (path, text) in files {
+                let url = old.appendingPathComponent(path)
+                try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try text.write(to: url, atomically: true, encoding: .utf8)
             }
+            app.installDefaultSkinsIfNeeded()
+            t.check(fm.fileExists(atPath: app.skinsDirectory.appendingPathComponent("Stationery/Clock/Small.ini").path),
+                    "the new suite is installed")
+            for (path, text) in files {
+                t.equal(try? String(contentsOf: old.appendingPathComponent(path), encoding: .utf8), text,
+                        "\(path) stays as the user left it")
+            }
+            t.check(!fm.fileExists(atPath: app.backupsDirectory.appendingPathComponent("Deskset-examples-v2").path),
+                    "nothing of the old suite is moved away")
+            t.equal(app.state.data.defaultSkinsInstalled, DefaultSkins.version)
+            t.equal(DefaultSkins.variables(in: app.skinsDirectory.appendingPathComponent("Stationery/@Resources/Variables.inc")),
+                    ["clockhours": "Auto"], "the new suite starts from its own defaults")
+
+            // The user's desktop comes back as it was: the first-run layout is for new users only.
+            app.loadActiveSkins()
+            t.equal(app.controller(for: "Deskset\\Clock")?.file, "Clock.ini")
+            t.equal(app.controller(for: "Stationery\\Clock") == nil, true, "the new Clock waits in the Manage window")
+            t.equal(app.state.activeConfigs.map(\.config), ["Deskset\\Clock"])
         }
     }
 }

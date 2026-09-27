@@ -739,8 +739,8 @@ func runGraphMeterTests(_ t: TestRunner) {
         t.check(try t.graphUnwrap(histogram(hist, "HistHorizontal")).hasSecondary)
     }
 
-    t.suite("GraphMeter: DefaultSkins Network line graph") {
-        let skins = repo.appendingPathComponent("DefaultSkins")
+    t.suite("GraphMeter: the 0.1 example Network skin's line graph") {
+        let skins = repo.appendingPathComponent("TestSkins")
         let host = FakeHost()
         let system = FakeSystem()
         let skin = Skin(config: "Deskset\\Network",

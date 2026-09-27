@@ -5,7 +5,8 @@ import DesksetCore
 /// the app does with them (docs/compat/app.md "The default skins and the first launch"):
 /// - every folder in it is a root config, copied into the Skins folder when the installed version is older than
 ///   `version` (the old copy moved to Backups, the user's changed settings carried over into the new
-///   `@Resources/Variables.inc`);
+///   `@Resources/Variables.inc`); a root config the bundle no longer ships stays in the Skins folder as it is (the
+///   example skins of Deskset 0.1, root config `Deskset`, which the Stationery suite replaced in version 3);
 /// - `FirstRun.ini` in it, when there is one, says which skins a new user's desktop starts with, and where;
 /// - `Stationery.inc` in the settings folder holds what people type into the Stationery widgets.
 enum DefaultSkins {
@@ -14,6 +15,10 @@ enum DefaultSkins {
 
     /// The first-run layout's file, next to the root configs.
     static let firstRunFileName = "FirstRun.ini"
+
+    /// What a new user's desktop starts with when there is no first-run layout, or none of its configs exists: the
+    /// Stationery Clock, small.
+    static let firstClock = (config: "Stationery\\Clock", file: "Small.ini")
 
     /// `#SETTINGSPATH#Stationery.inc`: the Stationery widgets' user content (to-do items, cities, launcher items, the
     /// countdown, the timer, the photo folder), outside the skins, which upgrades replace. `!WriteKeyValue` writes only
@@ -76,7 +81,8 @@ enum DefaultSkins {
         return variables(inText: version2Variables)
     }
 
-    /// `DefaultSkins/Deskset/@Resources/Variables.inc` of version 2, as shipped (its `[Variables]`).
+    /// The example skins' `Deskset/@Resources/Variables.inc` of version 2 (Deskset 0.1), as shipped (its
+    /// `[Variables]`). The skins themselves are test skins now (TestSkins/Deskset).
     static let version2Variables = #"""
         [Variables]
         Theme=Dark

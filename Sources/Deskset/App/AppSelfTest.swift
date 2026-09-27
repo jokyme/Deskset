@@ -656,7 +656,8 @@ enum AppSelfTest {
         for app in retainedApps { app.stopAllForTermination() }
     }
 
-    /// A headless app over a temporary Skins folder holding TestSkins/App and DefaultSkins/Deskset.
+    /// A headless app over a temporary Skins folder holding TestSkins/App and TestSkins/Deskset (the example skins of
+    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins).
     static func makeApp(_ t: AppTestRunner) throws -> AppController? {
         guard let testSkins = Paths.repositoryFolder("TestSkins") else {
             print("    (skipped: TestSkins not found; run from the repository)")
@@ -665,11 +666,9 @@ enum AppSelfTest {
         let root = t.temporaryDirectory("app")
         let skins = root.appendingPathComponent("Skins")
         try FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: testSkins.appendingPathComponent("App"),
-                                         to: skins.appendingPathComponent("App"))
-        if let defaults = Paths.repositoryFolder("DefaultSkins") {
-            try? FileManager.default.copyItem(at: defaults.appendingPathComponent("Deskset"),
-                                              to: skins.appendingPathComponent("Deskset"))
+        for folder in ["App", "Deskset"] {
+            try FileManager.default.copyItem(at: testSkins.appendingPathComponent(folder),
+                                             to: skins.appendingPathComponent(folder))
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),

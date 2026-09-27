@@ -998,7 +998,7 @@ enum FriendlySidebarSelfTests {
             t.equal(InspectorWindowController.bytes(25_769_803_776, binary: true), "24.0 GB", "memory: powers of 1024")
             t.equal(InspectorWindowController.bytes(3_221_225_472), "3.2 GB", "disks and networks: powers of 1000")
             t.equal(InspectorWindowController.bytes(1536, binary: true), "1.5 KB")
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             func binary(_ name: String, otherwise: Bool) -> Bool? {
                 skin.measure(named: name).map { InspectorWindowController.countsInBinary($0, in: skin, otherwise: otherwise) }

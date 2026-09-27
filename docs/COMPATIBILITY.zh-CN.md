@@ -1003,11 +1003,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### 默认皮肤与首次启动
 - **Windows：** Rainmeter 自带 illustro 皮肤，首次安装后会加载。
-- **Mac：** Deskset 自带的原创皮肤在首次启动时复制到皮肤文件夹，新版 Deskset 带来新的默认皮肤时会再复制一次（旧副本移到
-  `Backups`；用户在 `@Resources/Variables.inc` 中改过的设置会带到新版本，而旧版本自带、用户没改过的值则让位于新的默认值）。
-  第一次启动时，默认皮肤旁边的 `FirstRun.ini` 中列出的皮肤会加载到指定位置（从主显示器可用区域左上角起算的点数）；没有这个文件时
-  只加载时钟。`#SETTINGSPATH#Stationery.inc` 不存在时会自动创建，默认小组件用它保存用户输入的内容（`!WriteKeyValue` 只能写入
-  已存在的文件）。
+- **Mac：** Deskset 自带的原创皮肤（Stationery「文房」套件）在首次启动时复制到皮肤文件夹，新版 Deskset 带来新的默认皮肤时
+  会再复制一次（旧副本移到 `Backups`；用户在 `@Resources/Variables.inc` 中改过的设置会带到新版本，而旧版本自带、用户没改过的值
+  则让位于新的默认值）。Deskset 0.1 的示例皮肤（根配置 `Deskset`）保持原样。第一次启动时，默认皮肤旁边的 `FirstRun.ini` 中列出的
+  皮肤会加载到指定位置（从主显示器可用区域左上角起算的点数）：时钟、日历、天气和系统；没有这个文件时只加载时钟。
+  `#SETTINGSPATH#Stationery.inc` 不存在时会自动创建，默认小组件用它保存用户输入的内容（`!WriteKeyValue` 只能写入已存在的文件）。
 - **原因：** 首次启动的桌面不请求任何权限；设置和用户内容在升级后保留。
 - **对皮肤的影响：** 无；任何皮肤都可以包含并写入 `#SETTINGSPATH#Stationery.inc`。
 - **状态：** 模拟实现

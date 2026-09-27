@@ -267,8 +267,8 @@ enum FriendlyWidgetPageSelfTests {
 
     static func layoutTests(_ t: AppTestRunner) {
         t.suite("App: friendly widget page: every row's name is shown whole") {
-            for (config, folder) in [("Audio\\Visualizer", "TestSkins"), ("Deskset\\System", "DefaultSkins"),
-                                     ("Deskset\\Clock", "DefaultSkins"), ("Deskset\\Calendar", "DefaultSkins")] {
+            for (config, folder) in [("Audio\\Visualizer", "TestSkins"), ("Deskset\\System", "TestSkins"),
+                                     ("Deskset\\Clock", "TestSkins"), ("Deskset\\Calendar", "TestSkins")] {
                 guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: config, from: folder) else { return }
                 editor.canvasSelectionChanged([])
                 editor.inspectorState.disclosures.insert("widget/colors-more")
@@ -389,7 +389,7 @@ enum FriendlyWidgetPageSelfTests {
                                     ("Deskset\\Clock", ["MeasureWeekday", "MeasureWeek", "MeterMinute"]),
                                     ("Deskset\\System", ["MeterCPUGraph", "MeasureSwap", "MeterRAMBar"]),
                                     ("Deskset\\Disk", ["MeasureTotal"])] {
-                guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: config, from: "DefaultSkins") else { return }
+                guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: config) else { return }
                 checkOneLayout(t, editor, pages: pages)
                 AppSelfTest.closeEditors()
             }
@@ -436,8 +436,8 @@ enum FriendlyWidgetPageSelfTests {
 
     static func plainWordsTests(_ t: AppTestRunner) {
         t.suite("App: friendly widget page: no engine words, every disclosure open") {
-            for (config, folder) in [("Audio\\Visualizer", "TestSkins"), ("Deskset\\System", "DefaultSkins"),
-                                     ("App\\Unsupported", "TestSkins"), ("Deskset\\Calendar", "DefaultSkins")] {
+            for (config, folder) in [("Audio\\Visualizer", "TestSkins"), ("Deskset\\System", "TestSkins"),
+                                     ("App\\Unsupported", "TestSkins"), ("Deskset\\Calendar", "TestSkins")] {
                 guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: config, from: folder) else { return }
                 t.equal(editor.app.state.editor.showIniNames, false)
                 editor.canvasSelectionChanged([])
@@ -818,7 +818,7 @@ enum FriendlyWidgetPageSelfTests {
 
     static func widgetOptionsTests(_ t: AppTestRunner) {
         t.suite("App: friendly widget page: more widget options") {
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let ini = editor.skin?.fileURL else { return }
             editor.canvasSelectionChanged([])
             openEverything(editor)
@@ -886,7 +886,7 @@ enum FriendlyWidgetPageSelfTests {
             t.equal(read(ini), original, "each an undo step")
 
             // Other shared values: examples, not codes.
-            guard let (_, calendar) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar", from: "DefaultSkins"),
+            guard let (_, calendar) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar"),
                   let calendarIni = calendar.skin?.fileURL else { return }
             calendar.canvasSelectionChanged([])
             openEverything(calendar)
@@ -900,7 +900,7 @@ enum FriendlyWidgetPageSelfTests {
             let format = find(calendar, "shared-value:MonthFormat") as? NSPopUpButton
             t.check(format?.titleOfSelectedItem?.contains("2026") == true, "an example date: \(format?.titleOfSelectedItem ?? "")")
             t.check(!(format?.itemArray.contains { $0.title.contains("%") } ?? true), "no codes in the choices")
-            guard let (_, clock) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Clock", from: "DefaultSkins") else { return }
+            guard let (_, clock) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Clock") else { return }
             clock.canvasSelectionChanged([])
             openEverything(clock)
             t.equal((find(clock, "shared-value:ClockHours") as? NSPopUpButton)?.titleOfSelectedItem, "24-hour (14:05)")
@@ -962,7 +962,7 @@ enum FriendlyWidgetPageSelfTests {
 
     static func sharedFileTests(_ t: AppTestRunner) {
         t.suite("App: friendly widget page: a theme shared by several widgets") {
-            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             let ini = skin.fileURL
             let dark = skin.resourcesDirectory.appendingPathComponent("Themes/Dark.inc")
