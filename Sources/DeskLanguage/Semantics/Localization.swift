@@ -10,6 +10,18 @@ public enum DeskLocalization {
         var parts = tag.replacingOccurrences(of: "_", with: "-").split(separator: "-").map(String.init)
         guard let language = parts.first?.lowercased() else { return tag }
         parts[0] = language
+        // BCP 47 tags are case-insensitive; the canonical case is language lower, script title, region upper
+        // (`zh-hans` is `zh-Hans`, `pt-br` is `pt-BR`).
+        for k in parts.indices.dropFirst() {
+            let part = parts[k]
+            if part.count == 4, part.allSatisfy(\.isLetter) {
+                parts[k] = part.prefix(1).uppercased() + part.dropFirst().lowercased()
+            } else if part.count == 2, part.allSatisfy(\.isLetter) {
+                parts[k] = part.uppercased()
+            } else {
+                parts[k] = part.lowercased()
+            }
+        }
         let hasScript = parts.count > 1 && parts[1].count == 4
         let region = parts.dropFirst().first { $0.count == 2 || ($0.count == 3 && $0.allSatisfy(\.isNumber)) }?.uppercased()
         if language == "zh" && !hasScript {

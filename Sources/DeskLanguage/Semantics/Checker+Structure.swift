@@ -80,6 +80,19 @@ extension Checker {
         if let package = context.package, !isPackage { importPackage(package) }
         if let options = optionsBlock { collectOptions(options) }
         for style in styleDecls { collectStyle(style) }
+        // A style written inside `widget` (DK2014) still names a style, so `.style(big)` finds it (no DK3007).
+        if let widget = widgetBlock {
+            var stack = widget.childNodes
+            while let node = stack.popLast() {
+                if node.kind == .styleDecl {
+                    collectStyle(node)
+                    // Its one diagnostic is DK2014: not also "never used".
+                    styles[StyleDeclSyntax(unchecked: node).name.token.name]?.used = true
+                    continue
+                }
+                stack += node.childNodes
+            }
+        }
         if let widget = widgetBlock, let block = widget.firstChild(.block) { collectDeclarations(block, strays: strayItems.declarations) }
         else { collectDeclarations(nil, strays: strayItems.declarations) }
         prewalkElementNames()
@@ -91,7 +104,9 @@ extension Checker {
         if let widget = widgetBlock, let block = widget.firstChild(.block) {
             checkWidgetBody(block)
         } else if !isPackage {
-            if strayItems.elements.isEmpty && strayItems.declarations.isEmpty {
+            // A file of pasted foreign code (a SwiftUI view: DK9105) gets that diagnostic alone (§9.1).
+            let foreignFile = root.childNodes.contains { $0.kind == .foreignConstruct }
+            if strayItems.elements.isEmpty && strayItems.declarations.isEmpty && !foreignFile {
                 let at = root.childNodes.first.map(range) ?? 0..<0
                 let insertAt = tree.text.utf8.count
                 let prefix = tree.text.isEmpty || tree.text.hasSuffix("\n") || tree.text.hasSuffix("\r") ? "" : lineBreak
@@ -106,6 +121,12 @@ extension Checker {
         for element in strayItems.elements { checkViewStatement(element, strayContext) }
         if let translations = translationsBlock { checkTranslations(translations) }
         for dropped in strayItems.declarations { _ = dropped }
+    }
+
+    /// `info { … }`, `options { … }`: a block word followed by a block, written as a call among statements.
+    func isBlockWordCall(_ statement: PositionedNode) -> Bool {
+        let call = CallStmtSyntax(unchecked: statement)
+        return call.callee.path.count == 1 && Chars.blockWords.contains(call.callee.path[0]) && call.block != nil
     }
 
     func keyword(_ block: PositionedNode) -> Range<Int> {
@@ -304,6 +325,8 @@ extension Checker {
                 break
             default:
                 if statement.kind == .callStmt, isMissingDotModifier(statement) { break }
+                // `info { … }` inside `widget` is a misplaced block (DK2014), not an element at the top.
+                if statement.kind == .callStmt, isBlockWordCall(statement) { break }
                 if statement.kind == .callStmt || statement.kind == .ifStmt || statement.kind == .forStmt {
                     sawView = true
                     views.append(statement)

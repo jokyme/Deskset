@@ -104,6 +104,23 @@ extension Checker {
             return v
         case .diagnosed(let id):
             if id == .rainmeterRelativePosition { return relativePosition(node, literal, context, unit: unit) }
+            // `1000mb` next to an air pressure means millibars, `2in` next to rainfall inches (§1.7): the lexer's
+            // reading (megabytes, a CSS length) is replaced by the unit the other side needs.
+            if case .number(let d)? = expected, let target = Checker.contextualUnit(unit.text, for: d),
+               let spec = catalog.unit(spelling: target) {
+                let r = range(node)
+                for diagnostic in tree.diagnostics where r.contains(diagnostic.range.lowerBound) {
+                    droppedParserDiagnostics.insert(diagnosticKey(diagnostic))
+                }
+                let digits = literal.token.token.numberText
+                let unitRange = (r.upperBound - unit.text.utf8.count)..<r.upperBound
+                report(.unitSpelling, r, ["number": .code(digits), "unit": .code(target)],
+                       fixIts: [fix("replaceWith", [edit(unitRange, target)], ["text": .code(digits + target)])])
+                var v = Val(.number(d))
+                v.literalValue = value * spec.factor + spec.offset
+                v.isConstant = true
+                return v
+            }
             // Reported by the lexer; the value keeps the dimension recovery gives it.
             if let misspelling = index.unitMisspellings[unit.text], let d = misspelling.dimension {
                 var v = Val(.number(d))
@@ -115,6 +132,16 @@ extension Checker {
             return relativePosition(node, literal, context, unit: unit)
         case .unknown:
             return .error
+        }
+    }
+
+    /// The unit a misspelling means next to a value of dimension `d`: `mb` for pressure is `mbar`, `in` for
+    /// rainfall is `inch` (§1.7).
+    static func contextualUnit(_ written: String, for d: Dimension) -> String? {
+        switch (d, written.lowercased()) {
+        case (.pressure, "mb"), (.pressure, "millibar"), (.pressure, "millibars"): return "mbar"
+        case (.rainfall, "in"), (.rainfall, "inches"), (.rainfall, "\""): return "inch"
+        default: return nil
         }
     }
 

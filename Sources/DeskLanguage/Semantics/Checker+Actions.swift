@@ -6,7 +6,18 @@ import Foundation
 
 extension Checker {
     func checkActionBlock(_ block: PositionedNode, _ action: ActionContext, loopIDs: [NodeID]) {
+        // `{ newValue in … }` (DK9111): the parameters are read silently in the block, not "there's no `newValue`".
+        var parameters: [LoopVariable] = []
+        if let first = block.childNodes.first, first.kind == .foreignConstruct, first.node.foreignKind == .closureParameter {
+            for token in first.tokens where token.kind == .identifier && !token.token.isMissing {
+                let parameterID = NodeID(kind: .foreignConstruct, utf8Start: token.textStart, treeVersion: tree.version)
+                parameters.append(LoopVariable(name: token.token.name, id: parameterID, forID: parameterID, val: .error,
+                                               range: range(token), inAction: true))
+            }
+        }
+        for parameter in parameters { pushLoop(parameter, .error) }
         for statement in BlockSyntax(unchecked: block).statements { checkAction(statement, action, loopIDs: loopIDs) }
+        for parameter in parameters.reversed() { popLoop(parameter) }
     }
 
     func actionExprContext(_ action: ActionContext, loopIDs: [NodeID]) -> ExprContext {
@@ -154,6 +165,14 @@ extension Checker {
         }
         var valueContext = context
         valueContext.display = false
+        // `side = .right` where `side`'s own type is still open: the case takes the type `side` settles to, and is
+        // checked against it then — one DK3018 at the declaration when nothing settles it, not a second one here.
+        if assignable, let slot = targetVal?.open, slot < openSlots.count, openSlots[slot].kind == .type,
+           valueNode.kind == .implicitMemberExpr {
+            let name = ImplicitMemberExprSyntax(unchecked: valueNode).name.token.name
+            if mute == 0 { casesForOpenSlots.append((slot, name, range(valueNode))) }
+            return
+        }
         let value = inferValue(valueNode, valueContext, expected: targetVal?.type)
         guard assignable, let targetVal, !value.error else { return }
         if let slot = targetVal.open {

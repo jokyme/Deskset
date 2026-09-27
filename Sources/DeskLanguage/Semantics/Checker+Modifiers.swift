@@ -1016,8 +1016,13 @@ extension Checker {
                 add(a, level: 2, extra: condition, origin: .style(styleName, id(a.node), file: a.file))
             }
             var expanded = 0
-            expandStyle(call.style, visited: []) { _, _ in expanded += 1 }
-            if position == before, styles[call.style] != nil, element.kind != nil, expanded > 0 {
+            var droppedInStyle = false
+            expandStyle(call.style, visited: []) { a, _ in
+                expanded += 1
+                if duplicateDropped.contains(a.node.range.lowerBound) { droppedInStyle = true }
+            }
+            // A style whose modifiers were dropped for their own mistakes (DK5001) is not also "nothing applies".
+            if position == before, styles[call.style] != nil, element.kind != nil, expanded > 0, !droppedInStyle {
                 report(.styleHasNoEffect, range(call.node), ["style": .code(call.style),
                                                              "component": .name("component:\(element.component?.name ?? "")")])
             }

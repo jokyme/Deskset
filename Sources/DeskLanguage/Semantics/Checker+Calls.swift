@@ -482,7 +482,10 @@ extension Checker {
             return true
         }
         if v.secret, let role = param?.role, ![.command, .webAddress].contains(role) {
-            report(.secretShown, r)
+            // Once per mistake: an interpolation of the text already reported it.
+            if !diagnostics.contains(where: { $0.id == .secretShown && r.contains($0.range.lowerBound) }) {
+                report(.secretShown, r)
+            }
             return false
         }
         if param?.role == .display {

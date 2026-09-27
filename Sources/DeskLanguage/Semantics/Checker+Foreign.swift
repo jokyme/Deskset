@@ -450,8 +450,15 @@ extension Checker {
             if argument.value.node.kind == .identifierExpr, let decl = decls[IdentifierExprSyntax(unchecked: argument.value.node).name] {
                 decl.used = true
             }
-            report(.swiftBinding, labelRange, ["name": .code(value)],
-                   fixIts: [fix("removeLabels", [edit(start..<textStart(argument.value.node), "")])])
+            // One diagnostic for `isOn: $on`: the parser's DK9106 at the `$` joins this one, and the fix-it removes
+            // both the label and the `$`.
+            var edits = [edit(start..<textStart(argument.value.node), "")]
+            let valueRange = range(argument.value.node)
+            for d in tree.diagnostics where d.id == .swiftBinding && valueRange.contains(d.range.lowerBound) {
+                droppedParserDiagnostics.insert(diagnosticKey(d))
+                edits += d.fixIts.first?.edits ?? []
+            }
+            report(.swiftBinding, labelRange, ["name": .code(value)], fixIts: [fix("removeLabels", edits)])
             return
         }
         let desk = row.deskText

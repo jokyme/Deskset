@@ -763,4 +763,36 @@ func runDeskReviewTests(_ t: TestRunner) {
             }
         }
     }
+
+    t.suite("Desk: review — units by context, cascades, language tags, one diagnostic per mistake (findings 23, 30, 32, 34, 72)") {
+        // Units that mean something else next to pressure and rainfall (finding 23).
+        let pressure = deskCheck("info { name: \"T\", permissions: [.location] }\nwidget { Text(\"A\").hidden(if: weather.now.pressure > 1000mb) }")
+        t.equal(pressure.diagnostics.map(\.id.rawValue), ["DK1023"])
+        t.equal(deskApplyFix(pressure, "DK1023").map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let rain = deskCheck("info { name: \"T\", permissions: [.location] }\nwidget { Text(\"A\").hidden(if: weather.today.precipitation > 2in) }")
+        t.equal(rain.diagnostics.map(\.id.rawValue), ["DK1023"])
+        t.equal(deskApplyFix(rain, "DK1023"), "info { name: \"T\", permissions: [.location] }\nwidget { Text(\"A\").hidden(if: weather.today.precipitation > 2inch) }")
+        // Cascades (findings 30, 72).
+        t.equal(deskReviewIDs("widget {\n    variable side = .left\n    Text(\"A\").align(side).onClick { side = .right }\n}"), [])
+        t.equal(deskReviewIDs("widget {\n    variable side = .left\n    Text(\"{side}\").onClick { side = .right }\n}"), ["DK3018"])
+        t.equal(deskReviewIDs("widget {\n    variable side = .left\n    Text(\"A\").align(side).onClick { side = .up }\n}"), ["DK3005"])
+        t.equal(deskReviewIDs("widget { Text(\"A\").style(s) }\nstyle s { .color(.red).color(.blue) }"), ["DK5001"])
+        t.equal(deskReviewIDs("widget {\n    style big { .bold() }\n    Text(\"A\").style(big)\n}"), ["DK2014"])
+        t.equal(deskReviewIDs("widget {\n    info { name: \"X\" }\n    Text(\"A\")\n}"), ["DK2014"])
+        t.equal(deskReviewIDs("widget {\n    let x = 1\n    Text(\"{x}\")\n}"), ["DK9104"])
+        t.equal(deskReviewIDs("widget {\n    @State var page = 0\n    Text(\"{page}\")\n}"), ["DK9103"])
+        t.equal(deskReviewIDs("widget {\n    variable x = 0\n    Text(\"{x}\").onChange(of: x) { newValue in log(\"{newValue}\") }\n}"), ["DK9111"])
+        t.equal(deskReviewIDs("struct CPU: View {\n    var body: some View {\n        Text(\"A\")\n    }\n}\n", named: false), ["DK9105"])
+        // Language tags are case-insensitive (finding 32).
+        t.equal(deskReviewIDs("widget { Text(\"Hello\") }\ntranslations {\n    \"zh-hans\" { \"Hello\": \"你好\" }\n    \"zh-Hans\" { \"Hello\": \"您好\" }\n}"), ["DK8405"])
+        t.equal(Checker.normalizeLanguageTag("pt-br"), "pt-BR")
+        t.equal(Checker.normalizeLanguageTag("ZH-HANT-hk"), "zh-Hant-HK")
+        // Once per mistake (finding 34).
+        t.equal(deskReviewIDs("options { apiKey = Secret(\"Key\") }\nwidget {\n    Text(\"A\").onClick { copy(\"{options.apiKey}\") }\n}"), ["DK4034"])
+        let binding = deskCheck("info { name: \"T\" }\nwidget {\n    variable on = false\n    Toggle(\"A\", isOn: $on)\n}")
+        t.equal(binding.diagnostics.map(\.id.rawValue), ["DK9106"])
+        let fixed = deskApplyFix(binding, "DK9106")
+        t.equal(fixed, "info { name: \"T\" }\nwidget {\n    variable on = false\n    Toggle(\"A\", on)\n}")
+        t.equal(fixed.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+    }
 }

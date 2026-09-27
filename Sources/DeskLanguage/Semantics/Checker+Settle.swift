@@ -65,6 +65,26 @@ extension Checker {
     /// Shown as text: decides nothing.
     func recordDisplayUse(_ slot: Int, _ r: Range<Int>) {}
 
+    /// The cases assigned to declarations that were open: each must be a case of the type they settled to.
+    func checkCasesForOpenSlots() {
+        for (slot, name, r) in casesForOpenSlots where slot < openSlots.count {
+            guard case .declaration(let decl) = openSlots[slot].owner, !decl.poisoned, let type = decl.val?.type else { continue }
+            switch type {
+            case .enumeration(let e):
+                if !implicitCaseFits(name, expected: type) {
+                    let cases = catalog.enumeration(e)?.cases.map(\.name) ?? localEnums[e] ?? []
+                    reportUnknownChoice(name, at: r, what: .type(type), candidates: cases)
+                }
+            case .color, .paint:
+                if !implicitCaseFits(name, expected: type) {
+                    reportUnknownChoice(name, at: r, what: .type(type), candidates: catalog.namedValues.filter { $0.type == "Color" }.map(\.name))
+                }
+            default:
+                break
+            }
+        }
+    }
+
     /// Settles every open slot, group by group.
     func settleOpenSlots() {
         var visited = Set<Int>()

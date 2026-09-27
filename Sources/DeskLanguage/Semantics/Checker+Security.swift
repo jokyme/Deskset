@@ -219,6 +219,7 @@ extension Checker {
 
     func finish() {
         settleOpenSlots()
+        checkCasesForOpenSlots()
         reportStyleCycles()
         computeInheritance()
         checkLayoutFit()

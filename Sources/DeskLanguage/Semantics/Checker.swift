@@ -363,6 +363,8 @@ final class Checker {
     /// uses resolve to it and are renamed with it).
     var lastRefusedAsReserved = false
     var pendingReservedName: (index: Int, declaration: Range<Int>, newName: String)?
+    /// Cases assigned to a declaration whose type was still open (`side = .right`), checked once it settles.
+    var casesForOpenSlots: [(slot: Int, name: String, range: Range<Int>)] = []
     /// DK5007 fix-its completed at the end: the diagnostic, the style, the condition and where it is removed.
     var styleConditionMoves: [(index: Int, style: String, condition: String, removal: Range<Int>)] = []
     /// Diagnostics left to the folder check (see `CheckedFile.folderPending`).

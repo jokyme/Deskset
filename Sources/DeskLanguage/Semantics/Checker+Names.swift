@@ -105,6 +105,24 @@ extension Checker {
             }
         }
         statements = strays + statements
+        // `let x = 1`, `@State var page = 0` (DK9104, DK9103): the name is still declared, silently, so its reads
+        // are not also "there's no `x`".
+        if let block {
+            for node in block.childNodes where node.kind == .foreignConstruct {
+                guard let kind = node.node.foreignKind, kind == .swiftDeclaration || kind == .swiftPropertyWrapper else { continue }
+                let tokens = node.tokens.filter { !$0.token.isMissing }
+                guard let keywordIndex = tokens.firstIndex(where: { ["let", "var", "const", "state"].contains($0.token.text) }),
+                      keywordIndex + 1 < tokens.count, tokens[keywordIndex + 1].kind == .identifier else { continue }
+                let token = tokens[keywordIndex + 1]
+                let name = token.token.name
+                guard decls[name] == nil else { continue }
+                let d = Decl(name: name, keyword: "variable", node: node, nameRange: range(token), id: id(node), index: -1)
+                d.val = .error
+                d.poisoned = true
+                d.used = true
+                decls[name] = d
+            }
+        }
         for statement in statements {
             let decl = DeclarationSyntax(unchecked: statement)
             let token = decl.name

@@ -869,17 +869,19 @@ extension Checker {
                                      "hi", "el", "ro", "sk", "hr", "ca", "en-GB", "en-US", "en-AU", "es-MX", "fr-CA", "zh-Hant-HK"]
 
     static func isKnownLanguageTag(_ tag: String) -> Bool {
+        // BCP 47 is case-insensitive: `zh-hans` is `zh-Hans`.
         let parts = tag.split(separator: "-").map(String.init)
-        guard let language = parts.first, (2...3).contains(language.count), language.allSatisfy({ $0.isLowercase && $0.isASCII }) else {
+        guard let language = parts.first?.lowercased(), (2...3).contains(language.count),
+              language.allSatisfy({ $0.isLetter && $0.isASCII }) else {
             return false
         }
         let known = Set(Locale.LanguageCode.isoLanguageCodes.map(\.identifier))
         guard known.contains(language) else { return false }
         var stage = 0   // 0: script may follow, 1: region may follow, 2: nothing
-        let scripts: Set<String> = ["Hans", "Hant", "Latn", "Cyrl", "Arab", "Deva", "Grek", "Hebr", "Jpan", "Kore", "Thai"]
+        let scripts: Set<String> = ["hans", "hant", "latn", "cyrl", "arab", "deva", "grek", "hebr", "jpan", "kore", "thai"]
         for part in parts.dropFirst() {
-            if stage == 0, part.count == 4, scripts.contains(part) { stage = 1; continue }
-            if stage <= 1, part.count == 2, part.allSatisfy({ $0.isUppercase && $0.isASCII }) { stage = 2; continue }
+            if stage == 0, part.count == 4, scripts.contains(part.lowercased()) { stage = 1; continue }
+            if stage <= 1, part.count == 2, part.allSatisfy({ $0.isLetter && $0.isASCII }) { stage = 2; continue }
             if stage <= 1, part.count == 3, part.allSatisfy({ $0.isNumber }) { stage = 2; continue }
             return false
         }
