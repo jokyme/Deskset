@@ -1,0 +1,57 @@
+info {
+    name: "Month View"
+    description: "This month at a glance, with today highlighted."
+    author: "Deskset"
+    version: "1.0"
+    category: .time
+}
+
+options {
+    weekStart = Picker("Week starts on", [.sunday, .monday], default: .sunday)
+    highlight = ColorPicker("Highlight color", default: .accent)
+}
+
+widget {
+    variable monthsFromNow = 0
+    computed month = calendar.month(offset: monthsFromNow, weekStart: options.weekStart)
+
+    Column(spacing: 12) {
+        Row {
+            Text(month.title)
+                .font(.headline)
+                .hover { .color(options.highlight) }
+                .onClick { monthsFromNow = 0 }
+            Spacer()
+            Icon("chevron.left").style(arrow).onClick { monthsFromNow = monthsFromNow - 1 }
+            Icon("chevron.right").style(arrow).onClick { monthsFromNow = monthsFromNow + 1 }
+        }
+        Grid(columns: 7) {
+            for name in month.weekdays {
+                Text(name).style(weekdayLabel)
+            }
+            for day in month.days {
+                Text("{day.number}")
+                    .style(dateCell)
+                    .style(todayCell, if: day.isToday)
+                    .hidden(if: not day.inMonth)
+            }
+        }
+    }
+    .padding(18)
+    .rounded(26)
+    .background(.glass)
+}
+
+style arrow        { .font(16).color(.dim).hover { .color(options.highlight) } }
+style weekdayLabel { .font(.caption).color(.dim).uppercase() }
+style dateCell     { .font(13).size(28, 24) }
+style todayCell    { .font(13, .semibold).color(.white).size(24).background(options.highlight).rounded(.full) }
+
+translations {
+    "zh-Hans" {
+        "Month View": "月历"
+        "This month at a glance, with today highlighted.": "一眼看完这个月，今天高亮显示。"
+        "Week starts on": "每周从哪天开始"
+        "Highlight color": "高亮颜色"
+    }
+}

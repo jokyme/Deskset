@@ -1132,10 +1132,24 @@ struct Lexer {
         // Ends at the line break.
         tokens[result.startIndex].flags.insert(.unterminated)
         append(Token.missing(.stringEnd), start: result.end)
+        let quoteAt = closingQuotePosition(contentStart: start + openLength, end: result.end)
         report(.unterminatedString, .error, start..<max(result.end, start + openLength),
                fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("\"")],
-                              edits: [edit(result.end..<result.end, "\"")])])
+                              edits: [edit(quoteAt..<quoteAt, "\"")])])
         finishString(start: start, end: result.end, limit: limit)
+    }
+
+    /// Where the missing `"` of a string that runs to the end of its line most likely goes: before the closing
+    /// brackets (and blanks) that end the line, as in `Text("CPU)`, else at the end of the line.
+    private func closingQuotePosition(contentStart: Int, end: Int) -> Int {
+        var j = end
+        while j > contentStart {
+            let b = bytes[j - 1]
+            if b == 0x29 || b == 0x5D || b == 0x7D || b == 0x20 || b == 0x09 { j -= 1 } else { break }
+        }
+        // Only brackets and blanks were skipped; keep the blanks after the quote.
+        while j < end, bytes[j] == 0x20 || bytes[j] == 0x09 { j += 1 }
+        return j > contentStart ? j : end
     }
 
     private mutating func finishString(start: Int, end: Int, limit: Int) {

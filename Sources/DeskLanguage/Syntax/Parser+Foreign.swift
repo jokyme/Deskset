@@ -466,6 +466,7 @@ extension Parser {
         }
         let countBefore = foreignLineCount
         foreignLineCount += lineIndexes.count
+        foreignRunRanges.append(starts[firstToken]..<textEnd(lastToken))
         let lead = matches.first(where: { !$0.isComment }) ?? matches[0]
         if countBefore < SyntaxLimits.foreignLinesBeforeSummary {
             let group = "foreign-\(starts[firstToken])"

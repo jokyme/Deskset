@@ -43,12 +43,19 @@ enum SyntaxParsing {
 
     static func parse(_ text: String, file: DeskFileID, version: Int) -> SyntaxTree {
         let bytes = Array(text.utf8)
+        let needed = StackGuard.nestingEstimate(bytes) * StackGuard.bytesPerNestingLevel
+        return StackGuard.run(needing: needed) { parse(bytes: bytes, text: text, file: file, version: version) }
+    }
+
+    private static func parse(bytes: [UInt8], text: String, file: DeskFileID, version: Int) -> SyntaxTree {
         let lines = LineTable(bytes: bytes)
         let lexed = Lexer.lex(bytes, file: file)
         let braces = BraceMatching.match(lexed, lines: lines)
         var parser = Parser(lexed: lexed, braces: braces, file: file, lines: lines, bytes: bytes)
         let root = parser.parseSourceFile()
-        var diagnostics = lexed.diagnostics + parser.diagnostics
+        parser.foreignRunRanges.sort { $0.lowerBound < $1.lowerBound }
+        let lexical = lexed.diagnostics.filter { !parser.isInForeignRun($0.range.lowerBound) }
+        var diagnostics = lexical + parser.diagnostics
         // Sorted by position; the sort is stable, so diagnostics at one position keep the order they were found.
         diagnostics = diagnostics.enumerated().sorted { a, b in
             if a.element.range.lowerBound != b.element.range.lowerBound {

@@ -249,28 +249,46 @@ extension Parser {
                fixIts: [FixIt(titleKey: "insertParentheses", edits: edits)])
     }
 
-    /// `not` (prefix, looser than comparison); also `!` (DK9003) and `~` (reported by the checker).
+    func isNotOperator(_ j: Int) -> Bool {
+        kind(j) == .notKeyword || kind(j) == .bang || kind(j) == .tilde || keywordVariant(j) == .notKeyword
+    }
+
+    /// `not` (prefix, looser than comparison); also `!` (DK9003) and `~` (reported by the checker). A chain of
+    /// prefix operators is read without recursion; its length counts toward the nesting limit.
     mutating func parseNot(condition: Bool) -> ParsedExpression {
-        let start = i
-        let isNot = kind(i) == .notKeyword || kind(i) == .bang || kind(i) == .tilde || keywordVariant(i) == .notKeyword
-        guard isNot else { return parseCompare(condition: condition) }
-        if expressionDepth >= SyntaxLimits.maxExpressionDepth { return skipDeepExpression() }
-        if let keyword = keywordVariant(i) { reportCaseVariant(i, keyword) }
-        let opIndex = i
-        let op = take()
-        expressionDepth += 1
-        let operand = parseNot(condition: condition)
-        expressionDepth -= 1
-        if operand.isMissing {
-            reportMissingOperand(opIndex)
-        } else if tokens[opIndex].kind == .bang {
-            let fixed = "not " + text(operand.start, operand.end)
-            let replacement = tokens[opIndex].trailingTrivia.isEmpty ? "not " : "not"
-            report(.symbolicNot, .error, textRange(opIndex), ["fixed": .code(fixed)],
-                   fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("not")],
-                                  edits: [edit(textRange(opIndex), replacement)], group: "symbolicOperators")])
+        guard isNotOperator(i) else { return parseCompare(condition: condition) }
+        var operators: [Int] = []
+        while isNotOperator(i) {
+            if expressionDepth + operators.count >= SyntaxLimits.maxExpressionDepth { break }
+            if let keyword = keywordVariant(i) { reportCaseVariant(i, keyword) }
+            operators.append(i)
+            i += 1
         }
-        return ParsedExpression(node: node(.prefixExpr, [op, .node(operand.node)]), start: start, end: i - 1)
+        let operand = isNotOperator(i) ? skipDeepExpression() : parseCompare(condition: condition)
+        return buildPrefixChain(operators, operand)
+    }
+
+    /// Nests prefix operators around their operand, innermost last, and reports the diagnosed ones.
+    mutating func buildPrefixChain(_ operators: [Int], _ operand: ParsedExpression) -> ParsedExpression {
+        var value = operand
+        for opIndex in operators.reversed() {
+            if value.isMissing {
+                reportMissingOperand(opIndex)
+            } else if tokens[opIndex].kind == .bang {
+                let fixed = "not " + text(value.start, value.end)
+                let replacement = tokens[opIndex].trailingTrivia.isEmpty ? "not " : "not"
+                report(.symbolicNot, .error, textRange(opIndex), ["fixed": .code(fixed)],
+                       fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("not")],
+                                      edits: [edit(textRange(opIndex), replacement)], group: "symbolicOperators")])
+            } else if tokens[opIndex].kind == .plus {
+                report(.unexpected, .error, textRange(opIndex), ["text": .code("+")],
+                       fixIts: [FixIt(titleKey: "remove", edits: [edit(starts[opIndex]..<starts[value.start], "")])])
+            }
+            let end = value.isMissing ? opIndex : value.end
+            value = ParsedExpression(node: node(.prefixExpr, [.token(tokens[opIndex]), .node(value.node)]),
+                                     start: opIndex, end: end)
+        }
+        return value
     }
 
     /// Comparisons are not chainable (DK2025); `=` where a comparison belongs is DK2026.
@@ -394,23 +412,17 @@ extension Parser {
         return left
     }
 
-    /// Prefix `-`; a prefix `+` is not Desk (DK2006, fix-it remove).
+    /// Prefix `-`; a prefix `+` is not Desk (DK2006, fix-it remove). Read without recursion, like `not`.
     mutating func parsePrefix() -> ParsedExpression {
-        let start = i
         guard kind(i) == .minus || kind(i) == .plus else { return parsePostfix() }
-        if expressionDepth >= SyntaxLimits.maxExpressionDepth { return skipDeepExpression() }
-        let opIndex = i
-        let op = take()
-        expressionDepth += 1
-        let operand = parsePrefix()
-        expressionDepth -= 1
-        if operand.isMissing {
-            reportMissingOperand(opIndex)
-        } else if tokens[opIndex].kind == .plus {
-            report(.unexpected, .error, textRange(opIndex), ["text": .code("+")],
-                   fixIts: [FixIt(titleKey: "remove", edits: [edit(starts[opIndex]..<starts[operand.start], "")])])
+        var operators: [Int] = []
+        while kind(i) == .minus || kind(i) == .plus {
+            if expressionDepth + operators.count >= SyntaxLimits.maxExpressionDepth { break }
+            operators.append(i)
+            i += 1
         }
-        return ParsedExpression(node: node(.prefixExpr, [op, .node(operand.node)]), start: start, end: i - 1)
+        let operand = (kind(i) == .minus || kind(i) == .plus) ? skipDeepExpression() : parsePostfix()
+        return buildPrefixChain(operators, operand)
     }
 
     /// Member access and calls (§2.9 level 10). A `.` continues across a line break (N3); a `(` does not (N7),
@@ -654,9 +666,9 @@ extension Parser {
             if i >= limit || k == .rBrace || k == .lBrace || k == .rParen || k == .semicolon
                 || (expectComma && nl(i) && looksLikeStatementStart(i)) {
                 children.append(missing(.rBracket))
-                report(.unclosedBracket, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
+                if !followsUnterminatedString { report(.unclosedBracket, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
                        fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("]")],
-                                      edits: [edit(insertionPoint..<insertionPoint, "]")])])
+                                      edits: [edit(insertionPoint..<insertionPoint, "]")])]) }
                 break
             }
             if k == .comma {
@@ -702,9 +714,11 @@ extension Parser {
             children.append(take())
         } else {
             children.append(missing(.rParen))
-            report(.unclosedParen, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
-                   fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code(")")],
-                                  edits: [edit(insertionPoint..<insertionPoint, ")")])])
+            if !followsUnterminatedString {
+                report(.unclosedParen, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
+                       fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code(")")],
+                                      edits: [edit(insertionPoint..<insertionPoint, ")")])])
+            }
         }
         return ParsedExpression(node: node(.parenExpr, children), start: start, end: i - 1)
     }
@@ -758,6 +772,12 @@ extension Parser {
         return node(.unexpected, children)
     }
 
+    /// The token before the current one closes a string that ran to the end of its line (DK1010): its missing
+    /// quote likely swallowed the closing bracket too, and the string's fix-it puts the quote before it.
+    var followsUnterminatedString: Bool {
+        i > 0 && tokens[i - 1].kind == .stringEnd && tokens[i - 1].isMissing
+    }
+
     // MARK: - Arguments
 
     /// `( label: value, value )`. Labels may be reserved words (`if:`); `label = value` is kept for the checker
@@ -775,9 +795,11 @@ extension Parser {
             if i >= limit || k == .rBrace || k == .lBrace || k == .rBracket || k == .semicolon
                 || (nl(i) && looksLikeStatementStart(i) && (expectComma || children.count == 1)) {
                 children.append(missing(.rParen))
-                report(.unclosedParen, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
-                       fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code(")")],
-                                      edits: [edit(insertionPoint..<insertionPoint, ")")])])
+                if !followsUnterminatedString {
+                    report(.unclosedParen, .error, textRange(open), ["line": .number(lineNumber(ofToken: open))],
+                           fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code(")")],
+                                          edits: [edit(insertionPoint..<insertionPoint, ")")])])
+                }
                 break
             }
             if k == .comma {

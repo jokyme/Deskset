@@ -48,6 +48,9 @@ struct Parser {
     var depthReported = false
     var foreignLineCount = 0
     var foreignFileReported = false
+    /// Byte ranges of the foreign runs (line-level `foreignConstruct` nodes): the lexer's diagnostics inside them
+    /// are dropped, since the run's one diagnostic stands for everything in it.
+    var foreignRunRanges: [Range<Int>] = []
 
     init(lexed: LexedFile, braces: BraceMatching, file: DeskFileID, lines: LineTable, bytes: [UInt8]) {
         tokens = lexed.tokens
@@ -205,11 +208,13 @@ struct Parser {
         var foreignLineCount: Int
         var foreignFileReported: Bool
         var depthReported: Bool
+        var foreignRuns: Int
     }
 
     func snapshot(_ children: [SyntaxChild]) -> Snapshot {
         Snapshot(i: i, children: children.count, diagnostics: diagnostics.count, foreignLineCount: foreignLineCount,
-                 foreignFileReported: foreignFileReported, depthReported: depthReported)
+                 foreignFileReported: foreignFileReported, depthReported: depthReported,
+                 foreignRuns: foreignRunRanges.count)
     }
 
     mutating func restore(_ s: Snapshot, _ children: inout [SyntaxChild]) {
@@ -219,6 +224,18 @@ struct Parser {
         foreignLineCount = s.foreignLineCount
         foreignFileReported = s.foreignFileReported
         depthReported = s.depthReported
+        foreignRunRanges.removeSubrange(s.foreignRuns...)
+    }
+
+    /// Whether a byte offset lies in a foreign run.
+    func isInForeignRun(_ offset: Int) -> Bool {
+        var low = 0
+        var high = foreignRunRanges.count
+        while low < high {
+            let mid = (low + high) / 2
+            if foreignRunRanges[mid].upperBound <= offset { low = mid + 1 } else { high = mid }
+        }
+        return low < foreignRunRanges.count && foreignRunRanges[low].contains(offset)
     }
 
     /// Whether the parser reported an error on the line of token `s.i` since the snapshot.

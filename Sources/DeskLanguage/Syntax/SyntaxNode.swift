@@ -446,3 +446,29 @@ public struct PositionedNode: Sendable {
         return nil
     }
 }
+
+extension SyntaxNode {
+    /// A one-line outline of the tree for tests and debugging: `kind[child child …]`, tokens by their text, missing
+    /// tokens as `‹kind›`, the end of file left out. Trivia are not shown.
+    public var outline: String {
+        var out = ""
+        var stack: [(SyntaxChild, Bool)] = [(.node(self), false)]   // (child, closing marker)
+        while let (child, closing) = stack.popLast() {
+            if closing { out += "]"; continue }
+            switch child {
+            case .token(let token):
+                if token.kind == .eof { continue }
+                if !out.isEmpty && !out.hasSuffix("[") { out += " " }
+                out += token.isMissing ? "‹\(token.kind.rawValue)›" : token.text
+            case .node(let node):
+                if !out.isEmpty && !out.hasSuffix("[") { out += " " }
+                out += node.kind.rawValue
+                if let foreign = node.foreignKind { out += ":" + foreign.rawValue }
+                out += "["
+                stack.append((.node(node), true))
+                for grandchild in node.children.reversed() { stack.append((grandchild, false)) }
+            }
+        }
+        return out
+    }
+}
