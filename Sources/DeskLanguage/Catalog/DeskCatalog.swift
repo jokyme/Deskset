@@ -119,6 +119,17 @@ public struct DeskCatalog: Sendable {
         return (canonical, spec)
     }
 
+    /// The newest release any item of the catalog comes from: the Deskset this catalog belongs to, and the default
+    /// target a file is checked against (§8.5).
+    public var newestSince: AppVersion {
+        var newest = AppVersion.deskFirstRelease
+        for item in documentedItems() { newest = max(newest, item.doc.since) }
+        for s in allSignatures() { newest = max(newest, s.value.since) }
+        for e in enums { for k in e.cases { newest = max(newest, k.since) } }
+        for d in compatDetails { newest = max(newest, d.since) }
+        return newest
+    }
+
     /// Lookups by name, built on first use for this copy of the catalog.
     public var index: CatalogIndex { box.index(for: self) }
 
@@ -168,12 +179,18 @@ public struct CatalogLimits: Sendable, Hashable {
     /// A user-initiated action inside `after` needs a literal delay of at most this (seconds).
     public var maximumUserActionDelay = 2.0
     public var maximumReactionRounds = 16
+    /// Seconds of expression evaluation per widget per turn; this many turns in a row over it pause the widget.
+    public var evaluationBudgetPerTurn = 0.010
+    public var turnsOverBudgetBeforePause = 3
     public var maximumSavedValueBytes = 65_536
     public var maximumSavedBytesPerInstance = 1_048_576
     public var maximumWebResponseBytes = 5_242_880
     public var maximumWebImageBytes = 20_971_520
     public var maximumWebImageSide = 8_192
     public var notificationsPerMinute = 1
+    /// A `.deskset` package: at most this much unpacked, and this many files (§8.3).
+    public var maximumPackageBytes = 104_857_600
+    public var maximumPackageFiles = 2_000
     /// The preset sizes in points: a medium is two smalls side by side with a 16 pt gap, a large two by two.
     public var smallSize = IdealSize(width: 170, height: 170)
     public var mediumSize = IdealSize(width: 356, height: 170)

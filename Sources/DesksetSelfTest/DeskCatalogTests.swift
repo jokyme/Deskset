@@ -530,6 +530,21 @@ func runDeskCatalogTests(_ t: TestRunner) {
         t.equal(c.implicitMemberTypes("nothing"), [])
         let presets = c.enumeration("SizePreset")?.cases.map(\.name) ?? []
         t.equal(presets, ["small", "medium", "large", "fit"])
+        // The limits of §8.3 and §8.4.
+        let l = c.limits
+        t.equal([l.maximumFileBytes, l.maximumTokens, l.maximumBlockNesting, l.maximumExpressionNesting,
+                 l.maximumDiagnosticsPerFile, l.maximumTextLength, l.maximumListLiteral, l.maximumRange, l.maximumForInstances,
+                 l.maximumForNesting, l.maximumElementInstances, l.maximumOptions, l.maximumPendingAfters, l.maximumReactionRounds,
+                 l.maximumSavedValueBytes, l.maximumSavedBytesPerInstance, l.maximumWebResponseBytes, l.maximumWebImageBytes,
+                 l.maximumWebImageSide, l.notificationsPerMinute, l.maximumPackageBytes, l.maximumPackageFiles,
+                 l.turnsOverBudgetBeforePause, l.deskVersion],
+                [1_048_576, 200_000, 64, 128, 500, 32_768, 1_000, 1_000, 1_000, 4, 5_000, 100, 256, 16, 65_536, 1_048_576,
+                 5_242_880, 20_971_520, 8_192, 1, 104_857_600, 2_000, 3, 1])
+        t.equal([l.minimumEvery, l.everyTipBelow, l.minimumWebEvery, l.minimumCommandEvery, l.maximumCommandTimeout,
+                 l.maximumUserActionDelay, l.evaluationBudgetPerTurn], [0.016, 0.25, 60, 1, 60, 2, 0.010])
+        t.equal(l.refreshRange, 0.25...3_600)
+        t.equal(l.afterRange, 0...86_400)
+        t.equal(c.newestSince, AppVersion.deskFirstRelease, "the first catalog is all 1.0")
         t.equal(c.limits.smallSize, IdealSize(width: 170, height: 170))
         t.equal(c.limits.mediumSize, IdealSize(width: 356, height: 170))
         t.equal(c.limits.largeSize, IdealSize(width: 356, height: 356))
