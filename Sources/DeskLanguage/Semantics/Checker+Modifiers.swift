@@ -236,7 +236,7 @@ extension Checker {
         exprContext.element = element
         exprContext.styleName = styleName
         exprContext.loopScope = context.loopIDs
-        exprContext.usage = .display
+        exprContext.usage = spec.timing != nil ? .logic : .display
         exprContext.modifier = name
         var dropped = false
 
@@ -1084,7 +1084,7 @@ extension Checker {
 
     // MARK: - Styles
 
-    func collectStyle(_ node: PositionedNode, file: DeskFileID? = nil, fromPackage: Bool = false) {
+    func collectStyle(_ node: PositionedNode, file: DeskFileID? = nil, fromPackage: Bool = false, id styleID: NodeID? = nil) {
         let decl = StyleDeclSyntax(unchecked: node)
         let token = decl.name
         guard !token.token.isMissing, token.kind == .identifier || token.kind.isKeyword else { return }
@@ -1100,7 +1100,7 @@ extension Checker {
                 return
             }
         }
-        let style = StyleInfo(name: name, node: node, id: id(node), nameRange: fromPackage ? 0..<0 : range(token),
+        let style = StyleInfo(name: name, node: node, id: styleID ?? id(node), nameRange: fromPackage ? 0..<0 : range(token),
                               file: file ?? self.file, fromPackage: fromPackage)
         styles[name] = style
         styleOrder.removeAll { $0.name == name }

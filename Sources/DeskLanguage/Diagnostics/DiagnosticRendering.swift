@@ -141,7 +141,7 @@ enum DiagnosticRenderer {
     static func tidy(_ text: String, language: DiagnosticLanguage) -> String {
         var t = text
         while t.contains("  ") { t = t.replacingOccurrences(of: "  ", with: " ") }
-        t = t.replacingOccurrences(of: " .", with: ".").replacingOccurrences(of: " ,", with: ",")
+        t = t.replacingOccurrences(of: #"\s+([.,])(\s|$)"#, with: "$1$2", options: .regularExpression)
         t = t.replacingOccurrences(of: "``", with: "")
         return t.trimmingCharacters(in: .whitespaces)
     }

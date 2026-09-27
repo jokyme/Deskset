@@ -208,7 +208,7 @@ extension Checker {
         }
         for (name, styleID) in package.styles {
             guard let node = package.file.tree.resolve(styleID) else { continue }
-            collectStyle(node, file: packageFile, fromPackage: true)
+            collectStyle(node, file: packageFile, fromPackage: true, id: styleID)
             _ = name
         }
         if let package = context.package {

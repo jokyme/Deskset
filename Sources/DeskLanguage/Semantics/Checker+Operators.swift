@@ -97,8 +97,13 @@ extension Checker {
         v.isConstant = l.isConstant && r.isConstant
         if l.error || r.error { return v }
         // Settling by use.
-        if let slot = l.open { recordUse(slot, of: r, rightNode, description: comparedWith(r)) }
-        if let slot = r.open { recordUse(slot, of: l, leftNode, description: comparedWith(l)) }
+        func asUse(_ x: Val) -> Val {
+            var y = x
+            if x.type == .record("Size") { y.type = .enumeration("SizePreset") }
+            return y
+        }
+        if let slot = l.open { recordUse(slot, of: asUse(r), rightNode, description: comparedWith(r)) }
+        if let slot = r.open { recordUse(slot, of: asUse(l), leftNode, description: comparedWith(l)) }
         if l.open != nil || r.open != nil { return v }
         if l.isJson || r.isJson { return v }
         if l.type == .record("Size") && r.type == .enumeration("SizePreset") { return v }
@@ -377,6 +382,7 @@ extension Checker {
         var v: Val
         if kind == .star {
             if a == .percent && b == .plain || a == .plain && b == .percent { v = Val(.number(.percent)) }
+            else if a == .percent && b == .percent { return mismatch() }
             else if a == .percent && b != .plain { v = Val(.number(b)) }
             else if b == .percent && a != .plain { v = Val(.number(a)) }
             else if b == .plain { v = Val(.number(a)); v.base = l.base }

@@ -335,6 +335,7 @@ final class Checker {
     var stateStyleCalls: [(String, CandidateCondition, PositionedNode, ElementNode?)] = []
     var duplicateDropped = Set<Int>()
     var trailingActionBlocks = Set<Int>()
+    var loopIdentities: [NodeID: String] = [:]
 
     init(tree: SyntaxTree, context: CheckContext) {
         self.tree = tree
@@ -394,10 +395,12 @@ final class Checker {
         }
         var styleIDs: [String: NodeID] = [:]
         for style in styleOrder where !style.fromPackage { styleIDs[style.name] = style.id }
-        return CheckedFile(tree: tree, diagnostics: all, symbols: symbols, types: types, elements: elementFacts,
-                           dataUses: dataUses, dependencies: dependencies, reactions: reactions,
-                           freeformOrders: freeformOrders, stringTable: stringTable, requirements: requirements,
-                           options: optionFacts, styles: styleIDs, translations: translationTable, root: root)
+        var checked = CheckedFile(tree: tree, diagnostics: all, symbols: symbols, types: types, elements: elementFacts,
+                                  dataUses: dataUses, dependencies: dependencies, reactions: reactions,
+                                  freeformOrders: freeformOrders, stringTable: stringTable, requirements: requirements,
+                                  options: optionFacts, styles: styleIDs, translations: translationTable, root: root)
+        checked.loopIdentities = loopIdentities
+        return checked
     }
 
     var droppedParserDiagnostics = Set<String>()

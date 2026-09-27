@@ -429,6 +429,9 @@ public struct CheckedFile: Sendable {
     public let translations: TranslationTable
     /// The widget's root element, when it has one; nil for an implicit Column.
     public let root: NodeID?
+    /// How each `for` identifies its instances (§4.15): the identity field of the list's records (`"date"`), or
+    /// `"position"`.
+    public var loopIdentities: [NodeID: String] = [:]
 
     public init(tree: SyntaxTree, diagnostics: [Diagnostic], symbols: [NodeID: Symbol], types: [NodeID: SemType],
                 elements: [NodeID: ElementFacts], dataUses: [DataUse], dependencies: [NodeID: Set<DepKey>],

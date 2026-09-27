@@ -38,7 +38,9 @@ struct ArgumentPlan {
     var unknownLabels: [Int] = []
     var extraPositional: [Int] = []
     var missing: [Int] = []
-    var fits: Bool { unknownLabels.isEmpty && extraPositional.isEmpty && missing.isEmpty }
+    /// A value for an optional positional parameter that already has one (argument, parameter): DK4004.
+    var givenTwice: [(Int, Int)] = []
+    var fits: Bool { unknownLabels.isEmpty && extraPositional.isEmpty && missing.isEmpty && givenTwice.isEmpty }
     /// How well the labels matched (for choosing the signature to report against).
     var score: Int { -(unknownLabels.count * 10 + extraPositional.count * 3 + missing.count) }
 }
@@ -106,7 +108,7 @@ extension Checker {
                     let param = signature.params[paramIndex]
                     for a in argIndices {
                         let val = speculate { infer(arguments[a].value.node, argumentContext(context, param, owner), expected: param.type) }
-                        guard let c = cost(val, param) else { ok = false; break }
+                        guard !val.error || arguments[a].value.node.kind != .implicitMemberExpr, let c = cost(val, param) else { ok = false; break }
                         if val.isJson { usesJson = true }
                         total += c
                     }
@@ -147,23 +149,36 @@ extension Checker {
         if !plan.unknownLabels.isEmpty {
             failed = true
             reportUnknownLabels(plan.unknownLabels, arguments, signature: signature, calleeName: calleeLabel,
-                                callRange: callRange, clause: clause, context)
+                                callRange: callRange, clause: clause, context, allSignatures: signatures)
         }
+        for (a, p) in plan.givenTwice {
+            failed = true
+            let name = signature.params[p].label ?? signature.params[p].name
+            report(.duplicateLabel, range(arguments[a].node), ["label": .code(name)],
+                   fixIts: [fix("removeOne", [edit(argumentRemovalRange(arguments[a], in: arguments), "")])])
+        }
+        var coveredByLabel: Set<String> = []
         if !plan.extraPositional.isEmpty {
             failed = true
-            reportTooManyArguments(plan.extraPositional, arguments, signature: signature, plan: plan, calleeName: calleeLabel,
-                                   callRange: callRange, clause: clause, context, owner: owner)
+            coveredByLabel = reportTooManyArguments(plan.extraPositional, arguments, signature: signature, plan: plan,
+                                                    calleeName: calleeLabel, callRange: callRange, clause: clause, context,
+                                                    owner: owner)
+            if coveredByLabel.contains("*") { return nil }
         }
         let callOnNextLine = clause == nil && tree.diagnostics.contains {
             $0.id == .callOnNextLine && $0.range.lowerBound >= callRange.upperBound && $0.range.lowerBound < callRange.upperBound + 400
         }
         if !plan.missing.isEmpty && plan.unknownLabels.isEmpty && !callOnNextLine {
             failed = true
-            for p in plan.missing { reportMissingArgument(signature.params[p], calleeName: calleeLabel, clause: clause, callRange: callRange) }
+            for p in plan.missing where !coveredByLabel.contains(signature.params[p].label ?? "") {
+                reportMissingArgument(signature.params[p], calleeName: calleeLabel, clause: clause, callRange: callRange)
+            }
         }
         // A call whose parameters are all optional with no default, called with none (D133).
         let settable = signature.params.filter { $0.role != .condition }
-        if arguments.isEmpty, !settable.isEmpty,
+        var takesBlock = false
+        if case .modifier(let m) = owner, m.block != .none { takesBlock = true }
+        if arguments.isEmpty, !settable.isEmpty, !takesBlock,
            settable.allSatisfy({ !$0.required && $0.defaultValue == nil && !$0.variadic }),
            case .modifier = owner {
             failed = true
@@ -294,15 +309,23 @@ extension Checker {
                 for p in required { plan.assignments[p] = [positional[next]]; next += 1 }
                 // The rest go to the trailing optional parameters, each by its type (D117).
                 var free = trailing
+                func fits(_ argument: ArgumentSyntax, _ p: Int) -> Bool {
+                    let val = speculate { infer(argument.value.node, argumentContext(context, params[p], .function(Checker.dummyFunction)), expected: params[p].type) }
+                    return !val.error && cost(val, params[p]) != nil
+                }
                 while next < n {
                     let argument = arguments[positional[next]]
+                    let taken = trailing.filter { !free.contains($0) }
+                    if trailing.count > 1, !free.contains(where: { fits(argument, $0) }),
+                       let twice = taken.first(where: { fits(argument, $0) }) {
+                        plan.givenTwice.append((positional[next], twice))
+                        next += 1
+                        continue
+                    }
                     guard !free.isEmpty else { plan.extraPositional.append(positional[next]); next += 1; continue }
                     var target = free[0]
                     if free.count > 1 {
-                        for p in free {
-                            let val = speculate { infer(argument.value.node, argumentContext(context, params[p], .function(Checker.dummyFunction)), expected: params[p].type) }
-                            if cost(val, params[p]) != nil { target = p; break }
-                        }
+                        for p in free where fits(argument, p) { target = p; break }
                     }
                     if plan.assignments[target] != nil {
                         plan.extraPositional.append(positional[next])
@@ -674,9 +697,10 @@ extension Checker {
     // MARK: - Label mix-ups (D132)
 
     func reportUnknownLabels(_ indices: [Int], _ arguments: [ArgumentSyntax], signature: Signature, calleeName: String,
-                             callRange: Range<Int>, clause: ArgumentClauseSyntax?, _ context: ExprContext) {
-        let labels = signature.params.compactMap(\.label)
-        let positionalNames = Set(signature.params.filter { $0.label == nil }.map(\.name))
+                             callRange: Range<Int>, clause: ArgumentClauseSyntax?, _ context: ExprContext,
+                             allSignatures: [Signature]? = nil) {
+        let labels = signature.params.filter { $0.role != .condition || calleeName == ".style" }.compactMap(\.label)
+        let positionalNames = Set((allSignatures ?? [signature]).flatMap { $0.params.filter { $0.label == nil }.map(\.name) })
         for i in indices {
             let argument = arguments[i]
             guard let label = argument.label else { continue }
@@ -735,9 +759,12 @@ extension Checker {
         return start..<r.upperBound
     }
 
+    /// Reports DK4003. Returns the labels the fix-it adds (so they are not also reported missing), or `"*"` when the
+    /// whole call is covered (`rgb(…)` for numbers given to a color).
+    @discardableResult
     func reportTooManyArguments(_ extra: [Int], _ arguments: [ArgumentSyntax], signature: Signature, plan: ArgumentPlan,
                                 calleeName: String, callRange: Range<Int>, clause: ArgumentClauseSyntax?,
-                                _ context: ExprContext, owner: CallOwner) {
+                                _ context: ExprContext, owner: CallOwner) -> Set<String> {
         let positionalCount = signature.params.filter { $0.label == nil }.count
         let firstExtra = arguments[extra[0]]
         let r = range(firstExtra.node)
@@ -750,7 +777,7 @@ extension Checker {
             args["fixed"] = .code(fixed)
             fixIts.append(fix("replaceWith", [edit(callRangeIncludingName(clauseNode, calleeName: "Line"), fixed)], ["text": .code(fixed)]))
             report(.tooManyArguments, r, args, fixIts: fixIts)
-            return
+            return ["*"]
         }
         // Three or four numbers given to a color: `rgb(…)`.
         let colorParam = signature.params.first { $0.type == .color || $0.type == .paint }
@@ -763,7 +790,7 @@ extension Checker {
             let start = textStart(allArgs.first!.node), end = range(allArgs.last!.node).upperBound
             fixIts.append(fix("replaceWith", [edit(start..<end, fixed)], ["text": .code(fixed)]))
             report(.tooManyArguments, r, args, fixIts: fixIts)
-            return
+            return ["*"]
         }
         // An extra value that fits exactly one unfilled labelled parameter: add the label.
         let unfilled = signature.params.indices.filter { signature.params[$0].label != nil && plan.assignments[$0] == nil }
@@ -777,7 +804,7 @@ extension Checker {
             args["fixed"] = .code(fixed)
             fixIts.append(fix("insert", [edit(range(valueNode), fixed)], ["text": .code(fixed)]))
             report(.tooManyArguments, r, args, fixIts: fixIts)
-            return
+            return ["min", "max"]
         }
         var fitting: [ParamSpec] = []
         for p in unfilled {
@@ -785,17 +812,20 @@ extension Checker {
             let val = speculate { infer(valueNode, argumentContext(context, param, owner), expected: param.type) }
             if !val.error, cost(val, param) != nil, cost(val, param)! <= 1 || param.type == .bool { fitting.append(param) }
         }
+        var covered: Set<String> = []
         if fitting.count == 1, let label = fitting[0].label {
             let fixed = "\(label): \(text(valueNode))"
             args["hint"] = hintText(.tooManyArguments, "addLabel")
             args["fixed"] = .code(fixed)
             fixIts.append(fix("insert", [edit(textStart(valueNode)..<textStart(valueNode), label + ": ")], ["text": .code(label + ":")]))
+            covered.insert(label)
         } else {
             args["hint"] = .text(LocalizedText("", ""))
             args["fixed"] = .code("")
             fixIts.append(fix("removeExtra", [edit(argumentRemovalRange(firstExtra, in: clause?.arguments ?? []), "")]))
         }
         report(.tooManyArguments, r, args, fixIts: fixIts)
+        return covered
     }
 
     func reportMissingArgument(_ param: ParamSpec, calleeName: String, clause: ArgumentClauseSyntax?,

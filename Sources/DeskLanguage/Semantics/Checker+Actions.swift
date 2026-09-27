@@ -129,7 +129,11 @@ extension Checker {
                         notePermission(namespace: ns, member: member, at: targetRange)
                     }
                 } else {
-                    reportNotAssignable(targetRange, name: memberPath, reasonKey: "readOnlyData", twin: member.settableTwin)
+                    if let ns = catalog.namespace(named: path.dropLast().joined(separator: ".")) {
+                        notePermission(namespace: ns, member: member, at: targetRange)
+                    }
+                    reportNotAssignable(targetRange, name: memberPath, reasonKey: "readOnlyData", twin: member.settableTwin,
+                                        statement: range(statement))
                     assignable = false
                 }
             } else if let decl = decls[path[0]] {
@@ -174,14 +178,14 @@ extension Checker {
         target.node
     }
 
-    func reportNotAssignable(_ r: Range<Int>, name: String, reasonKey: String, twin: String? = nil) {
+    func reportNotAssignable(_ r: Range<Int>, name: String, reasonKey: String, twin: String? = nil, statement: Range<Int>? = nil) {
         var arguments: [String: DiagnosticArgument] = ["name": .code(name), "reason": hintText(.notAssignable, reasonKey),
                                                        "hint": .text(LocalizedText("", ""))]
         var fixIts: [FixIt] = []
         if let twin {
             arguments["hint"] = hintText(.notAssignable, "useTwin")
             arguments["fixed"] = .code(twin)
-            fixIts.append(fix("replaceWith", [edit(r, twin)], ["text": .code(twin)]))
+            fixIts.append(fix("replaceWith", [edit(statement ?? r, twin)], ["text": .code(twin)]))
         } else {
             arguments["fixed"] = .code("")
         }
@@ -393,9 +397,9 @@ extension Checker {
                 element = Val(e)
                 element.deps = list.deps
                 element.canBeMissing = list.canBeMissing
-                if case .record(let rid) = e, let record = catalog.record(rid) {
-                    _ = record.identityField
-                }
+                var identity = "position"
+                if case .record(let rid) = e, let field = catalog.record(rid)?.identityField { identity = field }
+                if mute == 0 { loopIdentities[id(forStmt.node)] = identity }
             } else if list.isJson {
                 element = Val(.json)
                 element.deps = list.deps
@@ -420,11 +424,8 @@ extension Checker {
         guard checkOwnName(token, kind: "loop") else { return (nil, element) }
         if let decl = decls[name] {
             reportNameClash(token, other: LocalizedText("a declaration", "一个声明"), otherRange: decl.nameRange)
-            return (nil, element)
-        }
-        if let outer = loopStack.last(where: { $0.name == name }) {
+        } else if let outer = loopStack.last(where: { $0.name == name }) {
             reportNameClash(token, other: LocalizedText("an enclosing loop variable", "外层的循环变量"), otherRange: outer.range)
-            return (nil, element)
         }
         if let pre = preNames.first(where: { $0.name == name }) {
             reportNameClash(token, other: LocalizedText("an element's name", "一个元素的名字"), otherRange: pre.range)
