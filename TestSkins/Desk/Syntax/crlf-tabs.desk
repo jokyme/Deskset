@@ -1,0 +1,6 @@
+widget {
+	Column {
+		Text("CRLF and tabs")
+		Text("全角：（括号）")
+	}
+}

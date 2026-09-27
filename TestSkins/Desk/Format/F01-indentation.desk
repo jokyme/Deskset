@@ -1,0 +1,11 @@
+widget {
+	Column {
+	Text("A")
+	      .font(.caption)
+	}
+	  .padding(4)
+  Text("B").onClick {
+  x = 1
+        }
+        .font(.caption)
+}
