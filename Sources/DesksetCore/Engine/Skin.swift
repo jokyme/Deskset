@@ -127,6 +127,19 @@ public final class Skin {
     /// and the results of its background work (docs/skin-threading.md §5.3; see `SkinExecutor`). The main thread
     /// unless the host picks another executor before `load()`. Work already scheduled stays where it was scheduled.
     public var executor: SkinExecutor = MainSkinExecutor.shared
+    /// Where the skin's files are read from before the disk (nil: the disk): the Studio's instance of a widget loads the
+    /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
+    /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
+    public var sourceProvider: SourceProvider?
+    /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
+    /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
+    public var actionPolicy: SkinActionPolicy?
+    /// Told of each input the skin took from the person using it — a click, a hover, the wheel, the pointer for
+    /// `Plugin=Mouse`, a context menu item, text typed into InputText — and of each bang another widget sent it, after
+    /// the skin acted on it, while it is still loaded (an input that refreshed it is not passed on). The Studio replays
+    /// them into its own instance of the widget (`replay`), so a page turned or a theme picked on the desktop shows on
+    /// the canvas too. On the skin's owner.
+    public var inputMirror: ((SkinInput) -> Void)?
     /// What the host's renderer keeps for this skin from frame to frame (the app's `SkinRenderContext`: text layouts,
     /// processed Rotator images, Histogram scratch space). It belongs to the skin rather than to the app so that skins
     /// drawn on threads of their own never share a cache (docs/skin-threading.md §4.3): like everything reachable from
@@ -287,6 +300,13 @@ public final class Skin {
         counterBase = previous.counter
     }
 
+    /// Before the first update of a new instance of a widget that mirrors one already running (the Studio's own
+    /// instance, opened on the widget on the desktop): the first update computes the Calc `Counter` the running one's
+    /// last update computed, so both show the same; after it, `counter` is the running one's.
+    public func mirrorCounter(of running: Skin) {
+        counterBase = max(running.counter, 1) - 1
+    }
+
     public var rootConfig: String {
         String(config.split(separator: "\\").first ?? Substring(config))
     }
@@ -302,7 +322,7 @@ public final class Skin {
         environmentValid = false
         let builtins = builtInVariables()
         var includesAppearance = false
-        let loaded = try SkinFileLoader.load(url: fileURL) { raw, readSoFar in
+        let loaded = try SkinFileLoader.load(url: fileURL, sources: sourceProvider) { raw, readSoFar in
             let table = builtins.merging(readSoFar) { _, new in new }
             return VariableResolver(variableLookup: { name in
                 let key = name.lowercased()
@@ -1416,6 +1436,7 @@ public final class Skin {
             switch parsed.action {
             case .bang(let bang):
                 let bang = Bang(name: bang.name, args: bang.args.enumerated().map { resolved($0.element, $0.offset) })
+                if let actionPolicy, !actionPolicy.skin(self, allows: bang) { continue }
                 if bang.name == "delay" {
                     // "The lowest possible value is 16 milliseconds." Judgment: the rest of the action runs later
                     // on the skin's executor instead of blocking the skin; a refresh / unload (`close()`) cancels it.
@@ -1449,8 +1470,10 @@ public final class Skin {
                 let literal = Set(parsed.quoting.indices.filter { parsed.quoting[$0] == .magic })
                 perform(bang, from: section, literalArguments: literal)
             case .execute(let target, let arguments):
-                host?.skin(self, execute: resolved(target, 0),
-                           arguments: arguments.enumerated().map { resolved($0.element, $0.offset + 1) })
+                let target = resolved(target, 0)
+                let arguments = arguments.enumerated().map { resolved($0.element, $0.offset + 1) }
+                if let actionPolicy, !actionPolicy.skin(self, allowsExecuting: target, arguments: arguments) { continue }
+                host?.skin(self, execute: target, arguments: arguments)
             }
         }
     }
@@ -1482,6 +1505,7 @@ public final class Skin {
     /// their Config itself); unsupported ones are listed in `issues`.
     public func perform(_ bang: Bang, from section: SkinSection? = nil) {
         assertOwned()
+        if let actionPolicy, !actionPolicy.skin(self, allows: bang) { return }
         if actionDepth == 0 && updateDepth == 0 {
             // Called by the host (e.g. a bang forwarded from another skin): a burst of its own.
             burstWork = 0
@@ -1793,6 +1817,43 @@ public final class Skin {
         return items
     }
 
+    // MARK: Input another instance follows
+
+    /// Tells `inputMirror` of an input the skin took (not once it was closed: the input refreshed or unloaded it).
+    private func mirror(_ input: SkinInput) {
+        guard !closed, let inputMirror else { return }
+        inputMirror(input)
+    }
+
+    /// Runs an action for the person using the skin (a context menu item, a plugin's result of what they typed) from
+    /// `section`, and tells `inputMirror`.
+    public func executeInput(_ actionText: String, from section: SkinSection?) {
+        execute(actionText, from: section)
+        mirror(.action(actionText, section: section?.name))
+    }
+
+    /// Performs a bang another widget sent (`!SetVariable V 1 "This\Config"`), and tells `inputMirror`.
+    public func performSent(_ bang: Bang) {
+        perform(bang)
+        mirror(.bang(bang))
+    }
+
+    /// Takes an input another instance of the same widget took (`inputMirror`), as if it came here: this instance
+    /// follows what that one shows. What it may do of the actions that run is up to its `actionPolicy`.
+    public func replay(_ input: SkinInput) {
+        assertOwned()
+        guard !closed else { return }
+        switch input {
+        case .mouse(let kind, let x, let y): mouseEvent(kind, x: x, y: y)
+        case .moved(let x, let y): mouseMoved(x: x, y: y)
+        case .exited: mouseExited()
+        case .pressCancelled: cancelMousePress()
+        case .pointer(let event, let x, let y): pointerEvent(event, x: x, y: y)
+        case .action(let text, let name): execute(text, from: name.flatMap { section(named: $0) })
+        case .bang(let bang): perform(bang)
+        }
+    }
+
     // MARK: Mouse
 
     /// Topmost visible meter under the point that defines `kind` (nil → skin-level action). A disabled action
@@ -1817,6 +1878,7 @@ public final class Skin {
     @discardableResult
     public func mouseEvent(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         assertOwned()
+        defer { mirror(.mouse(kind, x: x, y: y)) }
         environmentValid = false
         var alreadyNotified: Meter?
         if kind == .leftUp, let captured = pressedMeter {
@@ -1861,6 +1923,7 @@ public final class Skin {
     /// hover state again).
     public func cancelMousePress() {
         assertOwned()
+        defer { mirror(.pressCancelled) }
         pressedMeter = nil
         for m in meters where m.handlesMouseItself {
             m.mouseHover(inside: false, x: -1, y: -1)
@@ -1877,6 +1940,7 @@ public final class Skin {
     /// Tracks MouseOverAction / MouseLeaveAction for meters and the skin.
     public func mouseMoved(x: Double, y: Double) {
         assertOwned()
+        defer { mirror(.moved(x: x, y: y)) }
         environmentValid = false
         if !mouseInside {
             mouseInside = true
@@ -1922,6 +1986,7 @@ public final class Skin {
     public func pointerEvent(_ event: PointerEvent, x: Double, y: Double) {
         assertOwned()
         guard !closed, !pointerObservers.isEmpty else { return }
+        defer { mirror(.pointer(event, x: x, y: y)) }
         environmentValid = false
         switch event {
         case .pressed(let button, let doubleClick):
@@ -2048,6 +2113,7 @@ public final class Skin {
 
     public func mouseExited() {
         assertOwned()
+        defer { mirror(.exited) }
         environmentValid = false
         for m in meters where m.handlesMouseItself { m.mouseHover(inside: false, x: -1, y: -1) }
         for key in hoveredMeters {

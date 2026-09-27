@@ -575,7 +575,7 @@ extension Skin {
             var usesAppearance = false
             func load(_ appearance: SkinAppearance) -> LoadedIniFile? {
                 let mac = appearance.variables
-                return try? SkinFileLoader.load(url: url, expandVariables: { raw, readSoFar in
+                return try? SkinFileLoader.load(url: url, sources: sourceProvider, expandVariables: { raw, readSoFar in
                     VariableResolver(variableLookup: { name in
                         let key = name.lowercased()
                         // As the engine resolves them (`Skin.load`): the Mac's, whatever [Variables] says.
@@ -625,7 +625,7 @@ extension Skin {
     public func switchedInclude(_ file: URL) -> SwitchedInclude? {
         let target = file.standardizedFileURL.resolvingSymlinksInPath().path
         for source in sourceFiles {
-            guard let text = try? TextDecoding.readFileDetectingEncoding(at: source).text else { continue }
+            guard let text = sourceText(of: source) else { continue }
             for line in text.split(whereSeparator: \.isNewline) {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 guard trimmed.lowercased().hasPrefix("@include"), let eq = trimmed.firstIndex(of: "=") else { continue }

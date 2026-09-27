@@ -506,7 +506,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                                isResource: Bool) {
         guard !closed else { return }
         let target = checkedFileAccess(WebParserURL.target(for: source, relativeTo: base))
-        let destination: URL?
+        var destination: URL?
         let isTemporary = options.downloadFile.isEmpty
         if isTemporary {
             destination = WebParserURL.temporaryDestination(prefix: instanceToken, source: target)
@@ -514,6 +514,8 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             destination = WebParserURL.downloadFileDestination(skinDirectory: skin.directory,
                                                                relativePath: options.downloadFile)
         }
+        // An instance that must not change the widget's files (the Studio's) saves its DownloadFile in a copy of its own.
+        let sandbox = isTemporary ? nil : skin.actionPolicy?.fileSandbox
         // The same file is already on its way: let that transfer finish (it runs this measure's actions). Restarting
         // it would starve the download whenever the parent re-reads its resource faster than the file arrives
         // (e.g. UpdateRate=1 and a slow image) — the value would never be set.
@@ -526,7 +528,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         downloadKey = key
         let generation = downloadGeneration
         // DownloadFile must not be written through a symbolic link (see WebParserURL.hasSymbolicLink).
-        let linkGuardRoot = isTemporary ? nil : skin.directory.appendingPathComponent("DownloadFile", isDirectory: true)
+        let linkGuardRoot = isTemporary || sandbox != nil
+            ? nil : skin.directory.appendingPathComponent("DownloadFile", isDirectory: true)
+        if let sandbox, target.isValid, let real = destination { destination = sandbox.url(forWriting: real) }
         guard target.isValid, let destination else {
             // An unusable URL is a connection failure for the measure's own resource; a bad DownloadFile is a
             // download failure.

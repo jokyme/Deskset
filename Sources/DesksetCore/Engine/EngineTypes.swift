@@ -307,6 +307,43 @@ public protocol SkinHost: AnyObject {
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion])
 }
 
+/// Input a skin took (`Skin.inputMirror`), which another instance of the same widget can take too (`Skin.replay`): the
+/// Studio's instance follows the clicks, hovers and bangs the widget on the desktop gets.
+public enum SkinInput {
+    /// `Skin.mouseEvent`.
+    case mouse(MouseEventKind, x: Double, y: Double)
+    /// `Skin.mouseMoved`.
+    case moved(x: Double, y: Double)
+    /// `Skin.mouseExited`.
+    case exited
+    /// `Skin.cancelMousePress`.
+    case pressCancelled
+    /// `Skin.pointerEvent` (`Plugin=Mouse`).
+    case pointer(PointerEvent, x: Double, y: Double)
+    /// An action run for the person from a section (by name): a context menu item, text typed into InputText.
+    case action(String, section: String?)
+    /// A bang another widget sent.
+    case bang(Bang)
+}
+
+/// Decides, action by action, what a skin runs of its own actions (its options' actions, mouse actions, scripts,
+/// plugins' finish actions): `Skin.actionPolicy`. What it refuses is skipped, as if the action were not there; the
+/// policy keeps a record of it if it wants one. Asked on the skin's owner, with the bang's arguments resolved.
+public protocol SkinActionPolicy: AnyObject {
+    /// Whether the skin performs `bang` (`!Delay` included).
+    func skin(_ skin: Skin, allows bang: Bang) -> Bool
+    /// Whether the skin hands `["target" arguments…]` (a web page, a file, a program) to its host.
+    func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool
+    /// Where the files the skin's scripts write (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and its
+    /// WebParser `DownloadFile` downloads go: nil (the default) for the files themselves, or a private copy that keeps
+    /// them away from the widget's files (`SkinFileSandbox`).
+    var fileSandbox: SkinFileSandbox? { get }
+}
+
+extension SkinActionPolicy {
+    public var fileSandbox: SkinFileSandbox? { nil }
+}
+
 extension SkinHost {
     public func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool { false }
     public func skinOutsidePointerNeedsChanged(_ skin: Skin) {}

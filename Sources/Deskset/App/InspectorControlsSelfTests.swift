@@ -498,11 +498,13 @@ extension AppSelfTest {
             guard let editing = editor.inspectorStack.findSubview(where: { $0.identifier?.rawValue == "VarText/Prefix" }) as? ValueField
             else { return t.check(false, "prefix field") }
             window.makeFirstResponder(editing)
-            app.controller(for: "Studio\\Kinds")?.skin.execute("[!SetOption VarText Postfix \"!\"]", from: nil)
+            // (The Studio shows its own instance of the widget: the option changes there.)
+            editor.skin?.execute("[!SetOption VarText Postfix \"!\"]", from: nil)
             editor.refreshLiveValues()
             t.check(editor.inspectorStack.findSubview(where: { $0 === editing }) != nil, "not rebuilt while typing")
             window.makeFirstResponder(nil)
             editor.window?.close()
+            withExtendedLifetime(app) {}
         }
 
         t.suite("App: Shape editor") {

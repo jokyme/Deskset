@@ -279,9 +279,10 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
     /// The first row of the layers: the widget itself (its colors, update speed, desktop settings).
     func skinRow() -> Item? {
         guard let c = controller else { return nil }
-        let name = Self.skinName(c)
+        let shown: Skin = skin ?? c.skin
+        let name = Self.skinName(shown, config: c.config)
         let n = EditorStyle.number
-        let item = Item(title: name.isEmpty ? c.config : name, detail: "\(n(c.skin.width)) × \(n(c.skin.height))",
+        let item = Item(title: name.isEmpty ? c.config : name, detail: "\(n(shown.width)) × \(n(shown.height))",
                         kind: .rainmeter, isSkin: true)
         item.display = item.title
         item.subtitle = "Whole widget · \(item.detail)"
@@ -1053,7 +1054,7 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
         }
         let changed = layers.filter { n in !shared.contains(n) && !following.contains(n) }
         let label = layersLabel(changed, title: true), sentence = layersLabel(changed, title: false)
-        let done = perform("\(hidden ? "Hide" : "Show") \(label)", files: writes.map(\.file), message: nil) { try Self.apply(writes) }
+        let done = perform("\(hidden ? "Hide" : "Show") \(label)", message: nil) { Self.ops(writes) }
         guard done else { return }
         inspectorState.eyeSaved = saved
         var text = "\(hidden ? "Hid" : "Showed") \(sentence)"
@@ -1088,21 +1089,27 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
         toast.show("\(locked ? "Locked" : "Unlocked") \(layersLabel(names, title: false))", actions: [undoToastAction()])
     }
 
-    /// One undo step that puts the locks back as they were (and its redo).
+    /// One undo step that puts the locks back as they were (and its redo). A step of the widget's undo stack (its
+    /// editing session's), so it outlives the window, which follows while it shows the widget.
     func registerLockUndo(locks: Set<String>, unlockedBackground: Bool, name: String) {
-        guard let manager = window?.undoManager else { return }
-        let key = config.lowercased()
-        manager.registerUndo(withTarget: self) { target in
-            let current = (locks: target.app.state.editor.editorLocks[key] ?? [],
-                           unlocked: target.app.state.editor.unlockedBackgrounds.contains(key))
-            target.app.state.updateEditor { prefs in
+        guard let session else { return }
+        Self.registerLockUndo(locks: locks, unlockedBackground: unlockedBackground, name: name, key: config.lowercased(),
+                              in: session)
+    }
+
+    static func registerLockUndo(locks: Set<String>, unlockedBackground: Bool, name: String, key: String,
+                                 in session: EditingSession) {
+        session.undoStack.registerUndo(withTarget: session) { session in
+            let state = session.app.state
+            let current = (locks: state.editor.editorLocks[key] ?? [], unlocked: state.editor.unlockedBackgrounds.contains(key))
+            state.updateEditor { prefs in
                 prefs.editorLocks[key] = locks.isEmpty ? nil : locks
                 if unlockedBackground { prefs.unlockedBackgrounds.insert(key) } else { prefs.unlockedBackgrounds.remove(key) }
             }
-            target.registerLockUndo(locks: current.locks, unlockedBackground: current.unlocked, name: name)
-            target.locksChanged()
+            registerLockUndo(locks: current.locks, unlockedBackground: current.unlocked, name: name, key: key, in: session)
+            (session.client as? InspectorWindowController)?.locksChanged()
         }
-        manager.setActionName(name)
+        session.undoStack.setActionName(name)
     }
 
     /// The rows and the canvas follow a change of locks.
@@ -1194,7 +1201,6 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             return false
         }
         let fixes = LayerReorder.fixups(skin: skin, moving: ordered, to: before)
-        let files = [file] + fixes.map { skin.ownTarget(section: $0.section, key: $0.key).file }
         let label = layersLabel(ordered, title: true), sentence = layersLabel(ordered, title: false)
         let place: String
         let rest = skin.meters.map(\.name).filter { !moving.contains($0.lowercased()) }
@@ -1209,9 +1215,9 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             place = "behind \(before.map(displayName(ofSection:)) ?? "")"
         }
         pendingSelection = ordered
-        let done = perform("Move \(label)", files: files, message: nil) {
-            for e in fixes { _ = try skin.writeOwnOption(section: e.section, key: e.key, value: e.value) }
-            for name in ordered { _ = try skin.moveSection(name, before: before) }
+        let done = perform("Move \(label)", message: nil) {
+            fixes.map { skin.op(settingOwnOption: $0.key, of: $0.section, to: $0.value) }
+                + ordered.compactMap { skin.op(movingSection: $0, before: before) }
         }
         guard done else { return false }
         var text = "Moved \(sentence) \(place)."

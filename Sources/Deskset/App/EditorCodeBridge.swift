@@ -4,10 +4,11 @@ import DesksetCore
 /// The skin editor's code pane (docs/editor-design.md §5) and where `CodeEditorRouter` meets the editor when the
 /// built-in editor is chosen.
 ///
-/// - Commit model: the code pane's buffer is committed through `perform("Edit Code")` — the bytes written in the
-///   file's own encoding, one `EditorFileChange` undo step on the window's undo stack, then a refresh. Every visual
-///   edit commits a dirty buffer first (`flushCode`), and after every refresh the clean buffers re-read the disk,
-///   keeping caret and scroll.
+/// - Commit model: the code pane's buffer is committed through `perform("Edit Code")` — one step of the widget's
+///   editing session: the text in memory takes it (the whole file's text, in its encoding), the file is written, one
+///   undo step on the widget's undo stack, the widget loaded again. Every visual edit commits a dirty buffer first
+///   (`flushCode`), and after every reload the clean buffers re-read the session's text (`readData`), keeping caret
+///   and scroll.
 /// - Selection sync is origin-tagged: selecting a layer, data source, style or the skin scrolls the code to its
 ///   section (switching files when an @Include file defines it) and tints the block, without taking the focus; the
 ///   caret coming to rest in a section selects what it defines. The code pane reports only the user's caret moves, and
@@ -34,6 +35,8 @@ extension InspectorWindowController {
         ])
         codeView.setFontSize(CGFloat(app.state.editor.codeFontSize))
         codeView.onCommit = { [weak self] url, text in self?.commitCode(url, text) ?? false }
+        // The files as the session holds them (its text is the truth; the disk follows it).
+        codeView.readData = { [weak self] url in try self?.session?.data(of: url) ?? Data(contentsOf: url) }
         codeView.onCaretSection = { [weak self] url, section in self?.codeCaretRested(in: section, file: url) }
         codeView.onFileChange = { [weak self] _ in self?.tintSelectionInCode() }
         NotificationCenter.default.addObserver(self, selector: #selector(codeScrolled(_:)),
@@ -96,15 +99,16 @@ extension InspectorWindowController {
 
     // MARK: Commit model
 
-    /// The code pane's commit: writes `text` in the file's encoding (BOM and line endings kept), as one undo step,
-    /// and refreshes the skin. False keeps the buffer dirty (the write failed, or no skin is loaded).
+    /// The code pane's commit: the file's text becomes `text`, written in the file's encoding (BOM and line endings
+    /// kept; the code pane may have converted an ANSI file to Unicode), as one undo step, and the widget loads again.
+    /// False keeps the buffer dirty (the write failed).
     func commitCode(_ url: URL, _ text: String) -> Bool {
-        guard let document = codeView.document(for: url), let data = document.data(for: text) else { return false }
+        guard let document = codeView.document(for: url), document.data(for: text) != nil else { return false }
         let target = CodeDocument.writeTarget(for: url)
         committingCode = true
         defer { committingCode = false }
-        return perform("Edit Code", files: [target], flushingCode: false, message: nil) {
-            try data.write(to: target, options: .atomic)
+        return perform("Edit Code", flushingCode: false, message: nil) {
+            [.editSource(file: target, text: text, encoding: document.encoding)]
         }
     }
 

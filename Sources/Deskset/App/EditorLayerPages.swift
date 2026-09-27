@@ -719,18 +719,17 @@ extension InspectorWindowController {
         let target = ScopeResolver(skin: skin).target(section: section, key: key, selection: [section])
         let textTarget = skin.ownTarget(section: section, key: "Text")
         let oldText = skin.section(named: section)?.rawOption("Text") ?? ""
-        var files = [skin.fileURL, target.file]
-        if addToText { files.append(textTarget.file) }
         let who = displayName(ofSection: section)
-        perform("Show " + Self.titleCase(choice.title), files: files,
-                message: { _ in "\(who) now shows \(Self.lowerFirst(choice.title))" }) {
-            try skin.appendSections([new])
-            if let next { _ = try skin.moveSection(new.name, before: next) }
-            try IniWriter.writeValue(new.name, key: key, section: target.section, fileURL: target.file)
+        perform("Show " + Self.titleCase(choice.title), message: { _ in "\(who) now shows \(Self.lowerFirst(choice.title))" }) {
+            var ops = [skin.op(appending: [new])]
+            if let next, let move = skin.op(movingSection: new.name, before: next) { ops.append(move) }
+            ops.append(.setValue(file: target.file, section: target.section, key: key, value: new.name, afterIncludes: false))
             if addToText {
-                try IniWriter.writeValue(oldText.trimmingCharacters(in: .whitespaces).isEmpty ? "%1" : oldText + " %1",
-                                         key: "Text", section: textTarget.section, fileURL: textTarget.file)
+                ops.append(.setValue(file: textTarget.file, section: textTarget.section, key: "Text",
+                                     value: oldText.trimmingCharacters(in: .whitespaces).isEmpty ? "%1" : oldText + " %1",
+                                     afterIncludes: false))
             }
+            return ops
         }
     }
 
@@ -2397,9 +2396,9 @@ extension InspectorWindowController {
 
     /// A color picked for several layers: previewed on all, written after a pause (or when the pick ends).
     func previewSeveralColor(_ key: String, rgba: RGBA, like: String, sections: [String], label: String, finished: Bool) {
-        guard let skin else { return }
+        guard skin != nil else { return }
         let text = ColorText.format(rgba, like: like.isEmpty ? nil : like)
-        for s in sections { skin.preview(section: s, [key: text]) }
+        for s in sections { session?.preview(section: s, [key: text]) }
         canvas.needsDisplay = true
         let state = pageState
         state.multiColor = (sections, key, text, label)
@@ -2408,7 +2407,7 @@ extension InspectorWindowController {
             guard let self, let pending = self.pageState.multiColor else { return }
             self.pageState.multiColor = nil
             self.pageState.multiColorTimer?.invalidate()
-            self.skin?.endPreview()
+            self.session?.endPreview()
             self.writeSeveral(pending.key, value: pending.value, sections: pending.sections, label: pending.name)
         }
         if finished {

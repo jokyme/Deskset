@@ -775,14 +775,14 @@ extension InspectorWindowController {
             // A look in a file other widgets share: this widget gets its own [Look] after the includes (later wins).
             let file = skin.isOwnFile(defined) || appliesToAllWidgets ? defined : skin.fileURL
             let reach = sharedReach([file])
-            guard perform(reach.map { "\(name) in All \($0.count) Widgets" } ?? name, files: [file], message: nil, {
-                try IniWriter.writeValue(value, key: place.key, section: place.owner, fileURL: file)
+            guard perform(reach.map { "\(name) in All \($0.count) Widgets" } ?? name, message: nil, {
+                [.setValue(file: file, section: place.owner, key: place.key, value: value, afterIncludes: false)]
             }) else { return }
             showToast(reach.map { Self.widened(toast, count: $0.count, root: $0.root) } ?? toast)
         case .layer:
             let target = skin.ownTarget(section: place.owner, key: place.key)
-            guard perform(name, files: [target.file], message: nil, {
-                try IniWriter.writeValue(value, key: place.key, section: target.section, fileURL: target.file)
+            guard perform(name, message: nil, {
+                [.setValue(file: target.file, section: target.section, key: place.key, value: value, afterIncludes: false)]
             }) else { return }
             showToast(toast)
         }
@@ -939,7 +939,7 @@ extension InspectorWindowController {
         let verify: ((Skin) -> Bool)? = own.isEmpty ? nil : { reloaded in
             own.allSatisfy { w in reloaded.sources.location(section: w.section, key: w.key).map { reloaded.isOwnFile($0.file) } ?? false }
         }
-        guard perform(undoName, files: writes.map(\.file), message: nil, verify: verify, { try Self.apply(writes) }) else {
+        guard perform(undoName, message: nil, verify: verify, { Self.ops(writes) }) else {
             return false
         }
         showToast(toast + keptNote)
@@ -1146,14 +1146,20 @@ extension InspectorWindowController {
         rebuildKeepingScroll()
     }
 
-    /// One undo step that puts the desktop settings back (and a redo that sets them again).
+    /// One undo step that puts the desktop settings back (and a redo that sets them again). It is a step of the
+    /// widget's undo stack (its editing session's), so it outlives the window: undone after the window closed, it still
+    /// changes the widget, and a window showing the widget then follows.
     func registerDesktopUndo(_ state: SkinState, name: String) {
-        guard let manager = window?.undoManager else { return }
-        manager.registerUndo(withTarget: self) { target in
-            guard let c = target.controller, target.isWidgetRunning else { return }
+        guard let session else { return }
+        Self.registerDesktopUndo(state, name: name, in: session)
+    }
+
+    static func registerDesktopUndo(_ state: SkinState, name: String, in session: EditingSession) {
+        session.undoStack.registerUndo(withTarget: session) { session in
+            guard let c = session.runningDesktop else { return }
             let current = c.state
-            let undoing = manager.isUndoing
-            target.app.changeSettings(of: c) { s in
+            let undoing = session.undoStack.isUndoing
+            session.app.changeSettings(of: c) { s in
                 s.alwaysOnTop = state.alwaysOnTop
                 s.draggable = state.draggable
                 s.clickThrough = state.clickThrough
@@ -1163,14 +1169,15 @@ extension InspectorWindowController {
                 s.fadeDuration = state.fadeDuration
                 s.onHover = state.onHover
             }
-            target.registerDesktopUndo(current, name: name)
+            registerDesktopUndo(current, name: name, in: session)
+            guard let window = session.client as? InspectorWindowController else { return }
             // "Undid Always on Top · [Redo]" (§10).
-            let again = undoing ? ToastAction("Redo") { [weak manager] in manager?.redo() }
-                : ToastAction("Undo") { [weak manager] in manager?.undo() }
-            target.toast.show(undoing ? "Undid \(name)" : "Redid \(name)", actions: [again])
-            target.rebuildKeepingScroll()
+            let again = undoing ? ToastAction("Redo") { [weak session] in session?.undoStack.redo() }
+                : ToastAction("Undo") { [weak session] in session?.undoStack.undo() }
+            window.toast.show(undoing ? "Undid \(name)" : "Redid \(name)", actions: [again])
+            window.rebuildKeepingScroll()
         }
-        manager.setActionName(name)
+        session.undoStack.setActionName(name)
     }
 
     // MARK: Size and spacing (§8.1.4)

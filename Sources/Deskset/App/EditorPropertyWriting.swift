@@ -1,8 +1,8 @@
 import AppKit
 import DesksetCore
 
-/// Writes made by the inspector's controls, on top of the shared pipeline in EditorEditing.swift (`perform`: one undo
-/// step with the bytes of the changed files, a refresh of the skin): one property, written to the narrowest place that
+/// Writes made by the inspector's controls, on top of the shared pipeline in EditorEditing.swift (`perform`: one step of
+/// the widget's editing session, one undo step, the widget loaded again): one property, written to the narrowest place that
 /// covers exactly what is selected (docs/editor-friendly.md §7.5, `ScopeResolver`), with a toast that states the reach
 /// and offers the next wider place ("Changed Bar 6 only · [Apply to All 16 Bars]"); shared values (a variable, for
 /// this widget only or for every widget sharing its file); a literal color everywhere this widget writes it; resetting
@@ -146,8 +146,8 @@ extension InspectorWindowController {
             let users = lookUsers(look, key: key)
             let what = kindPhrase(users, definite: true)
             let name = undoName ?? "Change \(Self.titleCase(label)) of \(Self.titleCase(kindPhrase(users, definite: false)))"
-            guard performEdit(name, files: [target.file], {
-                try IniWriter.writeValue(written, key: key, section: look, fileURL: target.file)
+            guard performEdit(name, {
+                [.setValue(file: target.file, section: look, key: key, value: written, afterIncludes: false)]
             }) else { return }
             var actions: [ToastAction] = []
             if let before, let v = wholeVariable(before), let everywhere = changeEverywhereAction(
@@ -173,7 +173,7 @@ extension InspectorWindowController {
             let name = undoName ?? (own.count == 1
                 ? "Change \(Self.titleCase(label)) of \(reachWords(own[0].section))"
                 : "Change \(Self.titleCase(label)) of \(Self.titleCase(kindPhrase(changed, definite: false)))")
-            guard performEdit(name, files: writes.map(\.file), { try Self.apply(writes) }) else { return }
+            guard performEdit(name, { Self.ops(writes) }) else { return }
             let what = own.count == 1 ? reachWords(own[0].section) : kindPhrase(changed, definite: true)
             var actions: [ToastAction] = []
             if let look, let apply = applyToLookAction(look, key: key, value: written, sections: target.sections, label: label) {
@@ -195,10 +195,8 @@ extension InspectorWindowController {
             self?.overrideProperty(section: section, key: key, value: value, label: label)
         }) { return }
         guard let skin else { return }
-        let file = skin.ownTarget(section: section, key: key).file
-        guard perform("Override \(label)", files: [file], message: nil, {
-            try skin.writeOwnOption(section: section, key: key, value: value)
-        }) else { return }
+        guard perform("Override \(label)", message: nil, { [skin.op(settingOwnOption: key, of: section, to: value)] })
+        else { return }
         showToast("\(label) set on \(displayName(ofSection: section)) only")
     }
 
@@ -207,10 +205,8 @@ extension InspectorWindowController {
         if deferUntilCodeIsCommitted({ [weak self] in self?.resetProperty(section: section, key: key, label: label) }) {
             return
         }
-        guard let skin, let file = skin.ownDefinitionFile(section: section, key: key) else { return }
-        guard perform("Reset \(label)", files: [file], message: nil, {
-            try skin.removeOwnOption(section: section, key: key)
-        }) else { return }
+        guard let skin, let op = skin.op(removingOwnOption: key, of: section) else { return }
+        guard perform("Reset \(label)", message: nil, { [op] }) else { return }
         showToast("\(label) reset on \(displayName(ofSection: section))")
     }
 
@@ -218,10 +214,8 @@ extension InspectorWindowController {
     /// applies again — one undo step "Match the Others".
     func matchTheOthers(section: String, key: String) {
         if deferUntilCodeIsCommitted({ [weak self] in self?.matchTheOthers(section: section, key: key) }) { return }
-        guard let skin, let file = skin.ownDefinitionFile(section: section, key: key) else { return }
-        guard perform("Match the Others", files: [file], message: nil, {
-            try skin.removeOwnOption(section: section, key: key)
-        }) else { return }
+        guard let skin, let op = skin.op(removingOwnOption: key, of: section) else { return }
+        guard perform("Match the Others", message: nil, { [op] }) else { return }
         showToast("\(displayName(ofSection: section)) matches the others again")
     }
 
@@ -250,19 +244,18 @@ extension InspectorWindowController {
     func writeKeys(_ writes: [KeyWrite], name: String, message: String) {
         guard !writes.isEmpty else { return }
         if deferUntilCodeIsCommitted({ [weak self] in self?.writeKeys(writes, name: name, message: message) }) { return }
-        guard perform(name, files: writes.map(\.file), message: nil, { try Self.apply(writes) }) else { return }
+        guard perform(name, message: nil, { Self.ops(writes) }) else { return }
         showToast(message)
     }
 
-    static func apply(_ writes: [KeyWrite]) throws {
-        for w in writes {
-            if let value = w.value, w.afterIncludes {
-                try IniWriter.writeAfterIncludes(value, key: w.key, section: w.section, fileURL: w.file)
-            } else if let value = w.value {
-                try IniWriter.writeValue(value, key: w.key, section: w.section, fileURL: w.file)
-            } else {
-                try IniWriter.removeKey(w.key, section: w.section, fileURL: w.file)
+    /// The session's edits for `writes`, in order (`IniWriter.writeAfterIncludes`, `writeValue`, `removeKey` on the text
+    /// in memory).
+    static func ops(_ writes: [KeyWrite]) -> [EditOp] {
+        writes.map { w in
+            if let value = w.value {
+                return .setValue(file: w.file, section: w.section, key: w.key, value: value, afterIncludes: w.afterIncludes)
             }
+            return .removeKey(file: w.file, section: w.section, key: w.key)
         }
     }
 
@@ -305,10 +298,7 @@ extension InspectorWindowController {
         let verify: ((Skin) -> Bool)? = own.isEmpty ? nil : { reloaded in
             own.allSatisfy { w in reloaded.sources.location(section: "Variables", key: w.key).map { reloaded.isOwnFile($0.file) } ?? false }
         }
-        guard performEdit(undoName, files: plan.map(\.file) + extra.map(\.file), verify: verify, {
-            try Self.apply(plan)
-            try Self.apply(extra)
-        }) else { return false }
+        guard performEdit(undoName, verify: verify, { Self.ops(plan) + Self.ops(extra) }) else { return false }
         showToast(toast)
         return true
     }
@@ -393,7 +383,7 @@ extension InspectorWindowController {
         let verify: ((Skin) -> Bool)? = local.isEmpty ? nil : { reloaded in
             local.allSatisfy { w in reloaded.sources.location(section: w.section, key: w.key).map { reloaded.isOwnFile($0.file) } ?? false }
         }
-        guard performEdit(undoName, files: writes.map(\.file), verify: verify, { try Self.apply(writes) }) else {
+        guard performEdit(undoName, verify: verify, { Self.ops(writes) }) else {
             return false
         }
         showToast(toast + sharedNote(kept))
@@ -403,46 +393,28 @@ extension InspectorWindowController {
     /// `perform`, except while the color panel's pick is being written (`commitColorEdit`): every write of one session
     /// in the panel is then one undo step (§7.4 "one undo step"), as long as nothing else changed those files in
     /// between and the step was not undone.
-    func performEdit(_ name: String, files: [URL], verify: ((Skin) -> Bool)? = nil, _ body: () throws -> Void) -> Bool {
-        guard inspectorState.colorCommitting, let session = inspectorState.colorSession else {
-            return perform(name, files: files, message: nil, verify: verify, body)
+    func performEdit(_ name: String, verify: ((Skin) -> Bool)? = nil, _ ops: () throws -> [EditOp]) -> Bool {
+        guard inspectorState.colorCommitting, let colorSession = inspectorState.colorSession else {
+            return perform(name, message: nil, verify: verify, ops)
         }
         if !flushCode() { return false }
-        skin?.endPreview()
+        guard let session else { return false }
+        session.endPreview()
         do {
-            let changes = try EditorFileChange.record(files, body)
-            guard !changes.isEmpty else { return true }
-            if let verify {
-                if let skin { fileStamps = stamps(for: skin.sourceFiles) }
-                refreshSkin()
-                if let skin, !verify(skin) {
-                    // Written, but it doesn't take effect: the files go back, and no undo step is made.
-                    try EditorFileChange.restore(changes, undo: true)
-                    if let skin = self.skin { fileStamps = stamps(for: skin.sourceFiles) }
-                    refreshSkin()
-                    toast.show(Self.overrideLostMessage, error: true)
-                    return false
-                }
-            }
-            // Folded into the session's step (its undo puts back what was there before the first pick) — not with a
+            // Written, and — when it doesn't take effect (`verify`) — put back, with no undo step.
+            guard let t = try session.apply(name, try ops(), registersUndo: false, verify: verify) else { return true }
+            // Folded into the panel's step (its undo puts back what was there before the first pick) — not with a
             // redo waiting, which a new step clears and a folded one would leave to fail.
-            if let step = session.step, window?.undoManager?.canRedo != true, step.merge(changes) {
+            if let step = colorSession.step, window?.undoManager?.canRedo != true, step.merge(t, in: session) {
             } else {
-                let step = InspectorState.ColorStep(changes)
-                session.step = step
-                if let manager = window?.undoManager {
-                    manager.registerUndo(withTarget: self) { target in
-                        step.isSealed = true
-                        target.restore(step.changes, name: name, undo: true)
-                    }
-                    manager.setActionName(name)
-                }
-            }
-            if verify == nil {
-                if let skin { fileStamps = stamps(for: skin.sourceFiles) }
-                refreshSkin()
+                let step = GrowingStep(t)
+                colorSession.step = step
+                session.registerUndo(step)
             }
             return true
+        } catch SessionError.notInEffect {
+            toast.show(Self.overrideLostMessage, error: true)
+            return false
         } catch {
             toast.show("Could not save: \(error)", error: true)
             NSSound.beep()
@@ -490,11 +462,11 @@ extension InspectorWindowController {
             let target = ScopeResolver(skin: skin, usages: valueUsages(skin)).target(section: section, key: key, selection: selection, variable: variable)
             switch target.scope {
             case .sharedValue(let name):
-                skin.previewVariables([name: text])
+                session?.previewVariables([name: text])
             case .look(let look):
-                for s in lookUsers(look, key: key) { skin.preview(section: s, [key: text]) }
+                for s in lookUsers(look, key: key) { session?.preview(section: s, [key: text]) }
             case .own:
-                for s in target.sections { skin.preview(section: s, [key: text]) }
+                for s in target.sections { session?.preview(section: s, [key: text]) }
             }
         case .variables(let names, _, _):
             var values: [String: String] = [:]
@@ -502,12 +474,12 @@ extension InspectorWindowController {
                 let like = skin.inspectedVariables().first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.raw
                 values[name] = ColorText.format(rgba, like: like)
             }
-            skin.previewVariables(values)
+            session?.previewVariables(values)
         case .literal(let old, _, _):
             for use in edit.literalUses {
                 guard let raw = skin.section(named: use.section)?.fileOption(use.key),
                       let rewritten = ValueUsageIndex.replacingColor(old, with: rgba, in: raw, key: use.key) else { continue }
-                skin.preview(section: use.section, [use.key: rewritten])
+                session?.preview(section: use.section, [use.key: rewritten])
             }
         }
         canvas.needsDisplay = true
@@ -544,7 +516,7 @@ extension InspectorWindowController {
                 // The same options hold the new color now: the next pick replaces that one.
                 inspectorState.colorEdit?.target = .literal(rgba, role: role, users: users)
             } else {
-                skin.endPreview()
+                session?.endPreview()
             }
         }
     }
@@ -589,7 +561,7 @@ extension InspectorWindowController {
                 }
             }
             let name = "Change \(Self.titleCase(label)) of \(Self.titleCase(self.kindPhrase(users, definite: false)))"
-            guard self.perform(name, files: writes.map(\.file), message: nil, { try Self.apply(writes) }) else { return }
+            guard self.perform(name, message: nil, { Self.ops(writes) }) else { return }
             self.showToast("Changed \(self.kindPhrase(users, definite: true))")
         }
     }

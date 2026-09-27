@@ -173,19 +173,19 @@ extension InspectorWindowController {
             }
         }
         let next = Self.dataSourceInsertionPoint(in: skin)
-        var files = [skin.fileURL]
         let reference: (target: SkinEditTarget, key: String)? = ctx.map { ctx in
             let key = ctx.variable ?? ctx.key
             return (skin.editTarget(section: ctx.variable != nil ? "Variables" : ctx.section, key: key), key)
         }
-        if let reference { files.append(reference.target.file) } else { pendingSelection = [section.name] }
-        let done = perform("Add \(Self.titleCase(choice.title))", files: files, message: nil) {
-            try skin.appendSections([section])
-            if let next { _ = try skin.moveSection(section.name, before: next) }
+        if reference == nil { pendingSelection = [section.name] }
+        let done = perform("Add \(Self.titleCase(choice.title))", message: nil) {
+            var ops = [skin.op(appending: [section])]
+            if let next, let move = skin.op(movingSection: section.name, before: next) { ops.append(move) }
             if let reference {
-                try IniWriter.writeValue(section.name, key: reference.key, section: reference.target.section,
-                                         fileURL: reference.target.file)
+                ops.append(.setValue(file: reference.target.file, section: reference.target.section, key: reference.key,
+                                     value: section.name, afterIncludes: false))
             }
+            return ops
         }
         if done { toast.show("Added \(LayerNaming.inSentence(choice.title))", actions: [undoToastAction()]) }
     }
@@ -657,7 +657,6 @@ extension InspectorWindowController {
             return
         }
         let label = chosen.count == 1 ? displayName(ofSection: chosen[0]) : "\(chosen.count) live data items"
-        let files = all.flatMap { skin.definingFiles(ofSection: $0) }
         if all.contains(where: { $0.caseInsensitiveCompare(selectedSection ?? "") == .orderedSame }) { selectedSection = nil }
         // The layers that showed, followed or acted on it, by the names they have now.
         let catalog = sidebar.catalog ?? LayerNaming.catalog(of: skin)
@@ -669,9 +668,7 @@ extension InspectorWindowController {
         let firstLayer = layers.first.map(displayName(ofSection:))
         let their = chosen.count == 1 ? "Its" : "Their"
         let undoName = "Delete \(Self.titleCase(label))" + (children.isEmpty ? "" : " with \(their) \(children.count) Items")
-        let done = perform(undoName, files: files, message: nil) {
-            for n in all { try skin.removeSection(n) }
-        }
+        let done = perform(undoName, message: nil) { all.map { skin.op(removingSection: $0) } }
         guard done else { return }
         var text = "Deleted \(LayerNaming.inSentence(label))"
         if !children.isEmpty { text += " and \(their.lowercased()) \(children.count) items" }
@@ -716,9 +713,7 @@ extension InspectorWindowController {
         sections[i].options.append((key: "Text", value: "%1"))
         pendingSelection = [sections[i].name]
         let label = displayName(ofSection: measure)
-        let done = perform("Show \(Self.titleCase(label)) in a New Text Layer", files: [skin.fileURL], message: nil) {
-            try skin.appendSections(sections)
-        }
+        let done = perform("Show \(Self.titleCase(label)) in a New Text Layer", message: nil) { [skin.op(appending: sections)] }
         if done { toast.show("Added a text showing \(LayerNaming.inSentence(label))", actions: [undoToastAction()]) }
     }
 
@@ -731,11 +726,14 @@ extension InspectorWindowController {
         guard !copies.isEmpty else { return }
         pendingSelection = copies.last.map { [$0.1.name] }
         let done = perform(names.count == 1 ? "Duplicate \(Self.titleCase(displayName(ofSection: names[0])))" : "Duplicate",
-                           files: [skin.fileURL], message: nil) {
-            try skin.appendSections(copies.map(\.1))
+                           message: nil) {
+            var ops = [skin.op(appending: copies.map(\.1))]
             for (original, copy) in copies {
-                if let next = Self.section(after: original, in: skin) { _ = try skin.moveSection(copy.name, before: next) }
+                if let next = Self.section(after: original, in: skin), let move = skin.op(movingSection: copy.name, before: next) {
+                    ops.append(move)
+                }
             }
+            return ops
         }
         if done { toast.show("Duplicated \(LayerNaming.inSentence(displayName(ofSection: names[0])))", actions: [undoToastAction()]) }
     }

@@ -157,6 +157,14 @@ public final class HistogramMeter: Meter {
         imageSize ?? (0, 0)
     }
 
+    /// Takes `other`'s samples: a new instance of a widget then shows the graph the one already running shows
+    /// (`Skin.takeGraphs(from:)`).
+    func takeHistory(from other: HistogramMeter) {
+        primaryHistory = other.primaryHistory
+        secondaryHistory = other.secondaryHistory
+        computeAutoRange()
+    }
+
     /// Adds one sample per measure, resizing the histories first when the size changed.
     public override func updateMeter() {
         let length = imageSize.map { direction.vertical ? $0.width : $0.height }

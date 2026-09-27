@@ -98,7 +98,7 @@ extension SkinController {
             // in each skin of the group.
             let verb = String(bang.name.dropLast("skingroup".count))
             for t in group(1) where !t.isStopped {
-                t.skin.perform(Bang(name: verb, args: ["Rainmeter", a.first ?? ""]))
+                t.skin.performSent(Bang(name: verb, args: ["Rainmeter", a.first ?? ""]))
             }
         case "updategroup":
             group(0).forEach { $0.skin.update() }
@@ -107,7 +107,7 @@ extension SkinController {
         case "setvariablegroup":
             // !SetVariableGroup Variable Value Group
             for t in group(2) where !t.isStopped {
-                t.skin.perform(Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""]))
+                t.skin.performSent(Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""]))
             }
 
         // Window position and behaviour
