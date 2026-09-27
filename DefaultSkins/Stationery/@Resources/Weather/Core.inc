@@ -170,6 +170,16 @@ Formula=(MeasureWxMode = 2) ? [#WxNoticeKind[&MeasureWxStatus:]] : 0
 DynamicVariables=1
 Group=Weather
 
+[MeasureWxTip]
+; the card's sentence, by MeasureWxMode (WeatherCardTip0…2 in the Strings); a state that ends in "…" ("Loading
+; weather…") takes no full stop after it
+Measure=String
+String=[#WeatherCardTip[&MeasureWxMode:]]
+DynamicVariables=1
+RegExpSubstitute=1
+Substitute="…\.$":"…","…。$":"…"
+Group=Weather
+
 ; ---------------------------------------------------------------- the place
 [MeasureLocationKind]
 ; Location=auto: the header's glyph is location.fill, and the menu offers to stop using this Mac's location
