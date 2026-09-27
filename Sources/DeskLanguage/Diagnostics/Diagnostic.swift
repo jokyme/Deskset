@@ -13,6 +13,8 @@ public indirect enum DiagnosticArgument: Sendable, Hashable {
     case code(String)
     /// Prose in both languages.
     case text(LocalizedText)
+    /// A type, rendered with its display name: "a number" / "数字".
+    case type(DeskType)
     /// A display-name id of the catalog: `"slot:expression"`, `"component:Progress"`, `"facet:font.weight"`.
     case name(String)
     /// A line, a count, a limit, an amount.
@@ -94,6 +96,7 @@ extension Diagnostic: CustomStringConvertible {
             case .code(let s): return "\(key)=`\(s)`"
             case .text(let t): return "\(key)=\(t.en)"
             case .name(let n): return "\(key)=<\(n)>"
+            case .type(let type): return "\(key)=<\(type)>"
             case .number(let n): return "\(key)=\(n)"
             case .list(let items, _): return "\(key)=[\(items.count)]"
             }
