@@ -249,14 +249,24 @@ final class AudioCaptureEngine {
     }()
 
     /// `DESKSET_AUDIO_DEMO=1`: every stream is a generated demo signal (SyntheticAudioBackend), also in
-    /// command-line modes — no permission involved.
-    static let demoSignal = ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] == "1"
+    /// command-line modes — no permission involved. `=silent`: the demo stream carries only digital silence.
+    static let demoSignal = ["1", "silent"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
+    static let demoSilence = ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] == "silent"
 
     /// Seconds a source keeps running after its last subscriber left (skin refresh).
     var stopDelay: TimeInterval = 3
     /// Seconds between two restarts caused by device notifications (they come in bursts).
     static let restartDelay: TimeInterval = 0.3
     static let analysisInterval: TimeInterval = 1.0 / 60
+    /// A source nobody has read for `idleAfter` seconds, or that has carried only digital silence for as long, is
+    /// analysed at this interval instead (the levels still follow every sample: the ticks take all that arrived). It
+    /// is back at `analysisInterval` within one of these once it is read again or sounds. A visualizer at rest reads
+    /// its levels once a second (Spectrum, Studio VU), so it no longer keeps the analysis at 60 ticks a second.
+    static let restInterval: TimeInterval = 0.25
+    static let idleAfter: TimeInterval = 0.5
+    /// A spectrum (FFT, bands) nobody has read for this long is not transformed (a visualizer at rest reads only its
+    /// levels).
+    static let spectrumIdleAfter: TimeInterval = 1
     /// Without new frames for this long the analyzers decay towards silence.
     static let silenceTimeout: TimeInterval = 0.1
 
@@ -305,6 +315,10 @@ final class AudioCaptureEngine {
         let scratch: UnsafeMutablePointer<Float>
         var lastAudio: TimeInterval = 0
         var lastTick: TimeInterval = 0
+        /// Analysis queue: the last tick that drained a sample other than zero.
+        var lastSound: TimeInterval = 0
+        /// Analysis queue: the timer's interval now (`analysisInterval` or `restInterval`).
+        var interval = AudioCaptureEngine.analysisInterval
         /// Analysis queue: a non-zero sample arrived since the capture started.
         var heardLocally = false
         private var _heardAudio = false
@@ -378,6 +392,12 @@ final class AudioCaptureEngine {
     /// Keys of the sources that exist (tests, diagnostics). HAL queue round trip.
     func activeSourceKeys() -> [AudioSourceKey] {
         AudioHAL.queue.sync { Array(sources.keys) }
+    }
+
+    /// Seconds between the analysis ticks of a source now (`analysisInterval` or `restInterval`; tests).
+    func pace(for key: AudioSourceKey) -> TimeInterval? {
+        guard let source = AudioHAL.queue.sync(execute: { sources[key] }) else { return nil }
+        return analysisQueue.sync { source.interval }
     }
 
     /// Waits until queued subscription work has run (tests).
@@ -562,32 +582,42 @@ final class AudioCaptureEngine {
             let now = ProcessInfo.processInfo.systemUptime
             source?.lastAudio = now
             source?.lastTick = now
+            source?.lastSound = now
+            source?.interval = interval
         }
-        timer.setEventHandler { [weak source] in
+        timer.setEventHandler { [weak source, weak timer] in
             guard let source else { return }
-            AudioCaptureEngine.tick(source)
+            AudioCaptureEngine.tick(source, timer: timer)
         }
         source.timer = timer
         timer.resume()
     }
 
-    /// One analysis step (analysis queue): drain the ring, feed or decay the analyzers.
-    static func tick(_ source: Source, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    /// One analysis step (analysis queue): drain the ring, feed or decay the analyzers, then choose the pace of the
+    /// next steps (`restInterval`).
+    /// `timer`: the source's timer, rescheduled here (the HAL queue owns `source.timer`).
+    static func tick(_ source: Source, timer: DispatchSourceTimer? = nil,
+                     now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         let (frames, channels) = source.ring.read(into: source.scratch, maxFrames: source.ring.capacity)
         let analyzers = source.analyzers
+        let reads = analyzers.map(\.readTimes)
+        let lastSpectrumRead = reads.map(\.spectrum).max() ?? 0
         let rate = source.sampleRate
         if frames > 0, channels > 0, rate > 0 {
-            if !source.heardLocally {
-                var peak: Float = 0
-                vDSP_maxmgv(source.scratch, 1, &peak, vDSP_Length(frames * AudioRingBuffer.stride))
-                if peak > 0 {
+            var peak: Float = 0
+            vDSP_maxmgv(source.scratch, 1, &peak, vDSP_Length(frames * AudioRingBuffer.stride))
+            if peak > 0 {
+                source.lastSound = now
+                if !source.heardLocally {
                     source.heardLocally = true
                     source.heardAudio = true
                 }
             }
+            // A spectrum that was never read yet is transformed: the first reader finds it ready.
+            let spectrumWanted = lastSpectrumRead == 0 || now - lastSpectrumRead < spectrumIdleAfter
             for a in analyzers {
                 a.process(source.scratch, stride: AudioRingBuffer.stride, frames: frames, channels: channels,
-                          sampleRate: rate)
+                          sampleRate: rate, analyzesSpectrum: spectrumWanted)
             }
             source.lastAudio = now
         } else if now - source.lastAudio > silenceTimeout {
@@ -595,6 +625,14 @@ final class AudioCaptureEngine {
             for a in analyzers { a.decay(seconds: seconds) }
         }
         source.lastTick = now
+        let lastRead = reads.map(\.any).max() ?? 0
+        let resting = now - lastRead > idleAfter || now - source.lastSound > idleAfter
+        let interval = resting ? restInterval : analysisInterval
+        if interval != source.interval, let timer {
+            source.interval = interval
+            timer.schedule(deadline: .now() + interval, repeating: interval,
+                           leeway: resting ? .milliseconds(50) : .milliseconds(4))
+        }
     }
 
     // MARK: Devices

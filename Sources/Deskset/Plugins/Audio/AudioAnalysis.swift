@@ -450,18 +450,27 @@ final class AudioAnalyzer {
     private var peak: [Double] = []
     private var spectrum: AudioSpectrum?
     private var secondsSinceTransform = 0.0
+    /// Windows filled since the last transform.
+    private var spectrumHops = 0
 
     private let lock = NSLock()
     private var output = AudioAnalysisOutput()
     /// Set by `requestBinValues()` or the first `fft(_:index:)` read (under `lock`).
     private var fftRequested = false
+    /// When a value was last read, and a spectrum value (FFT or band) (`systemUptime`, under `lock`; 0: never). The
+    /// engine analyses a source only as often as it is read (`AudioCaptureEngine.tick`).
+    private var lastRead: TimeInterval = 0
+    private var lastSpectrumRead: TimeInterval = 0
 
     init(settings: AudioAnalysisSettings) {
         self.settings = settings.normalized()
     }
 
-    /// Feeds interleaved Float32 frames (`stride` floats per frame, `channels` of them used).
-    func process(_ samples: UnsafePointer<Float>, stride: Int, frames: Int, channels ch: Int, sampleRate sr: Double) {
+    /// Feeds interleaved Float32 frames (`stride` floats per frame, `channels` of them used). Without `analyzesSpectrum`
+    /// the samples still fill the spectrum's window but it is not transformed: the next transform smooths over the
+    /// whole time since the last one.
+    func process(_ samples: UnsafePointer<Float>, stride: Int, frames: Int, channels ch: Int, sampleRate sr: Double,
+                 analyzesSpectrum: Bool = true) {
         guard frames > 0, ch > 0, stride >= ch, sr > 0, sr.isFinite else { return }
         let ch = min(ch, AudioAnalyzer.maxChannels)
         if ch != channels || sr != sampleRate { configure(channels: ch, sampleRate: sr) }
@@ -494,7 +503,9 @@ final class AudioAnalyzer {
             secondsSinceTransform += seconds
             start += n
         }
-        if let spectrum, hops > 0 {
+        spectrumHops += hops
+        if let spectrum, spectrumHops > 0, analyzesSpectrum {
+            spectrumHops = 0
             lock.lock()
             spectrum.computesBinValues = fftRequested
             lock.unlock()
@@ -580,14 +591,28 @@ final class AudioAnalyzer {
         return (output.channels, output.sampleRate)
     }
 
+    /// When a value was last read, and a spectrum value (0: never).
+    var readTimes: (any: TimeInterval, spectrum: TimeInterval) {
+        lock.lock(); defer { lock.unlock() }
+        return (lastRead, lastSpectrumRead)
+    }
+
+    private func noteRead(spectrum: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        lastRead = now
+        if spectrum { lastSpectrumRead = now }
+    }
+
     func rms(_ channel: AudioChannel) -> Double {
         lock.lock(); defer { lock.unlock() }
+        noteRead(spectrum: false)
         guard let r = channel.row(channels: output.channels), r < output.meanSquare.count else { return 0 }
         return min(max(output.meanSquare[r], 0).squareRoot() * settings.rmsGain, 1)
     }
 
     func peak(_ channel: AudioChannel) -> Double {
         lock.lock(); defer { lock.unlock() }
+        noteRead(spectrum: false)
         guard let r = channel.row(channels: output.channels), r < output.peak.count else { return 0 }
         return min(max(output.peak[r], 0) * settings.peakGain, 1)
     }
@@ -602,6 +627,7 @@ final class AudioAnalyzer {
     func fft(_ channel: AudioChannel, index: Int) -> Double {
         lock.lock(); defer { lock.unlock() }
         fftRequested = true
+        noteRead(spectrum: true)
         guard let r = channel.row(channels: output.channels), r < output.fft.count,
               index >= 0, index < output.fft[r].count else { return 0 }
         return Double(output.fft[r][index])
@@ -609,6 +635,7 @@ final class AudioAnalyzer {
 
     func band(_ channel: AudioChannel, index: Int) -> Double {
         lock.lock(); defer { lock.unlock() }
+        noteRead(spectrum: true)
         guard let r = channel.row(channels: output.channels), r < output.bands.count,
               index >= 0, index < output.bands[r].count else { return 0 }
         return Double(output.bands[r][index])
