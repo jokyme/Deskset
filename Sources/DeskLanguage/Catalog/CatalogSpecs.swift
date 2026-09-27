@@ -768,11 +768,13 @@ public enum CatalogPath: Sendable, Hashable {
     case modifier(String)
     case namespace(String)
     case member(namespace: String, name: String)
+    case record(String)
     case recordField(record: String, name: String)
     /// A member of a built-in value type (`"String"`, `"List"`…).
     case typeMember(type: String, name: String)
     case function(String)
     case control(String)
+    case enumeration(String)
     case enumCase(type: String, name: String)
     case namedValue(type: String, name: String)
     case infoField(String)
@@ -785,7 +787,8 @@ public enum CatalogPath: Sendable, Hashable {
 extension CatalogPath: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .component(let n), .function(let n), .control(let n), .namespace(let n): return n
+        case .component(let n), .function(let n), .control(let n), .namespace(let n), .record(let n),
+             .enumeration(let n): return n
         case .modifier(let n): return "." + n
         case .member(let ns, let n): return "\(ns).\(n)"
         case .recordField(let r, let n), .typeMember(let r, let n): return "\(r).\(n)"

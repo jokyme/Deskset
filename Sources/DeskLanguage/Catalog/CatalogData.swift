@@ -34,8 +34,10 @@ enum CatalogData {
                 context.placement = .optionItem
                 context.parent = .options
                 context.replaces = [String(text[match].prefix { $0.isLetter || $0.isNumber })]
-            } else if text.range(of: #"^[a-z][A-Za-z]*: "#, options: .regularExpression) != nil {
+            } else if let match = text.range(of: #"^[a-z][A-Za-z]*: "#, options: .regularExpression) {
+                // A field replaces the harness's field of the same name (it declares every permission, for one).
                 context.placement = .infoField
+                context.replaces = [String(text[match].dropLast(2))]
             }
         }
         // `.name(x)` declares an element name that replaces the harness's own.
