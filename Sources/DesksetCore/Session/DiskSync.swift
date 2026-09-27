@@ -11,8 +11,14 @@ import Foundation
 ///
 /// When it writes: for now the Studio writes at the end of every step (each step is "a gesture's end", so the widget on
 /// the desktop reloads the files right after, as it always did); `scheduleFlush` writes after a pause (about 0.5 s) for
-/// changes that do not end a gesture. Main thread (or the session's owner).
+/// changes that do not end a gesture. The writes themselves go through one serial queue (`writer`), shared by every
+/// session, one file at a time; `flush` waits for them, since what comes next reads the files. Main thread (or the
+/// session's owner).
 public final class DiskSync {
+    /// Where every session's files are written, one write at a time (under each file's lock as well, which skins
+    /// writing with `!WriteKeyValue` take too).
+    public static let writer = DispatchQueue(label: "app.deskset.session.disk", qos: .userInitiated)
+
     public let buffers: SourceBuffers
     /// How long `scheduleFlush` waits for the edits to stop.
     public var idleDelay: TimeInterval = 0.5
@@ -41,16 +47,19 @@ public final class DiskSync {
         for id in buffers.dirtyFiles where wanted?.contains(id) ?? true {
             guard let buffer = buffers.buffer(id.url) else { continue }
             let bytes = buffer.data
-            do {
-                // The same bytes on disk already (the edit was undone before it was written): only the buffer is clean.
-                if let now = try? Data(contentsOf: id.url), now == bytes {
-                    buffers.markWritten(id, bytes: bytes)
-                    continue
+            let outcome = Self.writer.sync {
+                Result { () throws -> Bool in
+                    // The same bytes on disk already (the edit was undone before it was written): nothing to write.
+                    if let now = try? Data(contentsOf: id.url), now == bytes { return false }
+                    try SourceDisk.write(bytes, to: id)
+                    return true
                 }
-                try SourceDisk.write(bytes, to: id)
+            }
+            switch outcome {
+            case .success(let wrote):
                 buffers.markWritten(id, bytes: bytes)
-                written.append(id.url)
-            } catch {
+                if wrote { written.append(id.url) }
+            case .failure(let error):
                 if failure == nil { failure = error }
             }
         }
