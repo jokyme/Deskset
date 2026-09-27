@@ -25,11 +25,22 @@ enum WeatherWiring {
     /// previews, thumbnails, `--render` and the Manage window's dry runs are not.
     static func isLive(_ skin: Skin) -> Bool { skin.host is LiveSkinHost }
 
-    /// `Units=Auto`: the macOS Temperature setting (System Settings ▸ General ▸ Language & Region), then the region's
-    /// measurement system.
+    /// `Units=Auto`: the macOS Temperature setting (System Settings ▸ General ▸ Language & Region), else the region's
+    /// unit for weather — the same answer as `#MACTEMPERATUREUNIT#` (`MacRegionalSettings.temperatureUnit`); the other
+    /// quantities by the region's measurement system.
     static func systemUnits(defaults: UserDefaults = .standard, locale: Locale = .current) -> WeatherUnits {
-        WeatherUnits.automatic(temperatureSetting: defaults.string(forKey: "AppleTemperatureUnit"),
-                               measurementSystem: locale.measurementSystem.identifier)
+        var units = WeatherUnits.automatic(temperatureSetting: nil, measurementSystem: locale.measurementSystem.identifier)
+        units.temperature = MacRegionalSettings.temperatureUnit(setting: defaults.string(forKey: "AppleTemperatureUnit"),
+                                                                locale: locale)
+        return units
+    }
+
+    /// `Units=Auto` as skins get it (asked for at every weather value): the region's measurement system, with the
+    /// temperature unit skins see (`#MACTEMPERATUREUNIT#`, kept by `MacRegional`, which `--render` fixes).
+    static func skinUnits(locale: Locale = .current) -> WeatherUnits {
+        var units = WeatherUnits.automatic(temperatureSetting: nil, measurementSystem: locale.measurementSystem.identifier)
+        units.temperature = MacRegional.current.temperatureUnit
+        return units
     }
 
     /// The live environment of the menu bar app.
@@ -42,7 +53,8 @@ enum WeatherWiring {
         env.cacheDirectory = MediaUICache.folder("Weather")
         env.placesTable = Paths.placesTable
         env.deviceLocation = LocationCenter.shared
-        env.preferredUnits = { systemUnits() }
+        env.preferredUnits = { skinUnits() }
+        env.uses24HourClock = { MacRegional.current.clockHours == 24 }
         env.debug = UserDefaults.standard.bool(forKey: debugKey)
         env.log = { Log.write($0) }
         return env
@@ -55,7 +67,8 @@ enum WeatherWiring {
         var env = WeatherEnvironment()
         env.placesTable = Paths.placesTable
         env.waitsForLookups = true
-        env.preferredUnits = { systemUnits() }
+        env.preferredUnits = { skinUnits() }
+        env.uses24HourClock = { MacRegional.current.clockHours == 24 }
         env.demo = demo
         env.demoNow = demoNow
         if let demoNow { env.clock = VirtualWeatherClock(now: demoNow) }

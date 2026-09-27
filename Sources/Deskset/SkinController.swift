@@ -75,6 +75,37 @@ final class SkinView: NSView, NSViewToolTipOwner {
         SkinRenderer.draw(skin, in: ctx, glass: .window)
     }
 
+    /// The skin's picture, drawn into a bitmap of its own (`SkinBitmapDrawing`, which says why) rather than through
+    /// `draw(_:)`, which stays for snapshots (`cacheDisplay`).
+    let drawing = SkinBitmapDrawing()
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        guard let skin = controller?.skin else {
+            layer.contents = nil
+            return
+        }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let space = window?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
+        guard let space else { return }
+        layer.contentsScale = scale
+        layer.contents = drawing.picture(of: skin, size: bounds.size, scale: scale, space: space,
+                                         appearance: effectiveAppearance.name.rawValue)
+    }
+
+    /// The picture is the view's own: drawn again for another backing scale or color space (a window moved to another
+    /// display) and appearance, not only when the skin redraws (an `Update=-1` skin never does).
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
@@ -1197,6 +1228,11 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         return env
     }
 
+    /// `#SETTINGSPATH#` of every skin, with a trailing slash: the app's settings folder. The self-tests point it at a
+    /// temporary folder, so that skins keeping what people type there (the Stationery widgets' `Stationery.inc`)
+    /// never read or write the user's. Main thread.
+    static var settingsPath = Paths.appSupport.path + "/"
+
     /// Screens and window frame in skin coordinates (top-left origin at the primary screen's top-left).
     static func environment(windowFrame: CGRect?) -> SkinEnvironment {
         let screens = WindowGeometry.currentScreens()
@@ -1207,7 +1243,7 @@ final class SkinController: NSObject, SkinHost, NSWindowDelegate {
         let list = screens.map { SkinScreen(area: topLeft($0.frame), workArea: topLeft($0.visibleFrame)) }
         return SkinEnvironment(windowFrame: windowFrame.map(topLeft) ?? SkinRect(),
                                screens: list.isEmpty ? SkinEnvironment().screens : list,
-                               settingsPath: Paths.appSupport.path + "/",
+                               settingsPath: settingsPath,
                                programPath: Bundle.main.bundleURL.path + "/",
                                configEditor: Workspace.configEditorPath,
                                appearance: MacAppearance.current.value())

@@ -413,13 +413,28 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 / 0) and, as `R,G,B,A` for the current appearance,
   `#MACACCENTCOLOR#`, `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` and
   `#MACSEPARATORCOLOR#`. They cannot be overridden in `[Variables]` or by `!SetVariable`, in `@Include` paths
-  either. When the Mac switches between light and dark or the accent color changes, each skin that uses one runs
+  either. When the Mac switches between light and dark, the accent color changes or a clock, week or temperature
+  setting does (next entry), each skin that uses one of them or of those variables runs
   `[Rainmeter] MacOnAppearanceChangeAction` (default `[!Refresh]`; written empty, nothing runs); other skins are left
   alone unless they write an action of their own. The action's variables are resolved when it runs (the new colors),
   and `[Variables]` built from the appearance variables are updated first, so `[!UpdateMeter *][!Redraw]` recolors
   DynamicVariables meters without a reload; an `@Include` chosen by `#MACAPPEARANCE#` changes only with a refresh.
 - **Why:** Deskset extension: Mac widgets are expected to follow the appearance and the accent color.
 - **Skin impact:** none for Windows skins; on Windows these names are undefined.
+- **Status:** Mac-only
+
+#### Clock, week and temperature variables (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`)
+- **Windows:** no such variables.
+- **Mac:** `#MACCLOCKHOURS#` is `12` or `24` (Date & Time → 24-hour time, else the region's clock);
+  `#MACFIRSTWEEKDAY#` is the first day of the week, `0` (Sunday) … `6` (Saturday), as `%w` counts (Language &
+  Region); `#MACTEMPERATUREUNIT#` is `C` or `F` (Language & Region → Temperature, else the region's unit for weather).
+  They behave like the appearance variables and share their trigger: they cannot be overridden, they are dynamic, and
+  a change of one of these settings counts as an appearance change, so each skin that uses any `#MAC…#` variable runs
+  `MacOnAppearanceChangeAction` (default `[!Refresh]`). The weather plugins' default times and `Units=Auto` follow the
+  same settings. `--render` uses 24-hour, Sunday and °C unless `--clock-hours`, `--first-weekday` or
+  `--temperature-unit` say otherwise ([§7.5](#75-deskset---render-for-skin-authors-and-testing)).
+- **Why:** Deskset extension: "Automatic" settings in skins need the Mac's own choices.
+- **Skin impact:** none for Windows skins; give an `Auto` value of your own (`ClockHoursAuto=#MACCLOCKHOURS#`).
 - **Status:** Mac-only
 
 #### Formulas
@@ -468,7 +483,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** the same codes. Judgment calls: `%r` is upper-case "10:55:03 PM"; `%Z` is the English zone name; unknown
   codes are shown as written; an empty Format means `%H:%M:%S`; with Format set, the number is the leading number
   of the text; TimeZone accepts fractional hours and is not applied to TimeStamp values (numeric ones included);
-  TimeStamp parsing is lenient; AddDaysToHours defaults to 1. Locale formats (`%c`, `%x`) come from macOS (ICU) data.
+  TimeStamp parsing is lenient; AddDaysToHours defaults to 1; Uptime's number keeps fractions of a second. Locale
+  formats (`%c`, `%x`) come from macOS (ICU) data.
   FormatLocale / TimeStampLocale understand Windows' three-letter language codes (`DEU`, `CHS`…) and `Language_Country`
   names from a built-in table of common locales.
 - **Why:** macOS locale data; the manual is silent on the details.
@@ -556,6 +572,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Why:** macOS has no drive letters.
 - **Skin impact:** D:, E:, F: repeat the startup disk; write `Drive=/Volumes/Backup` for another volume.
 - **Status:** emulated
+
+#### FreeDiskSpace `MacAvailable=1` (Finder's available space)
+- **Windows:** FreeDiskSpace reports the free space; there is no other figure.
+- **Mac:** `MacAvailable=1` reports Finder's "available" space: the free space plus purgeable space macOS frees by
+  itself (caches, local snapshots, iCloud files) — tens of gigabytes more on many Macs. `InvertMeasure=1` then gives the
+  used space as Finder counts it. Disk images, non-APFS and network volumes report their free space. A reading is kept
+  for 30 s and made again in the background; until a volume's first reading arrives (it is waited for up to a quarter
+  second) the measure reads −1 with an empty string.
+- **Why:** the free space leaves purgeable space out, so a disk Finder shows 88 % full reads 99 % full.
+- **Skin impact:** none for Windows skins (Rainmeter ignores the option); treat −1 as "loading".
+- **Status:** Mac-only
 
 #### SysInfo
 - **Windows:** OS, user, network adapter, monitor and time-zone values.
@@ -661,6 +688,16 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   cannot use symbols (note, nothing drawn).
 - **Why:** Deskset extension: the Mac's icon set, without image files.
 - **Skin impact:** none for Windows skins; on Windows such images are missing.
+- **Status:** Mac-only
+
+#### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
+- **Windows:** image files are loaded whole.
+- **Mac:** `MacDecodeSize=Drawn` on an Image meter decodes the file at the pixels it covers where it is drawn (W × H
+  times the backing scale, never more than the file has); `File` (default) decodes it whole. Sizes, ImageCrop and hit
+  tests stay in the file's pixels; tiled images and symbols are decoded as usual. The size and EXIF orientation of a
+  file of 4 megapixels or more come from its header, without decoding it.
+- **Why:** Deskset extension: a 48-megapixel photo takes about 186 MB decoded whole, a few MB at a frame's size.
+- **Skin impact:** none for Windows skins, where the option is ignored.
 - **Status:** Mac-only
 
 #### Bar, Bitmap, Button
@@ -784,9 +821,10 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 
 Options Rainmeter does not have. Their names start with `Mac`; Rainmeter ignores options it does not know, so a skin
 that uses them still loads there, only without the effect. The Mac look extensions are listed with the areas they
-belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables with
-`MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
-the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)). Deskset's own plugins are with the plugins of their area:
+belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables and the clock, week and
+temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
+the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
+with the measures ([§6.4](#64-measures)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 
@@ -1071,6 +1109,20 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** none.
 - **Status:** emulated
 
+#### The default skins and the first launch
+- **Windows:** Rainmeter comes with its illustro skins, loaded when it is first installed.
+- **Mac:** Deskset's own original skins, the Stationery suite, are copied into the Skins folder at the first launch
+  and again when a newer Deskset brings new ones (the old copy goes to `Backups`; settings the user changed in
+  `@Resources/Variables.inc` are carried over, while values the old version shipped give way to the new defaults).
+  Deskset 0.1's example skins (root config `Deskset`) stay where they are. On the very first launch the skins listed
+  in `FirstRun.ini` beside the default skins load at their places (points from the top-left of the main display's
+  visible area): Clock, Calendar, Weather and System; without it, the Clock alone. `#SETTINGSPATH#Stationery.inc` is
+  made when missing, so the default widgets can save what the user types (`!WriteKeyValue` writes only into a file
+  that exists).
+- **Why:** a first desktop without permission prompts; settings and content that survive upgrades.
+- **Skin impact:** none; any skin may include and write `#SETTINGSPATH#Stationery.inc`.
+- **Status:** emulated
+
 ### 7.4 Config and app bangs
 
 #### When `!Refresh`, `!ActivateConfig`, `!DeactivateConfig` and `!ToggleConfig` happen
@@ -1140,9 +1192,10 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 #### Rendering a skin to a PNG
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` loads the skin without a window, runs N updates
-  (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light appearance (or the one asked for) and prints
-  compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
+  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2,
+  1 000 ms apart), draws it at scale S (default 2) in the Light appearance with a 24-hour clock, weeks from Sunday and
+  °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
@@ -1569,7 +1622,9 @@ Intel Macs are untested.
   count from 1). `Scale=C` / `F` / `K` for temperatures. The number is the reading, the string the reading with its
   unit ("52 °C", "2317 RPM"), empty while there is none. Default ranges: 0–100 °C and 0–100 %, a fan's own minimum
   and maximum, a cluster's lowest and highest clock; other kinds follow the values seen. `!CommandMeasure <measure>
-  List` logs every sensor this Mac has.
+  List` logs every sensor this Mac has. `Sensor=thermal` is macOS's thermal state: 0–3, "Nominal", "Fair", "Serious"
+  or "Critical". A sensor this Mac lacks reads 0 and is logged once; with `MacOptional=1` (a second fan, a battery)
+  it is not logged.
 - **Why:** Deskset's own plugin for new skins; the Skin Studio offers it as "Temperature" live data.
 - **Skin impact:** not available in Rainmeter; a skin using it is Mac-only.
 - **Status:** Mac-only
@@ -2206,10 +2261,10 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 #### `Plugin=MacWeather`
 - **Windows:** no counterpart; skins read weather web sites with WebParser (most of those services have shut down).
 - **Mac:** forecasts from MET Norway's Locationforecast 2.0 for any place: one measure with `Location=` (a town such as
-  `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, or `auto`), others with `Parent=` and `Type=` (Temperature,
+  `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, `auto`, or `timezone`), others with `Parent=` and `Type=` (Temperature,
   FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
   Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
-  UpdatedAt, Status, Attribution…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
+  UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
   region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone` (hours from UTC
   without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`; FinishAction,
   OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable functions
@@ -2219,15 +2274,20 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Skin impact:** skins written for Deskset get weather; Windows skins cannot use it.
 - **Status:** Mac-only
 
-#### Places and `Location=auto`
+#### Places, `Location=auto` and `Location=timezone`
 - **Windows:** n/a.
-- **Mac:** place names are looked up **on the Mac** in a bundled table of towns of 15,000 people or more (GeoNames);
-  a country or region after a comma narrows the search; smaller places use coordinates. Every coordinate is rounded
-  to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced accuracy),
-  only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused: `Status` 5
-  and a compatibility note that goes away once allowed.
-- **Why:** privacy; no online geocoder fits.
-- **Skin impact:** a one-time prompt for `auto`; small villages need coordinates.
+- **Mac:** place names are looked up **on the Mac** in a bundled table of towns of 15,000 people or more (GeoNames),
+  also by their other names (older and other-language names, other scripts; Chinese in Traditional and Simplified
+  alike); a country or region after a comma narrows the search; smaller places use coordinates. Every coordinate is
+  rounded to two decimals (about 1 km) before it is used or sent. `auto` asks for Location Services once (reduced
+  accuracy), only for skins in skin windows; the fix is rounded, kept in memory only, never logged or cached. Refused:
+  `Status` 5 and a compatibility note that goes away once allowed. `timezone` is the city of this Mac's time zone
+  from the same table (Asia/Shanghai → Shanghai, Asia/Kolkata → Kolkata; for a zone named after no town in the table,
+  the nearest town keeping its time to the zone's place in macOS's time zone database), without Location Services;
+  zones without a city (UTC, `Etc/…`, Antarctica) give `Status` 3. `Type=LocationSource` says where the place came
+  from (4, "TimeZone"), so a skin can ask "Not your city?".
+- **Why:** privacy; no online geocoder fits; weather on a first run without a prompt.
+- **Skin impact:** a one-time prompt for `auto`; small villages need coordinates; the time zone's city is only a guess.
 - **Status:** Mac-only
 
 #### Requests, cache, states and credit

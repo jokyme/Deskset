@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// Behaviour checks for the example skins in DefaultSkins/Deskset (see Sources/CheckExamples/main.swift).
+// Behaviour checks for Deskset 0.1's example skins in TestSkins/Deskset (see Sources/CheckExamples/main.swift).
 // Run from the repository root:  swift run --package-path TestSkins/Examples/Checks CheckExamples
 import Foundation
 import PackageDescription

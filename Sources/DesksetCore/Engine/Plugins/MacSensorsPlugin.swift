@@ -22,6 +22,11 @@ import Foundation
 ///   clocks the lowest / highest value the hardware reports (a fan's minimum and maximum speed); other kinds follow the
 ///   values seen, like other plugin measures.
 /// - `!CommandMeasure <measure> "List"` logs every sensor this Mac has, with its key, label and reading.
+/// - `MacOptional=1`: the sensor may be missing on some Macs (a second fan, a battery, an SSD sensor), so a Mac without
+///   it logs nothing; the value is 0 and the string empty, as for any missing sensor.
+/// - `Sensor=thermal` (also `thermal.state`, `thermalstate`) is not a sensor: macOS's thermal state
+///   (`ProcessInfo.thermalState`), 0 nominal, 1 fair, 2 serious, 3 critical, with "Nominal", "Fair", "Serious" or
+///   "Critical" as the string and 0–3 as the range. It needs no hardware access and is read at every update.
 public final class MacSensorsMeasure: Measure, PluginLifecycle {
     private var key = SensorKeys.cpu
     private var kind: SensorKind? = .temperature
@@ -30,9 +35,20 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
     private var reported: Set<String> = []
     private var closed = false
     private var noReading = true
+    /// `MacOptional=1`: no note when this Mac lacks the sensor.
+    private var optional = false
+    /// `Sensor=thermal`: the thermal state instead of a sensor.
+    private var readsThermalState = false
 
     /// The canonical key being read (tests).
     var sensorKey: String { key }
+
+    /// The names `Sensor=` takes for the thermal state.
+    static let thermalStateKeys: Set<String> = ["thermal", "thermal.state", "thermalstate"]
+    /// The thermal state's strings, by its number.
+    static let thermalStateNames = ["Nominal", "Fair", "Serious", "Critical"]
+    /// macOS's thermal state, 0–3 (`ProcessInfo.thermalState`). Replaced by tests.
+    public static var thermalState: () -> Int = { ProcessInfo.processInfo.thermalState.rawValue }
 
     public func skinWillClose() {
         closed = true
@@ -46,6 +62,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
 
     /// The kind's own range, or the sensor's minimum / maximum when it reports both.
     private var fixedRange: ClosedRange<Double>? {
+        if readsThermalState { return 0...3 }
         if let info, let lo = info.minimum, let hi = info.maximum, hi > lo,
            info.kind == .fan || info.kind == .frequency {
             return lo...hi
@@ -60,18 +77,26 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
     public override func readMeasureOptions() {
         let raw = string("Sensor", SensorKeys.cpu)
         key = SensorKeys.canonical(raw.isEmpty ? SensorKeys.cpu : raw)
-        kind = SensorKeys.kind(of: key)
-        if kind == nil {
+        readsThermalState = MacSensorsMeasure.thermalStateKeys.contains(key)
+        kind = readsThermalState ? nil : SensorKeys.kind(of: key)
+        if kind == nil && !readsThermalState {
             report("key:\(key)", "MacSensors [\(name)]: \"\(raw)\" is not a sensor name (e.g. cpu, gpu, fan.1, "
                    + "power.system); !CommandMeasure \(name) List logs this Mac's sensors")
         }
         scale = TemperatureScale(option: string("Scale", "C"))
+        optional = bool("MacOptional", false)
         info = nil
     }
 
     public override func computeValue() -> Double {
         rawString = ""
         noReading = true
+        if readsThermalState {
+            let state = min(max(MacSensorsMeasure.thermalState(), 0), 3)
+            noReading = false
+            rawString = MacSensorsMeasure.thermalStateNames[state]
+            return Double(state)
+        }
         guard let kind else { return 0 }
         guard let sensors = HardwareSensors.source(for: skin) else {
             report("none", "MacSensors [\(name)]: hardware sensors are not available here; the value is 0")
@@ -79,7 +104,7 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
         }
         if info == nil { info = sensors.sensorInfo(key) }
         guard let v = sensors.sensorValue(key), v.isFinite else {
-            if !sensors.sensorPending(key) {
+            if !optional && !sensors.sensorPending(key) {
                 report("missing", "MacSensors [\(name)]: this Mac has no sensor \"\(key)\"; the value is 0 "
                        + "(!CommandMeasure \(name) List logs the sensors it has)")
             }

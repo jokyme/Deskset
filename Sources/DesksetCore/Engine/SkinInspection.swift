@@ -310,7 +310,7 @@ extension Skin {
         }
         s.needsOptionRead = true
         s.readOptionsIfNeeded()
-        if s is Meter { s.skin.meters.forEach { $0.updateMeter() } }
+        if s is Meter { s.skin.meters.forEach { $0.updateMeter(); $0.noteDrawChange() } }
         layout()
         redraw()
     }
@@ -324,7 +324,7 @@ extension Skin {
             setVariable(key, value)
         }
         for m in measures { m.needsOptionRead = true; m.readOptionsIfNeeded() }
-        for m in meters { m.needsOptionRead = true; m.readOptionsIfNeeded(); m.updateMeter() }
+        for m in meters { m.needsOptionRead = true; m.readOptionsIfNeeded(); m.updateMeter(); m.noteDrawChange() }
         layout()
         redraw()
     }
@@ -345,7 +345,7 @@ extension Skin {
         previewSaved = [:]
         previewSavedVariables = [:]
         if hadPreview {
-            for m in meters { m.needsOptionRead = true; m.readOptionsIfNeeded(); m.updateMeter() }
+            for m in meters { m.needsOptionRead = true; m.readOptionsIfNeeded(); m.updateMeter(); m.noteDrawChange() }
             layout()
             redraw()
         }

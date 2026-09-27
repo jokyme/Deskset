@@ -11,3 +11,6 @@ TestSkins/Examples/preview.png
 
 # macOS and local tools
 .DS_Store
+
+# Written by the Launcher's FileView measures when a Stationery skin is rendered from the source tree
+DefaultSkins/Stationery/Launcher/Icons/

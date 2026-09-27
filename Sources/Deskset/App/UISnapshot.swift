@@ -4,17 +4,18 @@ import DesksetCore
 /// `Deskset --snapshot-ui <what> --out file.png [--dark] [--select Config] [--size WxH] [--skins-dir DIR]`: renders app UI
 /// off-screen so it can be checked without a visible screen.
 ///
-/// - `manage`: the Manage window over a temporary copy of TestSkins/App and DefaultSkins (or `--skins-dir`),
-///   with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus) selected.
+/// - `manage`: the Manage window over a temporary copy of TestSkins/App and TestSkins/Deskset, the example skins of
+///   Deskset 0.1 (or `--skins-dir`), with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus)
+///   selected.
 /// - `install`: the .rmskin confirmation for a generated package (header image, plugin warning).
 /// - `install-zip`: the confirmation for a plain ZIP archive (no RMSKIN.ini) with fonts.
 /// - `icon`: the app icon at 1024 px.
 /// - `menubar`: the menu bar glyph, enlarged.
-/// - `inspector`: the skin editor on Deskset\System (or `--config` of a copy of `--skins-dir`) with `--select` (default
-///   MeterCPUValue; `A,B` selects several, `none` shows the skin)
-///   selected, zoomed to fit (or `--zoom N`), in `--mode design|split|code` (default design; `--code-below` puts the
-///   code under the canvas) with the sidebar on `--tab add|layers|live` (`library` and `data` are the old names;
-///   default: what the selection shows), `--size WxH` (default 1180x760; 1440x860 with the code showing) and
+/// - `inspector`: the skin editor on Deskset\System of TestSkins (or `--config` of a copy of `--skins-dir`) with
+///   `--select` (default MeterCPUValue; `A,B` selects several, `none` shows the skin) selected, zoomed to fit (or
+///   `--zoom N`), in `--mode design|split|code` (default design; `--code-below` puts the code under the canvas) with
+///   the sidebar on `--tab add|layers|live` (`library` and `data` are the old names; default: what the selection
+///   shows), `--size WxH` (default 1180x760; 1440x860 with the code showing) and
 ///   `--inspector-width N` (default its minimum). States that need the pointer or a gesture: see `SnapshotOptions`
 ///   (`--hover`, `--drag`, `--expert`, `--tip`, `--expand`, `--edit-text`, `--scroll`). The toolbar is drawn as
 ///   stand-ins of its items (`drawToolbarStandIn`).
@@ -138,11 +139,10 @@ enum UISnapshot {
             skins = root.appendingPathComponent("Skins")
             try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
             if let test = Paths.repositoryFolder("TestSkins") {
-                try? FileManager.default.copyItem(at: test.appendingPathComponent("App"), to: skins.appendingPathComponent("App"))
-            }
-            if let defaults = Paths.repositoryFolder("DefaultSkins") {
-                try? FileManager.default.copyItem(at: defaults.appendingPathComponent("Deskset"),
-                                                  to: skins.appendingPathComponent("Deskset"))
+                for folder in ["App", "Deskset"] {
+                    try? FileManager.default.copyItem(at: test.appendingPathComponent(folder),
+                                                      to: skins.appendingPathComponent(folder))
+                }
             }
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
@@ -170,8 +170,8 @@ enum UISnapshot {
             try? FileManager.default.copyItem(at: URL(fileURLWithPath: skinsDir), to: skins)
         } else {
             try? FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
-            if let defaults = Paths.repositoryFolder("DefaultSkins") {
-                try? FileManager.default.copyItem(at: defaults.appendingPathComponent("Deskset"),
+            if let test = Paths.repositoryFolder("TestSkins") {
+                try? FileManager.default.copyItem(at: test.appendingPathComponent("Deskset"),
                                                   to: skins.appendingPathComponent("Deskset"))
             }
         }
@@ -231,15 +231,16 @@ enum UISnapshot {
         return data
     }
 
-    /// The code editor on System.ini (or an original stand-in when the repository's DefaultSkins are not around).
+    /// The code editor on the 0.1 example System.ini (or an original stand-in when the repository's TestSkins are not
+    /// around).
     static func codeEditorPreview(size: NSSize) -> Data? {
         let root = temporaryDirectory("code")
         let folder = root.appendingPathComponent("Deskset")
         var main = folder.appendingPathComponent("System/System.ini")
         var files = [main, folder.appendingPathComponent("@Resources/Variables.inc"),
                      folder.appendingPathComponent("@Resources/Styles.inc")]
-        if let defaults = Paths.repositoryFolder("DefaultSkins") {
-            try? FileManager.default.copyItem(at: defaults.appendingPathComponent("Deskset"), to: folder)
+        if let test = Paths.repositoryFolder("TestSkins") {
+            try? FileManager.default.copyItem(at: test.appendingPathComponent("Deskset"), to: folder)
         }
         if !FileManager.default.fileExists(atPath: main.path) {
             main = root.appendingPathComponent("Sample.ini")

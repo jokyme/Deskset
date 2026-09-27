@@ -399,7 +399,7 @@ enum FriendlyInspectorSelfTests {
 
         t.suite("App: friendly inspector: a group's start moves members placed on their own") {
             // Calendar's weekday heads: each has its own X (a calculation), their Y comes from their look.
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar", from: "DefaultSkins") else { return }
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar") else { return }
             let heads = (0..<7).map { "MeterHead\($0)" }
             func frames() -> [SkinRect] { heads.compactMap { editor.skin?.meter(named: $0)?.frame } }
             editor.canvasSelectionChanged(heads)
@@ -457,7 +457,7 @@ enum FriendlyInspectorSelfTests {
 
         t.suite("App: friendly inspector: the Number menu keeps the text's base") {
             // System's memory text shortens by 1024s (AutoScale=1): its format is one of the choices.
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin, let measure = skin.meter(named: "MeterRAMValue")?.measures.first else { return }
             editor.select(section: "MeterRAMValue")
             guard let popup = find(editor, "number-format") as? NSPopUpButton else { return t.check(false, "the Number menu") }
@@ -708,7 +708,7 @@ enum FriendlyInspectorSelfTests {
         t.suite("App: friendly inspector: a shape's colors") {
             // System's memory bar: part 1 is its look's track (StyleTrack, in the Styles.inc other widgets share),
             // filled with the theme color TrackColor.
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             let styles = skin.resourcesDirectory.appendingPathComponent("Styles.inc")
             let shared = try Data(contentsOf: styles)
@@ -895,9 +895,9 @@ enum FriendlyInspectorSelfTests {
                 t.check(false, "group: “\(text)”")
             }
             editor.window?.close()
-            // The default widgets too.
+            // The example widgets of Deskset 0.1 too (TestSkins/Deskset).
             for config in ["Deskset\\System", "Deskset\\Clock"] {
-                guard let (_, other) = try FriendlyFixtures.openEditor(t, config: config, from: "DefaultSkins"),
+                guard let (_, other) = try FriendlyFixtures.openEditor(t, config: config),
                       let skin = other.skin else { continue }
                 for name in skin.meters.map(\.name) + skin.measures.map(\.name) {
                     other.select(section: name)

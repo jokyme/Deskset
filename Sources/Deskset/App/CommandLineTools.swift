@@ -4,6 +4,7 @@ import DesksetCore
 /// Command-line modes of the Deskset binary (development and build tools). Each runs and exits.
 ///
 ///     Deskset --render Skin.ini --out x.png [...]         headless skin rendering (see RenderCommand)
+///     Deskset --verify-drawing-cache Skins… [...]          kept pictures against full drawings (DrawingCacheCheck)
 ///     Deskset --self-test [filter]                         app-level checks (window rules, state, UI, install flow)
 ///     Deskset --make-icon Deskset.iconset                   writes the app icon PNGs (build-app.sh)
 ///     Deskset --snapshot-ui manage|inspector|settings|install|icon|menubar --out x.png [--dark] [--skins-dir DIR]
@@ -20,10 +21,11 @@ import DesksetCore
 enum CommandLineTools {
     /// Flags that select a mode (in none of them does audio capture start: `AudioCaptureEngine.captureAllowed`).
     static let modeFlags = ["--render", "--self-test", "--snapshot-ui", "--system-report", "--make-icon",
-                            "--cover-lookup", "--weather-report"]
+                            "--cover-lookup", "--weather-report", "--verify-drawing-cache"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
+                                           "--clock-hours", "--first-weekday", "--temperature-unit",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
@@ -36,7 +38,10 @@ enum CommandLineTools {
         usage: Deskset                   start the menu bar app
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
+                      [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
                                         draw a skin without a window into a PNG
+               Deskset --verify-drawing-cache SkinsFolder|Skin.ini… [--updates N] [--scale S] [--skins-dir DIR]
+                                        check that skin windows' kept pictures match full drawings
                Deskset --self-test [filter]
                                         run the app's self-tests
                Deskset --snapshot-ui manage|inspector|settings|codeeditor|library|install|install-zip|icon|menubar
@@ -47,7 +52,7 @@ enum CommandLineTools {
                       [--scroll "CARD TITLE"]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
-               Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]
+               Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
                       [--offline FILE] [--now ISO8601]
                                         get one forecast from MET Norway (sends the place's rounded coordinates)
                Deskset --cover-lookup ARTIST TITLE [ALBUM]
@@ -104,6 +109,10 @@ enum CommandLineTools {
         }
         if arguments.contains("--render") {
             return RenderCommand.run(arguments)
+        }
+        if arguments.contains("--verify-drawing-cache") {
+            prepareHeadless()
+            return DrawingCacheCheck.run(arguments)
         }
         if arguments.contains("--make-icon") {
             guard let dir = value(after: "--make-icon") else {
@@ -177,6 +186,8 @@ enum SystemReport {
         }
         if let disk = m.diskSpace(path: "/") {
             print("Disk /: free \(Int64(disk.free / 1024)) KiB of \(Int64(disk.total / 1024)) KiB")
+            let available = SystemMonitor.availableSpace(atPath: "/")
+            print("Disk /: available \(Int64(available / 1024)) KiB (as Finder counts it: FreeDiskSpace MacAvailable=1)")
         }
         print(String(format: "Uptime: %.0f s", m.uptime()))
         if let b = m.battery() {

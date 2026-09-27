@@ -2,10 +2,11 @@ import AppKit
 import CoreLocation
 import DesksetCore
 
-/// `Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial] [--offline FILE [--now ISO]]`:
+/// `Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial] [--offline FILE [--now ISO]]`:
 /// one forecast from MET Norway, as the weather skins would get it, printed with the request and the response headers
 /// (docs/compat/app.md, "Command-line flags"). One real request with the real User-Agent; nothing read from or
-/// written to the weather cache. The default place is the sample "Oslo, NO"; this Mac's location is never used.
+/// written to the weather cache. The default place is the sample "Oslo, NO"; this Mac's location is never used
+/// (`timezone`, the city of this Mac's time zone, comes from the place table).
 /// `--offline FILE` reads a saved `complete` response instead (no network), at `--now` (default: the real time).
 enum WeatherReportCommand {
     static let defaultLocation = "Oslo, NO"
@@ -52,6 +53,14 @@ enum WeatherReportCommand {
             guard let directory else { return fail("the place table is missing; use latitude,longitude", status: 1) }
             guard let m = directory.search(query) else { return fail("can't find “\(query)” in the place table", status: 1) }
             place = (m.place.coordinate, m.detail, TimeZone(identifier: m.place.timeZone) ?? .current)
+        case .timeZone:
+            // The city of this Mac's time zone, from the place table (never Location Services).
+            guard let directory else { return fail("the place table is missing; use latitude,longitude", status: 1) }
+            let zone = TimeZone.current
+            guard let m = directory.place(forTimeZone: zone.identifier) else {
+                return fail("no city is known for this Mac's time zone (\(zone.identifier))", status: 1)
+            }
+            place = (m.place.coordinate, m.detail, zone)
         }
 
         if let path = value("--offline") {
@@ -151,6 +160,11 @@ extension SystemReport {
                let zone = TimeZone(identifier: m.place.timeZone) {
                 lines.append("    → " + WeatherReport.sunLine(latitude: m.place.coordinate.latitude,
                                                               longitude: m.place.coordinate.longitude, zone: zone, now: now))
+            } else if case .timeZone = WeatherLocationSpec.parse(p.location),
+                      let m = directory?.place(forTimeZone: TimeZone.current.identifier) {
+                lines.append("    → " + WeatherReport.sunLine(latitude: m.place.coordinate.latitude,
+                                                              longitude: m.place.coordinate.longitude, zone: .current,
+                                                              now: now))
             } else if case .coordinate(let c) = WeatherLocationSpec.parse(p.location) {
                 let zone = directory?.nearest(to: c, within: 200).flatMap { TimeZone(identifier: $0.timeZone) } ?? .current
                 lines.append("    → " + WeatherReport.sunLine(latitude: c.latitude, longitude: c.longitude, zone: zone,

@@ -49,11 +49,16 @@ public enum WeatherReport {
     }
 
     /// How a `Location=` resolves offline, in one line: "Oslo, Oslo, Norway · 59.91, 10.75 · Europe/Oslo".
-    /// `auto` is never read here: "this Mac's location (not read by this report)".
-    public static func describe(_ location: String, directory: PlaceDirectory?) -> String {
+    /// `auto` is never read here: "this Mac's location (not read by this report)". `timezone` is `zone`'s city.
+    public static func describe(_ location: String, directory: PlaceDirectory?, zone: TimeZone = .current) -> String {
         switch WeatherLocationSpec.parse(location) {
         case .none: return "no location"
         case .device: return "this Mac's location (not read by this report)"
+        case .timeZone:
+            let lead = "the city of this Mac's time zone (\(zone.identifier))"
+            guard let directory else { return lead + ": place search unavailable (no place table)" }
+            guard let m = directory.place(forTimeZone: zone.identifier) else { return lead + ": none known" }
+            return "\(lead): \(m.detail) · \(m.place.coordinate.description) · \(m.place.timeZone)"
         case .invalid(let why): return "not usable: \(why)"
         case .coordinate(let c):
             let near = directory?.nearest(to: c, within: 50)

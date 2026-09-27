@@ -551,6 +551,53 @@ enum AudioSelfTests {
     }
 
     static func engineTests(_ t: AppTestRunner) {
+        t.suite("App: Audio analysis rests while nobody reads it or it is silent") {
+            var backend: FakeBackend?
+            let lock = NSLock()
+            let engine = makeEngine { _ in
+                let b = FakeBackend()
+                lock.lock(); backend = b; lock.unlock()
+                return b
+            }
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            engine.subscribe(a, to: key)
+            engine.drain()
+            lock.lock(); let ring = backend?.ring; lock.unlock()
+            guard let ring else { return t.check(false, "backend started") }
+            let signal = sine(440, amplitude: 0.5, seconds: 0.02)
+            func play() {
+                signal.withUnsafeBufferPointer { ring.write(interleaved: $0.baseAddress!, frames: signal.count / 2,
+                                                            channels: 2) }
+            }
+            let full = AudioCaptureEngine.analysisInterval, rest = AudioCaptureEngine.restInterval
+            t.check(wait { play(); _ = a.rms(.sum); return engine.pace(for: key) == full }, "read and sounding: full pace")
+            t.check(wait { play(); return engine.pace(for: key) == rest }, "nobody reads: a quarter second")
+            t.check(a.rms(.sum) > 0.2, "the levels still follow the sound: \(a.rms(.sum))")
+            t.check(wait { play(); _ = a.rms(.sum); return engine.pace(for: key) == full }, "read again: full pace")
+            t.check(wait { _ = a.rms(.sum); return engine.pace(for: key) == rest }, "digital silence: a quarter second")
+            engine.unsubscribe(a)
+            engine.drain()
+        }
+        t.suite("App: Audio spectrum is transformed only while it is read") {
+            var s = AudioAnalysisSettings()
+            s.fftSize = 1024
+            s.fftAttack = 0
+            s.fftDecay = 0
+            s.rmsAttack = 0
+            s.bands = 8
+            let a = AudioAnalyzer(settings: s)
+            let tone = sine(1000, amplitude: 0.5, seconds: 0.1)
+            tone.withUnsafeBufferPointer {
+                a.process($0.baseAddress!, stride: 2, frames: tone.count / 2, channels: 2, sampleRate: rate,
+                          analyzesSpectrum: false)
+            }
+            t.equal((0..<8).map { a.band(.sum, index: $0) }.max(), 0, "not transformed")
+            t.check(a.rms(.sum) > 0.2, "the levels are")
+            feed(a, sine(1000, amplitude: 0.5, seconds: 0.03))
+            t.check(((0..<8).map { a.band(.sum, index: $0) }.max() ?? 0) > 0.5, "transformed once asked for again")
+            t.check(a.readTimes.spectrum > 0 && a.readTimes.any >= a.readTimes.spectrum, "reads are noted")
+        }
         t.suite("App: Audio capture engine") {
             var created: [AudioSourceKey: FakeBackend] = [:]
             let lock = NSLock()

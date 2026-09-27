@@ -17,6 +17,9 @@ import Foundation
 ///   transparent alpha of image and mask. Tile and ScaleMargins do not apply. ImagePath is not used for the mask.
 /// - Images are cached by the app and reloaded when the file changes on disk, so `DynamicVariables=1` is not
 ///   needed for that (the manual's reason to use it); DynamicVariables still re-reads every option.
+/// - `MacDecodeSize=Drawn` (Deskset extension): the file is decoded at the size it is drawn (the device's pixels over W
+///   × H: the larger of the two scales, the smaller with PreserveAspectRatio=1), never at more than its own; the
+///   default, `File`, decodes the whole file. Its sizes stay the file's. For photos in a small frame.
 /// - `ImageName=sf:<symbol>` (and `MaskImageName`) draw an SF Symbol (Deskset extension, `MacSymbol`); with both W and
 ///   H set, PreserveAspectRatio defaults to 1 for a symbol, so it keeps its shape — unless ScaleMargins is set, which
 ///   nine-slices only at 0 (a capsule stretched to any width).
@@ -40,6 +43,8 @@ public final class ImageMeter: Meter {
     public private(set) var maskImagePath: String?
     /// Flip / rotate of the mask image (`MaskImageFlip`, `MaskImageRotate`).
     public private(set) var maskOptions = ImageOptions()
+    /// `MacDecodeSize=Drawn`: decode the file at the size it is drawn (Deskset extension).
+    public private(set) var decodesAtDrawnSize = false
 
     /// `ImageTint` when it is not the neutral default.
     public var imageTint: RGBA? { imageOptions.tint == .white ? nil : imageOptions.tint }
@@ -72,6 +77,8 @@ public final class ImageMeter: Meter {
             preserveAspectRatioOption = nil
         }
         tile = bool("Tile", false)
+        decodesAtDrawnSize = string("MacDecodeSize").trimmingCharacters(in: .whitespaces)
+            .caseInsensitiveCompare("Drawn") == .orderedSame
         let margins = OptionValue.numbers(string("ScaleMargins"))
         if margins.count >= 4, margins.prefix(4).contains(where: { $0 > 0 }) {
             scaleMargins = SkinInsets(left: max(margins[0], 0), top: max(margins[1], 0),

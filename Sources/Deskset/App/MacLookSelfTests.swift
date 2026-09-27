@@ -393,7 +393,10 @@ enum MacLookSelfTests {
             t.check(dark.secondaryLabelColor.a < dark.labelColor.a && dark.tertiaryLabelColor.a < dark.secondaryLabelColor.a)
             t.check(light.separatorColor.a < 80)
             t.check(light.accentColor.a == 255 && light.accentColor != RGBA(r: 0, g: 0, b: 0), "\(light.accentColor)")
-            t.equal(MacAppearance.values(for: nil), .light)
+            var fallback = SkinAppearance.light
+            fallback.regional = MacRegional.current
+            t.equal(MacAppearance.values(for: nil), fallback)
+            t.equal(dark.regional, MacRegional.current, "the clock, week and temperature settings come with it")
             // What skins get from the host is what is published.
             t.equal(SkinController.environment(windowFrame: nil).appearance, MacAppearance.current.value())
 
@@ -482,6 +485,101 @@ enum MacLookSelfTests {
             t.check(AppSelfTest.spin(timeout: 5) { app.controller(for: "Mac\\Look")?.skin.variable("MACAPPEARANCE") == "Light" },
                     "and back")
             app.stopAllForTermination()
+        }
+
+        t.suite("App: Mac look: skins follow the clock, week and temperature settings") {
+            guard let app = try AppSelfTest.makeApp(t), let testSkins = Paths.repositoryFolder("TestSkins") else { return }
+            try FileManager.default.copyItem(at: testSkins.appendingPathComponent("Mac"),
+                                             to: app.skinsDirectory.appendingPathComponent("Mac"))
+            app.rescanLibrary()
+            // What "the Mac's settings" are, for this suite: a 24-hour clock, weeks from Monday, °C.
+            let mac = Guarded(MacRegionalSettings(clockHours: 24, firstWeekday: 1, temperatureUnit: .celsius))
+            MacRegional.setSource { mac.current }
+            t.atSuiteEnd {
+                MacRegional.setSource(nil)
+                MacAppearance.current.refresh()
+            }
+            app.observeAppearance()
+            guard let regional = app.activate(config: "Mac\\Regional", file: nil),
+                  let focus = app.activate(config: "App\\Focus", file: "Focus.ini") else {
+                return t.check(false, "skins load")
+            }
+            let skin: Skin = regional.skin, focusSkin: Skin = focus.skin
+            t.check(skin.usesMacAppearance, "a skin that uses them follows the Mac")
+            t.equal([skin.variable("MACCLOCKHOURS"), skin.variable("MACFIRSTWEEKDAY"), skin.variable("MACTEMPERATUREUNIT")],
+                    ["24", "1", "C"])
+            t.equal(skin.variable("ClockHoursAuto"), "24", "an Auto setting built on it")
+            t.equal(skin.measure(named: "MeasureWeekStart")?.stringValue, "Monday")
+            t.equal(WeatherWiring.skinUnits().temperature, .celsius, "the weather plugins' Units=Auto agrees")
+            t.check(WeatherWiring.liveEnvironment().uses24HourClock(), "and so do their default times")
+
+            // Nothing changed: nothing happens.
+            app.regionalSettingsChanged()
+            AppSelfTest.spin(timeout: 0.3) { false }
+            t.check(app.controller(for: "Mac\\Regional")?.skin === skin, "no change, no refresh")
+
+            // macOS says the locale changed (System Settings: 12-hour time, weeks from Sunday, °F).
+            mac.access { $0 = MacRegionalSettings(clockHours: 12, firstWeekday: 0, temperatureUnit: .fahrenheit) }
+            NotificationCenter.default.post(name: NSLocale.currentLocaleDidChangeNotification, object: nil)
+            let refreshed = AppSelfTest.spin(timeout: 5) { app.controller(for: "Mac\\Regional")?.skin !== skin }
+            t.check(refreshed, "the skin that uses the variables was refreshed")
+            let now = app.controller(for: "Mac\\Regional")?.skin
+            t.equal([now?.variable("MACCLOCKHOURS"), now?.variable("MACFIRSTWEEKDAY"), now?.variable("MACTEMPERATUREUNIT")],
+                    ["12", "0", "F"])
+            t.equal(now?.variable("ClockHoursAuto"), "12")
+            t.equal(now?.measure(named: "MeasureWeekStart")?.stringValue, "Sunday")
+            t.check(now?.measure(named: "MeasureTime")?.stringValue.hasSuffix("M") == true,
+                    "the time in 12-hour form: \(now?.measure(named: "MeasureTime")?.stringValue ?? "")")
+            t.check(app.controller(for: "App\\Focus")?.skin === focusSkin, "a skin without them is left alone")
+            t.equal(MacAppearance.current.lastPublished?.regional.clockHours, 12, "published for skins on other threads")
+            t.equal(WeatherWiring.skinUnits().temperature, .fahrenheit)
+            t.check(!WeatherWiring.liveEnvironment().uses24HourClock())
+
+            // The preference keys behind them are watched as well (another process writes them).
+            // A suite named by a path keeps its file in the test's own folder: a named one would leave a file in
+            // ~/Library/Preferences, which the preferences daemon writes again even after it is removed.
+            let suite = t.temporaryDirectory("regional-defaults").appendingPathComponent("regional").path
+            guard let defaults = UserDefaults(suiteName: suite) else { return t.check(false, "a defaults suite") }
+            var heard = 0
+            let observer = RegionalDefaultsObserver(defaults: defaults) { heard += 1 }
+            defaults.set("Fahrenheit", forKey: "AppleTemperatureUnit")
+            defaults.set(true, forKey: "AppleICUForce24HourTime")
+            t.check(AppSelfTest.spin(timeout: 2) { heard >= 2 }, "each change is heard: \(heard)")
+            // Written by another process, as System Settings writes them.
+            let writer = Process()
+            writer.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            writer.arguments = ["write", suite, "AppleFirstWeekday", "-dict", "gregorian", "-int", "2"]
+            try writer.run()
+            writer.waitUntilExit()
+            t.equal(writer.terminationStatus, 0)
+            t.check(AppSelfTest.spin(timeout: 5) { heard >= 3 }, "another process's change is heard: \(heard)")
+            withExtendedLifetime(observer) {}
+            app.stopAllForTermination()
+        }
+
+        t.suite("App: Mac look: --render's clock, week and temperature settings") {
+            let plain = RenderOptions.parse(["P", "--render", "a.ini"])
+            t.equal(plain?.regional(system: MacRegionalSettings(clockHours: 12, firstWeekday: 3, temperatureUnit: .fahrenheit)),
+                    .standard, "the standard ones unless asked: the same on every Mac")
+            let asked = RenderOptions.parse(["P", "--render", "a.ini", "--clock-hours", "12", "--first-weekday", "1",
+                                             "--temperature-unit", "f"])
+            t.equal(asked?.regional(system: .standard),
+                    MacRegionalSettings(clockHours: 12, firstWeekday: 1, temperatureUnit: .fahrenheit))
+            t.equal(asked?.warnings, [])
+            let system = RenderOptions.parse(["P", "--render", "a.ini", "--clock-hours", "system", "--first-weekday",
+                                              "System", "--temperature-unit", "system"])
+            let mine = MacRegionalSettings(clockHours: 12, firstWeekday: 5, temperatureUnit: .fahrenheit)
+            t.equal(system?.regional(system: mine), mine, "system: the Mac's own")
+            let mixed = RenderOptions.parse(["P", "--render", "a.ini", "--first-weekday", "system"])
+            t.equal(mixed?.regional(system: mine), MacRegionalSettings(clockHours: 24, firstWeekday: 5, temperatureUnit: .celsius))
+            let bad = RenderOptions.parse(["P", "--render", "a.ini", "--clock-hours", "13", "--first-weekday", "7",
+                                           "--temperature-unit", "K"])
+            t.equal(bad?.regional(system: mine), .standard, "wrong values keep the standard ones")
+            t.equal(bad?.warnings.count, 3)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--clock-hours"])?.warnings.count, 1)
+            t.equal(CommandLineTools.validate(["P", "--render", "a.ini", "--clock-hours", "12", "--first-weekday", "1",
+                                               "--temperature-unit", "F"]), .mode)
+            t.check(CommandLineTools.usage.contains("--temperature-unit"))
         }
     }
 }

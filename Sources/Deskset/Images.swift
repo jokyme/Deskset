@@ -11,6 +11,12 @@ import DesksetCore
 /// Formats: whatever ImageIO decodes — the manual's .png, .jpg, .bmp, .gif (first frame only, "no animation
 /// supported"), .tif, .webp and .ico (the largest icon in the file).
 ///
+/// A file can also be decoded at a smaller size (`drawnPath(_:maxPixelSide:)`, the Image meter's `MacDecodeSize=Drawn`;
+/// Deskset extension): its own entry, keyed by a path of its own, with the density of its pixels per point of the file
+/// — a 48 MP photo drawn in a 360 pt frame costs a few MB rather than 186. The engine's sizes stay the file's. Large
+/// files answer `size(atPath:)` and `exifOrientation(atPath:)` from their header, so asking for them never decodes the
+/// whole file.
+///
 /// SF Symbols (`sf:` paths, `MacSymbol`; Deskset extension) are kept here too: rendered by `SymbolImages` rather than
 /// decoded, never checked on disk, and at a density of their own — an entry's `density` is its pixels per point
 /// (1 for files: "1 image pixel = 1 point"). Sizes the engine sees (`size(atPath:)`), crop rectangles and hit tests
@@ -119,6 +125,8 @@ enum Images {
 
     /// Threads waiting right now for something another thread is making (self-tests).
     static var waitingCount: Int { locked { waiting } }
+    /// The image decoded for `path` now (a file's path or a `drawnPath`), without decoding anything (self-tests).
+    static func cachedImage(_ path: String) -> CGImage? { locked { entries[path]?.image } }
     /// Called on the decoding thread, outside the lock, just before a file is decoded (self-tests: counts decodes, and
     /// holds one up until other threads wait for it).
     static var willDecode: ((String) -> Void)? {
@@ -152,8 +160,11 @@ enum Images {
     /// The current decoded version of the file, or nil when it is missing or cannot be decoded. Any thread.
     static func entry(atPath path: String) -> Entry? {
         if MacSymbol.isSymbolPath(path) { return symbolEntry(path) }
+        // A file decoded at a smaller size is cached under its own path, and checked and decoded as the file.
+        let request = decodeRequest(path)
+        let file = request?.file ?? path
         while true {
-            let stamp = FileStamp(path: path)
+            let stamp = lookupStamp(file)
             condition.lock()
             guard let stamp else {
                 removeEntry(path)
@@ -182,8 +193,8 @@ enum Images {
             let hook = decodeHook
             condition.unlock()
 
-            hook?(path)
-            let decoded = decode(path)
+            hook?(file)
+            let decoded = decode(file, maxPixelSide: request?.side)
 
             condition.lock()
             defer { condition.unlock() }
@@ -199,7 +210,7 @@ enum Images {
                 return nil
             }
             let e = Entry(image: decoded.image, exifOrientation: decoded.orientation, generation: nextGeneration,
-                          stamp: stamp, now: now)
+                          stamp: stamp, now: now, density: decoded.density)
             nextGeneration += 1
             guard keep else { return e }
             failures[path] = nil
@@ -208,6 +219,59 @@ enum Images {
             if entriesCost > entryCostLimit { evictEntries(now: now) }
             return e
         }
+    }
+
+    // MARK: Files a drawing used
+
+    /// The files looked up while a drawing ran (`recordingFiles`), each as it was then (missing ones too). A picture of
+    /// that drawing stays right while they stay as they were (`filesUnchanged`): a file replaced on disk shows in the
+    /// next drawing that looks it up, and a kept picture that does not look anything up must not miss that.
+    struct UsedFiles: Equatable {
+        fileprivate var stamps: [String: FileStamp?] = [:]
+        fileprivate var purges = 0
+        /// The files (paths on disk) looked up.
+        var paths: [String] { stamps.keys.sorted() }
+    }
+
+    private final class FileRecorder {
+        var used = UsedFiles()
+    }
+
+    private static let recorderKey = "DesksetImages.FileRecorder"
+
+    /// Runs `body`, recording every file it looks up on this thread. A recording inside another one is also part of
+    /// the outer one.
+    static func recordingFiles(_ body: () -> Void) -> UsedFiles {
+        let dictionary = Thread.current.threadDictionary
+        let outer = dictionary[recorderKey] as? FileRecorder
+        let recorder = FileRecorder()
+        recorder.used.purges = locked { purges }
+        dictionary[recorderKey] = recorder
+        body()
+        dictionary[recorderKey] = outer
+        if let outer {
+            for (path, stamp) in recorder.used.stamps where outer.used.stamps.index(forKey: path) == nil {
+                outer.used.stamps[path] = stamp
+            }
+        }
+        return recorder.used
+    }
+
+    /// Whether every file in `used` is as it was when it was looked up, and the caches were not purged since (one
+    /// `stat` per file, as a drawing's own lookups cost). Any thread.
+    static func filesUnchanged(_ used: UsedFiles) -> Bool {
+        guard locked({ purges }) == used.purges else { return false }
+        return used.stamps.allSatisfy { FileStamp(path: $0.key) == $0.value }
+    }
+
+    /// The file's stamp now, for a lookup: a recording on this thread (`recordingFiles`) keeps the first one it sees.
+    private static func lookupStamp(_ path: String) -> FileStamp? {
+        let stamp = FileStamp(path: path)
+        if let recorder = Thread.current.threadDictionary[recorderKey] as? FileRecorder,
+           recorder.used.stamps.index(forKey: path) == nil {
+            recorder.used.stamps[path] = .some(stamp)
+        }
+        return stamp
     }
 
     /// The rendered symbol of a symbol path (`MacSymbol.path`), nil when macOS has no such symbol. Rendered once, by one
@@ -296,12 +360,14 @@ enum Images {
     /// Size in pixels (Rainmeter works in pixels; 1 image pixel = 1 point), as stored in the file. A symbol's size in
     /// points.
     static func size(atPath path: String) -> (width: Double, height: Double)? {
-        entry(atPath: path)?.pointSize
+        if let h = largeHeader(path) { return (Double(h.width), Double(h.height)) }
+        return entry(atPath: path)?.pointSize
     }
 
     /// EXIF orientation (1…8) of the file; 1 when it has none.
     static func exifOrientation(atPath path: String) -> Int {
-        entry(atPath: path)?.exifOrientation ?? 1
+        if let h = largeHeader(path) { return h.orientation }
+        return entry(atPath: path)?.exifOrientation ?? 1
     }
 
     /// Refresh All: every file is decoded again (a skin author may have edited it). What another thread is decoding or
@@ -311,6 +377,7 @@ enum Images {
         defer { condition.unlock() }
         purges += 1
         entries.removeAll()
+        headers.removeAll()
         entriesCost = 0
         failures.removeAll()
         symbolFailures.removeAll()
@@ -320,7 +387,10 @@ enum Images {
         alphaMasks.removeAll()
     }
 
-    private static func decode(_ path: String) -> (image: CGImage, orientation: Int)? {
+    /// Decodes the file: at most `maxDecodeSide` pixels per side, or at most `maxPixelSide` when that is smaller (then
+    /// the density is the decoded pixels per pixel of the full decode, so sizes in points stay the file's).
+    private static func decode(_ path: String, maxPixelSide: Int? = nil)
+        -> (image: CGImage, orientation: Int, density: Density)? {
         let url = URL(fileURLWithPath: path) as CFURL
         guard let source = CGImageSourceCreateWithURL(url, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
@@ -346,12 +416,13 @@ enum Images {
         }
         let (w, h, orientation) = pixelSize(index)
         guard w >= 0, h >= 0, w <= maxSourcePixels, h <= maxSourcePixels, w * h <= maxSourcePixels else { return nil }
+        let limit = min(maxPixelSide ?? maxDecodeSide, maxDecodeSide)
         let image: CGImage?
-        if max(w, h) > maxDecodeSide {
+        if max(w, h) > limit {
             image = CGImageSourceCreateThumbnailAtIndex(source, index, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: false,
-                kCGImageSourceThumbnailMaxPixelSize: maxDecodeSide,
+                kCGImageSourceThumbnailMaxPixelSize: limit,
                 kCGImageSourceShouldCacheImmediately: true,
             ] as CFDictionary)
         } else {
@@ -359,7 +430,93 @@ enum Images {
                                                     [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
         }
         guard let image, image.width > 0, image.height > 0 else { return nil }
-        return (image, (1...8).contains(orientation) ? orientation : 1)
+        var density = Density.one
+        if maxPixelSide != nil, w > 0, h > 0 {
+            // The full decode's size (the file's, or its downsampled size past maxDecodeSide) is the size in points.
+            let full = fullDecodeSize(width: w, height: h)
+            density = Density(x: CGFloat(image.width) / CGFloat(full.width),
+                              y: CGFloat(image.height) / CGFloat(full.height))
+        }
+        return (image, (1...8).contains(orientation) ? orientation : 1, density)
+    }
+
+    /// The pixel size a full decode gives a file of `width` × `height` (downsampled past `maxDecodeSide`).
+    private static func fullDecodeSize(width w: Int, height h: Int) -> (width: Int, height: Int) {
+        guard max(w, h) > maxDecodeSide else { return (w, h) }
+        let s = Double(maxDecodeSide) / Double(max(w, h))
+        return (max(1, Int((Double(w) * s).rounded())), max(1, Int((Double(h) * s).rounded())))
+    }
+
+    // MARK: Decoding at the drawn size
+
+    /// The marker between a file's path and the pixel size it is decoded at (no file path contains a NUL).
+    private static let decodeMarker = "\u{0}decode="
+
+    /// A path that decodes the file at `path` with at most `maxPixelSide` pixels on its longer side, cached apart
+    /// from the full decode; every query of this type takes it (sizes stay the file's, in points). `path` itself when
+    /// that is no smaller than a full decode, or for a symbol.
+    static func drawnPath(_ path: String, maxPixelSide: Int) -> String {
+        guard !MacSymbol.isSymbolPath(path), decodeRequest(path) == nil, maxPixelSide > 0,
+              let header = header(atPath: path), maxPixelSide < max(header.width, header.height),
+              maxPixelSide < maxDecodeSide else { return path }
+        return path + decodeMarker + String(maxPixelSide)
+    }
+
+    /// The file and the size of a `drawnPath`; nil for any other path.
+    static func decodeRequest(_ path: String) -> (file: String, side: Int)? {
+        guard let r = path.range(of: decodeMarker), let side = Int(path[r.upperBound...]), side > 0 else { return nil }
+        return (String(path[..<r.lowerBound]), side)
+    }
+
+    // MARK: File headers
+
+    /// What a file's header says, read without decoding it.
+    struct Header {
+        /// Pixels (of the image a full decode uses: the largest in an icon file).
+        let width: Int
+        let height: Int
+        let orientation: Int
+        /// Whether a full decode gives exactly `width` × `height`: not an icon file (whose largest image is decoded),
+        /// within `maxDecodeSide`.
+        let exact: Bool
+    }
+
+    private static var headers: [String: (stamp: FileStamp, header: Header)] = [:]
+    /// Files with at least this many pixels answer `size(atPath:)` and `exifOrientation(atPath:)` from their header
+    /// until they are decoded (smaller files are decoded, as they always were: that also finds files that cannot be).
+    static let headerPixels = 4_000_000
+
+    /// The file's header, cached per version of the file; nil when it is missing or unreadable. Any thread.
+    static func header(atPath path: String) -> Header? {
+        guard let stamp = lookupStamp(path) else { return nil }
+        if let h = locked({ headers[path] }), h.stamp == stamp { return h.header }
+        let url = URL(fileURLWithPath: path) as CFURL
+        guard let source = CGImageSourceCreateWithURL(url, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0,
+              let p = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int,
+              w > 0, h > 0 else { return nil }
+        let o = (p[kCGImagePropertyOrientation] as? Int) ?? 1
+        let type = (CGImageSourceGetType(source) as String?) ?? ""
+        let icon = type == "com.microsoft.ico" || type == "com.microsoft.cur" || type == "com.apple.icns"
+        let header = Header(width: w, height: h, orientation: (1...8).contains(o) ? o : 1,
+                            exact: !icon && max(w, h) <= maxDecodeSide && w * h <= maxSourcePixels)
+        locked {
+            if headers.count >= 1024 { headers.removeAll() }
+            headers[path] = (stamp, header)
+        }
+        return header
+    }
+
+    /// The header of a large file that is not decoded now (nil otherwise: ask its entry).
+    private static func largeHeader(_ path: String) -> Header? {
+        guard !MacSymbol.isSymbolPath(path) else { return nil }
+        let request = decodeRequest(path)
+        let file = request?.file ?? path
+        if request == nil, let stamp = lookupStamp(file),
+           locked({ entries[path].map { $0.stamp == stamp } ?? false }) { return nil }
+        guard let h = header(atPath: file), h.exact, h.width * h.height >= headerPixels else { return nil }
+        return h
     }
 
     // MARK: Derived images

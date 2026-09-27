@@ -77,7 +77,7 @@ func runValueUsagesTests(_ t: TestRunner) {
     }
 
     t.suite("Editor: value usages — System's theme colors come from a shared include") {
-        let skin = try load("DefaultSkins", "Deskset\\System")
+        let skin = try load("TestSkins", "Deskset\\System")
         let index = skin.valueUsages()
         let groups = index.colorGroups()
         guard let blue = groups.first(where: { $0.variables.contains("CPUColor") }) else {

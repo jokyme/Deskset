@@ -519,6 +519,19 @@ enum WeatherSelfTests {
             t.check(lines.contains("    → Oslo, Oslo, Norway · 59.91, 10.75 · Europe/Oslo"), "\(lines)")
             t.check(lines.contains { $0.hasPrefix("    → sunrise 07:10, sunset 19:04") }, "\(lines)")
             t.check(lines.contains { $0.contains("Location Services:  not asked yet") }, "\(lines)")
+            // Location=timezone: the city of this Mac's time zone, from the table (whichever zone this Mac is in).
+            let zoneConfig = skins.appendingPathComponent("Home/Zone")
+            try FileManager.default.createDirectory(at: zoneConfig, withIntermediateDirectories: true)
+            try "[Rainmeter]\n[MeasureSun]\nMeasure=Plugin\nPlugin=MacSun\nLocation=timezone\n"
+                .write(to: zoneConfig.appendingPathComponent("Z.ini"), atomically: true, encoding: .utf8)
+            let zoneState = root.appendingPathComponent("zone-state.json")
+            try #"{"skins":{"Home\\Zone":{"file":"Z.ini","active":true}}}"#.write(to: zoneState, atomically: true,
+                                                                                  encoding: .utf8)
+            let zoneLines = SystemReport.weatherLines(stateFile: zoneState, skinsDirectory: skins,
+                                                      authorization: .notDetermined, placesTable: table, now: fixtureClock)
+            t.check(zoneLines.contains { $0.contains("Home\\Zone [MeasureSun] MacSun: Location=timezone") }, "\(zoneLines)")
+            t.check(zoneLines.contains { $0.hasPrefix("    → the city of this Mac's time zone (\(TimeZone.current.identifier))") },
+                    "\(zoneLines)")
             let none = SystemReport.weatherLines(stateFile: root.appendingPathComponent("missing.json"),
                                                  skinsDirectory: skins, authorization: .denied, placesTable: table)
             t.equal(none, ["Weather: not set up (no active skin sets a weather location; Location Services: denied)"])

@@ -87,8 +87,9 @@ credits MET Norway and shows when the data was updated.
 
 - **Privacy:** only a skin running on the desktop with a place set makes requests. MET Norway receives your IP address
   and the place's coordinates rounded to about 1 km — nothing else. `Location=auto` asks for Location Services once;
-  that location is rounded, kept in memory only and never saved or logged. Sun and moon times (`Plugin=MacSun`) never
-  use the network.
+  that location is rounded, kept in memory only and never saved or logged. `Location=timezone` takes the city of your
+  Mac's time zone from the same offline table and asks for nothing. Sun and moon times (`Plugin=MacSun`) never use the
+  network.
 - **Turn it off:** `defaults write app.deskset.Deskset WeatherEnabled -bool NO` (undo with
   `defaults delete app.deskset.Deskset WeatherEnabled`).
 - Options, values and details: [docs/compat/weather.md](docs/compat/weather.md).

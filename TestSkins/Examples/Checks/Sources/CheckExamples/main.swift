@@ -1,6 +1,7 @@
-// Behaviour checks for the example skins that ship with the app (DefaultSkins/Deskset). Run from the repository root:
+// Behaviour checks for the example skins Deskset 0.1 shipped (TestSkins/Deskset since the Stationery suite replaced
+// them in DefaultSkins). Run from the repository root:
 //
-//     swift run --package-path TestSkins/Examples/Checks CheckExamples [path/to/DefaultSkins]
+//     swift run --package-path TestSkins/Examples/Checks CheckExamples [path/to/TestSkins]
 //
 // Each skin is loaded by the engine over a temporary copy of the skins with fake system readings, then checked:
 // no compatibility issues or warnings (also with the light theme, 12 hours, Monday and the system language),
@@ -72,9 +73,9 @@ func check(_ condition: Bool, _ message: @autoclosure () -> String) {
 }
 
 let arguments = CommandLine.arguments.dropFirst()
-let source = URL(fileURLWithPath: arguments.first ?? "DefaultSkins").standardizedFileURL
+let source = URL(fileURLWithPath: arguments.first ?? "TestSkins").standardizedFileURL
 guard FileManager.default.fileExists(atPath: source.appendingPathComponent("Deskset").path) else {
-    print("No Deskset folder in \(source.path); run from the repository root or pass the DefaultSkins folder.")
+    print("No Deskset folder in \(source.path); run from the repository root or pass the TestSkins folder.")
     exit(2)
 }
 let work = FileManager.default.temporaryDirectory.appendingPathComponent("deskset-check-examples-\(getpid())")

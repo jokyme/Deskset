@@ -671,7 +671,18 @@ public final class WeatherService {
     /// Looks a place name up in the offline table. `.pending` starts the lookup; the subscription is told when it
     /// is done. With `waitsForLookups` (`--render`) the answer is there at once (never call it on the service's queue).
     public func lookUpPlace(_ query: String, for s: WeatherSubscription?) -> PlaceLookup {
-        let key = queryKey(query)
+        lookUp(key: queryKey(query), for: s) { $0.search(query) }
+    }
+
+    /// The city of a time zone (`Location=timezone`, `PlaceDirectory.place(forTimeZone:)`), looked up as a place name
+    /// is: `.notFound` for a zone without one (UTC, Etc/GMT-8).
+    public func lookUpTimeZone(_ identifier: String, for s: WeatherSubscription?) -> PlaceLookup {
+        let now = self.now
+        return lookUp(key: "timezone\u{0}" + identifier, for: s) { $0.place(forTimeZone: identifier, near: now) }
+    }
+
+    private func lookUp(key: String, for s: WeatherSubscription?,
+                        _ find: @escaping (PlaceDirectory) -> PlaceMatch?) -> PlaceLookup {
         lock.lock()
         if let result = placeResults[key] {
             lock.unlock()
@@ -679,25 +690,25 @@ public final class WeatherService {
         }
         if environment.waitsForLookups {
             lock.unlock()
-            return queue.sync { findPlace(query, key: key) }
+            return queue.sync { findPlace(key: key, find) }
         }
         let start = placeWaiters[key] == nil
         var waiters = placeWaiters[key] ?? []
         if let s, !waiters.contains(where: { $0 === s }) { waiters.append(s) }
         placeWaiters[key] = waiters
         lock.unlock()
-        if start { queue.async { _ = self.findPlace(query, key: key) } }
+        if start { queue.async { _ = self.findPlace(key: key, find) } }
         return .pending
     }
 
     /// Searches the table once for `key`, keeps the result and tells the measures waiting for it (queue).
-    private func findPlace(_ query: String, key: String) -> PlaceLookup {
+    private func findPlace(key: String, _ find: (PlaceDirectory) -> PlaceMatch?) -> PlaceLookup {
         lock.lock()
         let known = placeResults[key]
         lock.unlock()
         var result = known ?? .unavailable
         if known == nil, let directory = directory() {
-            result = directory.search(query).map { .found($0) } ?? .notFound
+            result = find(directory).map { .found($0) } ?? .notFound
         }
         lock.lock()
         if known == nil {

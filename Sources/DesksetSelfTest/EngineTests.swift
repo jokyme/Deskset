@@ -336,6 +336,9 @@ final class EngineTestSystem: SystemDataSource {
         return total
     }
     func diskSpace(path: String) -> (total: Double, free: Double)? { disk }
+    /// FreeDiskSpace `MacAvailable=1`: Finder's figure; nil while the first reading is still being made.
+    var available: Double? = 600
+    func availableDiskSpace(path: String) -> Double? { available }
     func uptime() -> TimeInterval { uptimeSeconds }
     func battery() -> BatteryStatus? { batteryStatus }
     func isProcessRunning(_ name: String) -> Bool { name.lowercased() == "finder" }
@@ -1979,6 +1982,94 @@ private func runBuiltinMeasureTests(_ t: TestRunner) {
         t.close(value(skin, "Type"), 1)
     }
 
+    t.suite("Engine: FreeDiskSpace MacAvailable (Finder's available space)") {
+        // The figure from a reading: macOS's important-usage capacity when above 0, else free space, within the size.
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: 700, free: 250, total: 1000), 700)
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: 0, free: 250, total: 1000), 250, "0: a disk image, HFS+")
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: nil, free: 250, total: 1000), 250)
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: .nan, free: 250, total: 1000), 250)
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: 2000, free: 250, total: 1000), 1000)
+        t.equal(FreeDiskSpaceMeasure.availableSpace(important: nil, free: -3, total: 1000), 0)
+
+        let system = EngineTestSystem()
+        system.available = nil
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [Avail]
+        Measure=FreeDiskSpace
+        MacAvailable=1
+
+        [AvailUsed]
+        Measure=FreeDiskSpace
+        MacAvailable=1
+        InvertMeasure=1
+
+        [AvailAverage]
+        Measure=FreeDiskSpace
+        MacAvailable=1
+        AverageSize=3
+
+        [AvailTotal]
+        Measure=FreeDiskSpace
+        MacAvailable=1
+        Total=1
+
+        [AvailLabel]
+        Measure=FreeDiskSpace
+        MacAvailable=1
+        Label=1
+
+        [Free]
+        Measure=FreeDiskSpace
+
+        [UsedPercent]
+        Measure=Calc
+        Formula=(AvailTotal > 0) && (Avail >= 0) ? Round((1 - Avail / AvailTotal) * 100) : -1
+
+        [Text]
+        Meter=String
+        MeasureName=Avail
+        """, system: system)
+
+        // Before the first reading: −1 (never inverted or averaged) and an empty string; the rest is there.
+        skin.update()
+        t.close(value(skin, "Avail"), -1)
+        t.equal(string(skin, "Avail"), "")
+        t.check(skin.measure(named: "Avail")?.valueUnavailable == true, "loading: a String meter keeps its line")
+        t.close(value(skin, "AvailUsed"), -1, "not inverted into more than the disk")
+        t.close(value(skin, "AvailAverage"), -1)
+        t.close(value(skin, "AvailTotal"), 1000)
+        t.equal(string(skin, "AvailLabel"), "Macintosh HD")
+        t.close(value(skin, "Free"), 250)
+        t.close(value(skin, "UsedPercent"), -1, "the loading state a skin can test for")
+        t.equal(text(skin, "Text"), "")
+
+        // The reading: free space plus what macOS can purge.
+        system.available = 600
+        skin.update()
+        t.close(value(skin, "Avail"), 600)
+        t.check(skin.measure(named: "Avail")?.valueUnavailable == false)
+        t.close(value(skin, "AvailUsed"), 400, "used as Finder counts it")
+        t.close(value(skin, "AvailAverage"), 600, "the placeholder was not averaged in")
+        t.close(value(skin, "UsedPercent"), 40)
+        t.close(value(skin, "Free"), 250, "without the option: the free space, as before")
+        t.equal(text(skin, "Text"), "600")
+        system.available = 5000
+        skin.update()
+        t.close(value(skin, "Avail"), 1000, "never more than the disk")
+        system.disk = nil
+        skin.update()
+        t.close(value(skin, "Avail"), 0, "a volume that is gone")
+        system.disk = (1000, 250)
+        system.volume = VolumeInfo(label: "USB", kind: .removable)
+        skin.update()
+        t.close(value(skin, "Avail"), 0, "removable drives are ignored by default, as without the option")
+
+        // A data source that knows no better answers with the free space.
+        let (plain, _) = try makeSkin(t, "[Avail]\nMeasure=FreeDiskSpace\nMacAvailable=1\n")
+        plain.update()
+        t.close(plain.measure(named: "Avail")?.value ?? -2, 250)
+    }
+
     t.suite("Engine: Loop measure") {
         let (skin, _, _) = try makeEngineSkin(t, """
         [A]
@@ -2471,6 +2562,47 @@ private func runEngineReviewTests(_ t: TestRunner) {
         skin.perform(Bang(name: "setoption", args: ["S1", "Text", "xyz"]))
         skin.perform(Bang(name: "updatemeter", args: ["S1"]))
         t.close(frame(skin, "S1").width, 21, "bangs performed by the host are laid out too")
+    }
+
+    t.suite("Engine review: a meter of !UpdateMeterGroup reads the new size of one updated before it") {
+        let host = FakeHost()
+        host.textSizer = { text, _, _ in (Double(text.count) * 7, 14) }
+        let (skin, _, _) = try makeEngineSkin(t, """
+        [A]
+        Meter=String
+        Text=short
+        Group=G
+        [B]
+        Meter=String
+        Text=b
+        W=([A:W] + 1)
+        Group=G
+        DynamicVariables=1
+        [C]
+        Meter=String
+        Text=c
+        X=([B:W] + 10)
+        Group=G
+        DynamicVariables=1
+        [D]
+        Meter=String
+        Text=d
+        X=([A:W])
+        DynamicVariables=1
+        """, host: host)
+        skin.update()
+        t.close(frame(skin, "B").width, 36)
+        t.close(frame(skin, "C").x, 46)
+        // One bang updates the three in file order: B sees A's new width and C sees B's, as in an update.
+        run(skin, "[!SetOption A Text abcdefghij][!UpdateMeterGroup G]")
+        t.close(frame(skin, "A").width, 70)
+        t.close(frame(skin, "B").width, 71, "B read A as laid out after A's update")
+        t.close(frame(skin, "C").x, 81, "C read B as laid out after B's update")
+        t.close(frame(skin, "D").x, 35, "a meter outside the group keeps what it read at its last update")
+        run(skin, "[!SetOption A Text abc][!UpdateMeter *]")
+        t.close(frame(skin, "B").width, 22, "!UpdateMeter * too")
+        t.close(frame(skin, "C").x, 32)
+        t.close(frame(skin, "D").x, 21)
     }
 
     t.suite("Engine review: an action that unloads the skin stops the update") {

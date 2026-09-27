@@ -163,7 +163,10 @@ enum ThreadStressSelfTests {
                 _ = SharedServiceThreadingSelfTests.drainMainQueue()
             }
 
-            var files = SkinFile.all(under: tests) + SkinFile.all(under: defaults)
+            // Every default skin, not the first-run layout next to them.
+            var files = SkinFile.all(under: tests) + SkinFile.all(under: defaults).filter {
+                $0.url.lastPathComponent.caseInsensitiveCompare(DefaultSkins.firstRunFileName) != .orderedSame
+            }
             // More copies of the heavy fixtures (the same photos, fonts and Lua script from several threads at once)
             // and of the skins that read the shared services of §4.5–§4.8 (system monitor, process sampler, Wi-Fi,
             // focused window, SysColor and Chameleon inputs, NowPlaying, audio devices, ping, trash).
@@ -265,6 +268,7 @@ enum ThreadStressSelfTests {
                 }
             }
             t.equal(problems, [], "every skin loaded, updated and drew")
+            checkDefaultSkins(t, skins.filter { $0.file.skinsDirectory == defaults.resolvingSymlinksInPath() })
             // Background work (a plugin's download, a timer) reaches the host only through the skin's executor.
             let stray = skins.flatMap { skin in skin.host.strayCalls.map { "\(skin.file.config): \($0)" } }
             t.equal(stray, [], "every call the engine made to its host came from the skin's own thread")
@@ -276,6 +280,33 @@ enum ThreadStressSelfTests {
             checkFixtures(t, skins, photos: photos, counts: resources.appendingPathComponent("Counts.inc"),
                           hasFonts: hasFonts)
         }
+    }
+
+    /// The bundled skins (the Stationery suite) are the first thing a user sees: no compatibility note, no file
+    /// warning (a missing include), no warning or error in the log, and each at its card's size (Small 170 × 170,
+    /// Medium 360 × 170, Large 360 × 360; the frameless pieces at their own). Their skins write only the copy
+    /// (`#@#Variables.inc`) and the self-tests' own settings folder (`Stationery.inc`).
+    private static func checkDefaultSkins(_ t: AppTestRunner, _ skins: [StressSkin]) {
+        t.check(skins.count >= 40, "the default skins: \(skins.count)")
+        let freeForm = ["Almanac.ini": (411.0, 148.0), "Daybreak.ini": (450.0, 262.0), "Strip.ini": (740.0, 110.0)]
+        let sizes = ["Small.ini": (170.0, 170.0), "Medium.ini": (360.0, 170.0), "Large.ini": (360.0, 360.0)]
+        var problems: [String] = []
+        for skin in skins {
+            let r = skin.report.current
+            let file = skin.file.url.lastPathComponent
+            let name = skin.file.config + "\\" + file
+            if !r.issues.isEmpty { problems.append("\(name): \(r.issues)") }
+            if !r.loadWarnings.isEmpty { problems.append("\(name): \(r.loadWarnings)") }
+            let loud = skin.host.logs.filter { $0.hasPrefix("[Warning]") || $0.hasPrefix("[Error]") }
+            if !loud.isEmpty { problems.append("\(name): \(loud.prefix(3))") }
+            if let size = sizes[file] ?? freeForm[file] {
+                if r.width != size.0 || r.height != size.1 { problems.append("\(name): \(r.width) × \(r.height)") }
+            } else {
+                problems.append("\(name): not a card size's name")
+            }
+        }
+        t.equal(problems, [], "every default skin loads cleanly, at its size")
+        print("    \(skins.count) default skins checked for notes, warnings and their size")
     }
 
     /// What the fixtures in TestSkins/Threads computed on their threads.
@@ -389,6 +420,9 @@ enum ThreadStressSelfTests {
             var height = 0.0
             /// Facts some fixtures compute (measure values, meter sizes, variables), as of the last update.
             var values: [String: String] = [:]
+            /// The last load's compatibility notes and file warnings (a missing include…).
+            var issues: [String] = []
+            var loadWarnings: [String] = []
             var finished = false
         }
 
@@ -485,6 +519,7 @@ enum ThreadStressSelfTests {
             if let m = skin.meter(named: "Mono") { values["Mono"] = "\(m.frame.width)" }
             if let x = skin.variable("X") { values["X"] = x }
             let (width, height) = (skin.width, skin.height)
+            let (issues, loadWarnings) = (skin.issues, skin.loadWarnings)
             skin.close()
             self.skin = nil
             canvas = nil
@@ -492,6 +527,8 @@ enum ThreadStressSelfTests {
                 $0.values = values
                 $0.width = width
                 $0.height = height
+                $0.issues = issues
+                $0.loadWarnings = loadWarnings
                 $0.finished = true
             }
         }

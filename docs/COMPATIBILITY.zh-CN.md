@@ -378,13 +378,27 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **Mac：** 描述 Mac 外观的动态内置变量：`#MACAPPEARANCE#`（`Dark` / `Light`，可用于
   `@Include=#@#Theme-#MACAPPEARANCE#.inc`）、`#MACDARKMODE#`（1 / 0），以及按当前外观给出的 `R,G,B,A` 颜色
   `#MACACCENTCOLOR#`、`#MACLABELCOLOR#`、`#MACSECONDARYLABELCOLOR#`、`#MACTERTIARYLABELCOLOR#` 和 `#MACSEPARATORCOLOR#`。
-  它们不能被 `[Variables]` 或 `!SetVariable` 覆盖，在 `@Include` 路径中也一样。Mac 在浅色与深色之间切换或强调色改变时，用到
-  其中任何一个的皮肤会执行 `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做）；其他皮肤
-  不受影响，除非皮肤自己写了这个动作。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
+  它们不能被 `[Variables]` 或 `!SetVariable` 覆盖，在 `@Include` 路径中也一样。Mac 在浅色与深色之间切换、强调色改变，或者时钟、
+  每周首日、温度单位设置改变（见下一条）时，用到其中任何一个或那三个变量的皮肤会执行
+  `[Rainmeter] MacOnAppearanceChangeAction`（默认 `[!Refresh]`；写成空值则什么也不做）；其他皮肤不受影响，除非皮肤自己写了
+  这个动作。动作中的变量在执行时才解析（得到新的颜色），并且由外观变量构成的 `[Variables]` 会先更新，
   所以 `[!UpdateMeter *][!Redraw]` 无需重新加载就能为 DynamicVariables 的 meter 换色；由 `#MACAPPEARANCE#` 选择的 `@Include`
   只有刷新后才会改变。
 - **原因：** Deskset 扩展：Mac 上的小组件应当跟随外观和强调色。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些名称未定义。
+- **状态：** 仅 Mac
+
+#### 时钟、每周首日和温度单位变量（`#MACCLOCKHOURS#`、`#MACFIRSTWEEKDAY#`、`#MACTEMPERATUREUNIT#`）
+- **Windows：** 没有这些变量。
+- **Mac：** `#MACCLOCKHOURS#` 为 `12` 或 `24`（“日期与时间”中的“24 小时制时间”，未设置时按地区习惯）；
+  `#MACFIRSTWEEKDAY#` 为每周第一天，`0`（星期日）…… `6`（星期六），与 `%w` 的计法相同（“语言与地区”）；
+  `#MACTEMPERATUREUNIT#` 为 `C` 或 `F`（“语言与地区”中的“温度”，未设置时按地区的天气单位）。它们的行为与外观变量相同：
+  不能被覆盖，是动态变量；并且共用外观变量的触发方式：其中任一设置改变都算作外观改变，用到任何一个 `#MAC…#` 变量的皮肤都会执行
+  `MacOnAppearanceChangeAction`（默认 `[!Refresh]`）。
+  天气插件的默认时间格式和 `Units=Auto` 也跟随同样的设置。`--render` 默认使用 24 小时制、星期日和 °C，除非用
+  `--clock-hours`、`--first-weekday` 或 `--temperature-unit` 另行指定（[§7.5](#75-deskset---render供皮肤作者和测试使用)）。
+- **原因：** Deskset 扩展：皮肤中的“自动”设置需要知道 Mac 自己的选择。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响；请在自己的变量中提供 `Auto` 取值（`ClockHoursAuto=#MACCLOCKHOURS#`）。
 - **状态：** 仅 Mac
 
 #### 公式
@@ -428,7 +442,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   FormatLocale 使用 Windows 的区域数据。
 - **Mac：** 格式码相同。取舍判断：`%r` 为大写的 “10:55:03 PM”；`%Z` 为英文时区名；未知格式码原样输出；Format 为空时
   等同 `%H:%M:%S`；设置了 Format 时，数值取文字开头的数字；TimeZone 接受小数小时，且不作用于 TimeStamp 的值（数字形式的
-  也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1。区域格式（`%c`、`%x`）来自 macOS（ICU）数据。
+  也不作用）；TimeStamp 解析较宽松；AddDaysToHours 默认为 1；Uptime 的数值保留秒的小数部分。区域格式（`%c`、`%x`）来自
+  macOS（ICU）数据。
   FormatLocale / TimeStampLocale 通过内置的常用区域表识别 Windows 的三字母语言代码（`DEU`、`CHS`……）和 `Language_Country`
   名称。
 - **原因：** macOS 的区域数据；手册没有规定细节。
@@ -507,6 +522,16 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **原因：** macOS 没有盘符。
 - **对皮肤的影响：** D:、E:、F: 都重复显示启动磁盘；其他卷请写 `Drive=/Volumes/Backup`。
 - **状态：** 模拟实现
+
+#### FreeDiskSpace `MacAvailable=1`（访达的“可用”空间）
+- **Windows：** FreeDiskSpace 报告空闲空间，没有其他数值。
+- **Mac：** `MacAvailable=1` 报告访达所说的“可用”空间：空闲空间加上 macOS 会自行释放的可清除空间（缓存、本地快照、
+  iCloud 文件）——在许多 Mac 上要多出几十 GB。此时 `InvertMeasure=1` 得到访达口径的已用空间。磁盘映像、非 APFS 卷和网络卷
+  报告其空闲空间。每次读数保留 30 秒，之后在后台重新读取；某个卷的第一次读数最多等待四分之一秒，在它到达之前 measure 的值为
+  −1、字符串为空。
+- **原因：** 空闲空间不含可清除空间，所以访达显示 88% 已用的磁盘会显示为 99% 已用。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响（Rainmeter 会忽略该选项）；请把 −1 当作“正在加载”。
+- **状态：** 仅 Mac
 
 #### SysInfo
 - **Windows：** 系统、用户、网卡、显示器和时区等信息。
@@ -601,6 +626,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `sf:[Measure]`）表示没有图片，不绘制，也不提示。Bitmap、Rotator 和 Histogram 不能使用符号（给出提示，不绘制任何内容）。
 - **原因：** Deskset 扩展：Mac 自带的图标集，无需图片文件。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
+- **状态：** 仅 Mac
+
+#### 按绘制尺寸解码图片（`MacDecodeSize=Drawn`）
+- **Windows：** 图片文件总是整张载入。
+- **Mac：** Image meter 上的 `MacDecodeSize=Drawn` 按图片实际绘制所覆盖的像素解码文件（W × H 乘以屏幕的
+  backing scale，不超过文件本身的像素）；`File`（默认）整张解码。尺寸、ImageCrop 和点击判定仍以文件的像素计；
+  平铺的图片和符号照常解码。400 万像素及以上的文件，其尺寸和 EXIF 方向从文件头读取，不需要解码。
+- **原因：** Deskset 扩展：一张 4800 万像素的照片整张解码约占 186 MB，按相框大小解码只需几 MB。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响，Windows 会忽略这个选项。
 - **状态：** 仅 Mac
 
 #### Bar、Bitmap、Button
@@ -714,8 +748,9 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
-变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
-（[§6.5](#65-meter-与绘制)）。Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
+变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
+（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)）。
+Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
 
@@ -976,6 +1011,17 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
 
+#### 默认皮肤与首次启动
+- **Windows：** Rainmeter 自带 illustro 皮肤，首次安装后会加载。
+- **Mac：** Deskset 自带的原创皮肤（Stationery「文房」套件）在首次启动时复制到皮肤文件夹，新版 Deskset 带来新的默认皮肤时
+  会再复制一次（旧副本移到 `Backups`；用户在 `@Resources/Variables.inc` 中改过的设置会带到新版本，而旧版本自带、用户没改过的值
+  则让位于新的默认值）。Deskset 0.1 的示例皮肤（根配置 `Deskset`）保持原样。第一次启动时，默认皮肤旁边的 `FirstRun.ini` 中列出的
+  皮肤会加载到指定位置（从主显示器可用区域左上角起算的点数）：时钟、日历、天气和系统；没有这个文件时只加载时钟。
+  `#SETTINGSPATH#Stationery.inc` 不存在时会自动创建，默认小组件用它保存用户输入的内容（`!WriteKeyValue` 只能写入已存在的文件）。
+- **原因：** 首次启动的桌面不请求任何权限；设置和用户内容在升级后保留。
+- **对皮肤的影响：** 无；任何皮肤都可以包含并写入 `#SETTINGSPATH#Stationery.inc`。
+- **状态：** 模拟实现
+
 ### 7.4 配置与应用程序 bang
 
 #### `!Refresh`、`!ActivateConfig`、`!DeactivateConfig` 和 `!ToggleConfig` 何时生效
@@ -1038,8 +1084,10 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 #### 把皮肤渲染为 PNG
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
-  间隔 1 000 ms），按比例 S（默认 2）以浅色外观（或指定的外观）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
+  [--temperature-unit C|F|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
+  间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac
+  自己的设置）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
@@ -1429,7 +1477,9 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   `frequency.cpu.N`、`frequency.gpu`；`voltage.cpu`；`gpu.usage`、`gpu.memory`；`battery.health`、`battery.cycles`、
   `battery.voltage`、`battery.current`（编号从 1 开始）。温度可用 `Scale=C` / `F` / `K`。数值为读数，字符串为带单位的读数
   （“52 °C”、“2317 RPM”），没有读数时为空。默认范围：0–100 °C 和 0–100 %，风扇自己的最低和最高转速，簇的最低和最高频率；
-  其他种类按出现过的数值。`!CommandMeasure <measure> List` 会在日志中列出这台 Mac 的所有传感器。
+  其他种类按出现过的数值。`!CommandMeasure <measure> List` 会在日志中列出这台 Mac 的所有传感器。`Sensor=thermal` 为 macOS 的
+  散热状态：0–3，字符串为“Nominal”“Fair”“Serious”或“Critical”。这台 Mac 没有的传感器读数为 0，并在日志中记一次；
+  加上 `MacOptional=1`（第二个风扇、电池等）则不记日志。
 - **原因：** Deskset 为新皮肤提供的插件；Skin Studio 中作为“Temperature”实时数据提供。
 - **对皮肤的影响：** Rainmeter 中没有；使用它的皮肤只能在 Mac 上运行。
 - **状态：** 仅 Mac
@@ -2000,9 +2050,10 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 #### `Plugin=MacWeather`
 - **Windows：** 没有对应物；皮肤用 WebParser 读取天气网站（其中大多数服务已停止）。
 - **Mac：** 来自 MET Norway Locationforecast 2.0 的任意地点天气预报：一个 measure 写 `Location=`（城镇名，如 `Oslo, NO`、
-  `Springfield, IL`；`纬度,经度`；或 `auto`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
+  `Springfield, IL`；`纬度,经度`；`auto`；或 `timezone`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
   Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
-  ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution……），
+  ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution、
+  LocationSource……），
   配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
   单位。另有 `Decimals`、`UnavailableText`、`TimeZone`（按小时写时就是相对 UTC 的小时数，与 Time measure 不同，不加本机的夏令时，
   除非 `DaylightSavingTime=1`）、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
@@ -2012,13 +2063,17 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **对皮肤的影响：** 为 Deskset 编写的皮肤可以显示天气；Windows 皮肤不能使用。
 - **状态：** 仅 Mac
 
-#### 地点与 `Location=auto`
+#### 地点、`Location=auto` 与 `Location=timezone`
 - **Windows：** 不适用。
-- **Mac：** 地名在**本机**随附的城镇表（人口 1.5 万以上，来自 GeoNames）中查找；逗号后面的国家或地区可以缩小范围；更小的地方请用
-  坐标。每个坐标在使用或发送之前都取整到两位小数（约 1 公里）。`auto` 只为皮肤窗口中的皮肤请求一次定位服务（降低精度）；得到的
-  位置会先取整，只保存在内存中，从不写入日志或缓存。被拒绝时 `Status` 为 5 并显示一条兼容性提示，允许后提示自动消失。
-- **原因：** 隐私；没有合适的在线地理编码服务。
-- **对皮肤的影响：** `auto` 会弹出一次权限请求；很小的村镇需要用坐标。
+- **Mac：** 地名在**本机**随附的城镇表（人口 1.5 万以上，来自 GeoNames）中查找，也可以用城镇的其他名称（旧名和其他语言的名称、
+  其他文字；中文的繁体和简体可以互相匹配）；逗号后面的国家或地区可以缩小范围；更小的地方请用坐标。每个坐标在使用或发送之前都取整到
+  两位小数（约 1 公里）。`auto` 只为皮肤窗口中的皮肤请求一次定位服务（降低精度）；得到的位置会先取整，只保存在内存中，从不写入日志或
+  缓存。被拒绝时 `Status` 为 5 并显示一条兼容性提示，允许后提示自动消失。`timezone` 是这台 Mac 所在时区对应的城市，从同一张表中
+  查找（Asia/Shanghai → 上海，Asia/Kolkata → 加尔各答；时区名称不是表中城镇时，取 macOS 时区数据库中该时区所在位置附近、
+  时间相同的最近城镇），不需要定位服务；没有城市的时区（UTC、`Etc/…`、南极洲）给出 `Status` 3。
+  `Type=LocationSource` 说明地点的来源（4，“TimeZone”），皮肤可以据此询问“不是这个城市？”。
+- **原因：** 隐私；没有合适的在线地理编码服务；首次运行时无需权限提示就能显示天气。
+- **对皮肤的影响：** `auto` 会弹出一次权限请求；很小的村镇需要用坐标；时区对应的城市只是猜测。
 - **状态：** 仅 Mac
 
 #### 请求、缓存、状态与署名

@@ -614,7 +614,7 @@ private func runPluginPerfCounterTests(_ t: TestRunner) {
 
 private func runPluginUsageTests(_ t: TestRunner) {
     t.suite("Plugin: UsageMonitor Index, Name, lists and Percent") {
-        let (skin, _) = try makeSkin(t, """
+        let (skin, host) = try makeSkin(t, """
         [Total]
         Measure=Plugin
         Plugin=UsageMonitor
@@ -666,6 +666,16 @@ private func runPluginUsageTests(_ t: TestRunner) {
         // An index whose value is 0 has an empty name.
         let emptyTop = white.select([PerfValue(name: "Mail", value: 0)], spec: cpu)
         t.equal(emptyTop.1, "")
+        // A rate's first sample: every value, _Total too, is 0. Percent gives 0 and says nothing; only a missing
+        // _Total is worth a note (once per measure).
+        let first = values.map { PerfValue(name: $0.name, value: 0) }
+        t.equal(total.select(first, spec: cpu).0, 0)
+        t.equal(top.select(first, spec: cpu).1, "")
+        t.equal(host.logs.filter { $0.contains("_Total") }, [], "no note while nothing is counted yet")
+        let noTotal = values.filter { $0.name != "_Total" }
+        t.equal(top.select(noTotal, spec: cpu).0, 0)
+        t.equal(top.select(noTotal, spec: cpu).0, 0)
+        t.equal(host.logs.filter { $0.contains("needs a _Total instance") }.count, 1, "a missing _Total is noted once")
     }
 
     t.suite("Plugin: UsageMonitor, PerfMon, AdvancedCPU read this Mac") {

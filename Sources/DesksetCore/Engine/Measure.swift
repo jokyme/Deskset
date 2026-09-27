@@ -58,6 +58,10 @@ open class Measure: SkinSection {
     var invert = false
     var averageSize = 0
     private var history: [Double] = []
+    /// Set by `computeValue` for an update that has no reading yet and returns a placeholder instead (FreeDiskSpace
+    /// `MacAvailable=1` gives −1 before its first reading): the number is kept as it is — not averaged, not inverted and
+    /// not counted in the observed range — so a skin can tell "not read yet" from any value. Cleared before each update.
+    var computedPlaceholder = false
     private var historyNext = 0
     private var substitute: SubstituteRules? {
         didSet { stringCache = nil }
@@ -304,9 +308,11 @@ open class Measure: SkinSection {
             return
         }
         if paused { return }
+        computedPlaceholder = false
         var v = computeValue()
         if !v.isFinite { v = 0 }
-        if averageSize > 1 {
+        let placeholder = computedPlaceholder
+        if averageSize > 1 && !placeholder {
             if history.count < averageSize {
                 history.append(v)
             } else {
@@ -315,12 +321,12 @@ open class Measure: SkinSection {
             historyNext = (historyNext + 1) % averageSize
             v = history.reduce(0, +) / Double(history.count)
         }
-        if tracksValueRange {
+        if tracksValueRange && !placeholder {
             observedMin = Swift.min(observedMin ?? v, v)
             observedMax = Swift.max(observedMax ?? v, v)
         }
         refreshRange()
-        if invert { v = maxValue - (v - minValue) }
+        if invert && !placeholder { v = maxValue - (v - minValue) }
         value = v.isFinite ? v : 0
         updateCount += 1
         runActions()

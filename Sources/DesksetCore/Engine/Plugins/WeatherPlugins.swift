@@ -15,8 +15,12 @@ struct WeatherResolvedLocation {
     /// The place's own time zone (nil: the Mac's).
     var zone: TimeZone?
     var fromDevice = false
+    /// Where the place comes from (`Type=LocationSource`).
+    var source = WeatherLocationSource.none
     /// A compatibility note for the skin (place not found, Location Services off…).
     var note: String?
+    /// A line for the skin's log, once (no city for this Mac's time zone).
+    var log: String?
 }
 
 enum WeatherLocationResolver {
@@ -27,6 +31,7 @@ enum WeatherLocationResolver {
     static func resolve(_ spec: WeatherLocationSpec, service: WeatherService, subscription: WeatherSubscription?,
                         live: Bool, locate: Bool = false) -> WeatherResolvedLocation {
         var r = WeatherResolvedLocation()
+        r.source = WeatherLocationSource(spec)
         switch spec {
         case .none:
             r.status = .noLocation
@@ -62,6 +67,30 @@ enum WeatherLocationResolver {
             r.name = c.description
             r.detail = c.description
             applyNearby(c, service: service, subscription: subscription, into: &r, keepZone: true)
+        case .timeZone:
+            // The city of this Mac's time zone, from the offline table: no Location Services, also in previews. A zone
+            // covers whole countries (all of China is Asia/Shanghai), so skins can ask "Not your city?"
+            // (`Type=LocationSource` is TimeZone).
+            let zone = service.environment.localTimeZone()
+            switch service.lookUpTimeZone(zone.identifier, for: subscription) {
+            case .pending:
+                r.status = .loading
+            case .notFound:
+                r.status = .noLocation
+                r.log = "Weather: no city is known for this Mac's time zone (\(zone.identifier)); set Location to a "
+                    + "city"
+            case .unavailable:
+                r.status = .noLocation
+                r.note = unavailableSearchNote
+            case .found(let m):
+                r.status = .ready
+                r.coordinate = m.place.coordinate
+                r.name = m.displayName
+                r.detail = m.detail
+                r.country = m.countryName
+                r.countryCode = m.place.country
+                r.zone = zone
+            }
         case .device:
             guard live else {
                 r.status = .preview
@@ -148,7 +177,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         case precipitationChance, thunderChance, temperatureColor, temperatureCurve, time, sunrise, sunset, solarNoon
         case dayLength, daylightProgress, place, placeDetail, country, countryCode, latitude, longitude, timeZone
         case updatedAt, forecastTime, status, statusSymbol, attribution, attributionShort, attributionURL, licenseURL
-        case temperatureUnit, windUnit, precipitationUnit, pressureUnit
+        case temperatureUnit, windUnit, precipitationUnit, pressureUnit, locationSource
 
         /// As written in `Type=` (`FeelsLike`, `UVIndex`).
         public var optionName: String {
@@ -189,7 +218,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             case .sunrise, .sunset, .solarNoon, .dayLength, .daylightProgress, .place, .placeDetail, .country,
                  .countryCode, .latitude, .longitude, .timeZone, .updatedAt, .status, .statusSymbol, .attribution,
                  .attributionShort, .attributionURL, .licenseURL, .temperatureUnit, .windUnit, .precipitationUnit,
-                 .pressureUnit:
+                 .pressureUnit, .locationSource:
                 return false
             default: return true
             }
@@ -411,6 +440,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         var location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription,
                                                        live: live && enabled)
         if !enabled && location.status == .preview { location.status = .turnedOff }
+        if let line = location.log { logOnce(line, level: .notice) }
         binding.location = location
         setNote(location.note.map { live || !location.fromDevice ? $0 : "" }.flatMap { $0.isEmpty ? nil : $0 })
         guard live, enabled else {
@@ -606,6 +636,9 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         case .windUnit: return text(u.wind.symbol)
         case .precipitationUnit: return text(u.precipitation.symbol)
         case .pressureUnit: return text(u.pressure.symbol)
+        case .locationSource:
+            let source = b.location.source
+            return Output(number: Double(source.rawValue), string: source.name, available: true, range: (0, 4))
         default: break
         }
         let location = b.location
@@ -913,7 +946,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         case sunrise, sunset, solarNoon, civilDawn, civilDusk, nauticalDawn, nauticalDusk, astronomicalDawn
         case astronomicalDusk, goldenHourMorningEnd, goldenHourEveningStart, dayLength, daylightProgress
         case sunElevation, sunAzimuth, isDaylight, sunState, moonPhase, moonIllumination, moonPhaseName, moonSymbol
-        case place, timeZone
+        case place, timeZone, locationSource
 
         public var optionName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 
@@ -1024,6 +1057,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         let env = service.environment
         let live = env.isLive(skin) && env.isEnabled()
         location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription, live: live)
+        if let line = location.log, loggedOnce.insert(line).inserted { skin.log("MacSun [\(name)]: " + line, level: .notice) }
         let text = location.note
         if text != note {
             if let note { skin.removeIssue(note) }
@@ -1089,6 +1123,10 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         }
         guard let r = root else { return none(unavailableText) }
         let loc = r.location
+        if valueType == .locationSource {
+            autoMax = 4
+            return (Double(loc.source.rawValue), loc.source.name)
+        }
         guard let c = loc.coordinate else { return none(unavailableText) }
         let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: loc.fromDevice ? nil : loc.zone,
                                                 daylightSavingTime: daylightSavingTime, at: now)

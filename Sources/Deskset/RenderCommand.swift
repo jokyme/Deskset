@@ -16,6 +16,13 @@ struct RenderOptions: Equatable {
     /// The appearance the skin is drawn in (`#MACAPPEARANCE#`…, SysColor): Light unless `--appearance dark` / `--dark`,
     /// so renders are the same on every Mac; `--appearance system` follows the Mac's setting.
     var appearance = Appearance.light
+    /// The clock, week and temperature settings the skin sees (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`,
+    /// `#MACTEMPERATUREUNIT#`, and the weather plugins' default times and unit): the standard ones — 24-hour, weeks from
+    /// Sunday, °C — so renders are the same on every Mac, unless `--clock-hours 12`, `--first-weekday 1`,
+    /// `--temperature-unit F` say otherwise; `system` (nil here) takes the Mac's own.
+    var clockHours: Int? = MacRegionalSettings.standard.clockHours
+    var firstWeekday: Int? = MacRegionalSettings.standard.firstWeekday
+    var temperatureUnit: TemperatureUnit? = MacRegionalSettings.standard.temperatureUnit
     var warnings: [String] = []
 
     enum Appearance: String, Equatable {
@@ -29,7 +36,8 @@ struct RenderOptions: Equatable {
     static let maxPixels = 16_384
 
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
-        + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]"
+        + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
+        + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -77,7 +85,45 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--appearance") {
             o.warnings.append("--appearance needs a value; using \(o.appearance.rawValue)")
         }
+        // The clock, week and temperature settings: a value, or `system` for the Mac's own.
+        func setting<T>(_ flag: String, _ current: T?, expected: String, _ read: (String) -> T?) -> T? {
+            guard let raw = value(flag) else {
+                if arguments.contains(flag) { o.warnings.append("\(flag) needs a value; using the standard one") }
+                return current
+            }
+            let word = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            if word == "system" { return nil }
+            guard let v = read(word) else {
+                o.warnings.append("\(flag) \"\(raw)\" is not \(expected); using the standard one")
+                return current
+            }
+            return v
+        }
+        o.clockHours = setting("--clock-hours", o.clockHours, expected: "12, 24 or system") {
+            $0 == "12" ? 12 : $0 == "24" ? 24 : nil
+        }
+        o.firstWeekday = setting("--first-weekday", o.firstWeekday, expected: "0 (Sunday) to 6 (Saturday) or system") {
+            Int($0).flatMap { (0...6).contains($0) ? $0 : nil }
+        }
+        o.temperatureUnit = setting("--temperature-unit", o.temperatureUnit, expected: "C, F or system") {
+            switch $0 {
+            case "c", "celsius": return TemperatureUnit.celsius
+            case "f", "fahrenheit": return TemperatureUnit.fahrenheit
+            default: return nil
+            }
+        }
         return o
+    }
+
+    /// The settings the skin sees, with `system` ones taken from `mac`.
+    func regional(system mac: @autoclosure () -> MacRegionalSettings) -> MacRegionalSettings {
+        guard let clockHours, let firstWeekday, let temperatureUnit else {
+            let m = mac()
+            return MacRegionalSettings(clockHours: self.clockHours ?? m.clockHours,
+                                       firstWeekday: self.firstWeekday ?? m.firstWeekday,
+                                       temperatureUnit: self.temperatureUnit ?? m.temperatureUnit)
+        }
+        return MacRegionalSettings(clockHours: clockHours, firstWeekday: firstWeekday, temperatureUnit: temperatureUnit)
     }
 
     /// Whole numbers without ".0". Past Int's range (`--updates -1e20`) Swift's own form ("-1e+20"): converting those
@@ -88,11 +134,13 @@ struct RenderOptions: Equatable {
 /// Headless rendering for development and compatibility testing:
 ///
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
-///            [--scale 2] [--background 30,30,30] [--appearance dark] [--skins-dir path/to/Skins]
+///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
+///            [--temperature-unit F] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
-/// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise.
+/// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise, and a 24-hour clock,
+/// weeks from Sunday and °C unless `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise.
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -101,6 +149,12 @@ enum RenderCommand {
         }
         Log.fileLoggingEnabled = false
         for w in o.warnings { fputs("warning: \(w)\n", stderr) }
+        // The settings are fixed for this render only (the self-tests render in the same process as other suites).
+        MacRegional.fix(o.regional(system: MacRegionalSettings.system()))
+        defer {
+            MacRegional.fix(nil)
+            MacAppearance.current.refresh()
+        }
         applyAppearance(o.appearance)
         // Weather: no network, place names from the bundled table; DESKSET_WEATHER_DEMO=1 draws a demo forecast.
         WeatherWiring.installPreview()

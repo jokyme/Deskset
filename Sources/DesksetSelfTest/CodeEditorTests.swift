@@ -137,11 +137,15 @@ func runCodeEditorTests(_ t: TestRunner) {
     }
 
     t.suite("Code editor: every default skin line tokenizes cleanly") {
-        let defaults = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("DefaultSkins")
-        let files = FileManager.default.enumerator(at: defaults, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL }.filter { ["ini", "inc"].contains($0.pathExtension.lowercased()) } ?? []
-        t.check(!files.isEmpty, "found default skins")
+        // The bundled suite, and the example skins of Deskset 0.1 it replaced (kept as test skins).
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let files = ["DefaultSkins", "TestSkins/Deskset"].flatMap { folder in
+            FileManager.default.enumerator(at: repo.appendingPathComponent(folder), includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL }.filter { ["ini", "inc"].contains($0.pathExtension.lowercased()) } ?? []
+        }
+        t.check(files.contains { $0.path.contains("/DefaultSkins/Stationery/") }, "found the default skins")
+        t.check(files.contains { $0.path.contains("/TestSkins/Deskset/") }, "found the 0.1 example skins")
         for file in files {
             let text = try TextDecoding.readFile(at: file) as NSString
             let tokens = IniHighlighter.tokens(in: text, range: NSRange(location: 0, length: text.length))

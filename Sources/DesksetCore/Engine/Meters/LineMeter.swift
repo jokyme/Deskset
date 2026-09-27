@@ -89,6 +89,7 @@ public final class LineMeter: Meter {
     func takeHistory(from other: LineMeter) {
         for i in lines.indices where i < other.lines.count { lines[i].history = other.lines[i].history }
         computeRange()
+        noteDrawChange()
     }
 
     private func computeRange() {

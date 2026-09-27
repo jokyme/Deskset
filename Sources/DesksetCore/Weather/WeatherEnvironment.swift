@@ -172,6 +172,8 @@ public struct WeatherEnvironment {
     public var preferredUnits: () -> WeatherUnits = { .metric }
     /// Whether the Mac shows 24-hour time (default time formats).
     public var uses24HourClock: () -> Bool = { WeatherEnvironment.systemUses24HourClock() }
+    /// This Mac's time zone (`Location=timezone` looks up its city).
+    public var localTimeZone: () -> TimeZone = { TimeZone.current }
     public var clock: WeatherClock = SystemWeatherClock()
     /// Uniform in 0..<1 (jitter, backoff spread).
     public var random: () -> Double = { Double.random(in: 0..<1) }
@@ -193,8 +195,8 @@ public struct WeatherEnvironment {
     /// Offline, with nothing installed (the core default).
     public static let offline = WeatherEnvironment()
 
+    /// The same answer as `#MACCLOCKHOURS#` (`MacRegionalSettings.clockHours`).
     public static func systemUses24HourClock(locale: Locale = .current) -> Bool {
-        let format = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? "H"
-        return !format.contains("a")
+        MacRegionalSettings.clockHours(locale: locale) == 24
     }
 }

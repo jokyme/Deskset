@@ -113,7 +113,7 @@ public enum BuiltInVariables {
     /// `#VSCREENAREAHEIGHT#` — height of the virtual screen.
     public static let virtualScreenAreaHeight = "VSCREENAREAHEIGHT"
 
-    // MARK: Mac appearance variables (Deskset extension, all dynamic)
+    // MARK: Mac appearance variables (Deskset extension, all dynamic): light / dark, colors, clock, week, temperature
 
     /// `#MACAPPEARANCE#` — `Dark` or `Light` (see `SkinAppearance`).
     public static let macAppearance = "MACAPPEARANCE"
@@ -129,6 +129,12 @@ public enum BuiltInVariables {
     public static let macTertiaryLabelColor = "MACTERTIARYLABELCOLOR"
     /// `#MACSEPARATORCOLOR#` — the separator color, `R,G,B,A`.
     public static let macSeparatorColor = "MACSEPARATORCOLOR"
+    /// `#MACCLOCKHOURS#` — `12` or `24`, the Mac's clock (see `MacRegionalSettings`).
+    public static let macClockHours = "MACCLOCKHOURS"
+    /// `#MACFIRSTWEEKDAY#` — the first day of the week, `0` (Sunday) … `6` (Saturday).
+    public static let macFirstWeekday = "MACFIRSTWEEKDAY"
+    /// `#MACTEMPERATUREUNIT#` — `C` or `F`.
+    public static let macTemperatureUnit = "MACTEMPERATUREUNIT"
 
     /// The value of `#CRLF#` ("Creates a \n newline control character").
     public static let crlfValue = "\n"
@@ -146,12 +152,13 @@ public enum BuiltInVariables {
         virtualScreenAreaX, virtualScreenAreaY, virtualScreenAreaWidth, virtualScreenAreaHeight,
     ]
 
-    /// The appearance variables Deskset adds on the Mac (not in the manual). Like every built-in they cannot be set by
-    /// `[Variables]` or `!SetVariable`; all are dynamic, and skins that use them are refreshed when the appearance or
-    /// the accent color changes (`[Rainmeter] MacOnAppearanceChangeAction`).
+    /// The appearance variables Deskset adds on the Mac (not in the manual): light / dark and its colors, and the clock,
+    /// week and temperature settings. Like every built-in they cannot be set by `[Variables]` or `!SetVariable`; all
+    /// are dynamic, and skins that use them are refreshed when the appearance, the accent color or one of those
+    /// settings changes (`[Rainmeter] MacOnAppearanceChangeAction`).
     public static let macAppearanceNames: [String] = [
         macAppearance, macDarkMode, macAccentColor, macLabelColor, macSecondaryLabelColor, macTertiaryLabelColor,
-        macSeparatorColor,
+        macSeparatorColor, macClockHours, macFirstWeekday, macTemperatureUnit,
     ]
 
     /// Whether `key` (lower case, without `#`) is one of `macAppearanceNames`.

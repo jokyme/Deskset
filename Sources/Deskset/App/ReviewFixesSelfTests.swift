@@ -204,7 +204,7 @@ enum ReviewFixesSelfTests {
 
     static func inspectorTests(_ t: AppTestRunner) {
         t.suite("App: review fixes: a color control uses its widget-page row's name") {
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Clock", from: "DefaultSkins"),
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Clock"),
                   let skin = editor.skin else { return }
             let groups = editor.valueUsages(skin).colorGroups(separate: editor.inspectorState.separateColors)
             for variable in ["SubtleColor", "AccentColor", "TextColor"] {
@@ -219,7 +219,7 @@ enum ReviewFixesSelfTests {
         }
 
         t.suite("App: review fixes: every trigger is a picker, the pointer one menu") {
-            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins") else { return }
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System") else { return }
             editor.select(section: "MeterTitle")
             editor.openMore("When Clicked")
             let seen = words(editor)
@@ -291,7 +291,7 @@ enum ReviewFixesSelfTests {
             guard let (_, clock) = try FriendlyFixtures.openEditor(t, config: "Round\\AnalogClock") else { return }
             clock.select(section: "MeterHourHand")
             t.check(!words(clock).contains { $0.contains("less than 0") }, "a negative start is allowed: no warning")
-            guard let (_, system) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins") else { return }
+            guard let (_, system) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System") else { return }
             system.select(section: "MeterRAMBar")
             let parts = words(system)
             t.check(parts.contains { $0.hasSuffix("— track (empty part)") } && parts.contains { $0.hasSuffix("— fill") }, "\(parts)")
@@ -321,7 +321,7 @@ enum ReviewFixesSelfTests {
 
     static func sharedWriteTests(_ t: AppTestRunner) {
         t.suite("App: review fixes: a linked size edited from a layer stays in this widget") {
-            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             let shared = skin.resourcesDirectory.appendingPathComponent("Variables.inc")
             let before = read(shared)
@@ -343,7 +343,7 @@ enum ReviewFixesSelfTests {
         }
 
         t.suite("App: review fixes: All Widgets after a This Widget edit changes the theme, and the own value goes") {
-            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             let dark = skin.resourcesDirectory.appendingPathComponent("Themes/Dark.inc")
             editor.appliesToAllWidgets = false

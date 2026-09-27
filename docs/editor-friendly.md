@@ -640,7 +640,7 @@ For a selection **S** and a property, the edit is written to the narrowest targe
 
 ## 8. Inspector states (exact copy)
 
-Examples use `TestSkins/Audio/Visualizer`, except where System is named (`DefaultSkins/Deskset/System`).
+Examples use `TestSkins/Audio/Visualizer`, except where System is named (`TestSkins/Deskset/System`, the example skin of Deskset 0.1).
 
 ### 8.1 Nothing selected: the widget page
 
@@ -801,7 +801,7 @@ This card is bound to the running widget's `SkinState` through `AppController.ch
   - **Dragging:** "Edges that don't drag the widget   Left [0] Top [0] Right [0] Bottom [0] px"
   - **Right-click menu:** "Extra items in the widget's right-click menu" [+ Add Menu Item]. Each existing item reads as a sentence: "“Open Activity Monitor” → Opens “Activity Monitor”", with Edit.
   - **When the widget…:** Opens · Updates · Closes · Gets focus · Loses focus · Wakes from sleep · Switches light / dark, each "[No action ▾]", or the action summary with "Edit in Code ›" when it can't be shown as a choice.
-    - **Switches light / dark** (`MacOnAppearanceChangeAction`, a Deskset extension; tooltip "When macOS switches between light and dark mode or the accent color changes"). Its pop-up says what the widget does now:
+    - **Switches light / dark** (`MacOnAppearanceChangeAction`, a Deskset extension; tooltip "When macOS switches between light and dark mode, the accent color changes, or the 12/24-hour clock, the first day of the week or the temperature unit changes"). Its pop-up says what the widget does now:
       - Not written, in a widget that follows the Mac's appearance (it uses a `#MAC…#` appearance variable): "Reload the widget", with "No action" (writes it empty).
       - Not written, in any other widget: "No action (it doesn't use Mac colors)", with "Reload the widget" (writes `[!Refresh]`).
       - Written empty: "No action", with "Reload the widget" (removes the option in a widget that reloads anyway, else writes `[!Refresh]`).

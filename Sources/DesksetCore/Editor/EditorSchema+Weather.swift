@@ -31,6 +31,7 @@ extension EditorSchema {
         Choice("LicenseURL", "License link"),
         Choice("TemperatureUnit", "Temperature unit"), Choice("WindUnit", "Wind unit"),
         Choice("PrecipitationUnit", "Rain unit"), Choice("PressureUnit", "Pressure unit"),
+        Choice("LocationSource", "Where the place comes from"),
     ]
 
     /// Types that take `Hour=` / `Day=` (as the plugin reads them).
@@ -57,6 +58,7 @@ extension EditorSchema {
         Choice("MoonPhase", "Moon phase"), Choice("MoonIllumination", "Moon lit (%)"),
         Choice("MoonPhaseName", "Moon phase name"), Choice("MoonSymbol", "Moon icon (SF Symbol)"),
         Choice("Place", "Place"), Choice("TimeZone", "Time zone"),
+        Choice("LocationSource", "Where the place comes from"),
     ]
 
     static let sunTimeTypes = ["Sunrise", "Sunset", "SolarNoon", "CivilDawn", "CivilDusk", "NauticalDawn", "NauticalDusk",
@@ -64,8 +66,9 @@ extension EditorSchema {
 
     // MARK: Settings
 
-    static let weatherLocationHelp = "A town (Oslo, or Springfield, IL), latitude,longitude, or auto for this Mac's "
-        + "approximate location. Places are looked up on this Mac; only the rounded coordinates go to MET Norway."
+    static let weatherLocationHelp = "A town (Oslo, or Springfield, IL), latitude,longitude, auto for this Mac's "
+        + "approximate location, or timezone for the city of this Mac's time zone. Places are looked up on this Mac; "
+        + "only the rounded coordinates go to MET Norway."
 
     static let weatherTimeZoneHelp = "Place (default), Local (this Mac's), a name such as Europe/Oslo, or hours from UTC"
 
@@ -140,8 +143,8 @@ extension EditorSchema {
         let own: [Condition] = [.isNotSet("Parent")]
         return [
             Property("Location", "Place", .text, placeholder: "City, Country — or 59.91, 10.75 — or auto",
-                     help: "A town, latitude,longitude, or auto. Sun and moon are worked out on this Mac: nothing is "
-                         + "sent anywhere.", visibleWhen: own, level: .essential),
+                     help: "A town, latitude,longitude, auto, or timezone (the city of this Mac's time zone). Sun and "
+                         + "moon are worked out on this Mac: nothing is sent anywhere.", visibleWhen: own, level: .essential),
             Property("Parent", "Same place as", .sectionRef(.measure), placeholder: "none (this one has the place)"),
             Property("Type", "Shows", pick(sunTypes, style: .popup), default: "Sunrise", invalidNote: "Sunrise is shown",
                      level: .essential),

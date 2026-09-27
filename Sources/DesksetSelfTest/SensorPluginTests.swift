@@ -537,6 +537,11 @@ func runSensorPluginTests(_ t: TestRunner) {
         Measure=Plugin
         Plugin=MacSensors
         Sensor=fan.3
+        [Quiet]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=fan.4
+        MacOptional=1
         [Bogus]
         Measure=Plugin
         Plugin=MacSensors
@@ -572,6 +577,9 @@ func runSensorPluginTests(_ t: TestRunner) {
         t.equal(value(skin, "Missing"), 0)
         t.equal(string(skin, "Missing"), "", "no reading: empty text")
         t.check(host.logs.contains { $0.contains("[Missing]: this Mac has no sensor \"fan.3\"") })
+        t.equal(value(skin, "Quiet"), 0)
+        t.equal(string(skin, "Quiet"), "", "MacOptional=1: missing reads as missing")
+        t.check(!host.logs.contains { $0.contains("[Quiet]") }, "MacOptional=1: no note for a missing sensor")
         t.equal(value(skin, "Bogus"), 0)
         t.check(host.logs.contains { $0.contains("\"warp.core\" is not a sensor name") })
         t.check(!s.asked.contains("warp.core"), "an unknown name is never asked for")
@@ -625,6 +633,46 @@ func runSensorPluginTests(_ t: TestRunner) {
         s.values["frequency.cpu"] = nil
         skin.update()
         t.equal(value(skin, "MHz"), 0)
+    }
+
+    t.suite("Plugin: sensors: MacSensors Sensor=thermal is macOS's thermal state") {
+        let saved = MacSensorsMeasure.thermalState
+        defer { MacSensorsMeasure.thermalState = saved }
+        var state = 0
+        MacSensorsMeasure.thermalState = { state }
+        // No sensor source (a Mac whose sensors cannot be read, or a test skin): the thermal state needs none.
+        let (skin, host) = try makeSkin(t, """
+        [Thermal]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=Thermal
+        [Alias]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=thermal.state
+        [T]
+        Meter=String
+        """)
+        skin.update()
+        guard let thermal = skin.measure(named: "Thermal") else { return t.check(false, "measure") }
+        t.equal(thermal.value, 0)
+        t.equal(thermal.stringValue, "Nominal")
+        t.equal(thermal.valueUnavailable, false, "always read")
+        t.equal([thermal.minValue, thermal.maxValue], [0, 3])
+        for (n, name) in [(1, "Fair"), (2, "Serious"), (3, "Critical")] {
+            state = n
+            skin.update()
+            t.equal(value(skin, "Thermal"), Double(n))
+            t.equal(string(skin, "Thermal"), name)
+        }
+        t.equal(string(skin, "Alias"), "Critical", "thermal.state is the same")
+        state = 7
+        skin.update()
+        t.equal(value(skin, "Thermal"), 3, "clamped to the four states")
+        t.equal(host.logs, [], "nothing to note: no sensor name, no sensor source asked for")
+        t.equal([0, 1, 2, 3].map { MacSensorsMeasure.thermalStateNames[$0] }, ["Nominal", "Fair", "Serious", "Critical"])
+        // The real one is one of the four.
+        t.check((0...3).contains(saved()), "ProcessInfo's thermal state: \(saved())")
     }
 
     t.suite("Plugin: sensors: without a sensor source everything is 0, noted once") {

@@ -355,26 +355,49 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 
 ### Light and dark mode variables (`#MACAPPEARANCE#`, `#MACDARKMODE#`, `#MACACCENTCOLOR#`…)
 - Windows (Rainmeter): no such built-in variables.
-- Mac (Deskset): seven dynamic built-in variables describe the Mac's appearance: `#MACAPPEARANCE#` (`Dark` or
-  `Light`, also in `@Include` paths: `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 or 0), and as
-  `R,G,B,A` colors resolved for the appearance `#MACACCENTCOLOR#` (System Settings → Appearance → Accent color),
-  `#MACLABELCOLOR#`, `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` (text) and `#MACSEPARATORCOLOR#`
-  (hairlines). Like every built-in they cannot be set by `[Variables]` or `!SetVariable` — in `@Include` paths too, so
-  a fallback `MACAPPEARANCE=Light` never picks the theme file — and options see changes only with
-  `DynamicVariables=1`. When macOS switches between light and dark or the accent color changes, every skin that uses
-  one of them — in its files, an `@Include` path, or read by an option, bang or script — runs `[Rainmeter]
-  MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set (write `MacOnAppearanceChangeAction=` to turn
-  it off); skins that use none are left alone by that implicit refresh, but an action a skin writes itself runs in any
-  skin (one may follow the appearance through SysColor or a script). The action's own variables are resolved when it
-  runs, so `#MACLABELCOLOR#` in it is the new color (other actions keep the `#Var#` values of when they were read), and
-  `[Variables]` built from the appearance variables (`Fg=#MACLABELCOLOR#`, and variables built from those) take the
-  new values before it runs, unless `!SetVariable` changed them: `[!UpdateMeter *][!Redraw]` recolors
-  DynamicVariables meters without a reload. An `@Include` chosen by `#MACAPPEARANCE#` is read again only by a
-  refresh. `Deskset --render` uses the Light appearance unless `--appearance dark` (or `--dark`) or
-  `--appearance system`.
+- Mac (Deskset): seven dynamic built-in variables describe the Mac's appearance: `#MACAPPEARANCE#` (`Dark` or `Light`,
+  also in `@Include` paths: `@Include=#@#Theme-#MACAPPEARANCE#.inc`), `#MACDARKMODE#` (1 or 0), and as `R,G,B,A` colors
+  resolved for the appearance `#MACACCENTCOLOR#` (System Settings → Appearance → Accent color), `#MACLABELCOLOR#`,
+  `#MACSECONDARYLABELCOLOR#`, `#MACTERTIARYLABELCOLOR#` (text) and `#MACSEPARATORCOLOR#` (hairlines). Like every
+  built-in they cannot be set by `[Variables]` or `!SetVariable` — in `@Include` paths too, so a fallback
+  `MACAPPEARANCE=Light` never picks the theme file — and options see changes only with `DynamicVariables=1`. When macOS
+  switches between light and dark or the accent color changes (or the clock, week or temperature setting of the next
+  entry does), every skin that uses one of them or of those three — in its files, an `@Include` path, or read by an
+  option, bang or script — runs `[Rainmeter] MacOnAppearanceChangeAction`, `[!Refresh]` when the option is not set
+  (write `MacOnAppearanceChangeAction=` to turn it off); skins that use none are left alone by that implicit refresh,
+  but an action a skin writes itself runs in any skin (one may follow the appearance through SysColor or a script). The
+  action's own variables are resolved when it runs, so `#MACLABELCOLOR#` in it is the new color (other actions keep the
+  `#Var#` values of when they were read), and `[Variables]` built from the appearance variables (`Fg=#MACLABELCOLOR#`,
+  and variables built from those) take the new values before it runs, unless `!SetVariable` changed them:
+  `[!UpdateMeter *][!Redraw]` recolors DynamicVariables meters without a reload. An `@Include` chosen by
+  `#MACAPPEARANCE#` is read again only by a refresh. `Deskset --render` uses the Light appearance unless
+  `--appearance dark` (or `--dark`) or `--appearance system`.
 - Why: Deskset extension — Mac widgets are expected to follow light and dark mode and the accent color.
 - Skin impact: none for Windows skins (the names are not Rainmeter's). On Windows the variables are undefined, so a
   cross-platform skin should give fallbacks in its own variables.
+- Status: Deskset extension
+
+### Clock, week and temperature variables (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#`)
+- Windows (Rainmeter): no such built-in variables; skins keep a 12/24-hour option, a week start and a unit of their own.
+- Mac (Deskset): three more dynamic built-in variables follow the Mac's own settings. `#MACCLOCKHOURS#` is `12` or `24`
+  (System Settings → General → Date & Time → 24-hour time; without that switch, the region's clock). `#MACFIRSTWEEKDAY#`
+  is the first day of the week, `0` (Sunday) … `6` (Saturday), counted as the Time measure's `%w` counts (Language &
+  Region → First day of week). `#MACTEMPERATUREUNIT#` is `C` or `F` (Language & Region → Temperature; without it, the
+  region's unit for weather: °F in the United States, the Bahamas, Belize, the Cayman Islands, Palau and Puerto Rico).
+  They work like the appearance variables and share their trigger: `[Variables]` and `!SetVariable` cannot set them,
+  options see changes with `DynamicVariables=1`, and a change of one of these settings counts as a change of the
+  appearance, so every skin that uses any of the ten `#MAC…#` variables (or writes `MacOnAppearanceChangeAction` itself)
+  runs `MacOnAppearanceChangeAction` (`[!Refresh]` by default), `[Variables]` built from them
+  (`ClockHoursAuto=#MACCLOCKHOURS#`) updated first; a switch between light and dark runs it in skins that use only these
+  three as well. The app reads them again when macOS reports a locale change or one of the preferences behind them
+  changes. The weather plugins' defaults use the same settings (their default times follow `#MACCLOCKHOURS#`,
+  `Units=Auto` takes the unit of `#MACTEMPERATUREUNIT#`), so the two always agree. `Deskset --render` uses a 24-hour
+  clock, weeks from Sunday and °C, so renders are the same on every Mac, unless `--clock-hours 12|24|system`,
+  `--first-weekday 0-6|system` or `--temperature-unit C|F|system` say otherwise.
+- Why: Deskset extension — an "Automatic" setting in a skin (a clock that follows the 12/24-hour switch, a calendar
+  that starts the week where the user does, a temperature in the user's unit) needs the Mac's choices.
+- Skin impact: none for Windows skins. On Windows the names are undefined; a cross-platform skin keeps its own
+  setting with an Auto value (`ClockHours=Auto`, `ClockHoursAuto=#MACCLOCKHOURS#`, read as `[#ClockHours[#ClockHours]]`).
 - Status: Deskset extension
 
 ### Formulas
@@ -410,8 +433,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   name; unknown codes (`%Q`) are shown as written; an empty Format is `%H:%M:%S`; with Format set, the number value
   is the leading number of the text; TimeZone accepts fractional hours (5.5) and is clamped to ±18 h; TimeStamp
   parsing is lenient (fewer digits, any case, trailing text ignored); AddDaysToHours defaults to 1 as documented.
-  Locale formats (`%c`, `%x`, `locale-date`) come from macOS (ICU) data and can differ from Windows' (e.g. a two-digit
-  year in German `%c`).
+  Uptime's number keeps fractions of a second (`[MeasureUptime:]` is 1234567.891…), so a skin can time an
+  animation with it. Locale formats (`%c`, `%x`, `locale-date`) come from macOS (ICU) data and can differ from
+  Windows' (e.g. a two-digit year in German `%c`).
 - Why: judgment calls where the manual is silent; macOS locale data.
 - Skin impact: localized dates may be spelled slightly differently.
 - Status: emulated
@@ -501,6 +525,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Why: macOS has no drive letters.
 - Skin impact: several drive letters show the same volume; name a volume (`Drive=/Volumes/Backup`) for others.
 - Status: emulated
+
+### FreeDiskSpace `MacAvailable=1` (Finder's available space)
+- Windows (Rainmeter): FreeDiskSpace reports the free space (the used space with `InvertMeasure=1`); there is no
+  other figure.
+- Mac (Deskset): `MacAvailable=1` reports the space Finder calls "available": the free space plus what macOS frees up
+  by itself when an app needs room (purgeable space: caches, local snapshots, iCloud files kept on the Mac), macOS's
+  "available capacity for important usage". The two can differ by tens of gigabytes (measured on one Mac: 13.6 GB
+  free, 103 GB available). With `InvertMeasure=1` the measure reports the used space as Finder counts it; `Total`,
+  `Label`, `Type` and `IgnoreRemovable` work as without the option. Volumes without that figure (disk images and
+  non-APFS volumes read 0; network volumes) report their free space. Asking macOS takes 10–40 ms, so the app keeps a
+  volume's reading for 30 seconds and makes the next one in the background, the old one answering meanwhile; a
+  volume's first reading is waited for up to a quarter of a second. When it takes longer, the measure reads −1 with an
+  empty string until the reading arrives (that −1 is never inverted or averaged), so a skin can show "loading".
+- Why: Deskset extension — the free space leaves purgeable space out, so a disk that Finder shows 88 % full reads
+  99 % full; a skin that shows storage the way the Mac does needs Finder's figure.
+- Skin impact: none for Windows skins (Rainmeter ignores the option and reports the free space). Treat −1 as
+  "loading" when you use the option.
+- Status: Deskset extension
 
 ### SysInfo
 - Windows (Rainmeter): SysInfoType values for OS, user, network adapters, monitors, time zone… (/manual/measures/sysinfo/).
@@ -660,6 +702,19 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   nothing is drawn): they need a strip of frames or a picture at its pixel size.
 - Why: Deskset extension — SF Symbols are the Mac's icon set; skins can use them without shipping image files.
 - Skin impact: none for Windows skins. On Windows such a skin shows missing images.
+- Status: Deskset extension
+
+### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
+- Windows (Rainmeter): an image file is loaded whole; there is no option for its decoded size.
+- Mac (Deskset): `MacDecodeSize=Drawn` on an Image meter decodes the file at the pixels it covers where it is drawn:
+  W × H times the display's backing scale, the larger of the two scales (the smaller with PreserveAspectRatio=1),
+  rounded up to 64 pixels, never more than the file has; `File` (the default) decodes the whole file (up to 8192 px
+  per side). Sizes, ImageCrop and hit tests stay in the file's pixels; EXIF orientation, masks and the other image
+  options work as usual. Tiled images (`Tile=1`) and symbols are decoded as usual. Separately, the size and EXIF
+  orientation of a file of 4 megapixels or more are read from its header, so asking for them decodes nothing.
+- Why: Deskset extension — a 48-megapixel photo decoded whole takes about 186 MB and several hundred milliseconds;
+  shown in a 360-point frame it needs a few MB. Photo Frame, the default suite's slideshow, uses it.
+- Skin impact: none for Windows skins; on Windows the option is ignored and the file is loaded whole.
 - Status: Deskset extension
 
 ### Bar, Bitmap, Button

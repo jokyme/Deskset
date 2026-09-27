@@ -1,5 +1,5 @@
-// Renders every example skin in DefaultSkins/Deskset (dark and light theme) with `Deskset --render` and composes
-// them into one preview image. Run from the repository root after `swift build`:
+// Renders every example skin of Deskset 0.1 in TestSkins/Deskset (dark and light theme) with `Deskset --render` and
+// composes them into one preview image. Run from the repository root after `swift build`:
 //
 //     swift TestSkins/Examples/compose-preview.swift [out.png] [--quick]
 //
@@ -11,7 +11,7 @@ import AppKit
 let fm = FileManager.default
 let repo = URL(fileURLWithPath: fm.currentDirectoryPath)
 let binary = repo.appendingPathComponent(".build/debug/Deskset")
-let source = repo.appendingPathComponent("DefaultSkins/Deskset")
+let source = repo.appendingPathComponent("TestSkins/Deskset")
 let args = Array(CommandLine.arguments.dropFirst())
 let quick = args.contains("--quick")
 let output = args.first { !$0.hasPrefix("--") }.map { URL(fileURLWithPath: $0) }

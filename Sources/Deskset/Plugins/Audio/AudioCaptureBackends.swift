@@ -447,7 +447,10 @@ enum AudioProcesses {
 /// `DESKSET_AUDIO_DEMO=1`: a generated, deterministic "music" signal instead of real capture — pink noise, a kick
 /// every half second, a hi-hat and a four-note melody (right channel a little quieter). No permission is needed, so
 /// visualizer skins can be checked with `--render`, screenshotted or demoed without playing anything.
+/// `DESKSET_AUDIO_DEMO=silent`: the same stream, all digital silence (a visualizer at rest, and its cost).
 final class SyntheticAudioBackend: AudioCaptureBackend {
+    /// Every sample 0 (`DESKSET_AUDIO_DEMO=silent`).
+    var silent = AudioCaptureEngine.demoSilence
     let deviceID: AudioObjectID? = nil
     static let sampleRate = 48000.0
     private let queue = DispatchQueue(label: "net.deskset.audio.demo", qos: .userInteractive)
@@ -509,6 +512,9 @@ final class SyntheticAudioBackend: AudioCaptureBackend {
             let mix = pinkValue * 0.35 + kick + hat
             buffer[2 * i] = Float(mix + melody)
             buffer[2 * i + 1] = Float(mix + melody * 0.6)
+        }
+        if silent {
+            for i in 0..<(frames * 2) { buffer[i] = 0 }
         }
         buffer.withUnsafeBufferPointer { ring.write(interleaved: $0.baseAddress!, frames: frames, channels: 2) }
         produced += frames

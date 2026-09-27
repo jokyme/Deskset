@@ -44,7 +44,7 @@ func runFriendlyNamesTests(_ t: TestRunner) {
     }
 
     t.suite("Editor: friendly names — Clock: data a setting chooses is used, and named by its format") {
-        let skin = try load("DefaultSkins", "Deskset\\Clock")
+        let skin = try load("TestSkins", "Deskset\\Clock")
         let catalog = LayerNaming.catalog(of: skin)
         for (data, layer) in [("MeasureTime24", "MeterTime"), ("MeasureTime12", "MeterTime"),
                               ("MeasureSuffix24", "MeterSuffix"), ("MeasureSuffix12", "MeterSuffix")] {
@@ -63,10 +63,10 @@ func runFriendlyNamesTests(_ t: TestRunner) {
         }
     }
 
-    t.suite("Editor: friendly names — formula chains and runs of data in the default widgets") {
+    t.suite("Editor: friendly names — formula chains and runs of data in the 0.1 example widgets") {
         for config in ["Deskset\\Calendar", "Deskset\\Clock", "Deskset\\System", "Deskset\\Disk", "Deskset\\Battery",
                        "Deskset\\Network"] {
-            let skin = try load("DefaultSkins", config)
+            let skin = try load("TestSkins", config)
             let catalog = LayerNaming.catalog(of: skin)
             for m in skin.measures {
                 let name = catalog.data(m.name)?.name ?? ""
@@ -77,7 +77,7 @@ func runFriendlyNamesTests(_ t: TestRunner) {
                 t.check(!name.contains("×"), "\(config): \(name) is not named after its sections")
             }
         }
-        let calendar = try load("DefaultSkins", "Deskset\\Calendar")
+        let calendar = try load("TestSkins", "Deskset\\Calendar")
         let catalog = LayerNaming.catalog(of: calendar)
         let heads = catalog.series(containing: "MeasureHead0").flatMap(catalog.dataName(of:))
         t.equal(heads?.name, "7 weekdays")
@@ -92,7 +92,7 @@ func runFriendlyNamesTests(_ t: TestRunner) {
         t.check(catalog.data("MeasureFirstWeekday")?.subtitle.hasPrefix("Calculated") == true, "what it is, second")
         let names = calendar.measures.filter { catalog.series(containing: $0.name) == nil }.compactMap { catalog.data($0.name)?.name }
         t.equal(Set(names).count, names.count, "no two rows share a name: \(names)")
-        let disk = try load("DefaultSkins", "Deskset\\Disk")
+        let disk = try load("TestSkins", "Deskset\\Disk")
         t.check(LayerNaming.catalog(of: disk).data("MeasurePercent")?.name.hasSuffix(" as %") == true,
                 "used / total * 100 is a percentage, not \"calculated from\" the size")
     }
@@ -198,7 +198,7 @@ func runFriendlyNamesTests(_ t: TestRunner) {
     }
 
     t.suite("Editor: friendly names — colour roles say what they paint") {
-        let system = try load("DefaultSkins", "Deskset\\System")
+        let system = try load("TestSkins", "Deskset\\System")
         let index = system.valueUsages()
         t.equal(index.variable("PanelBorderHover")?.role, "Background panel outline when pointed at",
                 "what the hover action colors, not \"Widget when pointed at\"")
@@ -209,10 +209,10 @@ func runFriendlyNamesTests(_ t: TestRunner) {
         t.equal(Set(names).count, names.count, "every row has its own name: \(names)")
         t.check(index.variable("SubtleColor")?.roles.contains { $0.name == "Dimmed parts of texts" } == true,
                 "the grey \" / 16 GB\": \(index.variable("SubtleColor")?.roles ?? [])")
-        let battery = try load("DefaultSkins", "Deskset\\Battery")
+        let battery = try load("TestSkins", "Deskset\\Battery")
         t.equal(battery.valueUsages().variable("CriticalColor")?.role, "Battery bar in some states")
         for config in ["Deskset\\System", "Deskset\\Clock", "Deskset\\Battery", "Deskset\\Calendar", "Deskset\\Network"] {
-            let skin = try load("DefaultSkins", config)
+            let skin = try load("TestSkins", config)
             for value in skin.valueUsages().values {
                 for role in value.roles {
                     t.check(!role.name.contains("Widget when") && !role.name.contains("(live data)")
@@ -257,7 +257,7 @@ func runFriendlyNamesTests(_ t: TestRunner) {
     }
 
     t.suite("Editor: friendly names — one walk finds the widgets reading each shared file") {
-        let skin = try load("DefaultSkins", "Deskset\\System")
+        let skin = try load("TestSkins", "Deskset\\System")
         let map = skin.includeMap()
         let variables = skin.resourcesDirectory.appendingPathComponent("Variables.inc")
         let readers = map.configs(including: variables)

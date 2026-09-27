@@ -1457,6 +1457,87 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Weather: measure: Location=timezone is the city of this Mac's time zone") {
+        // In a preview that waits for lookups: the city on the first update, and where the place came from.
+        var env = WeatherEnvironment.offline
+        env.placesTable = WeatherFixtures.placesFixture
+        env.clock = VirtualWeatherClock(now: WeatherFixtures.clock)
+        env.uses24HourClock = { true }
+        env.waitsForLookups = true
+        env.localTimeZone = { TimeZone(identifier: "Asia/Kolkata")! }
+        WeatherService.install(env)
+        func plugin(_ name: String, _ plugin: String, _ options: String) -> String {
+            "[\(name)]\nMeasure=Plugin\nPlugin=\(plugin)\n\(options)\n"
+        }
+        let (skin, _) = try weatherSkin(t, ini: "[Rainmeter]\n"
+            + plugin("W", "MacWeather", "Location=timezone\nType=Place")
+            + plugin("Source", "MacWeather", "Parent=W\nType=LocationSource")
+            + plugin("Zone", "MacWeather", "Parent=W\nType=TimeZone")
+            + plugin("Lat", "MacWeather", "Parent=W\nType=Latitude")
+            + plugin("Status", "MacWeather", "Parent=W\nType=Status")
+            + plugin("Sun", "MacSun", "Location=timezone\nType=Place")
+            + plugin("SunSource", "MacSun", "Parent=Sun\nType=LocationSource")
+            + plugin("Rise", "MacSun", "Parent=Sun\nType=Sunrise")
+            + plugin("Named", "MacWeather", "Location=Oslo, NO\nType=LocationSource")
+            + plugin("Here", "MacWeather", "Location=auto\nType=LocationSource")
+            + plugin("Coords", "MacWeather", "Location=59.91,10.75\nType=LocationSource")
+            + plugin("Nothing", "MacWeather", "Type=LocationSource")
+            + plugin("SunNothing", "MacSun", "Type=LocationSource"))
+        skin.update()
+        t.equal(string(skin, "W"), "Kolkata", "the city of Asia/Kolkata, though Mumbai is larger")
+        t.equal(value(skin, "Source"), 4)
+        t.equal(string(skin, "Source"), "TimeZone", "a skin can ask \"Not your city?\"")
+        t.equal(string(skin, "Zone"), "Asia/Kolkata")
+        t.equal(value(skin, "Lat"), 22.56)
+        t.equal(value(skin, "Status"), 12, "a preview: no forecast, but the place")
+        t.equal(string(skin, "Sun"), "Kolkata")
+        t.equal(string(skin, "SunSource"), "TimeZone")
+        t.equal(value(skin, "SunSource"), 4)
+        t.check(string(skin, "Rise").hasPrefix("05:") || string(skin, "Rise").hasPrefix("06:"),
+                "Kolkata's sunrise: \(string(skin, "Rise"))")
+        for (name, number, word) in [("Named", 1.0, "Place"), ("Here", 3, "Auto"), ("Coords", 2, "Coordinates"),
+                                     ("Nothing", 0, "None"), ("SunNothing", 0, "None")] {
+            t.equal(value(skin, name), number, name)
+            t.equal(string(skin, name), word, name)
+        }
+        skin.close()
+
+        // A zone without a city: no location (the skin asks for a city) and one line in the log.
+        env.localTimeZone = { TimeZone(identifier: "Etc/UTC")! }
+        WeatherService.install(env)
+        let (utc, utcHost) = try weatherSkin(t, ini: "[Rainmeter]\n"
+            + plugin("W", "MacWeather", "Location=timezone\nType=Status")
+            + plugin("Source", "MacWeather", "Parent=W\nType=LocationSource")
+            + plugin("Sun", "MacSun", "Location=timezone\nType=Sunrise\nUnavailableText=--:--"))
+        utc.update()
+        utc.update()
+        t.equal(value(utc, "W"), 3, "NoLocation")
+        t.equal(string(utc, "Source"), "TimeZone")
+        t.equal(string(utc, "Sun"), "--:--")
+        t.equal(utcHost.logs.filter { $0.contains("no city is known for this Mac's time zone (Etc/UTC)") }.count, 2,
+                "once per measure: \(utcHost.logs)")
+        t.check(utc.issues.isEmpty, "not a compatibility note: \(utc.issues)")
+        utc.close()
+
+        // In a skin window: looked up on the service's queue after the update; the measure hears when the city is known.
+        var live = weatherTestEnvironment(t)
+        live.localTimeZone = { TimeZone(identifier: "Europe/Oslo")! }
+        WeatherService.install(live)
+        let (window, windowHost) = try weatherSkin(t, ini: "[Rainmeter]\nUpdate=-1\n"
+            + plugin("W", "MacWeather", "Location=timezone\nFinishAction=[!Log \"finish W\"]")
+            + plugin("Place", "MacWeather", "Parent=W\nType=Place")
+            + plugin("Source", "MacWeather", "Parent=W\nType=LocationSource"))
+        window.update()
+        t.equal((window.measure(named: "W") as? MacWeatherMeasure)?.status, .loading)
+        t.equal(string(window, "Source"), "TimeZone", "known before the city is")
+        t.check(weatherWait { WeatherService.shared.drain(); return (window.measure(named: "W") as? MacWeatherMeasure)?.status == .ready },
+                "ready without another update")
+        t.check(weatherWait { windowHost.logs.contains { $0.contains("finish W") } }, "FinishAction")
+        t.equal(string(window, "Place"), "Oslo")
+        t.equal(window.measure(named: "W")?.value, 16.3, "Oslo's forecast")
+        window.close()
+    }
+
     t.suite("Weather: MacSun") {
         var env = WeatherEnvironment.offline
         env.placesTable = WeatherFixtures.placesFixture

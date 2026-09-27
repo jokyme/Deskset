@@ -1625,7 +1625,8 @@ extension InspectorWindowController {
                 popup.lastItem?.representedObject = "code"
                 popup.identifier = NSUserInterfaceItemIdentifier("when-\(key)")
                 if key == "MacOnAppearanceChangeAction" {
-                    popup.toolTip = "When macOS switches between light and dark mode or the accent color changes"
+                    popup.toolTip = "When macOS switches between light and dark mode, the accent color changes, or the "
+                        + "12/24-hour clock, the first day of the week or the temperature unit changes"
                 }
                 popup.onAction { [weak self] c in
                     guard let popup = c as? NSPopUpButton, let v = popup.selectedItem?.representedObject as? String else { return }

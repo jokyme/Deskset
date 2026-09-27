@@ -1184,6 +1184,9 @@ public enum EditorSchema {
                     Property("Total", "Show", flag("Report the disk size"), default: "0", level: .essential),
                     Property("InvertMeasure", "Used", flag("Report used space instead of free"), default: "0",
                              level: .essential, partOf: "Total"),
+                    // Deskset extension: Finder's "available" figure (docs/compat/engine.md).
+                    Property("MacAvailable", "Available", flag("Count space macOS can free up, as Finder does"),
+                             default: "0", help: "Free space plus purgeable space (caches, snapshots, iCloud files)"),
                     Property("Label", "Name", flag("Text is the disk's name"), default: "0"),
                     Property("Type", "Disk type", flag("Report the disk type"), default: "0"),
                     Property("IgnoreRemovable", "Removable disks", flag("Ignore removable disks"), default: "1")]

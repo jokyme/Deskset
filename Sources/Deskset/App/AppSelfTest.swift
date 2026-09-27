@@ -12,6 +12,12 @@ enum AppSelfTest {
         // through the app's own service (the thread stress suite loads TestSkins/Plugins/Sensors) walk the keys
         // instead of reading or writing the user's cache.
         LiveSensorHardware.keyCacheURL.access { $0 = nil }
+        // Skins read and write #SETTINGSPATH# (the Stationery widgets keep what people type in its Stationery.inc,
+        // which the app makes): a temporary one, never the user's.
+        let settings = t.temporaryDirectory("settings")
+        FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
+                                       contents: Data(DefaultSkins.stationeryFileHeader.utf8))
+        SkinController.settingsPath = settings.path + "/"
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
@@ -30,6 +36,7 @@ enum AppSelfTest {
         componentLibraryTests(t)
         manageWindowTests(t)
         installTests(t)
+        DefaultSkinsSelfTests.run(t)
         reviewTests(t)
         mousePluginTests(t)
         sliderPluginTests(t)
@@ -42,6 +49,7 @@ enum AppSelfTest {
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
@@ -519,6 +527,60 @@ enum AppSelfTest {
             t.check(SystemMonitor.productName().hasPrefix("macOS"))
         }
 
+        t.suite("App: available disk space (FreeDiskSpace MacAvailable)") {
+            // The real figure: free space plus purgeable space, within the disk.
+            guard let disk = SystemMonitor.statfsSpace("/") else { return t.check(false, "statfs /") }
+            let available = SystemMonitor.availableSpace(atPath: "/")
+            t.check(available >= disk.free * 0.9 && available <= disk.total, "\(available) of \(disk.total), free \(disk.free)")
+            t.equal(SystemMonitor.availableSpace(atPath: "/no/such/volume"), 0)
+
+            // Kept for 30 s and read again off the caller's thread, the old reading answering meanwhile.
+            let clock = Guarded<TimeInterval>(1000)
+            let reads = Guarded(0)
+            let answer = Guarded(111.0)
+            let monitor = SystemMonitor(clock: { clock.current }, readAvailableSpace: { _ in
+                reads.access { $0 += 1 }
+                return answer.current
+            })
+            t.equal(monitor.availableDiskSpace(path: "/"), 111, "the first reading is waited for")
+            t.equal(monitor.availableDiskSpace(path: "/"), 111)
+            t.equal(reads.current, 1, "then kept")
+            answer.access { $0 = 222 }
+            clock.access { $0 += SystemMonitor.availableSpaceLifetime + 1 }
+            t.equal(monitor.availableDiskSpace(path: "/"), 111, "a stale reading answers while the new one is made")
+            t.check(AppSelfTest.spin(timeout: 2) { monitor.availableDiskSpace(path: "/") == 222 }, "then the new one")
+            t.equal(reads.current, 2, "one reading per lifetime")
+
+            // A first reading slower than the wait: nil (the measure shows −1), and the value once it is there.
+            let slow = SystemMonitor(readAvailableSpace: { _ in
+                Thread.sleep(forTimeInterval: 2)
+                return 333
+            })
+            let started = Date()
+            t.equal(slow.availableDiskSpace(path: "/"), nil, "loading")
+            t.check(Date().timeIntervalSince(started) < 1.5, "the caller does not wait for the reading")
+            t.check(AppSelfTest.spin(timeout: 6) { slow.availableDiskSpace(path: "/") == 333 }, "the reading arrives")
+
+            // Skins on many threads at once: one reading at a time per volume.
+            let busy = Guarded(0)
+            let shared = SystemMonitor(readAvailableSpace: { _ in
+                busy.access { $0 += 1 }
+                Thread.sleep(forTimeInterval: 0.05)
+                return 444
+            })
+            DispatchQueue.concurrentPerform(iterations: 16) { _ in _ = shared.availableDiskSpace(path: "/") }
+            t.check(AppSelfTest.spin(timeout: 5) { shared.availableDiskSpace(path: "/") == 444 })
+            t.equal(busy.current, 1, "concurrent first reads share one reading")
+
+            // A skin reads it through the app's monitor.
+            let (skin, _) = try MediaUITests.bareSkin(t, "[Rainmeter]\n[Avail]\nMeasure=FreeDiskSpace\nDrive=/\nMacAvailable=1\n"
+                                                      + "[Free]\nMeasure=FreeDiskSpace\nDrive=/\n")
+            skin.update()
+            let skinAvailable = skin.measure(named: "Avail")?.value ?? -1
+            let skinFree = skin.measure(named: "Free")?.value ?? -1
+            t.check(skinAvailable >= skinFree * 0.9 && skinAvailable > 0, "available \(skinAvailable), free \(skinFree)")
+        }
+
         t.suite("App: live system readings") {
             let m = SystemMonitor.shared
             _ = m.cpuUsage(processor: 0)
@@ -539,6 +601,10 @@ enum AppSelfTest {
             let up = m.uptime()
             let boot = SystemMonitor.sysctlTime("kern.boottime") ?? 0
             t.close(up, Date().timeIntervalSince1970 - boot, accuracy: 5)
+            // Fractions of a second count: the Turntable times its turning label with an Uptime measure.
+            Thread.sleep(forTimeInterval: 0.05)
+            let later = m.uptime()
+            t.check(later - up > 0.04 && later - up < 1, "the uptime has fractions of a second: \(later - up)")
             let a = m.networkCounters(interface: nil)
             RenderCommand.wait(milliseconds: 600)
             let b = m.networkCounters(interface: nil)
@@ -605,7 +671,8 @@ enum AppSelfTest {
         for app in retainedApps { app.stopAllForTermination() }
     }
 
-    /// A headless app over a temporary Skins folder holding TestSkins/App and DefaultSkins/Deskset.
+    /// A headless app over a temporary Skins folder holding TestSkins/App and TestSkins/Deskset (the example skins of
+    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins).
     static func makeApp(_ t: AppTestRunner) throws -> AppController? {
         guard let testSkins = Paths.repositoryFolder("TestSkins") else {
             print("    (skipped: TestSkins not found; run from the repository)")
@@ -614,11 +681,9 @@ enum AppSelfTest {
         let root = t.temporaryDirectory("app")
         let skins = root.appendingPathComponent("Skins")
         try FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: testSkins.appendingPathComponent("App"),
-                                         to: skins.appendingPathComponent("App"))
-        if let defaults = Paths.repositoryFolder("DefaultSkins") {
-            try? FileManager.default.copyItem(at: defaults.appendingPathComponent("Deskset"),
-                                              to: skins.appendingPathComponent("Deskset"))
+        for folder in ["App", "Deskset"] {
+            try FileManager.default.copyItem(at: testSkins.appendingPathComponent(folder),
+                                             to: skins.appendingPathComponent(folder))
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
@@ -921,6 +986,33 @@ enum AppSelfTest {
             t.check(manage.testGridHugging < NSLayoutConstraint.Priority.windowSizeStayPut,
                     "the detail grids never pull the window narrower")
             manage.close()
+        }
+        t.suite("App: manage window: on the first launch it opens beside the first widgets") {
+            let size = NSSize(width: 900, height: 692), minSize = NSSize(width: 780, height: 520)
+            // A 1512 × 982 MacBook with the Dock on the left: the column is at x 62–422, so the window goes right.
+            let visible = NSRect(x: 42, y: 0, width: 1470, height: 949)
+            let column = NSRect(x: 62, y: 359, width: 360, height: 570)
+            let right = ManageWindowController.frame(beside: column, size: size, minSize: minSize, visible: visible)
+            t.equal(right, NSRect(x: 442, y: 237, width: 900, height: 692), "20 pt right of the column, top 20 pt down")
+            if let right { t.check(!right.intersects(column), "the widgets stay uncovered") }
+            // Too little room for the full width: narrower, down to its minimum.
+            let narrow = NSRect(x: 0, y: 0, width: 1280, height: 775)
+            let squeezed = ManageWindowController.frame(beside: NSRect(x: 20, y: 185, width: 360, height: 570),
+                                                        size: size, minSize: minSize, visible: narrow)
+            t.equal(squeezed, NSRect(x: 400, y: 63, width: 860, height: 692))
+            // A column on the right: the window goes to its left.
+            let leftOf = ManageWindowController.frame(beside: NSRect(x: 1100, y: 359, width: 360, height: 570),
+                                                      size: size, minSize: minSize, visible: visible)
+            t.equal(leftOf?.maxX, 1080)
+            t.equal(leftOf?.width, 900)
+            // No room on either side: nil (the window stays centred).
+            t.equal(ManageWindowController.frame(beside: NSRect(x: 300, y: 200, width: 360, height: 500), size: size,
+                                                 minSize: minSize, visible: NSRect(x: 0, y: 0, width: 1024, height: 740)),
+                    nil)
+            // A short screen shortens it, but not below its minimum.
+            let short = ManageWindowController.frame(beside: column, size: size, minSize: minSize,
+                                                     visible: NSRect(x: 42, y: 0, width: 1470, height: 540))
+            t.equal(short?.height, 520)
         }
         t.suite("App: manage window: the details' page has a place as well as a width") {
             guard let app = try makeApp(t) else { return }

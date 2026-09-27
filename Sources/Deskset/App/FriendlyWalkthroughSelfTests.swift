@@ -330,7 +330,7 @@ enum FriendlyWalkthroughSelfTests {
 
     static func systemWalkthrough(_ t: AppTestRunner) {
         t.suite("App: friendly walkthrough: the tasks on System") {
-            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System", from: "DefaultSkins"),
+            guard let (app, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\System"),
                   let skin = editor.skin else { return }
             let ini = skin.fileURL
             let resources = skin.resourcesDirectory
@@ -503,9 +503,9 @@ enum FriendlyWalkthroughSelfTests {
 
     static func plainWordsScan(_ t: AppTestRunner) {
         t.suite("App: friendly walkthrough: no engine words in any default state (G3)") {
-            for (config, folder, fields) in [("Audio\\Visualizer", "TestSkins", true), ("Deskset\\System", "DefaultSkins", true),
-                                             ("Deskset\\Clock", "DefaultSkins", true), ("Deskset\\Calendar", "DefaultSkins", false),
-                                             ("Deskset\\Battery", "DefaultSkins", false), ("Round\\AnalogClock", "TestSkins", false),
+            for (config, folder, fields) in [("Audio\\Visualizer", "TestSkins", true), ("Deskset\\System", "TestSkins", true),
+                                             ("Deskset\\Clock", "TestSkins", true), ("Deskset\\Calendar", "TestSkins", false),
+                                             ("Deskset\\Battery", "TestSkins", false), ("Round\\AnalogClock", "TestSkins", false),
                                              ("Round\\Gauges", "TestSkins", false), ("Shape\\Types", "TestSkins", false),
                                              ("MediaUI\\NowPlaying", "TestSkins", false)] {
                 guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: config, from: folder) else { return }

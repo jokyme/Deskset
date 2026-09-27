@@ -163,6 +163,16 @@ public final class HistogramMeter: Meter {
         primaryHistory = other.primaryHistory
         secondaryHistory = other.secondaryHistory
         computeAutoRange()
+        noteDrawChange()
+    }
+
+    /// Without AutoScale the columns are scaled by the measures' MinValue and MaxValue as they are when drawn (a Net
+    /// measure learns its maximum as it updates, which the meter may do less often).
+    public override func hashDrawInputs(into hasher: inout Hasher) {
+        for measure in [primaryMeasure, secondaryMeasure] {
+            hasher.combine(measure?.minValue)
+            hasher.combine(measure?.maxValue)
+        }
     }
 
     /// Adds one sample per measure, resizing the histories first when the size changed.
