@@ -232,3 +232,28 @@ ChronoTipReserve1=Battery [CalcReserveValue:0]% · charging
 ChronoTipReserve2=Battery [CalcReserveValue:0]% · plugged in
 ChronoTipReserve3=CPU [CalcReserveValue:0]%
 ChronoTipReserve4=Battery [CalcReserveValue:0]%
+
+; ---------------------------------------------------------------- the player (Collection/Player.inc)
+MenuPlayerMusic=Player: Music
+MenuPlayerSpotify=Player: Spotify
+MenuOpenPlayerMusic=Open Music
+MenuOpenPlayerSpotify=Open Spotify
+
+; ---------------------------------------------------------------- Turntable
+TurntableMenuVinyl1=Record Color: From the Cover
+TurntableMenuVinyl0=Record Color: Classic Black
+TurntableMenuRest1Min=Arm Rests: After 1 Min
+TurntableMenuRest5Min=Arm Rests: After 5 Min
+TurntableMenuRestNever=Arm Rests: Never
+TurntableMenuSeek1=Click a Groove to Seek: On
+TurntableMenuSeek0=Click a Groove to Seek: Off
+TurntableSpeed=33⅓ RPM
+TurntableSideA=Side A
+TurntableNotPlaying=Not Playing
+TurntablePlaySomething=Play something in Music or Spotify
+TurntableTipPlay=Play
+TurntableTipPause=Pause
+TurntableTipPrevious=Previous Track
+TurntableTipNext=Next Track
+TurntableTipSeek=Play from [MeasureSeekMin:0]:[MeasureSeekSec]
+TurntableTipTrack=[MeasureLastTitle] — [MeasureLastArtist]

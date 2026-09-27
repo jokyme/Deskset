@@ -31,6 +31,8 @@ TempUnit=Auto
 Location=timezone
 ; Separator between thousands in numbers of four digits and more
 DigitGroup=,
+; The player the music widgets prefer: Music or Spotify (they show whichever of the two is playing)
+Player=Music
 
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
@@ -61,3 +63,11 @@ DaybreakSkyTint=1
 ChronoRightDial=0
 ; The running seconds at 6 o'clock: 1 on, 0 off (the register stays as a dial)
 ChronoSeconds=1
+
+; ---------------------------------------------------------------- Turntable
+; The record's colour: 1 pressed in the cover's own colour, 0 classic black
+TurntableVinyl=1
+; After a pause the arm goes back to its rest: 1Min, 5Min or Never
+TurntableRest=1Min
+; A click on the grooves drops the needle there: 1 on, 0 off (every click on the record plays or pauses)
+TurntableSeek=1

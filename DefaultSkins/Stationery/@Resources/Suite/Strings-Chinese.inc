@@ -214,3 +214,28 @@ ChronoTipReserve1=电池 [CalcReserveValue:0]% · 正在充电
 ChronoTipReserve2=电池 [CalcReserveValue:0]% · 已接通电源
 ChronoTipReserve3=CPU [CalcReserveValue:0]%
 ChronoTipReserve4=电池 [CalcReserveValue:0]%
+
+; ---------------------------------------------------------------- the player (Collection/Player.inc)
+MenuPlayerMusic=播放器：音乐
+MenuPlayerSpotify=播放器：Spotify
+MenuOpenPlayerMusic=打开音乐
+MenuOpenPlayerSpotify=打开 Spotify
+
+; ---------------------------------------------------------------- Turntable
+TurntableMenuVinyl1=唱片颜色：取自封面
+TurntableMenuVinyl0=唱片颜色：经典黑
+TurntableMenuRest1Min=唱臂复位：1 分钟后
+TurntableMenuRest5Min=唱臂复位：5 分钟后
+TurntableMenuRestNever=唱臂复位：从不
+TurntableMenuSeek1=点按唱纹跳转：开
+TurntableMenuSeek0=点按唱纹跳转：关
+TurntableSpeed=33⅓ RPM
+TurntableSideA=A 面
+TurntableNotPlaying=未在播放
+TurntablePlaySomething=在“音乐”或 Spotify 中播放点什么
+TurntableTipPlay=播放
+TurntableTipPause=暂停
+TurntableTipPrevious=上一首
+TurntableTipNext=下一首
+TurntableTipSeek=从 [MeasureSeekMin:0]:[MeasureSeekSec] 开始播放
+TurntableTipTrack=[MeasureLastTitle] — [MeasureLastArtist]
