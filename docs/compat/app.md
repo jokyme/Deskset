@@ -312,6 +312,27 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none.
 - Status: emulated
 
+### The default skins and the first launch
+- Windows (Rainmeter): Rainmeter comes with a default skin suite, illustro, which it loads when it is first installed
+  (<https://docs.rainmeter.net/manual/getting-started/>).
+- Mac (Deskset): Deskset comes with its own original skins (the folders in `DefaultSkins`, root config `Deskset`).
+  They are copied into the Skins folder at the first launch and again when a newer Deskset brings new ones (a version
+  number in the app): the old copy moves to `Backups/<Root>-examples-v<N>`, and the settings the user changed in its
+  `@Resources/Variables.inc` are written into the new one. A value the old version shipped and the user never changed
+  gives way to the new default (an old fixed 24-hour clock does not hold back a new "Automatic"); the app records what
+  each version ships for the next upgrade and knows what Deskset 0.1 shipped. On the very first launch (no skin has any
+  saved settings yet) the skins listed in `FirstRun.ini` next to the default skins load, in the order written, each
+  at `X`, `Y` points from the top-left corner of the main display's visible area (below the menu bar, beside the
+  Dock) and with the .ini named by `File`; without that file, or when none of its configs exists, the Clock loads
+  alone. The Manage window then opens on the first of them. `~/Library/Application Support/Deskset/Stationery.inc`
+  (`#SETTINGSPATH#Stationery.inc`) is made at every launch when it is missing (never overwritten): `!WriteKeyValue`
+  writes only into a file that exists, and the default widgets keep what the user types into them there (to-do items,
+  cities…), outside the skins that upgrades replace.
+- Why: product decision — a first desktop that asks for no permission, and settings and user content that survive
+  upgrades.
+- Skin impact: none for other skins; any skin may include `#SETTINGSPATH#Stationery.inc` and write into it.
+- Status: emulated (`FirstRun.ini` and `Stationery.inc`: Deskset extensions)
+
 ### Compatibility notes
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): things that work differently on the Mac (Windows-only measures and plugins, unsupported bangs, refused
@@ -520,10 +541,14 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### What differs from the app
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
-  [--appearance light|dark|system] [--dark] [--skins-dir DIR]` loads the skin without a window, runs N updates
+  [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
+  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates
   (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given
   background and prints compatibility notes and skin log lines. The skin sees the Light appearance (the appearance
-  variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting). There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
+  variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
+  24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
+  plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`
+  (the Mac's own). There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
@@ -540,10 +565,11 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   weather is on, the User-Agent, the units `Units=Auto` gives, the place table, the disk cache, the Location Services
   status (only the status: the report never reads the location and never makes macOS ask), and for each place in an
   active skin how it resolves offline and today's sunrise and sunset. Otherwise one line says weather is not set up.
-  `Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]` makes one real request to MET
-  Norway with the real User-Agent (default place: the sample "Oslo, NO"; `auto` is refused, the report never uses this
-  Mac's location; nothing is read from or written to the weather cache) and prints the request, the response headers,
-  now, the next hours, the days, the sun and the credit; exit status 0 with data, 1 without, 2 for a wrong argument.
+  `Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]` makes one real request
+  to MET Norway with the real User-Agent (default place: the sample "Oslo, NO"; `auto` is refused, the report never
+  uses this Mac's location; `timezone` is the city of this Mac's time zone from the place table; nothing is read from or
+  written to the weather cache) and prints the request, the response headers, now, the next hours, the days, the sun
+  and the credit; exit status 0 with data, 1 without, 2 for a wrong argument.
   `--offline FILE [--now 2026-09-26T12:00:00Z]` reads a saved response instead (no network).
 - Why: checking the weather setup and MET Norway's answers without a skin.
 - Skin impact: none (developer tool).
@@ -565,8 +591,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): the binary's development modes are `--render`, `--self-test [filter]`, `--snapshot-ui`,
   `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`; `--help` / `-h` prints them (exit status
   0). An argument starting with `--` that is none of these flags or their options (`--out`, `--updates`, `--interval`,
-  `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--select`, `--size`, `--zoom`, `--location`,
-  `--units`, `--offline`, `--now`), or such an option without a mode, prints the usage to
+  `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--clock-hours`, `--first-weekday`,
+  `--temperature-unit`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`), or such an
+  option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to
   `scripts/build-app.sh`, not to the binary.)

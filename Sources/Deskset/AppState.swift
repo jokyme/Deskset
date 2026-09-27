@@ -83,6 +83,10 @@ struct AppStateData: Codable {
     /// Keyed by config name (`Root\Sub`).
     var skins: [String: SkinState] = [:]
     var defaultSkinsInstalled: Int = 0
+    /// The `[Variables]` of each bundled root config's `@Resources/Variables.inc` as the installed default skins
+    /// shipped them (root config → lower-case key → value): an upgrade carries over only the values the user changed
+    /// from these (`DefaultSkins.carryOverVariables`).
+    var shippedVariables: [String: [String: String]] = [:]
     /// Settings ▸ Editor.
     var editor = EditorPreferences()
     /// The Settings pane shown last (the window reopens on it).
@@ -93,12 +97,13 @@ struct AppStateData: Codable {
 
     init() {}
 
-    private enum CodingKeys: String, CodingKey { case skins, defaultSkinsInstalled, editor, settingsPane }
+    private enum CodingKeys: String, CodingKey { case skins, defaultSkinsInstalled, shippedVariables, editor, settingsPane }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         skins = ((try? c.decodeIfPresent([String: SkinState].self, forKey: .skins)) ?? nil) ?? [:]
         defaultSkinsInstalled = ((try? c.decodeIfPresent(Int.self, forKey: .defaultSkinsInstalled)) ?? nil) ?? 0
+        shippedVariables = ((try? c.decodeIfPresent([String: [String: String]].self, forKey: .shippedVariables)) ?? nil) ?? [:]
         let storedEditor = (try? c.decodeIfPresent(EditorPreferences.self, forKey: .editor)) ?? nil
         editor = storedEditor ?? EditorPreferences()
         hasEditorPreferences = storedEditor != nil
@@ -109,6 +114,7 @@ struct AppStateData: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(skins, forKey: .skins)
         try c.encode(defaultSkinsInstalled, forKey: .defaultSkinsInstalled)
+        if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
         try c.encodeIfPresent(settingsPane, forKey: .settingsPane)
     }
@@ -164,6 +170,12 @@ final class AppState {
 
     func setDefaultSkinsInstalled(_ version: Int) {
         data.defaultSkinsInstalled = version
+        scheduleSave()
+    }
+
+    func setShippedVariables(_ variables: [String: [String: String]]) {
+        guard data.shippedVariables != variables else { return }
+        data.shippedVariables = variables
         scheduleSave()
     }
 

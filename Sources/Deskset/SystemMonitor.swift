@@ -52,9 +52,11 @@ final class SystemMonitor: SystemDataSource {
     /// ahead at every look, so every reading is stale for every thread: all threads then take the readings and fill
     /// the caches at the same time, which the caches' short lifetimes otherwise make rare.
     init(clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-         sensors: SensorService = .shared) {
+         sensors: SensorService = .shared,
+         readAvailableSpace: @escaping (String) -> Double = SystemMonitor.availableSpace(atPath:)) {
         self.clock = clock
         self.sensors = sensors
+        self.readAvailableSpace = readAvailableSpace
         cpu.access { state in
             SystemMonitor.sampleCPU(&state)
             state.lastSample = clock()
@@ -473,6 +475,68 @@ final class SystemMonitor: SystemDataSource {
     func diskSpace(path: String) -> (total: Double, free: Double)? {
         guard SystemMonitor.mountIsLocal(path, mounts: mounts()) == false else { return SystemMonitor.statfsSpace(path) }
         return networkVolume(path)?.space
+    }
+
+    // MARK: Available space (FreeDiskSpace MacAvailable=1)
+
+    /// How long a reading of a volume's available space is used before it is made again (in the background, the old
+    /// reading answering meanwhile): the Storage widget reads its disks every 30 s.
+    static let availableSpaceLifetime: TimeInterval = 30
+    /// How long an update waits for a volume's first reading before its measure shows "loading" (−1).
+    static let availableSpaceFirstWait: TimeInterval = 0.25
+
+    private struct AvailableState {
+        var readings: [String: (value: Double, time: TimeInterval)] = [:]
+        var pending: Set<String> = []
+    }
+
+    private let available = Guarded(AvailableState())
+    private let availableQueue = DispatchQueue(label: "deskset.disk.available", qos: .userInitiated,
+                                               attributes: .concurrent)
+    /// Reads a volume's figure (`availableSpace(atPath:)`; the self-tests count and time the readings).
+    private let readAvailableSpace: (String) -> Double
+
+    /// Finder's "available" space (FreeDiskSpace `MacAvailable=1`): free space plus what macOS can purge. Asking macOS
+    /// takes 10–40 ms (a round trip to another process), too long for every update of every skin, so a reading is kept
+    /// for 30 s and made again off the skin's thread, the old one answering meanwhile. A volume's first reading is
+    /// waited for up to a quarter second, so skins show the figure from their first update; nil when it takes longer
+    /// (the measure shows −1 until it arrives). Network volumes: their free space, from the background reading
+    /// `diskSpace` uses (purgeable space is a local disk's).
+    func availableDiskSpace(path: String) -> Double? {
+        if SystemMonitor.mountIsLocal(path, mounts: mounts()) == false { return networkVolume(path)?.space?.free }
+        let t = now()
+        let (hit, start) = available.access { state -> ((value: Double, time: TimeInterval)?, Bool) in
+            let hit = state.readings[path]
+            let due = hit.map { t - $0.time >= SystemMonitor.availableSpaceLifetime } ?? true
+            let start = due && !state.pending.contains(path) && state.pending.count < 16
+            if start { state.pending.insert(path) }
+            return (hit, start)
+        }
+        guard start else { return hit?.value }
+        let done = DispatchSemaphore(value: 0)
+        let read = readAvailableSpace, clock = self.clock, available = self.available
+        availableQueue.async {
+            let value = read(path)
+            available.access { state in
+                state.pending.remove(path)
+                if state.readings.count >= 64 { state.readings.removeAll() }
+                state.readings[path] = (value, clock())
+            }
+            done.signal()
+        }
+        if let hit { return hit.value }
+        _ = done.wait(timeout: .now() + SystemMonitor.availableSpaceFirstWait)
+        return available.access { $0.readings[path]?.value }
+    }
+
+    /// Finder's available figure for the volume holding `path`: `volumeAvailableCapacityForImportantUsage` (purgeable
+    /// space included) when it reads more than 0, else statfs's free space (disk images and non-APFS volumes read 0);
+    /// 0 when the volume cannot be read. Slow: see `availableDiskSpace`.
+    static func availableSpace(atPath path: String) -> Double {
+        let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let space = statfsSpace(path)
+        return FreeDiskSpaceMeasure.availableSpace(important: values?.volumeAvailableCapacityForImportantUsage.map(Double.init),
+                                                   free: space?.free ?? 0, total: space?.total ?? 0)
     }
 
     /// FreeDiskSpace `Type=1` / `Label=1`: the volume's name and kind. Local volumes are read at most every few

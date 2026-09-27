@@ -42,9 +42,10 @@ public struct SkinSettings {
     public var onUnfocusAction = ""
     /// Run at the end of the first update after the system wakes (see `Skin.systemDidWake()`).
     public var onWakeAction = ""
-    /// `MacOnAppearanceChangeAction` (Deskset extension) as written: run when the Mac switches between light and dark
-    /// or the accent color changes (`Skin.appearanceDidChange()`), its variables resolved then, so `#MACLABELCOLOR#` in
-    /// it is the new color. `[!Refresh]` when the option is missing; empty when it is written empty (nothing runs).
+    /// `MacOnAppearanceChangeAction` (Deskset extension) as written: run when the Mac switches between light and dark,
+    /// the accent color changes or the clock, week or temperature setting does (`Skin.appearanceDidChange()`), its
+    /// variables resolved then, so `#MACLABELCOLOR#` in it is the new color. `[!Refresh]` when the option is missing;
+    /// empty when it is written empty (nothing runs).
     public var macOnAppearanceChangeAction = Skin.defaultAppearanceChangeAction
     /// `TransitionUpdate` (ms, default 100): update rate while a meter transition runs (Bitmap meters).
     public var transitionUpdate = 100
@@ -970,8 +971,9 @@ public final class Skin {
     /// What `MacOnAppearanceChangeAction` does when a skin does not set it: the skin loads again with the new values.
     public static let defaultAppearanceChangeAction = "[!Refresh]"
 
-    /// The host calls this when the Mac switches between light and dark or the accent color changes (Deskset
-    /// extension): a skin that follows the appearance (`usesMacAppearance`) runs `MacOnAppearanceChangeAction`
+    /// The host calls this when the Mac switches between light and dark, the accent color changes, or the 12/24-hour
+    /// clock, the first day of the week or the temperature unit does (Deskset extension; `SkinAppearance`): a skin that
+    /// follows the appearance (`usesMacAppearance`) runs `MacOnAppearanceChangeAction`
     /// (`[!Refresh]` unless the skin says otherwise) with the new values — its `#MAC…#` variables resolved now, and
     /// `[Variables]` built from them (`Fg=#MACLABELCOLOR#`) updated first; other skins are left alone. Nothing happens
     /// once the skin is closed.

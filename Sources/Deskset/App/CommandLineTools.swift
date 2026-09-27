@@ -24,6 +24,7 @@ enum CommandLineTools {
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
+                                           "--clock-hours", "--first-weekday", "--temperature-unit",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
@@ -36,6 +37,7 @@ enum CommandLineTools {
         usage: Deskset                   start the menu bar app
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
+                      [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
                                         draw a skin without a window into a PNG
                Deskset --self-test [filter]
                                         run the app's self-tests
@@ -47,7 +49,7 @@ enum CommandLineTools {
                       [--scroll "CARD TITLE"]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
-               Deskset --weather-report [--location PLACE|LAT,LON] [--units auto|metric|imperial]
+               Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
                       [--offline FILE] [--now ISO8601]
                                         get one forecast from MET Norway (sends the place's rounded coordinates)
                Deskset --cover-lookup ARTIST TITLE [ALBUM]
@@ -177,6 +179,8 @@ enum SystemReport {
         }
         if let disk = m.diskSpace(path: "/") {
             print("Disk /: free \(Int64(disk.free / 1024)) KiB of \(Int64(disk.total / 1024)) KiB")
+            let available = SystemMonitor.availableSpace(atPath: "/")
+            print("Disk /: available \(Int64(available / 1024)) KiB (as Finder counts it: FreeDiskSpace MacAvailable=1)")
         }
         print(String(format: "Uptime: %.0f s", m.uptime()))
         if let b = m.battery() {

@@ -7,6 +7,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let skinsDirectory: URL
     let layoutsDirectory: URL
     let backupsDirectory: URL
+    /// The bundled default skins (`DefaultSkins`, see `DefaultSkins`); nil when the app has none.
+    let defaultSkinsSource: URL?
+    /// `#SETTINGSPATH#`: where `Stationery.inc` is kept.
+    let settingsDirectory: URL
     /// False for headless use (`--self-test`, `--snapshot-ui`): skin windows are created but never shown.
     let presentsWindows: Bool
     /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
@@ -40,21 +44,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The appearance the running skins last saw (`appearanceChanged`); nil until the app observes it.
     private var appearanceSeen: SkinAppearance?
     private var appearanceObservation: NSKeyValueObservation?
+    /// Watches the preference keys behind the clock, week and temperature settings (`regionalSettingsChanged`).
+    private var regionalDefaults: RegionalDefaultsObserver?
+    private var regionalRecheck: DispatchWorkItem?
 
     private var systemAsleep = false
     private var screensAsleep = false
     private var sessionInactive = false
     private var updatesPaused: Bool { systemAsleep || screensAsleep || sessionInactive }
 
-    /// Bump when the bundled example skins change so they are re-copied.
-    private static let defaultSkinsVersion = 2
+    /// The config the Manage window shows on a first launch (the first one the first-run layout loaded).
+    private(set) var firstRunSelection = "Deskset\\Clock"
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
-         backupsDirectory: URL = Paths.backups, presentsWindows: Bool = true) {
+         backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true) {
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
         self.backupsDirectory = backupsDirectory
+        self.defaultSkinsSource = defaultSkinsSource
+        self.settingsDirectory = settingsDirectory
         self.presentsWindows = presentsWindows
         opensEditorInSteps = presentsWindows
         super.init()
@@ -78,6 +88,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         WeatherWiring.install()
         let firstRun = state.data.skins.isEmpty
         installDefaultSkinsIfNeeded()
+        ensureStationeryFile()
         setUpStatusItem()
         observeSystem()
         observeFonts()
@@ -91,7 +102,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pendingOpenURLs = []
         } else if firstRun {
             // First launch: show where things are (the menu bar icon can be hidden by macOS).
-            showManageWindow(selecting: "Deskset\\Clock", file: nil)
+            showManageWindow(selecting: firstRunSelection, file: nil)
         }
     }
 
@@ -199,42 +210,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if launched { installer.open(CodeEditorRouter.routeOpenedFiles(urls, app: self)) } else { pendingOpenURLs += urls }
     }
 
-    private func installDefaultSkinsIfNeeded() {
-        guard state.data.defaultSkinsInstalled < AppController.defaultSkinsVersion,
-              let source = Paths.defaultSkins,
-              let roots = try? FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil,
-                                                                        options: [.skipsHiddenFiles]) else { return }
-        let fm = FileManager.default
-        for root in roots {
-            let target = skinsDirectory.appendingPathComponent(root.lastPathComponent)
-            var previous: URL?
-            if fm.fileExists(atPath: target.path) {
-                // Keep the old copy (users may have edited it) next to the new one.
-                let backup = backupsDirectory.appendingPathComponent("\(root.lastPathComponent)-examples-v\(state.data.defaultSkinsInstalled)")
-                try? fm.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
-                try? fm.removeItem(at: backup)
-                if (try? fm.moveItem(at: target, to: backup)) != nil { previous = backup } else { try? fm.removeItem(at: target) }
-            }
-            do {
-                try fm.copyItem(at: root, to: target)
-            } catch {
-                Log.write("Could not install example skin \(root.lastPathComponent): \(error)", level: .error)
-                continue
-            }
-            // Carry over the user's choices (Theme, ClockHours, Volume…) for keys that still exist.
-            if let previous {
-                let inc = "@Resources/Variables.inc"
-                AppController.carryOverVariables(from: previous.appendingPathComponent(inc),
-                                                 to: target.appendingPathComponent(inc))
-            }
-        }
-        state.setDefaultSkinsInstalled(AppController.defaultSkinsVersion)
-        cachedLibrary = nil
-    }
-
-    private func loadActiveSkins() {
+    /// Loads the skins of the last session. On the very first launch (no skin has any state yet) the first-run
+    /// layout's skins at their places (`loadFirstRunLayout`); without one, the Clock alone.
+    func loadActiveSkins() {
         var active = state.activeConfigs
         if active.isEmpty && state.data.skins.isEmpty {
+            let loaded = loadFirstRunLayout()
+            if let first = loaded.first {
+                firstRunSelection = first
+                restack()
+                return
+            }
             state.update("Deskset\\Clock") { $0.file = "Clock.ini"; $0.active = true }
             active = state.activeConfigs
         }
@@ -286,19 +272,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Publishes the appearance skins see (`MacAppearance`) and watches it: macOS switching between light and dark
     /// (the app's effective appearance) and the accent color changing (`NSColor.systemColorsDidChangeNotification`)
-    /// run `appearanceChanged`. Set up at launch; the self-tests' apps do without (a suite sets it up itself).
+    /// run `appearanceChanged`; the 12/24-hour clock, the first day of the week and the temperature unit changing run
+    /// `regionalSettingsChanged` (Foundation's locale change, and the preference keys behind them). A new time zone
+    /// drops Foundation's cached one, so `Location=timezone` finds the new zone's city. Set up at launch; the
+    /// self-tests' apps do without (a suite sets it up itself).
     func observeAppearance() {
         appearanceSeen = MacAppearance.current.refresh()
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async { self?.appearanceChanged() }
         }
         observe(NotificationCenter.default, NSColor.systemColorsDidChangeNotification) { app in app.appearanceChanged() }
+        observe(NotificationCenter.default, NSLocale.currentLocaleDidChangeNotification) { app in
+            app.regionalSettingsChanged()
+        }
+        regionalDefaults = RegionalDefaultsObserver { [weak self] in self?.regionalSettingsChanged(recheck: true) }
+        observe(NotificationCenter.default, .NSSystemTimeZoneDidChange) { _ in NSTimeZone.resetSystemTimeZone() }
     }
 
-    /// The appearance or the accent color may have changed: the new values are published, and when they differ from
-    /// what the skins last saw, every skin that follows the appearance (it uses an appearance variable or writes an action
-    /// of its own) runs its `MacOnAppearanceChangeAction` (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where
-    /// it is owned. Other skins are left alone.
+    /// The clock, week or temperature setting may have changed (System Settings → General → Date & Time, Language &
+    /// Region): worked out again (`MacRegional`) and passed on like an appearance change, so skins that use
+    /// `#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#` or `#MACTEMPERATUREUNIT#` run their `MacOnAppearanceChangeAction`.
+    /// `recheck`: a preference key changed, which Foundation's current locale may not show yet — look once more a
+    /// second later. Main thread.
+    func regionalSettingsChanged(recheck: Bool = false) {
+        MacRegional.refresh()
+        appearanceChanged()
+        guard recheck else { return }
+        regionalRecheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MacRegional.refresh()
+            self?.appearanceChanged()
+        }
+        regionalRecheck = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// The appearance, the accent color or a clock, week or temperature setting may have changed: the new values are
+    /// published, and when they differ from what the skins last saw, every skin that follows the appearance (it uses an
+    /// appearance variable or writes an action of its own) runs its `MacOnAppearanceChangeAction`
+    /// (`Skin.appearanceDidChange()`: `[!Refresh]` by default), where it is owned. Other skins are left alone.
     /// Main thread.
     func appearanceChanged() {
         DesktopInputs.appearance.refresh()
@@ -1119,19 +1131,5 @@ final class CustomMenuAction: NSObject {
     init(controller: SkinController, action: String) {
         self.controller = controller
         self.action = action
-    }
-}
-
-extension AppController {
-    /// Copies [Variables] values of `old` into `new` for keys present in both (new keys and comments stay).
-    static func carryOverVariables(from old: URL, to new: URL) {
-        guard let oldText = try? TextDecoding.readFile(at: old),
-              let oldVars = IniDocument.parse(oldText).section(named: "Variables"),
-              let newText = try? TextDecoding.readFile(at: new),
-              let newVars = IniDocument.parse(newText).section(named: "Variables") else { return }
-        for entry in newVars.entries where !entry.key.lowercased().hasPrefix("@include") {
-            guard let value = oldVars.value(forKey: entry.key), value != entry.value else { continue }
-            try? IniWriter.writeValue(value, key: entry.key, section: "Variables", fileURL: new)
-        }
     }
 }

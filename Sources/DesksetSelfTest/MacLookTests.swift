@@ -292,7 +292,7 @@ func runMacLookTests(_ t: TestRunner) {
         t.check(BuiltInVariables.isDynamic("MACAPPEARANCE"))
         t.check(!BuiltInVariables.isBuiltIn("MACSOMETHING"))
         t.check(!BuiltInVariables.names.contains("MACDARKMODE"), "the manual's list stays the manual's")
-        t.equal(BuiltInVariables.macAppearanceNames.count, 7)
+        t.equal(BuiltInVariables.macAppearanceNames.count, 10)
         t.equal(SkinAppearance.format(RGBA(r: 0.4, g: 254.6, b: 300, a: -2)), "0,255,255,0")
         t.equal(SkinAppearance.dark.variableValue("macappearance"), "Dark")
         t.equal(SkinAppearance.light.variableValue("macdarkmode"), "0")
@@ -328,6 +328,104 @@ func runMacLookTests(_ t: TestRunner) {
         skin.execute("[!SetVariable MACDARKMODE 5]", from: nil)
         t.equal(skin.variable("MACDARKMODE"), "1", "!SetVariable cannot change it")
         t.equal(skin.variable("macseparatorcolor"), "255,255,255,26")
+    }
+
+    t.suite("Mac look: clock, week and temperature variables") {
+        for name in ["MACCLOCKHOURS", "MacFirstWeekday", "mactemperatureunit"] {
+            t.check(BuiltInVariables.isBuiltIn(name) && BuiltInVariables.isDynamic(name), name)
+            t.check(SkinAppearance.mentioned(in: "X=#\(name)#"), name)
+        }
+        let standard = MacRegionalSettings.standard
+        t.equal([standard.variableValue("macclockhours"), standard.variableValue("macfirstweekday"),
+                 standard.variableValue("mactemperatureunit")], ["24", "0", "C"], "a host that does not ask macOS")
+        t.equal(SkinAppearance.dark.variableValue("macclockhours"), "24")
+        t.equal(standard.variableValue("macappearance"), nil)
+        t.equal(MacRegionalSettings(clockHours: 13, firstWeekday: 9).clockHours, 24, "only 12 is 12")
+        t.equal(MacRegionalSettings(clockHours: 12, firstWeekday: 9).firstWeekday, 6, "clamped")
+        t.equal(MacRegionalSettings(firstWeekday: -3).firstWeekday, 0)
+
+        // From macOS: the locale's preferred hour (the 24-hour switch changes it), the calendar, the Temperature
+        // setting or the region's unit for weather.
+        func hours(_ id: String) -> Int { MacRegionalSettings.clockHours(locale: Locale(identifier: id)) }
+        t.equal(hours("en_US"), 12)
+        t.equal(hours("en_GB"), 24)
+        t.equal(hours("de_DE"), 24)
+        t.equal(hours("zh_CN"), 24)
+        t.equal(hours("zh_TW"), 12, "ah時")
+        t.equal(hours("ko_KR"), 12)
+        t.equal(hours("fr_CA"), 24, "HH 'h': the quoted h is text")
+        t.equal(hours("en_US@hours=h23"), 24, "the locale's own override")
+        t.equal(hours("de_DE@hours=h12"), 12)
+        t.equal(WeatherEnvironment.systemUses24HourClock(locale: Locale(identifier: "en_US")), false, "the weather's default formats agree")
+        func weekday(_ id: String) -> Int {
+            var c = Calendar(identifier: .gregorian)
+            c.locale = Locale(identifier: id)
+            return MacRegionalSettings.firstWeekday(calendar: c)
+        }
+        t.equal(weekday("en_US"), 0, "Sunday")
+        t.equal(weekday("de_DE"), 1, "Monday")
+        t.equal(weekday("ar_EG"), 6, "Saturday")
+        var monday = Calendar(identifier: .gregorian)
+        monday.firstWeekday = 2
+        t.equal(MacRegionalSettings.firstWeekday(calendar: monday), 1, "the user's own choice")
+        func unit(_ setting: String?, _ id: String) -> TemperatureUnit {
+            MacRegionalSettings.temperatureUnit(setting: setting, locale: Locale(identifier: id))
+        }
+        t.equal(unit(nil, "en_US"), .fahrenheit)
+        t.equal(unit(nil, "de_DE"), .celsius)
+        t.equal(unit(nil, "zh_CN"), .celsius)
+        t.equal(unit(nil, "en_BS"), .fahrenheit, "the region's unit for weather, not its measurement system")
+        t.equal(unit(nil, "en_US@mu=celsius"), .celsius, "the locale's own override")
+        t.equal(unit("Celsius", "en_US"), .celsius, "the Temperature setting wins")
+        t.equal(unit("Fahrenheit", "de_DE"), .fahrenheit)
+        t.equal(unit(" f ", "de_DE"), .fahrenheit)
+        t.equal(unit("Kelvin", "en_US"), .fahrenheit, "an unknown setting is ignored")
+        let mac = MacRegionalSettings.system(locale: Locale(identifier: "en_US"), calendar: monday,
+                                             temperatureSetting: "Celsius")
+        t.equal(mac, MacRegionalSettings(clockHours: 12, firstWeekday: 1, temperatureUnit: .celsius))
+
+        // What skins see: dynamic, fixed for [Variables] and !SetVariable, and "Auto" settings built on them.
+        let host = MacLookHost()
+        host.appearance.regional = MacRegionalSettings(clockHours: 12, firstWeekday: 1, temperatureUnit: .fahrenheit)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        MacOnAppearanceChangeAction=[!UpdateMeter *][!Redraw]
+        [Variables]
+        MACCLOCKHOURS=24
+        ClockHours=Auto
+        ClockHoursAuto=#MACCLOCKHOURS#
+        ClockHours24=24
+        ClockHours12=12
+        WeekStart=Auto
+        WeekStartAuto=#MACFIRSTWEEKDAY#
+        TempUnit=Auto
+        TempUnitAuto=#MACTEMPERATUREUNIT#
+        [Plain]
+        Meter=String
+        Text=#MACCLOCKHOURS# #MACFIRSTWEEKDAY# #MACTEMPERATUREUNIT#
+        [Auto]
+        Meter=String
+        DynamicVariables=1
+        Text=[#ClockHours[#ClockHours]] [#WeekStart[#WeekStart]] [#TempUnit[#TempUnit]]
+        """, host: host)
+        skin.update()
+        t.equal(text(skin, "Plain"), "12 1 F", "[Variables] cannot override a built-in")
+        t.equal(text(skin, "Auto"), "12 1 F", "Auto resolves through the nested variables")
+        t.check(skin.usesMacAppearance)
+        skin.execute("[!SetVariable MACFIRSTWEEKDAY 3]", from: nil)
+        t.equal(skin.variable("MACFIRSTWEEKDAY"), "1", "!SetVariable cannot change it")
+        host.appearance.regional = MacRegionalSettings(clockHours: 24, firstWeekday: 0, temperatureUnit: .celsius)
+        skin.appearanceDidChange()
+        t.equal(text(skin, "Auto"), "24 0 C", "a change of the settings reaches [Variables] built from them")
+        t.equal(skin.variable("ClockHoursAuto"), "24")
+
+        // Used only through one of them: refreshed by default when a setting changes.
+        let refreshHost = MacLookHost()
+        let (week, _) = try makeSkin(t, "[M]\nMeter=String\nText=#MACFIRSTWEEKDAY#\n", host: refreshHost)
+        week.update()
+        t.check(week.usesMacAppearance)
+        week.appearanceDidChange()
+        t.equal(refreshHost.handled.filter { $0.name == "refresh" }.count, 1)
     }
 
     t.suite("Mac look: skins that use appearance variables run MacOnAppearanceChangeAction") {

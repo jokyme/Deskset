@@ -72,8 +72,8 @@ Deskset 常驻菜单栏，没有 Dock 图标。如果菜单栏图标被隐藏了
 [GeoNames](https://www.geonames.org/)（CC BY 4.0），在本机查找。每个天气皮肤的右键菜单都会注明 MET Norway 并显示数据的更新时间。
 
 - **隐私：** 只有在桌面上运行、并且设置了地点的皮肤才会发出请求。MET Norway 只会收到你的 IP 地址和取整到约 1 公里的地点坐标。
-  `Location=auto` 会请求一次定位服务；得到的位置会先取整，只保存在内存中，从不写入磁盘或日志。日出日落和月相（`Plugin=MacSun`）
-  从不联网。
+  `Location=auto` 会请求一次定位服务；得到的位置会先取整，只保存在内存中，从不写入磁盘或日志。`Location=timezone` 从同一张
+  离线表中取这台 Mac 所在时区对应的城市，不请求任何权限。日出日落和月相（`Plugin=MacSun`）从不联网。
 - **关闭：** `defaults write app.deskset.Deskset WeatherEnabled -bool NO`（恢复：`defaults delete app.deskset.Deskset WeatherEnabled`）。
 - 选项、数值和细节见 [docs/compat/weather.md](docs/compat/weather.md)（英文）。
 

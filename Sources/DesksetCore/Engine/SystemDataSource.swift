@@ -82,6 +82,13 @@ public protocol SystemDataSource: AnyObject {
     func networkCounters(interface: String?) -> NetworkCounters
     /// Bytes for the volume containing `path`.
     func diskSpace(path: String) -> (total: Double, free: Double)?
+    /// Finder's "available" space of the volume containing `path`, in bytes (FreeDiskSpace `MacAvailable=1`, Deskset
+    /// extension): the free space plus what macOS can free up by itself (purgeable space: caches, local snapshots,
+    /// files kept in iCloud), `volumeAvailableCapacityForImportantUsage`. Where a volume has no such figure (it reads 0
+    /// or nothing for disk images, non-APFS and network volumes) the free space. nil only while the first reading of
+    /// the volume is still being made: the figure can take a while, so the app reads it off the skin's thread.
+    /// Default: the free space (`diskSpace`).
+    func availableDiskSpace(path: String) -> Double?
     func uptime() -> TimeInterval
     /// nil when the machine has no battery.
     func battery() -> BatteryStatus?
@@ -119,6 +126,9 @@ public protocol SystemDataSource: AnyObject {
 extension SystemDataSource {
     /// Default: unknown.
     public func graphicsAdapterName() -> String? { nil }
+
+    /// Default: the free space.
+    public func availableDiskSpace(path: String) -> Double? { diskSpace(path: path)?.free }
 
     /// Default: the first active interface.
     public func bestNetworkInterface() -> String? {
