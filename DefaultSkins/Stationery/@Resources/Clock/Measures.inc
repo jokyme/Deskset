@@ -245,5 +245,5 @@ FontFace=#FontText#
 FontSize=9.75
 DefaultValue=[MeasureSun]
 FocusDismiss=1
-Command1=[!WriteKeyValue Variables Location "$UserInput$" "#@#Variables.inc"][!RefreshGroup Stationery]
+Command1=[!WriteKeyValue Variables Location "$UserInput$" "#@#Variables.inc"][!RefreshGroup StationeryPlace]
 DynamicVariables=1

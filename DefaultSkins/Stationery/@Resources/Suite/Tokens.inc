@@ -148,24 +148,28 @@ MoonSymbol7=moonphase.waning.crescent
 ;     ContextTitleN+1=#MenuCardsTitle#        ContextActionN+1=#MenuCardsAction#
 ;     ContextTitleN+2=#MenuLanguageTitle#     ContextActionN+2=#MenuLanguageAction#
 ; Pieces without a card show the Ink item instead of Look and Cards. The Clock, Week Starts and Temperature items go in the widgets that
-; show them. Every item writes Variables.inc and refreshes the whole suite (Group=Stationery).
+; show them. Every item writes Variables.inc and refreshes the widgets that show the setting, and only them, so the
+; others keep their histories (System's CPU, Sensors' chart, Network's rates): each widget's [Rainmeter] Group names the
+; settings it shows, StationeryTime (the clock's hours), StationeryWeek, StationeryTemp, StationeryMedia (the player),
+; StationeryInk, StationeryPlace (the suite's place) and StationeryCities (World Clock's). Cards and Language change
+; every widget, so they refresh the whole suite (Group=Stationery).
 MenuLookTitle=[#MenuLook[#Look]]
 ; until Deskset can set a widget's look itself, the item opens System Settings › Appearance, which Auto follows
 MenuLookAction=["x-apple.systempreferences:com.apple.Appearance-Settings.extension"]
 MenuCardsTitle=[#MenuCards[#UseSolidCards]]
 MenuCardsAction=[!WriteKeyValue Variables UseSolidCards "(1 - #UseSolidCards#)" "#@#Variables.inc"][!RefreshGroup Stationery]
 MenuInkTitle=[#MenuInk[#Ink]]
-MenuInkAction=[!WriteKeyValue Variables Ink [#InkNext[#Ink]] "#@#Variables.inc"][!RefreshGroup Stationery]
+MenuInkAction=[!WriteKeyValue Variables Ink [#InkNext[#Ink]] "#@#Variables.inc"][!RefreshGroup StationeryInk]
 InkNextAuto=White
 InkNextWhite=Dark
 InkNextDark=Auto
 MenuClockTitle=[#MenuClock[#ClockHours]]
-MenuClockAction=[!WriteKeyValue Variables ClockHours [#ClockHoursNext[#ClockHours]] "#@#Variables.inc"][!RefreshGroup Stationery]
+MenuClockAction=[!WriteKeyValue Variables ClockHours [#ClockHoursNext[#ClockHours]] "#@#Variables.inc"][!RefreshGroup StationeryTime]
 ClockHoursNextAuto=24
 ClockHoursNext24=12
 ClockHoursNext12=Auto
 MenuWeekStartTitle=[#MenuWeekStart[#WeekStart]]
-MenuWeekStartAction=[!WriteKeyValue Variables WeekStart [#WeekStartNext[#WeekStart]] "#@#Variables.inc"][!RefreshGroup Stationery]
+MenuWeekStartAction=[!WriteKeyValue Variables WeekStart [#WeekStartNext[#WeekStart]] "#@#Variables.inc"][!RefreshGroup StationeryWeek]
 WeekStartNextAuto=0
 WeekStartNext0=1
 WeekStartNext1=6
@@ -175,7 +179,7 @@ WeekStartNext4=Auto
 WeekStartNext5=Auto
 WeekStartNext6=Auto
 MenuTempTitle=[#MenuTemp[#TempUnit]]
-MenuTempAction=[!WriteKeyValue Variables TempUnit [#TempUnitNext[#TempUnit]] "#@#Variables.inc"][!RefreshGroup Stationery]
+MenuTempAction=[!WriteKeyValue Variables TempUnit [#TempUnitNext[#TempUnit]] "#@#Variables.inc"][!RefreshGroup StationeryTemp]
 TempUnitNextAuto=C
 TempUnitNextC=F
 TempUnitNextF=Auto

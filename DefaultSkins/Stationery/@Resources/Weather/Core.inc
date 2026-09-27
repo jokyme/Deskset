@@ -187,7 +187,7 @@ Measure=String
 String=#Location#
 UpdateDivider=-1
 IfMatch=(?i)^\s*(auto|current|here)\s*$
-IfMatchAction=[!SetVariable WxPlaceSymbol location.fill][!SetOption Rainmeter ContextTitle4 "#WeatherMenuStopMyLocation#"][!SetOption Rainmeter ContextAction4 """[!WriteKeyValue Variables Location "#LastCity#" "#@#Variables.inc"][!RefreshGroup Stationery]"""]
+IfMatchAction=[!SetVariable WxPlaceSymbol location.fill][!SetOption Rainmeter ContextTitle4 "#WeatherMenuStopMyLocation#"][!SetOption Rainmeter ContextAction4 """[!WriteKeyValue Variables Location "#LastCity#" "#@#Variables.inc"][!RefreshGroup StationeryPlace]"""]
 IfNotMatchAction=[!SetVariable WxPlaceSymbol mappin.and.ellipse]
 
 [MeasureCityInput]
@@ -207,5 +207,5 @@ FontSize=9.75
 FocusDismiss=1
 ; the plugin's own place ("" without one), not MeasureWxPlace, which says "Weather"
 DefaultValue=[&MeasureWx:Now(Place)]
-Command1=[!WriteKeyValue Variables Location "$UserInput$" "#@#Variables.inc"][!WriteKeyValue Variables LastCity "$UserInput$" "#@#Variables.inc"][!WriteKeyValue Variables LocationConfirmed 1 "#@#Variables.inc"][!RefreshGroup Stationery]
+Command1=[!WriteKeyValue Variables Location "$UserInput$" "#@#Variables.inc"][!WriteKeyValue Variables LastCity "$UserInput$" "#@#Variables.inc"][!WriteKeyValue Variables LocationConfirmed 1 "#@#Variables.inc"][!RefreshGroup StationeryPlace]
 DynamicVariables=1

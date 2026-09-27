@@ -24,10 +24,10 @@ PlayerAppSpotify=/Applications/Spotify.app
 
 ; ---------------------------------------------------------------- the suite's Player item
 ; A media widget lists it with its own items (titles from the Strings, current value shown); like every suite item
-; it writes Variables.inc and refreshes the whole suite:
+; it writes Variables.inc and refreshes the media widgets (StationeryMedia):
 ;     ContextTitleN=#MenuPlayerTitle#    ContextActionN=#MenuPlayerAction#
 MenuPlayerTitle=[#MenuPlayer[#Player]]
-MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Variables.inc"][!RefreshGroup Stationery]
+MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Variables.inc"][!RefreshGroup StationeryMedia]
 
 ; ---------------------------------------------------------------- for widgets that name the preferred player
 ; the card's "Open …" item ("Open Music"), as Turntable and Studio VU show it
