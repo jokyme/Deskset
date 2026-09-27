@@ -65,6 +65,10 @@ extension Checker {
                     }
                 }
                 replaced = copy
+            case .closureParameter:
+                var copy = d
+                copy.arguments["advice"] = hintText(.closureParameter, d.arguments["value"] == nil ? "remove" : "useValue")
+                replaced = copy
             case .directionMark, .unusualSpace, .invisibleCharacter:
                 // `{name}` is a phrase: keep the character's name as written.
                 replaced = nil
@@ -284,7 +288,8 @@ extension Checker {
         case .swiftStructure:
             report(.swiftStructure, r)
         default:
-            report(row.diagnostic, r, ["desk": .code(desk), "name": .code(name)], fixIts: fixIts)
+            // Rows share templates with the parser's diagnostics, which call the written word `keyword`.
+            report(row.diagnostic, r, ["desk": .code(desk), "name": .code(name), "keyword": .code(name)], fixIts: fixIts)
         }
     }
 
@@ -304,11 +309,50 @@ extension Checker {
     }
 
     /// A component-position call with a foreign name: `VStack { }`, `Image(systemName: "x")`, `Bar(…)`.
+    /// `ForEach(items) { item in … }`: the loop it stands for, when the call has one value and the block starts
+    /// with one parameter.
+    func forEachShape(_ call: CallStmtSyntax) -> (list: PositionedNode, parameter: PositionedToken, inEnd: Int)? {
+        guard call.callee.path == ["ForEach"], let arguments = call.arguments?.arguments, arguments.count == 1,
+              arguments[0].label == nil, let block = call.block,
+              let first = block.items.first, first.kind == .foreignConstruct, first.node.foreignKind == .closureParameter else { return nil }
+        let tokens = first.tokens.filter { !$0.token.isMissing }
+        guard tokens.count == 2, tokens[0].kind == .identifier, tokens[1].kind == .inKeyword else { return nil }
+        return (arguments[0].value.node, tokens[0], tokens[1].textRange.upperBound)
+    }
+
+    /// The loop variable of a `ForEach` (so its block reads it as `for` would), typed by the list.
+    func forEachLoopVariable(_ call: CallStmtSyntax) -> LoopVariable? {
+        guard let shape = forEachShape(call) else { return nil }
+        let list = speculate { inferValue(shape.list, ExprContext(), expected: nil) }
+        var element = Val.error
+        if case .list(let e) = list.type, !list.error {
+            element = Val(e)
+            element.deps = list.deps
+        }
+        element.bind = .loopVariable(shape.parameter.token.name)
+        let loopID = id(call.node)
+        return LoopVariable(name: shape.parameter.token.name, id: loopID, forID: loopID, val: element,
+                            range: range(shape.parameter), inAction: false)
+    }
+
     func reportForeignComponent(_ call: CallStmtSyntax) -> Bool {
         let path = call.callee.path
         guard path.count == 1 else { return false }
         let name = path[0]
         let r = range(call.callee.node)
+        // `ForEach(cpu.cores) { core in` → `for core in cpu.cores {`; the parameter is the loop variable, so its
+        // own diagnostic (DK9111) is not repeated.
+        if let shape = forEachShape(call) {
+            let variable = shape.parameter.token.name
+            let listText = text(shape.list)
+            for d in tree.diagnostics where d.id == .closureParameter && d.range.lowerBound == shape.parameter.textStart {
+                droppedParserDiagnostics.insert(diagnosticKey(d))
+            }
+            report(.swiftUIComponent, r, ["desk": .code("for \(variable) in \(listText) { … }")],
+                   fixIts: [fix("replace", [edit(r.lowerBound..<shape.inEnd, "for \(variable) in \(listText) {")])],
+                   dropped: .element(id(call.node)))
+            return true
+        }
         let labels = call.arguments?.arguments.compactMap { $0.label?.name } ?? []
         // Calls with a telling label: `Image(systemName:)`, `ZStack(alignment:)`, `Label(…, systemImage:)`.
         for row in index.foreignRows(name) {

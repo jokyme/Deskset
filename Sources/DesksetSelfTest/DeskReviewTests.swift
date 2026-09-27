@@ -341,4 +341,27 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(Checker.cycles(in: ["a": ["b"], "b": ["c"], "c": ["b"], "d": ["d"]], order: ["a", "b", "c", "d"]), [["b", "c"], ["d"]])
         t.equal(Checker.cycles(in: ["a": ["b"], "b": ["a"]], order: ["a", "b"], startingAt: { $0 == "b" }), [["b", "a"]])
     }
+
+    t.suite("Desk: review — foreign code: ForEach, closure parameters, Swift declarations") {
+        // ForEach is rewritten to `for`, its parameter is the loop variable, and no message is empty (finding 61).
+        let forEach = deskCheck("info { name: \"T\" }\nwidget {\n    ForEach(cpu.cores) { core in\n        Progress(core.usage)\n    }\n}")
+        t.equal(forEach.diagnostics.map(\.id.rawValue), ["DK9101"])
+        t.equal(forEach.diagnostics.first?.message(in: .english), "This is SwiftUI; in Desk write `for core in cpu.cores { … }`.")
+        let rewritten = deskApplyFix(forEach, "DK9101")
+        t.equal(rewritten, "info { name: \"T\" }\nwidget {\n    for core in cpu.cores {\n        Progress(core.usage)\n    }\n}")
+        t.equal(rewritten.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let parameter = deskCheck("info { name: \"T\" }\nwidget {\n    Column {\n        name in month.weekdays {\n            Text(\"a\")\n        }\n    }\n}")
+        let closure = parameter.diagnostics.first { $0.id.rawValue == "DK9111" }
+        t.equal(closure?.message(in: .english), "Desk blocks take no parameters; remove `name in`.")
+        t.equal(closure?.message(in: .simplifiedChinese), "Desk 的花括号里不写参数；去掉 `name in`。")
+        let onChange = deskCheck("info { name: \"T\" }\nwidget {\n    variable x = 0\n    Text(\"{x}\").onChange(of: x) { newValue in log(\"{newValue}\") }\n}")
+        t.equal(onChange.diagnostics.first { $0.id.rawValue == "DK9111" }?.message(in: .english),
+                "Desk blocks take no parameters; use the value itself, `x`, inside the block.")
+        // `var` found by the foreign table (not the parser's line match) names the word it replaces.
+        let declaration = deskCheck("info { name: \"T\" }\nwidget {\n    var(able x = 0\n    Text(\"a\")\n}")
+        t.equal(declaration.diagnostics.first { $0.id.rawValue == "DK9104" }?.message(in: .english), "`var` is not Desk; write `variable`.")
+        for d in forEach.diagnostics + parameter.diagnostics + onChange.diagnostics + declaration.diagnostics {
+            t.check(!d.message(in: .english).isEmpty && !d.message(in: .simplifiedChinese).isEmpty, "\(d.id.rawValue) has a message")
+        }
+    }
 }

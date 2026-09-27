@@ -44,6 +44,9 @@ func runDeskCheckScratch(_ t: TestRunner) {
             let ms = (ProcessInfo.processInfo.systemUptime - start) * 1000
             print("=== " + snippet.replacingOccurrences(of: "\n", with: "⏎") + String(format: "   (%.1f ms)", ms))
             print(deskDescribe(checked))
+            if ProcessInfo.processInfo.environment["DESK_CHECK_ARGUMENTS"] != nil {
+                for d in checked.diagnostics { print("    \(d.id.rawValue) arguments: \(d.arguments)") }
+            }
         }
     }
 }

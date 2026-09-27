@@ -627,7 +627,13 @@ extension Checker {
         }
         // Not a component: find out what it is, then check its children with a guessed block kind.
         reportNonComponentCall(call, context)
-        if let block = call.block { checkGuessedBlock(block.node, context) }
+        if let block = call.block {
+            // `ForEach(items) { item in … }`: the block reads `item` as a `for` body would.
+            let loop = forEachLoopVariable(call)
+            pushLoop(loop, loop?.val ?? .error)
+            checkGuessedBlock(block.node, context)
+            popLoop(loop)
+        }
     }
 
     /// The block of something that is not a known component: checked with a kind guessed from its statements

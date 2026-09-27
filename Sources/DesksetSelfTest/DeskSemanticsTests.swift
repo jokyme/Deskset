@@ -397,6 +397,9 @@ func runDeskCheckerFuzzTests(_ t: TestRunner) {
             slowest = max(slowest, elapsed)
             if !problems.isEmpty {
                 failures += 1
+                if let dump = environment["DESK_FUZZ_DUMP"] {
+                    FileManager.default.createFile(atPath: dump + "/check-failure-\(n).txt", contents: Data(text.utf8))
+                }
                 if failures <= 3 { t.check(false, "seed \(seed) input \(n): \(problems)\n\(text.debugDescription.prefix(600))") }
             }
         }

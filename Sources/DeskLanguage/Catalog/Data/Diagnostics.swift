@@ -2762,9 +2762,13 @@ extension CatalogData {
             id: .closureParameter, severity: .error,
             trigger: #"`.onChange(of: x) { newValue in … }`"#,
             template: LocalizedText(
-                #"Desk blocks take no parameters; use the value itself, `{value}`, inside the block."#,
-                #"Desk 的花括号里不写参数；在里面直接用 `{value}`。"#),
-            placeholders: ["value": .code],
+                #"Desk blocks take no parameters; {advice}."#,
+                #"Desk 的花括号里不写参数；{advice}。"#),
+            placeholders: ["value": .code, "name": .code, "advice": .text],
+            hints: [
+                HintSpec(key: "useValue", placeholder: "advice", text: LocalizedText(#"use the value itself, `{value}`, inside the block"#, #"在里面直接用 `{value}`"#)),
+                HintSpec(key: "remove", placeholder: "advice", text: LocalizedText(#"remove `{name} in`"#, #"去掉 `{name} in`"#)),
+            ],
             fixIts: [
                 FixItSpec("removeClosureParameter"),
             ]
