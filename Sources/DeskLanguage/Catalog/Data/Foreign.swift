@@ -1,0 +1,338 @@
+import Foundation
+
+// Spellings from other languages and frameworks that Desk recognises and answers with its own: SwiftUI and Swift,
+// web frameworks and CSS, HTML, Rainmeter, and older Desk drafts. The rows teach the Desk pattern, not only the Desk
+// word (a Rainmeter `!SetOption` becomes a conditional value plus a variable). The checker looks a failing name up
+// here before did-you-mean; the parser matches the line patterns before reporting a generic error.
+//
+// `deskText` is the Desk spelling. In an exact row it is the replacement template: `{0}`, `{1}`… are the arguments
+// as written (converted by the other rows first: `.topLeading` → `.topLeft`), `{value}` the value of an INI line,
+// `{hex}` a Rainmeter color written as `#RRGGBB[AA]`, `{name}` a Rainmeter name with a small first letter, `{n}` a
+// number. A row that is not exact shows its text in the message only.
+
+extension CatalogData {
+    static func f(_ family: ForeignSpec.Family, _ pattern: ForeignPattern, _ desk: String, _ id: DiagnosticID,
+                  exact: Bool = true, severity: Severity = .error, context: ForeignContext = .any) -> ForeignSpec {
+        ForeignSpec(family: family, pattern: pattern, context: context, deskText: desk, diagnostic: id, severity: severity,
+                    exact: exact)
+    }
+
+    static let foreign: [ForeignSpec] = operatorRows + swiftUIComponentRows + swiftUIModifierRows + swiftRows
+        + frameworkRows + olderDeskRows + htmlRows + cssRows + rainmeterComponentRows + rainmeterOptionRows
+        + rainmeterActionRows + rainmeterTextRows + otherRows
+
+    /// Operators and punctuation of other languages (§1.6), and their comments.
+    static let operatorRows: [ForeignSpec] = [
+        f(.javaScript, .token("&&"), "and", .symbolicAnd),
+        f(.javaScript, .token("||"), "or", .symbolicOr),
+        f(.javaScript, .token("!"), "not", .symbolicNot),
+        f(.swift, .token("??"), "{0}.ifMissing({1})", .nilCoalescing),
+        f(.swift, .token("?."), ".", .optionalChaining),
+        f(.javaScript, .token("[]"), "{0}.item({n})", .indexBrackets),
+        f(.javaScript, .token("**"), "math.power({0}, {1})", .powerOperator),
+        f(.javaScript, .token("&"), "math.bitAnd({0}, {1})", .bitOperator),
+        f(.javaScript, .token("|"), "math.bitOr({0}, {1})", .bitOperator),
+        f(.javaScript, .token("^"), "math.bitXor({0}, {1})", .bitOperator),
+        f(.javaScript, .token("~"), "math.bitNot({0})", .bitOperator),
+        f(.swift, .token("..<"), "{0}...{last}", .halfOpenRange),
+        f(.other, .token(".."), "{0}...{1}", .halfOpenRange),
+        f(.swift, .token(#"\("#), "{…}", .swiftInterpolation),
+        f(.html, .token("{{"), "{…}", .doubleBraces, severity: .warning, context: .inText),
+        f(.javaScript, .token("=>"), "for, if and computed", .functionSyntax, exact: false),
+        f(.javaScript, .token("->"), "for, if and computed", .functionSyntax, exact: false),
+        f(.swift, .token("+="), "{0} = {0} + {1}", .compoundAssignment),
+        f(.swift, .token("-="), "{0} = {0} - {1}", .compoundAssignment),
+        f(.swift, .token("*="), "{0} = {0} * {1}", .compoundAssignment),
+        f(.swift, .token("/="), "{0} = {0} / {1}", .compoundAssignment),
+        f(.javaScript, .token("++"), "{0} = {0} + 1", .incrementOperator),
+        f(.javaScript, .token("--"), "{0} = {0} - 1", .incrementOperator),
+        f(.rainmeter, .token(";"), "// {text}", .semicolonComment, severity: .warning),
+        f(.other, .token("#"), "// {text}", .hashComment, severity: .warning),
+        f(.swift, .token("$"), "{0}", .swiftBinding),
+    ]
+
+    static let swiftUIComponentRows: [ForeignSpec] = [
+        f(.swiftUI, .name("VStack"), "Column", .swiftUIComponent),
+        f(.swiftUI, .name("HStack"), "Row", .swiftUIComponent),
+        f(.swiftUI, .name("ZStack"), "Freeform", .swiftUIComponent),
+        f(.swiftUI, .call("ZStack", label: "alignment"), "Freeform(align: {0})", .swiftUIComponent),
+        f(.swiftUI, .name("LazyVGrid"), "Grid(columns: 7) { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("LazyHGrid"), "Grid(columns: 7) { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("GridRow"), "Grid(columns: 7) { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("ScrollView"), "Scroll", .swiftUIComponent),
+        f(.swiftUI, .name("ForEach"), "for item in items { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("ProgressView"), "Progress(…)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("TextField"), "Input(…)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("SecureField"), "Input(…)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("TextEditor"), "Input(…, lines: 5)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .call("Image", label: "systemName"), "Icon({0})", .swiftUIComponent),
+        f(.swiftUI, .call("Label", label: "systemImage"), "Label({0}, icon: {1})", .swiftUIComponent),
+        f(.swiftUI, .call("RoundedRectangle", label: "cornerRadius"), "Rectangle().rounded({0})", .swiftUIComponent),
+        f(.swiftUI, .name("RoundedRectangle"), "Rectangle().rounded(…)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .call("Color", label: "red"), "rgb(…)", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("NavigationStack"), "Column { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("NavigationView"), "Column { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("List"), "Column { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("Form"), "Column { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("Group"), "Column { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("HSplitView"), "Row { … }", .swiftUIComponent, exact: false),
+        f(.swiftUI, .name("VSplitView"), "Column { … }", .swiftUIComponent, exact: false),
+    ]
+
+    static let swiftUIModifierRows: [ForeignSpec] = [
+        f(.swiftUI, .modifier("foregroundColor"), ".color({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("foregroundStyle"), ".color({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("cornerRadius"), ".rounded({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("clipShape"), ".rounded(…).clip()", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifierWithArgument("frame", argument: "width"), ".size({0}, {1})", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("frame", argument: "maxWidth"), ".width(.fill)", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("frame", argument: "maxHeight"), ".height(.fill)", .swiftUIModifier),
+        f(.swiftUI, .modifier("frame"), ".size(…)", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("onTapGesture"), ".onClick { … }", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("onTapGesture", argument: "count"), ".onDoubleClick { … }", .swiftUIModifier),
+        f(.swiftUI, .modifier("onHover"), ".hover { … } or .onMouseEnter { … }", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("onAppear"), ".onLoad { … }", .swiftUIModifier),
+        f(.swiftUI, .modifier("task"), ".onLoad { … }", .swiftUIModifier),
+        f(.swiftUI, .modifier("onReceive"), ".every(1s) { … }", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("help"), ".tooltip({0})", .swiftUIModifier, context: .onElement),
+        f(.swiftUI, .modifier("contextMenu"), ".menu { … }", .swiftUIModifier),
+        f(.swiftUI, .modifier("accessibilityLabel"), ".voiceOver({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("fontWeight"), ".bold()", .swiftUIModifier),
+        f(.swiftUI, .modifier("monospacedDigit"), ".digits(.equalWidth)", .swiftUIModifier),
+        f(.swiftUI, .modifier("lineLimit"), ".lines({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("multilineTextAlignment"), ".align({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("textCase"), ".uppercase()", .swiftUIModifier),
+        f(.swiftUI, .modifier("rotationEffect"), ".rotate({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("scaleEffect"), ".scale({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("animation"), ".animate(…)", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("transition"), ".appear(…)", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("glassEffect"), ".background(.glass)", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("padding", argument: ".horizontal"), ".padding(horizontal: {1})", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("padding", argument: ".vertical"), ".padding(vertical: {1})", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("font", argument: ".system"), ".font({size}, {weight}, {design})", .swiftUIModifier),
+        f(.swiftUI, .modifierWithArgument("font", argument: ".custom"), ".font({0}, {size})", .swiftUIModifier),
+        f(.swiftUI, .modifier("resizable"), "", .swiftUIModifier),
+        f(.swiftUI, .modifier("scaledToFit"), ".imageMode(.fit)", .swiftUIModifier),
+        f(.swiftUI, .modifier("scaledToFill"), ".imageMode(.fill)", .swiftUIModifier),
+        f(.swiftUI, .modifier("aspectRatio"), ".imageMode({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("id"), ".name({0})", .swiftUIModifier),
+        f(.swiftUI, .modifier("overlay"), "Freeform { … }", .swiftUIModifier, exact: false),
+        f(.swiftUI, .modifier("zIndex"), "the order in a Freeform (later is in front)", .swiftUIModifier, exact: false),
+    ]
+
+    static let swiftRows: [ForeignSpec] = [
+        f(.swiftUI, .keyword("@State"), "variable", .swiftPropertyWrapper),
+        f(.swiftUI, .keyword("@AppStorage"), "saved", .swiftPropertyWrapper),
+        f(.swiftUI, .keyword("@Binding"), "the variable itself", .swiftPropertyWrapper, exact: false),
+        f(.swiftUI, .keyword("@Environment"), "data such as system.dark", .swiftPropertyWrapper, exact: false),
+        f(.swift, .keyword("let"), "computed", .swiftDeclaration),
+        f(.swift, .keyword("var"), "variable", .swiftDeclaration),
+        f(.javaScript, .keyword("const"), "computed", .swiftDeclaration),
+        f(.swift, .keyword("struct"), "widget { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("class"), "widget { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("body"), "widget { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("import"), "", .swiftStructure),
+        f(.javaScript, .keyword("export"), "", .swiftStructure),
+        f(.swift, .keyword("return"), "widget { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("while"), "for item in list { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("switch"), "if … { … } else if … { … }", .swiftStructure, exact: false),
+        f(.swift, .keyword("self"), "the name itself", .swiftStructure, exact: false),
+        f(.javaScript, .keyword("this"), "the name itself", .swiftStructure, exact: false),
+        f(.swift, .keyword("func"), "for, if and computed", .functionSyntax, exact: false),
+        f(.javaScript, .keyword("function"), "for, if and computed", .functionSyntax, exact: false),
+        f(.other, .keyword("def"), "for, if and computed", .functionSyntax, exact: false),
+        f(.other, .keyword("fn"), "for, if and computed", .functionSyntax, exact: false),
+        f(.swift, .keyword("if let"), "if not {0}.isMissing { … }", .swiftIfLet),
+        f(.swift, .line(regex: #"\{\s*[A-Za-z_][A-Za-z0-9_]*(\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*\s+in\b"#),
+          "the block without `{name} in`, using {value}", .closureParameter),
+        f(.swift, .member("toggle"), "{0} = not {0}", .swiftName),
+        f(.swift, .keyword("nil"), ".isMissing or .ifMissing(…)", .swiftName, exact: false),
+        f(.javaScript, .keyword("null"), ".isMissing or .ifMissing(…)", .swiftName, exact: false),
+        f(.javaScript, .keyword("undefined"), ".isMissing or .ifMissing(…)", .swiftName, exact: false),
+        f(.swift, .implicitMember("leading"), ".left", .swiftName),
+        f(.swift, .implicitMember("trailing"), ".right", .swiftName),
+        f(.swift, .implicitMember("topLeading"), ".topLeft", .swiftName),
+        f(.swift, .implicitMember("topTrailing"), ".topRight", .swiftName),
+        f(.swift, .implicitMember("bottomLeading"), ".bottomLeft", .swiftName),
+        f(.swift, .implicitMember("bottomTrailing"), ".bottomRight", .swiftName),
+        f(.swift, .implicitMember("primary"), ".text", .swiftName),
+        f(.swift, .implicitMember("secondary"), ".dim", .swiftName),
+        f(.swift, .implicitMember("tertiary"), ".faint", .swiftName),
+        f(.swift, .implicitMember("infinity"), ".fill", .swiftName),
+        f(.swift, .implicitMember("ultraThinMaterial"), ".glass", .swiftName),
+        f(.swift, .implicitMember("thinMaterial"), ".glass", .swiftName),
+        f(.swift, .implicitMember("regularMaterial"), ".glass", .swiftName),
+        f(.swift, .implicitMember("thickMaterial"), ".glass", .swiftName),
+        f(.swift, .implicitMember("ultraThickMaterial"), ".glass", .swiftName),
+        f(.swift, .implicitMember("monospaced"), ".mono", .swiftName),
+        f(.swift, .implicitMember("ultraLight"), ".ultralight", .swiftName),
+        f(.swift, .label("alignment"), "align:", .swiftName),
+        f(.swift, .label("isOn"), "{0}", .swiftBinding),
+    ]
+
+    /// React, CSS-in-JS, React Native and Flutter spellings (DK9112).
+    static let frameworkRows: [ForeignSpec] = [
+        f(.reactNative, .modifier("fontSize"), ".font({0})", .otherFrameworkName),
+        f(.reactNative, .modifier("textColor"), ".color({0})", .otherFrameworkName),
+        f(.reactNative, .modifier("fontColor"), ".color({0})", .otherFrameworkName),
+        f(.reactNative, .modifier("backgroundColor"), ".background({0})", .otherFrameworkName),
+        f(.reactNative, .modifier("borderRadius"), ".rounded({0})", .otherFrameworkName),
+        f(.flutter, .modifier("alpha"), ".opacity({0})", .otherFrameworkName),
+        f(.reactNative, .modifier("textAlign"), ".align({0})", .otherFrameworkName),
+        f(.flutter, .modifier("onTap"), ".onClick { … }", .otherFrameworkName),
+        f(.reactNative, .modifier("onPress"), ".onClick { … }", .otherFrameworkName),
+        f(.flutter, .name("Stack"), "Freeform", .otherFrameworkName),
+        f(.css, .modifierWithArgument("digits", argument: ".tabular"), ".digits(.equalWidth)", .otherFrameworkName),
+    ]
+
+    /// Spellings of earlier drafts of Desk (DK9108, "Desk calls this …").
+    static let olderDeskRows: [ForeignSpec] = [
+        f(.olderDesk, .keyword("state"), "variable", .olderDeskName),
+        f(.olderDesk, .keyword("setting"), "an entry of options { }", .olderDeskName, exact: false),
+        f(.olderDesk, .name("Layers"), "Freeform", .olderDeskName),
+        f(.olderDesk, .modifier("corner"), ".rounded({0})", .olderDeskName),
+        f(.olderDesk, .modifierWithArgument("digits", argument: ".fixedWidth"), ".digits(.equalWidth)", .olderDeskName),
+        f(.olderDesk, .modifier("onEnter"), ".onMouseEnter { … }", .olderDeskName),
+        f(.olderDesk, .modifier("onLeave"), ".onMouseLeave { … }", .olderDeskName),
+        f(.olderDesk, .modifier("label"), ".voiceOver({0})", .olderDeskName),
+        f(.olderDesk, .member("music.artwork"), "music.cover", .olderDeskName),
+        f(.olderDesk, .modifier("visible"), ".hidden(if: not {0})", .olderDeskName),
+        f(.olderDesk, .modifier("fit"), ".imageMode({0})", .olderDeskName),
+        f(.olderDesk, .implicitMember("inside"), ".fit", .olderDeskName),
+        f(.olderDesk, .name("toggle"), "showOrHide({0})", .olderDeskName),
+    ]
+
+    static let htmlRows: [ForeignSpec] = [
+        f(.html, .line(regex: #"^\s*</?(div|section|main|header|footer|nav|article)\b"#), "Column { … } or Row { … }",
+          .htmlTag, exact: false),
+        f(.html, .line(regex: #"^\s*</?(span|p|h[1-6]|b|i|strong|em|label)\b"#), #"Text("…")"#, .htmlTag, exact: false),
+        f(.html, .line(regex: #"^\s*<img\b[^>]*\bsrc\s*=\s*"([^"]*)""#), #"Image("{0}")"#, .htmlTag),
+        f(.html, .line(regex: #"^\s*<!--"#), "// {text}", .htmlTag),
+        f(.html, .line(regex: #"\bclass\s*=\s*""#), "style name { … } and .style(name)", .htmlAttribute, exact: false),
+        f(.html, .line(regex: #"\bon(click|mouseover|mouseout)\s*=\s*""#), ".onClick { … }", .htmlAttribute, exact: false),
+        f(.html, .line(regex: #"\bv-(if|for)\s*="#), "if … { … } or for … in … { … }", .htmlAttribute, exact: false),
+    ]
+
+    static let cssRows: [ForeignSpec] = [
+        f(.css, .line(regex: #"^\s*display\s*:\s*flex"#), "Row { … } or Column { … }", .cssDeclaration, exact: false),
+        f(.css, .line(regex: #"^\s*flex-direction\s*:\s*row"#), "Row { … }", .cssDeclaration, exact: false),
+        f(.css, .line(regex: #"^\s*flex-direction\s*:\s*column"#), "Column { … }", .cssDeclaration, exact: false),
+        f(.css, .line(regex: #"^\s*color\s*:\s*([^;]+);?\s*$"#), ".color({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*font-size\s*:\s*([0-9.]+)(px|pt)?\s*;?\s*$"#), ".font({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*font-weight\s*:\s*(bold|700)\s*;?\s*$"#), ".bold()", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*background(-color)?\s*:\s*([^;]+);?\s*$"#), ".background({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*border-radius\s*:\s*([0-9.]+)(px)?\s*;?\s*$"#), ".rounded({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*padding\s*:\s*([0-9.]+)(px)?\s*;?\s*$"#), ".padding({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*margin\s*:\s*([0-9.]+)(px)?\s*;?\s*$"#), ".margin({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*width\s*:\s*([0-9.]+)(px)?\s*;?\s*$"#), ".width({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*height\s*:\s*([0-9.]+)(px)?\s*;?\s*$"#), ".height({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*opacity\s*:\s*([0-9.]+)\s*;?\s*$"#), ".opacity({0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*text-align\s*:\s*(left|center|right)\s*;?\s*$"#), ".align(.{0})", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*text-transform\s*:\s*uppercase\s*;?\s*$"#), ".uppercase()", .cssDeclaration),
+        f(.css, .line(regex: #"^\s*(gap|justify-content|align-items)\s*:"#), "Column(spacing: …) or align:", .cssDeclaration,
+          exact: false),
+        f(.css, .line(regex: #"^\s*[.#][A-Za-z][\w-]*\s*\{"#), "style name { … } and .style(name)", .cssSelector,
+          exact: false),
+    ]
+
+    /// Rainmeter meters written as components (DK3004 with this hint; `Line(value)` is DK4003).
+    static let rainmeterComponentRows: [ForeignSpec] = [
+        f(.rainmeter, .name("Bar"), "Progress", .unknownComponent),
+        f(.rainmeter, .name("String"), "Text", .unknownComponent),
+        f(.rainmeter, .name("Roundline"), "Gauge", .unknownComponent),
+        f(.rainmeter, .name("Rotator"), "Gauge(…, shape: .needle), or .rotate(…) on an Image", .unknownComponent, exact: false),
+        f(.rainmeter, .name("Histogram"), "Graph({0}, shape: .bars)", .unknownComponent),
+        f(.rainmeter, .name("Shape"), "Rectangle(), Circle(), Ellipse(), Capsule(), Line(), Arc() or Path(…)", .unknownComponent,
+          exact: false),
+        f(.rainmeter, .name("Bitmap"), "Image(…)", .unknownComponent, exact: false),
+        f(.rainmeter, .call("Line", label: ""), "Graph({0})", .tooManyArguments),
+    ]
+
+    /// Rainmeter options written as `Key=Value` lines (DK9301), and the ones Desk does not need (DK9306).
+    static let rainmeterOptionRows: [ForeignSpec] = [
+        f(.rainmeter, .iniKey("Meter"), "Text, Image, Progress, Gauge, Graph, Graph(shape: .bars) or a shape", .rainmeterOption,
+          exact: false),
+        f(.rainmeter, .iniKey("Measure"), "the data itself, such as cpu.usage or memory.used", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("Plugin"), "the data itself, such as music.title", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MeasureName"), "the data itself, in the text: \"{cpu.usage}%\"", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("FontColor"), #".color("{hex}")"#, .rainmeterOption),
+        f(.rainmeter, .iniKey("FontSize"), ".font({value} × 4/3)", .rainmeterOption),
+        f(.rainmeter, .iniKey("FontFace"), #".font("{value}")"#, .rainmeterOption),
+        f(.rainmeter, .iniKey("FontWeight"), ".font(…, .bold)", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("SolidColor"), #".background("{hex}")"#, .rainmeterOption),
+        f(.rainmeter, .iniKey("Text"), #"Text("…")"#, .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("StringAlign"), ".position(x: …, y: …, anchor: .topRight) with .align(.right)", .rainmeterOption,
+          exact: false, context: .positionedInFreeform),
+        f(.rainmeter, .iniKey("StringAlign"), ".align(.{value})", .rainmeterOption),
+        f(.rainmeter, .iniKey("StringCase"), ".uppercase()", .rainmeterOption),
+        f(.rainmeter, .iniKey("ClipString"), ".lines(1)", .rainmeterOption),
+        f(.rainmeter, .iniKey("X"), ".position(x: …) in a Freeform", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("Y"), ".position(y: …) in a Freeform", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("W"), ".width({value})", .rainmeterOption),
+        f(.rainmeter, .iniKey("H"), ".height({value})", .rainmeterOption),
+        f(.rainmeter, .iniKey("Hidden"), ".hidden()", .rainmeterOption),
+        f(.rainmeter, .iniKey("ToolTipText"), #".tooltip("{value}")"#, .rainmeterOption),
+        f(.rainmeter, .iniKey("LeftMouseUpAction"), ".onClick { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("LeftMouseDoubleClickAction"), ".onDoubleClick { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("RightMouseUpAction"), ".onRightClick { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseOverAction"), ".hover { … } or .onMouseEnter { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseLeaveAction"), ".onMouseLeave { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseScrollUpAction"), ".onScroll(.up) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseScrollDownAction"), ".onScroll(.down) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseScrollLeftAction"), ".onScroll(.left) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MouseScrollRightAction"), ".onScroll(.right) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfCondition"), ".color(.red, if: cpu.usage > 80) — or .when(cpu.usage > 80) { … }",
+          .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfTrueAction"), ".when(…) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfFalseAction"), ".when(not (…)) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfAboveValue"), ".when(x > …) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfBelowValue"), ".when(x < …) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfEqualValue"), ".when(x == …) { … }", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("IfMatch"), ##".when(x.matches(#"…"#)) { … }"##, .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("Formula"), "computed x = …", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("MeterStyle"), ".style({name})", .rainmeterOption, exact: false),
+        f(.rainmeter, .iniKey("DynamicVariables"), "", .rainmeterNotNeeded),
+        f(.rainmeter, .iniKey("UpdateDivider"), "", .rainmeterNotNeeded),
+        f(.rainmeter, .iniKey("AntiAlias"), "", .rainmeterNotNeeded),
+        f(.rainmeter, .iniKey("Update"), "info { refresh: {value}ms }", .rainmeterNotNeeded),
+        f(.rainmeter, .line(regex: #"^\s*\[[^\]!"]+\]\s*$"#), #"Text("…")"#, .rainmeterSection, exact: false),
+    ]
+
+    /// Rainmeter actions (bangs) written in Desk (DK9304).
+    static let rainmeterActionRows: [ForeignSpec] = [
+        f(.rainmeter, .bang("!SetOption"), "a value and if: on the element — .color(.red, if: alert) — then alert = true here",
+          .rainmeterBang, exact: false),
+        f(.rainmeter, .bang("!SetOptionGroup"), "a value and if: on the elements — .color(.red, if: alert) — then alert = true here",
+          .rainmeterBang, exact: false),
+        f(.rainmeter, .bang("!SetVariable"), "{name} = {value}", .rainmeterBang),
+        f(.rainmeter, .bang("!ShowMeter"), "show({name})", .rainmeterBang),
+        f(.rainmeter, .bang("!HideMeter"), "hide({name})", .rainmeterBang),
+        f(.rainmeter, .bang("!ToggleMeter"), "showOrHide({name})", .rainmeterBang),
+        f(.rainmeter, .bang("!Refresh"), "widget.reload()", .rainmeterBang),
+        f(.rainmeter, .bang("!SetClip"), "copy({0})", .rainmeterBang),
+        f(.rainmeter, .bang("!Log"), "log({0})", .rainmeterBang),
+        f(.rainmeter, .bang("!Delay"), "after({0}ms) { … }", .rainmeterBang),
+        f(.rainmeter, .bang("!CommandMeasure"), "music.playPause(), weather.refresh() …", .rainmeterBang, exact: false),
+        f(.rainmeter, .bang("!Execute"), "open(…)", .rainmeterBang, exact: false),
+        f(.rainmeter, .bang("!WriteKeyValue"), "options.x = … or saved x = …", .rainmeterBang, exact: false),
+        f(.rainmeter, .line(regex: #"\[\s*"?https?://[^\]]*\]"#), "open({0})", .rainmeterBang),
+        f(.rainmeter, .line(regex: #"\[\s*"?[^\]!"]+\.exe"?\s*\]"#), #"open("…")"#, .rainmeterBang, exact: false),
+    ]
+
+    /// Rainmeter habits inside text and values.
+    static let rainmeterTextRows: [ForeignSpec] = [
+        f(.rainmeter, .token("#Name#"), "options.{name}", .rainmeterVariable),
+        f(.rainmeter, .token("[Measure]"), "the data itself, such as {cpu.usage}", .rainmeterSectionVariable, exact: false),
+        f(.rainmeter, .token("%1"), "{…}", .rainmeterPlaceholderInText, severity: .warning, context: .inText),
+        f(.rainmeter, .token("%H"), "HH:mm", .rainmeterDateFormat),
+        f(.rainmeter, .token("R"), "previous.right + {n}", .rainmeterRelativePosition),
+        f(.rainmeter, .token("r"), "previous.left + {n}", .rainmeterRelativePosition),
+        f(.rainmeter, .line(regex: #"^[A-Za-z]:\\|^\\\\|%[A-Z]+%"#), #"open("{app}")"#, .windowsPath),
+    ]
+
+    /// Other spellings: a British spelling, words other tools use.
+    static let otherRows: [ForeignSpec] = [
+        f(.other, .modifier("colour"), ".color({0})", .unknownModifier),
+        f(.other, .modifier("greyscale"), ".grayscale()", .unknownModifier),
+    ]
+}
