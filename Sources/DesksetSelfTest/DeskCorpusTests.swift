@@ -241,6 +241,41 @@ func runDeskCorpusTests(_ t: TestRunner) {
         }
     }
 
+    t.suite("Desk: fuzz — pathological input") {
+        // Inputs that once made a pass quadratic or exponential: each must stay within a bounded time (these are
+        // debug-build bounds; the parse of each takes well under half a second on the reference machine).
+        let cases: [(String, String)] = [
+            ("unclosed braces", String(repeating: "Row {\n", count: 10_000)),
+            ("extra braces", String(repeating: "}\n", count: 20_000)),
+            ("corner quotes", "x = " + String(repeating: "「", count: 20_000)),
+            ("optional chains", String(repeating: "a?.b ", count: 10_000)),
+            ("named widgets", String(repeating: "widget CPU {\n}\n", count: 3_000)),
+            ("parentheses", "x = " + String(repeating: "(", count: 30_000)),
+            ("nested interpolations", "x = " + String(repeating: "\"{", count: 10_000)),
+            ("single quotes", String(repeating: "'", count: 20_001)),
+            ("ternaries", "x = " + String(repeating: "a ? b : ", count: 5_000)),
+            ("statements on a line", String(repeating: "Text(\"A\") ", count: 6_000)),
+            ("else chain", String(repeating: "if a {} else ", count: 5_000)),
+            ("brace lines", String(repeating: "{\n", count: 10_000) + String(repeating: "    }\n", count: 5_000)),
+            ("indent repair", String(repeating: "Row {\n    Text(\"A\")\n", count: 3_000)),
+            ("foreign blocks", String(repeating: "func f() {\n", count: 5_000)),
+            ("broken strings", String(repeating: "Text(\"a\n\"b\")\n", count: 4_000)),
+            ("prefix operators", "x = " + String(repeating: "- not ", count: 8_000) + "1"),
+        ]
+        for (name, text) in cases {
+            let start = ProcessInfo.processInfo.systemUptime
+            let tree = deskParse(text)
+            let parse = ProcessInfo.processInfo.systemUptime - start
+            let formatStart = ProcessInfo.processInfo.systemUptime
+            let formatted = Desk.formatted(tree)
+            let format = ProcessInfo.processInfo.systemUptime - formatStart
+            t.equal(deskTreeProblems(tree), [], name)
+            t.check(parse < 3, "\(name): parse took \(parse) s")
+            t.check(format < 10, "\(name): format took \(format) s")
+            t.equal(Desk.formatted(deskParse(formatted)), formatted, "\(name): formatting is idempotent")
+        }
+    }
+
     t.suite("Desk: performance") {
         // A 2,000-line file of realistic widget code (the editor re-parses 0.3 s after typing stops, §0.4).
         let widget = try String(contentsOf: deskFixtures.appendingPathComponent("Acceptance/MonthView.desk"), encoding: .utf8)

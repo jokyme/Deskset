@@ -1112,10 +1112,18 @@ final class DeskFormatter {
     func edits() -> [TextEdit] {
         decideFromOriginal()
         var output = Output(text: tree.text, starts: [])
-        for _ in 0..<64 {
+        // Breaking the outermost construct first and measuring again gives the most natural result; a line that
+        // still overflows after a few rounds (pathologically deep one-line code) has all its constructs broken.
+        var rounds = 0
+        while true {
             layout()
             output = render()
-            if !breakOverflowingLines(output) { break }
+            rounds += 1
+            if !breakOverflowingLines(output, all: rounds > 8) || rounds > 9 { break }
+        }
+        if rounds > 9 {
+            layout()
+            output = render()
         }
         let original = DeskFormatter.structure(tree)
         if verify(output.text, against: original) { return minimalEdits(output) }
@@ -1164,7 +1172,7 @@ final class DeskFormatter {
 
     /// Breaks the outermost single-line block or modifier chain on each line wider than `maxWidth`. Returns
     /// whether a decision changed.
-    func breakOverflowingLines(_ output: Output) -> Bool {
+    func breakOverflowingLines(_ output: Output, all: Bool = false) -> Bool {
         let text = Array(output.text.utf8)
         // Line of each output offset.
         var lineStarts = [0]
@@ -1204,6 +1212,13 @@ final class DeskFormatter {
         }
         var changed = false
         for (l, list) in candidates where width(ofLine: l) > options.maxWidth {
+            if all {
+                for candidate in list {
+                    if candidate.isChain { brokenChains.insert(candidate.id) } else { brokenBlocks.insert(candidate.id) }
+                }
+                changed = changed || !list.isEmpty
+                continue
+            }
             guard let best = list.min(by: { ($0.depth, $0.isChain ? 0 : 1) < ($1.depth, $1.isChain ? 0 : 1) }) else { continue }
             if best.isChain { brokenChains.insert(best.id) } else { brokenBlocks.insert(best.id) }
             changed = true

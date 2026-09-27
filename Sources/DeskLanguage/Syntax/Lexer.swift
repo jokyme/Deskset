@@ -108,6 +108,8 @@ struct Lexer {
 
     let bytes: [UInt8]
     let file: DeskFileID
+    /// The first offset of every line.
+    let lineStartTable: [Int]
     var pos = 0
     var tokens: [Token] = []
     var starts: [Int] = []
@@ -117,10 +119,68 @@ struct Lexer {
     private var braceDepth = 0
     /// The last token was `script` at the top level: a `{` that follows is one opaque token.
     private var scriptPending = false
+    /// Offsets of `{` whose interpolation could not be closed: when a string around them is lexed again (after a
+    /// rollback), they are text at once, so nested strings cost linear time, not exponential.
+    private var failedInterpolations: Set<Int> = []
+    /// Per line (by its first offset): where the quote-like characters are, so that looking for a string's
+    /// closing mark does not scan the rest of the line for every opening one.
+    private var lineMarks: [Int: [UInt32: [Int]]] = [:]
+    static let markedScalars: Set<UInt32> = [0x27, 0x2019, 0xFF07, 0x60, 0x300D, 0x300F, 0x201D]
+
+    /// The first offset in `from..<before` (on `from`'s line) holding one of `scalars`.
+    mutating func nextMark(_ scalars: [UInt32], from: Int, before: Int) -> Int? {
+        guard from < before else { return nil }
+        var low = 0
+        var high = lineStartTable.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if lineStartTable[mid] <= from { low = mid } else { high = mid - 1 }
+        }
+        let lineStart = lineStartTable[low]
+        if lineMarks[lineStart] == nil {
+            var marks: [UInt32: [Int]] = [:]
+            var k = lineStart
+            let end = lineEnd(from: lineStart)
+            while k < end {
+                let (scalar, length) = scalar(at: k)
+                if Lexer.markedScalars.contains(scalar.value) { marks[scalar.value, default: []].append(k) }
+                k += length
+            }
+            lineMarks[lineStart] = marks
+        }
+        var best: Int?
+        for value in scalars {
+            guard let positions = lineMarks[lineStart]?[value] else { continue }
+            var low = 0
+            var high = positions.count
+            while low < high {
+                let mid = (low + high) / 2
+                if positions[mid] < from { low = mid + 1 } else { high = mid }
+            }
+            if low < positions.count, positions[low] < before, best.map({ positions[low] < $0 }) ?? true {
+                best = positions[low]
+            }
+        }
+        return best
+    }
+
+    /// Whether the character at `offset` follows an odd run of backslashes.
+    func isEscaped(_ offset: Int) -> Bool {
+        var count = 0
+        var k = offset
+        while k > 0, bytes[k - 1] == 0x5C { count += 1; k -= 1 }
+        return count % 2 == 1
+    }
+
+    /// Tokens lexed inside interpolations, attempts that were rolled back included. Past a budget proportional
+    /// to the file, a `{` in text is no longer tried as an interpolation, so pathological nesting stays linear.
+    private var interpolationWork = 0
+    private var interpolationBudget: Int { max(10_000, bytes.count * 4) }
 
     init(bytes: [UInt8], file: DeskFileID) {
         self.bytes = bytes
         self.file = file
+        lineStartTable = LineTable(bytes: bytes).starts
         tokens.reserveCapacity(bytes.count / 4 + 8)
         starts.reserveCapacity(bytes.count / 4 + 8)
     }
@@ -222,11 +282,22 @@ struct Lexer {
         return (Unicode.Scalar(value) ?? "\u{FFFD}", length)
     }
 
-    /// Position of the next line break (or the end of the text) at or after `i`.
+    /// Position of the next line break (or the end of the text) at or after `i`, from the table of line starts
+    /// (strings and interpolations ask for it often; scanning each time would cost the rest of the line).
     func lineEnd(from i: Int) -> Int {
-        var j = i
-        while j < bytes.count, bytes[j] != 0x0A, bytes[j] != 0x0D { j += 1 }
-        return j
+        guard i < bytes.count else { return bytes.count }
+        if bytes[i] == 0x0A || bytes[i] == 0x0D { return i }
+        var low = 0
+        var high = lineStartTable.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if lineStartTable[mid] <= i { low = mid } else { high = mid - 1 }
+        }
+        guard low + 1 < lineStartTable.count else { return bytes.count }
+        var end = lineStartTable[low + 1]
+        if end > 0, bytes[end - 1] == 0x0A { end -= 1 }
+        if end > 0, bytes[end - 1] == 0x0D { end -= 1 }
+        return end
     }
 
     /// Whether only blanks stand between the start of the line and `i`.
@@ -1000,13 +1071,17 @@ struct Lexer {
     mutating func lexQuotedOrLone(style: QuoteStyle, openLength: Int, leading: [Trivia], nested: Bool, limit: Int) {
         let start = pos
         let end = min(lineEnd(from: start), limit)
-        var i = start + openLength
+        let closers: [UInt32]
+        switch style {
+        case .backquote: closers = [0x60]
+        case .single(let o): closers = o == "\u{2018}" || o == "\u{2019}" ? [0x27, 0x2019] : o == "\u{FF07}" ? [0x27, 0xFF07] : [0x27]
+        default: closers = [0x27]
+        }
         var found = false
-        while i < end {
-            let (s, length) = scalar(at: i)
-            if s == "\\" { i += 2; continue }
-            if style.closes(s) { found = true; break }
-            i += length
+        var from = start + openLength
+        while let candidate = nextMark(closers, from: from, before: end) {
+            if !isEscaped(candidate) { found = true; break }
+            from = candidate + 1
         }
         if found {
             lexString(openLength: openLength, style: style, leading: leading, nested: nested, limit: limit)
@@ -1027,14 +1102,7 @@ struct Lexer {
         let closer: Unicode.Scalar = s == "\u{300C}" ? "\u{300D}" : "\u{300F}"
         if !readsAsBrace(at: start, length: length) && expressionCanStart() {
             let end = min(lineEnd(from: start), limit)
-            var i = start + length
-            var found = false
-            while i < end {
-                let (c, l) = scalar(at: i)
-                if c == closer { found = true; break }
-                i += l
-            }
-            if found {
+            if nextMark([closer.value], from: start + length, before: end) != nil {
                 lexString(openLength: length, style: .corner(opener: s), leading: leading, nested: inInterpolation,
                           limit: limit)
                 return
@@ -1170,16 +1238,15 @@ struct Lexer {
     }
 
     /// The first `”`, `」` or `』` directly followed by `)`, `,` or `}` in `from..<to`.
-    private func curlyQuoteSlip(from: Int, to: Int) -> Int? {
-        var i = from
-        while i < to {
-            if bytes[i] < 0x80 { i += 1; continue }
-            let (s, length) = scalar(at: i)
-            if s == "\u{201D}" || s == "\u{300D}" || s == "\u{300F}", i + length < to {
+    private mutating func curlyQuoteSlip(from: Int, to: Int) -> Int? {
+        var cursor = from
+        while let i = nextMark([0x201D, 0x300D, 0x300F], from: cursor, before: to) {
+            let length = 3
+            if i + length < to {
                 let next = bytes[i + length]
                 if next == 0x29 || next == 0x2C || next == 0x7D { return i }
             }
-            i += length
+            cursor = i + length
         }
         return nil
     }
@@ -1209,8 +1276,11 @@ struct Lexer {
         case .single, .backquote: flags.insert(.wrongQuotes)
         default: break
         }
-        let windows = looksLikeWindowsPath(start + openLength, lineLimit)
-        if windows { flags.insert(.windowsPath) }
+        // Whether the text is a Windows path is known once its end is: escapes are reported as they come, and
+        // dropped at the end for a path (reported once by the checker instead).
+        let windows = false
+        let diagnosticsBefore = diagnostics.count
+        var sawInterpolation = false
         append(Token(kind: .stringStart, text: text(start, start + openLength), leadingTrivia: leading, flags: flags),
                start: start)
         let startIndex = tokens.count - 1
@@ -1255,11 +1325,13 @@ struct Lexer {
                 let segmentBefore = segment
                 flushText(&segment, i)
                 let interpolationLimit = min(lineEnd(from: i), lineLimit, forcedEnd ?? lineLimit)
-                if depth < Lexer.maxStringDepth,
+                if depth < Lexer.maxStringDepth, !failedInterpolations.contains(i), interpolationWork < interpolationBudget,
                    let end = lexInterpolation(at: i, lineLimit: interpolationLimit, depth: depth + 1) {
                     i = end
                     segment = end
+                    sawInterpolation = true
                 } else {
+                    failedInterpolations.insert(i)
                     // Still open at the end of its line: the `{` is text, and the text before it stays one segment.
                     rollback(beforeFlush)
                     segment = segmentBefore
@@ -1284,6 +1356,17 @@ struct Lexer {
                     }
                 }
                 i += length
+            }
+        }
+        let contentEnd = closerRange?.lowerBound ?? result.end
+        if !sawInterpolation && looksLikeWindowsPath(start + openLength, contentEnd) {
+            tokens[startIndex].flags.insert(.windowsPath)
+            let removable = diagnostics[diagnosticsBefore...].filter { d in
+                d.id == .invalidEscape && d.fixIts.first?.titleKey == "showBackslash"
+            }
+            if !removable.isEmpty {
+                diagnostics = Array(diagnostics[..<diagnosticsBefore])
+                    + diagnostics[diagnosticsBefore...].filter { !removable.contains($0) }
             }
         }
         // Wrong delimiters: one diagnostic per string.
@@ -1463,7 +1546,8 @@ struct Lexer {
             let (s, _) = scalar(at: at)
             let isQuote = bytes[at] == 0x22 || s == "\u{201C}" || s == "\u{201D}" || s == "\u{FF02}"
             if isQuote {
-                if depth >= Lexer.maxStringDepth { return nil }
+                interpolationWork += 1
+                if depth >= Lexer.maxStringDepth || interpolationWork >= interpolationBudget { return nil }
                 let before = tokens.count
                 if bytes[at] == 0x22, at + 2 < lineLimit, bytes[at + 1] == 0x22, bytes[at + 2] == 0x22 { return nil }
                 lexString(openLength: s.isASCII ? 1 : 3, style: .double(opener: s), leading: leading, nested: true,
@@ -1473,6 +1557,8 @@ struct Lexer {
                 continue
             }
             let before = tokens.count
+            interpolationWork += 1
+            if interpolationWork >= interpolationBudget { return nil }
             lexNormalToken(leading: leading, limit: lineLimit, inInterpolation: true)
             if tokens.count == before || pos <= at { return nil }
         }

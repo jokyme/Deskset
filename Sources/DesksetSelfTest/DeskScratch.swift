@@ -4,6 +4,46 @@ import Foundation
 /// Temporary exploration harness: DESK_SCRATCH=path prints each snippet's outline and diagnostics (snippets are
 /// separated by lines of `----`).
 func runDeskScratch(_ t: TestRunner) {
+    if ProcessInfo.processInfo.environment["DESK_ADVERSARIAL"] != nil {
+        let cases: [(String, String)] = [
+            ("unclosed braces", String(repeating: "Row {\n", count: 10_000)),
+            ("extra braces", String(repeating: "}\n", count: 20_000)),
+            ("corner quotes", "x = " + String(repeating: "「", count: 20_000)),
+            ("optional chains", String(repeating: "a?.b ", count: 10_000)),
+            ("named widgets", String(repeating: "widget CPU {\n}\n", count: 3_000)),
+            ("parens", "x = " + String(repeating: "(", count: 30_000)),
+            ("interpolations", "x = " + String(repeating: "\"{", count: 10_000)),
+            ("single quotes", String(repeating: "'", count: 20_001)),
+            ("ternaries", "x = " + String(repeating: "a ? b : ", count: 5_000)),
+            ("ini", String(repeating: "[Meter]\nX=1\n", count: 5_000)),
+            ("statements on a line", String(repeating: "Text(\"A\") ", count: 10_000)),
+            ("else chain", String(repeating: "if a {} else ", count: 5_000)),
+            ("comments", String(repeating: "/*", count: 10_000)),
+            ("hashes", String(repeating: "#", count: 20_000)),
+            ("bidi", String(repeating: "\u{202E}", count: 10_000)),
+            ("brace lines", String(repeating: "{\n", count: 10_000) + String(repeating: "    }\n", count: 5_000)),
+            ("indent repair", String(repeating: "Row {\n    Text(\"A\")\n", count: 3_000)),
+            ("foreign blocks", String(repeating: "func f() {\n", count: 5_000)),
+            ("dots", String(repeating: ".", count: 30_000)),
+            ("minus", "x = " + String(repeating: "- ", count: 20_000) + "1"),
+            ("not", "x = " + String(repeating: "not ", count: 10_000) + "a"),
+            ("strings broken", String(repeating: "Text(\"a\n\"b\")\n", count: 4_000)),
+            ("list", "x = [" + String(repeating: "1, ", count: 15_000) + "]"),
+            ("args", "Text(" + String(repeating: "a: 1, ", count: 8_000) + ")"),
+            ("modifiers", "Text(\"A\")" + String(repeating: ".font(.caption)", count: 4_000)),
+        ]
+        for (name, text) in cases {
+            let start = ProcessInfo.processInfo.systemUptime
+            let tree = deskParse(text)
+            let parse = ProcessInfo.processInfo.systemUptime - start
+            let formatStart = ProcessInfo.processInfo.systemUptime
+            _ = Desk.format(tree)
+            let format = ProcessInfo.processInfo.systemUptime - formatStart
+            print(String(format: "%-22@ %6d KiB  parse %8.1f ms  format %8.1f ms  diagnostics %d", name as NSString,
+                         text.utf8.count / 1024, parse * 1000, format * 1000, tree.diagnostics.count))
+        }
+        exit(0)
+    }
     if ProcessInfo.processInfo.environment["DESK_CORPUS_TIMING"] != nil {
         let corpus = deskExampleCorpus()
         FileHandle.standardError.write(Data("corpus \(corpus.count)\n".utf8))

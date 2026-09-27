@@ -111,29 +111,6 @@ struct BraceMatching {
 
         func indent(ofLine line: Int) -> Int { lines.indentation(ofLine: line) }
 
-        /// The indentation of the first line of the statement that owns the `{` at `open`: continuation lines
-        /// (inside open parentheses, starting with a binary operator or a closing bracket, or after a line that
-        /// ends with an operator, `(`, `[`, `=`, `:` or `,`) belong to the line above.
-        func openerIndent(_ open: Int, parenDepthAtLineStart: [Int: Int], lastTokenOfLine: [Int: Int],
-                          firstTokenOfLine: [Int: Int]) -> Int {
-            var line = lineOf[open]
-            var guardCount = 0
-            while guardCount < 1000, line > 0, let first = firstTokenOfLine[line] {
-                guardCount += 1
-                if isContinuation(line: line, first: first, parenDepthAtLineStart: parenDepthAtLineStart,
-                                  lastTokenOfLine: lastTokenOfLine) {
-                    // Move to the previous line that has tokens.
-                    var previous = line - 1
-                    while previous >= 0, firstTokenOfLine[previous] == nil { previous -= 1 }
-                    if previous < 0 { break }
-                    line = previous
-                } else {
-                    break
-                }
-            }
-            return indent(ofLine: line)
-        }
-
         func isContinuation(line: Int, first: Int, parenDepthAtLineStart: [Int: Int],
                             lastTokenOfLine: [Int: Int]) -> Bool {
             if (parenDepthAtLineStart[line] ?? 0) > 0 { return true }
@@ -200,10 +177,23 @@ struct BraceMatching {
                 default: break
                 }
             }
+            // The first line of the statement each line belongs to: a continuation line takes the base of the line
+            // above, computed in one pass (walking back from every `{` would be quadratic).
+            var baseLine: [Int: Int] = [:]
+            var previousLine: Int?
+            for line in firstTokenOfLine.keys.sorted() {
+                if let previous = previousLine, let first = firstTokenOfLine[line],
+                   isContinuation(line: line, first: first, parenDepthAtLineStart: parenDepthAtLineStart,
+                                  lastTokenOfLine: lastTokenOfLine) {
+                    baseLine[line] = baseLine[previous] ?? previous
+                } else {
+                    baseLine[line] = line
+                }
+                previousLine = line
+            }
             var indents: [Int: Int] = [:]
             for i in segment where tokens[i].kind == .lBrace {
-                indents[i] = openerIndent(i, parenDepthAtLineStart: parenDepthAtLineStart,
-                                          lastTokenOfLine: lastTokenOfLine, firstTokenOfLine: firstTokenOfLine)
+                indents[i] = indent(ofLine: baseLine[lineOf[i]] ?? lineOf[i])
             }
             result.openerIndent.merge(indents) { a, _ in a }
 
@@ -214,13 +204,25 @@ struct BraceMatching {
             var extra: Set<Int> = []
             var virtualCount = 0
             let sortedLines = firstTokenOfLine.keys.sorted()
+            // For each line with tokens: its indentation, or no candidate when it starts with `else`; a tree of
+            // minimums finds the first later line indented no deeper than an opener in logarithmic time.
+            let lineIndents = sortedLines.map { line -> Int in
+                tokens[firstTokenOfLine[line]!].kind == .elseKeyword ? Int.max : indent(ofLine: line)
+            }
+            let minimums = MinimumTree(lineIndents)
 
             func virtualPosition(for opener: Opener, limitToken: Int) -> Int {
                 let fromLine = opener.contentLine ?? lineOf[opener.index]
-                for line in sortedLines where line > fromLine {
-                    guard let first = firstTokenOfLine[line] else { continue }
-                    if first > limitToken { break }
-                    if indent(ofLine: line) <= opener.indent, tokens[first].kind != .elseKeyword { return first }
+                // The first listed line after `fromLine`.
+                var low = 0
+                var high = sortedLines.count
+                while low < high {
+                    let mid = (low + high) / 2
+                    if sortedLines[mid] <= fromLine { low = mid + 1 } else { high = mid }
+                }
+                if let found = minimums.firstIndex(from: low, atMost: opener.indent),
+                   let first = firstTokenOfLine[sortedLines[found]], first <= limitToken {
+                    return first
                 }
                 return min(limitToken, endToken)
             }
@@ -297,5 +299,38 @@ struct BraceMatching {
             stack.append(span)
         }
         return true
+    }
+}
+
+/// Minimums over an array, to find the first position at or after `from` whose value is at most a bound.
+struct MinimumTree {
+    private var tree: [Int]
+    private let size: Int
+
+    init(_ values: [Int]) {
+        var size = 1
+        while size < max(1, values.count) { size *= 2 }
+        self.size = size
+        tree = [Int](repeating: Int.max, count: 2 * size)
+        for (k, value) in values.enumerated() { tree[size + k] = value }
+        var k = size - 1
+        while k >= 1 {
+            tree[k] = min(tree[2 * k], tree[2 * k + 1])
+            k -= 1
+        }
+    }
+
+    /// The first index ≥ `from` whose value is ≤ `bound`.
+    func firstIndex(from: Int, atMost bound: Int) -> Int? {
+        guard from < size else { return nil }
+        return search(node: 1, low: 0, high: size, from: from, bound: bound)
+    }
+
+    private func search(node: Int, low: Int, high: Int, from: Int, bound: Int) -> Int? {
+        if high <= from || tree[node] > bound { return nil }
+        if high - low == 1 { return low }
+        let mid = (low + high) / 2
+        if let left = search(node: 2 * node, low: low, high: mid, from: from, bound: bound) { return left }
+        return search(node: 2 * node + 1, low: mid, high: high, from: from, bound: bound)
     }
 }

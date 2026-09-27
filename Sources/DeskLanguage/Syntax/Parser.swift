@@ -54,6 +54,8 @@ struct Parser {
     /// Byte ranges of the foreign runs (line-level `foreignConstruct` nodes): the lexer's diagnostics inside them
     /// are dropped, since the run's one diagnostic stands for everything in it.
     var foreignRunRanges: [Range<Int>] = []
+    /// Answers of `fileHasTopLevelBlock`, which scans the whole file.
+    var topLevelBlockWords: [String: Bool] = [:]
 
     init(lexed: LexedFile, braces: BraceMatching, file: DeskFileID, lines: LineTable, bytes: [UInt8]) {
         tokens = lexed.tokens
@@ -564,7 +566,7 @@ struct Parser {
     }
 
     /// `widget CPU { … }`: the name moves to `info { name: "CPU" }` (created when the file has no `info` block).
-    func namedWidgetFixIts(keyword: Int, name: Int) -> [FixIt] {
+    mutating func namedWidgetFixIts(keyword: Int, name: Int) -> [FixIt] {
         guard !fileHasTopLevelBlock("info") else { return [] }
         let removeName = edit(fullEnd(keyword)..<textEnd(name), "")
         let lineStart = lines.starts[lineIndex(ofToken: keyword)]
@@ -574,7 +576,14 @@ struct Parser {
     }
 
     /// Whether the file has a top-level block with this word (scans the tokens, counting braces).
-    func fileHasTopLevelBlock(_ word: String) -> Bool {
+    mutating func fileHasTopLevelBlock(_ word: String) -> Bool {
+        if let known = topLevelBlockWords[word] { return known }
+        let found = scanForTopLevelBlock(word)
+        topLevelBlockWords[word] = found
+        return found
+    }
+
+    func scanForTopLevelBlock(_ word: String) -> Bool {
         var depth = 0
         for j in 0..<eofIndex {
             switch tokens[j].kind {
