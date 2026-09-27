@@ -14,7 +14,7 @@ func runDeskSyntaxTests(_ t: TestRunner) {
             t.equal(tree.description, text, "\(name) round trip")
             t.equal(tree.diagnostics.map(\.description), [], "\(name) diagnostics")
             t.equal(deskTreeProblems(tree), [], name)
-            print(tree.root.outline)
+            t.equal(Desk.format(tree), [], "\(name) is in canonical style")
         }
     }
 }

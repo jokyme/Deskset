@@ -18,6 +18,13 @@ func runDeskScratch(_ t: TestRunner) {
             }
             let problems = deskTreeProblems(tree)
             if !problems.isEmpty { print("    PROBLEMS: \(problems)") }
+            if ProcessInfo.processInfo.environment["DESK_FORMAT"] != nil {
+                let formatted = Desk.formatted(tree)
+                print("--- formatted:")
+                print(formatted.replacingOccurrences(of: " ", with: "·"))
+                let again = Desk.formatted(deskParse(formatted))
+                if again != formatted { print("!!! NOT IDEMPOTENT:\n" + again.replacingOccurrences(of: " ", with: "·")) }
+            }
         }
     }
 }
