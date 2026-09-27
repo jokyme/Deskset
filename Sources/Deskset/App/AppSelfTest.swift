@@ -393,6 +393,7 @@ enum AppSelfTest {
             check(["-AppleLanguages", "(en)"], .app)
             check(["--render", "a.ini", "--out", "x.png", "--updates", "3", "--interval", "0", "--scale", "1",
                    "--background", "0,0,0", "--skins-dir", "/tmp/Skins"], .mode)
+            check(["--render", "a.ini", "--settings-dir", "/tmp/Settings"], .mode)
             check(["--self-test"], .mode)
             check(["--self-test", "App: Audio"], .mode)
             check(["--snapshot-ui", "manage", "--out", "m.png", "--dark", "--select", "App\\Focus", "--size",
@@ -413,6 +414,24 @@ enum AppSelfTest {
             check(["--render", "a.ini", "--scael", "2"], .invalid("unknown option --scael"))
             check(["--foo", "--bar"], .invalid("unknown options --foo, --bar"))
             check(["--"], .invalid("unknown option --"))
+            // Every mode gives skins a #SETTINGSPATH# of its own, never the app's real settings folder.
+            let savedSettings = SkinController.settingsPath
+            let real = Paths.appSupport.path + "/"
+            if let temporary = CommandLineTools.useHeadlessSettingsFolder(nil) {
+                t.check(SkinController.settingsPath == temporary.path + "/" && SkinController.settingsPath != real,
+                        "a mode without --settings-dir uses a temporary settings folder")
+                t.check(FileManager.default.fileExists(atPath: temporary.appendingPathComponent(DefaultSkins.stationeryFileName).path),
+                        "the temporary settings folder holds a Stationery.inc as the app's does")
+                try? FileManager.default.removeItem(at: temporary)
+            } else {
+                t.check(false, "a mode without --settings-dir returns its temporary settings folder")
+            }
+            let named = FileManager.default.temporaryDirectory.appendingPathComponent("Deskset-named-\(UUID().uuidString)")
+            t.check(CommandLineTools.useHeadlessSettingsFolder(named.path) == nil
+                    && SkinController.settingsPath == named.standardizedFileURL.path + "/",
+                    "--settings-dir DIR is used as it is and kept")
+            try? FileManager.default.removeItem(at: named)
+            SkinController.settingsPath = savedSettings
             check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
