@@ -380,7 +380,7 @@ Group=Photo
 
 [MeterPhoto]
 ; the photo, filling the card (cropped in the middle), turned upright, cut to the card's shape, in full colour in every
-; look; decoded at the size it is drawn once Deskset can (E30). A click shows the next one
+; look; decoded at the size it is drawn (MacDecodeSize), not at the camera's. A click shows the next one
 Meter=Image
 MeasureName=MeasurePhoto
 X=0
