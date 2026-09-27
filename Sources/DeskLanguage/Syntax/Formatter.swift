@@ -769,7 +769,11 @@ final class DeskFormatter {
         for k in 0..<toks.count {
             if toks[k].remove { continue }
             let gap: String
-            if gapIsVerbatim(p, k) {
+            if p >= 0, toks[p].frozen, !toks[k].frozen, !toks[k].missingBefore, toks[p].end < toks[k].start,
+               let partial = renderAfterFrozen(p, k) {
+                // After code left as written: its line stays as it is; the next line is indented as usual.
+                gap = partial
+            } else if gapIsVerbatim(p, k) {
                 let from = p >= 0 ? toks[p].end : 0
                 gap = String(decoding: bytes[from..<toks[k].start], as: UTF8.self)
             } else {
@@ -916,6 +920,31 @@ final class DeskFormatter {
             }
             rows = capBlankRows(rows)
         }
+        // Comments on their own lines take the indentation of the token after them; before a block's `}`, that of
+        // the block's content, since they belong to it.
+        let commentIndent = beforeClose ? String(repeating: " ", count: indentOf[k] + indentWidth) : indent(k)
+        for row in rows { text += row.isEmpty ? newline : commentIndent + row.joined(separator: " ") + newline }
+        text += indent(k)
+        if !layout.lastRow.isEmpty { text += layout.lastRow.joined(separator: " ") + " " }
+        return text
+    }
+
+    /// The gap after a frozen token: everything up to the first line break as written, then the following
+    /// lines normalised and the token indented. Nil when the gap has no line break of its own (kept as written).
+    private func renderAfterFrozen(_ p: Int, _ k: Int) -> String? {
+        var prefix = toks[p].token.trailingTrivia.text
+        let leading = toks[k].token.leadingTrivia
+        guard let firstBreak = leading.firstIndex(where: \.isNewline) else { return nil }
+        prefix += Array(leading[..<firstBreak]).text + newline
+        var layout = GapLayout(pieces: [.newline(.lf)] + Array(leading[(firstBreak + 1)...]))
+        var rows = capBlankRows(trimBlankRows(layout.rows, leading: false, trailing: toks[k].role == .blockClose))
+        if toks[k].role == .eof {
+            rows = trimBlankRows(rows, leading: false, trailing: true)
+            if !layout.lastRow.isEmpty { rows.append(layout.lastRow) }
+            layout.lastRow = []
+            return prefix + rows.map { $0.isEmpty ? newline : $0.joined(separator: " ") + newline }.joined()
+        }
+        var text = prefix
         for row in rows { text += row.isEmpty ? newline : indent(k) + row.joined(separator: " ") + newline }
         text += indent(k)
         if !layout.lastRow.isEmpty { text += layout.lastRow.joined(separator: " ") + " " }
@@ -947,7 +976,11 @@ final class DeskFormatter {
         let a = toks[p]
         let b = toks[k]
         let wanted = wantedSpacing(a, b, styleColumn: styleColumn, p: p)
-        if wanted.isEmpty && mustSeparate(a.replacement ?? a.token.text, b.replacement ?? b.token.text) { return " " }
+        // Removing blanks must not make two tokens read as others; tokens written together stay together.
+        if wanted.isEmpty && a.end < b.start
+            && mustSeparate(a.replacement ?? a.token.text, b.replacement ?? b.token.text) {
+            return " "
+        }
         return wanted
     }
 
@@ -966,8 +999,9 @@ final class DeskFormatter {
         if a.styleName, let column = styleColumn[p], b.role == .blockOpen {
             return String(repeating: " ", count: column - displayWidth(a.token.text) + 1)
         }
-        // One space inside a single-line `{ … }`.
+        // One space inside a single-line `{ … }`, and after a separator or comma that stays.
         if a.role == .blockOpen || b.role == .blockClose { return " " }
+        if (a.role == .separator || a.role == .comma) && b.role != .close { return " " }
         // None inside `()` and `[]`.
         switch a.role {
         case .callOpen, .parenOpen, .listOpen: return ""
@@ -1006,10 +1040,13 @@ final class DeskFormatter {
         let joining: Set<String> = ["--", "-=", "->", "++", "+=", "**", "*=", "//", "/*", "/=", "==", "=>", "!=",
                                     "<=", "</", "<!", ">=", "..", "??", "&&", "||", "::", "?.", "%=", "*/"]
         if joining.contains(pair) { return true }
-        if l == "." && ("0"..."9").contains(r) { return true }
-        if ("0"..."9").contains(l) && (r == "." || r == "%" || r == "°") { return true }
+        // A digit before `.5` would read as one number; before `%` or `°` as a unit.
+        if ("0"..."9").contains(l) {
+            if r == "%" || r == "°" { return true }
+            let rest = right.unicodeScalars.dropFirst()
+            if r == "." && (rest.first.map { ("0"..."9").contains($0) } ?? false) { return true }
+        }
         if l == "#" || r == "#" { return true }
-        if l == "\"" && r == "#" { return true }
         return false
     }
 
@@ -1051,7 +1088,12 @@ final class DeskFormatter {
             output = render()
             if !breakOverflowingLines(output) { break }
         }
-        guard verify(output.text) else { return [] }
+        guard verify(output.text) else {
+            if ProcessInfo.processInfo.environment["DESK_FORMAT_DEBUG"] != nil {
+                FileHandle.standardError.write(Data(("formatter: verification failed for:\n" + output.text + "\n").utf8))
+            }
+            return []
+        }
         return minimalEdits(output)
     }
 

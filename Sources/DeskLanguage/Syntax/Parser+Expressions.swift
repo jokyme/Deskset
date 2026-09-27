@@ -37,9 +37,11 @@ extension Parser {
     func startsExpression(_ j: Int) -> Bool {
         switch kind(j) {
         case .number, .stringStart, .rawString, .tripleQuoteString, .trueKeyword, .falseKeyword, .identifier,
-             .invalidIdentifier, .eventKeyword, .dot, .lBracket, .lParen, .minus, .notKeyword, .bang, .tilde, .dollar,
+             .invalidIdentifier, .eventKeyword, .dot, .lBracket, .lParen, .minus, .notKeyword, .bang, .tilde,
              .hexColor, .hexNumber, .rainmeterVariable, .plus:
             return true
+        case .dollar:
+            return isNameLike(j + 1) && tokens[j].trailingTrivia.isEmpty
         default:
             return false
         }
@@ -694,9 +696,11 @@ extension Parser {
                 children.append(.node(unexpectedInBrackets()))
                 continue
             }
+            let before = i
             let element = parseExpr()
             children.append(.node(element.node))
             expectComma = true
+            if i == before && i < limit { children.append(.node(unexpectedInBrackets())) }
         }
         return ParsedExpression(node: node(.listLiteral, children), start: start, end: i - 1)
     }
@@ -832,11 +836,16 @@ extension Parser {
                 argument.append(.node(node(.label, [take()])))
                 argument.append(take())
             }
+            let before = i
             let value = parseExpr()
             if value.isMissing { expected(.expression) } else if let label { labeled[label] = value.start...value.end }
             argument.append(.node(value.node))
             children.append(.node(node(.argument, argument)))
             expectComma = true
+            if i == before && i < limit {
+                // Nothing could be read here: keep going past the token (progress is guaranteed).
+                children.append(.node(unexpectedInBrackets()))
+            }
         }
         return (node(.argumentClause, children), labeled)
     }

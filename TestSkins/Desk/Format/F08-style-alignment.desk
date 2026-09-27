@@ -1,0 +1,5 @@
+style arrow { .font(16).color(.dim) }
+style weekdayLabel { .font(.caption) }
+style dateCell       { .font(13).size(28, 24) }
+
+style alone   { .bold() }

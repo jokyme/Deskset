@@ -1,0 +1,16 @@
+widget {
+    Text("A").font(.caption).color(.dim)
+    Text("B").font(.caption)
+        .color(.dim)
+    Text("A long text that will not fit on one line").font(.caption).color(.dim).padding(4).background(.red).rounded(8).opacity(50%)
+    Column {
+        Text("C")
+    }.padding(4).background(.glass)
+    Column {
+        Text("D")
+    }.padding(4)
+    .background(.glass)
+    Icon("chevron.left").style(arrow).onClick { monthsFromNow = monthsFromNow - 1; show(details); log("back one month") }
+}
+style s { .font(16).color(.dim)
+    .hover { .color(.accent) } }

@@ -1,0 +1,11 @@
+info{name:"CPU" ,size : .small}
+widget{
+    variable x=1+2*3
+    Text( "{ cpu.usage ,decimals:1 }%" ) .font( 13 ,.bold )
+    Row{Text("A")}
+    if x>1 and not y{ Text(-x) }else{Text("b")}
+    for i in 1 ... 3 { Text("{i}") }
+    Text(a ? b : c).offset(y: -2)
+    Picker("D",[.a,.b,],default:.a)
+    x.onClick{page=page - 1;show(details)}
+}

@@ -4,11 +4,45 @@ import Foundation
 /// Temporary exploration harness: DESK_SCRATCH=path prints each snippet's outline and diagnostics (snippets are
 /// separated by lines of `----`).
 func runDeskScratch(_ t: TestRunner) {
+    if ProcessInfo.processInfo.environment["DESK_CORPUS_TIMING"] != nil {
+        let corpus = deskExampleCorpus()
+        FileHandle.standardError.write(Data("corpus \(corpus.count)\n".utf8))
+        for (n, example) in corpus.enumerated() {
+            let done = DispatchSemaphore(value: 0)
+            let thread = Thread {
+                let tree = deskParse(example)
+                _ = Desk.format(tree)
+                done.signal()
+            }
+            thread.stackSize = 64 << 20
+            thread.start()
+            if done.wait(timeout: .now() + 3) == .timedOut {
+                FileHandle.standardError.write(Data("HANG \(n): \(example.debugDescription)\n".utf8))
+                exit(3)
+            }
+        }
+        FileHandle.standardError.write(Data("all done\n".utf8))
+        exit(0)
+    }
+    if let folder = ProcessInfo.processInfo.environment["DESK_WRITE_FORMATTED"] {
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: folder)) ?? [] where name.hasSuffix(".desk") && !name.hasSuffix(".formatted.desk") {
+            let path = folder + "/" + name
+            guard let data = fm.contents(atPath: path) else { continue }
+            let text = String(decoding: data, as: UTF8.self)
+            let formatted = Desk.formatted(deskParse(text))
+            let out = folder + "/" + name.replacingOccurrences(of: ".desk", with: ".formatted.desk")
+            fm.createFile(atPath: out, contents: Data(formatted.utf8))
+            print("wrote \(out)")
+        }
+    }
     guard let path = ProcessInfo.processInfo.environment["DESK_SCRATCH"],
           let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
     t.suite("Desk: scratch") {
         for snippet in text.components(separatedBy: "\n----\n") {
+            let parseStart = ProcessInfo.processInfo.systemUptime
             let tree = deskParse(snippet)
+            print(String(format: "    (parse %.1f ms, %d lines)", (ProcessInfo.processInfo.systemUptime - parseStart) * 1000, snippet.split(separator: "\n").count))
             print("=== " + snippet.replacingOccurrences(of: "\n", with: "⏎"))
             print("    " + tree.root.outline)
             for d in tree.diagnostics {
