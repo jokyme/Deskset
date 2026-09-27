@@ -142,9 +142,10 @@ enum StudioSessionSelfTests {
             }
             t.check(editor.skin !== c.skin)
             let history = studio.lines[0].history
-            t.equal(history.count, shown.count + 1, "the desktop's samples and the Studio's first")
-            t.equal((1...shown.count).map { history.value(age: $0) }, shown, "the desktop's samples, in order")
-            t.equal(editor.skin?.counter, c.skin.counter + 1, "the counter goes on from the desktop's")
+            t.equal((0..<history.count).map { history.value(age: $0) }, shown, "the desktop's samples, in order")
+            t.equal(editor.skin?.measure(named: "MeasureCount")?.value, c.skin.measure(named: "MeasureCount")?.value,
+                    "the counter the desktop shows")
+            t.equal(editor.skin?.counter, c.skin.counter)
             editor.window?.close()
         }
     }

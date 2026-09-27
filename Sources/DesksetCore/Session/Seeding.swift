@@ -1,13 +1,12 @@
 import Foundation
 
 extension Skin {
-    /// Takes over what a new instance of a widget cannot read from its files from an instance of the same widget that is
-    /// already running: the Calc `Counter`, and the samples of every Line and Histogram meter of the same name and kind.
-    /// The Studio's own instance of a widget is seeded from the widget on the desktop when the Studio opens it, so the
-    /// canvas shows the graphs the desktop shows, as it did when it drew the desktop copy itself, instead of starting
-    /// them empty. Call it after `load()` and before the first `update()`, on the thread that owns both skins.
-    public func seed(from running: Skin) {
-        continueCounter(from: running)
+    /// Takes the graphs of an instance of the same widget that is already running: the samples of every Line and
+    /// Histogram meter of the same name and kind. The Studio's own instance of a widget is seeded from the widget on the
+    /// desktop when the Studio opens it — `mirrorCounter(of:)` before its first update, this right after it — so the
+    /// canvas shows what the desktop shows, as it did when it drew the desktop copy itself, instead of starting the
+    /// graphs empty. Both skins must be owned by the calling thread.
+    public func takeGraphs(from running: Skin) {
         for meter in meters {
             guard let source = running.meter(named: meter.name) else { continue }
             if let line = meter as? LineMeter, let from = source as? LineMeter {

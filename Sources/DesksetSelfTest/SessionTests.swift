@@ -370,7 +370,7 @@ func runSessionTests(_ t: TestRunner) {
         t.equal(skin.definingFiles(ofSection: "Extra").count, 1, "(the disk copy has only its header file)")
     }
 
-    t.suite("Session: a new instance takes the graphs and the counter of the running one") {
+    t.suite("Session: a new instance mirrors the graphs and the counter of the running one") {
         let ini = """
             [Rainmeter]
             [MeasureCPU]
@@ -383,6 +383,7 @@ func runSessionTests(_ t: TestRunner) {
             MeasureName=MeasureCPU
             MeasureName2=MeasureCount
             LineCount=2
+            AutoScale=1
             W=20
             H=10
             [Bars]
@@ -405,15 +406,20 @@ func runSessionTests(_ t: TestRunner) {
         let fresh = Skin(config: running.config, fileURL: running.fileURL, skinsDirectory: running.skinsDirectory,
                          system: system, host: host)
         try fresh.load()
-        fresh.seed(from: running)
+        fresh.mirrorCounter(of: running)
+        fresh.update()
+        t.equal(fresh.measure(named: "MeasureCount")?.value, running.measure(named: "MeasureCount")?.value,
+                "the first update computes the counter the running one's last update did")
+        t.equal(fresh.counter, running.counter, "and then counts as far")
+        fresh.takeGraphs(from: running)
         guard let graph = fresh.meter(named: "Graph") as? LineMeter, let was = running.meter(named: "Graph") as? LineMeter,
               let bars = fresh.meter(named: "Bars") as? HistogramMeter,
               let barsWere = running.meter(named: "Bars") as? HistogramMeter else { return t.check(false, "meters") }
         t.equal(graph.lines.map { $0.history.count }, [5, 5], "every line's samples")
         t.equal((0..<5).map { graph.lines[0].history.value(age: $0) }, [50, 40, 30, 20, 10], "newest first")
         t.equal((0..<5).map { graph.lines[1].history.value(age: $0) }, (0..<5).map { was.lines[1].history.value(age: $0) })
+        t.equal([graph.rangeMin, graph.rangeMax], [was.rangeMin, was.rangeMax], "the AutoScale range follows the samples")
         t.equal((0..<5).map { bars.primaryHistory.value(age: $0) }, (0..<5).map { barsWere.primaryHistory.value(age: $0) })
-        t.equal(fresh.counter, running.counter, "the counter goes on")
         system.cpu = 60
         fresh.update()
         t.equal(graph.lines[0].history.value(age: 0), 60, "and the graph goes on from there")
@@ -422,8 +428,15 @@ func runSessionTests(_ t: TestRunner) {
         // A meter of another kind under the same name takes nothing.
         let other = try makeSkin(t, ini.replacingOccurrences(of: "[Other]\nMeter=Line", with: "[Other]\nMeter=Histogram"),
                                  system: system).0
-        other.seed(from: running)
-        t.equal((other.meter(named: "Other") as? HistogramMeter)?.primaryHistory.count, 0)
+        other.update()
+        other.takeGraphs(from: running)
+        t.equal((other.meter(named: "Other") as? HistogramMeter)?.primaryHistory.count, 1, "its own sample only")
+        // A skin that never updated: the new one starts at 0 too.
+        let idle = try makeSkin(t, ini, system: system).0
+        let mirror = try makeSkin(t, ini, system: system).0
+        mirror.mirrorCounter(of: idle)
+        mirror.update()
+        t.equal(mirror.counter, 1)
     }
 
     t.suite("Session: the Studio's instance runs what stays inside the widget") {

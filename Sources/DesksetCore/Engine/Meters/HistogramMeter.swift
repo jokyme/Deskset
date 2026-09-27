@@ -158,10 +158,11 @@ public final class HistogramMeter: Meter {
     }
 
     /// Takes `other`'s samples: a new instance of a widget then shows the graph the one already running shows
-    /// (`Skin.seed(from:)`).
+    /// (`Skin.takeGraphs(from:)`).
     func takeHistory(from other: HistogramMeter) {
         primaryHistory = other.primaryHistory
         secondaryHistory = other.secondaryHistory
+        computeAutoRange()
     }
 
     /// Adds one sample per measure, resizing the histories first when the size changed.

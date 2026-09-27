@@ -293,6 +293,13 @@ public final class Skin {
         counterBase = previous.counter
     }
 
+    /// Before the first update of a new instance of a widget that mirrors one already running (the Studio's own
+    /// instance, opened on the widget on the desktop): the first update computes the Calc `Counter` the running one's
+    /// last update computed, so both show the same; after it, `counter` is the running one's.
+    public func mirrorCounter(of running: Skin) {
+        counterBase = max(running.counter, 1) - 1
+    }
+
     public var rootConfig: String {
         String(config.split(separator: "\\").first ?? Substring(config))
     }

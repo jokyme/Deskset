@@ -85,9 +85,10 @@ public final class LineMeter: Meter {
     }
 
     /// Takes the samples of `other`'s lines, line by line: a new instance of a widget then shows the graph the one
-    /// already running shows (`Skin.seed(from:)`).
+    /// already running shows (`Skin.takeGraphs(from:)`).
     func takeHistory(from other: LineMeter) {
         for i in lines.indices where i < other.lines.count { lines[i].history = other.lines[i].history }
+        computeRange()
     }
 
     private func computeRange() {
