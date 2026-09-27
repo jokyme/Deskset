@@ -8,9 +8,9 @@ MoonSuffix=
 
 ; ---------------------------------------------------------------- ink
 InkRGB=255,255,255
-Alpha1=216
+Alpha1=230
 Alpha2=166
-Alpha3=107
+Alpha3=122
 Alpha4=46
 TextColor=#InkRGB#,#Alpha1#
 SecondaryTextColor=#InkRGB#,#Alpha2#
