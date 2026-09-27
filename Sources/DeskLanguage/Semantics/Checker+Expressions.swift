@@ -484,7 +484,7 @@ extension Checker {
             report(.unknownOption, nameRange, ["name": .code(name)], fixIts: fixIts)
             return .error
         }
-        if mute == 0 { option.used = true }
+        option.used = true
         symbols[id(node)] = .option(option.id, file: option.file)
         var v = option.val
         v.deps.insert(.option(name))

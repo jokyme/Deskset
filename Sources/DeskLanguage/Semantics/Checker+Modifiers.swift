@@ -268,9 +268,37 @@ extension Checker {
         let arguments = modifier.arguments?.arguments ?? []
         if !spec.acceptsCondition, !spec.signatures.contains(where: { $0.param(labelled: "if") != nil }),
            let conditionArgument = arguments.first(where: { $0.label?.name == "if" }) {
+            // The condition goes inside the block: `.onClick { if c { … } }` (DK5004).
+            var edits = [edit(argumentRemovalRange(conditionArgument, in: arguments), "")]
+            if let block = modifier.block, let clause = modifier.arguments {
+                let condition = text(conditionArgument.value.node)
+                let body = BlockSyntax(unchecked: block.node)
+                let open = body.lBrace.textRange.upperBound, close = body.rBrace.textRange.lowerBound
+                let inner = text(open..<close)
+                let wrapped: String
+                if inner.contains("\n") || inner.contains("\r") {
+                    let indent = indentation(at: body.rBrace.textStart)
+                    var lines = inner.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+                        .components(separatedBy: "\n")
+                    while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeFirst() }
+                    while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+                    wrapped = "{" + lineBreak + indent + "    if \(condition) {" + lineBreak
+                        + lines.map { $0.isEmpty ? $0 : "    " + $0 }.joined(separator: lineBreak)
+                        + lineBreak + indent + "    }" + lineBreak + indent + "}"
+                } else {
+                    let trimmed = inner.trimmingCharacters(in: .whitespaces)
+                    wrapped = trimmed.isEmpty ? "{ if \(condition) { } }" : "{ if \(condition) { \(trimmed) } }"
+                }
+                let clauseRange = range(clause.node)
+                let keepsArguments = arguments.count > 1
+                if keepsArguments {
+                    edits.append(edit(range(body.node), wrapped))
+                } else {
+                    edits = [edit(clauseRange.lowerBound..<range(body.node).upperBound, " " + wrapped)]
+                }
+            }
             report(.conditionNotAllowed, range(conditionArgument.node), ["name": .code(name)],
-                   fixIts: [fix("rewrite", [edit(argumentRemovalRange(conditionArgument, in: arguments), "")])],
-                   dropped: .modifier(nodeID))
+                   fixIts: [fix("rewrite", edits)], dropped: .modifier(nodeID))
             dropped = true
         }
         // Actions or looks written in parentheses (DK2037).
@@ -749,7 +777,7 @@ extension Checker {
                     // `showOrHide(isOpen)` with a yes/no value.
                     return v
                 }
-                if mute == 0 { decl.used = true }
+                decl.used = true
                 return v
             }
             if preName(named: name) != nil {

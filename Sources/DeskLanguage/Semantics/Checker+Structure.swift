@@ -906,6 +906,11 @@ extension Checker {
         let call = CallStmtSyntax(unchecked: statement)
         let path = call.callee.path
         if path.count == 1, let spec = catalog.component(named: path[0]) {
+            // `Button(t) { a }` in a menu is an item written the SwiftUI way: DK9109, `Item(t).onClick { a }` (§2.4).
+            if spec.kind == .button, let block = call.block {
+                reportUnexpectedComponentBlock(call, spec: spec, block: block, context)
+                return
+            }
             if !(spec.kind == .item || spec.kind == .menu || spec.kind == .divider) {
                 report(.childNotAllowed, range(call.callee.node), ["parent": .name("place:menu"),
                                                                    "child": .name("component:\(spec.name)")],

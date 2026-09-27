@@ -640,4 +640,19 @@ func runDeskReviewTests(_ t: TestRunner) {
         let stepper = deskCheck("info { name: \"T\" }\nwidget {\n    variable n = 0\n    Stepper(\"N\", n)\n}")
         t.equal(stepper.diagnostics.map(\.id.rawValue), ["DK5022"], "no DK3020 for n")
     }
+
+    t.suite("Desk: review — menu buttons and conditions on events (findings 15, 16)") {
+        let menu = deskCheck("info { name: \"T\" }\nwidget { Text(\"A\").menu { Button(\"x\") { copy(\"a\") } } }")
+        t.equal(menu.diagnostics.map(\.id.rawValue), ["DK9109"])
+        let item = deskApplyFix(menu, "DK9109")
+        t.equal(item, "info { name: \"T\" }\nwidget { Text(\"A\").menu { Item(\"x\").onClick { copy(\"a\") } } }")
+        t.equal(item.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let one = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick(if: cpu.usage > 5%) { page = 1 }\n}")
+        t.equal(one.diagnostics.map(\.id.rawValue), ["DK5004"], "no DK3020: the dropped block still reads page")
+        let inside = deskApplyFix(one, "DK5004")
+        t.equal(inside, "info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick { if cpu.usage > 5% { page = 1 } }\n}")
+        t.equal(inside.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let lines = deskCheck("info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick(if: cpu.usage > 5%) {\n        page = 1\n        page = 2\n    }\n}")
+        t.equal(deskApplyFix(lines, "DK5004"), "info { name: \"T\" }\nwidget {\n    variable page = 0\n    Text(\"{page}\").onClick {\n        if cpu.usage > 5% {\n            page = 1\n            page = 2\n        }\n    }\n}")
+    }
 }

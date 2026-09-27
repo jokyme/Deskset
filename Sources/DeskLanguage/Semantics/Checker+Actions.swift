@@ -93,7 +93,8 @@ extension Checker {
                     reportNotAssignable(targetRange, name: name, reasonKey: "computed")
                     assignable = false
                 } else {
-                    if mute == 0 { decl.used = true; decl.assigned = true }
+                    decl.used = true   // a use even where diagnostics are muted (a dropped modifier's block): no DK3020 cascade
+                    if mute == 0 { decl.assigned = true }
                     targetVal = declarationValue(decl)
                     targetVal?.open = decl.open
                 }
@@ -108,7 +109,7 @@ extension Checker {
             let name = path[1]
             if let option = options[name] {
                 symbols[id(target.node)] = .option(option.id, file: option.file)
-                if mute == 0 { option.used = true }
+                option.used = true
                 if option.userOnly {
                     report(.userOnlyOption, targetRange, ["name": .code("options.\(name)")])
                     assignable = false

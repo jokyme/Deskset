@@ -362,7 +362,7 @@ extension Checker {
                 return .error
             }
             symbols[nodeID] = .declaration(decl.id)
-            if mute == 0 { decl.used = true }
+            decl.used = true   // also while muted: the name is read in the source (no DK3020 cascade)
             if let reader = context.declaration, reader.keyword != "computed", decl.keyword != "computed",
                decl.index > reader.index {
                 let target = decl.node
@@ -473,7 +473,7 @@ extension Checker {
             return .error
         }
         if let option = options[name] {
-            if mute == 0 { option.used = true }
+            option.used = true
             report(.missingOptionsPrefix, r, ["name": .code(name)],
                    fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, "options.")], ["text": .code("options.")])])
             return .error
