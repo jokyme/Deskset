@@ -3,41 +3,41 @@
   "distinctFramesSeen": 180,
   "framesCommitted": 180,
   "layers": 65,
-  "longestSameFrameMs": 26.2,
-  "samples": 745,
+  "longestSameFrameMs": 20.4,
+  "samples": 937,
   "tornSamples(codeA != codeB)": 0,
   "unreadable": 0
  },
  "DP+surfaceBase@srgb main stalled": {
   "distinctFramesSeen": 222,
-  "distinctFramesSeenDuringStalls": 55,
+  "distinctFramesSeenDuringStalls": 56,
   "framesCommitted": 222,
   "framesCommittedDuringStalls": 54,
   "layers": 65,
   "longestSameFrameMs": 24.3,
   "mainThreadStalls": "3 × 300 ms",
-  "samples": 912,
+  "samples": 1176,
   "tornSamples(codeA != codeB)": 0,
   "unreadable": 0
  },
  "EP@srgb": {
-  "distinctFramesSeen": 180,
+  "distinctFramesSeen": 179,
   "framesCommitted": 180,
   "layers": 65,
-  "longestSameFrameMs": 23.6,
-  "samples": 772,
+  "longestSameFrameMs": 24.7,
+  "samples": 1023,
   "tornSamples(codeA != codeB)": 0,
   "unreadable": 0
  },
  "EP@srgb main stalled": {
-  "distinctFramesSeen": 222,
-  "distinctFramesSeenDuringStalls": 54,
+  "distinctFramesSeen": 223,
+  "distinctFramesSeenDuringStalls": 55,
   "framesCommitted": 222,
   "framesCommittedDuringStalls": 54,
   "layers": 65,
-  "longestSameFrameMs": 26.7,
+  "longestSameFrameMs": 23.4,
   "mainThreadStalls": "3 × 300 ms",
-  "samples": 1017,
+  "samples": 1243,
   "tornSamples(codeA != codeB)": 0,
   "unreadable": 0
  },
@@ -47,8 +47,8 @@
  ],
  "command": "offmain",
  "loadAverageAtEnd": [
-  5.42,
-  5.75,
-  5.79
+  5.05,
+  5.21,
+  4.97
  ]
 }

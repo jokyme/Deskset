@@ -5,44 +5,44 @@
  ],
  "command": "glass",
  "loadAverageAtEnd": [
-  5.28,
-  5.68,
-  5.76
+  6.1,
+  5.48,
+  5.07
  ],
  "main idle": {
-  "appliedByMain": 241,
-  "frames": 241,
+  "appliedByMain": 240,
+  "frames": 240,
   "glass": "stand-in view",
-  "mainApplyLatencyMaxms": 0.3,
+  "mainApplyLatencyMaxms": 0.1,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 0.2,
+  "mainApplyLatencyP99ms": 0.1,
   "maxVisibleGlassWidthPt": 0,
   "reclaimedBySkin": 0,
-  "samples": 997,
+  "samples": 1309,
   "samplesWithGlassVisibleBesideElement": 0
  },
  "main stalls 120 ms every 1 s": {
-  "appliedByMain": 214,
-  "frames": 218,
+  "appliedByMain": 211,
+  "frames": 216,
   "glass": "stand-in view",
-  "mainApplyLatencyMaxms": 51.8,
+  "mainApplyLatencyMaxms": 50.7,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 39.6,
-  "maxVisibleGlassWidthPt": 3,
-  "reclaimedBySkin": 4,
-  "samples": 1078,
-  "samplesWithGlassVisibleBesideElement": 68
+  "mainApplyLatencyP99ms": 49.1,
+  "maxVisibleGlassWidthPt": 6,
+  "reclaimedBySkin": 5,
+  "samples": 1285,
+  "samplesWithGlassVisibleBesideElement": 81
  },
  "main stalls 30 ms every 250 ms": {
-  "appliedByMain": 226,
-  "frames": 226,
+  "appliedByMain": 224,
+  "frames": 224,
   "glass": "stand-in view",
-  "mainApplyLatencyMaxms": 29.6,
+  "mainApplyLatencyMaxms": 29,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 26.8,
+  "mainApplyLatencyP99ms": 26.7,
   "maxVisibleGlassWidthPt": 0,
   "reclaimedBySkin": 0,
-  "samples": 1079,
+  "samples": 1321,
   "samplesWithGlassVisibleBesideElement": 0
  }
 }

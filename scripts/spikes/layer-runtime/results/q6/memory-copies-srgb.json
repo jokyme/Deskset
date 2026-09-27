@@ -12,29 +12,29 @@
  },
  "command": "q6",
  "footprintAfterCloseEachCycleMB": [
-  0.53,
-  0,
-  0.09
+  12.7,
+  0.19,
+  0.06
  ],
  "footprintIncreaseEachCycleMB": [
-  10.55,
-  10.06,
-  10.17
+  12.98,
+  0.5,
+  0.38
  ],
- "footprintIncreaseMedianMB": 10.17,
+ "footprintIncreaseMedianMB": 0.5,
  "holes": 20,
  "imageMB": 9.77,
  "imagePixels": "1600x1600",
  "layerBitmapMB": 78.13,
  "loadAverageAtEnd": [
-  6.75,
-  5.79,
-  5.57
+  4.9,
+  5.59,
+  4.98
  ],
  "memoryPressure": {
-  "compressorOccupiesGB": 9.49,
-  "freeGB": 0.08,
-  "pressureLevel": 2,
+  "compressorOccupiesGB": 4.27,
+  "freeGB": 1.74,
+  "pressureLevel": 1,
   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
  },
  "noise": false,
@@ -42,14 +42,14 @@
  "variant": "copies",
  "windowColorSpace": "srgb",
  "windowServerCloseStepsMB": [
-  -13,
-  -13,
-  -13
+  -12,
+  -12,
+  -12
  ],
- "windowServerIncreaseMedianMB": 13,
+ "windowServerIncreaseMedianMB": 12,
  "windowServerOpenStepsMB": [
   13,
-  13,
-  13
+  12,
+  12
  ]
 }

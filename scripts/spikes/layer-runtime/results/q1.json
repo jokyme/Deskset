@@ -206,9 +206,9 @@
  },
  "format": "rgba8",
  "loadAverageAtEnd": [
-  6.34,
-  6.46,
-  5.99
+  5.42,
+  6.08,
+  5.03
  ],
  "pairs": {
   "A@srgb vs A": {

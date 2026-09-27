@@ -7,36 +7,36 @@
   "blank": 0,
   "captureFailed": 0,
   "doubled": 0,
-  "droppedWhileWindowListChanged": 21,
-  "ok": 1238,
-  "samples": 1238,
-  "swapMsP50": 61.1,
+  "droppedWhileWindowListChanged": 20,
+  "ok": 1419,
+  "samples": 1419,
+  "swapMsP50": 57.7,
   "swaps": 25
  },
  "command": "swap",
  "loadAverageAtEnd": [
-  5.7,
-  6,
-  5.65
+  6.26,
+  5.6,
+  5.14
  ],
  "new above old, then old out": {
   "blank": 0,
   "captureFailed": 0,
   "doubled": 0,
-  "droppedWhileWindowListChanged": 15,
-  "ok": 1269,
-  "samples": 1269,
-  "swapMsP50": 60.8,
+  "droppedWhileWindowListChanged": 20,
+  "ok": 1435,
+  "samples": 1435,
+  "swapMsP50": 57.5,
   "swaps": 25
  },
  "old out, then new in": {
   "blank": 0,
   "captureFailed": 0,
   "doubled": 0,
-  "droppedWhileWindowListChanged": 13,
-  "ok": 1277,
-  "samples": 1277,
-  "swapMsP50": 62.2,
+  "droppedWhileWindowListChanged": 17,
+  "ok": 1454,
+  "samples": 1454,
+  "swapMsP50": 57.8,
   "swaps": 25
  },
  "same window, contentRoot replaced in one transaction": {
@@ -44,9 +44,9 @@
   "captureFailed": 0,
   "doubled": 0,
   "droppedWhileWindowListChanged": 0,
-  "ok": 1009,
-  "samples": 1009,
-  "swapMsP50": 8.1,
+  "ok": 1098,
+  "samples": 1098,
+  "swapMsP50": 7.4,
   "swaps": 25
  }
 }

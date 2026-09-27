@@ -7,27 +7,27 @@
  "describeContext": {
   "bytesPerCall": 214,
   "calls": 100000,
-  "controlColorSpaceFootprintIncreaseMB": 0.02,
+  "controlColorSpaceFootprintIncreaseMB": 0,
   "footprintIncreaseMB": 20.39,
-  "microsecondsPerCall": 2.8
+  "microsecondsPerCall": 2.76
  },
  "imagesFromReleasedContexts": {
   "bytesEachMB": 9.77,
-  "footprintIncreaseAfterCoreGraphicsReadThemMB": 78.89,
-  "footprintIncreaseAfterMakingMB": 0.36,
+  "footprintIncreaseAfterCoreGraphicsReadThemMB": 78.75,
+  "footprintIncreaseAfterMakingMB": 0.34,
   "images": 8,
-  "liveUniformContextAfter3sMB": 9.8,
-  "liveUniformContextMB": 9.8
+  "liveUniformContextAfter3sMB": 9.78,
+  "liveUniformContextMB": 9.78
  },
  "loadAverageAtEnd": [
-  5.83,
-  7.27,
-  7.17
+  5.82,
+  6.19,
+  5.05
  ],
  "memoryPressure": {
-  "compressorOccupiesGB": 11.34,
-  "freeGB": 0.13,
-  "pressureLevel": 2,
+  "compressorOccupiesGB": 4.12,
+  "freeGB": 1.35,
+  "pressureLevel": 1,
   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
  }
 }

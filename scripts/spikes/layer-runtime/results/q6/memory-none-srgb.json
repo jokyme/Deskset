@@ -10,29 +10,29 @@
  "backingStores": {},
  "command": "q6",
  "footprintAfterCloseEachCycleMB": [
-  0.41,
-  0,
-  2.5
+  2.94,
+  0.05,
+  0.06
  ],
  "footprintIncreaseEachCycleMB": [
-  2.8,
-  2.47,
-  2.52
+  3,
+  0.06,
+  0.08
  ],
- "footprintIncreaseMedianMB": 2.52,
+ "footprintIncreaseMedianMB": 0.08,
  "holes": 20,
  "imageMB": 9.77,
  "imagePixels": "1600x1600",
  "layerBitmapMB": 0,
  "loadAverageAtEnd": [
-  5.3,
-  5.17,
-  5.35
+  5.11,
+  5.94,
+  5.01
  ],
  "memoryPressure": {
-  "compressorOccupiesGB": 9.44,
-  "freeGB": 0.1,
-  "pressureLevel": 2,
+  "compressorOccupiesGB": 4.41,
+  "freeGB": 1.74,
+  "pressureLevel": 1,
   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
  },
  "noise": false,

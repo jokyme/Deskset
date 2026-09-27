@@ -200,9 +200,9 @@
   "EP@p3 group [skin] kCGContextTypeBitmap kCGColorSpaceDisplayP3 8bpc": 38
  },
  "loadAverageAtEnd": [
-  5.89,
-  6.35,
-  5.96
+  5.03,
+  5.98,
+  5
  ],
  "pairs": {
   "A vs A (today)": {

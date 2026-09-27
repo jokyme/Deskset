@@ -204,9 +204,9 @@
   "EP@srgb group [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 38
  },
  "loadAverageAtEnd": [
-  6.06,
-  6.39,
-  5.97
+  5.47,
+  6.08,
+  5.03
  ],
  "pairs": {
   "A vs A (today)": {

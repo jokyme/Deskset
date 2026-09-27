@@ -235,9 +235,9 @@
   "EP/rgba16f+windowSpaceBase group [skin] kCGContextTypeBitmap Color LCD 16bpc float": 38
  },
  "loadAverageAtEnd": [
-  6.15,
-  6.42,
-  5.98
+  5.42,
+  6.08,
+  5.03
  ],
  "pairs": {
   "E1/auto": {

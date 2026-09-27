@@ -6,44 +6,44 @@
  ],
  "command": "glass",
  "loadAverageAtEnd": [
-  5.19,
-  5.64,
-  5.74
+  6.15,
+  5.52,
+  5.09
  ],
  "main idle": {
-  "appliedByMain": 241,
-  "frames": 241,
+  "appliedByMain": 240,
+  "frames": 240,
   "glass": "NSGlassEffectView",
-  "mainApplyLatencyMaxms": 4,
+  "mainApplyLatencyMaxms": 1.9,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 0.6,
+  "mainApplyLatencyP99ms": 1.6,
   "maxVisibleGlassWidthPt": 0,
   "reclaimedBySkin": 0,
-  "samples": 1026,
+  "samples": 1163,
   "samplesWithGlassVisibleBesideElement": 0
  },
  "main stalls 120 ms every 1 s": {
   "appliedByMain": 210,
   "frames": 216,
   "glass": "NSGlassEffectView",
-  "mainApplyLatencyMaxms": 50.9,
+  "mainApplyLatencyMaxms": 50.7,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 2.5,
+  "mainApplyLatencyP99ms": 5.8,
   "maxVisibleGlassWidthPt": 0,
   "reclaimedBySkin": 6,
-  "samples": 1018,
+  "samples": 1143,
   "samplesWithGlassVisibleBesideElement": 0
  },
  "main stalls 30 ms every 250 ms": {
-  "appliedByMain": 226,
-  "frames": 226,
+  "appliedByMain": 224,
+  "frames": 224,
   "glass": "NSGlassEffectView",
-  "mainApplyLatencyMaxms": 28.4,
+  "mainApplyLatencyMaxms": 32.4,
   "mainApplyLatencyP50ms": 0.1,
-  "mainApplyLatencyP99ms": 25.5,
+  "mainApplyLatencyP99ms": 27.5,
   "maxVisibleGlassWidthPt": 0,
   "reclaimedBySkin": 0,
-  "samples": 1004,
+  "samples": 1152,
   "samplesWithGlassVisibleBesideElement": 0
  }
 }

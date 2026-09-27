@@ -34,7 +34,7 @@ func option(_ name: String) -> String? {
 
 func flag(_ name: String) -> Bool { arguments.contains(name) }
 
-/// `--scenario` (default ten): ten, design, sixty, or static (memtrace only: 10 System widgets drawn once).
+/// `--scenario` (default ten): ten, design, sixty, or static (memtrace and wsmem only: System widgets drawn once).
 func scenarioOption() -> String {
     let s = option("--scenario") ?? "ten"
     guard ["ten", "design", "sixty", "static"].contains(s) else {

@@ -48,6 +48,10 @@ import AppKit
 func costRun() -> JSON {
     let mode = choice("--mode", Mode.EP)
     let scenario = scenarioOption()
+    guard scenario != "static" else {
+        log("cost: --scenario static is for memtrace and wsmem (cost measures updating widgets)")
+        exit(2)
+    }
     let seconds = Double(option("--seconds") ?? "") ?? 5
     let pairs = Int(option("--pairs") ?? "") ?? 3
     let settle = Double(option("--settle") ?? "") ?? 20
@@ -441,12 +445,12 @@ func memTrace() -> JSON {
 /// `wsmem`: WindowServer's footprint when a fresh process opens `--count` widgets of one scenario and mode, updating
 /// at the scenario's rate: median of 5 `top` samples before, after 8 s, and after closing them. One open per process,
 /// so WindowServer cannot reuse memory it kept from an earlier window of ours. Several windows per process (default
-/// 20 System widgets, 5 design skins, 5 visualizers) so the step stands out of `top`'s 1 MB resolution.
-/// WindowServer's footprint also jumps by ±100 MB on its own now and then; a round counts as clean when the footprint
+/// 20 System widgets, 5 design skins, 5 visualizers; `static`: 20 System widgets drawn once, never updated) so the
+/// step stands out of `top`'s 1 MB resolution. WindowServer's footprint also jumps by ±100 MB on its own now and then; a round counts as clean when the footprint
 /// went back to where it started after the windows closed (open step + close step within ±2 MB). Also recorded:
 /// WindowServer's resident size (`ps`, KB; without GPU memory) and the GPU's "In use system memory" (the whole system,
 /// this process's surfaces included).
-///   --scenario ten|design|sixty  --count N  --mode --window-cs --format as for `cost`
+///   --scenario ten|design|sixty|static  --count N  --mode --window-cs --format as for `cost`
 func windowServerMemoryRun() -> JSON {
     let mode = choice("--mode", Mode.EP)
     let scenario = scenarioOption()
@@ -454,6 +458,7 @@ func windowServerMemoryRun() -> JSON {
         switch scenario {
         case "design": return ({ Widgets.design() }, 5, 1.0, 4)
         case "sixty": return ({ Widgets.visualizer() }, 5, 1.0 / 60, 5)
+        case "static": return ({ Widgets.system() }, 20, 0, 5)
         default: return ({ Widgets.system() }, 20, 1.0, 5)
         }
     }()
@@ -490,7 +495,7 @@ func windowServerMemoryRun() -> JSON {
                                thread: threads[i])
             w.buildAndCommit(tick: 0)
             w.show()
-            w.start(interval: interval)
+            if interval > 0 { w.start(interval: interval) }
             windows.append(w)
         }
     }
