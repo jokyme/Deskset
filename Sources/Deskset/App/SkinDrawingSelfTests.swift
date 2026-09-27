@@ -461,6 +461,11 @@ enum SkinDrawingSelfTests {
                 t.equal(image.width, Int((view.bounds.width * scale).rounded(.up)))
                 t.equal(image.height, Int((view.bounds.height * scale).rounded(.up)))
             }
+            // Frames of a skin that rests copy its picture: nothing the view hands the drawing (its window's color
+            // space, scale, appearance) looks new each time.
+            view.updateLayer()
+            view.updateLayer()
+            t.equal(view.drawing.lastStats.copied, 1, "the resting skin is copied: \(view.drawing.lastStats)")
             // The picture is the view's own: another display (scale, color space) or appearance draws it again.
             view.needsDisplay = false
             view.viewDidChangeBackingProperties()

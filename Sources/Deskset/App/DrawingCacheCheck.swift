@@ -38,6 +38,8 @@ enum DrawingCacheCheck {
         var skipped: String?
         /// Image files the check replaced while the skin ran.
         var imagesReplaced = 0
+        /// How long the check of the skin took.
+        var seconds = 0.0
     }
 
     /// Everything checked.
@@ -130,6 +132,7 @@ enum DrawingCacheCheck {
         if r.mismatches.isEmpty {
             return "ok        \(r.config) \(r.file): \(r.frames) frames, \(r.copiedFrames) with kept pictures, worst \(r.worst)"
                 + (r.imagesReplaced > 0 ? ", \(r.imagesReplaced) image files replaced" : "")
+                + (r.seconds >= 2 ? String(format: " (%.1f s)", r.seconds) : "")
         }
         return "MISMATCH  \(r.config) \(r.file): " + r.mismatches.prefix(4).joined(separator: "; ")
             + (r.mismatches.count > 4 ? "; … \(r.mismatches.count) frames" : "")
@@ -177,6 +180,7 @@ enum DrawingCacheCheck {
         let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
         let config = parent.dropFirst(skinsRoot.standardizedFileURL.pathComponents.count).joined(separator: "\\")
         var result = SkinResult(config: config, file: file.lastPathComponent)
+        let started = ProcessInfo.processInfo.systemUptime
         let host = RenderHost()
         let skin = Skin(config: config, fileURL: file, skinsDirectory: skinsRoot, system: SystemMonitor.shared, host: host)
         let policy = StudioActionPolicy()
@@ -301,8 +305,8 @@ enum DrawingCacheCheck {
             wait()
             frame("last update \(i + 1)", update: true)
         }
-        _ = policy
-        return withExtendedLifetime(host) { result }
+        result.seconds = ProcessInfo.processInfo.systemUptime - started
+        return withExtendedLifetime((host, policy)) { result }
     }
 
     /// A window side as the skin window has it (`SkinController.skinSize`).
