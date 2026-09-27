@@ -485,7 +485,13 @@ extension Checker {
             desk = height.map { ".size(\(width), \($0))" } ?? ".width(\(width))"
         }
         if name == "visible", let first = arguments.first { desk = ".hidden(if: not \(text(first.value.node)))" }
-        let exact = row.exact && !desk.contains("{") && !desk.contains("…")
+        var exact = row.exact && !desk.contains("{") && !desk.contains("…")
+        var nameOnly: String?
+        if row.exact, modifier.block != nil, desk.hasPrefix("."), desk.hasSuffix(" { … }") {
+            // `.onTap { … }` → `.onClick { … }`: the name changes, the block stays.
+            nameOnly = String(desk.dropFirst().dropLast(6))
+            exact = false
+        }
         switch row.diagnostic {
         case .swiftUIModifier:
             var fixIts: [FixIt] = []
@@ -494,11 +500,14 @@ extension Checker {
                 report(.swiftUIModifier, nameRange, ["name": .code(name), "desk": .code(hintRemoveText(name))], fixIts: fixIts)
             } else {
                 if exact { fixIts.append(fix("replace", [edit(r, desk)])) }
+                if let nameOnly { fixIts.append(fix("replace", [edit(nameRange, nameOnly)])) }
                 report(.swiftUIModifier, nameRange, ["name": .code(name), "desk": .code(desk)], fixIts: fixIts)
             }
         case .otherFrameworkName:
+            var fixIts: [FixIt] = exact ? [fix("replace", [edit(r, desk)])] : []
+            if let nameOnly { fixIts = [fix("replace", [edit(nameRange, nameOnly)])] }
             report(.otherFrameworkName, nameRange, ["name": .code("." + name), "family": .text(familyName(row.family)), "desk": .code(desk)],
-                   fixIts: exact ? [fix("replace", [edit(r, desk)])] : [])
+                   fixIts: fixIts)
         case .olderDeskName:
             report(.olderDeskName, nameRange, ["new": .code(desk)], fixIts: exact ? [fix("replace", [edit(r, desk)])] : [])
         case .unknownModifier:

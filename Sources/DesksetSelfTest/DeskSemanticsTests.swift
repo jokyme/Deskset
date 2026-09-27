@@ -1,0 +1,279 @@
+import Foundation
+@testable import DeskLanguage
+
+// Did-you-mean (§6.2), commands (§8.2), localization (§8.6) and the checker's speed (§0.4, §9.8).
+
+/// A widget of about `lines` lines in the style of the examples: options, declarations, rows, grids, styles, events.
+func deskLargeWidget(lines: Int) -> String {
+    var text = """
+    info { name: "Large", size: .large, permissions: [.music] }
+
+    options {
+        accent = ColorPicker("Accent", default: .accent)
+        weekStart = Picker("Week starts on", [.sunday, .monday], default: .sunday)
+        showSeconds = Toggle("Show seconds")
+        threshold = Slider("Alert above", min: 50, max: 100)
+    }
+
+    widget {
+        variable page = 0
+        variable monthsFromNow = 0
+        computed month = calendar.month(offset: monthsFromNow, weekStart: options.weekStart)
+        computed hot = cpu.usage > options.threshold
+
+        Column(spacing: 12) {
+
+    """
+    var block = 0
+    while text.split(separator: "\n", omittingEmptySubsequences: false).count < lines - 12 {
+        block += 1
+        text += """
+                Row {
+                    Text("CPU \(block)").font(.caption).color(.dim)
+                    Text("{cpu.usage}%")
+                        .font(.largeNumber)
+                        .color(.red, if: hot)
+                        .hover { .color(options.accent) }
+                    Spacer()
+                    Icon("chevron.right").style(arrow).onClick { page = page + 1 }
+                }
+                Progress(memory.used).track(.faint).hidden(if: page > \(block % 5))
+                Grid(columns: 7) {
+                    for day in month.days {
+                        Text("{day.number}")
+                            .style(dateCell)
+                            .style(todayCell, if: day.isToday)
+                            .hidden(if: not day.inMonth)
+                    }
+                }
+                Text("{music.title, missing: "Nothing playing"} · {time.now, format: "HH:mm"}")
+                    .lines(1)
+                    .onClick { monthsFromNow = monthsFromNow + 1 }
+
+        """
+    }
+    text += """
+        }
+        .padding(18)
+        .background(.glass)
+    }
+
+    style arrow     { .font(16).color(.dim).hover { .color(options.accent) } }
+    style dateCell  { .font(13).size(28, 24) }
+    style todayCell { .font(13, .semibold).color(.white).size(24).background(options.accent).rounded(.full) }
+
+    """
+    return text
+}
+
+func runDeskSemanticsTests(_ t: TestRunner) {
+    t.suite("Desk: did-you-mean") {
+        // Three wrong guesses per common name, each leading to the right name.
+        let guesses: [(String, String)] = [
+            (".textColor(.red)", ".color(.red)"), (".fontColor(.red)", ".color(.red)"), (".foregroundColor(.red)", ".color(.red)"),
+            (".backgroundColor(.red)", ".background(.red)"), (".material(.red)", ".background(.red)"), (".bg(.red)", ".background(.red)"),
+            (".cornerRadius(8)", ".rounded(8)"), (".borderRadius(8)", ".rounded(8)"), (".radius(8)", ".rounded(8)"),
+            (".alpha(0.5)", ".opacity(0.5)"), (".transparency(0.5)", ".opacity(0.5)"), (".transparent(0.5)", ".opacity(0.5)"),
+            (".fontSize(13)", ".font(13)"), (".fontFamily(13)", ".font(13)"), (".typeface(13)", ".font(13)"),
+            (".onTap { log(\"x\") }", ".onClick { log(\"x\") }"), (".onPress { log(\"x\") }", ".onClick { log(\"x\") }"),
+            (".onTapGesture { log(\"x\") }", ".onClick { log(\"x\") }"),
+        ]
+        for (wrong, right) in guesses {
+            let text = "info { name: \"T\" }\nwidget { Text(\"A\")\(wrong) }"
+            let checked = deskCheck(text)
+            let fixed = checked.diagnostics.first?.fixIts.first.map { TextEdit.apply($0.edits, to: text) }
+            t.equal(fixed, "info { name: \"T\" }\nwidget { Text(\"A\")\(right) }", "\(wrong) → \(right)")
+        }
+        // Data: synonyms and one level down.
+        let data: [(String, String)] = [
+            ("battery.percent", "battery.level"), ("battery.charge", "battery.level"), ("battery.Percent", "battery.level"),
+            ("cpu.load", "cpu.usage"), ("cpu.utilization", "cpu.usage"), ("cpu.busy", "cpu.usage"),
+            ("time.hour", "time.now.hour"), ("time.minute", "time.now.minute"), ("time.weekday", "time.now.weekday"),
+        ]
+        for (wrong, right) in data {
+            let text = "info { name: \"T\" }\nwidget { Text(\"{\(wrong)}\") }"
+            let checked = deskCheck(text)
+            t.equal(checked.diagnostics.map(\.id.rawValue), ["DK3003"], wrong)
+            let fixed = checked.diagnostics.first?.fixIts.first.map { TextEdit.apply($0.edits, to: text) }
+            t.equal(fixed, "info { name: \"T\" }\nwidget { Text(\"{\(right)}\") }", "\(wrong) → \(right)")
+        }
+        let weather = "info { name: \"T\", permissions: [.location] }\nwidget { Text(\"{weather.temp}\") }"
+        let checkedWeather = deskCheck(weather)
+        let temp = checkedWeather.diagnostics.first { $0.id == .unknownMember }
+        t.equal(temp?.message(in: .english), "`weather` has no `temp`. Did you mean `weather.now.temperature`?")
+        // Components and controls.
+        for (wrong, right) in [("ProgressBar", "Progress"), ("Bar", "Progress"), ("Txt", "Text")] {
+            let text = "info { name: \"T\" }\nwidget { \(wrong)(cpu.usage) }"
+            let checked = deskCheck(text)
+            let fixed = checked.diagnostics.first?.fixIts.first.map { TextEdit.apply($0.edits, to: text) }
+            t.check(fixed?.contains("\(right)(cpu.usage)") == true, "\(wrong) → \(right): \(checked.diagnostics.map(\.id.rawValue))")
+        }
+        let dropdown = deskCheck("info { name: \"T\" }\noptions { d = Dropdown(\"Day\", [.sunday, .monday]) }\nwidget { Text(\"{options.d}\") }")
+        t.equal(dropdown.diagnostics.map(\.id.rawValue), ["DK8004"])
+        t.equal(dropdown.diagnostics.first?.fixIts.first?.edits.first?.replacement, "Picker")
+        // No fix-it at distance 2 in a display position; one at distance 1.
+        let far = deskCheck("info { name: \"T\" }\nwidget { Text(\"{battery.lvel}\") }")
+        t.equal(far.diagnostics.map(\.id.rawValue), ["DK3003"])
+        t.equal(far.diagnostics.first?.fixIts.count, 1, "distance 1: fixed")
+        let farther = deskCheck("info { name: \"T\" }\nwidget { Text(\"{battery.chrgng}\") }")
+        t.equal(farther.diagnostics.first?.fixIts.count, 0, "distance 2 in text: no fix-it")
+        t.check(farther.diagnostics.first?.message(in: .english).contains("battery.charging") == true, "but it is suggested")
+        // A newer file: DK3023 before any suggestion.
+        let newer = deskCheck("info { name: \"T\", requires: \"2.0\" }\nwidget { Text(\"{cpu.usag}\").fontSize(3) }")
+        t.equal(newer.diagnostics.map(\.id.rawValue), ["DK3023", "DK3023"])
+        // The distance itself.
+        t.equal(DidYouMean.distance("colour", "color"), 1)
+        t.equal(DidYouMean.distance("hte", "the"), 1, "a transposition is one step")
+        t.equal(DidYouMean.distance("kitten", "sitting"), 3)
+        t.equal(DidYouMean.suggest("colr", candidates: ["color", "cover", "clip"]).names.first, "color")
+    }
+
+    t.suite("Desk: commands") {
+        func command(_ template: String, options: String) -> (CheckedFile, CommandFacts?) {
+            let text = "info { name: \"T\", permissions: [.commands] }\noptions { \(options) }\nwidget { Text(\"A\").onClick { run(\"\(template)\") } }"
+            let checked = deskCheck(text)
+            return (checked, checked.requirements.commands.first)
+        }
+        let (plain, open) = command("open {options.target}", options: "target = Input(\"Target\", default: \"Safari\")")
+        t.equal(plain.diagnostics.map(\.id.rawValue), [])
+        t.equal(open?.script, "open \"${1}\"")
+        t.equal(open?.placeholders, ["target"])
+        t.equal(open?.knownValues["target"], ["\"Safari\""], "the install list shows the default")
+        t.equal(command("ls --dir={options.folder}", options: "folder = Input(\"Folder\")").1?.script, "ls --dir=\"${1}\"")
+        t.equal(command("say \\\"Hello {options.name}\\\"", options: "name = Input(\"Name\")").1?.script, "say \"Hello ${1}\"")
+        let quoted = command("open '{options.target}'", options: "target = Input(\"Target\")").0
+        t.equal(quoted.diagnostics.map(\.id.rawValue), ["DK8208"])
+        let glued = command("cat '~/Notes/{options.name}.txt'", options: "name = Input(\"Name\")").0
+        t.equal(glued.diagnostics.map(\.id.rawValue), ["DK8208"])
+        let fixedGlued = glued.diagnostics.first?.fixIts.first.map { TextEdit.apply($0.edits, to: glued.tree.text) } ?? ""
+        t.check(fixedGlued.contains("'~/Notes/'{options.name}'.txt'"), fixedGlued)
+        for code in ["sh -c {options.x}", "osascript -e {options.x}", "eval {options.x}", "bash -c {options.x}"] {
+            t.equal(command(code, options: "x = Input(\"X\")").0.diagnostics.map(\.id.rawValue), ["DK8209"], code)
+        }
+        t.equal(command("sh -c 'say \\\"$1\\\"' _ {options.x}", options: "x = Input(\"X\")").0.diagnostics.map(\.id.rawValue), [],
+                "the value after the code is an argument")
+        // Live data never reaches a command.
+        t.equal(deskCheck("info { name: \"T\", permissions: [.commands, .music] }\nwidget { Text(\"A\").onClick { run(\"say {music.title}\") } }").diagnostics.map(\.id.rawValue), ["DK8202"])
+        t.equal(deskCheck("info { name: \"T\", permissions: [.music] }\nwidget { Text(\"A\").onClick { open(\"https://example.com/?q={music.title}\") } }").diagnostics.map(\.id.rawValue), [],
+                "a click may open it with data; the user sees it")
+        // Hostile values arrive as one literal argument each.
+        let (_, echo) = command("printf \\\"[%s]\\\" {options.a} {options.b}", options: "a = Input(\"A\"); b = Input(\"B\")")
+        let script = echo?.script ?? ""
+        t.equal(script, "printf \"[%s]\" \"${1}\" \"${2}\"")
+        let values = ["; echo INJECTED", "$(echo INJECTED)", "`echo INJECTED`", "a \"quoted\" 'value'", "line\nbreak", "Bob's Music"]
+        for value in values {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", script, "deskset", value, "x"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                t.equal(output, "[\(value)][x]", "the value arrives as written: \(value.debugDescription)")
+            } catch {
+                t.check(false, "zsh: \(error)")
+            }
+        }
+    }
+
+    t.suite("Desk: localization") {
+        // Translatable literals by data flow.
+        let text = """
+        info { name: "Player", description: "What's playing.", permissions: [.music] }
+        options { big = Toggle("Big text") }
+        widget {
+            variable status = "Idle"
+            Column {
+                Text(music.playing ? "Playing" : "Paused")
+                Text(music.title.ifMissing("Nothing playing"))
+                Text("{music.artist, missing: "Unknown artist"}")
+                Image(music.cover.ifMissing("cover.png"))
+                Text(status).onClick { log("clicked"); status = "Busy" }
+                Button("Next").onClick { music.next() }.tooltip("Next track")
+            }
+            .hidden(if: options.big)
+        }
+        """
+        let checked = deskCheck(text)
+        t.equal(checked.diagnostics.map(\.id.rawValue), [])
+        let keys = Set(checked.stringTable.map(\.key))
+        for key in ["Player", "What's playing.", "Big text", "Playing", "Paused", "Nothing playing",
+                    "{music.artist, missing: \"Unknown artist\"}", "Unknown artist", "Next", "Next track"] {
+            t.check(keys.contains(key), "translated: \(key) in \(keys.sorted())")
+        }
+        for key in ["cover.png", "clicked", "Idle", "Busy"] { t.check(!keys.contains(key), "not translated: \(key)") }
+        // Keys by token sequence: formatting never changes a key.
+        let a = deskCheck("info { name: \"T\" }\nwidget { Text(\"{ cpu.usage }% used\") }")
+        let b = deskCheck("info { name: \"T\" }\nwidget { Text(\"{cpu.usage}% used\") }")
+        t.equal(a.stringTable.map(\.key), b.stringTable.map(\.key))
+        t.equal(b.stringTable.map(\.key), ["T", "{cpu.usage}% used"])
+        let notX = deskCheck("info { name: \"T\" }\nwidget {\n    variable x = true\n    variable notx = true\n    Text(\"{not x}\").hidden(if: notx)\n}")
+        t.equal(notX.stringTable.map(\.key), ["T", "{not x}"])
+        // A translation that moves its placeholder.
+        let moved = deskCheck("info { name: \"T\" }\nwidget { Text(\"{cpu.usage}% used\") }\ntranslations {\n    \"zh-Hans\" { \"{ cpu.usage }% used\": \"已用 {cpu.usage}%\" }\n}")
+        t.equal(moved.diagnostics.map(\.id.rawValue), [])
+        t.equal(moved.translations.languages["zh-Hans"]?["{cpu.usage}% used"], "\"已用 {cpu.usage}%\"")
+        // Tags: one per case of §8.6.
+        let tags: [(String, [String], String?)] = [
+            ("zh-Hans", ["zh-Hans-CN"], "zh-Hans"), ("zh-CN", ["zh-Hans-CN"], "zh-CN"), ("zh-SG", ["zh-Hans-SG"], "zh-SG"),
+            ("zh-TW", ["zh-Hant-TW"], "zh-TW"), ("zh-HK", ["zh-Hant-HK"], "zh-HK"), ("zh-MO", ["zh-Hant-MO"], "zh-MO"),
+            ("zh_CN", ["zh-Hans-CN"], "zh_CN"), ("zh-Hans-CN", ["zh-Hans"], "zh-Hans-CN"), ("de-DE", ["de-AT"], "de-DE"),
+            ("zh-Hant", ["zh-Hans-CN"], nil), ("ja", ["de-DE"], nil), ("pt-BR", ["pt-PT"], "pt-BR"),
+        ]
+        for (tag, preferred, expected) in tags {
+            t.equal(DeskLocalization.displayLanguage(available: [tag], preferred: preferred), expected, "\(tag) on \(preferred)")
+        }
+        t.equal(DeskLocalization.normalize("zh-CN"), "zh-Hans")
+        t.equal(DeskLocalization.normalize("zh_TW"), "zh-Hant")
+        t.equal(DeskLocalization.normalize("zh-HK"), "zh-Hant-HK")
+        t.equal(DeskLocalization.normalize("sr-RS"), "sr-Cyrl-RS")
+        t.equal(DeskLocalization.normalize("pt-BR"), "pt-BR")
+        t.equal(deskIDs(of: "widget { Text(\"A\") }\ntranslations {\n    \"zh-CN\" { \"A\": \"甲\" }\n    \"zh-Hans\" { \"A\": \"甲\" }\n}"),
+                ["DK8406", "DK8405"])
+        t.equal(deskIDs(of: "widget { Text(\"A\") }\ntranslations {\n    \"pt-BR\" { \"A\": \"a\" }\n}"), [])
+    }
+
+    t.suite("Desk: checker performance") {
+        let text = deskLargeWidget(lines: 2_000)
+        let lineCount = text.split(separator: "\n", omittingEmptySubsequences: false).count
+        let firstTree = Desk.parse(text, fileName: "Large.desk")
+        let first = Desk.check(firstTree)
+        t.equal(first.diagnostics.filter { $0.severity == .error }.map(\.id.rawValue), [], "the large widget checks without errors")
+        func best(_ runs: Int, _ body: () -> Void) -> Double {
+            var fastest = Double.infinity
+            for _ in 0..<runs {
+                let start = ProcessInfo.processInfo.systemUptime
+                body()
+                fastest = min(fastest, ProcessInfo.processInfo.systemUptime - start)
+            }
+            return fastest * 1000
+        }
+        var tree = firstTree
+        let parse = best(5) { tree = Desk.parse(text, fileName: "Large.desk") }
+        let check = best(5) { _ = Desk.check(tree) }
+        let both = best(5) { _ = Desk.check(Desk.parse(text, fileName: "Large.desk")) }
+        #if DEBUG
+        let build = "debug"
+        let factor = 10.0
+        #else
+        let build = "release"
+        let factor = 1.0
+        #endif
+        let perThousand = both / Double(lineCount) * 1000
+        print(String(format: "    Desk checker, %@ build, %d lines: parse %.1f ms, check %.1f ms, parse + check %.1f ms "
+                     + "(%.1f ms per 1,000 lines; budget %.0f ms per 1,000 lines for lex, parse and check)",
+                     build as NSString, lineCount, parse, check, both, perThousand, 25 * factor))
+        print(String(format: "    The editor re-checks 0.3 s after typing stops: parse + check takes %.0f%% of that pause.",
+                     both / 300 * 100))
+        // A one-character edit of a 300-line widget, the editor's case (§9.8: 10 ms end to end in release).
+        let small = deskLargeWidget(lines: 300)
+        let edited = small.replacingOccurrences(of: "CPU 1\"", with: "CPU 1!\"")
+        let recheck = best(5) { _ = Desk.check(Desk.parse(edited, fileName: "Small.desk")) }
+        print(String(format: "    Re-check after a one-character edit of a 300-line widget: %.1f ms (budget %.0f ms).",
+                     recheck, 10 * factor))
+        // Not a benchmark on CI: only a bound that keeps the editor responsive.
+        t.check(both < 300 * factor / 2, String(format: "parse + check of %d lines took %.0f ms", lineCount, both))
+    }
+}

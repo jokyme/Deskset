@@ -391,6 +391,17 @@ extension Checker {
                 if case .member(let n, let member) = path, n == ns { keywordTargets.append(member) }
                 if case .recordField(let rid, let field) = path, spec.instanceOf == rid { keywordTargets.append(field) }
             }
+            // One level down, by synonym: `weather.temp` → `weather.now.temperature`.
+            if deeper[name] == nil, keywordTargets.isEmpty {
+                var fields: [(String, DeskType)] = spec.members.filter { $0.kind == .field }.map { ($0.name, $0.type) }
+                if let record = spec.instanceOf.flatMap({ catalog.record($0) }) {
+                    fields += record.fields.filter { $0.kind == .field }.map { ($0.name, $0.type) }
+                }
+                for path in index.keywordMatches(name) {
+                    guard case .recordField(let rid, let field) = path else { continue }
+                    if let owner = fields.first(where: { $0.1 == .record(rid) }) { deeper[name] = "\(owner.0).\(field)"; break }
+                }
+            }
         } else {
             candidates = catalog.members(of: base.type).map(\.name)
             for path in index.keywordMatches(name) {

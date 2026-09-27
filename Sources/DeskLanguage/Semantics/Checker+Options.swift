@@ -758,10 +758,7 @@ extension Checker {
 
     /// `_` → `-`; Chinese region tags name their script; `zh` → `zh-Hans` (D128).
     static func normalizeLanguageTag(_ tag: String) -> String {
-        var t = tag.replacingOccurrences(of: "_", with: "-")
-        if let mapped = chineseRegionTags[t] { return mapped }
-        if t == "zh" { t = "zh-Hans" }
-        return t
+        DeskLocalization.normalize(tag)
     }
 
     static let commonLanguageTags = ["en", "zh-Hans", "zh-Hant", "ja", "ko", "de", "fr", "es", "it", "pt", "pt-BR", "ru", "nl",
