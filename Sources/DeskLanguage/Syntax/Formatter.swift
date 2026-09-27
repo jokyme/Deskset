@@ -113,6 +113,9 @@ final class DeskFormatter {
     /// when the full layout would change how a file with errors parses.
     var conservative = false
 
+    /// Strings of 0, 1, 2 … spaces.
+    var spaceStrings: [String] = [""]
+
     // Layout of one pass.
     var mustBreak: [Bool] = []
     var mustJoin: [Bool] = []
@@ -139,16 +142,24 @@ final class DeskFormatter {
     // MARK: - Newlines
 
     static func dominantNewline(_ root: SyntaxNode) -> String {
-        var counts: [NewlineKind: Int] = [:]
-        root.walkTokens { token, _ in
-            for piece in token.leadingTrivia + token.trailingTrivia {
-                if case .newline(let kind) = piece { counts[kind, default: 0] += 1 }
+        var lf = 0
+        var crlf = 0
+        var cr = 0
+        func count(_ pieces: [Trivia]) {
+            for piece in pieces {
+                guard case .newline(let kind) = piece else { continue }
+                switch kind {
+                case .lf: lf += 1
+                case .crlf: crlf += 1
+                case .cr: cr += 1
+                }
             }
+        }
+        root.walkTokens { token, _ in
+            count(token.leadingTrivia)
+            count(token.trailingTrivia)
             return true
         }
-        let lf = counts[.lf] ?? 0
-        let crlf = counts[.crlf] ?? 0
-        let cr = counts[.cr] ?? 0
         if crlf > lf && crlf >= cr { return "\r\n" }
         if cr > lf && cr > crlf { return "\r" }
         return "\n"
@@ -488,20 +499,29 @@ final class DeskFormatter {
 
     /// Initial decisions from the text as written (F3, F4, F5).
     func decideFromOriginal() {
+        // Counts up to each token of line breaks (before it or inside it) and of comments next to it, so that each
+        // block is decided in constant time however deeply blocks nest.
+        var breaks = [Int](repeating: 0, count: toks.count + 1)
+        var comments = [Int](repeating: 0, count: toks.count + 1)
+        for k in toks.indices {
+            var lineBreak = originalBreak(before: k)
+            if !lineBreak {
+                for b in bytes[toks[k].start..<toks[k].end] where b == 0x0A || b == 0x0D {
+                    lineBreak = true
+                    break
+                }
+            }
+            let comment = toks[k].token.leadingTrivia.containsComment
+                || (k > 0 && toks[k - 1].token.trailingTrivia.containsComment)
+            breaks[k + 1] = breaks[k] + (lineBreak ? 1 : 0)
+            comments[k + 1] = comments[k] + (comment ? 1 : 0)
+        }
         for id in blocks.indices {
             let block = blocks[id]
             guard !block.frozen, block.open >= 0, block.close >= 0 else { continue }
-            var singleLine = true
-            var comment = false
-            for k in (block.open + 1)...block.close {
-                if originalBreak(before: k) { singleLine = false }
-                let token = toks[k].token
-                if token.text.contains("\n") || token.text.contains("\r") { singleLine = false }
-                if k > block.open + 0 && (toks[k].token.leadingTrivia.containsComment
-                                          || toks[k - 1].token.trailingTrivia.containsComment) {
-                    comment = true
-                }
-            }
+            // Tokens open + 1 ... close.
+            let singleLine = breaks[block.close + 1] == breaks[block.open + 1]
+            let comment = comments[block.close + 1] != comments[block.open + 1]
             blocks[id].singleLine = singleLine
             blocks[id].hasComment = comment
             if !singleLine || comment { brokenBlocks.insert(id) }
@@ -749,9 +769,10 @@ final class DeskFormatter {
     // MARK: - Rendering
 
     struct Output {
-        var text: String
+        var bytes: [UInt8]
         /// Output offset of each token's text.
         var starts: [Int]
+        var text: String { String(decoding: bytes, as: UTF8.self) }
     }
 
     /// Whether a gap is left exactly as written: next to frozen code or a missing token, or before the end of a
@@ -764,59 +785,55 @@ final class DeskFormatter {
     }
 
     func endsInUnclosedComment(_ p: Int, _ k: Int) -> Bool {
-        for piece in gapPieces(p, k).reversed() {
-            switch piece {
-            case .blockComment(let s): return !(s.count >= 4 && s.hasSuffix("*/"))
-            case .lineComment, .newline, .spaces, .tabs, .unusualSpace, .invisible, .byteOrderMark: continue
-            }
+        // The last block comment of the gap (nothing can follow an unclosed one).
+        var last: String?
+        forEachGapPiece(p, k) { piece in
+            if case .blockComment(let s) = piece { last = s }
         }
-        return false
+        guard let last else { return false }
+        return !(last.count >= 4 && last.hasSuffix("*/"))
     }
 
-    /// The trivia pieces between the previous kept token `p` and token `k` (including the trivia of removed tokens
-    /// in between).
-    func gapPieces(_ p: Int, _ k: Int) -> [Trivia] {
-        var pieces: [Trivia] = []
-        if p >= 0 { pieces += toks[p].token.trailingTrivia }
+    /// Visits the trivia pieces between the previous kept token `p` and token `k` (including the trivia of removed
+    /// tokens in between), in order.
+    func forEachGapPiece(_ p: Int, _ k: Int, _ body: (Trivia) -> Void) {
+        if p >= 0 { for piece in toks[p].token.trailingTrivia { body(piece) } }
         var r = p + 1
         while r < k {
-            pieces += toks[r].token.leadingTrivia
-            pieces += toks[r].token.trailingTrivia
+            for piece in toks[r].token.leadingTrivia { body(piece) }
+            for piece in toks[r].token.trailingTrivia { body(piece) }
             r += 1
         }
-        pieces += toks[k].token.leadingTrivia
-        return pieces
+        for piece in toks[k].token.leadingTrivia { body(piece) }
     }
 
     func render() -> Output {
-        var out = String.UnicodeScalarView()
-        var outBytes = 0
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count + bytes.count / 4 + 64)
         var starts = [Int](repeating: 0, count: toks.count)
         var p = -1
         // Style runs (F8): widths of the names of consecutive single-line top-level styles.
         let styleColumn = styleAlignment()
         for k in 0..<toks.count {
             if toks[k].remove { continue }
-            let gap: String
             if p >= 0, toks[p].frozen, !toks[k].frozen, !toks[k].missingBefore, toks[p].end < toks[k].start,
                !(toks[k].role == .eof && endsInUnclosedComment(p, k)), let partial = renderAfterFrozen(p, k) {
                 // After code left as written: its line stays as it is; the next line is indented as usual.
-                gap = partial
+                out.append(contentsOf: partial.utf8)
             } else if gapIsVerbatim(p, k) {
-                let from = p >= 0 ? toks[p].end : 0
-                gap = String(decoding: bytes[from..<toks[k].start], as: UTF8.self)
+                out.append(contentsOf: bytes[(p >= 0 ? toks[p].end : 0)..<toks[k].start])
             } else {
-                gap = renderGap(p, k, styleColumn: styleColumn)
+                appendGap(p, k, styleColumn: styleColumn, to: &out)
             }
-            out.append(contentsOf: gap.unicodeScalars)
-            outBytes += gap.utf8.count
-            starts[k] = outBytes
-            let text = toks[k].replacement ?? toks[k].token.text
-            out.append(contentsOf: text.unicodeScalars)
-            outBytes += text.utf8.count
+            starts[k] = out.count
+            if let replacement = toks[k].replacement {
+                out.append(contentsOf: replacement.utf8)
+            } else {
+                out.append(contentsOf: bytes[toks[k].start..<toks[k].end])
+            }
             p = k
         }
-        return Output(text: String(out), starts: starts)
+        return Output(bytes: out, starts: starts)
     }
 
     /// Style names in runs of single-line top-level styles: the column their `{` is aligned to (F8).
@@ -850,7 +867,7 @@ final class DeskFormatter {
 
     /// Blank lines written before token `k`, as the formatter keeps them (at most one).
     func blankRowsBefore(_ k: Int) -> Int {
-        let layout = GapLayout(pieces: gapPieces(k - 1, k))
+        let layout = GapLayout { visit in forEachGapPiece(k - 1, k, visit) }
         return layout.rows.contains { $0.isEmpty } ? 1 : 0
     }
 
@@ -865,8 +882,17 @@ final class DeskFormatter {
         var hasBreak = false
 
         init(pieces: [Trivia]) {
+            self.init { visit in pieces.forEach(visit) }
+        }
+
+        /// From the pieces `visitPieces` passes to its argument, in order.
+        init(_ visitPieces: ((Trivia) -> Void) -> Void) {
             var current: [String] = []
-            for piece in pieces {
+            var inline: [String] = []
+            var rows: [[String]] = []
+            var newlines = 0
+            var hasBreak = false
+            visitPieces { piece in
                 switch piece {
                 case .newline:
                     if newlines == 0 { inline = current } else { rows.append(current) }
@@ -875,17 +901,50 @@ final class DeskFormatter {
                     hasBreak = true
                 case .lineComment(let s), .blockComment(let s):
                     current.append(s)
-                    if s.contains("\n") || s.contains("\r") { hasBreak = true }
+                    if s.utf8.contains(0x0A) || s.utf8.contains(0x0D) { hasBreak = true }
                 default:
                     break
                 }
             }
             if newlines == 0 { inline = current } else { lastRow = current }
+            self.inline = inline
+            self.rows = rows
+            self.newlines = newlines
+            self.hasBreak = hasBreak
         }
     }
 
+    /// Appends the rendered gap before token `k` (after the kept token `p`).
+    private func appendGap(_ p: Int, _ k: Int, styleColumn: [Int: Int], to out: inout [UInt8]) {
+        // The common gaps — a single space or nothing between two tokens on a line, or one line break and the
+        // indentation — are written directly.
+        if p >= 0, !mustBreak[k], !mustJoin[k], toks[k].role != .eof, gapIsPlainSpaces(p, k) {
+            out.append(contentsOf: spacing(p, k, styleColumn: styleColumn).utf8)
+            return
+        }
+        out.append(contentsOf: renderGap(p, k, styleColumn: styleColumn).utf8)
+    }
+
+    /// Whether the gap holds only spaces and tabs (no line break, no comment), without removed tokens in between.
+    private func gapIsPlainSpaces(_ p: Int, _ k: Int) -> Bool {
+        guard k == p + 1 else { return false }
+        for piece in toks[p].token.trailingTrivia {
+            switch piece {
+            case .spaces, .tabs: continue
+            default: return false
+            }
+        }
+        for piece in toks[k].token.leadingTrivia {
+            switch piece {
+            case .spaces, .tabs: continue
+            default: return false
+            }
+        }
+        return true
+    }
+
     private func renderGap(_ p: Int, _ k: Int, styleColumn: [Int: Int]) -> String {
-        var layout = GapLayout(pieces: gapPieces(p, k))
+        var layout = GapLayout { visit in forEachGapPiece(p, k, visit) }
         let isEOF = toks[k].role == .eof
         var breaks = layout.hasBreak || mustBreak[k]
         if mustJoin[k] && layout.inline.isEmpty && layout.lastRow.isEmpty && layout.rows.allSatisfy(\.isEmpty) {
@@ -951,7 +1010,7 @@ final class DeskFormatter {
         }
         // Comments on their own lines take the indentation of the token after them; before a block's `}`, that of
         // the block's content, since they belong to it.
-        let commentIndent = beforeClose ? String(repeating: " ", count: indentOf[k] + indentWidth) : indent(k)
+        let commentIndent = beforeClose ? spaces(indentOf[k] + indentWidth) : indent(k)
         for row in rows { text += row.isEmpty ? newline : commentIndent + row.joined(separator: " ") + newline }
         text += indent(k)
         if !layout.lastRow.isEmpty { text += layout.lastRow.joined(separator: " ") + " " }
@@ -980,7 +1039,14 @@ final class DeskFormatter {
         return text
     }
 
-    private func indent(_ k: Int) -> String { String(repeating: " ", count: max(0, indentOf[k])) }
+    private func indent(_ k: Int) -> String { spaces(indentOf[k]) }
+
+    /// `n` spaces (cached: indentation is asked for at every line).
+    private func spaces(_ n: Int) -> String {
+        guard n > 0 else { return "" }
+        while spaceStrings.count <= n { spaceStrings.append(String(repeating: " ", count: spaceStrings.count)) }
+        return spaceStrings[n]
+    }
 
     private func trimBlankRows(_ rows: [[String]], leading: Bool, trailing: Bool) -> [[String]] {
         var rows = rows
@@ -1089,6 +1155,20 @@ final class DeskFormatter {
         return width
     }
 
+    /// The display width of UTF-8 bytes (ASCII counted directly).
+    static func displayWidth(_ bytes: ArraySlice<UInt8>) -> Int {
+        var width = 0
+        var ascii = true
+        for b in bytes {
+            if b >= 0x80 { ascii = false; break }
+            width += b >= 0x20 ? (b == 0x7F ? 1 : 1) : (b == 0x09 ? 4 : 0)
+        }
+        if ascii { return width }
+        width = 0
+        for s in String(decoding: bytes, as: UTF8.self).unicodeScalars { width += scalarWidth(s) }
+        return width
+    }
+
     static func scalarWidth(_ s: Unicode.Scalar) -> Int {
         let v = s.value
         if v < 0x20 { return v == 0x09 ? 4 : 0 }
@@ -1111,7 +1191,7 @@ final class DeskFormatter {
 
     func edits() -> [TextEdit] {
         decideFromOriginal()
-        var output = Output(text: tree.text, starts: [])
+        var output = Output(bytes: bytes, starts: [])
         // Breaking the outermost construct first and measuring again gives the most natural result; a line that
         // still overflows after a few rounds (pathologically deep one-line code) has all its constructs broken.
         var rounds = 0
@@ -1125,8 +1205,9 @@ final class DeskFormatter {
             layout()
             output = render()
         }
-        let original = DeskFormatter.structure(tree)
-        if verify(output.text, against: original) { return minimalEdits(output) }
+        // Already in the canonical style.
+        if output.bytes == bytes { return [] }
+        if verify(output) { return minimalEdits(output) }
         // A file with errors can read differently once lines are split (a line that failed to parse may look like
         // another language's on its own): keep its line breaks as written and only normalise the rest.
         conservative = true
@@ -1135,7 +1216,8 @@ final class DeskFormatter {
         for k in toks.indices { toks[k].remove = false }
         layout()
         output = render()
-        if verify(output.text, against: original) { return minimalEdits(output) }
+        if output.bytes == bytes { return [] }
+        if verify(output) { return minimalEdits(output) }
         if ProcessInfo.processInfo.environment["DESK_FORMAT_DEBUG"] != nil {
             FileHandle.standardError.write(Data(("formatter: verification failed for:\n" + output.text + "\n").utf8))
         }
@@ -1146,34 +1228,90 @@ final class DeskFormatter {
     /// without the separators a formatter may turn into line breaks and with the alternates it normalises.
     static func structure(_ tree: SyntaxTree) -> [String] {
         var out: [String] = []
-        var stack: [(node: SyntaxNode, next: Int)] = [(tree.root, 0)]
-        while !stack.isEmpty {
-            let (node, next) = stack[stack.count - 1]
-            guard next < node.children.count else {
-                out.append(")")
-                stack.removeLast()
-                continue
-            }
-            stack[stack.count - 1].next += 1
-            switch node.children[next] {
-            case .node(let child):
-                out.append(child.kind.rawValue + (child.foreignKind.map { ":" + $0.rawValue } ?? "") + "(")
-                stack.append((child, 0))
-            case .token(let t):
-                if t.kind == .eof { continue }
-                if (node.kind == .block || node.kind == .sourceFile) && (t.kind == .semicolon || t.kind == .comma) { continue }
-                if node.kind == .group && t.kind == .colon { continue }
-                if node.kind == .entry && t.kind == .equal { out.append(":"); continue }
-                out.append(t.isMissing ? "<\(t.kind.rawValue)>" : t.text)
+        var walker = StructureWalker(tree.root)
+        while let item = walker.next() {
+            switch item {
+            case .open(let node): out.append(node.kind.rawValue + (node.foreignKind.map { ":" + $0.rawValue } ?? "") + "(")
+            case .close: out.append(")")
+            case .token(let token, let alternate):
+                out.append(alternate ?? (token.isMissing ? "<\(token.kind.rawValue)>" : token.text))
             }
         }
         return out
     }
 
+    /// Whether two trees have the same shape in the sense of `structure`, compared as they are walked.
+    static func sameStructure(_ a: SyntaxNode, _ b: SyntaxNode) -> Bool {
+        var left = StructureWalker(a)
+        var right = StructureWalker(b)
+        while true {
+            let x = left.next()
+            let y = right.next()
+            switch (x, y) {
+            case (nil, nil):
+                return true
+            case (.open(let m)?, .open(let n)?):
+                if m.kind != n.kind || m.foreignKind != n.foreignKind { return false }
+            case (.close?, .close?):
+                continue
+            case (.token(let s, let sAlternate)?, .token(let t, let tAlternate)?):
+                if let sAlternate, let tAlternate {
+                    if sAlternate != tAlternate { return false }
+                    continue
+                }
+                if sAlternate != nil || tAlternate != nil { return false }
+                if s.isMissing != t.isMissing { return false }
+                if s.isMissing ? s.kind != t.kind : s.text != t.text { return false }
+            default:
+                return false
+            }
+        }
+    }
+
+    /// Walks a tree for `structure` and `sameStructure`: nodes opened and closed, and the tokens that count.
+    struct StructureWalker {
+        enum Item {
+            case open(SyntaxNode)
+            case close
+            /// A token, with the text it counts as when it is an accepted alternate.
+            case token(Token, alternate: String?)
+        }
+
+        private var stack: [(node: SyntaxNode, next: Int)]
+
+        init(_ root: SyntaxNode) { stack = [(root, 0)] }
+
+        mutating func next() -> Item? {
+            while !stack.isEmpty {
+                let (node, next) = stack[stack.count - 1]
+                guard next < node.children.count else {
+                    stack.removeLast()
+                    return .close
+                }
+                stack[stack.count - 1].next += 1
+                switch node.children[next] {
+                case .node(let child):
+                    stack.append((child, 0))
+                    return .open(child)
+                case .token(let t):
+                    if t.kind == .eof { continue }
+                    if (node.kind == .block || node.kind == .sourceFile) && (t.kind == .semicolon || t.kind == .comma) {
+                        continue
+                    }
+                    if node.kind == .group && t.kind == .colon { continue }
+                    if node.kind == .entry && t.kind == .equal { return .token(t, alternate: ":") }
+                    if node.kind == .entry && t.kind == .colon { return .token(t, alternate: ":") }
+                    return .token(t, alternate: nil)
+                }
+            }
+            return nil
+        }
+    }
+
     /// Breaks the outermost single-line block or modifier chain on each line wider than `maxWidth`. Returns
     /// whether a decision changed.
     func breakOverflowingLines(_ output: Output, all: Bool = false) -> Bool {
-        let text = Array(output.text.utf8)
+        let text = output.bytes
         // Line of each output offset.
         var lineStarts = [0]
         for (k, b) in text.enumerated() where b == 0x0A || (b == 0x0D && (k + 1 >= text.count || text[k + 1] != 0x0A)) {
@@ -1189,16 +1327,19 @@ final class DeskFormatter {
             return low
         }
         // Width of each line up to the end of its last token (comments at the end of a line do not count).
-        var lastTokenEnd: [Int: Int] = [:]
+        var lastTokenEnd = [Int](repeating: -1, count: lineStarts.count)
+        var l = 0
         for k in toks.indices where !toks[k].remove && toks[k].role != .eof {
             let start = output.starts[k]
-            let end = start + (toks[k].replacement ?? toks[k].token.text).utf8.count
-            let l = line(of: start)
-            lastTokenEnd[l] = max(lastTokenEnd[l] ?? 0, end)
+            let end = start + (toks[k].replacement?.utf8.count ?? (toks[k].end - toks[k].start))
+            // Tokens come in order, so the line only moves forward.
+            while l + 1 < lineStarts.count && lineStarts[l + 1] <= start { l += 1 }
+            lastTokenEnd[l] = max(lastTokenEnd[l], end)
         }
         func width(ofLine l: Int) -> Int {
-            guard let end = lastTokenEnd[l] else { return 0 }
-            return displayWidth(String(decoding: text[lineStarts[l]..<end], as: UTF8.self))
+            let end = lastTokenEnd[l]
+            guard end >= 0 else { return 0 }
+            return DeskFormatter.displayWidth(text[lineStarts[l]..<end])
         }
         var candidates: [Int: [(depth: Double, isChain: Bool, id: Int)]] = [:]
         for (id, block) in blocks.enumerated() where !brokenBlocks.contains(id) && !block.frozen && block.open >= 0 {
@@ -1228,15 +1369,15 @@ final class DeskFormatter {
 
     /// The formatted text must parse to the same structure and tokens as the original, apart from separators
     /// turned into line breaks and normalised alternates (F12).
-    func verify(_ formatted: String, against original: [String]) -> Bool {
-        let reparsed = SyntaxParsing.parse(formatted, file: tree.file, version: 0)
-        return DeskFormatter.structure(reparsed) == original
+    func verify(_ output: Output) -> Bool {
+        let reparsed = SyntaxParsing.parse(output.text, file: tree.file, version: 0)
+        return DeskFormatter.sameStructure(tree.root, reparsed.root)
     }
 
     /// Edits that turn the original text into the rendered one, one per changed gap (bytes outside them never
     /// change). Tokens keep their text (or their replacement), so the gaps of both texts line up token by token.
     func minimalEdits(_ output: Output) -> [TextEdit] {
-        let new = Array(output.text.utf8)
+        let new = output.bytes
         if new == bytes { return [] }
         var edits: [TextEdit] = []
         var oldFrom = 0
@@ -1248,14 +1389,14 @@ final class DeskFormatter {
         }
         for (k, tok) in toks.enumerated() where !tok.remove {
             let newStart = output.starts[k]
-            let newText = tok.replacement ?? tok.token.text
+            let newLength = tok.replacement?.utf8.count ?? (tok.end - tok.start)
             if tok.replacement != nil {
-                flush(tok.end, newStart + newText.utf8.count)
+                flush(tok.end, newStart + newLength)
             } else {
                 flush(tok.start, newStart)
             }
             oldFrom = tok.end
-            newFrom = newStart + newText.utf8.count
+            newFrom = newStart + newLength
         }
         flush(bytes.count, new.count)
         return mergeAdjacent(edits)

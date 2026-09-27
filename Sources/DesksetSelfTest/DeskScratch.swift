@@ -4,6 +4,48 @@ import Foundation
 /// Temporary exploration harness: DESK_SCRATCH=path prints each snippet's outline and diagnostics (snippets are
 /// separated by lines of `----`).
 func runDeskScratch(_ t: TestRunner) {
+    if ProcessInfo.processInfo.environment["DESK_FORMAT_PROFILE"] != nil {
+        let widget = try! String(contentsOf: deskFixtures.appendingPathComponent("Acceptance/MonthView.desk"), encoding: .utf8)
+        var text = ""
+        var copies = 0
+        while text.split(separator: "\n", omittingEmptySubsequences: false).count < 2000 {
+            text += "// Copy \(copies)\n" + widget.replacingOccurrences(of: "widget {", with: "widget {\n    variable copy\(copies) = \(copies)") + "\n"
+            copies += 1
+        }
+        if ProcessInfo.processInfo.environment["DESK_FORMAT_PROFILE"] == "messy" {
+            text = text.replacingOccurrences(of: "    ", with: "  ").replacingOccurrences(of: ", ", with: ",")
+        }
+        let tree = deskParse(text)
+        if let loops = Int(ProcessInfo.processInfo.environment["DESK_FORMAT_LOOP"] ?? "") {
+            for _ in 0..<loops { _ = Desk.format(tree) }
+            exit(0)
+        }
+        func time(_ name: String, _ runs: Int = 5, _ body: () -> Void) {
+            var best = Double.infinity
+            for _ in 0..<runs {
+                let start = ProcessInfo.processInfo.systemUptime
+                body()
+                best = min(best, ProcessInfo.processInfo.systemUptime - start)
+            }
+            print(String(format: "%-28@ %8.2f ms", name as NSString, best * 1000))
+        }
+        time("Desk.format") { _ = Desk.format(tree) }
+        time("nestingEstimate") { _ = StackGuard.nestingEstimate(Array(tree.text.utf8)) }
+        time("init (annotate)") { _ = DeskFormatter(tree: tree, options: .canonical) }
+        let f = DeskFormatter(tree: tree, options: .canonical)
+        time("decideFromOriginal") { f.decideFromOriginal() }
+        time("layout") { f.layout() }
+        var output = f.render()
+        time("render") { output = f.render() }
+        time("breakOverflowingLines") { _ = f.breakOverflowingLines(output) }
+        time("structure(tree)") { _ = DeskFormatter.structure(tree) }
+        time("sameStructure") { _ = DeskFormatter.sameStructure(tree.root, tree.root) }
+        time("verify") { _ = f.verify(output) }
+        time("minimalEdits") { _ = f.minimalEdits(output) }
+        time("parse") { _ = deskParse(text) }
+        print("output == input: \(output.text == text), edits \(Desk.format(tree).count)")
+        exit(0)
+    }
     if ProcessInfo.processInfo.environment["DESK_ADVERSARIAL"] != nil {
         let cases: [(String, String)] = [
             ("unclosed braces", String(repeating: "Row {\n", count: 10_000)),
