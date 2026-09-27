@@ -1611,7 +1611,8 @@ Intel Macs are untested.
   count from 1). `Scale=C` / `F` / `K` for temperatures. The number is the reading, the string the reading with its
   unit ("52 °C", "2317 RPM"), empty while there is none. Default ranges: 0–100 °C and 0–100 %, a fan's own minimum
   and maximum, a cluster's lowest and highest clock; other kinds follow the values seen. `!CommandMeasure <measure>
-  List` logs every sensor this Mac has.
+  List` logs every sensor this Mac has. `Sensor=thermal` is macOS's thermal state: 0–3, "Nominal", "Fair", "Serious"
+  or "Critical".
 - **Why:** Deskset's own plugin for new skins; the Skin Studio offers it as "Temperature" live data.
 - **Skin impact:** not available in Rainmeter; a skin using it is Mac-only.
 - **Status:** Mac-only

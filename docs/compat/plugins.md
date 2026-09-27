@@ -710,7 +710,11 @@ Deskset reads the Mac directly. Verified on an M4 Pro MacBook Pro; the M1–M3 r
   hardware reports (a fan's minimum and maximum speed, a cluster's lowest and highest clock); power, voltages,
   currents, counts and bytes track the values seen. `!CommandMeasure <measure> List` logs every sensor this Mac has
   with its key, label and reading. A key that is not a sensor name, or a sensor this Mac lacks, reads 0 (logged once).
-- Why: judgment — one plugin for every sensor, with ranges that make bars work without options.
+  `Sensor=thermal` (also `thermal.state`) is macOS's thermal state instead of a sensor (`ProcessInfo.thermalState`,
+  no hardware access): 0 nominal, 1 fair, 2 serious, 3 critical, with "Nominal", "Fair", "Serious" or "Critical" as
+  the string and 0–3 as the range.
+- Why: judgment — one plugin for every sensor, with ranges that make bars work without options. The thermal state says
+  whether a temperature matters: macOS slows the Mac down at serious and critical.
 - Skin impact: the Skin Studio offers it as "Temperature" (live data) with a menu of the common keys.
 - Status: Deskset extension
 
