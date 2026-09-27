@@ -2,8 +2,9 @@ import AppKit
 import DesksetCore
 
 /// "App: studio latency": how long a property edit takes to reach the canvas, and an undo, on five reference widgets —
-/// printed as p50 / p95 so every change of the editing pipeline can be measured against the same numbers. Only a generous sanity bound is checked; `DESKSET_STUDIO_LATENCY_BUDGET_MS` makes the p95 a
-/// budget (a CI virtual machine can stall for a whole second, so it is not one by default).
+/// printed as p50 / p95 so every change of the editing pipeline can be measured against the same numbers. Only a
+/// generous sanity bound is checked; `DESKSET_STUDIO_LATENCY_BUDGET_MS` makes the p95 a budget (a CI virtual machine can
+/// stall for a whole second, so it is not one by default).
 ///
 /// One sample is one step the way a user makes it: the edit (`commit`: the text in memory, the file, the Studio's
 /// instance loaded again, the desktop copy reloaded, the inspector following) and then a frame of the canvas drawn

@@ -10,10 +10,10 @@ protocol LiveSkinHost: SkinHost {}
 extension SkinController: LiveSkinHost {}
 
 /// The host of the Studio's own instance of the widget it edits. The widget on the desktop keeps running as it is; this
-/// instance loads the editing session's text from memory and is what the canvas draws. It has no window of its own: text and images are measured as the desktop measures them, its
-/// screens and window place are the desktop copy's, and of its actions it runs only what stays inside the widget
-/// (`StudioActionPolicy`) — the rest is recorded, since the desktop copy does it. What it would log is kept here, not
-/// written to the app's log a second time.
+/// instance loads the editing session's text from memory and is what the canvas draws. It has no window of its own:
+/// text and images are measured as the desktop measures them, its screens and window place are the desktop copy's, and
+/// of its actions it runs only what stays inside the widget (`StudioActionPolicy`) — the rest is recorded, since the
+/// desktop copy does it. What it would log is kept here, not written to the app's log a second time.
 final class StudioHost: LiveSkinHost {
     /// The widget on the desktop (its window's place and screens).
     weak var desktop: SkinController?
