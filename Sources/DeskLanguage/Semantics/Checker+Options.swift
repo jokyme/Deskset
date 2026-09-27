@@ -690,7 +690,7 @@ extension Checker {
             guard let tag = group.tag.literalValue else { continue }
             let tagRange = range(group.tag.node)
             let normalized = Checker.normalizeLanguageTag(tag)
-            if !Checker.isKnownLanguageTag(normalized) {
+            if !Checker.isKnownLanguageTag(tag.replacingOccurrences(of: "_", with: "-")) || !Checker.isKnownLanguageTag(normalized) {
                 let suggestion = DidYouMean.suggest(tag, candidates: Checker.commonLanguageTags)
                 var fixIts: [FixIt] = []
                 if let best = suggestion.names.first { fixIts.append(fix("didYouMean", [edit(tagRange, "\"\(best)\"")], ["text": .code(best)])) }
