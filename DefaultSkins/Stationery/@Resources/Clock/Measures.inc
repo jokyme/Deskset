@@ -26,7 +26,6 @@ Measure=Time
 TimeStamp=#TestNow#
 Format=[#TimeFormat[#Hours]]
 FormatLocale=#Locale#
-DynamicVariables=1
 Group=Clock
 UpdateDivider=-1
 
@@ -135,7 +134,6 @@ Parent=MeasureSun
 Type=Sunrise
 Format=[#CaptionTime[#Hours]]
 UnavailableText=--
-DynamicVariables=1
 Group=Clock
 UpdateDivider=-1
 
@@ -146,7 +144,6 @@ Parent=MeasureSun
 Type=Sunset
 Format=[#CaptionTime[#Hours]]
 UnavailableText=--
-DynamicVariables=1
 Group=Clock
 UpdateDivider=-1
 
@@ -159,7 +156,6 @@ Type=Sunrise
 Day=1
 Format=[#CaptionTime[#Hours]]
 UnavailableText=--
-DynamicVariables=1
 Group=Clock
 UpdateDivider=-1
 

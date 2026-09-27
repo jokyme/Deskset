@@ -91,17 +91,13 @@ TimeFormat24=%H:%M
 TimeFormat12=%#I:%M
 
 ; ---------------------------------------------------------------- "Auto" settings
-; The Mac's own settings are built-in variables of the engine: #MACCLOCKHOURS# (12 or 24), #MACFIRSTWEEKDAY# (0 Sunday
-; … 6 Saturday) and #MACTEMPERATUREUNIT# (C or F). Until the engine has them, the three lines below stand in (a
-; built-in variable always wins over one of [Variables], so they go unused once it exists):
-; - the clock: Suite/Hours.inc asks MacSun for the Mac's 12/24-hour setting and corrects Hours at run time;
-; - the week: Sunday;
-; - temperatures: Celsius (MacWeather follows the Mac by itself with TemperatureUnit=Auto).
-MACCLOCKHOURS=24
-MACFIRSTWEEKDAY=0
-MACTEMPERATUREUNIT=C
-; ClockHours=Auto|24|12 → Hours, 24 or 12. Read #Hours# in options with DynamicVariables=1, not in [Variables]
-; values: Suite/Hours.inc may change it after the widget has loaded.
+; "Auto" is the Mac's own setting, which Deskset gives every skin as a built-in variable: #MACCLOCKHOURS# (12 or 24,
+; from Date & Time), #MACFIRSTWEEKDAY# (0 Sunday … 6 Saturday) and #MACTEMPERATUREUNIT# (C or F), both from Language &
+; Region. They are right from the first load. When one of those settings changes, Deskset runs the widget's
+; MacOnAppearanceChangeAction, whose default ([!Refresh]) loads it again with the new value, so keep that default.
+; Hours, FirstWeekday and TempScale below are therefore fixed while a widget runs: read them anywhere, in options and
+; in [Variables] values alike, with no DynamicVariables for their sake.
+; ClockHours=Auto|24|12 → Hours, 24 or 12
 ClockHoursAuto=#MACCLOCKHOURS#
 ClockHours24=24
 ClockHours12=12
