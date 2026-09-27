@@ -126,6 +126,10 @@ public final class Skin {
     /// and the results of its background work (docs/skin-threading.md §5.3; see `SkinExecutor`). The main thread
     /// unless the host picks another executor before `load()`. Work already scheduled stays where it was scheduled.
     public var executor: SkinExecutor = MainSkinExecutor.shared
+    /// Where the skin's files are read from before the disk (nil: the disk): the Studio's instance of a widget loads the
+    /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
+    /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
+    public var sourceProvider: SourceProvider?
     /// What the host's renderer keeps for this skin from frame to frame (the app's `SkinRenderContext`: text layouts,
     /// processed Rotator images, Histogram scratch space). It belongs to the skin rather than to the app so that skins
     /// drawn on threads of their own never share a cache (docs/skin-threading.md §4.3): like everything reachable from
@@ -301,7 +305,7 @@ public final class Skin {
         environmentValid = false
         let builtins = builtInVariables()
         var includesAppearance = false
-        let loaded = try SkinFileLoader.load(url: fileURL) { raw, readSoFar in
+        let loaded = try SkinFileLoader.load(url: fileURL, sources: sourceProvider) { raw, readSoFar in
             let table = builtins.merging(readSoFar) { _, new in new }
             return VariableResolver(variableLookup: { name in
                 let key = name.lowercased()

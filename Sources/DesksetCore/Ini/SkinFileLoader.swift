@@ -32,6 +32,16 @@ public struct IniSourceMap: Equatable {
     }
 }
 
+/// Where a skin's files are read from before the disk. The Studio keeps the files it edits in memory — the text there is
+/// the truth, and the disk is written after it — and its own instance of the widget loads from that text
+/// (`SkinFileLoader.load(url:sources:expandVariables:)`, `Skin.sourceProvider`). Asked on the thread that loads the
+/// skin.
+public protocol SourceProvider: AnyObject {
+    /// The text of the file at `url` (any spelling of its path: symlinks, `..`, letter case), or nil to read the file
+    /// on disk.
+    func sourceText(for url: URL) -> String?
+}
+
 /// The result of loading a skin .ini with all `@Include` files merged in.
 public struct LoadedIniFile {
     /// The merged document (sections in effective order, includes merged per the Rainmeter manual).
@@ -129,9 +139,12 @@ public enum SkinFileLoader {
     /// - Performance: `expandVariables` is called once per `@Include` (at most `maxIncludeLoads` times). The dictionary
     ///   is passed without copying; look names up in it instead of copying or merging it on every call, which would
     ///   cost O(#variables) per include.
-    public static func load(url: URL, expandVariables: (String, [String: String]) -> String) throws -> LoadedIniFile {
-        let text = try TextDecoding.readFile(at: url)
-        var loader = IncludeLoader(mainURL: url)
+    /// - Parameter sources: text to use instead of the disk for the files it holds (the main file and includes alike);
+    ///   the others are read from disk. Where an include path leads is still decided by the file system.
+    public static func load(url: URL, sources: SourceProvider? = nil,
+                            expandVariables: (String, [String: String]) -> String) throws -> LoadedIniFile {
+        let text = try sources?.sourceText(for: url) ?? TextDecoding.readFile(at: url)
+        var loader = IncludeLoader(mainURL: url, provider: sources)
         return loader.run(mainText: text, expand: expandVariables)
     }
 }
@@ -166,6 +179,8 @@ private struct IncludeLoader {
 
     let mainURL: URL
     let skinFolder: URL
+    /// Text read instead of the disk (see `SkinFileLoader.load`).
+    let provider: SourceProvider?
 
     var sections: [String: MergedSection] = [:]   // lowercased name → merged content
     var known: Set<String> = []                    // sections already placed
@@ -192,9 +207,10 @@ private struct IncludeLoader {
     /// Longest excerpt of a skin-provided value quoted in a warning.
     static let maxQuotedLength = 200
 
-    init(mainURL: URL) {
+    init(mainURL: URL, provider: SourceProvider? = nil) {
         self.mainURL = mainURL.standardizedFileURL
         self.skinFolder = self.mainURL.deletingLastPathComponent()
+        self.provider = provider
     }
 
     mutating func run(mainText: String, expand: (String, [String: String]) -> String) -> LoadedIniFile {
@@ -322,19 +338,25 @@ private struct IncludeLoader {
         if let cached = cache[id] {
             file = cached
         } else {
-            let realPath = fileURL.resolvingSymlinksInPath().path // size of the target, not of a symlink
-            if let size = (try? FileManager.default.attributesOfItem(atPath: realPath))?[.size] as? NSNumber,
-               size.intValue > SkinFileLoader.maxIncludeFileSize {
-                warn("\(origin): skipped, \(Self.excerpt(fileURL.path)) is larger than \(SkinFileLoader.maxIncludeFileSize / 1_048_576) MB")
-                return
+            let text: String
+            if let held = provider?.sourceText(for: fileURL) {
+                // Text in memory is never too large to read: it was read (or typed) already.
+                text = held
+            } else {
+                let realPath = fileURL.resolvingSymlinksInPath().path // size of the target, not of a symlink
+                if let size = (try? FileManager.default.attributesOfItem(atPath: realPath))?[.size] as? NSNumber,
+                   size.intValue > SkinFileLoader.maxIncludeFileSize {
+                    warn("\(origin): skipped, \(Self.excerpt(fileURL.path)) is larger than \(SkinFileLoader.maxIncludeFileSize / 1_048_576) MB")
+                    return
+                }
+                do {
+                    text = try TextDecoding.readFile(at: fileURL)
+                } catch {
+                    warn("\(origin): cannot read \(Self.excerpt(fileURL.path)) (\(error.localizedDescription))")
+                    return
+                }
             }
-            let parsed: IniSyntax.ParsedFile
-            do {
-                parsed = IniSyntax.parseFile(try TextDecoding.readFile(at: fileURL))
-            } catch {
-                warn("\(origin): cannot read \(Self.excerpt(fileURL.path)) (\(error.localizedDescription))")
-                return
-            }
+            let parsed = IniSyntax.parseFile(text)
             file = CachedFile(parsed: parsed, entryCount: parsed.sections.reduce(0) { $0 + $1.entries.count })
             cache[id] = file
             warnAboutIncludesBeforeFirstSection(parsed, file: fileURL)

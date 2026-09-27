@@ -547,7 +547,7 @@ extension Skin {
         var seen: Set<String> = [key]
         for url in sourceFiles {
             let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-            guard seen.insert(path).inserted, let text = try? TextDecoding.readFile(at: url),
+            guard seen.insert(path).inserted, let text = sourceText(of: url),
                   IniWriter.definesSection(text, section: sectionName) else { continue }
             result.append(url)
         }

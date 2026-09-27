@@ -164,6 +164,13 @@ extension Skin {
     /// The skin file and every file it includes.
     public var sourceFiles: [URL] { [fileURL] + includedFiles }
 
+    /// The text of one of the skin's files as the skin reads it: from `sourceProvider` when it holds the file, else from
+    /// disk (nil when unreadable).
+    public func sourceText(of url: URL) -> String? {
+        if let held = sourceProvider?.sourceText(for: url) { return held }
+        return try? TextDecoding.readFile(at: url)
+    }
+
     /// Where an edit of `key` in `section` is written: to the place the current value is defined (the section
     /// itself, possibly in an included file, or the MeterStyle it is inherited from). An option that is not in any
     /// file yet (unset, or only set by `!SetOption`) is added to the section, in the file that holds its header.
@@ -278,7 +285,7 @@ extension Skin {
     /// file defining it; nil when none does.
     public func sharedDefinition(ofVariable key: String, section: String = "Variables") -> URL? {
         for file in includedFiles.reversed() where !isOwnFile(file) {
-            guard let text = try? TextDecoding.readFileDetectingEncoding(at: file).text,
+            guard let text = sourceText(of: file),
                   IniDocument.parse(text).section(named: section)?.value(forKey: key) != nil else { continue }
             return file
         }
