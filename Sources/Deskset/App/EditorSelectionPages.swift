@@ -465,14 +465,10 @@ extension InspectorWindowController {
         guard !edits.isEmpty else { return }
         if deferUntilCodeIsCommitted({ [weak self] in self?.commitPlainly(edits, name: name, message: message) }) { return }
         guard let skin else { return }
-        let files = edits.map { e in (e.own ? skin.ownTarget(section: e.section, key: e.key) : skin.editTarget(section: e.section, key: e.key)).file }
-        perform(name, files: files, message: { _ in message }) {
-            for e in edits {
-                if e.own {
-                    try skin.writeOwnOption(section: e.section, key: e.key, value: e.value)
-                } else {
-                    try skin.writeOption(section: e.section, key: e.key, value: e.value)
-                }
+        perform(name, message: { _ in message }) {
+            edits.map { e in
+                e.own ? skin.op(settingOwnOption: e.key, of: e.section, to: e.value)
+                    : skin.op(settingOption: e.key, of: e.section, to: e.value)
             }
         }
     }
@@ -481,7 +477,7 @@ extension InspectorWindowController {
     func writeKeysPlainly(_ writes: [KeyWrite], name: String, message: String) {
         guard !writes.isEmpty else { return }
         if deferUntilCodeIsCommitted({ [weak self] in self?.writeKeysPlainly(writes, name: name, message: message) }) { return }
-        perform(name, files: writes.map(\.file), message: { _ in message }) { try Self.apply(writes) }
+        perform(name, message: { _ in message }) { Self.ops(writes) }
     }
 
     /// Selects the level above the selection, like the last part of the breadcrumb (Esc): member → group → widget.

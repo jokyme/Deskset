@@ -12,6 +12,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The skin editor's window is built in steps, a few per turn of the run loop, so the skins go on animating while
     /// it opens (`InspectorWindowController.queueOpening`). Headless it is built at once, unless a self-test asks.
     var opensEditorInSteps: Bool
+    /// The widget on the desktop follows the Studio a moment later (`EditingSession`): a step's reload waits for the
+    /// next turn of the run loop, after the canvas drew the step, and a gesture's previews reach it at most about 20
+    /// times a second. Headless it follows at once, unless a self-test asks.
+    var defersDesktopUpdates: Bool
 
     /// Running skins keyed by lowercased config name.
     private(set) var controllers: [String: SkinController] = [:]
@@ -26,6 +30,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var manageWindow: ManageWindowController?
     /// The skin inspector (one at a time).
     private(set) var inspector: InspectorWindowController?
+    /// The editing sessions of the widgets the Studio has edited, by lowercased config: a widget's undo stack belongs to
+    /// the app, not to the Studio window, and lasts until the app quits.
+    private(set) var studioSessions: [String: EditingSession] = [:]
     /// Text files the built-in code editor has open outside the skin editor (`showCodeFile`).
     private(set) var codeFileWindows: [CodeFileWindowController] = []
     /// The window `bringToFront` last brought up (also headless, for self-tests).
@@ -57,6 +64,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.backupsDirectory = backupsDirectory
         self.presentsWindows = presentsWindows
         opensEditorInSteps = presentsWindows
+        defersDesktopUpdates = presentsWindows
         super.init()
     }
 
@@ -156,6 +164,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// mark a skin unloaded for the next launch just because it was running when the app quit).
     func stopAllForTermination() {
         isTerminating = true
+        for session in studioSessions.values {
+            // Every step is written as it is made; anything still waiting is written now.
+            _ = try? session.diskSync.flush()
+            session.closeStudioSkin()
+        }
         for c in sortedControllers.reversed() { c.stop() }
         // Every skin stopped: nothing is watched any more.
         outsidePointer.needsChanged()
@@ -313,6 +326,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 skin.async { skin.appearanceDidChange() }
             }
         }
+        // The Studio's own instances follow the appearance as the desktop copies do.
+        for session in studioSessions.values { session.studioSkin?.appearanceDidChange() }
     }
 
     private func observe(_ center: NotificationCenter, _ name: Notification.Name,
@@ -331,6 +346,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for c in controllers.values {
             if updatesPaused { c.pauseUpdates() } else { c.resumeUpdates(updateNow: true) }
         }
+        for session in studioSessions.values { session.setUpdatesPaused(updatesPaused) }
     }
 
     private func systemDidWake() {
@@ -340,6 +356,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             c.systemDidWake()
             if updatesPaused { c.pauseUpdates() }
         }
+        for session in studioSessions.values { session.studioSkin?.systemDidWake() }
     }
 
     /// The capture engine suspended with skin updates (replaced in tests).
@@ -610,6 +627,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 skin.async { skin.fontsDidChange() }
             }
         }
+        for session in studioSessions.values { session.studioSkin?.fontsDidChange() }
     }
 
     private func notifyChanged() {
@@ -665,6 +683,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func inspectorDidClose(_ controller: InspectorWindowController) {
         if inspector === controller { inspector = nil }
+    }
+
+    /// The editing session of a widget (made the first time the Studio edits it; kept until the app quits, with the
+    /// widget's undo stack).
+    func editingSession(for config: String) -> EditingSession {
+        let key = SkinLibrary.normalizedConfigName(config).lowercased()
+        if let session = studioSessions[key] { return session }
+        let session = EditingSession(config: SkinLibrary.normalizedConfigName(config), app: self)
+        studioSessions[key] = session
+        return session
     }
 
     /// Opens a text file no running skin reads in a code window of the built-in editor (one per file; an open one
@@ -1021,7 +1049,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
               !entry.action.isEmpty else { return }
-        c.skin.execute(entry.action, from: c.skin.rainmeterSection)
+        c.skin.executeInput(entry.action, from: c.skin.rainmeterSection)
     }
 
     @objc private func zPositionAction(_ sender: NSMenuItem) {

@@ -87,7 +87,8 @@ final class InputTextMeasure: MediaUIMeasure {
         guard let batch else { return }
         guard let step = batch.nextPrompt() else {
             self.batch = nil
-            for action in batch.actions() { skin.execute(action, from: self) }
+            // What the person typed: the Studio's instance of the widget takes it too (`Skin.inputMirror`).
+            for action in batch.actions() { skin.executeInput(action, from: self) }
             return
         }
         let settings = settings(for: step.command)
@@ -107,7 +108,7 @@ final class InputTextMeasure: MediaUIMeasure {
             } else {
                 self.batch = nil
                 let action = settings.onDismissAction.muiTrimmed
-                if !action.isEmpty && action != "0" { self.skin.execute(action, from: self) }
+                if !action.isEmpty && action != "0" { self.skin.executeInput(action, from: self) }
             }
         }
     }

@@ -738,10 +738,8 @@ extension InspectorWindowController {
     /// Removes the layer's own value of `key`, so its look's value applies again (one undo step).
     func matchOthers(section: String, key: String) {
         if deferUntilCodeIsCommitted({ [weak self] in self?.matchOthers(section: section, key: key) }) { return }
-        guard let skin, let file = skin.ownDefinitionFile(section: section, key: key) else { return }
-        perform("Match the Others", files: [file], message: { _ in "\(self.displayName(ofSection: section)) matches its look again" }) {
-            try skin.removeOwnOption(section: section, key: key)
-        }
+        guard let skin, let op = skin.op(removingOwnOption: key, of: section) else { return }
+        perform("Match the Others", message: { _ in "\(self.displayName(ofSection: section)) matches its look again" }) { [op] }
     }
 
     /// What a control needs to know about its property.

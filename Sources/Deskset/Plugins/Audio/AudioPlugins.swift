@@ -20,13 +20,14 @@ enum AudioPlugins {
         for entry in pluginTypes { MeasureRegistry.registerPlugin(entry.name, entry.type) }
     }
 
-    /// Whether the audio measures of `skin` may subscribe to the capture engine: only a skin in a skin window (the
-    /// app's `SkinController`) captures. A skin that is only read (the Manage window's compatibility check of a skin
-    /// that is not loaded), drawn by `--render` or previewed off-screen never starts a capture, so it never brings up
-    /// a permission prompt or the recording indicator — unless every stream is the demo signal (`demo`), which
-    /// records nothing and lets renders animate.
+    /// Whether the audio measures of `skin` may subscribe to the capture engine: only a skin that runs in the app on
+    /// live data (`LiveSkinHost`: a skin window, or the Studio's own instance of the widget it edits, which shares the
+    /// capture of the one on the desktop) captures. A skin that is only read (the Manage window's compatibility check of
+    /// a skin that is not loaded), drawn by `--render` or previewed off-screen never starts a capture, so it never
+    /// brings up a permission prompt or the recording indicator — unless every stream is the demo signal (`demo`),
+    /// which records nothing and lets renders animate.
     static func mayCapture(for skin: Skin, demo: Bool = AudioCaptureEngine.demoSignal) -> Bool {
-        demo || skin.host is SkinController
+        demo || skin.host is LiveSkinHost
     }
 }
 

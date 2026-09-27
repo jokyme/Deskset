@@ -70,9 +70,10 @@ class NowPlayingClientMeasure: MediaUIMeasure {
     }
 
     /// The center's snapshot for a read on demand. It counts as a read (the poller keeps going) only while the skin
-    /// runs: a paused skin's meters, read by the Studio's live values during sleep, must not keep the players polled.
+    /// runs: a paused skin's meters — the Studio's own instance's too, read by its live values during sleep — must not
+    /// keep the players polled.
     func currentSnapshot(preferring preferred: MediaApp?) -> NowPlayingSnapshot {
-        controller?.areUpdatesPaused == true ? center.peek(preferring: preferred) : center.snapshot(preferring: preferred)
+        liveHost?.areUpdatesPaused == true ? center.peek(preferring: preferred) : center.snapshot(preferring: preferred)
     }
 
     /// Subscribes to the current center (again when it was replaced, e.g. by a test).

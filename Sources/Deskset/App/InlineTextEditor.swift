@@ -111,7 +111,7 @@ extension InspectorWindowController {
         canvas.addSubview(editor)
         canvas.editingText = m.name
         // The layer's own words step aside while the field shows them (a preview: nothing is written).
-        skin.preview(section: m.name, ["FontColor": "0,0,0,0", "FontEffectColor": "0,0,0,0"])
+        session?.preview(section: m.name, ["FontColor": "0,0,0,0", "FontEffectColor": "0,0,0,0"])
         inlineTextPreview = true
         canvas.needsDisplay = true
         window?.makeFirstResponder(editor)
@@ -159,7 +159,7 @@ extension InspectorWindowController {
         guard let editor = inlineTextEditor else { return }
         guard let skin, skin.meter(named: editor.section) != nil else { return endInlineTextEdit(commit: false) }
         placeInlineTextEditor()
-        skin.preview(section: editor.section, ["FontColor": "0,0,0,0", "FontEffectColor": "0,0,0,0"])
+        session?.preview(section: editor.section, ["FontColor": "0,0,0,0", "FontEffectColor": "0,0,0,0"])
         inlineTextPreview = true
     }
 
@@ -174,7 +174,7 @@ extension InspectorWindowController {
         canvas.editingText = nil
         let hadFocus = (window?.firstResponder as? NSText)?.delegate === editor || window?.firstResponder === editor
         editor.removeFromSuperview()
-        if inlineTextPreview, geometryBases.isEmpty, colorValue == nil, inspectorState.preview == nil { skin?.endPreview() }
+        if inlineTextPreview, geometryBases.isEmpty, colorValue == nil, inspectorState.preview == nil { session?.endPreview() }
         inlineTextPreview = false
         canvas.needsDisplay = true
         if hadFocus || window?.firstResponder == nil || window?.firstResponder === window { window?.makeFirstResponder(canvas) }
