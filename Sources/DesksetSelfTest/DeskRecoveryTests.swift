@@ -48,6 +48,11 @@ func runDeskRecoveryTests(_ t: TestRunner) {
             ("widget {\n    x = #Color#\n}", ["DK9303"], false),
             ("widget {\n    Row { Icon(\"wifi\") Text(wifi.name) }\n}", ["DK2031"], true),
             ("widget {\n    Text(x => x * 2)\n}", ["DK9012"], false),
+            // A `{` that nothing on its line can take is one DK2010, not also a missing separator.
+            ("widget {\n    variable x = 5 { }\n}", ["DK2010"], false),
+            // One missing piece per interpolation.
+            ("widget {\n    Text(\"{,}\")\n}", ["DK2005"], false),
+            ("widget {\n    Text(\"{x, decimals}\")\n}", ["DK2005"], false),
         ]
         for (text, ids, exact) in cases {
             let tree = deskParse(text)

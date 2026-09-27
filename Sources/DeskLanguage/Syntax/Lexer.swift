@@ -1531,9 +1531,11 @@ struct Lexer {
                              flags: (p?.fullWidth ?? false) ? .fullWidth : []), start: at)
                 pos = at + length
                 if first {
+                    // `{ }` shows as written once its braces are doubled: `{{ }}`.
+                    let shown = "{{" + text(brace + 1, at) + "}}"
                     report(.emptyInterpolation, .error, brace..<pos,
-                           fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{}}")],
-                                          edits: [edit(brace..<pos, "{{}}")])])
+                           fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code(shown)],
+                                          edits: [edit(brace..<pos, shown)])])
                 }
                 return pos
             }

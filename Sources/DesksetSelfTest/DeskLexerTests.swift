@@ -132,6 +132,9 @@ func runDeskLexerTests(_ t: TestRunner) {
         t.equal(lexIDs("\"a } b\""), ["DK1013"])
         t.equal(lex("\"a } b\"").diagnostics[0].severity, .warning)
         t.equal(lexIDs("\"a {} b\""), ["DK1015"])
+        // Its fix-it shows the braces as written.
+        t.equal(TextEdit.apply(lex("\"a { } b\"").diagnostics[0].fixIts[0].edits, to: "\"a { } b\""), "\"a {{ }} b\"")
+        t.equal(lexIDs("\"a {{ }} b\""), [])
         // An interpolation open at the end of its line is text: one DK1014, no nested string.
         t.equal(lexIDs("Text(\"Use { to open\")"), ["DK1014"])
         t.equal(kinds("Text(\"Use { to open\")"), [.identifier, .lParen, .stringStart, .stringText, .stringEnd, .rParen])

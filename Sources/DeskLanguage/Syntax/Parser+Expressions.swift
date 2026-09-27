@@ -895,11 +895,14 @@ extension Parser {
         let savedBrackets = bracketDepth
         bracketDepth = 0
         if i < limit {
+            // One missing piece is reported per interpolation: `{,}` is one mistake, not four.
+            var quiet = false
             let value = parseExpr()
             if value.isMissing && i < limit && kind(i) != .comma {
                 // Something that is no value at all: reported once below as unexpected.
             } else if value.isMissing {
                 expected(.expression)
+                quiet = true
             }
             children.append(.node(value.node))
             while kind(i) == .comma {
@@ -910,7 +913,7 @@ extension Parser {
                     option.append(.node(node(.label, [take()])))
                 } else {
                     option.append(.node(node(.label, [missing(.identifier)])))
-                    expected(.label)
+                    if !quiet { expected(.label); quiet = true }
                 }
                 if kind(i) == .colon {
                     option.append(take())
@@ -923,9 +926,11 @@ extension Parser {
                                           edits: [edit(textRange(eq), ":")], group: "equalsInField")])
                 } else {
                     option.append(missing(.colon))
-                    expected(.colon, insert: ":")
+                    if !quiet { expected(.colon, insert: ":"); quiet = true }
                 }
-                option.append(.node(parseRequiredExpression(.expression)))
+                let optionValue = parseExpr()
+                if optionValue.isMissing && !quiet { expected(.expression); quiet = true }
+                option.append(.node(optionValue.node))
                 children.append(.node(node(.formatOption, option)))
             }
             if i < limit {

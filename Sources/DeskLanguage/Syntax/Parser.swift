@@ -333,7 +333,9 @@ struct Parser {
                     children.append(.node(unexpectedRun()))
                     continue
                 }
-                if let previous { reportMissingSeparator(after: previous.end, before: i) }
+                // A `{` there could not attach to the statement (N5): it is reported as a block that nothing takes
+                // (DK2010), not as a second statement.
+                if let previous, tokens[i].kind != .lBrace { reportMissingSeparator(after: previous.end, before: i) }
             }
             let start = i
             let statement = parseStatement(owner: owner, previous: previous)
