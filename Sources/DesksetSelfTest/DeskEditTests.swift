@@ -71,6 +71,30 @@ func runDeskEditTests(_ t: TestRunner) {
         checkResult(t, set, from: tree, "setArgument")
         t.check(set.tree.text.contains(".padding(14pt)"), "the unit stays")
         t.equal(set.edits.count, 1)
+        // A formula keeps its shape when the editor moves a value (rule 5): `Desk.offsetText` gives the new text.
+        let shapes: [(String, Double, String)] = [
+            ("12", 8, "20"), ("12pt", 8, "20pt"), ("-3", 8, "5"), ("0.5", 0.25, "0.75"), (".5", 1, "1.5"),
+            ("title.right + 4", 8, "title.right + 12"), ("title.bottom - 4", 8, "title.bottom + 4"),
+            ("title.right - 8", 8, "title.right"), ("title.right + 4", -10, "title.right - 6"),
+            ("title.right", 8, "title.right + 8"), ("x * 2", 8, "x * 2 + 8"), ("-x", -2, "-x - 2"),
+            ("a ? 4 : 8", 8, "(a ? 4 : 8) + 8"), ("1...3", 1, "(1...3) + 1"), ("(a + b)", 1.5, "(a + b) + 1.5"),
+            ("widget.size.width / 2 - 10pt", 4, "widget.size.width / 2 - 6pt"), ("12", 0, "12"),
+        ]
+        for (written, delta, expected) in shapes {
+            let shapeTree = deskParse("widget {\n    x.offset(y: \(written))\n}\n")
+            guard let argument = nodes(shapeTree, .argument).first, let value = ArgumentSyntax(argument)?.value else {
+                t.check(false, written)
+                continue
+            }
+            let moved = Desk.offsetText(of: value, by: delta)
+            t.equal(moved, expected, "\(written) moved by \(delta)")
+            let applied = Desk.apply(.setArgument(shapeTree.id(of: argument), newText: moved), to: shapeTree)
+            t.check(applied.tree.text.contains("x.offset(y: \(expected))"), applied.tree.text)
+        }
+        let missingValue = deskParse("widget {\n    x.offset(y: )\n}\n")
+        if let value = nodes(missingValue, .argument).first.flatMap(ArgumentSyntax.init)?.value {
+            t.equal(Desk.offsetText(of: value, by: 8), "8")
+        }
         // A string argument.
         let text = nodes(tree, .argument).first { $0.node.trimmedText == "\"CPU\"" }!
         let renamed = Desk.apply(.setArgument(tree.id(of: text), newText: "\"Processor\""), to: tree)

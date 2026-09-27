@@ -52,6 +52,17 @@ func runDeskLexerTests(_ t: TestRunner) {
         t.equal(kinds("<!-- note -->"), [.htmlComment])
         t.equal(kinds("#Color#"), [.rainmeterVariable])
         t.equal(kinds("a\\b"), [.identifier, .backslash, .identifier])
+        // Kinds compare and hash by their case (one byte), not through their raw-value strings.
+        t.equal([MemoryLayout<TokenKind>.size, MemoryLayout<SyntaxKind>.size, MemoryLayout<ForeignKind>.size,
+                 MemoryLayout<NewlineKind>.size], [1, 1, 1, 1])
+        var mismatches = 0
+        for a in TokenKind.allCases { for b in TokenKind.allCases where (a == b) != (a.rawValue == b.rawValue) { mismatches += 1 } }
+        for a in SyntaxKind.allCases { for b in SyntaxKind.allCases where (a == b) != (a.rawValue == b.rawValue) { mismatches += 1 } }
+        for a in ForeignKind.allCases { for b in ForeignKind.allCases where (a == b) != (a.rawValue == b.rawValue) { mismatches += 1 } }
+        t.equal(mismatches, 0)
+        t.equal(Set(TokenKind.allCases).count, TokenKind.allCases.count)
+        t.equal(Set(SyntaxKind.allCases).count, SyntaxKind.allCases.count)
+        t.check(Set<SyntaxKind>([.block, .callStmt]).contains(.callStmt) && !Set<SyntaxKind>([.block]).contains(.field))
     }
 
     t.suite("Desk: lexer — numbers and units") {

@@ -160,6 +160,24 @@ public enum TokenKind: String, Sendable, Hashable, CaseIterable {
     public var isWord: Bool { self == .identifier || isKeyword }
 }
 
+// Swift compares and hashes enums that have String raw values through the raw values: every `!=` between two
+// kinds would be a string comparison. The lexer, parser and formatter compare kinds constantly, so these kinds
+// compare and hash by their case. (Each has fewer than 256 cases, so a case is one byte; a self-test checks it.)
+
+extension TokenKind {
+    @inlinable public static func == (a: TokenKind, b: TokenKind) -> Bool {
+        unsafeBitCast(a, to: UInt8.self) == unsafeBitCast(b, to: UInt8.self)
+    }
+    @inlinable public func hash(into hasher: inout Hasher) { hasher.combine(unsafeBitCast(self, to: UInt8.self)) }
+}
+
+extension NewlineKind {
+    @inlinable public static func == (a: NewlineKind, b: NewlineKind) -> Bool {
+        unsafeBitCast(a, to: UInt8.self) == unsafeBitCast(b, to: UInt8.self)
+    }
+    @inlinable public func hash(into hasher: inout Hasher) { hasher.combine(unsafeBitCast(self, to: UInt8.self)) }
+}
+
 /// Whether a token was written or inserted by error recovery.
 public enum Presence: Sendable, Hashable {
     case present

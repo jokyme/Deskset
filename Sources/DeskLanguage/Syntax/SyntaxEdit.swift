@@ -115,6 +115,90 @@ extension Desk {
     }
 }
 
+extension Desk {
+    /// The text of a number-valued expression moved by `delta`, written the way the author wrote it (§3.7 rule 5,
+    /// like the INI editor's `GeometryEdit`): the editor passes it to `.setArgument` after a drag, a resize or a nudge.
+    ///
+    /// | written | moved by 8 |
+    /// |---|---|
+    /// | `12`, `12pt`, `-3` | `20`, `20pt`, `5` |
+    /// | `title.right + 4`, `title.bottom - 4` | `title.right + 12`, `title.bottom + 4` |
+    /// | `title.right - 8` | `title.right` (a constant that reaches 0 goes away) |
+    /// | `title.right`, `x * 2` | `title.right + 8`, `x * 2 + 8` |
+    /// | `a ? 4 : 8`, `a...b` | `(a ? 4 : 8) + 8`, `(a...b) + 8` |
+    /// | missing | `8` |
+    public static func offsetText(of expression: ExpressionSyntax, by delta: Double) -> String {
+        let written = expression.node.node.trimmedText
+        guard delta != 0, delta.isFinite else { return written }
+        if expression.isMissing { return OffsetText.number(delta, unit: "") }
+        let node = expression.node
+        if let constant = OffsetText.constant(node) {
+            return OffsetText.number(constant.value + delta, unit: constant.unit)
+        }
+        if let binary = BinaryExprSyntax(node) {
+            let op = binary.operator.token.kind
+            if op == .plus || op == .minus, let constant = OffsetText.constant(binary.right.node) {
+                let value = (op == .plus ? constant.value : -constant.value) + delta
+                let left = binary.left.node.node.trimmedText
+                if value == 0 { return left }
+                return left + (value < 0 ? " - " : " + ") + OffsetText.number(abs(value), unit: constant.unit)
+            }
+        }
+        return (OffsetText.bindsAtLeastAsTightAsSum(node) ? written : "(" + written + ")")
+            + (delta < 0 ? " - " : " + ") + OffsetText.number(abs(delta), unit: "")
+    }
+}
+
+/// Helpers of `Desk.offsetText`.
+enum OffsetText {
+    /// A number literal, or `-` and a number literal: its value and its unit as written.
+    static func constant(_ node: PositionedNode) -> (value: Double, unit: String)? {
+        if let number = NumberLiteralSyntax(node), let value = number.value {
+            return (value, number.unit?.text ?? "")
+        }
+        if let prefix = PrefixExprSyntax(node), prefix.operator.token.kind == .minus,
+           let inner = constant(prefix.operand.node), inner.value >= 0,
+           NumberLiteralSyntax(prefix.operand.node) != nil {
+            return (-inner.value, inner.unit)
+        }
+        return nil
+    }
+
+    /// Whether ` + n` can follow the expression without parentheses: sums, products, prefix `-`, and everything
+    /// that binds tighter (§2.9).
+    static func bindsAtLeastAsTightAsSum(_ node: PositionedNode) -> Bool {
+        switch node.kind {
+        case .binaryExpr:
+            guard let binary = BinaryExprSyntax(node) else { return false }
+            switch binary.operator.token.kind {
+            case .plus, .minus, .star, .slash, .percent: return true
+            default: return false
+            }
+        case .prefixExpr:
+            return PrefixExprSyntax(node)?.operator.token.kind == .minus
+        case .memberExpr, .callExpr, .implicitMemberExpr, .identifierExpr, .numberLiteral, .parenExpr, .listLiteral,
+             .stringLiteral, .boolLiteral:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A number as the editor writes it: whole numbers without decimals, otherwise at most two decimals.
+    static func number(_ value: Double, unit: String) -> String {
+        let rounded = (value * 100).rounded() / 100
+        var text: String
+        if rounded == rounded.rounded(), abs(rounded) < 1e15 {
+            text = String(Int64(rounded))
+        } else {
+            text = String(format: "%.2f", rounded)
+            while text.hasSuffix("0") { text.removeLast() }
+        }
+        if text == "-0" { text = "0" }
+        return text + unit
+    }
+}
+
 extension SyntaxTree {
     /// The node of `kind` whose text starts at `offset`.
     func statement(startingAt offset: Int, kind: SyntaxKind) -> PositionedNode? {

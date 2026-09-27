@@ -1240,32 +1240,56 @@ final class DeskFormatter {
         return out
     }
 
-    /// Whether two trees have the same shape in the sense of `structure`, compared as they are walked.
+    /// Whether two trees have the same shape in the sense of `structure`. The trees are compared pair of nodes by
+    /// pair of nodes, each pair's children in place (the formatter runs this on every file it changes).
     static func sameStructure(_ a: SyntaxNode, _ b: SyntaxNode) -> Bool {
-        var left = StructureWalker(a)
-        var right = StructureWalker(b)
-        while true {
-            let x = left.next()
-            let y = right.next()
-            switch (x, y) {
-            case (nil, nil):
-                return true
-            case (.open(let m)?, .open(let n)?):
-                if m.kind != n.kind || m.foreignKind != n.foreignKind { return false }
-            case (.close?, .close?):
-                continue
-            case (.token(let s, let sAlternate)?, .token(let t, let tAlternate)?):
-                if let sAlternate, let tAlternate {
-                    if sAlternate != tAlternate { return false }
-                    continue
+        guard a.kind == b.kind, a.foreignKind == b.foreignKind else { return false }
+        var pairs: [(SyntaxNode, SyntaxNode)] = [(a, b)]
+        while let (m, n) = pairs.popLast() {
+            let kind = m.kind
+            let left = m.children
+            let right = n.children
+            var i = 0
+            var j = 0
+            while true {
+                while i < left.count, isSkipped(left[i], in: kind) { i += 1 }
+                while j < right.count, isSkipped(right[j], in: kind) { j += 1 }
+                if i == left.count || j == right.count {
+                    if i != left.count || j != right.count { return false }
+                    break
                 }
-                if sAlternate != nil || tAlternate != nil { return false }
-                if s.isMissing != t.isMissing { return false }
-                if s.isMissing ? s.kind != t.kind : s.text != t.text { return false }
-            default:
-                return false
+                switch (left[i], right[j]) {
+                case (.node(let x), .node(let y)):
+                    guard x.kind == y.kind, x.foreignKind == y.foreignKind else { return false }
+                    pairs.append((x, y))
+                case (.token(let s), .token(let t)):
+                    // A translation entry's `=` and `:` are the same token to the formatter.
+                    let alternates = kind == .entry
+                    let sAlternate = alternates && (s.kind == .equal || s.kind == .colon)
+                    let tAlternate = alternates && (t.kind == .equal || t.kind == .colon)
+                    if sAlternate || tAlternate {
+                        if sAlternate != tAlternate { return false }
+                    } else if s.isMissing != t.isMissing || (s.isMissing ? s.kind != t.kind : s.text != t.text) {
+                        return false
+                    }
+                default:
+                    return false
+                }
+                i += 1
+                j += 1
             }
         }
+        return true
+    }
+
+    /// Tokens `structure` leaves out: the end of the file, separators a formatter may turn into line breaks, and a
+    /// language group's `:`.
+    @inline(__always)
+    private static func isSkipped(_ child: SyntaxChild, in kind: SyntaxKind) -> Bool {
+        guard case .token(let t) = child else { return false }
+        if t.kind == .eof { return true }
+        if (kind == .block || kind == .sourceFile) && (t.kind == .semicolon || t.kind == .comma) { return true }
+        return kind == .group && t.kind == .colon
     }
 
     /// Walks a tree for `structure` and `sameStructure`: nodes opened and closed, and the tokens that count.

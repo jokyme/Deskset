@@ -81,6 +81,22 @@ public enum ForeignFamily: String, Sendable, Hashable {
     case rainmeter, html, css, swift, other
 }
 
+// Node kinds compare and hash by their case, not their raw value (see `TokenKind`).
+
+extension SyntaxKind {
+    @inlinable public static func == (a: SyntaxKind, b: SyntaxKind) -> Bool {
+        unsafeBitCast(a, to: UInt8.self) == unsafeBitCast(b, to: UInt8.self)
+    }
+    @inlinable public func hash(into hasher: inout Hasher) { hasher.combine(unsafeBitCast(self, to: UInt8.self)) }
+}
+
+extension ForeignKind {
+    @inlinable public static func == (a: ForeignKind, b: ForeignKind) -> Bool {
+        unsafeBitCast(a, to: UInt8.self) == unsafeBitCast(b, to: UInt8.self)
+    }
+    @inlinable public func hash(into hasher: inout Hasher) { hasher.combine(unsafeBitCast(self, to: UInt8.self)) }
+}
+
 /// A child of a node: a node or a token, in source order.
 public enum SyntaxChild: Sendable {
     case node(SyntaxNode)
