@@ -1,8 +1,8 @@
 import Foundation
 @testable import DesksetCore
 
-// The editing session's Core parts: text edits, the source buffers, the INI backend, the disk sync and loading a skin
-// from memory.
+// The editing session's Core parts: text edits, the source buffers, the INI backend, the disk sync, loading a skin
+// from memory and the Studio's action policy.
 
 func runSessionTests(_ t: TestRunner) {
     t.suite("Session: text edits") {
@@ -359,5 +359,68 @@ func runSessionTests(_ t: TestRunner) {
         t.check(studio.meter(named: "Extra") != nil)
         t.equal(studio.definingFiles(ofSection: "Extra").map(\.lastPathComponent), ["Skin.ini"])
         t.equal(skin.definingFiles(ofSection: "Extra").count, 1, "(the disk copy has only its header file)")
+    }
+
+    t.suite("Session: the Studio's instance runs what stays inside the widget") {
+        let ini = """
+            [Rainmeter]
+            [Variables]
+            Count=0
+            [MeasureTimer]
+            Measure=Plugin
+            Plugin=ActionTimer
+            ActionList1=Tick
+            Tick=[!SetVariable Count 1]
+            [MeasureRun]
+            Measure=Plugin
+            Plugin=RunCommand
+            Program=/usr/bin/true
+            [M]
+            Meter=String
+            Text=#Count#
+            DynamicVariables=1
+            """
+        let host = FakeHost()
+        let (skin, _) = try makeSkin(t, ini, host: host)
+        let policy = StudioActionPolicy()
+        var told: [String] = []
+        policy.onRecord = { told.append($0.text) }
+        skin.actionPolicy = policy
+        let before = try String(contentsOf: skin.fileURL, encoding: .utf8)
+
+        skin.execute("[!SetOption M Text x][!SetVariable Count 2][!HideMeter M][!UpdateMeter M][!Log \"hello\"]", from: nil)
+        t.equal(skin.meter(named: "M")?.hidden, true, "inside the widget: runs")
+        t.equal(skin.variable("Count"), "2")
+        t.equal(policy.recorded, [], "nothing recorded")
+
+        skin.execute("[!WriteKeyValue Variables Count 5][\"https://example.com\"][!Move 10 20][!ActivateConfig Other]"
+                     + "[!SetVariable Count 9 Other\\Config][!Refresh][!CommandMeasure MeasureRun Run][!Quit]", from: nil)
+        t.equal(try String(contentsOf: skin.fileURL, encoding: .utf8), before, "!WriteKeyValue writes nothing")
+        t.equal(host.executed, [], "no web page opens")
+        t.equal(host.handled.map(\.name), [], "no window or app bang reaches the host")
+        t.equal(host.forwarded.count, 0, "nothing reaches another widget")
+        t.equal(skin.variable("Count"), "2", "another widget's variable is not this one's")
+        t.equal(policy.recorded.map(\.name), ["writekeyvalue", "https://example.com", "move", "activateconfig", "setvariable",
+                                              "refresh", "commandmeasure", "quit"], "each recorded, in order")
+        t.equal(policy.recorded.first?.text, "!WriteKeyValue Variables Count 5")
+        t.equal(told.count, 8, "and told")
+
+        // Its own animation timer runs; a measure it does not have is left to the engine (logged, nothing done).
+        policy.clearRecorded()
+        skin.execute("[!CommandMeasure MeasureTimer \"Execute 1\"][!CommandMeasure NoSuchMeasure Run]", from: nil)
+        t.equal(policy.recorded, [], "ActionTimer stays inside")
+        t.check(StudioActionPolicy.staysInside(Bang(name: "setoption", args: ["M", "X", "1", "*"]), in: skin),
+                "* includes this widget")
+        t.check(StudioActionPolicy.staysInside(Bang(name: "update", args: ["Root\\Sub"]), in: skin), "its own config")
+        t.check(!StudioActionPolicy.staysInside(Bang(name: "update", args: ["Other"]), in: skin), "another config")
+        t.check(!StudioActionPolicy.staysInside(Bang(name: "setvariablegroup", args: ["A", "1", "G"]), in: skin),
+                "a group of widgets")
+        policy.limit = 3
+        for i in 0..<5 { skin.execute("[!Move \(i) 0]", from: nil) }
+        t.equal(policy.recorded.map(\.text), ["!Move 2 0", "!Move 3 0", "!Move 4 0"], "the last few are kept")
+        // Without a policy (the widget on the desktop) everything runs as before.
+        skin.actionPolicy = nil
+        skin.execute("[!Move 1 2]", from: nil)
+        t.equal(host.handled.map(\.name), ["move"])
     }
 }

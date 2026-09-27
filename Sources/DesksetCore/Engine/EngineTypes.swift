@@ -307,6 +307,16 @@ public protocol SkinHost: AnyObject {
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion])
 }
 
+/// Decides, action by action, what a skin runs of its own actions (its options' actions, mouse actions, scripts,
+/// plugins' finish actions): `Skin.actionPolicy`. What it refuses is skipped, as if the action were not there; the
+/// policy keeps a record of it if it wants one. Asked on the skin's owner, with the bang's arguments resolved.
+public protocol SkinActionPolicy: AnyObject {
+    /// Whether the skin performs `bang` (`!Delay` included).
+    func skin(_ skin: Skin, allows bang: Bang) -> Bool
+    /// Whether the skin hands `["target" arguments…]` (a web page, a file, a program) to its host.
+    func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool
+}
+
 extension SkinHost {
     public func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool { false }
     public func skinOutsidePointerNeedsChanged(_ skin: Skin) {}

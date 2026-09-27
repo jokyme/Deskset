@@ -130,6 +130,9 @@ public final class Skin {
     /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
     /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
     public var sourceProvider: SourceProvider?
+    /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
+    /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
+    public var actionPolicy: SkinActionPolicy?
     /// What the host's renderer keeps for this skin from frame to frame (the app's `SkinRenderContext`: text layouts,
     /// processed Rotator images, Histogram scratch space). It belongs to the skin rather than to the app so that skins
     /// drawn on threads of their own never share a cache (docs/skin-threading.md §4.3): like everything reachable from
@@ -1405,6 +1408,7 @@ public final class Skin {
             switch parsed.action {
             case .bang(let bang):
                 let bang = Bang(name: bang.name, args: bang.args.enumerated().map { resolved($0.element, $0.offset) })
+                if let actionPolicy, !actionPolicy.skin(self, allows: bang) { continue }
                 if bang.name == "delay" {
                     // "The lowest possible value is 16 milliseconds." Judgment: the rest of the action runs later
                     // on the skin's executor instead of blocking the skin; a refresh / unload (`close()`) cancels it.
@@ -1438,8 +1442,10 @@ public final class Skin {
                 let literal = Set(parsed.quoting.indices.filter { parsed.quoting[$0] == .magic })
                 perform(bang, from: section, literalArguments: literal)
             case .execute(let target, let arguments):
-                host?.skin(self, execute: resolved(target, 0),
-                           arguments: arguments.enumerated().map { resolved($0.element, $0.offset + 1) })
+                let target = resolved(target, 0)
+                let arguments = arguments.enumerated().map { resolved($0.element, $0.offset + 1) }
+                if let actionPolicy, !actionPolicy.skin(self, allowsExecuting: target, arguments: arguments) { continue }
+                host?.skin(self, execute: target, arguments: arguments)
             }
         }
     }
@@ -1471,6 +1477,7 @@ public final class Skin {
     /// their Config itself); unsupported ones are listed in `issues`.
     public func perform(_ bang: Bang, from section: SkinSection? = nil) {
         assertOwned()
+        if let actionPolicy, !actionPolicy.skin(self, allows: bang) { return }
         if actionDepth == 0 && updateDepth == 0 {
             // Called by the host (e.g. a bang forwarded from another skin): a burst of its own.
             burstWork = 0
