@@ -32,6 +32,9 @@ public struct DeskCatalog: Sendable {
     public var formatOptions: [FormatOptionSpec] { didSet { invalidate() } }
     /// How each type shows in text by default (§4.11).
     public var typeFormats: [TypeFormatSpec]
+    /// The keys `sensors.read(…)` accepts, and other spellings of them that skins use.
+    public var sensorKeys: [SensorKeySpec]
+    public var sensorKeyAliases: [String: String]
     public var permissions: [PermissionSpec] { didSet { invalidate() } }
     /// What `supports(…)` can ask about.
     public var features: [FeatureSpec] { didSet { invalidate() } }
@@ -55,7 +58,8 @@ public struct DeskCatalog: Sendable {
                 typeMembers: [TypeMembersSpec], enums: [EnumSpec],
                 namedValues: [NamedValueSpec], controls: [ControlSpec], infoFields: [FieldSpec],
                 packageFields: [FieldSpec], units: [UnitSpec], unitMisspellings: [UnitMisspellingSpec],
-                formatOptions: [FormatOptionSpec], typeFormats: [TypeFormatSpec] = [], permissions: [PermissionSpec],
+                formatOptions: [FormatOptionSpec], typeFormats: [TypeFormatSpec] = [], sensorKeys: [SensorKeySpec] = [],
+                sensorKeyAliases: [String: String] = [:], permissions: [PermissionSpec],
                 features: [FeatureSpec],
                 foreign: [ForeignSpec], displayNames: [DisplayNameSpec], compatDetails: [CompatDetailSpec],
                 rereadingCommands: [RereadSpec], diagnostics: [DiagnosticSpec], fixItTitles: [FixItTitleSpec],
@@ -76,6 +80,8 @@ public struct DeskCatalog: Sendable {
         self.unitMisspellings = unitMisspellings
         self.formatOptions = formatOptions
         self.typeFormats = typeFormats
+        self.sensorKeys = sensorKeys
+        self.sensorKeyAliases = sensorKeyAliases
         self.permissions = permissions
         self.features = features
         self.foreign = foreign
@@ -98,10 +104,20 @@ public struct DeskCatalog: Sendable {
             namedValues: D.namedValues,
             controls: D.controls, infoFields: D.fields.filter(\.inInfo), packageFields: D.fields.filter(\.inPackage),
             units: D.units, unitMisspellings: D.unitMisspellings, formatOptions: D.formatOptions, typeFormats: D.typeFormats,
+            sensorKeys: D.sensorKeys, sensorKeyAliases: D.sensorKeyAliases,
             permissions: D.permissions, features: D.features, foreign: D.foreign, displayNames: D.displayNames,
             compatDetails: D.compatDetails, rereadingCommands: D.rereadingCommands, diagnostics: D.diagnostics,
             fixItTitles: D.fixItTitles, notes: D.notes)
     }()
+
+    /// The key `sensors.read(key)` reads: lower-case, other spellings resolved (`cpu.temperature` → `cpu`), and its
+    /// row; nil when the key is not in the sensor catalog.
+    public func sensorKey(_ key: String) -> (key: String, spec: SensorKeySpec)? {
+        let lowered = key.trimmingCharacters(in: .whitespaces).lowercased()
+        let canonical = sensorKeyAliases[lowered] ?? lowered
+        guard let spec = sensorKeys.first(where: { $0.matches(canonical) }) else { return nil }
+        return (canonical, spec)
+    }
 
     /// Lookups by name, built on first use for this copy of the catalog.
     public var index: CatalogIndex { box.index(for: self) }

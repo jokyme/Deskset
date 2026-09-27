@@ -454,6 +454,43 @@ func runDeskCatalogTests(_ t: TestRunner) {
         t.equal(c.member(path: "time.now")?.defaultFormat, .style(".time"))
     }
 
+    t.suite("Desk: catalog sensor keys match the engine's") {
+        // `sensors.read(key)` is typed by the key's kind (§5.7); the kinds are the engine's (SensorKeys).
+        func type(of kind: SensorKind) -> DeskType {
+            switch kind {
+            case .temperature: return .temperature
+            case .fan: return .rpm
+            case .power: return .power
+            case .frequency: return .frequency
+            case .percent: return .percent
+            case .count: return .plainNumber
+            case .voltage: return .voltage
+            case .current: return .current
+            case .bytes: return .bytes
+            }
+        }
+        for spec in c.sensorKeys {
+            let sample = spec.pattern.replacingOccurrences(of: "N", with: "3")
+            guard let kind = SensorKeys.kind(of: sample) else { t.check(false, "\(spec.pattern): no engine key"); continue }
+            t.equal(spec.type, type(of: kind), spec.pattern)
+            t.check(spec.label.isComplete, "\(spec.pattern): label")
+            t.equal(c.sensorKey(sample)?.spec, spec, "\(sample) finds its row")
+        }
+        for (key, _) in SensorKeys.common {
+            t.check(c.sensorKey(key) != nil, "the engine's \(key) is in the catalog")
+        }
+        t.equal(c.sensorKeyAliases, SensorKeys.aliases, "the same other spellings")
+        t.equal(c.sensorKey("CPU.Temperature")?.key, "cpu")
+        t.equal(c.sensorKey("cpu.core.12")?.spec.type, .temperature)
+        t.check(c.sensorKey("cpu.core.0") == nil, "cores count from 1")
+        t.check(c.sensorKey("fan.1.speed") == nil, "no such key")
+        // The named members read the keys they say.
+        for m in c.namespace(named: "sensors")?.members ?? [] where m.kind == .field {
+            guard case .measure(_, let options, _) = m.lowering, case .literal(let key)? = options["Sensor"] else { continue }
+            t.equal(c.sensorKey(key)?.spec.type, m.type, "sensors.\(m.name) reads \(key)")
+        }
+    }
+
     t.suite("Desk: catalog enums and implicit members") {
         t.equal(Set(c.implicitMemberTypes("left")), ["HAlign", "Alignment", "Direction", "ScrollDirection"], "§4.13 rule 3")
         t.equal(c.implicitMemberTypes("sunday"), ["Weekday"])

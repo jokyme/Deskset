@@ -604,6 +604,38 @@ public struct TypeFormatSpec: Sendable, Hashable {
     }
 }
 
+/// A key of the sensor catalog that `sensors.read(…)` accepts (`cpu.core.4`, `fan.2.max`); `N` stands for a whole
+/// number from 1. A literal key is checked and typed by its kind (§5.7).
+public struct SensorKeySpec: Sendable, Hashable {
+    public var pattern: String
+    public var type: DeskType
+    /// 1024 for amounts of memory.
+    public var displayBase: Int?
+    public var label: LocalizedText
+
+    public init(pattern: String, type: DeskType, displayBase: Int? = nil, label: LocalizedText) {
+        self.pattern = pattern
+        self.type = type
+        self.displayBase = displayBase
+        self.label = label
+    }
+
+    /// Whether `key` is this pattern with its `N`s written as whole numbers from 1.
+    public func matches(_ key: String) -> Bool {
+        let a = pattern.split(separator: ".", omittingEmptySubsequences: false)
+        let b = key.split(separator: ".", omittingEmptySubsequences: false)
+        guard a.count == b.count else { return false }
+        for (p, k) in zip(a, b) {
+            if p == "N" {
+                guard let n = Int(k), n >= 1, k.allSatisfy(\.isASCII) else { return false }
+            } else if p != k {
+                return false
+            }
+        }
+        return true
+    }
+}
+
 // MARK: - Permissions, features, security
 
 public struct PermissionSpec: Sendable, Hashable {

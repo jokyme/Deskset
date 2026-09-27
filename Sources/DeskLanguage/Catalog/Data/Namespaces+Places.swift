@@ -229,6 +229,57 @@ extension CatalogData {
 
     static let temperatureRange = RangeSpec.fixed(0...100)
 
+    static func key(_ pattern: String, _ type: DeskType, _ en: String, _ zh: String, base: Int? = nil) -> SensorKeySpec {
+        SensorKeySpec(pattern: pattern, type: type, displayBase: base, label: L(en, zh))
+    }
+
+    /// The sensor catalog (the engine's MacSensors keys, docs/compat/plugins.md "MacSensors"); a Mac reads the keys
+    /// its hardware has, and the others read missing.
+    static let sensorKeys: [SensorKeySpec] = [
+        key("cpu", .temperature, "CPU temperature (hottest sensor)", "CPU 温度（最热的传感器）"),
+        key("cpu.performance", .temperature, "Performance cores temperature", "性能核温度"),
+        key("cpu.efficiency", .temperature, "Efficiency cores temperature", "能效核温度"),
+        key("cpu.core.N", .temperature, "Temperature of core N", "第 N 个核心的温度"),
+        key("gpu", .temperature, "GPU temperature", "GPU 温度"),
+        key("soc", .temperature, "Chip or chipset temperature", "芯片温度"),
+        key("battery", .temperature, "Battery temperature", "电池温度"),
+        key("ssd", .temperature, "SSD temperature", "固态硬盘温度"),
+        key("fan.N", .rpm, "Speed of fan N", "第 N 个风扇的转速"),
+        key("fan.N.min", .rpm, "Lowest speed of fan N", "第 N 个风扇的最低转速"),
+        key("fan.N.max", .rpm, "Highest speed of fan N", "第 N 个风扇的最高转速"),
+        key("fan.N.target", .rpm, "Target speed of fan N", "第 N 个风扇的目标转速"),
+        key("power.system", .power, "Power: whole Mac", "整机功耗"),
+        key("power.adapter", .power, "Power from the adapter", "电源适配器功率"),
+        key("power.cpu", .power, "CPU power", "CPU 功耗"),
+        key("power.gpu", .power, "GPU power", "GPU 功耗"),
+        key("power.ane", .power, "Neural Engine power", "神经网络引擎功耗"),
+        key("power.dram", .power, "Memory power", "内存功耗"),
+        key("frequency.cpu", .frequency, "CPU clock (fastest cluster)", "CPU 频率（最快的核心簇）"),
+        key("frequency.cpu.performance", .frequency, "Performance cores clock", "性能核频率"),
+        key("frequency.cpu.efficiency", .frequency, "Efficiency cores clock", "能效核频率"),
+        key("frequency.cpu.N", .frequency, "Clock of core N", "第 N 个核心的频率"),
+        key("frequency.gpu", .frequency, "GPU clock", "GPU 频率"),
+        key("frequency.gpu.memory", .frequency, "GPU memory clock", "GPU 显存频率"),
+        key("voltage.cpu", .voltage, "CPU voltage", "CPU 电压"),
+        key("gpu.usage", .percent, "GPU usage", "GPU 占用率"),
+        key("gpu.usage.renderer", .percent, "GPU renderer usage", "GPU 渲染器占用率"),
+        key("gpu.usage.tiler", .percent, "GPU tiler usage", "GPU 分块器占用率"),
+        key("gpu.memory", .bytes, "Memory the GPU uses", "GPU 使用的内存", base: 1024),
+        key("gpu.fan", .percent, "A graphics card's own fan", "显卡自己的风扇"),
+        key("battery.health", .percent, "Battery health", "电池健康"),
+        key("battery.cycles", .plainNumber, "Battery cycle count", "电池循环次数"),
+        key("battery.voltage", .voltage, "Battery voltage", "电池电压"),
+        key("battery.current", .current, "Battery current (negative while discharging)", "电池电流（放电时为负）"),
+    ]
+
+    /// Other spellings skins use for sensor keys.
+    static let sensorKeyAliases: [String: String] = [
+        "battery.temperature": "battery", "cpu.temperature": "cpu", "cpu.package": "cpu", "cpu.max": "cpu",
+        "gpu.temperature": "gpu", "soc.temperature": "soc", "ssd.temperature": "ssd", "cpu.p": "cpu.performance",
+        "cpu.e": "cpu.efficiency", "fan": "fan.1", "power": "power.system", "frequency.cpu.p": "frequency.cpu.performance",
+        "frequency.cpu.e": "frequency.cpu.efficiency", "gpu.clock": "frequency.gpu", "cpu.clock": "frequency.cpu",
+    ]
+
     static let sensorsNamespace = namespace("sensors", "Sensors", "传感器", main: "cpuTemperature", [
         sensor("cpuTemperature", "CPU temperature", "CPU 温度", .temperature, key: "cpu", range: temperatureRange,
                docText: ("Hottest CPU sensor", "CPU 温度（最热的传感器）"), example: #"Text("{sensors.cpuTemperature}")"#,
