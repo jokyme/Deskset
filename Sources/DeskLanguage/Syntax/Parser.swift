@@ -431,7 +431,7 @@ struct Parser {
         let indent = String(repeating: " ", count: indentation(ofToken: b))
         let gap = textEnd(a)..<starts[b]
         report(.missingSeparator, .error, textRange(b),
-               fixIts: [FixIt(titleKey: "newLine", edits: [edit(gap, "\n" + indent)]),
+               fixIts: [FixIt(titleKey: "newLine", edits: [edit(gap, lines.newline + indent)]),
                         FixIt(titleKey: "insert", titleArguments: ["text": .code(",")],
                               edits: [edit(textEnd(a)..<textEnd(a), ",")])])
     }
@@ -573,7 +573,7 @@ struct Parser {
         let removeName = edit(fullEnd(keyword)..<textEnd(name), "")
         let lineStart = lines.starts[lineIndex(ofToken: keyword)]
         let quoted = "\"" + tokens[name].text + "\""
-        let insertInfo = edit(lineStart..<lineStart, "info { name: \(quoted) }\n\n")
+        let insertInfo = edit(lineStart..<lineStart, "info { name: \(quoted) }" + lines.newline + lines.newline)
         return [FixIt(titleKey: "moveNameToInfo", edits: [insertInfo, removeName])]
     }
 
@@ -901,7 +901,7 @@ struct Parser {
         let indent = String(repeating: " ", count: indentation(ofToken: owner.statementStart))
         // The `}` goes on its own line after the last line of the block's content.
         let at = i > open + 1 ? fullEnd(i - 1) : fullEnd(open)
-        let insertion = edit(at..<at, "\n" + indent + "}")
+        let insertion = edit(at..<at, lines.newline + indent + "}")
         let line = lineNumber(ofToken: open)
         // "Jump to line {line}" has no edits: the editor moves to the opener, which is the diagnostic's range.
         report(.unclosedBlock, .error, textRange(open),

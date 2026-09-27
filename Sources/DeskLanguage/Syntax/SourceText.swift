@@ -49,23 +49,30 @@ final class LineTable: @unchecked Sendable {
     let bytes: [UInt8]
     /// UTF-8 offset of the first byte of each line; `starts[0] == 0`.
     let starts: [Int]
+    /// The file's most frequent line break (LF when tied), for the line breaks fix-its insert.
+    let newline: String
 
     init(bytes: [UInt8]) {
         self.bytes = bytes
         var starts = [0]
         var i = 0
         let n = bytes.count
+        var lf = 0
+        var crlf = 0
+        var cr = 0
         while i < n {
             let b = bytes[i]
             if b == 0x0A {
                 starts.append(i + 1)
+                lf += 1
             } else if b == 0x0D {
-                if i + 1 < n, bytes[i + 1] == 0x0A { i += 1 }
+                if i + 1 < n, bytes[i + 1] == 0x0A { i += 1; crlf += 1 } else { cr += 1 }
                 starts.append(i + 1)
             }
             i += 1
         }
         self.starts = starts
+        newline = crlf > lf && crlf >= cr ? "\r\n" : cr > lf && cr > crlf ? "\r" : "\n"
     }
 
     /// 0-based line index of `offset` (offsets past the end belong to the last line).

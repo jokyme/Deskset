@@ -177,16 +177,16 @@ struct Lexer {
     private var interpolationWork = 0
     private var interpolationBudget: Int { max(10_000, bytes.count * 4) }
 
-    init(bytes: [UInt8], file: DeskFileID) {
+    init(bytes: [UInt8], file: DeskFileID, lines: LineTable? = nil) {
         self.bytes = bytes
         self.file = file
-        lineStartTable = LineTable(bytes: bytes).starts
+        lineStartTable = (lines ?? LineTable(bytes: bytes)).starts
         tokens.reserveCapacity(bytes.count / 4 + 8)
         starts.reserveCapacity(bytes.count / 4 + 8)
     }
 
-    static func lex(_ bytes: [UInt8], file: DeskFileID) -> LexedFile {
-        var lexer = Lexer(bytes: bytes, file: file)
+    static func lex(_ bytes: [UInt8], file: DeskFileID, lines: LineTable? = nil) -> LexedFile {
+        var lexer = Lexer(bytes: bytes, file: file, lines: lines)
         lexer.run()
         var newlineBefore = [Bool](repeating: false, count: lexer.tokens.count)
         var previousTrailingBreak = false

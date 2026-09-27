@@ -109,6 +109,12 @@ func runDeskRecoveryTests(_ t: TestRunner) {
             }
             """)
         }
+        // Fix-its write the file's own line breaks.
+        let crlf = deskParse("widget {\r\n    Row {\r\n        Text(\"A\") Text(\"B\")\r\n}\r\n")
+        t.equal(deskIDs(crlf), ["DK2001", "DK2031"])
+        let insertedBrace = crlf.diagnostics[0].fixIts.flatMap(\.edits).map(\.replacement)
+        t.equal(insertedBrace, ["\r\n    }"], "the `}` of `Row {`, at its indentation")
+        t.equal(crlf.diagnostics[1].fixIts[0].edits.map(\.replacement), ["\r\n        "])
         // A balanced file keeps the structure it was written with, however it is indented.
         let balanced = deskParse("widget {\nRow {\nText(\"A\")\n        }\n    Text(\"B\")\n}")
         t.equal(deskIDs(balanced), [])

@@ -49,7 +49,7 @@ enum SyntaxParsing {
 
     private static func parse(bytes: [UInt8], text: String, file: DeskFileID, version: Int) -> SyntaxTree {
         let lines = LineTable(bytes: bytes)
-        let lexed = Lexer.lex(bytes, file: file)
+        let lexed = Lexer.lex(bytes, file: file, lines: lines)
         let braces = BraceMatching.match(lexed, lines: lines)
         var parser = Parser(lexed: lexed, braces: braces, file: file, lines: lines, bytes: bytes)
         let root = parser.parseSourceFile()
