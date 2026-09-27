@@ -37,7 +37,8 @@ DigitGroup=,
 ClockBottomLine=Sun
 
 ; ---------------------------------------------------------------- Analog Clock
-; The face: DayNight (white by day and dark by night, like the World Clock's dials) or Glass (the look's ink on the card)
+; The face: DayNight (white by day and dark by night, like the World Clock's dials) or Glass (the look's ink on the
+; card)
 AnalogFace=DayNight
 ; Numerals: All, Quarters (12, 3, 6 and 9, with ticks for the rest) or Ticks (no numerals)
 AnalogNumerals=All

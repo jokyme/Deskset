@@ -1097,8 +1097,9 @@ DynamicVariables=1
 Group=Cities
 UpdateDivider=-1
 
-; ---------------------------------------------------------------- the first run: a city in this Mac's own zone gives way
-; to Sydney (the defaults are London, New York and Tokyo). Checked once, two seconds after the first load
+; ---------------------------------------------------------------- the first run
+; a default city (London, New York, Tokyo) in this Mac's own zone gives way to Sydney; checked once, two seconds after
+; the first load
 [MeasureSeed]
 Measure=Calc
 Formula=(#WorldClockSeeded# = 0) && (#Settled# = 1)

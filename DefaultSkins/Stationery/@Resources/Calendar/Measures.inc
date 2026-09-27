@@ -260,8 +260,9 @@ DynamicVariables=1
 Group=Month
 UpdateDivider=-1
 
-; ---------------------------------------------------------------- weekday initials, in the week's order and the Locale's language
-; 1–7 January 2023 are Sunday to Saturday; the name is shortened to its first letter (周六 and 星期六 → 六)
+; ---------------------------------------------------------------- weekday initials
+; in the week's order and the Locale's language. 1–7 January 2023 are Sunday to Saturday; the name is shortened to its
+; first letter (周六 and 星期六 → 六)
 [MeasureInitialDay1]
 Measure=Calc
 Formula=1 + (#FirstWeekday# + 0) % 7
