@@ -1,0 +1,8 @@
+// DK2018 widgetInPackage
+//== expect: DK2018
+//== file: package.desk
+package { name: "P" }
+widget { Text("A") }
+//== negative
+package { name: "P" }
+style big { .bold() }

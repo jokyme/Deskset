@@ -1,0 +1,14 @@
+// DK4041 usesDisagree
+//== expect: DK4041
+//== fixit: may-introduce-errors
+info { name: "T" }
+widget {
+    saved threshold = 80
+    Text("A").color(.red, if: cpu.usage > threshold).font(threshold)
+}
+//== negative
+info { name: "T" }
+widget {
+    saved threshold = 80
+    Text("A").color(.red, if: cpu.usage > threshold)
+}

@@ -1,0 +1,8 @@
+// DK1006 invalidCharacter
+//== expect: DK1006
+info { name: "T" }
+widget { Text("A") }
+§
+//== negative
+info { name: "T" }
+widget { Text("A") }

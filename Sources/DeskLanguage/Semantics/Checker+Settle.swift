@@ -114,8 +114,6 @@ extension Checker {
             guard let d = dimension(of: use.expected) else { continue }
             if !seen.contains(d) { seen.append(d); firstUse[d] = use }
         }
-        // Length accepts plain values; percent and fraction agree.
-        if seen.count > 1, seen.contains(.length) { seen.removeAll { $0 == .length } }
         guard let d = seen.first else { return }
         if seen.count > 1 {
             let list = seen.compactMap { firstUse[$0] }.map { use in

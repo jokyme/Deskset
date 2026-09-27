@@ -1,0 +1,7 @@
+// DK5002 duplicateFacet
+//== expect: DK5002
+info { name: "T" }
+widget { Text("A").size(28, 24).width(30) }
+//== negative
+info { name: "T" }
+widget { Text("A").size(30, 24) }

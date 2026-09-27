@@ -1,0 +1,9 @@
+// DK7013 whenRarelyChanges
+//== expect: DK7013
+info { name: "T" }
+options { seconds = Toggle("Show seconds") }
+widget { Text("A").when(options.seconds) { log("x") } }
+//== negative
+info { name: "T" }
+options { seconds = Toggle("Show seconds") }
+widget { Text("A").when(options.seconds and cpu.usage > 50) { log("x") } }

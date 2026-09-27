@@ -1,0 +1,7 @@
+// DK4038 ternaryTip
+//== expect: DK4038
+info { name: "T" }
+widget { Text("A").color(cpu.usage > 80 ? .red : .text) }
+//== negative
+info { name: "T" }
+widget { Text("A").color(.text).color(.red, if: cpu.usage > 80) }

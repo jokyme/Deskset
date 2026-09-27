@@ -1,0 +1,12 @@
+// DK3027 styleReplacesPackage
+//== expect: DK3027
+info { name: "T" }
+widget { Text("A").style(card) }
+style card { .bold() }
+//== negative
+info { name: "T" }
+widget { Text("A").style(card).style(card2) }
+style card2 { .bold() }
+//== package
+package { name: "P" }
+style card { .italic() }

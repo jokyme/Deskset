@@ -1,0 +1,15 @@
+// DK2021 multipleRoots
+//== expect: DK2021
+info { name: "T" }
+widget {
+    Text("A")
+    Text("B")
+}
+//== negative
+info { name: "T" }
+widget {
+    Column {
+        Text("A")
+        Text("B")
+    }
+}

@@ -1,0 +1,9 @@
+// DK8208 placeholderInSingleQuotes
+//== expect: DK8208
+info { name: "T", permissions: [.commands] }
+options { target = Input("Target") }
+widget { Text("A").onClick { run("open '{options.target}'") } }
+//== negative
+info { name: "T", permissions: [.commands] }
+options { target = Input("Target") }
+widget { Text("A").onClick { run("open {options.target}") } }

@@ -1,0 +1,8 @@
+// DK8303 deprecated
+//== expect: DK8303
+//== context: future
+info { name: "T" }
+widget { Text("A").glow(2) }
+//== negative
+info { name: "T" }
+widget { Text("A").blur(2) }

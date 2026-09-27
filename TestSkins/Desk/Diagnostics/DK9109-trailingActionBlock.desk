@@ -1,0 +1,7 @@
+// DK9109 trailingActionBlock
+//== expect: DK9109
+info { name: "T", permissions: [.music] }
+widget { Button("Next") { music.next() } }
+//== negative
+info { name: "T", permissions: [.music] }
+widget { Button("Next").onClick { music.next() } }

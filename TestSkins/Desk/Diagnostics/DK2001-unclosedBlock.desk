@@ -1,0 +1,16 @@
+// DK2001 unclosedBlock
+//== expect: DK2001
+info { name: "T" }
+widget {
+    Row {
+        Text("A")
+    .padding(14)
+}
+//== negative
+info { name: "T" }
+widget {
+    Row {
+        Text("A")
+    }
+    .padding(14)
+}

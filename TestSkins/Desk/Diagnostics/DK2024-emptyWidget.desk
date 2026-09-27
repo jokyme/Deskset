@@ -1,0 +1,7 @@
+// DK2024 emptyWidget
+//== expect: DK2024
+info { name: "T" }
+widget { }
+//== negative
+info { name: "T" }
+widget { Text("A") }

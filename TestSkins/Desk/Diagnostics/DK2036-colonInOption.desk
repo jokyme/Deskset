@@ -1,0 +1,9 @@
+// DK2036 colonInOption
+//== expect: DK2036
+info { name: "T" }
+options { accent: ColorPicker("Accent") }
+widget { Text("A").color(options.accent) }
+//== negative
+info { name: "T" }
+options { accent = ColorPicker("Accent") }
+widget { Text("A").color(options.accent) }

@@ -1,0 +1,9 @@
+// DK8013 optionWithoutName
+//== expect: DK8013
+info { name: "T" }
+options { Toggle("Show seconds") }
+widget { Text("A") }
+//== negative
+info { name: "T" }
+options { showSeconds = Toggle("Show seconds") }
+widget { Text("A").hidden(if: options.showSeconds) }

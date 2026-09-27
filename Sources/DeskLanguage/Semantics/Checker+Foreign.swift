@@ -28,6 +28,8 @@ extension Checker {
                     let lower = name.prefix(1).lowercased() + name.dropFirst()
                     copy.arguments["name"] = .code(name)
                     copy.arguments["desk"] = .code("options.\(lower)")
+                    options[lower]?.used = true
+                    options[name]?.used = true
                     if options[lower] != nil || options[name] != nil, copy.fixIts.isEmpty {
                         copy.fixIts = [fix("replaceWith", [edit(d.range, "options.\(options[lower] != nil ? lower : name)")],
                                            ["text": .code("options.\(lower)")])]
@@ -203,7 +205,8 @@ extension Checker {
     func htmlDesk(for line: String) -> LocalizedText {
         for row in catalog.foreign where row.diagnostic == .htmlTag {
             if case .line(let regex) = row.pattern, line.range(of: regex, options: .regularExpression) != nil {
-                return LocalizedText("`\(row.deskText)`", "`\(row.deskText)`")
+                let parts = row.deskText.components(separatedBy: " or ")
+                return LocalizedText(parts.map { "`\($0)`" }.joined(separator: " or "), parts.map { "`\($0)`" }.joined(separator: " 或 "))
             }
         }
         return LocalizedText("`Column { … }` or `Row { … }`", "`Column { … }` 或 `Row { … }`")
@@ -394,6 +397,12 @@ extension Checker {
         if row.diagnostic == .swiftBinding {
             let value = text(argument.value.node).trimmingCharacters(in: CharacterSet(charactersIn: "$"))
             let start = textStart(argument.node)
+            mute += 1
+            _ = infer(argument.value.node, ExprContext(), expected: nil)
+            mute -= 1
+            if argument.value.node.kind == .identifierExpr, let decl = decls[IdentifierExprSyntax(unchecked: argument.value.node).name] {
+                decl.used = true
+            }
             report(.swiftBinding, labelRange, ["name": .code(value)],
                    fixIts: [fix("removeLabels", [edit(start..<textStart(argument.value.node), "")])])
             return

@@ -1,0 +1,6 @@
+// DK8003 missingName
+//== expect: DK8003
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

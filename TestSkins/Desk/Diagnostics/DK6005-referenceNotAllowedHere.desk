@@ -1,0 +1,17 @@
+// DK6005 referenceNotAllowedHere
+//== expect: DK6005
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(title)
+        Text("B").opacity(title.width / 100)
+    }
+}
+//== negative
+info { name: "T" }
+widget {
+    Freeform {
+        Text("A").name(title)
+        Text("B").width(title.width)
+    }
+}

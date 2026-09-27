@@ -1,0 +1,9 @@
+// DK3032 localChoices
+//== expect: DK3032
+info { name: "T" }
+options { side = Picker("Side", [.left, .right]) }
+widget { Text("{options.side}") }
+//== negative
+info { name: "T" }
+options { side = Picker("Side", [HAlign.left, HAlign.right]) }
+widget { Text("{options.side}") }

@@ -1,0 +1,8 @@
+// DK2002 extraClosingBrace
+//== expect: DK2002
+info { name: "T" }
+widget { Text("A") }
+}
+//== negative
+info { name: "T" }
+widget { Text("A") }

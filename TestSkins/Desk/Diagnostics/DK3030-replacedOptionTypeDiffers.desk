@@ -1,0 +1,13 @@
+// DK3030 replacedOptionTypeDiffers
+//== expect: DK3030
+//== negative-also: DK3026
+info { name: "T" }
+options { accent = Toggle("Accent") }
+widget { Text("A").hidden(if: options.accent) }
+//== negative
+info { name: "T" }
+options { accent = ColorPicker("Accent") }
+widget { Text("A").color(options.accent) }
+//== package
+package { name: "P" }
+options { accent = ColorPicker("Accent") }

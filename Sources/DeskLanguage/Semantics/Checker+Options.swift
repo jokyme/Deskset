@@ -9,6 +9,23 @@ extension Checker {
         guard let body = block.firstChild(.block) else { return }
         let isPackageBlock = block.kind == .packageBlock
         for statement in BlockSyntax(unchecked: body).statements {
+            if statement.kind == .assignment {
+                // `info { name = "CPU" }`: the INI habit (DK2035); the field still counts.
+                let assignment = AssignmentSyntax(unchecked: statement)
+                let target = assignment.target
+                guard target.path.count == 1, assignment.isPlainAssignment else { continue }
+                let name = target.name.token.name
+                let equal = range(assignment.equal)
+                report(.equalsInField, equal, ["label": .code(name), "fixed": .code("\(name): \(text(assignment.value.node))")],
+                       fixIts: [fix("replaceWith", [edit(equal, ":")], ["text": .code(":")], group: "equalsInField")])
+                if infoFields[name] == nil, (isPackageBlock ? index.packageFields[name] : index.infoFields[name]) != nil {
+                    infoFields[name] = (statement, assignment.value.node)
+                    if name == "size", assignment.value.node.kind == .implicitMemberExpr {
+                        preset = ImplicitMemberExprSyntax(unchecked: assignment.value.node).name.token.name
+                    }
+                }
+                continue
+            }
             guard statement.kind == .field else { continue }
             let field = FieldSyntax(unchecked: statement)
             let name = field.label.name
@@ -59,7 +76,7 @@ extension Checker {
             switch statement.kind {
             case .field:
                 break
-            case .foreignConstruct, .unexpected:
+            case .foreignConstruct, .unexpected, .assignment:
                 continue
             default:
                 report(.notAllowedHere, range(statement), ["what": .name(constructName(statement)),
@@ -147,6 +164,7 @@ extension Checker {
             let r = range(element.node)
             if let clean = Checker.hostProblem(host) {
                 report(.invalidHost, r, fixIts: clean.isEmpty ? [] : [fix("replaceWithHost", [edit(r, "\"\(clean)\"")])])
+                if !clean.isEmpty { declaredHosts.append((clean, r)) }
                 continue
             }
             declaredHosts.append((host, r))
@@ -245,6 +263,19 @@ extension Checker {
                                         nameRange: range(token), file: file, fromPackage: false, val: Val(.any))
                 options[name] = option
                 optionOrder.removeAll { $0.name == name }
+                optionOrder.append(option)
+            case .field:
+                let field = FieldSyntax(unchecked: statement)
+                let name = field.label.name
+                let value = field.value.node
+                guard value.kind == .callExpr, options[name] == nil else { continue }
+                let control = text(CallExprSyntax(unchecked: value).callee.node)
+                guard let spec = catalog.control(named: control) else { continue }
+                var val = Val.error
+                if case .fixed(let t) = spec.valueType { val = Val(t) }
+                let option = OptionInfo(name: name, control: control, node: statement, id: id(statement),
+                                        nameRange: range(field.label.node), file: file, fromPackage: false, val: val)
+                options[name] = option
                 optionOrder.append(option)
             case .callStmt:
                 let call = CallStmtSyntax(unchecked: statement)
@@ -459,6 +490,10 @@ extension Checker {
     func checkPicker(_ option: OptionInfo, call: CallStmtSyntax, control: ControlSpec, _ context: ExprContext) {
         let arguments = call.arguments?.arguments ?? []
         let positional = arguments.filter { $0.label == nil }
+        if let firstLabel = arguments.firstIndex(where: { $0.label != nil }),
+           let late = arguments.indices.first(where: { $0 > firstLabel && arguments[$0].label == nil }) {
+            report(.positionalAfterLabel, range(arguments[late].node), fixIts: [reorderFix(arguments)])
+        }
         guard positional.count >= 2 else {
             _ = bindCall(control.signatures, arguments: call.arguments, calleeName: control.name, what: .code(control.name),
                          callRange: range(call.callee.node), context, owner: .control(control))
@@ -740,10 +775,12 @@ extension Checker {
         }
         let known = Set(Locale.LanguageCode.isoLanguageCodes.map(\.identifier))
         guard known.contains(language) else { return false }
+        var stage = 0   // 0: script may follow, 1: region may follow, 2: nothing
+        let scripts: Set<String> = ["Hans", "Hant", "Latn", "Cyrl", "Arab", "Deva", "Grek", "Hebr", "Jpan", "Kore", "Thai"]
         for part in parts.dropFirst() {
-            if part.count == 4, part.first!.isUppercase, part.dropFirst().allSatisfy({ $0.isLowercase }) { continue }   // script
-            if part.count == 2, part.allSatisfy({ $0.isUppercase && $0.isASCII }) { continue }                         // region
-            if part.count == 3, part.allSatisfy({ $0.isNumber }) { continue }
+            if stage == 0, part.count == 4, scripts.contains(part) { stage = 1; continue }
+            if stage <= 1, part.count == 2, part.allSatisfy({ $0.isUppercase && $0.isASCII }) { stage = 2; continue }
+            if stage <= 1, part.count == 3, part.allSatisfy({ $0.isNumber }) { stage = 2; continue }
             return false
         }
         return true

@@ -1,0 +1,7 @@
+// DK1028 spaceBeforeUnit
+//== expect: DK1028
+info { name: "T" }
+widget { Text("A").every(2 s) { log("tick") } }
+//== negative
+info { name: "T" }
+widget { Text("A").every(2s) { log("tick") } }

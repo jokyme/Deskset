@@ -117,6 +117,8 @@ extension Checker {
     func isOptionsFormControl(_ spec: ComponentSpec, _ arguments: [ArgumentSyntax]) -> Bool {
         guard catalog.control(named: spec.name) != nil else { return false }
         if arguments.contains(where: { $0.label?.name == "default" }) { return true }
+        let labels = arguments.compactMap { $0.label?.name }
+        if labels.contains(where: { !["min", "max", "step"].contains($0) }) { return false }
         let positional = arguments.filter { $0.label == nil }
         switch spec.kind {
         case .toggle: return positional.count == 1 && positional[0].value.node.kind == .stringLiteral
@@ -148,11 +150,9 @@ extension Checker {
             }
             report(.trailingActionBlock, blockRange, ["fixed": .code(fixed)],
                    fixIts: [fix("moveInto", edits, ["text": .code(".onClick")])])
-            var action = ActionContext(owner: "onClick", userInitiated: true, eventAvailable: true, eventRecord: "Event", element: nil)
-            action.owner = "onClick"
-            mute += 1
+            let action = ActionContext(owner: "onClick", userInitiated: true, eventAvailable: true, eventRecord: "Event", element: nil)
             checkActionBlock(block.node, action, loopIDs: context.loopIDs)
-            mute -= 1
+            trailingActionBlocks.insert(call.node.range.lowerBound)
             return
         }
         let statements = block.statements
@@ -179,7 +179,7 @@ extension Checker {
             if !known {
                 let r = range(value.node)
                 report(.unknownRange, r, ["component": .name("component:\(spec.name)")],
-                       fixIts: [fix("insert", [edit(r.upperBound..<r.upperBound, ", total: ")], ["text": .code(", total: ")])])
+                       fixIts: [fix("insert", [edit(r.upperBound..<r.upperBound, ", total: 100")], ["text": .code(", total: 100")])])
             }
         default:
             break
@@ -321,12 +321,14 @@ extension Checker {
         if case .actions = spec.block, spec.signatures.first?.params.isEmpty == true, arguments.isEmpty {
             bound = BoundCall(signature: spec.signatures[0], index: 0, values: [], failed: false)
         } else {
-            bound = bindCall(spec.signatures, arguments: modifier.arguments, calleeName: "." + name, what: .code("." + name),
-                             callRange: modifierRange, exprContext, owner: .modifier(spec))
+            bound = bindCall(signaturesWithCondition(spec), arguments: modifier.arguments, calleeName: "." + name,
+                             what: .code("." + name), callRange: modifierRange, exprContext, owner: .modifier(spec))
         }
         if let bound {
             for value in bound.values where mute == 0 { dependencies[id(value.node)] = value.val.deps }
             checkModifierValues(spec, bound, modifier: modifier, element: element, context)
+            checkTernaryOnModifier(spec, bound, modifier: modifier)
+            checkWidgetSizeInLayout(spec, bound)
         }
 
         // The block.
@@ -384,6 +386,9 @@ extension Checker {
             default: what = "content:menuItems"
             }
             let end = modifierRange.upperBound
+            for d in tree.diagnostics where d.id == .missingParens && modifierRange.contains(d.range.lowerBound) {
+                droppedParserDiagnostics.insert(diagnosticKey(d))
+            }
             report(.blockNeeded, modifierRange, ["name": .code("." + name), "what": .name(what)],
                    fixIts: [fix("insert", [edit(end..<end, " { }")], ["text": .code(" { }")])])
         }
@@ -393,6 +398,17 @@ extension Checker {
         }
         result.applied = appliedModifier(spec, modifier: modifier, bound: bound, state: state)
         return result
+    }
+
+    /// A modifier's signatures with `if:` added when it accepts a condition and does not list one itself.
+    func signaturesWithCondition(_ spec: ModifierSpec) -> [Signature] {
+        guard spec.acceptsCondition else { return spec.signatures }
+        return spec.signatures.map { signature in
+            guard signature.param(labelled: "if") == nil else { return signature }
+            var s = signature
+            s.params.append(CatalogData.condition())
+            return s
+        }
     }
 
     /// The facets a modifier sets, with their values (§4.8.3).
@@ -578,6 +594,9 @@ extension Checker {
             if Checker.isIdentifier(s) {
                 report(.quotedOwnName, r, ["fixed": .code(".name(\(s))")],
                        fixIts: [fix("removeQuotes", [edit(r, s)], group: "quotedOwnName")])
+            } else if element?.parent?.kind == .freeform {
+                let renamed = DidYouMean.lowerCamel(from: s)
+                report(.nameNotReferable, r, ["name": .code(s)], fixIts: [fix("rename", [edit(r, renamed)])])
             }
         } else if value.kind == .implicitMemberExpr {
             let n = ImplicitMemberExprSyntax(unchecked: value).name.token.name
@@ -615,6 +634,7 @@ extension Checker {
         if positional.count > 1 || positional.first.map({ $0.value.node.kind == .binaryExpr && [.pipe, .amp].contains(BinaryExprSyntax(unchecked: $0.value.node).operator.kind) }) == true {
             var names: [String] = []
             for p in positional { names += styleNames(in: p.value.node) }
+            if mute == 0 { for n in names { styles[n]?.used = true } }
             let fixed = names.map { ".style(\($0))" }.joined()
             report(.combinedStyles, r, ["fixed": .code(fixed)], fixIts: [fix("rewrite", [edit(r, fixed)])])
             return nil
@@ -675,6 +695,7 @@ extension Checker {
             name = IdentifierExprSyntax(unchecked: node).name
         case .implicitMemberExpr:
             let n = ImplicitMemberExprSyntax(unchecked: node).name.token.name
+            if mute == 0 { styles[n]?.used = true }
             report(.dotOnOwnStyle, r, ["name": .code(n)], fixIts: [fix("removeDot", [edit(r, n)])])
             return .error
         case .stringLiteral:
@@ -697,6 +718,7 @@ extension Checker {
             var fixIts: [FixIt] = []
             if let best = suggestion.names.first, suggestion.fixable || suggestion.via == .caseOnly || (suggestion.distance ?? 9) <= 2 {
                 fixIts.append(fix("didYouMean", [edit(r, best)], ["text": .code(best)]))
+                if mute == 0 { styles[best]?.used = true }
             }
             let insertAt = tree.text.utf8.count
             fixIts.append(fix("createStyle", [edit(insertAt..<insertAt, lineBreak + "style \(name) { }" + lineBreak)]))
@@ -789,7 +811,8 @@ extension Checker {
             }
             return
         }
-        let known = catalog.allRainmeterMappings().contains { $0.value.key?.lowercased() == key.lowercased() }
+        let known = Checker.rainmeterMeterOptions.contains(key.lowercased())
+            || catalog.allRainmeterMappings().contains { $0.value.key?.lowercased() == key.lowercased() }
         if known {
             report(.rainmeterDetailNotKept, keyRange, ["name": .code(key)],
                    fixIts: [fix("remove", [edit(modifier.node.range.lowerBound..<r.upperBound, "")])])
@@ -945,7 +968,9 @@ extension Checker {
             expandStyle(call.style, visited: []) { a, styleName in
                 add(a, level: 2, extra: condition, origin: .style(styleName, id(a.node), file: a.file))
             }
-            if position == before, let style = styles[call.style], element.kind != nil, !style.modifiers.isEmpty {
+            var expanded = 0
+            expandStyle(call.style, visited: []) { _, _ in expanded += 1 }
+            if position == before, styles[call.style] != nil, element.kind != nil, expanded > 0 {
                 report(.styleHasNoEffect, range(call.node), ["style": .code(call.style),
                                                              "component": .name("component:\(element.component?.name ?? "")")])
             }
@@ -1036,7 +1061,7 @@ extension Checker {
                                                 edit(align.node.range.lowerBound..<range(align.node).upperBound, "")], ["text": .code(fixed)])])
             }
         }
-        if element.kind == .button, !names.contains("onClick") {
+        if element.kind == .button, !names.contains("onClick"), !trailingActionBlocks.contains(element.node.range.lowerBound) {
             let end = range(element.node).upperBound
             report(.buttonWithoutAction, range(element.node.firstChild(.callee) ?? element.node),
                    fixIts: [fix("insert", [edit(end..<end, ".onClick { }")], ["text": .code(".onClick { }")])])
@@ -1121,6 +1146,27 @@ extension Checker {
             report(.styleCycle, style.nameRange, ["cycle": .list(list, joiner: .and)])
         }
     }
+}
+
+extension Checker {
+    /// Meter options of Rainmeter's public manual (lower-cased): known options that a Desk widget may not keep are
+    /// DK5027 rather than "unknown" (DK5020).
+    static let rainmeterMeterOptions: Set<String> = Set([
+        "MeterStyle", "X", "Y", "W", "H", "Hidden", "UpdateDivider", "SolidColor", "SolidColor2", "GradientAngle",
+        "BevelType", "Padding", "AntiAlias", "DynamicVariables", "TransformationMatrix", "ToolTipText", "ToolTipTitle",
+        "ToolTipIcon", "ToolTipType", "ToolTipWidth", "ToolTipHidden", "Group", "Container", "MeasureName", "MeasureName2",
+        "Text", "Prefix", "Postfix", "FontFace", "FontSize", "FontColor", "FontWeight", "StringStyle", "StringAlign",
+        "StringCase", "StringEffect", "FontEffectColor", "ClipString", "ClipStringW", "ClipStringH", "Angle", "Percentual",
+        "AutoScale", "Scale", "NumOfDecimals", "InlineSetting", "InlinePattern", "ImageName", "ImagePath", "ImageAlpha",
+        "ImageTint", "ImageFlip", "ImageRotate", "ImageCrop", "Greyscale", "ColorMatrix", "UseExifOrientation",
+        "PreserveAspectRatio", "ScaleMargins", "Tile", "MaskImageName", "BarImage", "BarColor", "BarOrientation", "BarBorder",
+        "Flip", "LineCount", "LineColor", "LineWidth", "HorizontalLines", "HorizontalLineColor", "GraphStart",
+        "GraphOrientation", "PrimaryColor", "SecondaryColor", "BothColor", "PrimaryImage", "SecondaryImage", "BothImage",
+        "StartAngle", "RotationAngle", "LineStart", "LineLength", "Solid", "ControlAngle", "ControlLength", "ControlLineStart",
+        "LengthShift", "Shape", "BitmapImage", "BitmapFrames", "BitmapZeroFrame", "BitmapExtend", "BitmapDigits",
+        "BitmapAlign", "BitmapSeparation", "ButtonImage", "ButtonCommand", "OffsetX", "OffsetY", "ValueRemainder",
+        "LeftMouseUpAction", "LeftMouseDownAction", "MouseOverAction", "MouseLeaveAction", "MouseActionCursor",
+    ].map { $0.lowercased() })
 }
 
 /// A `.style(…)` inside a style body.

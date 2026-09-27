@@ -1,0 +1,7 @@
+// DK7006 userActionOnly
+//== expect: DK7006
+info { name: "T" }
+widget { Text("A").every(1min) { open("Calendar") } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { open("Calendar") } }

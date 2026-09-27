@@ -1,0 +1,7 @@
+// DK3023 newerName
+//== expect: DK3023
+info { name: "T", requires: "9.0" }
+widget { Text("A").sparkle(2) }
+//== negative
+info { name: "T", requires: "1.0" }
+widget { Text("A").bold() }

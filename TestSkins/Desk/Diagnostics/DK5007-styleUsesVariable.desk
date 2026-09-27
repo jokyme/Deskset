@@ -1,0 +1,15 @@
+// DK5007 styleUsesVariable
+//== expect: DK5007
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").style(s)
+}
+style s { .hidden(if: page > 0) }
+//== negative
+info { name: "T" }
+widget {
+    variable page = 0
+    Text("{page}").style(s, if: page > 0)
+}
+style s { .hidden() }

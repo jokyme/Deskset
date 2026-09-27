@@ -1,0 +1,14 @@
+// DK8405 duplicateLanguage
+//== expect: DK8405
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "CPU": "处理器" }
+    "zh-Hans" { "CPU": "中央处理器" }
+}
+//== negative
+info { name: "T" }
+widget { Text("CPU") }
+translations {
+    "zh-Hans" { "CPU": "处理器" }
+}

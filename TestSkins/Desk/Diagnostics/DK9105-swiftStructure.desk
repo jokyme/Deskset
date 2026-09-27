@@ -1,0 +1,8 @@
+// DK9105 swiftStructure
+//== expect: DK9105
+info { name: "T" }
+import SwiftUI
+widget { Text("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

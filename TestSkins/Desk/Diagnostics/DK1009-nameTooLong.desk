@@ -1,0 +1,13 @@
+// DK1009 nameTooLong
+//== expect: DK1009
+info { name: "T" }
+widget {
+    variable aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa = 0
+    Text("{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable a = 0
+    Text("{a}")
+}

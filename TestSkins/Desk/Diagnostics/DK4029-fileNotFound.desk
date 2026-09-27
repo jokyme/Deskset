@@ -1,0 +1,8 @@
+// DK4029 fileNotFound
+//== expect: DK4029
+//== context: resources
+info { name: "T" }
+widget { Image("pasue.png") }
+//== negative
+info { name: "T" }
+widget { Image("pause.png") }

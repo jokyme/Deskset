@@ -211,11 +211,16 @@ extension Checker {
         let variable = "alert"
         var fixIts: [FixIt] = []
         if let element = action.element, !modifierText.isEmpty, let widget = widgetBlock?.firstChild(.block) {
-            let open = BlockSyntax(unchecked: widget).lBrace.textRange.upperBound
+            let body = BlockSyntax(unchecked: widget)
+            let open = body.lBrace.textRange.upperBound
             let elementEnd = range(element.node).upperBound
             let conditional = String(modifierText.dropLast()) + ", if: \(variable))"
             let r = range(statement)
-            var edits = [edit(open..<open, lineBreak + "    variable \(variable) = false"),
+            let firstStatement = body.statements.first.map { textStart($0) } ?? open
+            let sameLine = !text(open..<firstStatement).contains("\n") && !text(open..<firstStatement).contains("\r")
+            let indent = sameLine ? "    " : indentation(at: firstStatement)
+            let declaration = lineBreak + indent + "variable \(variable) = false" + (sameLine ? lineBreak + indent : "")
+            var edits = [edit(open..<(sameLine ? firstStatement : open), declaration),
                          edit(r, "\(variable) = true")]
             if elementEnd > r.upperBound || elementEnd <= r.lowerBound { edits.append(edit(elementEnd..<elementEnd, conditional)) }
             fixIts.append(fix("rewrite", edits))
@@ -367,8 +372,6 @@ extension Checker {
                                                            "actual": .type(.bool)],
                        fixIts: [fix("convert", [edit(range(statement), fixed)], ["text": .code(fixed)])])
             }
-        case "run":
-            if let command = bound.values.first { checkCommand(command, statement: statement) }
         default:
             break
         }

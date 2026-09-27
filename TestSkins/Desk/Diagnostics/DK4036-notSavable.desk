@@ -1,0 +1,13 @@
+// DK4036 notSavable
+//== expect: DK4036
+info { name: "T" }
+widget {
+    saved m = calendar.month()
+    Text("{m.title}")
+}
+//== negative
+info { name: "T" }
+widget {
+    computed m = calendar.month()
+    Text("{m.title}")
+}

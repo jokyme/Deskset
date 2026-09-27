@@ -1,0 +1,7 @@
+// DK3037 namespaceAsValue
+//== expect: DK3037
+info { name: "T" }
+widget { Text(cpu) }
+//== negative
+info { name: "T" }
+widget { Text(cpu.usage) }

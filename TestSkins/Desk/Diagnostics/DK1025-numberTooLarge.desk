@@ -1,0 +1,7 @@
+// DK1025 numberTooLarge
+//== expect: DK1025
+info { name: "T" }
+widget { Text("A").padding(1234567890123456789) }
+//== negative
+info { name: "T" }
+widget { Text("A").padding(12) }

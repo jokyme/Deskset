@@ -401,7 +401,8 @@ struct Parser {
                 children.append(take())
             }
         } while i < limit && !isRunStop(i)
-        if shouldReport {
+        let onlyInvalid = (first..<i).allSatisfy { kind($0) == .invalidCharacter }
+        if shouldReport && !onlyInvalid {
             let last = i - 1
             var fixIts: [FixIt] = []
             if lineIndex(ofToken: first) == lineIndex(ofToken: last) {

@@ -26,7 +26,7 @@ extension Checker {
         for interpolation in interpolations {
             var inner = context
             inner.display = true
-            inner.param = context.param.map { p in var q = p; q.type = .any; q.role = .display; return q }
+            inner.param = context.param.map { p in var q = p; q.type = .any; q.role = .display; q.translatable = false; return q }
             let value = interpolation.value.node
             // DK1018: `{3}` in a pattern would put in a number.
             if role == .pattern, value.kind == .numberLiteral, interpolation.formatOptions.isEmpty,
@@ -73,7 +73,7 @@ extension Checker {
         // Text scans (ordinary strings only).
         if mute == 0 {
             scanText(textParts, string: string, node: node, context)
-            if string.isWindowsPath { reportWindowsPath(string, node: node, context) }
+            if string.isWindowsPath, role != .pattern { reportWindowsPath(string, node: node, context) }
             if [.command, .webAddress, .folderPath, .place].contains(role) { reportDirectionMarks(node, role: role!) }
             recordStringEntry(node, string: string, context)
         }
@@ -406,7 +406,9 @@ extension Checker {
         } else {
             let raw = text(node)
             let doubled = raw.replacingOccurrences(of: "\\", with: "\\\\")
-            report(.invalidEscape, r, ["c": .code("")], fixIts: [fix("showBackslash", [edit(r, doubled)])])
+            var c = ""
+            if let slash = raw.firstIndex(of: "\\"), raw.index(after: slash) < raw.endIndex { c = String(raw[raw.index(after: slash)]) }
+            report(.invalidEscape, r, ["c": .code(c)], fixIts: [fix("showBackslash", [edit(r, doubled)])])
         }
     }
 

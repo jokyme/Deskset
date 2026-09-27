@@ -1,0 +1,13 @@
+// DK9008 bitOperator
+//== expect: DK9008
+info { name: "T" }
+widget {
+    variable flags = 6
+    Text("{flags & 4}")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable flags = 6
+    Text("{math.bitAnd(flags, 4)}")
+}

@@ -1,0 +1,7 @@
+// DK8106 invalidHost
+//== expect: DK8106
+info { name: "T", network: ["https://x.com/api"] }
+widget { Text("{web.json("https://x.com/a").b}") }
+//== negative
+info { name: "T", network: ["x.com"] }
+widget { Text("{web.json("https://x.com/a").b}") }

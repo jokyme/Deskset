@@ -1,0 +1,8 @@
+// DK4033 windowsFont
+//== expect: DK4033
+//== context: fonts
+info { name: "T" }
+widget { Text("A").font("Segoe UI", 13) }
+//== negative
+info { name: "T" }
+widget { Text("A").font("Helvetica Neue", 13) }

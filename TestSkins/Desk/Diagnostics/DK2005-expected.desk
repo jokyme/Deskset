@@ -1,0 +1,13 @@
+// DK2005 expected
+//== expect: DK2005
+info { name: "T" }
+widget {
+    variable = 3
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget {
+    variable page = 3
+    Text("{page}")
+}

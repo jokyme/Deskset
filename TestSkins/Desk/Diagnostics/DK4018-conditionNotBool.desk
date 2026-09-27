@@ -1,0 +1,13 @@
+// DK4018 conditionNotBool
+//== expect: DK4018
+info { name: "T" }
+widget {
+    variable count = 0
+    if count { Text("A") }
+}
+//== negative
+info { name: "T" }
+widget {
+    variable count = 0
+    if count > 0 { Text("A") }
+}

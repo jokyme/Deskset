@@ -221,6 +221,7 @@ extension Checker {
         settleOpenSlots()
         reportStyleCycles()
         computeInheritance()
+        checkLayoutFit()
         checkFreeformOrders()
         // Unused declarations (DK3020); variables that keep their first value (DK4046).
         for decl in declOrder where !decl.used && !decl.poisoned {

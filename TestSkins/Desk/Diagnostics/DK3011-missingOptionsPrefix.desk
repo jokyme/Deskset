@@ -1,0 +1,9 @@
+// DK3011 missingOptionsPrefix
+//== expect: DK3011
+info { name: "T" }
+options { weekStart = Picker("Week starts on", [.sunday, .monday]) }
+widget { Text(weekStart) }
+//== negative
+info { name: "T" }
+options { weekStart = Picker("Week starts on", [.sunday, .monday]) }
+widget { Text(options.weekStart) }

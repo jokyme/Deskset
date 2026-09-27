@@ -1,0 +1,7 @@
+// DK3024 eventOutsideEvent
+//== expect: DK3024
+info { name: "T" }
+widget { Text("A").every(1s) { log("{event.x}") } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { log("{event.x}") } }

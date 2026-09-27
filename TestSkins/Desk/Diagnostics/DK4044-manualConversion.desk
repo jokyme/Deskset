@@ -1,0 +1,7 @@
+// DK4044 manualConversion
+//== expect: DK4044
+info { name: "T" }
+widget { Text("{memory.used / 1024 / 1024}") }
+//== negative
+info { name: "T" }
+widget { Text("{memory.used, unit: .mb}") }

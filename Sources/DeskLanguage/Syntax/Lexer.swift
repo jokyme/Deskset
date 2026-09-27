@@ -1402,9 +1402,18 @@ struct Lexer {
     }
 
     private mutating func reportUnterminatedInterpolation(at i: Int, lineLimit: Int) {
+        // The `}` goes after the name or path that follows the `{` (`"{cpu.usage%"` → `"{cpu.usage}%"`), else before
+        // the closing quote, else at the end of the line.
+        var close = i + 1
+        while close < lineLimit, Chars.isNameByte(bytes[close]) || bytes[close] == 0x2E { close += 1 }
+        if close == i + 1 {
+            close = lineLimit
+            var k = i + 1
+            while k < lineLimit { if bytes[k] == 0x22 { close = k; break }; k += 1 }
+        }
         report(.unterminatedInterpolation, .error, i..<(i + 1),
                fixIts: [FixIt(titleKey: "insert", titleArguments: ["text": .code("}")],
-                              edits: [edit(lineLimit..<lineLimit, "}")]),
+                              edits: [edit(close..<close, "}")]),
                         FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("{{")],
                               edits: [edit(i..<(i + 1), "{{")])])
     }

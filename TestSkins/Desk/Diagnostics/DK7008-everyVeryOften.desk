@@ -1,0 +1,7 @@
+// DK7008 everyVeryOften
+//== expect: DK7008
+info { name: "T" }
+widget { Text("A").every(100ms) { log("x") } }
+//== negative
+info { name: "T" }
+widget { Text("A").every(1s) { log("x") } }

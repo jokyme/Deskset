@@ -1,0 +1,7 @@
+// DK2035 equalsInField
+//== expect: DK2035
+info { name = "CPU" }
+widget { Text("A") }
+//== negative
+info { name: "CPU" }
+widget { Text("A") }

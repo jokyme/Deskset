@@ -1,0 +1,9 @@
+// DK8004 unknownControl
+//== expect: DK8004
+info { name: "T" }
+options { day = Dropdown("Day", [.sunday, .monday]) }
+widget { Text("{options.day}") }
+//== negative
+info { name: "T" }
+options { day = Picker("Day", [.sunday, .monday]) }
+widget { Text("{options.day}") }

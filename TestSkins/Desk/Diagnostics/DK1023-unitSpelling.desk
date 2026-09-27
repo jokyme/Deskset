@@ -1,0 +1,7 @@
+// DK1023 unitSpelling
+//== expect: DK1023
+info { name: "T" }
+widget { Text("A").every(5m) { log("tick") } }
+//== negative
+info { name: "T" }
+widget { Text("A").every(5min) { log("tick") } }

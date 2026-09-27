@@ -1,0 +1,7 @@
+// DK6008 nameNotReferable
+//== expect: DK6008
+info { name: "T" }
+widget { Freeform { Text("A").name("my title").position(x: 4) } }
+//== negative
+info { name: "T" }
+widget { Freeform { Text("A").name(myTitle).position(x: 4) } }

@@ -146,7 +146,7 @@ extension Checker {
         context.usage = decl.keyword == "computed" ? .logic : .onDemand
         if decl.keyword == "saved" { context.constantOnly = true }
         let before = diagnostics.filter { $0.severity == .error }.count
-        var val = savedMute { infer(initializer, context, expected: nil) }
+        var val = savedMute { inferValue(initializer, context, expected: nil) }
         let after = diagnostics.filter { $0.severity == .error }.count
         if after > before && mute == 0 { decl.poisoned = true }
         decl.initializerDeps = val.deps
@@ -158,7 +158,13 @@ extension Checker {
                 val.open = slot
             }
         }
-        if decl.keyword == "saved" && !val.error { checkSavable(decl, val, at: range(initializer)) }
+        if decl.keyword == "saved" && !val.error {
+            checkSavable(decl, val, at: range(initializer))
+            if !decl.poisoned && !val.isConstant {
+                report(.savedNotConstant, range(initializer), ["text": .code(text(initializer))])
+                decl.poisoned = true
+            }
+        }
         if decl.keyword == "variable" && !val.error {
             let readsData = val.deps.contains { if case .data = $0 { return true }; if case .option = $0 { return true }; return false }
             if readsData { pendingVariableFromData.append(decl) }
@@ -208,12 +214,13 @@ extension Checker {
     func reportComputedCycles() {
         var graph: [String: [String]] = [:]
         for decl in declOrder {
-            var targets: [String] = []
-            for dep in decl.initializerDeps {
-                switch dep {
-                case .variable(let n), .computed(let n): if decls[n] != nil { targets.append(n) }
-                default: break
-                }
+            var targets = Set<String>()
+            let initializer = DeclarationSyntax(unchecked: decl.node).initializer.node
+            var previous: TokenKind?
+            initializer.node.walkTokens { token, _ in
+                if token.kind == .identifier, previous != .dot, decls[token.text] != nil { targets.insert(token.text) }
+                previous = token.kind
+                return true
             }
             graph[decl.name] = targets.sorted()
         }
@@ -221,7 +228,7 @@ extension Checker {
         for decl in declOrder {
             guard !reported.contains(decl.name) else { continue }
             if let cycle = Checker.findCycle(from: decl.name, graph: graph) {
-                guard cycle.contains(where: { decls[$0]?.keyword == "computed" }) || cycle.count > 1 else { continue }
+                guard cycle.contains(where: { decls[$0]?.keyword == "computed" }) else { continue }
                 for n in cycle { reported.insert(n) }
                 let list = (cycle + [cycle[0]]).map { DiagnosticArgument.code($0) }
                 report(.computedCycle, decls[cycle[0]]!.nameRange, ["cycle": .list(list, joiner: .and)])
@@ -403,14 +410,16 @@ extension Checker {
             reportForeignName(row, at: r, name: name, call: nil)
             return .error
         }
-        if options[name] != nil {
+        if let option = options[name] {
+            if mute == 0 { option.used = true }
             report(.missingOptionsPrefix, r, ["name": .code(name)],
                    fixIts: [fix("insert", [edit(r.lowerBound..<r.lowerBound, "options.")], ["text": .code("options.")])])
             return .error
         }
         if context.display && context.param?.role == .display && context.param?.translatable == true {
             var fixIts = [fix("addQuotes", [edit(r, "\"\(name)\"")])]
-            if let caseFix = caseVariantSuggestion(name, context) {
+            if let caseFix = caseVariantSuggestion(name, context),
+               catalog.namespace(named: caseFix) == nil || catalog.namespace(named: caseFix)?.value != nil {
                 fixIts.append(fix("fix", [edit(r, caseFix)]))
             }
             report(.textWithoutQuotes, r, ["fixed": .code("\"\(name)\"")], fixIts: fixIts)

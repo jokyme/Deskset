@@ -115,6 +115,7 @@ extension Checker {
             return v
         }
         if ordering {
+            if isComparison(leftNode) || isComparison(rightNode) { return v }
             for (val, side) in [(l, leftNode), (r, rightNode)] where !(val.isNumber || val.type == .date) {
                 report(.notOrdered, range(side), ["text": .code(text(side)), "type": .type(val.type)])
                 return v
@@ -129,6 +130,11 @@ extension Checker {
                                                      "expected": .type(l.type), "actual": .type(r.type)])
         }
         return v
+    }
+
+    func isComparison(_ node: PositionedNode) -> Bool {
+        guard node.kind == .binaryExpr else { return false }
+        return [.less, .lessEqual, .greater, .greaterEqual].contains(BinaryExprSyntax(unchecked: node).operator.kind)
     }
 
     func comparedWith(_ v: Val) -> LocalizedText {

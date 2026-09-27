@@ -1,0 +1,7 @@
+// DK9112 otherFrameworkName
+//== expect: DK9112
+info { name: "T" }
+widget { Text("A").fontSize(13) }
+//== negative
+info { name: "T" }
+widget { Text("A").font(13) }

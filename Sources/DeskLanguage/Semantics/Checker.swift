@@ -334,6 +334,7 @@ final class Checker {
     var pendingOptionSources: [(ParamRole, [String], Range<Int>)] = []
     var stateStyleCalls: [(String, CandidateCondition, PositionedNode, ElementNode?)] = []
     var duplicateDropped = Set<Int>()
+    var trailingActionBlocks = Set<Int>()
 
     init(tree: SyntaxTree, context: CheckContext) {
         self.tree = tree
@@ -349,8 +350,12 @@ final class Checker {
         var root: NodeID?
         let versionOK = checkDeskVersion()
         if versionOK {
-            enrichParserDiagnostics()
+            let size = tree.text.utf8.count
+            if size > catalog.limits.maximumFileBytes, !tree.diagnostics.contains(where: { $0.id == .fileTooLarge }) {
+                report(.fileTooLarge, catalog.limits.maximumFileBytes..<size)
+            }
             checkStructure()
+            enrichParserDiagnostics()
             root = rootElements.count == 1 ? rootElements[0].id : nil
             finish()
         } else {

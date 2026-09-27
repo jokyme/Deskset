@@ -551,6 +551,16 @@ extension Checker {
         case .enumeration(let id)?:
             if catalog.enumeration(id)?.enumCase(named: name) != nil { return caseVal(id) }
             if localEnums[id]?.contains(name) == true { return caseVal(id) }
+            if id == "Feature" {
+                let features = catalog.features.map(\.id)
+                let suggestion = DidYouMean.suggest(name, candidates: features)
+                var fixIts: [FixIt] = []
+                if let best = suggestion.names.first, suggestion.names.count == 1 || suggestion.fixable {
+                    fixIts.append(fix("didYouMean", [edit(r, "." + best)], ["text": .code("." + best)]))
+                }
+                report(.unknownFeature, r, ["list": .list(features.map { .code("." + $0) }, joiner: .and)], fixIts: fixIts)
+                return .error
+            }
             if let row = foreignImplicitRow(name) { reportForeignImplicit(row, at: r, name: name); return .error }
             if requiresNewer != nil {
                 report(.newerName, r, ["name": .code("." + name), "version": .code(requiresNewer!.description)])
@@ -719,6 +729,9 @@ extension Checker {
             let bound = bindCall(function.signatures, arguments: arguments, calleeName: name, what: .code(name),
                                  callRange: range(node), context, owner: .function(function))
             var v = resultOf(bound, rule: bound?.signature.result, fallback: function.data?.type ?? .any)
+            if name == "command" {
+                checkRefreshMinimum(bound, source: "command", minimum: catalog.limits.minimumCommandEvery, minimumText: "1s")
+            }
             if name == "supports", let feature = bound?.values.first?.val.implicitName {
                 requirements.features.insert(feature)
             }
@@ -803,6 +816,7 @@ extension Checker {
             }
             let bound = bindCall(m.signatures, arguments: arguments, calleeName: path, what: .code(path),
                                  callRange: range(node), context, owner: .member(m, path: path))
+            if ns == "web" { checkRefreshMinimum(bound, source: path, minimum: catalog.limits.minimumWebEvery, minimumText: "1min") }
             var v = Val(m.type)
             if let rule = bound?.signature.result { v = resultOf(bound, rule: rule, fallback: m.type) }
             v.range = m.range == .none ? nil : m.range
@@ -931,6 +945,15 @@ extension Checker {
             break
         }
         return v
+    }
+
+    /// DK7014: `every:` of a web request or a command below its minimum.
+    func checkRefreshMinimum(_ bound: BoundCall?, source: String, minimum: Double, minimumText: String) {
+        guard let every = bound?.value("every"), let seconds = every.val.literalValue, every.val.dimension == .time,
+              seconds < minimum else { return }
+        let r = range(every.node)
+        report(.refreshTooFast, r, ["source": .code(source), "min": .code(minimumText)],
+               fixIts: [fix("replaceWith", [edit(r, minimumText)], ["text": .code(minimumText)])])
     }
 
     // MARK: - Ranges, lists, ternaries
@@ -1075,7 +1098,8 @@ extension Checker {
 
     /// Reports DK4018 when a condition is not yes or no.
     func requireBool(_ v: Val, _ node: PositionedNode) {
-        guard !v.error, v.open == nil, !v.isJson else { return }
+        guard !v.error, !v.isJson else { return }
+        if let slot = v.open, slot < openSlots.count, openSlots[slot].kind == .type { return }
         if v.type != .bool && v.type != .any {
             report(.conditionNotBool, range(node), ["text": .code(text(node))])
         }

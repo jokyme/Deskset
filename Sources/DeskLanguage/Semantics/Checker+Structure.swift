@@ -77,8 +77,8 @@ extension Checker {
 
         // Declarations and names first: options, styles, the widget's declarations, element names.
         if let info = infoBlock ?? packageBlock { collectInfo(info) }
-        if let options = optionsBlock { collectOptions(options) }
         if let package = context.package, !isPackage { importPackage(package) }
+        if let options = optionsBlock { collectOptions(options) }
         for style in styleDecls { collectStyle(style) }
         if let widget = widgetBlock, let block = widget.firstChild(.block) { collectDeclarations(block, strays: strayItems.declarations) }
         else { collectDeclarations(nil, strays: strayItems.declarations) }
@@ -87,6 +87,7 @@ extension Checker {
         if let info = infoBlock ?? packageBlock { checkInfo(info) }
         if let options = optionsBlock { checkOptions(options) }
         checkDeclarations()
+        for style in styleOrder where !style.fromPackage { checkStyleBody(style) }
         if let widget = widgetBlock, let block = widget.firstChild(.block) {
             checkWidgetBody(block)
         } else if !isPackage {
@@ -103,7 +104,6 @@ extension Checker {
         var strayContext = ViewContext()
         strayContext.guessing = false
         for element in strayItems.elements { checkViewStatement(element, strayContext) }
-        for style in styleOrder where !style.fromPackage { checkStyleBody(style) }
         if let translations = translationsBlock { checkTranslations(translations) }
         for dropped in strayItems.declarations { _ = dropped }
     }
@@ -145,7 +145,13 @@ extension Checker {
                 movable.append(statement)
                 reportStrayTopLevel(statement, strays: [])
             case .modifierStmt:
-                report(.modifierWithoutElement, range(statement))
+                let modifiers = ModifierStmtSyntax(unchecked: statement).modifiers
+                if modifiers.count == 1, modifiers[0].arguments == nil, let block = modifiers[0].block,
+                   block.statements.contains(where: { $0.kind == .field }) {
+                    report(.cssSelector, range(statement), ["name": .code(modifiers[0].name.token.name)])
+                } else {
+                    report(.modifierWithoutElement, range(statement))
+                }
             case .field:
                 report(.notAllowedHere, range(statement), ["what": .name("construct:field"), "place": .name("place:topLevel"),
                                                            "hint": hintText(.notAllowedHere, "fieldOutsideInfo")])
@@ -260,6 +266,7 @@ extension Checker {
             case .foreignConstruct, .unexpected:
                 break
             default:
+                if statement.kind == .callStmt, isMissingDotModifier(statement) { break }
                 if statement.kind == .callStmt || statement.kind == .ifStmt || statement.kind == .forStmt {
                     sawView = true
                     views.append(statement)
@@ -304,6 +311,14 @@ extension Checker {
         for root in rootElements where root.isRoot { checkRootElement(root) }
     }
 
+    /// `font(.caption)` on the line after an element: a modifier without its dot, not an element.
+    func isMissingDotModifier(_ statement: PositionedNode) -> Bool {
+        let call = CallStmtSyntax(unchecked: statement)
+        let token = call.callee.name.token
+        return call.callee.path.count == 1 && !token.isUpperName && catalog.modifier(named: token.name) != nil
+            && catalog.function(named: token.name) == nil
+    }
+
     func reportDeclarationAfterView(_ statement: PositionedNode, widgetBlock block: PositionedNode?) {
         let decl = DeclarationSyntax(unchecked: statement)
         var fixIts: [FixIt] = []
@@ -339,6 +354,8 @@ extension Checker {
             if !context.guessing { checkAssignmentInViews(statement) }
         case .modifierStmt:
             if !context.guessing { report(.modifierWithoutElement, range(statement)) }
+        case .field where isCssField(statement):
+            reportCssField(statement)
         case .field:
             if !context.guessing {
                 report(.notAllowedHere, range(statement), ["what": .name("construct:field"),
@@ -357,6 +374,25 @@ extension Checker {
             break
         default:
             break
+        }
+    }
+
+    static let cssProperties: Set<String> = ["color", "background", "padding", "margin", "width", "height", "opacity",
+                                              "display", "border", "gap", "font", "position", "top", "left", "right", "bottom"]
+
+    /// `color: red;` among elements: a CSS declaration (DK9202).
+    func isCssField(_ statement: PositionedNode) -> Bool {
+        let field = FieldSyntax(unchecked: statement)
+        guard Checker.cssProperties.contains(field.label.name) else { return false }
+        let line = lineText(at: textStart(statement))
+        return line.trimmingCharacters(in: .whitespaces).hasSuffix(";") || field.value.node.kind == .identifierExpr
+    }
+
+    func reportCssField(_ statement: PositionedNode) {
+        let synthetic = Diagnostic(id: .cssDeclaration, severity: .error, file: file, range: range(statement),
+                                   arguments: ["property": .code(FieldSyntax(unchecked: statement).label.name)])
+        if let enriched = enrichCss(synthetic) {
+            report(enriched.id, enriched.range, enriched.arguments, fixIts: enriched.fixIts)
         }
     }
 
@@ -405,10 +441,41 @@ extension Checker {
         var inner = context
         inner.forDepth += 1
         inner.loopIDs.append(id(statement))
+        inner.multiplier = context.multiplier * forBound(forStmt.source.node)
         pushLoop(variable, element)
         checkViewStatements(forStmt.block.node, inner)
         popLoop(variable)
         reportModifiersAfterBlock(forStmt.modifiers, construct: "for", statement: statement)
+    }
+
+    /// How many instances a `for` makes at most: list literals and ranges exactly, data lists by their catalog
+    /// maximum, at most 1,000.
+    func forBound(_ source: PositionedNode) -> Int {
+        let limit = catalog.limits.maximumForInstances
+        switch source.kind {
+        case .listLiteral:
+            return min(limit, ListLiteralSyntax(unchecked: source).elements.count)
+        case .rangeExpr:
+            let r = RangeExprSyntax(unchecked: source)
+            if let a = NumberLiteralSyntax(r.low.node)?.value, let b = NumberLiteralSyntax(r.high.node)?.value {
+                return min(limit, max(0, Int(b - a) + 1))
+            }
+            return limit
+        default:
+            let path = text(source)
+            if let m = catalog.member(path: path), case .fixed(let n)? = m.maxCount { return min(limit, n) }
+            if let rid = memberPathRecordList(path), case .fixed(let n)? = rid { return min(limit, n) }
+            return 1
+        }
+    }
+
+    func memberPathRecordList(_ path: String) -> MaxCount?? {
+        let parts = path.split(separator: ".").map(String.init)
+        guard parts.count >= 2 else { return nil }
+        for record in catalog.records {
+            if let f = record.field(named: parts.last!), case .list = f.type { return .some(f.maxCount) }
+        }
+        return nil
     }
 
     /// DK2032: a modifier after the `}` of an `if`, `else` or `for`.

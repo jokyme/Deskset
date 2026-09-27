@@ -1,0 +1,7 @@
+// DK3004 unknownComponent
+//== expect: DK3004
+info { name: "T" }
+widget { Txt("A") }
+//== negative
+info { name: "T" }
+widget { Text("A") }

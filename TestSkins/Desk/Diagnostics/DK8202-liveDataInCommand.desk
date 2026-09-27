@@ -1,0 +1,7 @@
+// DK8202 liveDataInCommand
+//== expect: DK8202
+info { name: "T", permissions: [.commands, .music] }
+widget { Text("{command("say {music.title}").output}") }
+//== negative
+info { name: "T", permissions: [.commands, .music] }
+widget { Text("{music.title} {command("say hi").output}") }

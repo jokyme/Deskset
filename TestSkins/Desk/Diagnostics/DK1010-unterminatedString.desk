@@ -1,0 +1,11 @@
+// DK1010 unterminatedString
+//== expect: DK1010
+info { name: "T" }
+widget {
+    Text("CPU)
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("CPU")
+}

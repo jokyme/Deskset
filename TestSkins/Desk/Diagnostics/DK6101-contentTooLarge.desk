@@ -1,0 +1,19 @@
+// DK6101 contentTooLarge
+//== expect: DK6101
+//== context: layout
+info { name: "T", size: .small }
+widget {
+    Column {
+        Text("A").font(40)
+        Text("B").font(40)
+        Text("C").font(40)
+        Text("D").font(40)
+    }
+}
+//== negative
+info { name: "T", size: .small }
+widget {
+    Column {
+        Text("A").font(20)
+    }
+}

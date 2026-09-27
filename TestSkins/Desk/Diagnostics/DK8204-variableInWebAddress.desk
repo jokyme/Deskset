@@ -1,0 +1,11 @@
+// DK8204 variableInWebAddress
+//== expect: DK8204
+info { name: "T", network: ["x.com"] }
+widget {
+    variable page = 1
+    Text("{web.json("https://x.com/?p={page}").a}").onClick { page = 2 }
+}
+//== negative
+info { name: "T", network: ["x.com"] }
+options { page = Stepper("Page", min: 1, max: 9) }
+widget { Text("{web.json("https://x.com/?p={options.page}").a}") }

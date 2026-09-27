@@ -1,0 +1,10 @@
+// DK9012 functionSyntax
+//== expect: DK9012
+info { name: "T" }
+widget {
+    func f() { }
+    Text("A")
+}
+//== negative
+info { name: "T" }
+widget { Text("A") }

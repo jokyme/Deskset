@@ -1,0 +1,14 @@
+// DK2014 notAllowedHere
+//== expect: DK2014
+info { name: "T" }
+widget {
+    Text("A")
+    style big { .bold() }
+}
+//== negative
+info { name: "T" }
+widget {
+    Text("A").style(big)
+}
+
+style big { .bold() }

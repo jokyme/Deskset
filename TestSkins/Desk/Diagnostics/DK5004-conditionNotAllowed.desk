@@ -1,0 +1,7 @@
+// DK5004 conditionNotAllowed
+//== expect: DK5004
+info { name: "T" }
+widget { Text("A").onClick(if: cpu.usage > 5) { log("x") } }
+//== negative
+info { name: "T" }
+widget { Text("A").onClick { if cpu.usage > 5 { log("x") } } }

@@ -71,6 +71,19 @@ extension Checker {
             }
         }
         let calleeLabel = calleeName
+        // A built-in choice written in quotes where a signature takes that choice (`.font("headline")`), checked
+        // before the text is taken as a font or a color.
+        let positionalArguments = arguments.filter { $0.label == nil }
+        for (k, argument) in positionalArguments.enumerated() {
+            guard let s = StringLiteralSyntax(argument.value.node)?.literalValue, Checker.isIdentifier(s) else { continue }
+            for signature in signatures {
+                let positionalParams = signature.params.filter { $0.label == nil }
+                guard k < positionalParams.count else { continue }
+                if case .enumeration = positionalParams[k].type, reportQuotedChoice(argument.value.node, s, expected: positionalParams[k].type) {
+                    return nil
+                }
+            }
+        }
 
         // Plans.
         var plans: [(index: Int, plan: ArgumentPlan)] = []
@@ -141,16 +154,20 @@ extension Checker {
             reportTooManyArguments(plan.extraPositional, arguments, signature: signature, plan: plan, calleeName: calleeLabel,
                                    callRange: callRange, clause: clause, context, owner: owner)
         }
-        if !plan.missing.isEmpty && plan.unknownLabels.isEmpty {
+        let callOnNextLine = clause == nil && tree.diagnostics.contains {
+            $0.id == .callOnNextLine && $0.range.lowerBound >= callRange.upperBound && $0.range.lowerBound < callRange.upperBound + 400
+        }
+        if !plan.missing.isEmpty && plan.unknownLabels.isEmpty && !callOnNextLine {
             failed = true
             for p in plan.missing { reportMissingArgument(signature.params[p], calleeName: calleeLabel, clause: clause, callRange: callRange) }
         }
         // A call whose parameters are all optional with no default, called with none (D133).
-        if arguments.isEmpty, !signature.params.isEmpty,
-           signature.params.allSatisfy({ !$0.required && $0.defaultValue == nil && !$0.variadic }),
+        let settable = signature.params.filter { $0.role != .condition }
+        if arguments.isEmpty, !settable.isEmpty,
+           settable.allSatisfy({ !$0.required && $0.defaultValue == nil && !$0.variadic }),
            case .modifier = owner {
             failed = true
-            reportMissingArgument(signature.params[0], calleeName: calleeLabel, clause: clause, callRange: callRange, emptyCall: true)
+            reportMissingArgument(settable[0], calleeName: calleeLabel, clause: clause, callRange: callRange, emptyCall: true)
         }
 
         // Check each value against its parameter, for real.
@@ -163,6 +180,14 @@ extension Checker {
                 let inner = argumentContext(context, param, owner)
                 let valueNode = argument.value.node
                 var val = checkArgumentValue(valueNode, param: param, inner, owner: owner)
+                if case .control = owner, param.name == "default" {
+                    values.append(BoundValue(param: param, node: valueNode, argument: argument, val: val))
+                    continue
+                }
+                checkValueSource(param, val, valueNode, callee: calleeLabel)
+                if param.role == .command {
+                    checkCommand(BoundValue(param: param, node: valueNode, argument: argument, val: val), statement: nil)
+                }
                 if !coerce(val, valueNode, to: param.type, what: whatName(param, owner: owner, callee: calleeLabel), inner,
                            range: param.range, param: param) {
                     failed = true
@@ -313,7 +338,7 @@ extension Checker {
 
     func cost(_ v: Val, _ t: DeskType) -> Int? {
         if v.error { return 0 }
-        if v.open != nil { return 2 }
+        if let slot = v.open, slot < openSlots.count { return openFits(openSlots[slot].kind, t) ? 2 : nil }
         if v.namespace != nil || v.component != nil || v.qualifier != nil { return nil }
         if v.isJson && t != .json { return 3 }
         switch t {
@@ -380,6 +405,32 @@ extension Checker {
         }
     }
 
+    func isBindable(_ v: Val) -> Bool {
+        switch v.bind {
+        case .variable?, .saved?, .option?, .settableData?: return true
+        default: return false
+        }
+    }
+
+    func isComparisonOrLogic(_ node: PositionedNode) -> Bool {
+        guard node.kind == .binaryExpr else { return false }
+        let k = BinaryExprSyntax(unchecked: node).operator.kind
+        return [.less, .lessEqual, .greater, .greaterEqual, .equalEqual, .bangEqual, .andKeyword, .orKeyword].contains(k)
+    }
+
+    /// Whether an open value (settled by use) can stand where `t` is expected.
+    func openFits(_ kind: OpenSlot.Kind, _ t: DeskType) -> Bool {
+        switch t {
+        case .any, .typeVar: return true
+        case .oneOf(let ts): return ts.contains { openFits(kind, $0) }
+        case .binding(let inner): return openFits(kind, inner)
+        case .number(let d): return kind == .dimension || (kind == .base && (d == .bytes || d == .bytesPerSecond))
+        case .anyNumber, .fraction, .lengthSpec: return kind == .dimension || kind == .base
+        case .enumeration, .color, .paint: return kind == .type
+        default: return false
+        }
+    }
+
     // MARK: - Coercion
 
     /// Checks that `v` can stand where `type` is expected, reporting DK4001 (or a targeted diagnostic) when it cannot.
@@ -388,7 +439,7 @@ extension Checker {
                 range allowed: ClosedRange<Double>? = nil, param: ParamSpec? = nil) -> Bool {
         if v.error { return true }
         let r = range(node)
-        if let slot = v.open {
+        if let slot = v.open, slot < openSlots.count, openFits(openSlots[slot].kind, type) {
             recordUse(slot, expected: type, at: r, description: usedAs(param: param, type: type, what: what))
             return true
         }
@@ -419,11 +470,34 @@ extension Checker {
             report(.lengthAsText, r, ["number": .code(number)], fixIts: [fix("replace", [edit(r, number)])])
             return false
         }
+        if case .binding(let inner) = type, !isBindable(v) {
+            let kind: String
+            switch v.bind {
+            case .computed?: kind = "kind:computed"
+            case .loopVariable?: kind = "kind:loopVariable"
+            case .readOnlyData?: kind = "kind:readOnlyData"
+            case .event?: kind = "kind:event"
+            default:
+                if node.kind == .binaryExpr, isComparisonOrLogic(node) { kind = "kind:comparison" }
+                else if v.isConstant { kind = "kind:literal" }
+                else { kind = "kind:expression" }
+            }
+            _ = inner
+            report(.notBindable, r, ["kind": .name(kind)])
+            return false
+        }
         guard let c = cost(v, type) else {
             reportTypeMismatch(v, node, expected: type, what: what, param: param, context)
             return false
         }
         _ = c
+        if param?.role == .pathData { checkPathData(node, v) }
+        if param?.role == .pattern, let pattern = v.stringLiteral {
+            do { _ = try NSRegularExpression(pattern: pattern) } catch {
+                report(.invalidPattern, range(node), ["reason": .text(Checker.regexReason(pattern))])
+                return false
+            }
+        }
         // Plain literals where the unit must be written; plain values used as angles.
         if case .number(let d) = type, v.dimension == .plain {
             if v.plainLiteral != nil && d.needsWrittenUnit { reportUnitNeeded(node, dimension: d); return false }
@@ -450,7 +524,8 @@ extension Checker {
         }
         // Ranges and whole numbers of literals.
         let literal = v.plainLiteral ?? v.literalValue
-        if let value = literal, let allowed, v.isConstant {
+        let timingValue = v.dimension == .time && ["interval", "delay", "every", "refresh"].contains(param?.name ?? "")
+        if let value = literal, let allowed, v.isConstant, !timingValue {
             var shown = value
             if v.dimension == .percent, param?.unit == "%" || type == .fraction { shown = value }
             if !allowed.contains(shown) {

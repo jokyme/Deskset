@@ -1,0 +1,7 @@
+// DK1019 directionMark
+//== expect: DK1019
+info { name: "T" }
+widget { Text("a‮b") }
+//== negative
+info { name: "T" }
+widget { Text("ab") }
