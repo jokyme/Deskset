@@ -815,7 +815,15 @@ extension Checker {
                     var fixIts: [FixIt] = []
                     if let best = suggestion.names.first { fixIts.append(fix("didYouMean", [edit(keyRange, "\"\(best)\"")], ["text": .code(best)])) }
                     fixIts.append(fix("remove", [edit(entryNode.range.lowerBound..<range(entryNode).upperBound, "")]))
-                    report(.unusedTranslation, keyRange, ["key": .code(key)], fixIts: fixIts)
+                    if isPackage {
+                        // A widget's text may use it: the folder check decides (§4.20).
+                        if mute == 0 {
+                            folderPending.append(Diagnostic(id: .unusedTranslation, severity: catalog.diagnostic(.unusedTranslation)?.severity ?? .warning,
+                                                            file: file, range: keyRange, arguments: ["key": .code(key)], fixIts: fixIts))
+                        }
+                    } else {
+                        report(.unusedTranslation, keyRange, ["key": .code(key)], fixIts: fixIts)
+                    }
                     continue
                 }
                 // The same interpolations, in any order, each once (DK8402).

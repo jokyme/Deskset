@@ -448,4 +448,33 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(deskApplyFix(yes, "DK3013"), "info { name: \"T\" }\nwidget { Text(\"A\").hidden(if: true) }")
         t.equal(deskReviewIDs("widget { Text(\"A\").hidden(if: Computed) }"), ["DK3002"])
     }
+
+    t.suite("Desk: review — folder checks (finding 4)") {
+        func folder(_ packageText: String, _ widgetText: String) -> (package: [String], widget: [String]) {
+            let package = Desk.parse(packageText, file: DeskFileID(path: "package.desk"))
+            let widget = Desk.parse(widgetText, file: DeskFileID(path: "A.desk"))
+            let results = Desk.checkFolder(package: package, widgets: [widget])
+            return (results[package.file]?.diagnostics.map(\.id.rawValue) ?? ["missing"], results[widget.file]?.diagnostics.map(\.id.rawValue) ?? ["missing"])
+        }
+        // A package translation used by a widget's text.
+        let used = folder("package { name: \"P\" }\ntranslations {\n    \"zh-Hans\" { \"Hello\": \"你好\" }\n}\n", "info { name: \"A\" }\nwidget { Text(\"Hello\") }\n")
+        t.equal(used.package, [])
+        t.equal(used.widget, [])
+        let unused = folder("package { name: \"P\" }\ntranslations {\n    \"zh-Hans\" { \"Bye\": \"再见\" }\n}\n", "info { name: \"A\" }\nwidget { Text(\"Hello\") }\n")
+        t.equal(unused.package, ["DK8403"])
+        // Styles and options reached through a package style.
+        let chained = folder("package { name: \"P\" }\noptions { accent = ColorPicker(\"Accent\") }\nstyle base { .color(options.accent) }\nstyle card { .style(base).padding(4) }\n",
+                             "info { name: \"A\" }\nwidget { Text(\"A\").style(card) }\n")
+        t.equal(chained.package, [])
+        t.equal(chained.widget, [])
+        // A widget style that replaces a package style a used package style includes (D99).
+        let replaced = folder("package { name: \"P\" }\nstyle base { .bold() }\nstyle card { .style(base).padding(4) }\n",
+                              "info { name: \"A\" }\nwidget { Text(\"A\").style(card) }\nstyle base { .italic() }\n")
+        t.equal(replaced.package, [])
+        t.equal(replaced.widget, ["DK3027"])
+        // The package checked alone knows nothing of the widgets: nothing is reported unused there.
+        let alone = Desk.check(Desk.parse("package { name: \"P\" }\ntranslations {\n    \"zh-Hans\" { \"Hello\": \"你好\" }\n}\nstyle card { .bold() }\n",
+                                          file: DeskFileID(path: "package.desk")))
+        t.equal(alone.diagnostics.map(\.id.rawValue), [])
+    }
 }

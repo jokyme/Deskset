@@ -237,8 +237,18 @@ extension Checker {
                    fixIts: [fix("changeTo", [edit(keywordRange, "computed")], ["text": .code("computed")])],
                    severity: decl.assigned ? .info : .warning)
         }
-        // Unused styles and options (for package.desk these are folder checks).
+        // Unused styles and options (for package.desk these are folder checks). A style that a used style
+        // includes is used, found by name: a widget's style that replaces a package style (D99) is what the package
+        // style's `.style(base)` reaches.
         if !isPackage {
+            var work = styleOrder.filter(\.used)
+            while let style = work.popLast() {
+                for include in style.includes {
+                    guard let included = styles[include.style], !included.used else { continue }
+                    if mute == 0 { included.used = true }
+                    work.append(included)
+                }
+            }
             for style in styleOrder where !style.used && !style.fromPackage {
                 let r = range(style.node)
                 report(.unusedStyle, style.nameRange, ["name": .code(style.name)],

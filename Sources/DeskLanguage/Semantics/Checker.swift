@@ -34,6 +34,7 @@ extension Desk {
             widgetContext.package = CheckedPackage(file: checked)
         }
         var usedStyles = Set<String>(), usedOptions = Set<String>(), usedKeys = Set<String>()
+        for entry in packageFile?.stringTable ?? [] { usedKeys.insert(entry.key) }
         for widget in widgets {
             let checked = check(widget, context: widgetContext)
             results[widget.file] = checked
@@ -49,6 +50,8 @@ extension Desk {
             for entry in checked.stringTable { usedKeys.insert(entry.key) }
         }
         if let package, let packageFile {
+            // Package styles used by a widget use other package styles and options in their bodies.
+            (usedStyles, usedOptions) = FolderChecks.reachable(from: usedStyles, options: usedOptions, in: packageFile)
             results[package.file] = FolderChecks.addUnused(packageFile, tree: package, usedStyles: usedStyles,
                                                            usedOptions: usedOptions, usedKeys: usedKeys,
                                                            catalog: context.catalog)
@@ -350,6 +353,8 @@ final class Checker {
     var stateStyleCalls: [(String, CandidateCondition, PositionedNode, ElementNode?)] = []
     var duplicateDropped = Set<Int>()
     var trailingActionBlocks = Set<Int>()
+    /// Diagnostics left to the folder check (see `CheckedFile.folderPending`).
+    var folderPending: [Diagnostic] = []
     /// Names the DK7016 fix-its have declared so far (each fix-it gets its own).
     var looksVariables: [String] = []
     var loopIdentities: [NodeID: String] = [:]
@@ -417,6 +422,7 @@ final class Checker {
                                   freeformOrders: freeformOrders, stringTable: stringTable, requirements: requirements,
                                   options: optionFacts, styles: styleIDs, translations: translationTable, root: root)
         checked.loopIdentities = loopIdentities
+        checked.folderPending = folderPending
         return checked
     }
 
@@ -568,6 +574,35 @@ final class Checker {
 
 /// Folder-level checks added to the package's result (§4.20).
 enum FolderChecks {
+    /// The package styles and options reached from the ones widgets use: a used style's body uses other styles
+    /// (`.style(base)`) and options (`options.accent`).
+    static func reachable(from styles: Set<String>, options: Set<String>, in package: CheckedFile) -> (Set<String>, Set<String>) {
+        let tree = package.tree
+        let nameOfStyle = Dictionary(package.styles.map { ($0.value, $0.key) }, uniquingKeysWith: { a, _ in a })
+        let nameOfOption = Dictionary(package.options.map { ($0.value.node, $0.key) }, uniquingKeysWith: { a, _ in a })
+        // What each style's body refers to.
+        var refersTo: [String: (styles: [String], options: [String])] = [:]
+        let bodies: [(String, Range<Int>)] = package.styles.compactMap { name, id in tree.resolve(id).map { (name, $0.range) } }
+        for (use, symbol) in package.symbols {
+            guard let (owner, _) = bodies.first(where: { $0.1.contains(use.utf8Start) }) else { continue }
+            switch symbol {
+            case .style(let id, let file) where file == tree.file:
+                if let name = nameOfStyle[id], name != owner { refersTo[owner, default: ([], [])].styles.append(name) }
+            case .option(let id, let file) where file == tree.file:
+                if let name = nameOfOption[id] { refersTo[owner, default: ([], [])].options.append(name) }
+            default:
+                break
+            }
+        }
+        var usedStyles = styles, usedOptions = options
+        var work = Array(styles)
+        while let style = work.popLast() {
+            for option in refersTo[style]?.options ?? [] { usedOptions.insert(option) }
+            for next in refersTo[style]?.styles ?? [] where usedStyles.insert(next).inserted { work.append(next) }
+        }
+        return (usedStyles, usedOptions)
+    }
+
     static func addUnused(_ checked: CheckedFile, tree: SyntaxTree, usedStyles: Set<String>, usedOptions: Set<String>,
                           usedKeys: Set<String>, catalog: DeskCatalog) -> CheckedFile {
         var extra: [Diagnostic] = []
@@ -581,7 +616,11 @@ enum FolderChecks {
                                     range: option.node.utf8Start..<(option.node.utf8Start + name.utf8.count),
                                     arguments: ["name": .code(name)]))
         }
-        _ = usedKeys
+        // Translations no text of the folder uses (DK8403), decided here.
+        for d in checked.folderPending where d.id == .unusedTranslation {
+            guard case .code(let key)? = d.arguments["key"], !usedKeys.contains(key) else { continue }
+            extra.append(d)
+        }
         guard !extra.isEmpty else { return checked }
         let all = (checked.diagnostics + extra).sorted { $0.range.lowerBound < $1.range.lowerBound }
         return CheckedFile(tree: checked.tree, diagnostics: all, symbols: checked.symbols, types: checked.types,

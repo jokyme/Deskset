@@ -457,6 +457,10 @@ public struct CheckedFile: Sendable {
 
     /// Diagnostics of one severity.
     public func diagnostics(_ severity: Severity) -> [Diagnostic] { diagnostics.filter { $0.severity == severity } }
+
+    /// Diagnostics only the whole folder can decide (a package's translation no text of the package uses, which
+    /// a widget's text may still use): `Desk.checkFolder` adds the ones that hold.
+    var folderPending: [Diagnostic] = []
 }
 
 /// `package.desk`, checked once per folder (§4.20).
