@@ -215,6 +215,12 @@ enum DrawingCacheCheck {
             }
         }
         func wait() { RenderCommand.wait(milliseconds: updateInterval) }
+        /// Two frames without a change, so the next step starts from pictures kept of everything that rests (the case
+        /// a stale picture shows in).
+        func rest(_ label: String) {
+            frame("\(label), resting", "[!Redraw]")
+            frame("\(label), rested")
+        }
 
         // Updates, then frames without one (everything kept).
         for i in 0..<updates {
@@ -259,6 +265,7 @@ enum DrawingCacheCheck {
         }
 
         // Meter groups hidden and shown again, redrawn without an update.
+        rest("before the groups")
         var groups: [String] = []
         for m in skin.meters { for g in m.groups where !groups.contains(g) { groups.append(g) } }
         for g in groups.prefix(3) {
@@ -268,12 +275,14 @@ enum DrawingCacheCheck {
 
         // An option set and redrawn before the meter updates, then updated.
         if let m = visible.first(where: { $0 is StringMeter }) ?? visible.first {
+            rest("before an option")
             frame("option set, redrawn", "[!SetOption \"\(m.name)\" SolidColor 255,0,0,120][!Redraw]")
             frame("option set, meter updated", "[!UpdateMeter \"\(m.name)\"][!Redraw]")
             frame("option cleared", "[!SetOption \"\(m.name)\" SolidColor \"\"][!UpdateMeter \"\(m.name)\"][!Redraw]")
         }
 
         // Image files replaced on disk (in the copy), redrawn without an update.
+        rest("before the image files")
         let replaced = imageFiles(of: skin, under: skinsRoot).prefix(3).filter(replaceImage)
         result.imagesReplaced = replaced.count
         if !replaced.isEmpty {
