@@ -61,7 +61,8 @@ final class EditingSession {
     private(set) var studioSkin: Skin?
     /// The widget's main file, as the desktop runs it.
     private(set) var fileURL: URL?
-    /// The widget on the desktop.
+    /// The widget on the desktop, as the Studio window last linked it (`bind`). A refresh while no window follows the
+    /// widget makes a new one: `currentDesktop` finds it.
     weak var desktop: SkinController? {
         didSet { host.desktop = desktop }
     }
@@ -103,6 +104,22 @@ final class EditingSession {
         let other = fileURL.map { SourceFileID($0) != SourceFileID(url) } ?? true
         fileURL = url
         return other
+    }
+
+    /// The widget on the desktop now: the linked one, or — after it was loaded again while no Studio window followed it
+    /// (the session outlives the window) — the one the app runs for the widget now, which is linked from then on. nil
+    /// when the widget is not loaded (then the linked one, stopped, can still be loaded again: `refreshDesktop`).
+    var currentDesktop: SkinController? {
+        if let linked = desktop, app.controller(for: linked.config) === linked { return linked }
+        guard let now = app.controller(for: desktop?.config ?? config) else { return nil }
+        desktop = now
+        return now
+    }
+
+    /// The widget on the desktop when it runs there now (for steps outside the files: its window's settings).
+    var runningDesktop: SkinController? {
+        guard let c = currentDesktop, !c.isStopped else { return nil }
+        return c
     }
 
     /// Loads the Studio's own instance again from the text in memory — after buffers without edits of their own took
@@ -295,7 +312,7 @@ final class EditingSession {
             switch command {
             case .moveWidget(let from, let to):
                 let place = undo ? from : to
-                desktop?.moveTo(x: place.x, y: place.y)
+                runningDesktop?.moveTo(x: place.x, y: place.y)
             }
         }
         var t0 = DispatchTime.now().uptimeNanoseconds
@@ -354,7 +371,7 @@ final class EditingSession {
 
     /// Runs `work` on the desktop copy of the widget, where it is owned.
     private func desktopSkin(_ work: @escaping (Skin) -> Void) {
-        guard let c = desktop, !c.isStopped else { return }
+        guard let c = runningDesktop else { return }
         let skin: Skin = c.skin
         if skin.executor.isCurrent { work(skin) } else { skin.async { work(skin) } }
     }
@@ -364,7 +381,7 @@ final class EditingSession {
     /// Reloads the widget on the desktop from the files (after a step is written), or loads it again when an earlier
     /// reload could not (the files may be fixed since).
     func refreshDesktop() {
-        guard let c = desktop else { return }
+        guard let c = currentDesktop ?? desktop else { return }
         let state = Self.signposter.beginInterval("desktop.refresh")
         defer { Self.signposter.endInterval("desktop.refresh", state) }
         isRefreshingDesktop = true

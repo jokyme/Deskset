@@ -1385,7 +1385,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
 
     /// The window lets go of its widget's session (it closed, or shows another widget): the Studio's instance and the
     /// watching of the files end; the text in memory and the undo stack stay with the app. What typing in the window's
-    /// fields left on the stack goes (it belongs to the window's field editor).
+    /// fields left on the stack goes (it belongs to the window's field editor), and so would any step made for the
+    /// window itself (the widget's steps name the session: they outlive the window).
     func unbindSession() {
         guard let session else { return }
         if let fieldEditor = window?.fieldEditor(false, for: nil) {
@@ -1394,6 +1395,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
                 session.undoStack.removeAllActions(withTarget: storage)
             }
         }
+        session.undoStack.removeAllActions(withTarget: self)
         session.closeStudioSkin()
         if session.client === self { session.client = nil }
         session.undoStack.commitPendingEdits = nil

@@ -1089,21 +1089,27 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
         toast.show("\(locked ? "Locked" : "Unlocked") \(layersLabel(names, title: false))", actions: [undoToastAction()])
     }
 
-    /// One undo step that puts the locks back as they were (and its redo).
+    /// One undo step that puts the locks back as they were (and its redo). A step of the widget's undo stack (its
+    /// editing session's), so it outlives the window, which follows while it shows the widget.
     func registerLockUndo(locks: Set<String>, unlockedBackground: Bool, name: String) {
-        guard let manager = window?.undoManager else { return }
-        let key = config.lowercased()
-        manager.registerUndo(withTarget: self) { target in
-            let current = (locks: target.app.state.editor.editorLocks[key] ?? [],
-                           unlocked: target.app.state.editor.unlockedBackgrounds.contains(key))
-            target.app.state.updateEditor { prefs in
+        guard let session else { return }
+        Self.registerLockUndo(locks: locks, unlockedBackground: unlockedBackground, name: name, key: config.lowercased(),
+                              in: session)
+    }
+
+    static func registerLockUndo(locks: Set<String>, unlockedBackground: Bool, name: String, key: String,
+                                 in session: EditingSession) {
+        session.undoStack.registerUndo(withTarget: session) { session in
+            let state = session.app.state
+            let current = (locks: state.editor.editorLocks[key] ?? [], unlocked: state.editor.unlockedBackgrounds.contains(key))
+            state.updateEditor { prefs in
                 prefs.editorLocks[key] = locks.isEmpty ? nil : locks
                 if unlockedBackground { prefs.unlockedBackgrounds.insert(key) } else { prefs.unlockedBackgrounds.remove(key) }
             }
-            target.registerLockUndo(locks: current.locks, unlockedBackground: current.unlocked, name: name)
-            target.locksChanged()
+            registerLockUndo(locks: current.locks, unlockedBackground: current.unlocked, name: name, key: key, in: session)
+            (session.client as? InspectorWindowController)?.locksChanged()
         }
-        manager.setActionName(name)
+        session.undoStack.setActionName(name)
     }
 
     /// The rows and the canvas follow a change of locks.

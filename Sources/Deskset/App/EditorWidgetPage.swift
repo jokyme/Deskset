@@ -1146,14 +1146,20 @@ extension InspectorWindowController {
         rebuildKeepingScroll()
     }
 
-    /// One undo step that puts the desktop settings back (and a redo that sets them again).
+    /// One undo step that puts the desktop settings back (and a redo that sets them again). It is a step of the
+    /// widget's undo stack (its editing session's), so it outlives the window: undone after the window closed, it still
+    /// changes the widget, and a window showing the widget then follows.
     func registerDesktopUndo(_ state: SkinState, name: String) {
-        guard let manager = window?.undoManager else { return }
-        manager.registerUndo(withTarget: self) { target in
-            guard let c = target.controller, target.isWidgetRunning else { return }
+        guard let session else { return }
+        Self.registerDesktopUndo(state, name: name, in: session)
+    }
+
+    static func registerDesktopUndo(_ state: SkinState, name: String, in session: EditingSession) {
+        session.undoStack.registerUndo(withTarget: session) { session in
+            guard let c = session.runningDesktop else { return }
             let current = c.state
-            let undoing = manager.isUndoing
-            target.app.changeSettings(of: c) { s in
+            let undoing = session.undoStack.isUndoing
+            session.app.changeSettings(of: c) { s in
                 s.alwaysOnTop = state.alwaysOnTop
                 s.draggable = state.draggable
                 s.clickThrough = state.clickThrough
@@ -1163,14 +1169,15 @@ extension InspectorWindowController {
                 s.fadeDuration = state.fadeDuration
                 s.onHover = state.onHover
             }
-            target.registerDesktopUndo(current, name: name)
+            registerDesktopUndo(current, name: name, in: session)
+            guard let window = session.client as? InspectorWindowController else { return }
             // "Undid Always on Top · [Redo]" (§10).
-            let again = undoing ? ToastAction("Redo") { [weak manager] in manager?.redo() }
-                : ToastAction("Undo") { [weak manager] in manager?.undo() }
-            target.toast.show(undoing ? "Undid \(name)" : "Redid \(name)", actions: [again])
-            target.rebuildKeepingScroll()
+            let again = undoing ? ToastAction("Redo") { [weak session] in session?.undoStack.redo() }
+                : ToastAction("Undo") { [weak session] in session?.undoStack.undo() }
+            window.toast.show(undoing ? "Undid \(name)" : "Redid \(name)", actions: [again])
+            window.rebuildKeepingScroll()
         }
-        manager.setActionName(name)
+        session.undoStack.setActionName(name)
     }
 
     // MARK: Size and spacing (§8.1.4)

@@ -132,6 +132,16 @@ enum StudioSessionSelfTests {
             t.check(session.undoStack.canRedo)
             session.undoStack.redo()
             t.check(read(url).contains("Text=Kept\n"), "redone")
+            // Refreshed on the desktop while no window follows it: the undo still reaches the widget running now.
+            guard let running = app.controller(for: "Studio\\Kept") else { return t.check(false, "running") }
+            app.refresh(running)
+            let refreshed = app.controller(for: "Studio\\Kept")
+            t.check(refreshed != nil && refreshed !== running, "refreshed")
+            session.undoStack.undo()
+            t.check(app.controller(for: "Studio\\Kept") !== refreshed, "the widget running now reloaded")
+            t.equal(app.controller(for: "Studio\\Kept")?.skin.meter(named: "MeterTitle")?.rawOption("Text"), "Hello")
+            session.undoStack.redo()
+            t.check(read(url).contains("Text=Kept\n"), "redone")
 
             // The Studio opened again has the same stack.
             guard let c = app.controller(for: "Studio\\Kept") else { return t.check(false, "loaded") }
@@ -155,6 +165,44 @@ enum StudioSessionSelfTests {
             app.showInspector(for: kept)
             t.check(again.window?.undoManager === session.undoStack)
             t.equal(again.window?.undoManager?.undoActionName, "Edit Text", "its step is still there")
+            again.window?.close()
+        }
+
+        t.suite("App: studio session: steps outside the files outlive the window too") {
+            guard let (app, editor, _) = try StudioReviewSelfTests.openSkin(t, "Settings", ini) else { return }
+            guard let session = editor.session, let c = app.controller(for: "Studio\\Settings") else {
+                return t.check(false, "loaded")
+            }
+            let key = "studio\\settings"
+            let stacking = c.state.alwaysOnTop
+            // A desktop setting (ON YOUR DESKTOP) and a lock (the editor's own) are steps of the widget's stack.
+            editor.setStacking(1)
+            t.equal(app.controller(for: "Studio\\Settings")?.state.alwaysOnTop, 1, "on top")
+            settle()
+            editor.setLayersLocked(["MeterTitle"], locked: true)
+            t.check(app.state.editor.editorLocks[key]?.contains("metertitle") == true, "locked")
+            settle()
+            editor.window?.close()
+            t.check(session.undoStack.undoActionName.hasPrefix("Lock"), "kept with the widget: \(session.undoStack.undoActionName)")
+
+            // Undone with no window: the widget's settings and the locks follow, nothing else is asked for.
+            session.undoStack.undo()
+            t.check(app.state.editor.editorLocks[key]?.contains("metertitle") != true, "unlocked")
+            session.undoStack.undo()
+            t.equal(app.controller(for: "Studio\\Settings")?.state.alwaysOnTop, stacking, "back to how it was stacked")
+            t.check(session.undoStack.canRedo)
+
+            // Redone from a window opened again, which follows.
+            guard let now = app.controller(for: "Studio\\Settings") else { return t.check(false, "running") }
+            app.showInspector(for: now)
+            guard let again = app.inspector else { return t.check(false, "opens again") }
+            again.window?.undoManager?.redo()
+            t.equal(app.controller(for: "Studio\\Settings")?.state.alwaysOnTop, 1, "on top again")
+            t.check(again.toastText.hasPrefix("Redid"), again.toastText)
+            again.window?.undoManager?.redo()
+            t.check(again.isLayerLocked("MeterTitle"), "locked again, as the window shows")
+            again.window?.undoManager?.undo()
+            again.window?.undoManager?.undo()
             again.window?.close()
         }
     }
