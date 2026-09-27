@@ -15,9 +15,12 @@ MediaOpen2=Open Spotify
 
 ; ---------------------------------------------------------------- Now Playing
 NowPlayingWidget=Now Playing
+; the media family's one "not playing" state (Now Playing, Spectrum, Turntable, Studio VU): this title, and the idle
+; line, which also says which players can be read. NowPlayingIdleLines is the same line broken in two, for Now
+; Playing's two-line box; keep the two in step.
 NowPlayingNotPlaying=Not Playing
-; the first-run line, on two lines (it also says which players can be read)
-NowPlayingIdleLine=Play something in Music#CRLF#or Spotify
+NowPlayingIdleLine=Play something in Music or Spotify
+NowPlayingIdleLines=Play something in Music#CRLF#or Spotify
 NowPlayingLive=Live
 NowPlayingVolume=[MeasurePlayerName] volume
 NowPlayingOpen=Open [MeasurePlayerName]
@@ -45,7 +48,6 @@ NowPlayingEnd=". "
 
 ; ---------------------------------------------------------------- Spectrum
 SpectrumWidget=Spectrum
-SpectrumIdle=Nothing Playing
 SpectrumPaused=Paused
 SpectrumPlay=Play
 SpectrumAllowAudioTitle=Allow System Audio Recording

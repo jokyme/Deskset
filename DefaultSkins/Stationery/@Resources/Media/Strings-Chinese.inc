@@ -13,7 +13,8 @@ MediaOpen2=打开“Spotify”
 ; ---------------------------------------------------------------- Now Playing
 NowPlayingWidget=正在播放
 NowPlayingNotPlaying=未在播放
-NowPlayingIdleLine=在“音乐”或 Spotify#CRLF#中播放
+NowPlayingIdleLine=在“音乐”或 Spotify 中播放点什么
+NowPlayingIdleLines=在“音乐”或 Spotify#CRLF#中播放点什么
 NowPlayingLive=直播
 NowPlayingVolume=“[MeasurePlayerName]”音量
 NowPlayingOpen=打开“[MeasurePlayerName]”
@@ -37,7 +38,6 @@ NowPlayingEnd=。
 
 ; ---------------------------------------------------------------- Spectrum
 SpectrumWidget=频谱
-SpectrumIdle=没有在播放
 SpectrumPaused=已暂停
 SpectrumPlay=播放
 SpectrumAllowAudioTitle=允许“系统录音”

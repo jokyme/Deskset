@@ -30,6 +30,5 @@ MenuPlayerTitle=[#MenuPlayer[#Player]]
 MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Variables.inc"][!RefreshGroup Stationery]
 
 ; ---------------------------------------------------------------- for widgets that name the preferred player
-; the card's "Open …" item ("Open Music"), and the player's name ("Music"), as Turntable and Studio VU show them
+; the card's "Open …" item ("Open Music"), as Turntable and Studio VU show it
 MenuOpenPlayerTitle=[#MediaOpen[#PlayerIndex[#Player]]]
-PlayerDisplayName=[#PlayerName[#PlayerIndex[#Player]]]
