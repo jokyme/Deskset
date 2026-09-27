@@ -31,6 +31,8 @@ TempUnit=Auto
 Location=timezone
 ; Separator between thousands in numbers of four digits and more
 DigitGroup=,
+; The player the media widgets prefer and open: Music or Spotify (they show whichever of the two is playing)
+Player=Music
 
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
@@ -55,3 +57,25 @@ CalendarShowMoon=1
 ; The medium clock's seconds hands: 1 shown, 0 hidden. The cities themselves are kept with what you type, in
 ; Stationery.inc (right-click › Edit Cities…)
 ShowWorldClockSeconds=0
+
+; ---------------------------------------------------------------- Now Playing
+; Now Playing's card: Glass, or Artwork (the colour of the album cover)
+NowPlayingBackground=Glass
+
+; ---------------------------------------------------------------- Spectrum
+; The bars' colour: Media (pink), Cover (a colour of the album cover), Accent (the Mac's accent colour) or Mono
+SpectrumBars=Media
+; The Strip's bars: Ink (white or dark, as the wallpaper under it asks) or Cover
+SpectrumStripBars=Ink
+; How the bars move: Full, or Calm (they fall twice as slowly)
+SpectrumMotion=Full
+; 1 shows the playing track's name (Music or Spotify ask once for permission); 0 never reads a player
+ShowSpectrumTrack=1
+; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots
+HideSpectrumWhenIdle=1
+
+; ---------------------------------------------------------------- Photo Frame
+; How often a new photo comes, in seconds: 600 (every 10 minutes), 3600 (on the hour) or 86400 (at midnight)
+PhotoInterval=600
+; 1 shows the photo's file name at the bottom (a camera's name, such as IMG_4821, shows its folder's name)
+ShowPhotoFileName=0
