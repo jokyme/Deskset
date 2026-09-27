@@ -125,7 +125,7 @@ public struct DeclarationSyntax: SyntaxWrapper {
     public var keyword: PositionedToken { node.childTokens[0] }
     public var name: PositionedToken { node.childTokens[1] }
     public var equal: PositionedToken { node.childTokens[2] }
-    public var initializer: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var initializer: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
 }
 
 public struct IfStmtSyntax: SyntaxWrapper {
@@ -133,7 +133,7 @@ public struct IfStmtSyntax: SyntaxWrapper {
     public let node: PositionedNode
     public init(unchecked node: PositionedNode) { self.node = node }
     public var ifKeyword: PositionedToken { node.childTokens[0] }
-    public var condition: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes[0]) }
+    public var condition: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes[0]) }
     public var block: BlockSyntax { BlockSyntax(unchecked: node.firstChild(.block)!) }
     public var elseClause: ElseClauseSyntax? { node.firstChild(.elseClause).map(ElseClauseSyntax.init(unchecked:)) }
     /// Modifiers written after the `}` (always DK2032).
@@ -146,7 +146,7 @@ public struct ElseClauseSyntax: SyntaxWrapper {
     public init(unchecked node: PositionedNode) { self.node = node }
     public var elseKeyword: PositionedToken { node.childTokens[0] }
     /// An `ifStmt` (`else if`) or a `block`.
-    public var body: PositionedNode { node.significantChildNodes[0] }
+    public var body: PositionedNode { node.childNodes[0] }
 }
 
 public struct ForStmtSyntax: SyntaxWrapper {
@@ -156,7 +156,7 @@ public struct ForStmtSyntax: SyntaxWrapper {
     public var forKeyword: PositionedToken { node.childTokens[0] }
     public var variable: PositionedToken { node.childTokens[1] }
     public var inKeyword: PositionedToken { node.childTokens[2] }
-    public var source: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes[0]) }
+    public var source: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes[0]) }
     public var block: BlockSyntax { BlockSyntax(unchecked: node.firstChild(.block)!) }
     public var modifiers: [ModifierAppSyntax] { node.children(.modifierApp).map(ModifierAppSyntax.init(unchecked:)) }
 }
@@ -176,7 +176,7 @@ public struct FieldSyntax: SyntaxWrapper {
     public init(unchecked node: PositionedNode) { self.node = node }
     public var label: LabelSyntax { LabelSyntax(unchecked: node.firstChild(.label)!) }
     public var colon: PositionedToken { node.childTokens[0] }
-    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
 }
 
 /// `"source": "translation"` (or `=`, which the formatter writes as `:`).
@@ -184,9 +184,9 @@ public struct EntrySyntax: SyntaxWrapper {
     public static let kinds: Set<SyntaxKind> = [.entry]
     public let node: PositionedNode
     public init(unchecked node: PositionedNode) { self.node = node }
-    public var key: StringLiteralSyntax { StringLiteralSyntax(unchecked: node.significantChildNodes[0]) }
+    public var key: StringLiteralSyntax { StringLiteralSyntax(unchecked: node.childNodes[0]) }
     public var separator: PositionedToken { node.childTokens[0] }
-    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
 }
 
 /// `"zh-Hans" { … }` (a `:` after the tag is accepted; the formatter removes it).
@@ -194,7 +194,7 @@ public struct GroupSyntax: SyntaxWrapper {
     public static let kinds: Set<SyntaxKind> = [.group]
     public let node: PositionedNode
     public init(unchecked node: PositionedNode) { self.node = node }
-    public var tag: StringLiteralSyntax { StringLiteralSyntax(unchecked: node.significantChildNodes[0]) }
+    public var tag: StringLiteralSyntax { StringLiteralSyntax(unchecked: node.childNodes[0]) }
     public var colon: PositionedToken? { node.childTokens.first }
     public var block: BlockSyntax { BlockSyntax(unchecked: node.firstChild(.block)!) }
 }
@@ -207,7 +207,7 @@ public struct OptionDeclSyntax: SyntaxWrapper {
     public var target: TargetSyntax { TargetSyntax(unchecked: node.firstChild(.target)!) }
     public var equal: PositionedToken { node.childTokens[0] }
     /// A `callStmt` (the control), or any other value for the checker to report.
-    public var control: PositionedNode { node.significantChildNodes.last! }
+    public var control: PositionedNode { node.childNodes.last! }
     public var controlCall: CallStmtSyntax? { CallStmtSyntax(control) }
 }
 
@@ -219,7 +219,7 @@ public struct AssignmentSyntax: SyntaxWrapper {
     public init(unchecked node: PositionedNode) { self.node = node }
     public var target: TargetSyntax { TargetSyntax(unchecked: node.firstChild(.target)!) }
     public var equal: PositionedToken { node.childTokens[0] }
-    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
     public var isPlainAssignment: Bool { equal.kind == .equal }
 }
 
@@ -294,7 +294,7 @@ public struct ArgumentSyntax: SyntaxWrapper {
     public var label: LabelSyntax? { node.firstChild(.label).map(LabelSyntax.init(unchecked:)) }
     /// `:`, or a diagnosed `=`.
     public var colon: PositionedToken? { node.childTokens.first }
-    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
 }
 
 // MARK: - Expressions
@@ -447,7 +447,7 @@ public struct FormatOptionSyntax: SyntaxWrapper {
     public var comma: PositionedToken { node.childTokens[0] }
     public var label: LabelSyntax { LabelSyntax(unchecked: node.firstChild(.label)!) }
     public var colon: PositionedToken { node.childTokens[1] }
-    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.significantChildNodes.last!) }
+    public var value: ExpressionSyntax { ExpressionSyntax(unchecked: node.childNodes.last!) }
 }
 
 /// Text in quotes: an ordinary string with text segments and interpolations, or one raw (`#"…"#`) or triple-quoted

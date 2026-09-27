@@ -59,7 +59,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
         for (name, text) in inputs {
             for variant in [text] + (name.hasPrefix("example") ? [] : deskVariants(text)) {
                 let tree = deskParse(variant)
-                let problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree)
+                let problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
                 if !problems.isEmpty { t.check(false, "\(name): \(problems) for \(variant.debugDescription.prefix(200))") }
                 checked += 1
                 // Loading the bytes gives the same text back, a byte order mark included.
@@ -137,7 +137,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
         for n in 0..<count {
             let text = generator.file()
             let tree = deskParse(text)
-            var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree)
+            var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
             if !tree.diagnostics.isEmpty { problems.append("diagnostics \(tree.diagnostics.map(\.description))") }
             let once = Desk.formatted(tree)
             let onceTree = deskParse(once)
@@ -253,7 +253,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
             let tree = deskParse(text)
             let elapsed = ProcessInfo.processInfo.systemUptime - start
             slowest = max(slowest, elapsed)
-            var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree)
+            var problems = deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree)
             let offsets = tree.diagnostics.map(\.range.lowerBound)
             if offsets != offsets.sorted() { problems.append("diagnostics not sorted") }
             if deskParse(text).diagnostics != tree.diagnostics { problems.append("not deterministic") }
@@ -315,7 +315,7 @@ func runDeskCorpusTests(_ t: TestRunner) {
             let formatStart = ProcessInfo.processInfo.systemUptime
             let formatted = Desk.formatted(tree)
             let format = ProcessInfo.processInfo.systemUptime - formatStart
-            t.equal(deskTreeProblems(tree) + deskDiagnosticProblems(tree), [], name)
+            t.equal(deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree), [], name)
             t.check(parse < 3, "\(name): parse took \(parse) s")
             t.check(format < 10, "\(name): format took \(format) s")
             t.equal(Desk.formatted(deskParse(formatted)), formatted, "\(name): formatting is idempotent")

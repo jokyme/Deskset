@@ -125,6 +125,200 @@ func deskDiagnosticProblems(_ tree: SyntaxTree) -> [String] {
     return problems
 }
 
+/// Reads every slot of the typed wrapper of every node (§3.3 "Child slots"), whatever recovery did to the tree: the
+/// checker reads broken trees through these wrappers, so they must never trap, and each slot must hold what its type
+/// says (an expression slot an expression, a block slot a block…).
+func deskWrapperProblems(_ tree: SyntaxTree) -> [String] {
+    var problems: [String] = []
+    func expect(_ node: PositionedNode, _ kinds: Set<SyntaxKind>, _ slot: String) {
+        if !kinds.contains(node.kind) { problems.append("\(slot) holds \(node.kind)") }
+    }
+    func expression(_ e: ExpressionSyntax, _ slot: String) { expect(e.node, ExpressionSyntax.kinds, slot) }
+    func token(_ t: PositionedToken, _ kinds: Set<TokenKind>, _ slot: String) {
+        if !kinds.contains(t.kind) { problems.append("\(slot) is a \(t.kind) token") }
+    }
+    func block(_ b: BlockSyntax, _ slot: String) {
+        token(b.lBrace, [.lBrace], slot + ".lBrace")
+        token(b.rBrace, [.rBrace], slot + ".rBrace")
+        for statement in b.statements where !statement.kind.isStatement && statement.kind != .foreignConstruct {
+            problems.append("\(slot) holds a \(statement.kind) statement")
+        }
+    }
+    func arguments(_ clause: ArgumentClauseSyntax, _ slot: String) {
+        token(clause.lParen, [.lParen], slot + ".lParen")
+        token(clause.rParen, [.rParen], slot + ".rParen")
+        for argument in clause.arguments {
+            if let label = argument.label, !label.token.kind.isWord && label.token.kind != .invalidIdentifier {
+                problems.append("\(slot) label is a \(label.token.kind)")
+            }
+            if argument.label != nil, argument.colon == nil { problems.append("\(slot) label without a colon") }
+            expression(argument.value, slot + ".value")
+        }
+    }
+    let names: Set<TokenKind> = Set(TokenKind.allCases.filter { $0.isWord }).union([.invalidIdentifier])
+    var stack: [PositionedNode] = [tree.rootNode]
+    while let node = stack.popLast() {
+        stack.append(contentsOf: node.childNodes)
+        switch node.kind {
+        case .sourceFile:
+            token(SourceFileSyntax(node)!.eof, [.eof], "sourceFile.eof")
+        case .infoBlock, .packageBlock, .optionsBlock, .widgetBlock, .translationsBlock:
+            let w = TopLevelBlockSyntax(node)!
+            token(w.keyword, [.identifier], "\(node.kind).keyword")
+            block(w.block, "\(node.kind).block")
+        case .styleDecl:
+            let w = StyleDeclSyntax(node)!
+            token(w.keyword, [.identifier], "styleDecl.keyword")
+            token(w.name, names, "styleDecl.name")
+            block(w.block, "styleDecl.block")
+        case .componentDecl:
+            let w = ComponentDeclSyntax(node)!
+            token(w.name, names, "componentDecl.name")
+            expect(w.parameters, [.parameterClause], "componentDecl.parameters")
+            block(w.block, "componentDecl.block")
+        case .scriptBlock:
+            token(ScriptBlockSyntax(node)!.body, [.opaqueBlock], "scriptBlock.body")
+        case .strayStatement:
+            let statement = StrayStatementSyntax(node)!.statement
+            if !statement.kind.isStatement { problems.append("strayStatement holds \(statement.kind)") }
+        case .block:
+            block(BlockSyntax(node)!, "block")
+        case .declaration:
+            let w = DeclarationSyntax(node)!
+            token(w.keyword, [.variableKeyword, .savedKeyword, .computedKeyword, .identifier], "declaration.keyword")
+            token(w.name, names, "declaration.name")
+            token(w.equal, [.equal], "declaration.equal")
+            expression(w.initializer, "declaration.initializer")
+        case .ifStmt:
+            let w = IfStmtSyntax(node)!
+            expression(w.condition, "ifStmt.condition")
+            block(w.block, "ifStmt.block")
+            if let e = w.elseClause {
+                if ![.ifStmt, .block, .unexpected].contains(e.body.kind) { problems.append("else holds \(e.body.kind)") }
+            }
+            _ = w.modifiers.map(\.name)
+        case .forStmt:
+            let w = ForStmtSyntax(node)!
+            token(w.variable, names, "forStmt.variable")
+            token(w.inKeyword, [.inKeyword, .identifier], "forStmt.in")
+            expression(w.source, "forStmt.source")
+            block(w.block, "forStmt.block")
+        case .field:
+            let w = FieldSyntax(node)!
+            token(w.colon, [.colon], "field.colon")
+            expression(w.value, "field.value")
+        case .entry:
+            let w = EntrySyntax(node)!
+            expect(w.key.node, [.stringLiteral], "entry.key")
+            token(w.separator, [.colon, .equal], "entry.separator")
+            expression(w.value, "entry.value")
+        case .group:
+            let w = GroupSyntax(node)!
+            expect(w.tag.node, [.stringLiteral], "group.tag")
+            block(w.block, "group.block")
+        case .optionDecl:
+            let w = OptionDeclSyntax(node)!
+            _ = w.target.path
+            token(w.equal, [.equal], "optionDecl.equal")
+            if w.control.kind != .callStmt { expect(w.control, ExpressionSyntax.kinds, "optionDecl.control") }
+        case .assignment:
+            let w = AssignmentSyntax(node)!
+            _ = w.target.path
+            token(w.equal, [.equal, .plusEqual, .minusEqual, .starEqual, .slashEqual, .plusPlus, .minusMinus],
+                  "assignment.equal")
+            expression(w.value, "assignment.value")
+        case .callStmt:
+            let w = CallStmtSyntax(node)!
+            _ = w.callee.path
+            if let clause = w.arguments { arguments(clause, "callStmt.arguments") }
+            if let b = w.block { block(b, "callStmt.block") }
+            for m in w.modifiers { token(m.dot, [.dot], "callStmt.modifier.dot") }
+        case .modifierStmt:
+            if ModifierStmtSyntax(node)!.modifiers.isEmpty { problems.append("modifierStmt without modifiers") }
+        case .modifierApp:
+            let w = ModifierAppSyntax(node)!
+            token(w.dot, [.dot], "modifierApp.dot")
+            token(w.name, names, "modifierApp.name")
+            if let clause = w.arguments { arguments(clause, "modifierApp.arguments") }
+            if let b = w.block { block(b, "modifierApp.block") }
+        case .ternaryExpr:
+            let w = TernaryExprSyntax(node)!
+            expression(w.condition, "ternary.condition")
+            token(w.question, [.question], "ternary.question")
+            expression(w.then, "ternary.then")
+            token(w.colon, [.colon], "ternary.colon")
+            expression(w.otherwise, "ternary.otherwise")
+        case .binaryExpr:
+            let w = BinaryExprSyntax(node)!
+            expression(w.left, "binary.left")
+            _ = w.operator
+            expression(w.right, "binary.right")
+        case .prefixExpr:
+            let w = PrefixExprSyntax(node)!
+            _ = w.operator
+            expression(w.operand, "prefix.operand")
+        case .rangeExpr:
+            let w = RangeExprSyntax(node)!
+            expression(w.low, "range.low")
+            token(w.ellipsis, [.ellipsis, .dotDot, .dotDotLess], "range.ellipsis")
+            expression(w.high, "range.high")
+        case .memberExpr:
+            let w = MemberExprSyntax(node)!
+            expression(w.base, "member.base")
+            token(w.dot, [.dot], "member.dot")
+            token(w.name, names, "member.name")
+        case .callExpr:
+            let w = CallExprSyntax(node)!
+            expression(w.callee, "call.callee")
+            arguments(w.arguments, "call.arguments")
+        case .implicitMemberExpr:
+            let w = ImplicitMemberExprSyntax(node)!
+            token(w.dot, [.dot], "implicitMember.dot")
+            token(w.name, names, "implicitMember.name")
+            if let clause = w.arguments { arguments(clause, "implicitMember.arguments") }
+        case .identifierExpr:
+            _ = IdentifierExprSyntax(node)!.name
+        case .numberLiteral:
+            let w = NumberLiteralSyntax(node)!
+            token(w.token, [.number], "number.token")
+            _ = w.value
+            _ = w.unit
+        case .boolLiteral:
+            _ = BoolLiteralSyntax(node)!.value
+        case .stringLiteral:
+            let w = StringLiteralSyntax(node)!
+            token(w.start, [.stringStart, .rawString, .tripleQuoteString], "string.start")
+            if let end = w.end { token(end, [.stringEnd], "string.end") }
+            for segment in w.segments {
+                if case .interpolation(let i) = segment {
+                    token(i.start, [.interpolationStart], "interpolation.start")
+                    token(i.end, [.interpolationEnd], "interpolation.end")
+                    expression(i.value, "interpolation.value")
+                    for option in i.formatOptions {
+                        token(option.comma, [.comma], "formatOption.comma")
+                        token(option.colon, [.colon, .equal], "formatOption.colon")
+                        expression(option.value, "formatOption.value")
+                    }
+                }
+            }
+            _ = w.literalValue
+        case .listLiteral:
+            let w = ListLiteralSyntax(node)!
+            token(w.lBracket, [.lBracket], "list.lBracket")
+            token(w.rBracket, [.rBracket], "list.rBracket")
+            for element in w.elements { expression(element, "list.element") }
+        case .parenExpr:
+            let w = ParenExprSyntax(node)!
+            token(w.lParen, [.lParen], "paren.lParen")
+            expression(w.value, "paren.value")
+            token(w.rParen, [.rParen], "paren.rParen")
+        default:
+            break
+        }
+    }
+    return problems
+}
+
 /// Applies a fix-it's edits to a text.
 func deskApply(_ fixIt: FixIt, to text: String) -> String { TextEdit.apply(fixIt.edits, to: text) }
 

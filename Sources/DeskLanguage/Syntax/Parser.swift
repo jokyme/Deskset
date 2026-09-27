@@ -877,7 +877,12 @@ struct Parser {
         } else {
             blockDepth += 1
             limit = end
+            // The block of a stray top-level statement (`Row { … }` outside `widget`) holds ordinary statements:
+            // only the file's own items are top-level items or stray.
+            let savedContext = context
+            if context == .topLevel { context = .other }
             parseBody(into: &children, owner: owner)
+            context = savedContext
             limit = savedLimit
             blockDepth -= 1
         }

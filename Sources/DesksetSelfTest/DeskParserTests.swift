@@ -42,6 +42,10 @@ func runDeskParserTests(_ t: TestRunner) {
         t.equal(first(.componentDecl, in: file),
                 "componentDecl[component Card parameterClause[( parameter[title : String = stringLiteral[\" stringText[x] \"]] )] block[{ callStmt[callee[Text] argumentClause[( argument[identifierExpr[title]] )]] }]]")
         t.equal(first(.scriptBlock, in: file), "scriptBlock[script { const x = 1 }]")
+        // Only the file's own items are stray: the block of a stray statement holds ordinary statements.
+        t.equal(deskParse("Row {\n    Text(\"A\")\n    if a { Text(\"B\") }\n}\n{ Text(\"C\") }\n").root.outline,
+                "sourceFile[strayStatement[callStmt[callee[Row] block[{ callStmt[callee[Text] argumentClause[( argument[stringLiteral[\" stringText[A] \"]] )]] ifStmt[if identifierExpr[a] block[{ callStmt[callee[Text] argumentClause[( argument[stringLiteral[\" stringText[B] \"]] )]] }]] }]]] unexpected[block[{ callStmt[callee[Text] argumentClause[( argument[stringLiteral[\" stringText[C] \"]] )]] }]]]")
+        t.equal(deskParse("settings { a: 1 }").root.allNodes(.strayStatement).count, 1)
         // The header reads only literals.
         t.equal(deskParse("info { deskVersion: 1.5, requires: \"1.{x}\" }").header, FileHeader())
         t.equal(deskParse("package { deskVersion: 2 }").header.deskVersion, 2)
@@ -229,6 +233,18 @@ func runDeskParserTests(_ t: TestRunner) {
         t.equal(StringLiteralSyntax.literalValue(of: literal), "a\n{b} 😀")
         let spaced = deskParse("widget { x.every(2 s) { } }").root.firstNode(.numberLiteral)!
         t.equal(NumberLiteralSyntax(PositionedNode(node: spaced, offset: 0))?.unit?.text, "s")
+        // Slots filled by recovery: a value that is no expression (a bare hex color, indexing) still fills its slot,
+        // and a skipped `else if` chain is the else's body.
+        let broken = deskParse("widget {\n    variable x = #FF0000\n    Text(#FFF, a: list[0])\n    if #FFF { }\n"
+                               + "    for d in #FFF { }\n    y = 0xFF6B00\n    Text(\"{x, decimals: #FFF}\")\n}\n"
+                               + "info { name: #FFF }\ntranslations { \"de\" { \"A\": #FFF } }\n")
+        t.equal(deskWrapperProblems(broken), [])
+        let initializer = broken.rootNode.childNodes[0].childNodes[0].childNodes.compactMap(DeclarationSyntax.init)[0]
+            .initializer
+        t.equal(initializer.node.kind, .unexpected)
+        t.equal(initializer.node.node.trimmedText, "#FF0000")
+        let deepElse = deskParse("widget {\n    if a { }" + String(repeating: " else if a { }", count: 80) + "\n}\n")
+        t.equal(deskWrapperProblems(deepElse), [])
         // Every grammar slot the parser names is a display-name id.
         t.check(SyntaxSlot.allCases.allSatisfy { $0.rawValue.hasPrefix("slot:") })
     }
