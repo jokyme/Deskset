@@ -127,23 +127,36 @@ extension Checker {
         if let axis = context.positionAxis {
             let edge: String
             if axis == "x" { edge = unit.text == "R" ? "right" : "left" } else { edge = unit.text == "R" ? "bottom" : "top" }
-            var previousName = "previous"
             var fixIts: [FixIt] = []
             var hint = DiagnosticArgument.text(LocalizedText("", ""))
+            // The previous sibling by its name, given one in the same fix-it when it has none (§4.10); with no
+            // previous sibling, the plain offset.
+            var fixed = n
+            var edits: [TextEdit] = []
             if let element = context.element, let parent = element.parent,
                let i = parent.children.firstIndex(where: { $0 === element }), i > 0 {
                 let previous = parent.children[i - 1]
                 if let name = previous.name {
-                    previousName = name
+                    fixed = "\(name).\(edge) + \(n)"
                 } else {
-                    previousName = "previous"
+                    let base = (previous.component?.name).map { $0.prefix(1).lowercased() + $0.dropFirst() } ?? "item"
+                    var name = base
+                    var k = 2
+                    while preName(named: name) != nil || decls[name] != nil || looksVariables.contains(name)
+                            || catalog.namespace(named: name) != nil || Chars.reservedWords[name] != nil || Chars.blockWords.contains(name) {
+                        name = "\(base)\(k)"
+                        k += 1
+                    }
+                    let end = range(previous.node).upperBound
+                    edits.append(edit(end..<end, ".name(\(name))"))
+                    fixed = "\(name).\(edge) + \(n)"
                 }
             }
             if let parentKind = context.element?.parent?.kind, parentKind == .row || parentKind == .column {
                 hint = hintText(.rainmeterRelativePosition, "inStack")
             }
-            let fixed = "\(previousName).\(edge) + \(n)"
-            fixIts.append(fix("rewrite", [edit(r, fixed)]))
+            edits.append(edit(r, fixed))
+            fixIts.append(fix("rewrite", edits))
             report(.rainmeterRelativePosition, r, ["text": .code(literal.token.token.text), "fixed": .code(fixed),
                                                    "hint": hint], fixIts: fixIts)
         } else {

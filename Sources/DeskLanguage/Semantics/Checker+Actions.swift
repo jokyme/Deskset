@@ -515,7 +515,15 @@ extension Checker {
             return (nil, element)
         }
         let name = token.token.name
-        guard checkOwnName(token, kind: "loop") else { return (nil, element) }
+        let loopID = NodeID(kind: .forStmt, utf8Start: textStart(forStmt.node), treeVersion: tree.version)
+        guard checkOwnName(token, kind: "loop") else {
+            // `for event in …`: still the loop variable, so `event.title` reads it; renamed with its uses (DK3015).
+            guard lastRefusedAsReserved, let pending = pendingReservedName else { return (nil, element) }
+            reservedRenames.append((pending.index, pending.declaration, pending.newName, .loopVariable(loopID)))
+            var val = element
+            val.bind = .loopVariable(name)
+            return (LoopVariable(name: name, id: loopID, forID: loopID, val: val, range: range(token), inAction: inAction), element)
+        }
         if let decl = decls[name] {
             reportNameClash(token, other: LocalizedText("a declaration", "一个声明"), otherRange: decl.nameRange)
         } else if let outer = loopStack.last(where: { $0.name == name }) {
@@ -525,7 +533,6 @@ extension Checker {
             reportNameClash(token, other: LocalizedText("an element's name", "一个元素的名字"), otherRange: pre.range)
         }
         reportHidesBuiltIn(token)
-        let loopID = NodeID(kind: .forStmt, utf8Start: textStart(forStmt.node), treeVersion: tree.version)
         symbols[NodeID(kind: .forStmt, utf8Start: range(token).lowerBound, treeVersion: tree.version)] = .loopVariable(loopID)
         var val = element
         val.bind = .loopVariable(name)

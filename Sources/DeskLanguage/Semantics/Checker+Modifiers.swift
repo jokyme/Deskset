@@ -327,6 +327,17 @@ extension Checker {
             return result
         }
 
+        // `.name(if)`: a reserved word as an element name (DK3015), not a missing value.
+        if name == "name", let clause = modifier.arguments,
+           let keywordToken = clause.node.tokens.first(where: { !$0.token.isMissing && $0.kind.isKeyword }) {
+            let r = range(keywordToken)
+            for d in tree.diagnostics where d.range.lowerBound == r.lowerBound { droppedParserDiagnostics.insert(diagnosticKey(d)) }
+            let newName = keywordToken.kind == .eventKeyword ? "item" : keywordToken.token.text + "Value"
+            report(.reservedName, r, ["name": .code(keywordToken.token.text)],
+                   fixIts: [fix(keywordToken.kind == .eventKeyword ? "renameTo" : "rename", [edit(r, newName)], ["text": .code(newName)])])
+            element?.facts.dropped.append(.modifier(nodeID))
+            return result
+        }
         // Special modifiers.
         switch name {
         case "name":

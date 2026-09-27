@@ -17,16 +17,17 @@ extension Checker {
     func checkOwnName(_ token: PositionedToken, kind: String, allowBlockWords: Bool = false, renameEverywhere: [Range<Int>] = []) -> Bool {
         let name = token.token.name
         let r = range(token)
+        lastRefusedAsReserved = false
         if token.token.isMissing { return false }
         if token.kind == .invalidIdentifier { return false }
         if token.kind.isKeyword || (!allowBlockWords && Chars.blockWords.contains(name)) {
-            var fixIts: [FixIt] = []
-            if token.kind == .eventKeyword {
-                fixIts.append(fix("renameTo", [edit(r, "item")], ["text": .code("item")]))
-            } else {
-                fixIts.append(fix("rename", [edit(r, name + "Value")]))
+            let newName = token.kind == .eventKeyword ? "item" : name + "Value"
+            let fixIts = [fix(token.kind == .eventKeyword ? "renameTo" : "rename", [edit(r, newName)], ["text": .code(newName)])]
+            if report(.reservedName, r, ["name": .code(name)], fixIts: fixIts) {
+                // The fix-it is completed with every use once they are known (`completeReservedRenames`).
+                lastRefusedAsReserved = true
+                pendingReservedName = (diagnostics.count - 1, r, newName)
             }
-            report(.reservedName, r, ["name": .code(name)], fixIts: fixIts)
             return false
         }
         if token.token.isUpperName {
@@ -109,7 +110,19 @@ extension Checker {
             let token = decl.name
             guard !token.token.isMissing else { continue }
             let name = token.token.name
-            guard checkOwnName(token, kind: "declaration") else { continue }
+            if !checkOwnName(token, kind: "declaration") {
+                // A reserved or block word is still declared, so its uses resolve to it and not to a built-in
+                // (no cascade), and its rename fix-it renames them too.
+                guard lastRefusedAsReserved, decls[name] == nil, let pending = pendingReservedName else { continue }
+                let d = Decl(name: name, keyword: decl.keyword.token.text.lowercased(), node: statement, nameRange: range(token),
+                             id: id(statement), index: declOrder.count)
+                d.used = true   // one diagnostic for the name: no DK3020 besides DK3015
+                decls[name] = d
+                declOrder.append(d)
+                symbols[NodeID(kind: .declaration, utf8Start: range(token).lowerBound, treeVersion: tree.version)] = .declaration(d.id)
+                reservedRenames.append((pending.index, pending.declaration, pending.newName, .declaration(d.id)))
+                continue
+            }
             if let other = decls[name] {
                 reportNameClash(token, other: LocalizedText("another declaration", "另一个声明"), otherRange: other.nameRange)
                 continue
@@ -329,7 +342,10 @@ extension Checker {
         let nodeID = id(node)
         if token.token.isMissing { return .error }
         if token.kind == .invalidIdentifier { return .error }
-        if token.kind == .eventKeyword { return resolveEvent(node, context) }
+        // `event` is the pointer event's value, unless a loop variable or declaration took the word (DK3015).
+        if token.kind == .eventKeyword, !loopStack.contains(where: { $0.name == "event" }), decls["event"] == nil {
+            return resolveEvent(node, context)
+        }
         if token.token.flags.contains(.keywordCaseVariant) {
             // `If`, `Event`, `True` used as a value (§1.5). The parser reports the spellings it reads as keywords;
             // the rest are reported here: DK3013 when the keyword is itself a value (`event`, `true`, `false`),

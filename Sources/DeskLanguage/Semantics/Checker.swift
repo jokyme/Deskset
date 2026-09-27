@@ -356,6 +356,13 @@ final class Checker {
     var stateStyleCalls: [(String, CandidateCondition, PositionedNode, ElementNode?)] = []
     var duplicateDropped = Set<Int>()
     var trailingActionBlocks = Set<Int>()
+    /// DK3015 diagnostics whose rename fix-it is completed at the end, when every use of the name is known:
+    /// the diagnostic's index, the declaration's range, the new name and the symbol the uses resolve to.
+    var reservedRenames: [(index: Int, declaration: Range<Int>, newName: String, target: Symbol)] = []
+    /// Set by `checkOwnName` when it refused a reserved or block word (the name is still registered so that its
+    /// uses resolve to it and are renamed with it).
+    var lastRefusedAsReserved = false
+    var pendingReservedName: (index: Int, declaration: Range<Int>, newName: String)?
     /// Diagnostics left to the folder check (see `CheckedFile.folderPending`).
     var folderPending: [Diagnostic] = []
     /// Names the DK7016 fix-its have declared so far (each fix-it gets its own).
@@ -372,6 +379,20 @@ final class Checker {
         self.lines = tree.lines
     }
 
+    /// Completes the rename fix-its of DK3015: the declaration and every use that resolved to it (§1.5, §9.4).
+    func completeReservedRenames() {
+        for pending in reservedRenames where pending.index < diagnostics.count {
+            var ranges: Set<Range<Int>> = [pending.declaration]
+            let length = pending.declaration.count
+            for (use, symbol) in symbols where symbol == pending.target {
+                ranges.insert(use.utf8Start..<(use.utf8Start + length))
+            }
+            let edits = ranges.sorted { $0.lowerBound < $1.lowerBound }.map { edit($0, pending.newName) }
+            let title = pending.newName == "item" ? "renameTo" : "rename"
+            diagnostics[pending.index].fixIts = [fix(title, edits, ["text": .code(pending.newName)])]
+        }
+    }
+
     func run() -> CheckedFile {
         var root: NodeID?
         let versionOK = checkDeskVersion()
@@ -381,6 +402,7 @@ final class Checker {
                 report(.fileTooLarge, catalog.limits.maximumFileBytes..<size)
             }
             checkStructure()
+            completeReservedRenames()
             enrichParserDiagnostics()
             root = rootElements.count == 1 ? rootElements[0].id : nil
             finish()

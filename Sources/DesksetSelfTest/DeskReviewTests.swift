@@ -696,4 +696,28 @@ func runDeskReviewTests(_ t: TestRunner) {
             }
         }
     }
+
+    t.suite("Desk: review — relative positions and reserved names (findings 19, 20, 21)") {
+        let relative = deskCheck("info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"A\").position(x: 4)\n        Text(\"B\").position(x: 10, y: 2r)\n    }\n}")
+        let named = deskApplyFix(relative, "DK9309")
+        t.equal(named, "info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"A\").position(x: 4).name(text)\n        Text(\"B\").position(x: 10, y: text.top + 2)\n    }\n}")
+        t.equal(named.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let existing = deskCheck("info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"A\").name(title).position(x: 4)\n        Text(\"B\").position(x: 10, y: 2R)\n    }\n}")
+        t.equal(deskApplyFix(existing, "DK9309"), "info { name: \"T\" }\nwidget {\n    Freeform {\n        Text(\"A\").name(title).position(x: 4)\n        Text(\"B\").position(x: 10, y: title.bottom + 2)\n    }\n}")
+        for (code, fixed) in [
+            ("widget { Column { for event in calendar.events(days: 3) { Text(event.title) } } }",
+             "widget { Column { for item in calendar.events(days: 3) { Text(item.title) } } }"),
+            ("widget {\n    variable widget = 0\n    Text(\"{widget}\")\n}", "widget {\n    variable widgetValue = 0\n    Text(\"{widgetValue}\")\n}"),
+            ("widget {\n    variable style = 0\n    Text(\"{style}\")\n}", "widget {\n    variable styleValue = 0\n    Text(\"{styleValue}\")\n}"),
+            ("widget {\n    variable options = 3\n    Text(\"{options}\")\n}", "widget {\n    variable optionsValue = 3\n    Text(\"{optionsValue}\")\n}"),
+            ("widget { Column { Text(\"A\").name(if) } }", "widget { Column { Text(\"A\").name(ifValue) } }"),
+        ] {
+            let info = code.contains("calendar") ? "info { name: \"T\", permissions: [.calendar] }\n" : "info { name: \"T\" }\n"
+            let checked = deskCheck(info + code)
+            t.equal(checked.diagnostics.map(\.id.rawValue), ["DK3015"], code)
+            let applied = deskApplyFix(checked, "DK3015")
+            t.equal(applied, info + fixed, code)
+            t.equal(applied.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [], "\(code) after the fix")
+        }
+    }
 }
