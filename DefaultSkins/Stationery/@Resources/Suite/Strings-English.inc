@@ -238,6 +238,9 @@ MenuPlayerMusic=Player: Music
 MenuPlayerSpotify=Player: Spotify
 MenuOpenPlayerMusic=Open Music
 MenuOpenPlayerSpotify=Open Spotify
+; the player's name, where a widget names it
+PlayerNameMusic=Music
+PlayerNameSpotify=Spotify
 
 ; ---------------------------------------------------------------- Turntable
 TurntableMenuVinyl1=Record Color: From the Cover
@@ -257,3 +260,27 @@ TurntableTipPrevious=Previous Track
 TurntableTipNext=Next Track
 TurntableTipSeek=Play from [MeasureSeekMin:0]:[MeasureSeekSec]
 TurntableTipTrack=[MeasureLastTitle] — [MeasureLastArtist]
+
+; ---------------------------------------------------------------- Studio VU
+StudioMenuFaceAuto=Face: Follow Appearance
+StudioMenuFaceIvory=Face: Always Ivory
+StudioMenuFaceAmber=Face: Always Amber
+StudioMenuSensNormal=Needle Sensitivity: Normal
+StudioMenuSensHigh=Needle Sensitivity: High
+StudioMenuSensLow=Needle Sensitivity: Low
+StudioMenuSpeedVU=Needle Speed: VU
+StudioMenuSpeedSlow=Needle Speed: Slow
+StudioMenuPeak1=Peak LED: −1 dBFS
+StudioMenuPeak3=Peak LED: −3 dBFS
+StudioMenuPeak6=Peak LED: −6 dBFS
+StudioPeakLabel=PEAK
+StudioNotPlaying=Not Playing
+StudioTipLeft=Left channel
+StudioTipRight=Right channel
+StudioTipLevelL=[MeasureVUL:1] VU · peak [MeasurePeakDbL:1] dBFS
+StudioTipLevelR=[MeasureVUR:1] VU · peak [MeasurePeakDbR:1] dBFS
+StudioTipPlay=Play
+StudioTipPause=Pause
+StudioTipPrevious=Previous Track
+StudioTipNext=Next Track
+StudioTipTrack=[MeasurePlayer] — [MeasureArtist]

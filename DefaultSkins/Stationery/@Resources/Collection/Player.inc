@@ -10,3 +10,5 @@ MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Var
 PlayerNextMusic=Spotify
 PlayerNextSpotify=Music
 MenuOpenPlayerTitle=[#MenuOpenPlayer[#Player]]
+; the preferred player's name ("Music", "Spotify")
+PlayerDisplayName=[#PlayerName[#Player]]

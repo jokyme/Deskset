@@ -220,6 +220,9 @@ MenuPlayerMusic=播放器：音乐
 MenuPlayerSpotify=播放器：Spotify
 MenuOpenPlayerMusic=打开音乐
 MenuOpenPlayerSpotify=打开 Spotify
+; the player's name, where a widget names it
+PlayerNameMusic=音乐
+PlayerNameSpotify=Spotify
 
 ; ---------------------------------------------------------------- Turntable
 TurntableMenuVinyl1=唱片颜色：取自封面
@@ -239,3 +242,27 @@ TurntableTipPrevious=上一首
 TurntableTipNext=下一首
 TurntableTipSeek=从 [MeasureSeekMin:0]:[MeasureSeekSec] 开始播放
 TurntableTipTrack=[MeasureLastTitle] — [MeasureLastArtist]
+
+; ---------------------------------------------------------------- Studio VU
+StudioMenuFaceAuto=表盘：跟随外观
+StudioMenuFaceIvory=表盘：始终象牙白
+StudioMenuFaceAmber=表盘：始终琥珀色
+StudioMenuSensNormal=指针灵敏度：标准
+StudioMenuSensHigh=指针灵敏度：高
+StudioMenuSensLow=指针灵敏度：低
+StudioMenuSpeedVU=指针速度：VU
+StudioMenuSpeedSlow=指针速度：慢
+StudioMenuPeak1=峰值灯：−1 dBFS
+StudioMenuPeak3=峰值灯：−3 dBFS
+StudioMenuPeak6=峰值灯：−6 dBFS
+StudioPeakLabel=PEAK
+StudioNotPlaying=未在播放
+StudioTipLeft=左声道
+StudioTipRight=右声道
+StudioTipLevelL=[MeasureVUL:1] VU · 峰值 [MeasurePeakDbL:1] dBFS
+StudioTipLevelR=[MeasureVUR:1] VU · 峰值 [MeasurePeakDbR:1] dBFS
+StudioTipPlay=播放
+StudioTipPause=暂停
+StudioTipPrevious=上一首
+StudioTipNext=下一首
+StudioTipTrack=[MeasurePlayer] — [MeasureArtist]

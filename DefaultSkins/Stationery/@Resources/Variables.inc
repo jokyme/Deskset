@@ -71,3 +71,13 @@ TurntableVinyl=1
 TurntableRest=1Min
 ; A click on the grooves drops the needle there: 1 on, 0 off (every click on the record plays or pauses)
 TurntableSeek=1
+
+; ---------------------------------------------------------------- Studio VU
+; The meters' faces: Auto (ivory in the Light look, amber in the Dark), Ivory or Amber
+StudioFace=Auto
+; Needle sensitivity: Normal (0 VU at −12 dBFS), High (−18, for quiet recordings) or Low (−8, for loud masters)
+StudioSens=Normal
+; Needle speed: VU (about 300 ms) or Slow (about 750 ms, calmer)
+StudioSpeed=VU
+; The PEAK lamps light at −1, −3 or −6 dBFS
+StudioPeak=1
