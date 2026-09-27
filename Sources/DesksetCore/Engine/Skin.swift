@@ -701,6 +701,7 @@ public final class Skin {
         burstWork += 1
         m.readOptionsIfNeeded()
         m.updateMeter()
+        m.noteDrawChange()
         if !m.onUpdateAction.isEmpty { execute(m.onUpdateAction, from: m) }
     }
 

@@ -128,6 +128,7 @@ public final class ButtonMeter: Meter {
     private func setState(_ new: State) {
         guard new != state else { return }
         state = new
+        noteDrawChange()
         skin.redraw()
     }
 }

@@ -13,7 +13,13 @@ enum SkinRenderer {
     ///
     /// Only the skin's owner may draw it: drawing uses and fills the skin's `SkinRenderContext`.
     static func draw(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing = .placeholder(dark: nil)) {
+        drawBase(skin, in: ctx, glass: glass)
         let context = SkinRenderContext.of(skin)
+        for meter in topLevelMeters(skin) { drawTopLevel(meter, of: skin, in: ctx, context) }
+    }
+
+    /// What `draw` puts under the meters: the glass (or where it catches the mouse) and the skin's background.
+    static func drawBase(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing) {
         switch glass {
         case .window:
             GlassPlaceholder.drawHitArea(skin.glassRegions, in: ctx)
@@ -24,12 +30,24 @@ enum SkinRenderer {
             break
         }
         drawBackground(skin, ctx)
-        for meter in skin.meters where !meter.hidden && meter.container == nil {
-            if meter.isContainer {
-                drawContainer(meter, content: skin.meters.filter { $0.container === meter }, ctx, context)
-            } else {
-                drawMeter(meter, ctx, context)
-            }
+    }
+
+    /// The meters `draw` draws itself, in order: the visible ones outside containers (a container draws its content).
+    static func topLevelMeters(_ skin: Skin) -> [Meter] {
+        skin.meters.filter { !$0.hidden && $0.container == nil }
+    }
+
+    /// The content of a container (every meter whose Container it is, hidden or not).
+    static func content(of container: Meter, in skin: Skin) -> [Meter] {
+        skin.meters.filter { $0.container === container }
+    }
+
+    /// One of `topLevelMeters`, as `draw` draws it.
+    static func drawTopLevel(_ meter: Meter, of skin: Skin, in ctx: CGContext, _ context: SkinRenderContext) {
+        if meter.isContainer {
+            drawContainer(meter, content: content(of: meter, in: skin), ctx, context)
+        } else {
+            drawMeter(meter, ctx, context)
         }
     }
 

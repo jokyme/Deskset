@@ -175,6 +175,7 @@ public final class BitmapMeter: Meter, PluginLifecycle {
             scheduleTransitionTick()
         }
         refreshDisplayedFrames()
+        noteDrawChange()
         skin.redraw()
     }
 

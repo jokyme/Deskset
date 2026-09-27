@@ -75,6 +75,25 @@ final class SkinView: NSView, NSViewToolTipOwner {
         SkinRenderer.draw(skin, in: ctx, glass: .window)
     }
 
+    /// The skin's picture, drawn into a bitmap of its own (`SkinBitmapDrawing`, which says why) rather than through
+    /// `draw(_:)`, which stays for snapshots (`cacheDisplay`).
+    let drawing = SkinBitmapDrawing()
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        guard let skin = controller?.skin else {
+            layer.contents = nil
+            return
+        }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let space = window?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
+        guard let space else { return }
+        layer.contentsScale = scale
+        layer.contents = drawing.picture(of: skin, size: bounds.size, scale: scale, space: space,
+                                         appearance: effectiveAppearance.name.rawValue)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }

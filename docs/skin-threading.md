@@ -58,11 +58,17 @@ moves to one thread per skin. The estimate is 26–38 engineer-days without the 
 3. Actions run synchronously as they come.
 4. The engine calls `SkinHost.skinNeedsDisplay`. `SkinController` resizes the window, sets `needsDisplay` and
    re-registers tooltip rectangles.
-5. On the next display cycle AppKit calls `SkinView.draw(_:)` → `SkinRenderer.draw(skin, in:)`.
-6. On macOS 26 the context handed to `draw(_:)` is a *recording* context (a `CGContext` with width 0 and no pixel
-   buffer; the layer's contents are `NSViewBackingLayerContents`). The drawing is recorded in Deskset and rasterized
-   by the window server. That matters for §7: moving drawing to CPU bitmaps would move rasterizing work into
-   Deskset.
+5. On the next display cycle AppKit calls `SkinView.updateLayer()`, which draws the skin with
+   `SkinRenderer` into a bitmap of the view's own (`SkinBitmapDrawing`) and sets it as the layer's `contents`.
+6. Until 2026-09-27 AppKit called `SkinView.draw(_:)` instead. On macOS 26 the context handed to `draw(_:)` is a
+   *recording* context (a `CGContext` with width 0 and no pixel buffer; the layer's contents are
+   `NSViewBackingLayerContents`): the drawing was recorded in Deskset and rasterized through Core Animation's
+   accelerated path. Measured on the release build, that path held 110–150 MB of graphics memory per process as soon
+   as a visible skin redrew every second (the first-run four: 187 MB; drawn into bitmaps: 44 MB, for 0.55 % CPU
+   instead of 0.32 %). Rasterizing in Deskset costs more CPU for skins that redraw 30 times a second, so for those
+   the view keeps pictures of the runs of meters that did not change since the previous frame (`Meter.drawGeneration`)
+   and draws only the ones that did (Studio VU playing: 11.9 % → 2.9 % of a core; Spectrum 6.7 % → 4.0 %). For §7 this
+   means frames are now bitmaps, as in options C and D.
 
 The main thread also runs:
 - mouse events, which call `Skin.mouseEvent` synchronously and use its result;
@@ -500,7 +506,7 @@ nothing.
 
 | Option | How | Frames while main is busy | Cost |
 |---|---|---|---|
-| **A. Draw on main** (today) | Main timer, `needsDisplay`, `draw(_:)` records; the window server rasterizes | stop | lowest in-process cost |
+| **A. Draw on main** (until 2026-09-27) | Main timer, `needsDisplay`, `draw(_:)` records; the window server rasterizes | stop | lowest in-process CPU, but 110–150 MB of graphics memory (§2.1) |
 | **B. Hop to main** | The skin updates and draws into a `CGImage` on its thread; `DispatchQueue.main.async { layer.contents = image }` | produced but **not shown** | a new bitmap per frame, plus the main thread's time |
 | **C. Commit a `CGImage` off main** | As B, but the skin's thread sets `contents` in an explicit `CATransaction` and flushes | continue | a new bitmap and a copy per frame (~0.6 ms) |
 | **D. Commit an IOSurface off main** | The skin draws into one of a few reused IOSurfaces (skipping any `isInUse`), then commits it | continue | no allocation; commit ~45 µs |

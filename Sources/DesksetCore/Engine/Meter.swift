@@ -40,13 +40,25 @@ open class Meter: SkinSection {
 
     /// Final rectangle (padding included) in skin coordinates, computed by `layout(after:)`. This is the "real"
     /// box that `[Meter:X]`, `[Meter:W]`… report.
-    public internal(set) var frame = SkinRect()
+    public internal(set) var frame = SkinRect() {
+        didSet { if frame != oldValue { noteDrawChange() } }
+    }
     /// The resolved X / Y position before alignment (skin coordinates): the anchor of an aligned String
     /// (`StringAlign`) or Bitmap (`BitmapAlign`) meter, otherwise the frame's top-left corner. The next meter's
     /// `r` / `R` positions are relative to it (see the type documentation).
     public internal(set) var anchorX = 0.0
     public internal(set) var anchorY = 0.0
-    public internal(set) var hidden = false
+    public internal(set) var hidden = false {
+        didSet { if hidden != oldValue { noteDrawChange() } }
+    }
+    /// Counts the changes that may alter how the meter is drawn: an update, a read of its options, a new frame,
+    /// hidden or shown, and a redraw it asks for itself (a Button's state, a Bitmap's transition). A picture of the
+    /// meter drawn at one count stays right while the count stays (the app keeps pictures of the meters that did
+    /// not change for skins that redraw often). Never decreases.
+    public private(set) var drawGeneration = 0
+
+    /// Something the meter draws may have changed (see `drawGeneration`).
+    public func noteDrawChange() { drawGeneration &+= 1 }
     public internal(set) var solidColor = RGBA.clear
     public internal(set) var solidColor2: RGBA?
     public internal(set) var gradientAngle = 0.0
@@ -196,6 +208,7 @@ open class Meter: SkinSection {
     // MARK: Options
 
     open override func readOptions() {
+        noteDrawChange()
         // MeterStyle is read from the meter itself (and !SetOption), never from styles.
         let styleOption: String
         if let override = overrides["meterstyle"] {

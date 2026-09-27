@@ -49,6 +49,7 @@ enum AppSelfTest {
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
