@@ -35,3 +35,22 @@ DigitGroup=,
 ; ---------------------------------------------------------------- Clock
 ; The small clock's bottom line: Sun (the next sunrise or sunset), Week (week and day of the year) or None
 ClockBottomLine=Sun
+
+; ---------------------------------------------------------------- Analog Clock
+; The face: DayNight (white by day and dark by night, like the World Clock's dials) or Glass (the look's ink on the card)
+AnalogFace=DayNight
+; Numerals: All, Quarters (12, 3, 6 and 9, with ticks for the rest) or Ticks (no numerals)
+AnalogNumerals=All
+; The seconds hand and the date window under 12: 1 shown, 0 hidden
+ShowAnalogSeconds=1
+ShowAnalogDate=1
+
+; ---------------------------------------------------------------- Calendar
+; The medium calendar's week numbers (ISO, in a first column) and its moon under the day: 1 shown, 0 hidden
+CalendarShowWeekNumbers=0
+CalendarShowMoon=1
+
+; ---------------------------------------------------------------- World Clock
+; The medium clock's seconds hands: 1 shown, 0 hidden. The cities themselves are kept with what you type, in
+; Stationery.inc (right-click › Edit Cities…)
+ShowWorldClockSeconds=0
