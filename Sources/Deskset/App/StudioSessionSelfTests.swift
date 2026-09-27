@@ -603,6 +603,28 @@ enum StudioSessionSelfTests {
     }
 
     static func failureTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: typed code for a file deleted meanwhile is saved as a new file") {
+            let included = ini.replacingOccurrences(of: "[Variables]\n", with: "[Variables]\n@Include=Styles.inc\n")
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(
+                t, "Deleted", included, files: ["Deleted/Styles.inc": "[Variables]\nSize=12\n"]) else { return }
+            let inc = url.deletingLastPathComponent().appendingPathComponent("Styles.inc")
+            editor.setMode(.split)
+            _ = editor.revealInCode(file: inc, line: 1)
+            t.equal(editor.codeView.currentFile?.lastPathComponent, "Styles.inc", "shown in the code pane")
+            t.check(EditorWindowSelfTests.type(editor, "4", after: "Size=12", offset: 7), "typed")
+            // Deleted elsewhere (a git checkout, the Trash) while the typing waits for its commit.
+            try FileManager.default.removeItem(at: inc)
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
+            editor.saveSkinCode(nil)
+            t.check(!editor.toastText.hasPrefix("Could not save"), editor.toastText)
+            t.equal(read(inc), "[Variables]\nSize=124\n", "created again with the typed code")
+            t.check(!editor.codeView.hasUncommittedChanges, "nothing left to save")
+            settle()
+            editor.window?.undoManager?.undo()
+            t.equal(try? Data(contentsOf: inc), Data(), "undo leaves it empty, as the editor always wrote it back")
+            editor.window?.close()
+        }
+
         t.suite("App: studio session: a step that cannot be written changes nothing") {
             guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "Locked", ini) else { return }
             guard let session = editor.session, let studio = editor.skin else { return t.check(false, "loaded") }
