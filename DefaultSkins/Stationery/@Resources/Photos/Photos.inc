@@ -207,6 +207,17 @@ UpdateDivider=-1
 Group=Menu
 
 ; ---------------------------------------------------------------- the photo's names
+[MeasurePhotoFile]
+; the photo's path for MeterPhoto; empty while the photo measure has none (turned off until a folder is chosen, it
+; has only its number, which the Image meter would take for a file name)
+Measure=String
+String=[MeasurePhoto]
+DynamicVariables=1
+RegExpSubstitute=1
+Substitute="^[^/]*$":""
+UpdateDivider=-1
+Group=Caption
+
 [MeasureCaption]
 ; the caption: the file name without its extension; a camera-style name (IMG_4821, DSC_0042, PXL_…) gives way to
 ; its folder's name
@@ -382,7 +393,7 @@ Group=Photo
 ; the photo, filling the card (cropped in the middle), turned upright, cut to the card's shape, in full colour in every
 ; look; decoded at the size it is drawn (MacDecodeSize), not at the camera's. A click shows the next one
 Meter=Image
-MeasureName=MeasurePhoto
+MeasureName=MeasurePhotoFile
 X=0
 Y=0
 W=#CardW#
