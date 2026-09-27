@@ -267,12 +267,15 @@ extension Checker {
     func reportForeignName(_ row: ForeignSpec, at r: Range<Int>, name: String, call: CallStmtSyntax?,
                            callArguments: ArgumentClauseSyntax? = nil) {
         var desk = row.deskText
+        // A row written with its argument (`showOrHide({0})`) replaces the whole call, not just the name.
+        var replaced = r
         if desk.contains("{0}") {
             let first = call?.arguments?.arguments.first.map { text($0.value.node) }
                 ?? callArguments?.arguments.first.map { text($0.value.node) } ?? "…"
             desk = desk.replacingOccurrences(of: "{0}", with: first)
+            if let clause = call?.arguments ?? callArguments { replaced = r.lowerBound..<range(clause.node).upperBound }
         }
-        let fixIts: [FixIt] = row.exact && !desk.contains("…") && !desk.contains(" ") ? [fix("replace", [edit(r, desk)])] : []
+        let fixIts: [FixIt] = row.exact && !desk.contains("…") && !desk.contains(" ") ? [fix("replace", [edit(replaced, desk)])] : []
         switch row.diagnostic {
         case .swiftUIComponent:
             report(.swiftUIComponent, r, ["desk": .code(desk)], fixIts: fixIts)

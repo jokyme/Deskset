@@ -541,4 +541,17 @@ func runDeskReviewTests(_ t: TestRunner) {
         t.equal(computed.diagnostics.map(\.id.rawValue), ["DK4044"])
         t.equal(computed.diagnostics.first?.fixIts.count, 0)
     }
+
+    t.suite("Desk: review — toggle (finding 8)") {
+        let element = deskCheck("info { name: \"T\" }\nwidget { Column { Text(\"A\").name(details); Text(\"B\").onClick { toggle(details) } } }")
+        t.equal(element.diagnostics.map(\.id.rawValue), ["DK9108"])
+        let fixed = deskApplyFix(element, "DK9108")
+        t.equal(fixed, "info { name: \"T\" }\nwidget { Column { Text(\"A\").name(details); Text(\"B\").onClick { showOrHide(details) } } }")
+        t.equal(fixed.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+        let flag = deskCheck("info { name: \"T\" }\nwidget {\n    variable isOpen = false\n    Text(\"{isOpen}\").onClick { toggle(isOpen) }\n}")
+        t.equal(flag.diagnostics.map(\.id.rawValue), ["DK4001"])
+        let flipped = deskApplyFix(flag, "DK4001")
+        t.equal(flipped, "info { name: \"T\" }\nwidget {\n    variable isOpen = false\n    Text(\"{isOpen}\").onClick { isOpen = not isOpen }\n}")
+        t.equal(flipped.map { deskCheck($0).diagnostics.map(\.id.rawValue) }, [])
+    }
 }

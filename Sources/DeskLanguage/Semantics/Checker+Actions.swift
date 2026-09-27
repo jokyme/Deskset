@@ -395,6 +395,19 @@ extension Checker {
                 return
             }
         }
+        // `toggle(x)` (D113): `showOrHide(x)` for an element, `x = not x` for a yes/no value (§4.16, DK4001).
+        if path == ["toggle"], decls["toggle"] == nil, let argument = call.arguments?.arguments.first,
+           call.arguments?.arguments.count == 1, argument.label == nil {
+            let value = infer(argument.value.node, context, expected: nil)
+            if value.type == .bool, argument.value.node.kind == .identifierExpr {
+                let variable = text(argument.value.node)
+                let fixed = "\(variable) = not \(variable)"
+                report(.typeMismatch, range(argument.value.node), ["what": .code("toggle"), "expected": .type(.elementName),
+                                                                   "actual": .type(.bool)],
+                       fixIts: [fix("convert", [edit(range(statement), fixed)], ["text": .code(fixed)])])
+                return
+            }
+        }
         // A value used as a statement, or something unknown.
         if path.count == 1, decls[path[0]] != nil || loopStack.contains(where: { $0.name == path[0] }) {
             reportValueAsStatement(statement, function: nil)
