@@ -26,8 +26,10 @@ WeatherStaleUpdated=[MeasureWxUpdated] 更新
 WeatherCredit=数据来自 MET Norway
 WeatherCreditTip=打开 api.met.no（挪威气象局，CC BY 4.0）
 WeatherHourFormat24=%H
-; 12-hour labels leave out 上午/下午: "下午12时" is wider than a column (the tooltips give the full time)
-WeatherHourFormat12=%#I时
+; with the 12-hour clock the hour labels are still 24-hour, as Chinese weather apps write them ("14时"): a 12-hour
+; label needs 上午/下午 to be read ("2时" is 2 a.m.), and "下午12时" is wider than a column (the tooltips give the
+; full time)
+WeatherHourFormat12=%#H时
 WeatherRainPre="降水概率 "
 WeatherRainPost=
 WeatherTo=" 至 "
