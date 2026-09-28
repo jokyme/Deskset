@@ -31,15 +31,24 @@ public struct DeskRange: Sendable, Hashable, CustomStringConvertible {
         self.end = max(start, end)
     }
 
+    // `start` and `end` can be set one at a time, so a range may be reversed (or hold offsets no text has) when it
+    // is read: it then reads as empty at `start`, and nothing below overflows or traps.
+
     /// The UTF-16 offsets.
-    public var utf16: Range<Int> { start.offset..<end.offset }
-    public var nsRange: NSRange { NSRange(location: start.offset, length: end.offset - start.offset) }
-    public var length: Int { end.offset - start.offset }
-    public var isEmpty: Bool { start.offset == end.offset }
+    public var utf16: Range<Int> { start.offset..<max(start.offset, end.offset) }
+    /// The range as a text view takes it.
+    public var nsRange: NSRange { NSRange(location: start.offset, length: length) }
+    /// The number of UTF-16 units (0 for a reversed range).
+    public var length: Int {
+        guard end.offset > start.offset else { return 0 }
+        let (units, overflow) = end.offset.subtractingReportingOverflow(start.offset)
+        return overflow ? Int.max : units
+    }
+    public var isEmpty: Bool { end.offset <= start.offset }
 
     /// Whether `offset` is inside; an empty range holds only its own position.
     public func contains(_ offset: Int) -> Bool {
-        isEmpty ? offset == start.offset : (start.offset..<end.offset).contains(offset)
+        isEmpty ? offset == start.offset : start.offset <= offset && offset < end.offset
     }
 
     /// Whether the two ranges share a position or touch.
@@ -73,10 +82,11 @@ extension DeskTextIndex {
         self.range(utf16: utf16Range(ofUTF8: range))
     }
 
-    /// Nil for `NSNotFound`.
+    /// A text view's range, clamped to the text; nil for `NSNotFound` or a negative length.
     public func range(_ nsRange: NSRange) -> DeskRange? {
         guard nsRange.location != NSNotFound, nsRange.length >= 0 else { return nil }
-        return range(utf16: nsRange.location..<(nsRange.location + nsRange.length))
+        let (end, overflow) = nsRange.location.addingReportingOverflow(nsRange.length)
+        return range(utf16: nsRange.location..<(overflow ? Int.max : end))
     }
 
     /// The UTF-8 offsets of a range (the checker's and the tree's).
@@ -109,9 +119,11 @@ public struct DeskTextChange: Sendable, Hashable {
         self.text = text
     }
 
+    /// A text view's change (`NSNotFound`: at the start; a negative length: an insertion).
     public init(nsRange: NSRange, text: String) {
         let location = nsRange.location == NSNotFound ? 0 : nsRange.location
-        self.range = location..<(location + max(0, nsRange.length))
+        let (end, overflow) = location.addingReportingOverflow(max(0, nsRange.length))
+        self.range = location..<(overflow ? Int.max : end)
         self.text = text
     }
 }
@@ -136,7 +148,7 @@ public struct DeskTextEditU16: Sendable, Hashable, CustomStringConvertible {
         if edits.isEmpty { return text }
         let string = NSMutableString(string: text)
         for edit in edits.reversed() {
-            let location = min(edit.range.start.offset, string.length)
+            let location = max(0, min(edit.range.start.offset, string.length))
             let length = min(edit.range.length, string.length - location)
             string.replaceCharacters(in: NSRange(location: location, length: length), with: edit.newText)
         }

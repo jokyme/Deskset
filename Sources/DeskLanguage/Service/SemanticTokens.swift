@@ -197,8 +197,10 @@ extension DeskSnapshot {
     /// The semantic tokens that overlap a range of the open text (an empty range: those holding its position):
     /// the same tokens as `semanticTokens()` has there, classifying only the blocks the range touches.
     public func semanticTokens(in range: DeskRange) -> DeskSemanticTokens {
-        let lower = range.start.offset
-        let upper = max(range.end.offset, lower + 1)
+        // Offsets clamped to the text: a range no text view gives (negative, huge, reversed) never overflows.
+        let count = index.utf16Count
+        let lower = min(max(range.start.offset, 0), count)
+        let upper = max(min(max(range.end.offset, 0), count), lower + 1)
         func overlaps(_ token: DeskSemanticToken) -> Bool {
             token.range.end.offset > lower && token.range.start.offset < upper
         }
