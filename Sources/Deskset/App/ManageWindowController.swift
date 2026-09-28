@@ -1072,6 +1072,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     /// The hint under the coordinates when it shows.
     var testCoordinatesHint: String? { coordinatesHintRow?.isHidden == false ? coordinatesHint.stringValue : nil }
     var testHiddenNoticeView: NSView { hiddenNotice }
+    var testHiddenNoticeText: NSTextField { hiddenNotice.textLabel }
+    var testXField: NSTextField { xField }
+    /// Whether the window looks for skins hiding and showing themselves (only while it is on screen).
+    var testWatchesHiddenSkins: Bool { hiddenWatch != nil }
     var testShowButton: NSButton { hiddenNotice.showButton }
     /// Types coordinates into the X and Y fields and ends editing, as Return does.
     func testTypeCoordinates(x: Int, y: Int) {
