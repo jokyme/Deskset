@@ -476,6 +476,66 @@ enum ChameleonDesktopSelfTests {
             }
         }
 
+        t.suite("App: Chameleon desktop: a widget samples again when its window moves") {
+            guard let app = try AppSelfTest.makeApp(t) else { return }
+            defer { app.stopAllForTermination() }
+            let folder = t.temporaryDirectory("chameleon-live")
+            let file = folder.appendingPathComponent("halves.png")
+            try halves(file, width: 400, height: 200)
+            // The primary screen, as the skin's environment gives it, shows the halves: black left, white right.
+            let primary = NSScreen.screens.first?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+            let area = CGRect(origin: .zero, size: primary.size)
+            let skinFolder = app.skinsDirectory.appendingPathComponent("Probe", isDirectory: true)
+            try FileManager.default.createDirectory(at: skinFolder, withIntermediateDirectories: true)
+            try """
+                [Rainmeter]
+                Update=600000
+                SkinWidth=40
+                SkinHeight=40
+
+                [MeasureWall]
+                Measure=Plugin
+                Plugin=Chameleon
+                CropDesktop=Skin
+
+                [MeasureLum]
+                Measure=Plugin
+                Plugin=Chameleon
+                Parent=MeasureWall
+                Color=Luminance
+
+                [MeterBox]
+                Meter=Image
+                W=40
+                H=40
+                """.write(to: skinFolder.appendingPathComponent("Probe.ini"), atomically: true, encoding: .utf8)
+            app.rescanLibrary()
+            try withDesktops([ScreenDesktop(picture: file.path, frame: primary, area: area)]) {
+                guard let c = app.activate(config: "Probe", file: "Probe.ini") else {
+                    t.check(false, "the skin loads")
+                    return
+                }
+                let skin: Skin = c.skin
+                // Left half, near the top.
+                c.window.setFrameOrigin(NSPoint(x: primary.minX + 20, y: primary.maxY - 80))
+                guard let wall = skin.measure(named: "MeasureWall") as? ChameleonMeasure,
+                      let lum = skin.measure(named: "MeasureLum") else {
+                    t.check(false, "measures")
+                    return
+                }
+                t.check(AppSelfTest.spin(timeout: 10) { wall.followsWindow }, "it follows the widget's window")
+                t.check(AppSelfTest.spin(timeout: 10) { lum.value < 0.01 }, "over black: \(lum.value)")
+                let updates = skin.updateCount
+                // Dragged to the right half: sampled again once it stops, without an update of the skin.
+                c.window.setFrameOrigin(NSPoint(x: primary.maxX - 80, y: primary.maxY - 80))
+                t.check(AppSelfTest.spin(timeout: 10) { lum.value > 0.99 }, "over white: \(lum.value)")
+                t.equal(skin.updateCount, updates, "no skin update needed")
+                t.check(!c.window.isVisible, "never shown")
+                app.deactivate(config: "Probe")
+                t.check(AppSelfTest.spin(timeout: 5) { !wall.followsWindow }, "let go when the skin closes")
+            }
+        }
+
         t.suite("App: Chameleon desktop: moves are followed until the moves stop") {
             let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 50, height: 50), styleMask: .borderless,
                                   backing: .buffered, defer: true)

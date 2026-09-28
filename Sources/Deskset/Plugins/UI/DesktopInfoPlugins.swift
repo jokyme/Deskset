@@ -270,8 +270,9 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     private var recheck = false
     /// Why the last check did not read the desktop picture (it is kept where macOS would ask), for the log.
     private(set) var skippedProtected = false
-    /// The skin window's moves, while `CropDesktop=Skin` samples under it (main thread).
-    private var windowWatch: WindowMoveWatch?
+    /// The skin window's moves, while `CropDesktop=Skin` samples under it. The box is the measure's; what it holds is
+    /// the main thread's.
+    private let windowWatch = WindowWatchBox()
     private var watchRequested = false
     private var closed = false
 
@@ -336,9 +337,9 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
 
     func skinWillClose() {
         closed = true
-        let watch = windowWatch
-        windowWatch = nil
-        if let watch { DispatchQueue.main.async { watch.stop() } }
+        let box = windowWatch
+        let stop = { box.watch?.stop(); box.watch = nil }
+        if Thread.isMainThread { stop() } else { DispatchQueue.main.async(execute: stop) }
     }
 
     /// What one check samples: the desktop picture setting of the skin's screen or the file, and how.
@@ -498,15 +499,24 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     /// Asks the main thread to follow the skin window's moves (once), when the skin runs in the app with a window: the
     /// widget on the desktop, or the Studio's instance, which follows the desktop copy's window.
     private func watchWindowIfNeeded() {
-        guard !watchRequested, runsInApp else { return }
+        guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
         let hop = skin.hop()
         let host = skin.host
+        let box = windowWatch
         let start = { [weak self] in
-            guard let self, !self.closed, self.windowWatch == nil,
-                  let window = ChameleonMeasure.window(of: host) else { return }
-            self.windowWatch = WindowMoveWatch(window: window) {
-                hop.post { [weak self] in self?.windowSettled() }
+            guard box.watch == nil else { return }
+            guard let window = ChameleonMeasure.window(of: host) else {
+                // No window yet (the Studio's instance before its desktop copy is known): asked again at the next update.
+                hop.post { [weak self] in self?.watchRequested = false }
+                return
+            }
+            box.watch = WindowMoveWatch(window: window) { [weak self] in
+                hop.post { self?.windowSettled() }
+            }
+            // Closed meanwhile: nothing to follow.
+            hop.post { [weak self] in
+                if self?.closed != false { DispatchQueue.main.async { box.watch?.stop(); box.watch = nil } }
             }
         }
         if Thread.isMainThread { start() } else { DispatchQueue.main.async(execute: start) }
@@ -518,8 +528,8 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         refreshImage(force: true)
     }
 
-    /// Whether the skin window's moves are followed (tests).
-    var followsWindow: Bool { windowWatch != nil }
+    /// Whether the skin window's moves are followed (tests; main thread).
+    var followsWindow: Bool { windowWatch.watch != nil }
 
     /// The window a live skin is drawn in (main thread): its own, or for the Studio's instance the desktop copy's.
     static func window(of host: SkinHost?) -> NSWindow? {
@@ -545,6 +555,11 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     static func wallpaperFile(_ path: String) -> String {
         DesktopPicture.firstPicture(inFolder: path) ?? path
     }
+}
+
+/// The main thread's `WindowMoveWatch` of a measure.
+final class WindowWatchBox {
+    var watch: WindowMoveWatch?
 }
 
 /// Follows a window's moves, changes of screen and the displays' arrangement, and calls `settled` (main thread) once
