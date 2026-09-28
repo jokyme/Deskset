@@ -1046,7 +1046,7 @@ enum AudioSelfTests {
             guard let app = try AppSelfTest.makeApp(t) else { return }
             let shown = microphone()
             _ = try write(shown.id, config: "Shown", in: app.skinsDirectory)
-            let c = try SkinController(config: "Shown", file: "Meter.ini", app: app)
+            let c = try AppSelfTest.loadedWindow(app, config: "Shown", file: "Meter.ini")
             guard let parent = c.skin.measure(named: "MeasureAudio") as? AudioLevelMeasure else {
                 t.check(false, "AudioLevel parent")
                 return

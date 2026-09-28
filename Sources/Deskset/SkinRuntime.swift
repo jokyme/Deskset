@@ -11,6 +11,11 @@ import DesksetCore
 /// Every skin runs on the main executor so far (phase 2 of the design moves the desktop's skins to an engine thread
 /// later), so messages and requests run inline and in the order they always did.
 ///
+/// Its life is messages too: `.load` loads and starts the skin and reports `.started` (or `.failed`) to the main thread,
+/// which places and shows the window; `.close` runs OnCloseAction and reports `.closed`. Whoever must wait for the close
+/// (quitting, the installer) waits for the runtime (`whenClosed`, `waitUntilClosed`), which outlives its window half if
+/// need be.
+///
 /// The skin lives as long as the runtime and is let go of on its executor: when the runtime goes elsewhere (the window
 /// half that held it went on the main thread while the skin runs on a thread of its own), the skin is handed to its
 /// executor to be released there, with its measures, meters and plugins.
@@ -101,6 +106,39 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func load() throws -> LoadResult {
         try skin.load()
         return LoadResult(registeredFonts: Fonts.registerFonts(for: skin), issues: skin.issues)
+    }
+
+    /// `SkinMessage.load`: loads the skin and starts it, then tells the main thread what it needs to place and show the
+    /// window (`.started`), or that the skin could not be loaded (`.failed`: the skin counts as closed). On the executor.
+    private func start(_ order: SkinLoadOrder) {
+        let loaded: LoadResult
+        do {
+            loaded = try load()
+        } catch {
+            isClosing = true
+            isClosed = true
+            frames.stop()
+            request(.failed(String(describing: error)))
+            markClosed()
+            return
+        }
+        // A first load: the skin's Default… options seed its window settings. The main thread saves them when it hears
+        // of the start; the model has them before the first update, which may read #CURRENTCONFIGZPOS#.
+        let defaults = order.firstLoad ? skin.settings.windowDefaults : [:]
+        let state = defaults.isEmpty ? order.state : order.state.seeded(with: defaults)
+        model.settings = SkinWindowSettings(state, hidden: state.startHidden, fadedAlpha: nil)
+        // A refresh: the Calc Counter "only resets when the skin is unloaded and then loaded again".
+        if let previous = order.continuing { skin.continueCounter(at: previous.snapshot.counter) }
+        // Paused (sleep, locked screens): the first update happens, the clock waits for the resume.
+        updatesPaused = order.paused
+        skin.update()
+        startTimer()
+        // A window about to be shown never shows before its skin has drawn (a skin that starts hidden draws when shown).
+        if order.presentsWindows && !state.startHidden { frames.drawFirstFrame() }
+        let snapshot = self.snapshot
+        request(.started(SkinStartReport(size: snapshot.size, windowDefaults: defaults, hidden: model.settings.hidden,
+                                         registeredFonts: loaded.registeredFonts, issues: loaded.issues,
+                                         metadata: snapshot.metadata)))
     }
 
     // MARK: Messages
@@ -206,11 +244,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             }
         case .execute(let action, let section):
             skin.executeInput(action, from: section.flatMap { skin.section(named: $0) })
+        case .inputTextAnswered(let id, let text):
+            inputTextAnswers.removeValue(forKey: id)?(text)
         case .preview(let sections, let variables):
             if !variables.isEmpty { skin.previewVariables(variables) }
             for (section, values) in sections { skin.preview(section: section, values) }
         case .endPreview:
             skin.endPreview()
+        case .load(let order):
+            start(order)
         case .start:
             skin.update()
             startTimer()
@@ -296,12 +338,6 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func exclusive<T>(timeout: TimeInterval = SkinRuntime.defaultExclusiveTimeout, _ body: (Skin) -> T) -> T? {
         let skin: Skin = self.skin
         return skin.executor.exclusive(timeout: timeout) { body(skin) }
-    }
-
-    /// Before the first update of a refreshed skin: the Calc `Counter` goes on from the skin `previous` ran (manual:
-    /// it "only resets when the skin is unloaded and then loaded again - not when the skin is refreshed").
-    func continueCounter(from previous: SkinRuntime) {
-        _ = previous.exclusive { old in exclusive { $0.continueCounter(from: old) } }
     }
 
     // MARK: Requests
@@ -529,7 +565,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     /// Stops the clock and closes the skin: OnCloseAction runs while the skin can still handle bangs (it cannot reload
-    /// or unload itself any more).
+    /// or unload itself any more). Then the main thread hears of it (`.closed`), and whoever waits for the close.
     private func close() {
         guard !isClosing else { return }
         timer?.cancel()
@@ -539,16 +575,76 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         isClosed = true
         // The window fades out with the last frame.
         frames.stop()
+        // An InputText box still open answers nobody.
+        inputTextAnswers = [:]
+        // What the skin that replaces it goes on from (its Calc Counter), whatever thread that one runs on.
+        publishSnapshot()
+        request(.closed)
+        markClosed()
     }
+
+    // MARK: Closed
+
+    private let closedCondition = NSCondition()
+    private var hasClosed = false
+    private var closedWaiters: [() -> Void] = []
+
+    /// The skin has closed (OnCloseAction ran) or could not be loaded. Any thread.
+    var didClose: Bool {
+        closedCondition.lock()
+        defer { closedCondition.unlock() }
+        return hasClosed
+    }
+
+    /// Runs `body` on the main thread once the skin has closed or could not be loaded: at once when it has. The
+    /// runtime keeps the waiters, so they run even when the window half has gone meanwhile. Main thread.
+    func whenClosed(_ body: @escaping () -> Void) {
+        closedCondition.lock()
+        let closed = hasClosed
+        if !closed { closedWaiters.append(body) }
+        closedCondition.unlock()
+        if closed { body() }
+    }
+
+    /// Waits until the skin has closed, at most until `deadline`; true when it closed. Quitting waits with it (the
+    /// skin's thread never waits for the main thread, so it can close meanwhile).
+    func waitUntilClosed(before deadline: Date) -> Bool {
+        closedCondition.lock()
+        defer { closedCondition.unlock() }
+        while !hasClosed {
+            if !closedCondition.wait(until: deadline) { return hasClosed }
+        }
+        return true
+    }
+
+    private func markClosed() {
+        closedCondition.lock()
+        hasClosed = true
+        let waiters = closedWaiters
+        closedWaiters = []
+        closedCondition.broadcast()
+        closedCondition.unlock()
+        guard !waiters.isEmpty else { return }
+        if Thread.isMainThread {
+            waiters.forEach { $0() }
+        } else {
+            DispatchQueue.main.async { waiters.forEach { $0() } }
+        }
+    }
+
+    // MARK: Window companions
+
+    /// The InputText boxes open for the skin's measures, by id: what each measure does with the answer.
+    private var inputTextAnswers: [Int: (String?) -> Void] = [:]
+    private var lastCompanionID = 0
 
     // MARK: LiveSkinHost
 
-    /// Updates stopped by a pause (sleep, locked screens) until a resume.
+    /// Updates stopped by a pause (sleep, locked screens) until a resume: the runtime's own.
     var areUpdatesPaused: Bool { updatesPaused }
 
-    var windowScreen: NSScreen? {
-        Thread.isMainThread ? window?.screen : nil
-    }
+    /// The display the window is on, as its facts last said.
+    var windowDisplay: CGDirectDisplayID? { model.facts?.display }
 
     // MARK: SkinHost
 
@@ -729,4 +825,28 @@ enum SkinExecutePlan: Equatable {
     /// Files given as arguments to an application: `["#CONFIGEDITOR#" "#CURRENTPATH#Settings.inc"]`.
     case openFiles([URL], app: URL)
     case unsupported(String)
+}
+
+extension SkinRuntime: SkinCompanionChannel {
+    /// On the skin's executor: asked of the main thread in order with the skin's other requests.
+    func companion(_ companion: SkinCompanionRequest) {
+        request(.companion(companion))
+    }
+
+    /// Opens an InputText box over the skin's window; `answered` runs here, on the skin's executor, with what the
+    /// person typed (nil: dismissed), unless the box is cancelled or the skin closes first. On the executor.
+    func showInputText(_ settings: InputTextSettings, answered: @escaping (String?) -> Void) -> Int {
+        lastCompanionID += 1
+        let id = lastCompanionID
+        inputTextAnswers[id] = answered
+        let size = CGSize(width: skin.width.isFinite ? skin.width : 0, height: skin.height.isFinite ? skin.height : 0)
+        request(.companion(.showInputText(id: id, settings: settings, skinSize: size)))
+        return id
+    }
+
+    /// Closes the box `id` without an answer. On the executor.
+    func cancelInputText(_ id: Int) {
+        guard inputTextAnswers.removeValue(forKey: id) != nil else { return }
+        request(.companion(.cancelInputText(id: id)))
+    }
 }

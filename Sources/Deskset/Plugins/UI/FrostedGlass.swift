@@ -7,11 +7,15 @@ import DesksetCore
 //
 // On the Mac the effect is an NSVisualEffectView in a borderless child window placed exactly behind the skin window
 // (same frame, same level, ordered just below it, ignoring the mouse). A child window moves with its parent; its
-// size, level, visibility and alpha are synced on every update of the measure and whenever the skin window moves,
-// resizes, is ordered in or closes. Rounded corners also clip the skin's own content (Windows 11 rounds the whole
-// window), through the layer of the skin window's content view: it holds the skin's MacGlass and the content layer its
-// frames are shown in (`LayerContentProvider`, inside the skin's view), and a layer that masks to its rounded bounds
-// clips every layer inside it.
+// size, level, visibility and alpha follow the skin window whenever the window changes (the window's companions,
+// `SkinWindowCompanions`), moves, resizes, is ordered in or closes. Rounded corners also clip the skin's own content
+// (Windows 11 rounds the whole window), through the layer of the skin window's content view: it holds the skin's
+// MacGlass and the content layer its frames are shown in (`LayerContentProvider`, inside the skin's view), and a layer
+// that masks to its rounded bounds clips every layer inside it.
+//
+// The measure runs on the skin's executor and never touches the window: it asks the skin's runtime for the backdrop
+// with its style (`SkinCompanionRequest.frostedGlass`) when the style changes, and the window's companions on the main
+// thread show it.
 
 /// The plugin's options, parsed (pure, tested).
 struct FrostedGlassStyle: Equatable {
@@ -158,12 +162,28 @@ final class FrostedGlassMeasure: MediaUIMeasure {
     private var commandBorders: Bool?
     private var commandFocus: Bool?
     private var commandDark: Bool?
-    private weak var backdrop: FrostedGlassBackdrop?
+    /// Where the backdrop is asked for: the skin's runtime (none for a skin without a window). Taken at the first
+    /// update: the skin may be going when the measure is.
+    private weak var channel: SkinCompanionChannel?
+    private var channelTaken = false
+    /// The style the window was last asked for.
+    private(set) var sentStyle: FrostedGlassStyle?
+    /// Tells this measure's requests from those of a measure that replaced it (a refresh).
+    private let owner = FrostedGlassMeasure.nextOwner()
+
+    private static let owners = Guarded(0)
+    private static func nextOwner() -> Int {
+        owners.access { n -> Int in
+            n += 1
+            return n
+        }
+    }
 
     deinit {
-        // The skin is being refreshed or unloaded: the next skin's measure (if any) attaches again on its first
-        // update; the backdrop removes itself unless it is claimed before the next run-loop turn.
-        backdrop?.release(after: 0)
+        // The skin is being refreshed or unloaded: the backdrop goes unless the next skin's measure claims it first
+        // (a window that closes takes it away with it anyway).
+        guard sentStyle != nil else { return }
+        channel?.companion(.frostedGlass(owner: owner, style: nil))
     }
 
     override func readMeasureOptions() {
@@ -181,11 +201,16 @@ final class FrostedGlassMeasure: MediaUIMeasure {
         return style.drawsBackground ? 1 : 0
     }
 
+    /// Asks the window for the backdrop in the current style, when the style changed since it last asked. The window
+    /// keeps the backdrop in step with itself meanwhile.
     private func apply() {
-        guard let controller, !controller.isStopped else { return }
-        let b = FrostedGlassBackdrop.attach(to: controller)
-        backdrop = b
-        b.update(style)
+        if !channelTaken {
+            channelTaken = true
+            channel = skin.host as? SkinCompanionChannel
+        }
+        guard let channel, style != sentStyle else { return }
+        sentStyle = style
+        channel.companion(.frostedGlass(owner: owner, style: style))
     }
 
     override func execute(command: String) {
@@ -214,12 +239,14 @@ final class FrostedGlassMeasure: MediaUIMeasure {
     }
 }
 
-/// The effect window behind one skin window.
+/// The effect window behind one skin window (main thread).
 final class FrostedGlassBackdrop: NSObject {
-    private static var byController: [ObjectIdentifier: FrostedGlassBackdrop] = [:]
+    private static var byHost: [ObjectIdentifier: FrostedGlassBackdrop] = [:]
 
-    private weak var controller: SkinWindowController?
+    private weak var host: SkinCompanionHost?
     private weak var parent: NSWindow?
+    /// Removed: it follows no window any more.
+    private var isRemoved = false
     private let window: NSPanel
     private let effect = NSVisualEffectView()
     private let tintView = NSView()
@@ -234,8 +261,8 @@ final class FrostedGlassBackdrop: NSObject {
     var followedWindow: NSWindow? { parent }
     var effectView: NSVisualEffectView { effect }
 
-    private init(controller: SkinWindowController) {
-        self.controller = controller
+    private init(host: SkinCompanionHost) {
+        self.host = host
         window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         super.init()
@@ -263,18 +290,18 @@ final class FrostedGlassBackdrop: NSObject {
         window.contentView = content
     }
 
-    /// The backdrop of a skin controller (created on first use).
-    static func attach(to controller: SkinWindowController) -> FrostedGlassBackdrop {
-        let key = ObjectIdentifier(controller)
-        if let existing = byController[key] {
-            if existing.controller === controller {
+    /// The backdrop of a skin window (created on first use).
+    static func attach(to host: SkinCompanionHost) -> FrostedGlassBackdrop {
+        let key = ObjectIdentifier(host)
+        if let existing = byHost[key] {
+            if existing.host === host {
                 existing.releaseGeneration += 1   // claimed again: cancel a pending release
                 return existing
             }
-            existing.remove()   // a stale entry whose controller is gone (its address was reused)
+            existing.remove()   // a stale entry whose window is gone (its address was reused)
         }
-        let b = FrostedGlassBackdrop(controller: controller)
-        byController[key] = b
+        let b = FrostedGlassBackdrop(host: host)
+        byHost[key] = b
         return b
     }
 
@@ -288,8 +315,7 @@ final class FrostedGlassBackdrop: NSObject {
         }
     }
 
-    /// Called on every update of the measure: the views are only touched when the style changed (a skin with
-    /// `Update=16` would otherwise redraw a window-sized border 60 times a second).
+    /// The measure's style (asked for when it changed): the views are only touched when it differs from the one shown.
     func update(_ style: FrostedGlassStyle) {
         if !styleApplied || style != self.style {
             styleApplied = true
@@ -313,11 +339,12 @@ final class FrostedGlassBackdrop: NSObject {
 
     /// Frame, level, order, alpha and corner radius follow the skin window.
     func sync() {
-        guard let controller, !controller.isStopped else {
+        guard !isRemoved else { return }
+        guard let host, !host.isStopped else {
             remove()
             return
         }
-        let parent = controller.window
+        let parent = host.skinWindow
         if self.parent !== parent {
             detachFromParent()
             self.parent = parent
@@ -325,8 +352,8 @@ final class FrostedGlassBackdrop: NSObject {
         }
         let radius = style.effectiveRadius
         if let layer = window.contentView?.layer, layer.cornerRadius != radius { layer.cornerRadius = radius }
-        roundSkinView(controller.contentView, radius: radius)
-        let visible = parent.isVisible && controller.app.presentsWindows
+        roundSkinView(host.skinContentView, radius: radius)
+        let visible = parent.isVisible && host.showsWindows
         let wanted = visible && (style.drawsBackground || (style.borderVisible && radius > 0)
                                  || (style.bordersEnabled && !style.borders.isEmpty))
         guard wanted else {
@@ -345,6 +372,12 @@ final class FrostedGlassBackdrop: NSObject {
             parent.addChildWindow(window, ordered: .below)
         }
         if !window.isVisible { window.order(.below, relativeTo: parent.windowNumber) }
+    }
+
+    /// The skin window's alpha animates to `alpha`: the backdrop's goes with it (inside the window's animation group).
+    func animateAlpha(to alpha: CGFloat) {
+        guard !isRemoved, window.isVisible else { return }
+        window.animator().alphaValue = alpha
     }
 
     /// Rounds (and clips) the skin's own drawing like Windows 11 rounds the whole window, and its MacGlass with it
@@ -371,10 +404,10 @@ final class FrostedGlassBackdrop: NSObject {
         }
         observers.append(center.addObserver(forName: NSWindow.willCloseNotification, object: parent, queue: .main) {
             [weak self] _ in
-            // The skin window is replaced (click-through change: the controller already holds the new panel) or the
-            // skin stops: detach, then re-attach to the controller's current window on the next turn of the run
-            // loop (a stopped skin removes the backdrop instead). Measures with UpdateDivider=-1 never update again,
-            // so this cannot wait for the measure.
+            // The skin window is replaced (click-through change: the host already holds the new panel) or the skin
+            // stops: detach, then re-attach to the host's current window on the next turn of the run loop (a stopped
+            // skin removes the backdrop instead). The measure does not ask again unless its style changes, so this
+            // cannot wait for the measure.
             self?.detachFromParent()
             self?.window.orderOut(nil)
             DispatchQueue.main.async { self?.sync() }
@@ -388,7 +421,10 @@ final class FrostedGlassBackdrop: NSObject {
         parent = nil
     }
 
-    private func remove() {
+    /// Takes the backdrop away (its window closes, and the rounding of the skin's content view goes).
+    func remove() {
+        guard !isRemoved else { return }
+        isRemoved = true
         detachFromParent()
         window.orderOut(nil)
         window.close()
@@ -397,17 +433,17 @@ final class FrostedGlassBackdrop: NSObject {
             view.layer?.masksToBounds = false
         }
         roundedView = nil
-        if let controller {
-            FrostedGlassBackdrop.byController[ObjectIdentifier(controller)] = nil
+        if let host, FrostedGlassBackdrop.byHost[ObjectIdentifier(host)] === self {
+            FrostedGlassBackdrop.byHost[ObjectIdentifier(host)] = nil
         } else {
-            FrostedGlassBackdrop.byController = FrostedGlassBackdrop.byController.filter { $0.value !== self }
+            FrostedGlassBackdrop.byHost = FrostedGlassBackdrop.byHost.filter { $0.value !== self }
         }
     }
 
     /// Backdrops currently alive (tests).
-    static var count: Int { byController.count }
-    static func backdrop(for controller: SkinWindowController) -> FrostedGlassBackdrop? {
-        byController[ObjectIdentifier(controller)]
+    static var count: Int { byHost.count }
+    static func backdrop(for host: SkinCompanionHost) -> FrostedGlassBackdrop? {
+        byHost[ObjectIdentifier(host)]
     }
 }
 

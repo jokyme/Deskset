@@ -59,7 +59,11 @@ enum SkinMessage {
 
     // MARK: Life
 
-    /// The first update, then the update clock.
+    /// Loads the skin and starts it (`SkinRuntime.start(_:)`): its fonts, the window defaults of a first load, the
+    /// counter of the skin it replaces, the first update, the update clock and, when the window is to be shown, the
+    /// first frame. The runtime then reports `.started` or `.failed`.
+    case load(SkinLoadOrder)
+    /// The first update, then the update clock (a skin loaded at once: `SkinWindowController.start(fadeIn:)`).
     case start
     /// An update now (`!UpdateGroup`), with the hops of the bang that asked for it.
     case update(hops: Int)
@@ -75,8 +79,14 @@ enum SkinMessage {
     case fontsChanged
     /// The appearance or a regional setting changed (`Skin.appearanceDidChange`).
     case appearanceChanged
-    /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction). The window fades out when `fadeOut`.
+    /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction), then reports `.closed`. The window
+    /// fades out when `fadeOut`.
     case close(fadeOut: Bool)
+
+    // MARK: Window companions
+
+    /// What the person typed into InputText's box `id` (nil: they dismissed it): the measure's answer runs here.
+    case inputTextAnswered(id: Int, text: String?)
 
     // MARK: Frames
 
@@ -95,8 +105,49 @@ struct HostBang {
     var whileClosing: Bool
 }
 
+/// What `SkinMessage.load` needs from the main thread: the config's window settings as the app has them, and what
+/// kind of load it is.
+struct SkinLoadOrder {
+    /// The config's window settings (`AppState`): on a first load the skin's Default… options go on top of them.
+    var state: SkinState
+    /// No settings were saved for the config before: the skin's `Default…` options in `[Rainmeter]` seed them.
+    var firstLoad: Bool
+    /// The runtime of the skin this one replaces (a refresh): the Calc `Counter` goes on from the snapshot it published
+    /// when it closed.
+    var continuing: SkinRuntime?
+    /// The app shows windows (not headless): then the first frame is drawn before `.started`, unless the skin starts
+    /// hidden.
+    var presentsWindows: Bool
+    /// The app's skins are paused (sleep, locked screens): the skin loads and makes its first update, but its clock
+    /// waits for a resume.
+    var paused: Bool
+}
+
+/// What a runtime reports once its skin loaded and made its first update (`SkinRequest.started`).
+struct SkinStartReport {
+    /// The window size for the skin's size after its first update (points).
+    var size: CGSize
+    /// The skin's `Default…` window options (`SkinSettings.windowDefaults`), read on a first load; empty otherwise.
+    var windowDefaults: [String: String]
+    /// Whether the window stays hidden: StartHidden, unless the skin's first update showed it (`!Show`), or hidden by
+    /// the skin itself (`!Hide`).
+    var hidden: Bool
+    /// The skin registered fonts of its own (`@Resources/Fonts`): skins laid out before are measured again.
+    var registeredFonts: Bool
+    /// The compatibility notes loading found.
+    var issues: [String]
+    /// `[Metadata]`.
+    var metadata: [String: String]
+}
+
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
 enum SkinRequest {
+    /// The skin loaded and made its first update (`SkinMessage.load`): the main thread places and shows the window.
+    case started(SkinStartReport)
+    /// The skin could not be loaded (the error, as text): the main thread unloads it.
+    case failed(String)
+    /// The skin closed (`SkinMessage.close`): OnCloseAction has run.
+    case closed
     /// The skin's size changed: the window follows (points; the top-left corner stays). Its frames go to the content
     /// provider from the skin's executor.
     case resize(CGSize)
@@ -119,15 +170,23 @@ enum SkinRequest {
     /// (it follows the load), or not running. `*`: every other running skin (a runtime without a directory). With the
     /// sender's hops.
     case forward(Bang, toConfig: String, hops: Int)
-    /// A window companion (FrostedGlass's backdrop, InputText's box): step 5 of phase 2 moves them here.
+    /// A window companion: FrostedGlass's backdrop, InputText's box (`SkinWindowCompanions`).
     case companion(SkinCompanionRequest)
     /// The skin published a snapshot in which something the main thread acts on changed (`SkinSnapshotChanges`): the
     /// tooltip areas, the compatibility notes, what it wants of the mouse outside its window… Posted only then.
     case snapshotChanged(SkinSnapshotChanges)
 }
 
-/// What a window companion is asked to do (none yet: FrostedGlass and InputText still reach their window directly).
-enum SkinCompanionRequest {}
+/// What a window companion on the main thread is asked to do, with the values it needs (`SkinWindowCompanions`).
+enum SkinCompanionRequest {
+    /// FrostedGlass's backdrop behind the window, in `style`, for the measure `owner` (nil: that measure let go of it).
+    case frostedGlass(owner: Int, style: FrostedGlassStyle?)
+    /// InputText's box `id` over the window, for a skin of `skinSize` points; its answer comes back as
+    /// `SkinMessage.inputTextAnswered`.
+    case showInputText(id: Int, settings: InputTextSettings, skinSize: CGSize)
+    /// The box `id` closes without an answer (its measure went, or asked again).
+    case cancelInputText(id: Int)
+}
 
 /// The main-thread side of a runtime: the skin's window (`SkinWindowController`), or a self-test's stand-in.
 protocol SkinRuntimeWindow: AnyObject {
@@ -142,6 +201,4 @@ protocol SkinRuntimeWindow: AnyObject {
     /// Debug builds: whether the live window takes the pointer, which the published facts must say (nil: nothing to
     /// compare). Main thread.
     var liveTakesPointer: Bool? { get }
-    /// The screen the window is on (`LiveSkinHost.windowScreen`; main thread).
-    var screen: NSScreen? { get }
 }

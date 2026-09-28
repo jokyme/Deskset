@@ -9,8 +9,9 @@ protocol LiveSkinHost: SkinHost {
     /// Whether the skin's updates are paused (sleep, a locked screen): what reads its values then must not keep the
     /// shared services busy (NowPlaying's polling of the players).
     var areUpdatesPaused: Bool { get }
-    /// The screen the widget's window is on (nil: not known; main thread).
-    var windowScreen: NSScreen? { get }
+    /// The display the widget's window is on (nil: not known), from what the host knows of the window: a skin's
+    /// runtime has it from the window's facts, so any thread the host's skin runs on may ask.
+    var windowDisplay: CGDirectDisplayID? { get }
 }
 
 /// The host of the Studio's own instance of the widget it edits. The widget on the desktop keeps running as it is; this
@@ -27,8 +28,9 @@ final class StudioHost: LiveSkinHost {
 
     var areUpdatesPaused: Bool { updatesPaused }
 
-    /// The desktop copy's screen: a Chameleon widget on a second display takes its colors from that wallpaper.
-    var windowScreen: NSScreen? { desktop?.window.screen }
+    /// The desktop copy's display: a Chameleon widget on a second display takes its colors from that wallpaper. The
+    /// Studio's instance runs on the main thread, where the window is.
+    var windowDisplay: CGDirectDisplayID? { desktop?.window.screen.flatMap(DesktopInputs.displayID(of:)) }
     /// The instance's log lines, the last `logLimit`.
     private(set) var logs: [(level: SkinLogLevel, message: String)] = []
     var logLimit = 200

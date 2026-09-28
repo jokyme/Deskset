@@ -67,6 +67,8 @@ struct SkinWindowFacts: Equatable {
     var frame: CGRect
     /// The window's screen in `NSScreen.screens`, when it has one.
     var screen: Int?
+    /// That screen's display (`NSScreenNumber`): Chameleon's desktop picture is that display's.
+    var display: CGDirectDisplayID?
     /// Whether any part of the window can be seen (occlusion).
     var isVisible: Bool
     /// Whether the window is on screen at all (ordered in).
@@ -86,11 +88,13 @@ struct SkinWindowFacts: Equatable {
     /// Counts the facts the main thread published for this window.
     var sequence: Int
 
-    init(frame: CGRect, screen: Int? = nil, isVisible: Bool, isOrderedIn: Bool = false, scale: CGFloat,
-         colorSpace: CGColorSpace? = nil, appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
+    init(frame: CGRect, screen: Int? = nil, display: CGDirectDisplayID? = nil, isVisible: Bool,
+         isOrderedIn: Bool = false, scale: CGFloat, colorSpace: CGColorSpace? = nil,
+         appearance: String = NSAppearance.Name.aqua.rawValue, takesPointer: Bool,
          settings: SkinWindowSettings = SkinWindowSettings(), modelSequence: Int = 0, sequence: Int) {
         self.frame = frame
         self.screen = screen
+        self.display = display
         self.isVisible = isVisible
         self.isOrderedIn = isOrderedIn
         self.scale = scale
@@ -108,6 +112,34 @@ struct SkinWindowFacts: Equatable {
         a.sequence = 0
         b.sequence = 0
         return a == b
+    }
+}
+
+extension SkinState {
+    /// The state with the values of `defaults` (keys as in `SkinSettings.windowDefaults`: a skin's `Default…` options,
+    /// which seed the settings of a config loaded for the first time) that can be read; the others keep their value.
+    func seeded(with defaults: [String: String]) -> SkinState {
+        var s = self
+        func number(_ key: String) -> Double? {
+            guard let raw = defaults[key], let v = OptionValue.number(raw), v.isFinite else { return nil }
+            return v
+        }
+        func flag(_ key: String) -> Bool? { number(key).map { $0 != 0 } }
+        func int(_ key: String, _ range: ClosedRange<Double>) -> Int? {
+            number(key).map { Int(min(max($0.rounded(.towardZero), range.lowerBound), range.upperBound)) }
+        }
+        if let v = int("AlwaysOnTop", -2...2) { s.alwaysOnTop = v }
+        if let v = flag("Draggable") { s.draggable = v }
+        if let v = flag("SnapEdges") { s.snapEdges = v }
+        if let v = flag("ClickThrough") { s.clickThrough = v }
+        if let v = flag("KeepOnScreen") { s.keepOnScreen = v }
+        if let v = flag("SavePosition") { s.savePosition = v }
+        if let v = flag("StartHidden") { s.startHidden = v }
+        if let v = flag("AutoSelectScreen") { s.autoSelectScreen = v }
+        if let v = int("AlphaValue", 0...255) { s.alphaValue = v }
+        if let v = int("OnHover", 0...3) { s.onHover = v }
+        if let v = int("FadeDuration", 0...Double(SkinState.maxFadeDuration)) { s.fadeDuration = v }
+        return s
     }
 }
 

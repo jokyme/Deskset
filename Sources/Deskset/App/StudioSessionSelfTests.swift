@@ -553,7 +553,7 @@ enum StudioSessionSelfTests {
             session.setUpdatesPaused(false)
             t.check(!host.areUpdatesPaused)
             // Chameleon samples the wallpaper of the screen the desktop copy is on, not the Studio window's.
-            t.check(host.windowScreen === c.window.screen, "the desktop copy's screen")
+            t.equal(host.windowDisplay, c.window.screen.flatMap(DesktopInputs.displayID(of:)), "the desktop copy's screen")
             editor.window?.close()
         }
 

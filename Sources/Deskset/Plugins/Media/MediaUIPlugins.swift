@@ -60,13 +60,11 @@ class MediaUIMeasure: Measure {
 
     /// True when the skin runs in the menu bar app on live data (`LiveSkinHost`: a skin window, or the Studio's own
     /// instance of the widget it edits). Plugins that need a macOS permission (Automation, Location) only act for such
-    /// skins — never for `--render` or self-tests; those that add windows need the skin window (`controller`).
+    /// skins — never for `--render` or self-tests. Those that add windows ask the skin's window for them through the
+    /// skin's runtime (`SkinCompanionChannel`): no plugin touches the window itself.
     var runsInApp: Bool { skin.host is LiveSkinHost }
 
-    /// The window controller of the skin, when it runs in the app (the window half, which its runtime reaches).
-    var controller: SkinWindowController? { (skin.host as? SkinRuntime)?.window as? SkinWindowController }
-
-    /// The app host of the skin: its window controller, or the Studio's host of its own instance of the widget.
+    /// The app host of the skin: its runtime, or the Studio's host of its own instance of the widget.
     var liveHost: LiveSkinHost? { skin.host as? LiveSkinHost }
 
     func publishString(_ s: String?) {

@@ -183,19 +183,32 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// True once the app is quitting: skins are being closed ("OnCloseAction: … when Rainmeter is closed").
     private(set) var isTerminating = false
 
-    /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch. Bangs sent from an
-    /// OnCloseAction while quitting cannot load, unload or refresh skins (they would load a skin nobody closes, or
-    /// mark a skin unloaded for the next launch just because it was running when the app quit).
-    func stopAllForTermination() {
+    /// How long quitting waits in all for the skins' OnCloseActions (on their threads).
+    static let terminationBudget: TimeInterval = 2
+
+    /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch: `.close` goes to each
+    /// skin in reverse load order, then quitting waits for them to close, at most `terminationBudget` in all (a skin on
+    /// the main executor has closed by then already). Bangs sent from an OnCloseAction while quitting cannot load,
+    /// unload or refresh skins (they would load a skin nobody closes, or mark a skin unloaded for the next launch just
+    /// because it was running when the app quit). Returns the skins that had not closed in time.
+    @discardableResult
+    func stopAllForTermination(budget: TimeInterval = AppController.terminationBudget) -> [String] {
         isTerminating = true
+        let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
             // Every step is written as it is made; anything still waiting is written now.
             _ = try? session.diskSync.flush()
             session.closeStudioSkin()
         }
-        for c in sortedControllers.reversed() { c.stop() }
+        let closing = Array(sortedControllers.reversed())
+        for c in closing { c.stop() }
+        let late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
+        if !late.isEmpty {
+            Log.write("Quitting without waiting longer for \(late.joined(separator: ", ")) to close", level: .warning)
+        }
         // Every skin stopped: nothing is watched any more.
         outsidePointer.needsChanged()
+        return late
     }
 
     /// Opening the app again (Finder, Spotlight, Launchpad, its Dock icon while the editor or Settings is open) while
@@ -395,6 +408,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Displays were connected, disconnected or rearranged.
     func screensChanged() {
         EnvironmentStore.shared.publishScreens()
+        DesktopInputs.mainScreenDesktop.refresh()
+        DesktopInputs.displayDesktops.refresh()
         for c in controllers.values { c.screensChanged() }
     }
 
@@ -503,6 +518,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Loads `file` of `config` (the last used .ini, else the first one when nil), replacing a running variant.
     /// `continuing`: the skin a refresh replaces; the Calc `Counter` "only resets when the skin is unloaded and then
     /// loaded again - not when the skin is refreshed".
+    ///
+    /// The window controller and its runtime are made and registered at once (bangs for the config queue behind the
+    /// load on the skin's executor); the runtime loads and starts the skin and reports `.started` (`skinStarted`: the
+    /// window is placed and shown, the Studio attached, the app told) or `.failed` (`skinFailed`: the config is marked
+    /// inactive). With the main executor all of it happens before this returns, and a skin that cannot be loaded
+    /// returns nil.
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
                   continuing previous: SkinRuntime? = nil) -> SkinWindowController? {
@@ -514,7 +535,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let chosen = self.file(toLoad: file, of: entry) else { return nil }
         let key = entry.name.lowercased()
         let replacing = controllers[key] != nil
-        // First load of this config: the skin's Default… window settings apply (see `seedWindowSettings`).
+        // First load of this config: the skin's Default… window settings apply (its runtime reads them).
         let firstLoad = state.skin(entry.name) == nil
         if let running = controllers[key] {
             controllers[key] = nil
@@ -524,25 +545,33 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.file = chosen
             $0.active = true
         }
-        do {
-            let c = try SkinWindowController(config: entry.name, file: chosen, app: self,
-                                             executor: skinExecutor(entry.name))
-            controllers[key] = c
-            if firstLoad { c.seedWindowSettings() }
-            if let previous { c.runtime.continueCounter(from: previous) }
-            c.start(fadeIn: fade && !replacing)
-            if let inspector, inspector.config.lowercased() == key { inspector.attach(c) }
-            if updatesPaused { c.pauseUpdates() }
-            if restack { self.restack() }
-            Log.write("Loaded \(entry.name)\\\(chosen)")
-            notifyChanged()
-            return c
-        } catch {
-            Log.write("Could not load \(entry.name)\\\(chosen): \(error)", level: .error)
-            state.update(entry.name) { $0.active = false }
-            notifyChanged()
-            return nil
+        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: skinExecutor(entry.name))
+        controllers[key] = c
+        c.restacksWhenStarted = restack
+        let order = SkinLoadOrder(state: c.state, firstLoad: firstLoad, continuing: previous,
+                                  presentsWindows: presentsWindows, paused: updatesPaused)
+        c.load(order, fadeIn: fade && !replacing)
+        return c.loadFailed ? nil : c
+    }
+
+    /// A skin loaded and made its first update (`.started`), and its window is placed and shown: the Studio attaches
+    /// to it when it edits the config, the windows are stacked again and the app hears of it.
+    func skinStarted(_ c: SkinWindowController) {
+        if let inspector, inspector.config.lowercased() == c.config.lowercased() { inspector.attach(c) }
+        if c.restacksWhenStarted { restack() }
+        Log.write("Loaded \(c.config)\\\(c.file)")
+        notifyChanged()
+    }
+
+    /// A skin could not be loaded (`.failed`): its config is unloaded and marked inactive (unless another load of it
+    /// came meanwhile).
+    func skinFailed(_ c: SkinWindowController, error: String) {
+        Log.write("Could not load \(c.config)\\\(c.file): \(error)", level: .error)
+        if controller(for: c.config) === c {
+            controllers[c.config.lowercased()] = nil
+            state.update(c.config) { $0.active = false }
         }
+        notifyChanged()
     }
 
     /// The .ini file `activate` loads for `file`: that file of the config (in any case), else the last used one, else
@@ -594,11 +623,41 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         deactivate(config: c.config, fade: fade)
     }
 
-    /// Stops a skin without marking it inactive (its files are about to be replaced by an installer).
-    func suspend(config: String) {
-        guard let c = controller(for: config) else { return }
+    /// Stops a skin without marking it inactive (its files are about to be replaced by an installer, which waits for
+    /// it to close: `whenClosed`).
+    @discardableResult
+    func suspend(config: String) -> SkinWindowController? {
+        guard let c = controller(for: config) else { return nil }
         controllers[c.config.lowercased()] = nil
         c.stop()
+        return c
+    }
+
+    /// Runs `body` on the main thread once every skin of `stopped` has closed (their OnCloseActions have run), or once
+    /// `timeout` has passed (a skin that does not close in time is logged): at once when they have (the main executor).
+    func whenClosed(_ stopped: [SkinWindowController], timeout: TimeInterval, _ body: @escaping () -> Void) {
+        var waiting = Set(stopped.map { ObjectIdentifier($0.runtime) })
+        var done = false
+        func finish() {
+            guard !done else { return }
+            done = true
+            body()
+        }
+        guard !waiting.isEmpty else { return finish() }
+        for c in stopped {
+            let id = ObjectIdentifier(c.runtime)
+            c.runtime.whenClosed {
+                waiting.remove(id)
+                if waiting.isEmpty { finish() }
+            }
+        }
+        guard !done else { return }
+        let names = stopped.map(\.config)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            guard !done else { return }
+            Log.write("Going on without waiting longer for \(names.joined(separator: ", ")) to close", level: .warning)
+            finish()
+        }
     }
 
     /// The .ini file after the running one of `config` in its folder (after the last one: the first), nil when the
@@ -687,12 +746,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// A skin registered fonts: skins laid out before may have measured their text with a fallback font, so their
-    /// meters are laid out (and drawn) again with the fonts now available.
-    func fontsChanged() {
+    /// meters are laid out (and drawn) again with the fonts now available. `except`: the skin that registered them,
+    /// which was laid out with them.
+    func fontsChanged(except registering: SkinWindowController? = nil) {
         fontsGenerationSeen = max(fontsGenerationSeen, Fonts.generation)
         // Measure text again and recompute fixed window sizes (skins laid out with a fallback font), each skin where it
         // is owned: at once when that is here.
-        for c in controllers.values where !c.isStopped { c.runtime.send(.fontsChanged) }
+        for c in controllers.values where !c.isStopped && c !== registering { c.runtime.send(.fontsChanged) }
         for session in studioSessions.values { session.studioSkin?.fontsDidChange() }
     }
 

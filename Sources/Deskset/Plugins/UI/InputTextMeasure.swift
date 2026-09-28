@@ -2,6 +2,10 @@ import AppKit
 import DesksetCore
 
 // InputText plugin (manual: /manual/plugins/inputtext/): a real text field shown over the skin.
+//
+// The measure runs on the skin's executor; the box is a window companion on the main thread (`SkinWindowCompanions`):
+// the measure asks the skin's runtime to show it with its settings and the skin's size, and the answer comes back to the
+// skin as a message, where the measure's commands run.
 
 /// Shows one input box and reports the result (nil = dismissed).
 protocol InputTextPrompting: AnyObject {
@@ -21,7 +25,7 @@ final class InputTextMeasure: MediaUIMeasure {
     private var batch: InputTextBatch?
     private var prompt: InputTextPrompting?
     private(set) var lastInput = ""
-    /// Tests supply a fake prompt; the app shows `InputTextPanelPrompt` over the skin window.
+    /// Tests supply a fake prompt; in the app the skin's window shows the box (`CompanionInputTextPrompt`).
     static var promptFactory: ((InputTextMeasure) -> InputTextPrompting?)?
 
     deinit {
@@ -92,21 +96,22 @@ final class InputTextMeasure: MediaUIMeasure {
             return
         }
         let settings = settings(for: step.command)
-        if prompt == nil { prompt = InputTextMeasure.promptFactory?(self) ?? controller.map { InputTextPanelPrompt(controller: $0) } }
+        if prompt == nil {
+            prompt = InputTextMeasure.promptFactory?(self)
+                ?? (skin.host as? SkinCompanionChannel).map { CompanionInputTextPrompt(channel: $0) }
+        }
         guard let prompt else {
             self.batch = nil
             skin.log("InputText [\(name)]: input boxes need a skin window", level: .debug)
             return
         }
         prompt.show(settings) { [weak self] input in
-            // The box answers on the main thread: taken with the skin's own work waiting (at once on the main
-            // executor), or queued on the skin's executor when it does not let go in time.
+            // The skin's window answers through the skin's runtime, on the skin's executor; a prompt that answers
+            // elsewhere has the answer queued there.
             guard let self else { return }
             let answer = { [weak self] () -> Void in self?.answered(input, batch: batch, step: step, settings: settings) }
             let skin: Skin = self.skin
-            if skin.executor.exclusive(timeout: SkinRuntime.defaultExclusiveTimeout, answer) == nil {
-                skin.async(answer)
-            }
+            if skin.executor.isCurrent { answer() } else { skin.async(answer) }
         }
     }
 
@@ -129,6 +134,37 @@ final class InputTextMeasure: MediaUIMeasure {
 
 // MARK: - The input box
 
+/// The box as the skin's window shows it (`SkinWindowCompanions`): asked for through the skin's runtime, with the
+/// answer on the skin's executor. On the skin's executor.
+final class CompanionInputTextPrompt: InputTextPrompting {
+    private weak var channel: SkinCompanionChannel?
+    /// The box open now.
+    private var open: Int?
+
+    init(channel: SkinCompanionChannel) {
+        self.channel = channel
+    }
+
+    func show(_ settings: InputTextSettings, completion: @escaping (String?) -> Void) {
+        cancel()
+        guard let channel else { return completion(nil) }
+        var answered = false
+        let id = channel.showInputText(settings) { [weak self] text in
+            answered = true
+            self?.open = nil
+            completion(text)
+        }
+        // A box that could not be shown answers at once (headless: dismissed).
+        if !answered { open = id }
+    }
+
+    func cancel() {
+        guard let id = open else { return }
+        open = nil
+        channel?.cancelInputText(id)
+    }
+}
+
 /// Borderless non-activating panel: it takes keyboard focus without activating Deskset, so the app the user was in
 /// stays frontmost and gets the focus back when the box closes.
 final class InputTextPanel: NSPanel {
@@ -136,9 +172,11 @@ final class InputTextPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// The AppKit input box, positioned over the skin window at the measure's X/Y/W/H.
+/// The AppKit input box, positioned over the skin window at the measure's X/Y/W/H (a window companion: main thread).
 final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDelegate, NSWindowDelegate {
-    private weak var controller: SkinWindowController?
+    private weak var host: SkinCompanionHost?
+    /// The skin's width (points) when it asked for the box: the default width of the box.
+    private let skinWidth: Double
     private var panel: InputTextPanel?
     private var field: NSTextField?
     private var completion: ((String?) -> Void)?
@@ -148,8 +186,9 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
     private var becameKey = false
     private weak var previousKeyWindow: NSWindow?
 
-    init(controller: SkinWindowController) {
-        self.controller = controller
+    init(host: SkinCompanionHost, skinSize: CGSize) {
+        self.host = host
+        skinWidth = Double(skinSize.width)
     }
 
     deinit {
@@ -196,15 +235,14 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
         tearDown()
         self.settings = settings
         self.completion = completion
-        guard let controller, !controller.isStopped, controller.app.presentsWindows else {
+        guard let host, !host.isStopped, host.showsWindows else {
             finish(nil)
             return
         }
-        let skinWindow = controller.window
+        let skinWindow = host.skinWindow
         let font = InputTextPanelPrompt.font(settings)
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        let frame = InputTextPanelPrompt.frame(settings, skinFrame: skinWindow.frame,
-                                               skinWidth: InputTextPanelPrompt.skinWidth(of: controller),
+        let frame = InputTextPanelPrompt.frame(settings, skinFrame: skinWindow.frame, skinWidth: skinWidth,
                                                lineHeight: lineHeight)
         let panel = InputTextPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                                    backing: .buffered, defer: false)
@@ -308,17 +346,11 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
     }
 
     private func followSkinWindow() {
-        guard let controller, let panel else { return }
+        guard let host, let panel else { return }
         let font = InputTextPanelPrompt.font(settings)
-        let frame = InputTextPanelPrompt.frame(settings, skinFrame: controller.window.frame,
-                                               skinWidth: InputTextPanelPrompt.skinWidth(of: controller),
+        let frame = InputTextPanelPrompt.frame(settings, skinFrame: host.skinWindow.frame, skinWidth: skinWidth,
                                                lineHeight: ceil(font.ascender - font.descender + font.leading))
         panel.setFrameOrigin(frame.origin)
-    }
-
-    /// The skin's width (points), read from the live skin; the window's while it cannot be asked.
-    static func skinWidth(of controller: SkinWindowController) -> Double {
-        controller.runtime.exclusive { $0.width } ?? Double(controller.window.frame.width)
     }
 
     // MARK: NSTextFieldDelegate

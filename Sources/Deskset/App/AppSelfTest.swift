@@ -715,6 +715,12 @@ enum AppSelfTest {
         return app
     }
 
+    /// A skin window of `app` whose skin loads at once on the main executor and is not started (`start(fadeIn:)`
+    /// starts it): the plugins' suites build one without reaching the window controller's type.
+    static func loadedWindow(_ app: AppController, config: String, file: String) throws -> SkinWindowController {
+        try SkinWindowController(config: config, file: file, app: app)
+    }
+
     /// Runs the main run loop until `condition` holds (deferred bangs, background installs).
     @discardableResult
     static func spin(timeout: TimeInterval = 10, until condition: () -> Bool) -> Bool {

@@ -230,14 +230,24 @@ final class SkinInstallFlow {
         }
     }
 
+    /// How long the installer waits for the skins it stopped to close before it replaces their files anyway.
+    static let closeTimeout: TimeInterval = 10
+
     private func install(_ inspection: RmskinInspection, packageURL: URL) {
-        // Skins running from a root config that is about to be replaced are stopped first and reloaded afterwards.
+        // Skins running from a root config that is about to be replaced are stopped first and reloaded afterwards. Their
+        // files are replaced once they have closed: an OnCloseAction may still write to them (!WriteKeyValue), on the
+        // skin's thread.
         let roots = Set(inspection.rootConfigs.map { $0.lowercased() })
         let affected = app.sortedControllers
             .filter { roots.contains(String($0.config.split(separator: "\\").first ?? "").lowercased()) }
             .map { ($0.config, $0.file) }
-        for (config, _) in affected { app.suspend(config: config) }
+        let stopped = affected.compactMap { app.suspend(config: $0.0) }
+        app.whenClosed(stopped, timeout: SkinInstallFlow.closeTimeout) { [self] in
+            replaceFiles(inspection, packageURL: packageURL, affected: affected)
+        }
+    }
 
+    private func replaceFiles(_ inspection: RmskinInspection, packageURL: URL, affected: [(String, String)]) {
         let skins = app.skinsDirectory, layouts = app.layoutsDirectory, backups = app.backupsDirectory
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result {

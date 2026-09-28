@@ -356,15 +356,12 @@ final class ChameleonMeasure: MediaUIMeasure {
         }
     }
 
-    /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
-    /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
-    /// main thread only: a skin on another thread gets the main screen's, as the main thread last saw it
-    /// (`DesktopInputs.mainScreenDesktop`). The window's own screen reaches a skin thread with the window's facts, in
-    /// phase 2 (docs/skin-threading.md §8.1).
+    /// The desktop picture setting and the frame of the display the skin's window is on (the Studio's instance: the
+    /// desktop copy's window; the display comes with the window's facts), else the main screen; nil without a screen or
+    /// a desktop picture. AppKit is asked on the main thread only: a skin on another thread reads what the main thread
+    /// last published for each display (`DesktopInputs.displayDesktops`).
     static func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? {
-        guard Thread.isMainThread else { return DesktopInputs.mainScreenDesktop.value() }
-        guard let screen = host?.windowScreen ?? NSScreen.main else { return nil }
-        return DesktopInputs.desktop(of: screen)
+        DesktopInputs.desktop(onDisplay: host?.windowDisplay)
     }
 
     /// The desktop picture of a screen: the file itself, or for a folder of rotating wallpapers its first picture by
@@ -410,10 +407,35 @@ enum DesktopInputs {
         NSScreen.main.flatMap(desktop(of:))
     }
 
+    /// Every display's desktop picture and frame, by display (`NSScreenNumber`).
+    static let displayDesktops = MainPublished<[CGDirectDisplayID: ScreenDesktop]>(maxAge: 2, initial: [:]) {
+        var desktops: [CGDirectDisplayID: ScreenDesktop] = [:]
+        for screen in NSScreen.screens {
+            if let id = displayID(of: screen), let desktop = desktop(of: screen) { desktops[id] = desktop }
+        }
+        return desktops
+    }
+
     /// Main thread.
     static func desktop(of screen: NSScreen) -> ScreenDesktop? {
         guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { return nil }
         return ScreenDesktop(picture: url.path, frame: screen.frame)
+    }
+
+    /// The display of a screen (`NSScreenNumber`). Main thread.
+    static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// The desktop of `display` (nil or a display that is gone: the main screen's). Any thread: on the main thread
+    /// AppKit is asked now, elsewhere the latest published answer is read (`displayDesktops`, `mainScreenDesktop`).
+    static func desktop(onDisplay display: CGDirectDisplayID?) -> ScreenDesktop? {
+        guard Thread.isMainThread else {
+            if let display, let desktop = displayDesktops.value()[display] { return desktop }
+            return mainScreenDesktop.value()
+        }
+        let screen = display.flatMap { id in NSScreen.screens.first { displayID(of: $0) == id } } ?? NSScreen.main
+        return screen.flatMap(desktop(of:))
     }
 
     /// Main thread: publishes every input now (at launch, before skins run elsewhere).
@@ -422,6 +444,7 @@ enum DesktopInputs {
         reduceTransparency.refresh()
         desktopFillColor.refresh()
         mainScreenDesktop.refresh()
+        displayDesktops.refresh()
     }
 }
 
