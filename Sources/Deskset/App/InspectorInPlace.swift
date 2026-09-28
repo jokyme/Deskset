@@ -533,10 +533,10 @@ extension InspectorWindowController {
             guard let self, let group = self.inPlaceColorGroup(index) else { return nil }
             let opacity = group.color.a < 254.5 ? "\(Int((group.color.a / 255 * 100).rounded()))%" : ""
             // Its name and what else it changes (the roles of its uses, which name texts by their words now).
-            // (Its users are named by their words now: "Used by “Hello”".)
+            // (Its users are named by their words now: "Used by “Hello”"; its count selects them.)
             let shape = [group.name, group.variables.joined(separator: ","), opacity, group.usedRoles.map(\.name).joined(separator: ","),
                          "\(group.unusedCount)", self.usersPhrase(group.sections, atLeast: group.isAtLeast),
-                         self.usersPhrase(group.sections)]
+                         self.usersPhrase(group.sections), group.sections.joined(separator: ",")]
             return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "\(group.color)\u{1F}\(self.colorGroupTip(group))")
         }
         slot.part = row
