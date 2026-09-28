@@ -1204,7 +1204,12 @@ every 0.25 s; every `draw(in:)` logged with its thread and its context's color s
 - **WindowServer's memory.** `footprint`, `vmmap` and `proc_pid_rusage` need root for WindowServer. `top`'s MEM, the
   GPU's memory in use and system-wide page counts all fail the positive control (8 separate copies of a 9.77 MB image
   must add about 78 MB; see question 3), so no WindowServer memory number here is evidence. To measure it, a person
-  would run `sudo footprint -p WindowServer` before and after opening each way's windows.
+  would run `sudo footprint -p WindowServer` before and after opening each way's windows (`run.sh wsfootprint-person`).
+- Real Deskset next to the spike: B and B+kept are the spike's reimplementation of Deskset's drawing; no capture of
+  Deskset itself showing the same content was compared.
+- The plan-style partition (`g2-groups`, `g2-e-drawn`) on the CI runners: it runs on the next push of this branch.
+- A quiet machine: other builds and self-tests ran throughout (1-minute load mostly 6–26, up to 43), so every CPU
+  number is provisional in absolute terms; the comparisons rely on interleaving and pairing.
 - The real `NSGlassEffectView` in the glass check is only timed: its tint is not a flat color, so the read-back cannot
   tell whether it lags behind the element (the stand-in view can).
 - D with IOSurfaces in the display's color space (it should match B like E does).
