@@ -90,10 +90,7 @@ public final class SkinFileSandbox {
             if removed.contains(key) { return missingPath() }
             return path
         }
-        if let copy = copies[key] {
-            if recording { record(Record(operation: "write", path: path)) }
-            return copy
-        }
+        if let copy = copies[key] { return copy }
         let copy = newCopyPath(for: path)
         if access == .update, !removed.contains(key), FileManager.default.fileExists(atPath: path) {
             try? FileManager.default.copyItem(atPath: Self.target(of: path), toPath: copy)
