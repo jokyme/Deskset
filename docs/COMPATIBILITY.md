@@ -220,6 +220,17 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   soft as on a 100 % Windows display.
 - **Status:** emulated
 
+#### A skin whose size is not a whole number of pixels
+- **Windows:** X, Y, W and H are pixels and a skin window is a whole number of pixels; the skin is shown pixel for
+  pixel.
+- **Mac:** meter sizes and positions can be fractions of a point, and so can a skin's size. The skin is drawn into
+  whole pixels from the window's top-left corner and shown pixel for pixel; the last fraction of a point to the right
+  and below stays transparent. Until 2026-09-28 the picture was stretched over the exact fractional size, by less
+  than a pixel, which softened one-pixel lines.
+- **Why:** the skin's frames are shown in a layer of their own that always has the frame's size.
+- **Skin impact:** such skins (a half point at 1×, a quarter point at 2×) look sharper at their edges; nothing moves.
+- **Status:** identical (a difference from earlier Deskset builds, not from Windows)
+
 #### Relative positions (`r` / `R`) after aligned String and Bitmap meters
 - **Windows:** `r` is relative to the previous meter's top/left edge, `R` to its bottom/right edge; StringAlign "is
   always based on the value of X or Y". Skins that work (eClock's long shadow, EasyInfo's LED digits, FluentDash11's

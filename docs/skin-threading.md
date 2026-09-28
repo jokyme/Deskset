@@ -62,6 +62,8 @@ skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–
    re-registers tooltip rectangles.
 5. On the next display cycle AppKit calls `SkinView.updateLayer()`, which draws the skin with
    `SkinRenderer` into a bitmap of the view's own (`SkinBitmapDrawing`) and sets it as the layer's `contents`.
+   (Since phase 2 the skin's frame producer does this on the skin's executor, at the end of the run loop's turn, and
+   presents the bitmap in a layer of the skin's own: §7.3, §15.)
 6. Until 2026-09-27 AppKit called `SkinView.draw(_:)` instead. On macOS 26 the context handed to `draw(_:)` is a
    *recording* context (a `CGContext` with width 0 and no pixel buffer; the layer's contents are
    `NSViewBackingLayerContents`): the drawing was recorded in Deskset and rasterized through Core Animation's
@@ -1530,6 +1532,58 @@ suite's `TestThreadExecutor`.
      `docs/compat/README.md`); if none remains, this section says so.
    - What only a person at the Mac can see (§7.3: clicks through fully transparent pixels, Mission Control and Spaces,
      live resizing) is listed for them. Nothing here reads the screen back, so nothing asks for screen recording.
+   - **Done (2026-09-28):** `ContentProvider.swift` (`SkinFrame`, `ContentProvider`, `LayerContentProvider`),
+     `SkinFrameProducer` in `SkinDrawing.swift` (with `SkinRunLoopExecutor`: the run loop an executor's work runs on;
+     the main executor's and `TestThreadExecutor`'s), owned by `SkinRuntime` as `frames`. The `.display(size:)` request
+     became `.resize(size)`; new messages `.firstFrame` and `.frameWanted`; `SkinWindowController.orderIn(alpha:)`
+     draws the first frame before it orders the window in (`start` and `!Show` use it). The window publishes its facts
+     from `SkinView`'s backing and appearance hooks and from `windowDidChangeScreen` / `…ScreenProfile`;
+     `displayPending` is gone. Differences from the plan:
+     - When a frame is drawn again after the window could not be seen: uncovered, only if the skin redrew meanwhile
+       (today's `displayPending`); ordered in (`!Show`, a new panel), always, as AppKit displayed the view then, and
+       before the occlusion state catches up (a window just ordered in counts as seen for that turn). No second frame
+       when the window is ordered in right after its first one.
+     - `LayerContentProvider.setScale` and `setVisible` only take note: the layer's `contentsScale` changes with the
+       next frame, drawn at the new scale (changed earlier, it would show the old frame at another size), and skipping
+       frames is the producer's. The seam is there for the layer runtime.
+     - `.resize` is sent only when the skin's size changes (the runtime remembers the size it asked for: AppKit rounds a
+       window's frame to whole points, so the window model's size is not the skin's). A skin that redraws without
+       changing size posts nothing to the main thread (`App: skin snapshot: a skin redrawing 60 times a second…`).
+     - The producer draws with the facts' appearance as the thread's drawing appearance, as AppKit set it while the
+       view drew. Its run-loop observer (before waiting and on exit, order 1,999,000, common modes) also watches the
+       start of each turn, where it draws a frame asked for more than 1/60 s ago.
+     - `draw(_:)` serves snapshots only if AppKit calls it: with `wantsUpdateLayer` it calls `updateLayer` for
+       `cacheDisplay` too, so the view answers false while a snapshot is taken and clears what AppKit kept after it.
+     - Checks: the suites "App: skin drawing: frames go to the content layer…", "…a turn longer than a frame…", "…a skin
+       on a thread of its own…" (presented off the main thread), "…a skin window shows its frames in a layer of its
+       own…" and "…FrostedGlass's rounded corners clip the content layer…" (rendered in-process with
+       `CALayer.render(in:)`, never read from the screen: a pixel in the rounded corner is transparent, the same pixels
+       as the old view's contents under the same rounding). The threads stress suite draws every update through
+       `SkinBitmapDrawing.picture`; Main Thread Checker reports nothing for "App: threads" and "App: skin drawing".
+     - **Visible differences** (suite "App: skin drawing: every repository skin's content layer shows what its view
+       showed", `ContentLayerCheck`; about 46 s of the debug run): each of the 143 default and test skins runs without a
+       window and is shown twice in never-shown panels, through its frame producer and content layer, and through a
+       `LegacySkinView` that does what `updateLayer` did, drawn when AppKit drew the old view. 2,411 steps: shown, two
+       updates, redraws at rest, 1× and back, Display P3 and back, Dark and back, covered and uncovered, `!Hide` (ordered
+       out) and `!Show` (before and after the occlusion state catches up), a fade. The pictures agree within 3 levels
+       (kept pictures rounding), with a full drawing too, and so do the two layer trees as Core Animation composites
+       them — except one: a skin whose size is not a whole number of pixels (`Graphs\Aliased` at 1×, a half point),
+       which the old view stretched over its fractional size and the content layer shows pixel for pixel (147 levels
+       at its edges). That difference remains, on purpose (frames are never stretched), and is recorded in
+       `docs/compat/engine.md` and both summaries. MacGlass views are untouched (they stay behind `SkinView`; the
+       base under them is drawn as before); FrostedGlass clips the content layer as it clipped the view. No other
+       visible difference remains.
+     - Unchanged outputs: `--render` of the default skins is byte-identical except for the skins that show live values
+       (clocks, network, system, temperature), which also differ between two runs of the old build; `--snapshot-ui`
+       is identical except `inspector`, which differs from run to run by as much; `--verify-drawing-cache DefaultSkins
+       TestSkins`: 143 skins, none differs from a full drawing.
+     - **For a person at the Mac** (nothing here reads the screen): clicks pass through fully transparent pixels of a
+       skin (the content layer is a sublayer; the window server decides from the composited window); Mission Control,
+       Spaces and "Show Desktop" treat skin windows as before (levels and collection behaviour are unchanged); live
+       resizing while a skin changes size every frame (a `DynamicWindowSize` skin with an animated width) never shows
+       a stretched frame, only a transparent margin or a clipped edge for at most a frame; a skin dragged to a display
+       with another scale or colour profile redraws sharp and in the right colours; FrostedGlass's rounded corners on
+       screen.
 5. **Lifecycle messages, window companions, the context menu through exclusive access.**
    - `activate` makes the window controller and the runtime and registers them. The runtime loads the skin,
      registers its fonts, seeds the window defaults, runs the first update, draws the first frame and reports

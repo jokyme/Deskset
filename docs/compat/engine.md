@@ -27,6 +27,21 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   low-resolution images look as soft as on a 100 % Windows display.
 - Status: emulated
 
+### A skin whose size is not a whole number of pixels
+- Windows (Rainmeter): X, Y, W and H are pixels (/manual/meters/general-options/) and a skin window is a whole number
+  of pixels; what the skin draws is shown pixel for pixel.
+- Mac (Deskset): meter sizes and positions can be fractions of a point (`W=(100/3)`, a meter at a half-pixel
+  position), and so can the skin's size. The skin is drawn into whole pixels from the window's top-left corner and
+  shown pixel for pixel; the window itself is a whole number of points (macOS rounds window frames), so the last
+  fraction of a point to the right and below stays transparent. Until 2026-09-28 the picture was stretched over the
+  skin's exact size instead, by less than a pixel across its whole width or height, which resampled it: the
+  pixel-exact lines of `TestSkins/Graphs/Aliased` (a half point wide at 1×) came out soft.
+- Why: the skin's frames are shown in a layer of their own that always has the frame's size (docs/skin-threading.md
+  §7.3); the stretching came from the view's layer having the skin's exact, fractional size.
+- Skin impact: skins whose size is not a whole number of pixels (a half point at 1×, a quarter point at 2×, or any
+  size a formula makes fractional) look sharper at their edges and in one-pixel lines; nothing moves.
+- Status: identical (a difference from earlier Deskset builds, not from Windows)
+
 ### Relative positions (`r` / `R`) after aligned String and Bitmap meters
 - Windows (Rainmeter): "If the value is appended with r, the position is relative to the top/left edge of the
   previous meter … R … relative to the bottom/right edge" (/manual/meters/general-options/). StringAlign "is
