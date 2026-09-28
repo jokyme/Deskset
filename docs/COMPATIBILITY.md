@@ -1215,9 +1215,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2,
-  1 000 ms apart), draws it at scale S (default 2) in the Light appearance with a 24-hour clock, weeks from Sunday and
-  °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--skins-dir DIR]` loads the
+  skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light
+  appearance with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and
+  prints compatibility notes and log lines. `--clock` gives the skin a clock of its own: update i sees the given time
+  plus i intervals, in UTC unless `--time-zone` names another zone (`--time-zone` alone changes only the zone), and
+  `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua `math.random`…) the same in every run. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in

@@ -545,13 +545,18 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--skins-dir DIR]` loads the
+  skin without a window, runs N updates
   (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given
   background and prints compatibility notes and skin log lines. The skin sees the Light appearance (the appearance
   variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
   24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
   plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`
-  (the Mac's own). There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
+  (the Mac's own). `--clock` gives the skin a clock of its own: update i sees the given time (ISO 8601, or seconds
+  since 1970) plus i intervals, however long the render takes, and the monotonic clock steps with it; its time zone
+  is UTC unless `--time-zone` names another (`--time-zone` alone changes only the zone). `--seed N` makes the skin's
+  random numbers (Calc `Random` / `UniqueRandom`, QuotePlugin, WebParser's temporary file names, Lua `math.random`)
+  the same in every run. There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
@@ -595,7 +600,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`; `--help` / `-h` prints them (exit status
   0). An argument starting with `--` that is none of these flags or their options (`--out`, `--updates`, `--interval`,
   `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--clock-hours`, `--first-weekday`,
-  `--temperature-unit`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`), or such an
+  `--temperature-unit`, `--clock`, `--time-zone`, `--seed`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`), or such an
   option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to
