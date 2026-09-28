@@ -371,6 +371,10 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let symbolIndexes = DeskLazyMap<DeskFileID, DeskSymbolIndex>()
     let outline = DeskLazy<[DeskDocumentSymbol]>()
     let folding = DeskLazy<[DeskFoldingRange]>()
+    let semanticFacts = DeskLazy<DeskSemanticFacts>()
+    /// By the index of the top-level child of the file.
+    let semanticBlocks = DeskLazyMap<Int, DeskSemanticBlock>()
+    let semanticTokens = DeskLazy<DeskSemanticTokens>()
 }
 
 /// A value built once, on first use, under a lock (a second reader waits for the first).
