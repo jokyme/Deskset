@@ -22,6 +22,24 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
         for line in deskTokenLines(snapshot, snapshot.semanticTokens().tokens) { print(line) }
         return
     }
+    if let path = ProcessInfo.processInfo.environment["DESK_HOVER_DUMP"] {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { print("cannot read \(path)"); return }
+        let language: DiagnosticLanguage = ProcessInfo.processInfo.environment["DESK_HOVER_ZH"] != nil ? .simplifiedChinese : .english
+        let snapshot = deskNavService(text, file: (path as NSString).lastPathComponent).snapshot
+        var seen = Set<DeskRange>()
+        for token in deskNavTokenStarts(snapshot.tree) {
+            let position = snapshot.index.position(utf8: token.lowerBound)
+            if let hover = snapshot.hover(at: position), seen.insert(hover.range).inserted {
+                print("=== \(position)")
+                print(hover.markdown(language))
+            }
+            if let help = snapshot.signatureHelp(at: position) {
+                print("--- signature help at \(position): active \(help.activeSignature) parameter \(help.activeParameter.map(String.init) ?? "none")")
+                print(help.markdown(language))
+            }
+        }
+        return
+    }
     runDeskSemanticTokenTests(t)
 }
 

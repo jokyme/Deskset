@@ -482,7 +482,7 @@ final class Checker {
         checked.assets = assetUses
         checked.folderPending = folderPending
         for decl in declOrder where !decl.poisoned {
-            guard let val = decl.val, !val.error, val.open == nil else { continue }
+            guard let val = decl.val, !val.error, val.type != .any else { continue }
             checked.declarationTypes[decl.id] = SemType(type: val.type, displayBase: val.base, range: val.range)
         }
         return checked
