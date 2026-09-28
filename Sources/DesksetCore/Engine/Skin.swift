@@ -135,6 +135,9 @@ public final class Skin {
     /// that was read from its files (a layer's name, a thumbnail, where a value is used) is out of date once it moves.
     /// Never decreases.
     public internal(set) var sourceGeneration = 0
+    /// A patch came while an editor preview showed: the window is sized when the preview ends (`endPreview`), not with
+    /// the preview's values.
+    var sizeWaitsForPreviewEnd = false
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
@@ -2302,10 +2305,21 @@ extension Skin {
     func markLayoutPending() { layoutPending = true }
 
     /// Lays the skin out after a patch and sizes the window again (the new text may make it larger or smaller, as a
-    /// reload would), then asks the host to draw.
+    /// reload would) — once a preview showing now ends — then asks the host to draw.
     func finishPatch() {
         layout()
-        updateSize(force: true)
+        if isPreviewing {
+            sizeWaitsForPreviewEnd = true
+        } else {
+            updateSize(force: true)
+        }
         needsDisplay()
+    }
+
+    /// When the last preview ends: the window takes the size a patch made while it showed.
+    func sizeAfterPatchDuringPreview() {
+        guard sizeWaitsForPreviewEnd else { return }
+        sizeWaitsForPreviewEnd = false
+        updateSize(force: true)
     }
 }
