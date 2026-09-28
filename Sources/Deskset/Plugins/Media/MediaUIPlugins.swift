@@ -98,11 +98,44 @@ final class MediaUIWorker {
     private var jobs: [() -> Void] = []
     private let name: String
     private var started = false
+    /// A job is running.
+    private var busy = false
     /// Tests run jobs inline (synchronously, on the calling thread).
     var runsInline = false
 
+    /// Every worker (weakly), for `waitForAll`.
+    private static let all = Guarded([WeakWorker]())
+
+    private struct WeakWorker {
+        weak var worker: MediaUIWorker?
+    }
+
     init(name: String) {
         self.name = name
+        MediaUIWorker.all.access { list in
+            list.removeAll { $0.worker == nil }
+            list.append(WeakWorker(worker: self))
+        }
+    }
+
+    /// Waits until no job is queued or running, or until `deadline`: true when idle. Any thread but the worker's.
+    @discardableResult
+    func waitUntilIdle(before deadline: Date) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        while !jobs.isEmpty || busy {
+            if !condition.wait(until: deadline) { return jobs.isEmpty && !busy }
+        }
+        return true
+    }
+
+    /// `waitUntilIdle` for every worker (`--render` in virtual time, before each update): true when all are idle.
+    @discardableResult
+    static func waitForAll(before deadline: Date) -> Bool {
+        let workers = all.access { $0.compactMap(\.worker) }
+        var idle = true
+        for worker in workers where !worker.waitUntilIdle(before: deadline) { idle = false }
+        return idle
     }
 
     func async(_ job: @escaping () -> Void) {
@@ -121,7 +154,8 @@ final class MediaUIWorker {
         // Jobs are never dropped: callers keep "in flight" flags that only the job's completion clears, and they
         // never queue the same work twice, so the queue stays short even while a player does not answer.
         jobs.append(job)
-        condition.signal()
+        // Broadcast: a caller of `waitUntilIdle` may be waiting on the same condition.
+        condition.broadcast()
         condition.unlock()
     }
 
@@ -130,8 +164,13 @@ final class MediaUIWorker {
             condition.lock()
             while jobs.isEmpty { condition.wait() }
             let job = jobs.removeFirst()
+            busy = true
             condition.unlock()
             autoreleasepool { job() }
+            condition.lock()
+            busy = false
+            condition.broadcast()
+            condition.unlock()
         }
     }
 }
