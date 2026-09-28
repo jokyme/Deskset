@@ -1135,6 +1135,51 @@ enum AppSelfTest {
             t.check(manage.testHiddenNotice?.text.contains("StartHidden") == true)
             manage.close()
         }
+        t.suite("App: manage window: Show brings back the Spectrum strip hidden while idle, with its dots") {
+            guard let stationery = Paths.repositoryFolder("DefaultSkins")?.appendingPathComponent("Stationery") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let root = t.temporaryDirectory("manage-strip")
+            let skins = root.appendingPathComponent("Skins")
+            try FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: stationery, to: skins.appendingPathComponent("Stationery"))
+            // At rest (the tempo the strip writes into itself when it goes quiet), with Hide When Idle on and no
+            // track (no player is asked).
+            func edit(_ path: String, _ pairs: [(String, String)]) throws {
+                let url = skins.appendingPathComponent(path)
+                var text = try String(contentsOf: url, encoding: .utf8)
+                for (old, new) in pairs {
+                    t.check(text.contains(old), "\(path): \(old)")
+                    text = text.replacingOccurrences(of: old, with: new)
+                }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            try edit("Stationery/Spectrum/Strip.ini", [("\nTempo=Live\n", "\nTempo=Rest\n"),
+                                                        ("\nTempoLive=1\n", "\nTempoLive=0\n")])
+            try edit("Stationery/@Resources/Variables.inc", [("\nHideSpectrumWhenIdle=0", "\nHideSpectrumWhenIdle=1"),
+                                                              ("\nShowSpectrumTrack=1", "\nShowSpectrumTrack=0")])
+            let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                    skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                    backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
+            retainedApps.append(app)
+            guard let strip = app.activate(config: "Stationery\\Spectrum", file: "Strip.ini") else {
+                return t.check(false, "the strip loads")
+            }
+            t.check(strip.isHiddenByBang, "at rest with Hide When Idle it comes up hidden")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false,
+                    "its dots are there for when it is shown")
+            let manage = ManageWindowController(app: app)
+            manage.select(config: "Stationery\\Spectrum", file: "Strip.ini")
+            t.equal(manage.testStatus, ManageModel.Hidden.status)
+            t.equal(manage.testHiddenNotice?.title, ManageModel.Hidden.title)
+            manage.testShowButton.performClick(nil)
+            t.check(!strip.isHiddenByBang, "Show shows it")
+            strip.skin.update()
+            t.check(!strip.isHiddenByBang, "and it stays while nothing changes")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false, "with its row of dots")
+            manage.close()
+        }
         t.suite("App: manage window: the hidden notice fits the details at the window's smallest") {
             guard let app = try makeApp(t), let focus = app.activate(config: "App\\Focus", file: "Focus.ini")
             else { return }
