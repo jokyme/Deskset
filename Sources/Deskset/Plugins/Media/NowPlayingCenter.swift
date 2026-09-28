@@ -924,7 +924,7 @@ final class NowPlayingCenter {
             logOnce("\(app.displayName) is not installed")
             return
         }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        NowPlayingCenter.launchPlayer(at: url)
     }
 
     private func quit(_ app: MediaApp) {
