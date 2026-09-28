@@ -56,7 +56,9 @@ enum StudioSessionSelfTests {
             }
             t.check(studio !== c.skin, "the Studio's instance is not the desktop copy")
             t.check(studio.host is StudioHost, "hosted by the Studio")
-            t.check(studio.sourceProvider === session.buffers, "loaded from the text in memory")
+            // The text in memory, and typed code once the code pane pauses (`StudioSources`).
+            t.check(studio.sourceProvider === session.studioSources && session.studioSources.buffers === session.buffers,
+                    "loaded from the text in memory")
             t.check(studio.actionPolicy === session.host.policy, "its actions filtered")
             t.check(session.desktop === c, "linked to the desktop copy")
             t.check(editor.window?.undoManager === session.undoStack, "the window's undo stack is the widget's")

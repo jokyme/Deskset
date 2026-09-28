@@ -9,6 +9,24 @@ enum CodeFollowingSelfTests {
     static func run(_ t: AppTestRunner) {
         viewTests(t)
         studioTests(t)
+        typedTests(t)
+    }
+
+    /// Waits until `condition` holds (at most `seconds`), running the main run loop.
+    @discardableResult
+    static func wait(_ seconds: TimeInterval = 3, until condition: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(seconds)
+        while !condition() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        return condition()
+    }
+
+    /// Types `text` over the first `old` in the code pane, as keyboard input does.
+    static func typeOver(_ code: CodeEditorView, _ old: String, with text: String) -> Bool {
+        let range = (code.text as NSString).range(of: old)
+        guard range.location != NSNotFound else { return false }
+        code.textView.setSelectedRange(range)
+        code.textView.insertText(text, replacementRange: range)
+        return true
     }
 
     static func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
@@ -294,6 +312,134 @@ enum CodeFollowingSelfTests {
             settle()
             t.equal(code.text, ini + "; saved elsewhere\n", "the change on disk shows")
             t.check(code.filesReadAgain > reads, "read again")
+        }
+    }
+
+    // MARK: Typed code
+
+    static let typedIni = "[Rainmeter]\nUpdate=1000\n\n[MeterTitle]\nMeter=String\nText=Hi\nFontSize=12\n"
+
+    static func typedTests(_ t: AppTestRunner) {
+        t.suite("App: code editor shows typed code on the canvas after a pause, and writes it at the commit") {
+            guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "CodeTyped", typedIni) else { return }
+            defer { editor.window?.close() }
+            guard let session = editor.session, let desktop = app.controller(for: "Studio\\CodeTyped") else {
+                return t.check(false, "a session")
+            }
+            editor.setMode(.split)
+            settle()
+            editor.select(section: "MeterTitle")
+            settle()
+            let code = editor.codeView
+            editor.window?.makeFirstResponder(code.textView)
+            let instance = editor.skin
+            func title() -> Meter? { editor.skin?.meter(named: "MeterTitle") }
+            let height = title()?.frame.height ?? 0
+            let undoName = session.undoStack.undoActionName
+
+            let typedAt = Date()
+            t.check(typeOver(code, "FontSize=12", with: "FontSize=30"), "typed")
+            guard let due = code.typedTextDate, let commitDue = code.idleCommitDate else {
+                return t.check(false, "the pause and the commit are waited for")
+            }
+            t.check(due.timeIntervalSince(typedAt) >= 0.1 && due.timeIntervalSince(typedAt) <= 0.3,
+                    "shown after about 150 ms: \(due.timeIntervalSince(typedAt))")
+            t.check(commitDue > due, "committed later")
+            t.equal(title()?.rawOption("FontSize"), "12", "not before the pause")
+            t.check(wait { code.typedTextDate == nil }, "the pause ended")
+            t.equal(title()?.rawOption("FontSize"), "30", "the Studio's instance shows the typed code")
+            t.check((title()?.frame.height ?? 0) > height, "at its new size: \(title()?.frame.height ?? 0) > \(height)")
+            t.check(editor.skin === instance, "as a patch: the same instance")
+            t.equal(StudioReviewSelfTests.read(url), typedIni, "nothing written")
+            t.equal(session.buffers.buffer(url)?.text, typedIni, "the text in memory is as it was")
+            t.equal(session.undoStack.undoActionName, undoName, "no step")
+            t.equal(desktop.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "the desktop copy as it was")
+            t.check(code.isDirty, "the code is still to commit")
+            t.check(editor.window?.firstResponder === code.textView, "the code keeps the keyboard focus")
+
+            // The commit writes it as one step, and finds nothing more to show.
+            t.check(code.fireIdleCommit(), "committed after the longer pause")
+            settle()
+            t.check(StudioReviewSelfTests.read(url).contains("FontSize=30\n"), "written")
+            t.equal(session.undoStack.undoActionName, "Edit Code", "one step")
+            t.check(editor.skin === instance, "the same instance")
+            t.equal(title()?.rawOption("FontSize"), "30")
+            t.check(session.studioSources.typed.isEmpty, "no typed code left")
+            t.check(!code.isDirty)
+            t.equal(code.text, session.buffers.buffer(url)?.text)
+            t.check(wait { desktop.skin.meter(named: "MeterTitle")?.rawOption("FontSize") == "30" },
+                    "the desktop copy follows the step")
+
+            editor.window?.undoManager?.undo()
+            settle()
+            t.equal(StudioReviewSelfTests.read(url), typedIni, "undone")
+            t.equal(code.text, typedIni, "the code too")
+            t.equal(title()?.rawOption("FontSize"), "12")
+            editor.window?.undoManager?.redo()
+            settle()
+            t.check(StudioReviewSelfTests.read(url).contains("FontSize=30\n"), "redone")
+            t.equal(code.text, session.buffers.buffer(url)?.text)
+            editor.window?.undoManager?.undo()
+            settle()
+
+            // Typed back to what is written: the instance shows the text in memory again.
+            t.check(typeOver(code, "FontSize=12", with: "FontSize=40"), "typed again")
+            code.fireTypedText()
+            t.equal(title()?.rawOption("FontSize"), "40")
+            t.check(typeOver(code, "FontSize=40", with: "FontSize=12"), "typed back")
+            t.check(!code.isDirty, "clean")
+            t.check(code.fireTypedText(), "the pause is waited for again")
+            t.equal(title()?.rawOption("FontSize"), "12", "the text in memory shows again")
+            t.check(session.studioSources.typed.isEmpty)
+
+            // Committed before the pause (⌘S): the step shows it, and the pause has nothing left to show.
+            t.check(typeOver(code, "FontSize=12", with: "FontSize=22"), "typed")
+            t.check(code.commitNow(explicit: true), "saved at once")
+            t.equal(code.typedTextDate, nil, "nothing left for the pause")
+            t.equal(title()?.rawOption("FontSize"), "22", "the step shows it")
+            t.check(StudioReviewSelfTests.read(url).contains("FontSize=22\n"))
+            editor.window?.undoManager?.undo()
+            settle()
+            t.equal(title()?.rawOption("FontSize"), "12")
+            t.equal(StudioReviewSelfTests.read(url), typedIni)
+        }
+
+        t.suite("App: code editor shows a typed layer by loading the Studio's instance again, and drops it when discarded") {
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "CodeTypedLayer", typedIni) else { return }
+            defer { editor.window?.close() }
+            guard let session = editor.session else { return t.check(false, "a session") }
+            editor.setMode(.split)
+            settle()
+            let code = editor.codeView
+            let instance = editor.skin
+            let end = (code.text as NSString).length
+            code.textView.setSelectedRange(NSRange(location: end, length: 0))
+            code.textView.insertText("\n[MeterTyped]\nMeter=String\nText=Typed\nY=30\n", replacementRange: code.textView.selectedRange())
+            t.check(code.fireTypedText(), "the pause")
+            t.check(editor.skin !== instance, "a layer added: the Studio's instance loaded again")
+            t.check(editor.skin?.meter(named: "MeterTyped") != nil, "it shows the typed layer")
+            t.check(editor.allItems.contains { $0.title == "MeterTyped" }, "the layers list it")
+            t.equal(StudioReviewSelfTests.read(url), typedIni, "nothing written")
+            t.equal(session.buffers.buffer(url)?.text, typedIni)
+            t.check(!session.undoStack.canUndo, "no step")
+            let shown = editor.skin
+            code.discardUncommittedChanges()
+            settle()
+            t.check(editor.skin?.meter(named: "MeterTyped") == nil, "discarded: the layer is gone")
+            t.check(editor.skin !== shown, "loaded again")
+            t.check(session.studioSources.typed.isEmpty)
+            t.equal(code.text, typedIni)
+            t.check(!session.undoStack.canUndo, "still no step")
+
+            // Code that does not load keeps the instance as it was.
+            let before = editor.skin
+            t.check(typeOver(code, "[MeterTitle]", with: "[MeterTitle"), "a broken header")
+            code.fireTypedText()
+            t.check(editor.skin != nil, "the Studio still shows the widget")
+            code.discardUncommittedChanges()
+            settle()
+            t.check(editor.skin?.meter(named: "MeterTitle") != nil, "and after the typing is dropped")
+            _ = before
         }
     }
 }
