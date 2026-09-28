@@ -287,7 +287,17 @@ final class StudioLayersView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         // The data group keeps up to two fifths of the page (at least three rows) when the parts are many.
         let dataCap = dataScroll.isHidden ? 0 : max(available * 0.42, min(dataContent, 3 * (Self.dataRowHeight + 1)))
         let dataHeight = min(dataContent, dataCap)
-        let partsHeight = min(partsContent, max(available - header - dataHeight, 0))
+        var partsHeight = min(partsContent, max(available - header - dataHeight, 0))
+        // A list cut short ends on a whole row.
+        if partsHeight < partsContent {
+            var whole: CGFloat = 0
+            for row in 0..<partsOutline.numberOfRows {
+                let maxY = partsOutline.rect(ofRow: row).maxY
+                if maxY > partsHeight { break }
+                whole = maxY
+            }
+            if whole > 0 { partsHeight = whole }
+        }
         partsScroll.frame = NSRect(x: 0, y: y, width: w, height: partsHeight)
         y += partsHeight
         if !emptyLabel.isHidden {

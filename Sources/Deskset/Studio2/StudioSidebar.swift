@@ -64,7 +64,8 @@ final class StudioSidebarViewController: NSViewController {
     func layout() {
         guard isViewLoaded else { return }
         let w = view.bounds.width, h = view.bounds.height
-        let top = StudioCanvasViewController.toolbarHeight + 7
+        // The tabs sit level with the design's (their middle 70 pt from the window's top).
+        let top = StudioCanvasViewController.toolbarHeight - 2
         tabs.frame = NSRect(x: 10, y: top, width: max(w - 20, 60), height: 24)
         let segment = (tabs.frame.width - 6) / 2
         for i in 0..<2 { tabs.setWidth(segment, forSegment: i) }

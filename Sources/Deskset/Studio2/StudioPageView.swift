@@ -735,7 +735,8 @@ final class StudioRowView: NSView, StudioPageItemView {
         var x = labelWidth + (labelWidth > 0 ? 8 : 0)
         var right = bounds.width
         if !detailLabel.isHidden {
-            let w = min(ceil(detailLabel.intrinsicContentSize.width), 110)
+            // A little slack: drawn at 2x, the monospaced names come out a hair wider than measured.
+            let w = min(ceil(detailLabel.intrinsicContentSize.width) + 4, 116)
             detailLabel.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
             right -= w + 6
         }
