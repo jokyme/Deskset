@@ -25,7 +25,7 @@ enum EngineThreadSelfTests {
     // MARK: The SkinThreading key
 
     static func keyTests(_ t: AppTestRunner) {
-        t.suite("App: engine thread: SkinThreading says main or engine; anything else means main, and says so") {
+        t.suite("App: engine thread: SkinThreading says main or engine; engine unless it says main, and says so") {
             func chosen(_ value: Any?) -> (mode: SkinThreading, note: String?) {
                 // Registered values live in memory only: nothing is written to the user's preferences.
                 guard let defaults = UserDefaults(suiteName: "app.deskset.selftest.threading.\(UUID().uuidString)")
@@ -34,21 +34,24 @@ enum EngineThreadSelfTests {
                 return SkinThreading.chosen(in: defaults)
             }
             let unset = chosen(nil)
-            t.check(unset.mode == .main && unset.note == nil, "not set: main, nothing to say")
-            let main = chosen("main")
-            t.check(main.mode == .main && main.note == nil, "main")
+            t.check(unset.mode == .engine && unset.note == nil, "not set: the engine thread, the app's default")
+            t.equal(SkinThreading.appDefault, .engine)
             let engine = chosen("engine")
-            t.check(engine.mode == .engine, "engine")
-            t.check(engine.note?.contains("engine thread") == true, "and the log says so: \(engine.note ?? "")")
-            t.equal(chosen(" Engine ").mode, .engine, "in any case, with spaces around")
+            t.check(engine.mode == .engine && engine.note == nil, "engine")
+            let main = chosen("main")
+            t.check(main.mode == .main, "main, for debugging")
+            t.check(main.note?.contains("main thread") == true, "and the log says so: \(main.note ?? "")")
+            t.equal(chosen(" Main ").mode, .main, "in any case, with spaces around")
             let perSkin = chosen("perSkin")
-            t.equal(perSkin.mode, .main, "a mode of a later phase: main")
+            t.equal(perSkin.mode, .engine, "a mode of a later phase: the default")
             t.check(perSkin.note?.contains("\"perSkin\"") == true, "logged: \(perSkin.note ?? "")")
             let number = chosen(1)
-            t.check(number.mode == .main && number.note != nil, "not a word: main, logged")
+            t.check(number.mode == .engine && number.note != nil, "not a word: the default, logged")
             t.check(CommandLineTools.usage.contains("SkinThreading"), "--help mentions it")
+            t.check(CommandLineTools.usage.contains("engine (the default)"), "and the default")
 
-            // The app's default, and the self-tests' apps, keep every skin on the main thread.
+            // An app made without saying (the self-tests', the headless modes') keeps every skin on the main thread;
+            // only the menu bar app reads the key (`main.swift`).
             let root = t.temporaryDirectory("engine-key")
             let plain = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                       skinsDirectory: root.appendingPathComponent("Skins"),

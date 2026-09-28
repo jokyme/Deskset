@@ -113,7 +113,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engineThread = nil
     }
 
-    /// Said in the log at launch about the `SkinThreading` default (an unknown value; the engine thread).
+    /// Said in the log at launch about the `SkinThreading` default (an unknown value; the main thread).
     var threadingNote: String?
 
     // MARK: Lifecycle
@@ -124,7 +124,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Log.rotateIfNeeded()
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
                   + ProcessInfo.processInfo.operatingSystemVersionString)
-        if let threadingNote { Log.write(threadingNote, level: threading == .main ? .warning : .notice) }
+        if let threadingNote {
+            Log.write(threadingNote, level: .warning)
+        } else if threading == .engine {
+            Log.write("Desktop skins run on the engine thread")
+        }
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
         // `defaults write app.deskset.Deskset FrameTimingLog -int 10`: how evenly each skin's frames come, in the log.
@@ -1452,24 +1456,29 @@ final class CustomMenuAction: NSObject {
 }
 
 /// Where the app runs its desktop skins (docs/skin-threading.md §15, phase 2): the `SkinThreading` default, read once
-/// at launch (`main.swift`). `perSkin` (a thread for each skin) comes in phase 3.
+/// at launch (`main.swift`). The engine thread unless it says `main`. `perSkin` (a thread for each skin) comes in
+/// phase 3.
 ///
-///     defaults write app.deskset.Deskset SkinThreading engine     (or -SkinThreading engine for one launch)
+///     defaults write app.deskset.Deskset SkinThreading main     (or -SkinThreading main for one launch)
 enum SkinThreading: String {
-    /// Every skin on the main thread, as the app always ran them: the default for now, and for debugging later.
+    /// Every skin on the main thread, as the app ran them before phase 2: for debugging.
     case main
-    /// The desktop skins on one engine thread; the Studio's own instances, dry runs and thumbnails stay on main.
+    /// The desktop skins on one engine thread (the default); the Studio's own instances, dry runs and thumbnails stay
+    /// on main.
     case engine
 
     static let defaultsKey = "SkinThreading"
+    /// Without the key, or with a value that is neither mode.
+    static let appDefault = SkinThreading.engine
 
-    /// The mode `defaults` asks for, and what to say about it in the log: an unknown value means `main`.
+    /// The mode `defaults` asks for, and what to say about it in the log: an unknown value means the default.
     static func chosen(in defaults: UserDefaults) -> (mode: SkinThreading, note: String?) {
-        guard let raw = defaults.object(forKey: defaultsKey) else { return (.main, nil) }
+        guard let raw = defaults.object(forKey: defaultsKey) else { return (appDefault, nil) }
         let text = (raw as? String ?? "\(raw)").trimmingCharacters(in: .whitespaces)
         if let mode = SkinThreading(rawValue: text.lowercased()) {
-            return (mode, mode == .engine ? "Desktop skins run on the engine thread (\(defaultsKey)=engine)" : nil)
+            return (mode, mode == .main ? "Desktop skins run on the main thread (\(defaultsKey)=main)" : nil)
         }
-        return (.main, "Unknown \(defaultsKey) value \"\(text)\" (main or engine): skins run on the main thread")
+        return (appDefault, "Unknown \(defaultsKey) value \"\(text)\" (main or engine): desktop skins run on the "
+                + "engine thread")
     }
 }
