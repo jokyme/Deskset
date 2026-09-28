@@ -601,6 +601,8 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
             ("Text(\"CPU: \" + cpu.usage + \"%\")", "Text(\"CPU: {cpu.usage}%\")"),
             ("Text(\"CPU\").font-size(14)", "Text(\"CPU\").font(14)"),
             ("Text(`${cpu.usage}%`)", "Text(\"{cpu.usage}%\")"),
+            ("Text({cpu.usage})", "Text(\"{cpu.usage}\")"),
+            ("Progress({cpu.usage}, total: 100)", "Progress(cpu.usage, total: 100)"),
         ]
         for (body, expected) in cases {
             let text = "info { name: \"T\" }\nwidget {\n    \(body)\n}\n"
