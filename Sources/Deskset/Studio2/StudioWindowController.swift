@@ -170,6 +170,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         guard let session else { return }
         geometry.cancel()
         partPage.reset()
+        canvasController.canvas.setSelection(nil)
         widgetPage.close()
         widgetPage.thumbnails.clear()
         preview.detach()
@@ -628,6 +629,11 @@ extension StudioWindowController {
     /// The inspector's events go to the page it shows.
     func pageEvent(_ event: StudioPageEvent) {
         if partPage.focus != nil { partPage.handle(event) } else { widgetPage.handle(event) }
+    }
+
+    /// Esc with nothing in the window taking it: one level up.
+    @objc func cancelOperation(_ sender: Any?) {
+        goUp()
     }
 
     /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code.
