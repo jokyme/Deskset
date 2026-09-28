@@ -60,6 +60,7 @@ enum AppSelfTest {
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
         InspectorInPlaceSelfTests.run(t)
+        StudioDesktopFollowSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
         FriendlySidebarSelfTests.run(t)
         FriendlyWidgetPageSelfTests.run(t)
