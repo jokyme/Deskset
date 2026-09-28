@@ -1839,7 +1839,8 @@ suite's `TestThreadExecutor`.
    - Memory footprint: 140 MB at minute 1 (the launch's), 107 MB from minute 5 to 40, 99 MB from minute 45 to the
      end. Threads: 11–13 throughout. No crash.
    - The log: no error, no warning and no main-thread step over 250 ms in the hour.
-   - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers at 60 frames a second).
+   - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers: Simple Clean's at `Update=0`,
+     the 16 ms minimum, about 60 frames a second, and Spectrum at 33 ms, 30 frames a second).
 5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac). The machine did not get quiet: other
    work kept the 1-minute load average at 3.5–6.4 for the whole hour, so the numbers were taken under that load
    (noted). Each copy of the app had a home of its own and the demo audio and player.
