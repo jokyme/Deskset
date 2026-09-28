@@ -134,6 +134,16 @@ enum CanvasPlanesSelfTests {
             t.equal(now.overlay, ticked.overlay + 1, "and the overlay")
             t.equal(now.workbench, ticked.workbench, "not the workbench")
 
+            // Fitting a fitted canvas again (the editor fits after every step) leaves the planes alone.
+            canvas.zoomToFit()
+            display()
+            let fitted = (zoom: canvas.zoom, origin: canvas.enclosingScrollView?.contentView.bounds.origin)
+            canvas.zoomToFit()
+            t.check(!asked(planes.workbench) && !asked(planes.content) && !asked(planes.overlay),
+                    "fitting a fitted canvas again asks no plane to draw")
+            t.equal(canvas.zoom, fitted.zoom)
+            t.equal(canvas.enclosingScrollView?.contentView.bounds.origin, fitted.origin, "and leaves it where it was")
+
             // The workbench: a backdrop, a zoom, a size or an appearance change draws it again.
             let backdrop = canvas.backdrop
             canvas.backdrop = backdrop == .dark ? .light : .dark

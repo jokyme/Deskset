@@ -466,11 +466,19 @@ final class SkinCanvasView: NSView {
     }
 
     func zoomToFit() {
-        // Fitted already, the whole canvas in view (centred by the clip view): the same magnification set again would
-        // only reset the clip view and draw every plane again, the workbench too (the editor fits after each step).
+        // Fitted already, the whole canvas in view where the clip view puts it, on a whole pixel as a magnification
+        // leaves it: the same magnification set again would only reset the clip view and draw every plane again, the
+        // workbench too (the editor fits after each step). A pane that changed size still centres the canvas again.
         let z = fitZoom()
         if abs(z - zoom) < 0.000_1, let clip = enclosingScrollView?.contentView,
-           clip.bounds.width >= frame.width - 0.5, clip.bounds.height >= frame.height - 0.5 { return }
+           clip.bounds.width >= frame.width - 0.5, clip.bounds.height >= frame.height - 0.5 {
+            let placed = clip.constrainBoundsRect(clip.bounds).origin, at = clip.bounds.origin
+            let pixels = max(zoom, 0.01) * (window?.backingScaleFactor ?? 2)
+            func whole(_ v: CGFloat) -> Bool { abs(v * pixels - (v * pixels).rounded()) < 0.01 }
+            if abs(placed.x - at.x) * pixels <= 0.51, abs(placed.y - at.y) * pixels <= 0.51, whole(at.x), whole(at.y) {
+                return
+            }
+        }
         setZoom(z, centeredAt: NSPoint(x: bounds.midX, y: bounds.midY))
     }
 
