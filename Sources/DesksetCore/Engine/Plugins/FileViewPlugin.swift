@@ -612,53 +612,19 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     private func showInfo(_ item: Item) { showInfo(item.path) }
 
     private func reveal(_ path: String) {
-        PluginProcess.run("/usr/bin/open", ["-R", path])
+        skin.sideEffects.launch("/usr/bin/open", ["-R", path], completion: nil)
     }
 
     private func showInfo(_ path: String) {
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        PluginProcess.run("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
-                                                 "-e", "activate",
-                                                 "-e", "open information window of (POSIX file \"\(escaped)\" as alias)",
-                                                 "-e", "end tell"])
+        skin.sideEffects.launch("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
+                                                       "-e", "activate",
+                                                       "-e", "open information window of (POSIX file \"\(escaped)\" as alias)",
+                                                       "-e", "end tell"], completion: nil)
     }
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
         skin.log(message, level: .notice)
-    }
-}
-
-/// Helper programs (`open`, `osascript`), started off the main thread; nothing waits for them.
-enum PluginProcess {
-    /// Starts `executable` with `arguments`; `completion` (if any) gets the exit status, on any thread (`run` hands it
-    /// to the caller's executor). Tests replace it so that nothing is launched.
-    static var launcher: (_ executable: String, _ arguments: [String], _ completion: ((Int32) -> Void)?) -> Void = {
-        executable, arguments, completion in
-        DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { p in completion?(p.terminationStatus) }
-            do {
-                try process.run()
-            } catch {
-                completion?(-1)
-            }
-        }
-    }
-
-    /// Starts a helper program without waiting for it.
-    static func run(_ executable: String, _ arguments: [String]) {
-        launcher(executable, arguments, nil)
-    }
-
-    /// Starts a helper program; `completion` gets its exit status on `executor` (the skin that asked), never inline.
-    static func run(_ executable: String, _ arguments: [String], on executor: SkinExecutor,
-                    completion: @escaping (Int32) -> Void) {
-        launcher(executable, arguments) { status in executor.async { completion(status) } }
     }
 }

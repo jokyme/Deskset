@@ -348,19 +348,22 @@ public enum SkinInput {
 /// Decides, action by action, what a skin runs of its own actions (its options' actions, mouse actions, scripts,
 /// plugins' finish actions): `Skin.actionPolicy`. What it refuses is skipped, as if the action were not there; the
 /// policy keeps a record of it if it wants one. Asked on the skin's owner, with the bang's arguments resolved.
+///
+/// One mechanism with the skin's side effects: the policy decides about bangs, and what the skin's plugins and scripts
+/// do outside it on their own (programs, files, the Mac's audio, players) goes to its `SideEffects`. A policy may
+/// bring side effects of its own (`sideEffects`: the Studio's records them), which the skin then uses.
 public protocol SkinActionPolicy: AnyObject {
     /// Whether the skin performs `bang` (`!Delay` included).
     func skin(_ skin: Skin, allows bang: Bang) -> Bool
     /// Whether the skin hands `["target" arguments…]` (a web page, a file, a program) to its host.
     func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool
-    /// Where the files the skin's scripts write (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and its
-    /// WebParser `DownloadFile` downloads go: nil (the default) for the files themselves, or a private copy that keeps
-    /// them away from the widget's files (`SkinFileSandbox`).
-    var fileSandbox: SkinFileSandbox? { get }
+    /// The side effects of a skin under this policy (`Skin.sideEffects`): nil (the default) for the skin's own, or a
+    /// recording that keeps them away from the Mac and the widget's files (`RecordingSideEffects`).
+    var sideEffects: SideEffects? { get }
 }
 
 extension SkinActionPolicy {
-    public var fileSandbox: SkinFileSandbox? { nil }
+    public var sideEffects: SideEffects? { nil }
 }
 
 extension SkinHost {

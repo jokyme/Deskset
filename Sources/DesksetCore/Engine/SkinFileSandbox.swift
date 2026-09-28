@@ -2,10 +2,16 @@ import Foundation
 
 /// A private copy of the files a skin changes, for an instance of a widget that must not change the widget's files while
 /// another instance runs them — the Studio's own instance, next to the widget on the desktop, which does everything for
-/// real. What its scripts write (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and what its WebParser
-/// measures download to a `DownloadFile` goes to a scratch folder instead; reading a file it wrote or removed sees its
-/// copy, every other file is read where it is. Each change is recorded (`records`, `onRecord`), as the bangs the
-/// instance does not run are.
+/// real — or a run that must leave the Mac alone. It is the file half of `RecordingSideEffects`. What its scripts write
+/// (`io.open` for writing, `io.output`, `os.remove`, `os.rename`), what its WebParser measures download to a
+/// `DownloadFile` or dump, RunCommand's `OutputFile` and `!WriteKeyValue` go to a scratch folder instead; reading a
+/// file it wrote or removed sees its copy, every other file is read where it is. Each change is recorded (`records`,
+/// `onRecord`), as the bangs the instance does not run are.
+///
+/// A file under one of the `roots` (the Skins folder, the settings folder) keeps its place in a copy of that tree
+/// (`<directory>/<generation>/<root name>/<path in the root>`), so that the copies sit next to each other as the
+/// files do; any other file is copied as `<number>-<name>`. A copy starts as the real file (a symbolic link's target)
+/// when it is updated rather than written from nothing.
 ///
 /// `reset` forgets the copies (a new instance starts from the real files, as the desktop copy does when it reloads).
 /// Thread-safe: a download's destination is taken on the skin's thread and written on another.
@@ -39,6 +45,8 @@ public final class SkinFileSandbox {
 
     /// Where the copies go (made on the first write, removed with the sandbox).
     public let directory: URL
+    /// Trees whose files keep their place in the copy: a name for the tree's folder in the copy, and the real folder.
+    public let roots: [(name: String, url: URL)]
     /// The changes kept here, oldest first (the last `limit`).
     public private(set) var records: [Record] = []
     public var limit = 100
@@ -53,9 +61,10 @@ public final class SkinFileSandbox {
     private var generation = 0
     private var serial = 0
 
-    public init(directory: URL? = nil) {
+    public init(directory: URL? = nil, roots: [(name: String, url: URL)] = []) {
         self.directory = directory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("Deskset-Sandbox-\(UUID().uuidString)", isDirectory: true)
+        self.roots = roots.map { ($0.name, $0.url.standardizedFileURL.resolvingSymlinksInPath()) }
     }
 
     deinit { try? FileManager.default.removeItem(at: directory) }
@@ -68,6 +77,11 @@ public final class SkinFileSandbox {
     /// The path to open instead of `path` for `access`: its copy (made now for a write; for an update it starts as the
     /// real file), a path that is not there for a file removed here, else `path` itself.
     public func path(for path: String, access: Access) -> String {
+        self.path(for: path, access: access, recording: true)
+    }
+
+    /// `path(for:access:)`; `recording` false keeps a write out of `records` (the caller records it its own way).
+    func path(for path: String, access: Access, recording: Bool) -> String {
         let key = Self.key(path)
         lock.lock()
         defer { lock.unlock() }
@@ -76,15 +90,33 @@ public final class SkinFileSandbox {
             if removed.contains(key) { return missingPath() }
             return path
         }
-        if let copy = copies[key] { return copy }
+        if let copy = copies[key] {
+            if recording { record(Record(operation: "write", path: path)) }
+            return copy
+        }
         let copy = newCopyPath(for: path)
         if access == .update, !removed.contains(key), FileManager.default.fileExists(atPath: path) {
-            try? FileManager.default.copyItem(atPath: path, toPath: copy)
+            try? FileManager.default.copyItem(atPath: Self.target(of: path), toPath: copy)
         }
         copies[key] = copy
         removed.remove(key)
-        record(Record(operation: "write", path: path))
+        if recording { record(Record(operation: "write", path: path)) }
         return copy
+    }
+
+    /// The copy of `path` if a change was kept here (nil for a file removed here or never changed).
+    public func copy(of path: String) -> String? {
+        let key = Self.key(path)
+        lock.lock()
+        defer { lock.unlock() }
+        return copies[key]
+    }
+
+    /// Whether `path` lies in this sandbox's own folder (a copy, or a file of its scratch space).
+    public func contains(_ path: String) -> Bool {
+        let own = Self.key(directory.path)
+        let key = Self.key(path)
+        return key == own || key.hasPrefix(own + "/")
     }
 
     /// `path` for writing a whole file (a download).
@@ -111,13 +143,14 @@ public final class SkinFileSandbox {
         defer { lock.unlock() }
         guard exists(key: fromKey, path: from) else { return false }
         guard fromKey != toKey else { return true }
+        // The old copy of the new name goes first: a file in a root's tree has the same copy path every time.
+        if let old = copies.removeValue(forKey: toKey) { try? FileManager.default.removeItem(atPath: old) }
         let copy = newCopyPath(for: to)
         if let source = copies.removeValue(forKey: fromKey) {
             try? FileManager.default.moveItem(atPath: source, toPath: copy)
         } else {
-            try? FileManager.default.copyItem(atPath: from, toPath: copy)
+            try? FileManager.default.copyItem(atPath: Self.target(of: from), toPath: copy)
         }
-        if let old = copies[toKey] { try? FileManager.default.removeItem(atPath: old) }
         copies[toKey] = copy
         removed.remove(toKey)
         removed.insert(fromKey)
@@ -159,13 +192,32 @@ public final class SkinFileSandbox {
         return !removed.contains(key) && FileManager.default.fileExists(atPath: path)
     }
 
-    /// A new file in the scratch folder, named after `path`'s last part.
+    /// A new file in the scratch folder: in the copy of its root's tree, else named after `path`'s last part.
     private func newCopyPath(for path: String) -> String {
+        let real = Self.target(of: path)
+        let lowered = real.lowercased()
+        for root in roots {
+            // Compared the way the default Mac file system compares names.
+            let rootPath = root.url.path
+            guard lowered.hasPrefix(rootPath.lowercased() + "/") else { continue }
+            let relative = String(real.dropFirst(rootPath.count + 1))
+            let copy = generationDirectory.appendingPathComponent(root.name, isDirectory: true)
+                .appendingPathComponent(relative)
+            try? FileManager.default.createDirectory(at: copy.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            return copy.path
+        }
         serial += 1
         let folder = generationDirectory
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let name = URL(fileURLWithPath: path).lastPathComponent
         return folder.appendingPathComponent("\(serial)-\(name.isEmpty ? "file" : name)").path
+    }
+
+    /// What `path` names after following symbolic links: a copy is made of the file, never of a link to it (writing
+    /// through a copied link would change the real file).
+    private static func target(of path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     /// A path in the scratch folder that is never there (a file removed here reads as missing).

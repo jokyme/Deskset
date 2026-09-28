@@ -134,6 +134,17 @@ public final class Skin {
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
+    /// Every way the skin's plugins and scripts reach outside it that is not a request to its host (`SideEffects`):
+    /// programs they start and signal, files they write, the Mac's audio, media players, key events. Done for real
+    /// (`LiveSideEffects.shared`, the default) or only recorded (`RecordingSideEffects`, for a run that must leave the
+    /// Mac alone). A policy that brings side effects of its own (`SkinActionPolicy.sideEffects`: the Studio's) takes
+    /// precedence over the ones set here. Set before `load()`; read on the skin's owner (plugins that need it on a
+    /// background queue take it along from there).
+    public var sideEffects: SideEffects {
+        get { actionPolicy?.sideEffects ?? assignedSideEffects }
+        set { assignedSideEffects = newValue }
+    }
+    private var assignedSideEffects: SideEffects = LiveSideEffects.shared
     /// Told of each input the skin took from the person using it — a click, a hover, the wheel, the pointer for
     /// `Plugin=Mouse`, a context menu item, text typed into InputText — and of each bang another widget sent it, after
     /// the skin acted on it, while it is still loaded (an input that refreshed it is not passed on). The Studio replays

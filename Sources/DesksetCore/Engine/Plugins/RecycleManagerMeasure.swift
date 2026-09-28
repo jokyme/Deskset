@@ -71,15 +71,15 @@ public final class RecycleManagerMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         switch command.trimmingCharacters(in: .whitespaces).lowercased() {
         case "openbin":
-            PluginProcess.run("/usr/bin/open", [TrashMonitor.homeTrash])
+            skin.sideEffects.launch("/usr/bin/open", [TrashMonitor.homeTrash], completion: nil)
         case "emptybin":
-            PluginProcess.run("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: true),
-                              on: skin.executor) { _ in
+            skin.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: true),
+                                    on: skin.executor) { _ in
                 TrashMonitor.shared.refresh(includeSize: true, force: true)
             }
         case "emptybinsilent":
-            PluginProcess.run("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: false),
-                              on: skin.executor) { _ in
+            skin.sideEffects.launch("/usr/bin/osascript", RecycleManagerMeasure.emptyScript(confirm: false),
+                                    on: skin.executor) { _ in
                 TrashMonitor.shared.refresh(includeSize: true, force: true)
             }
         default:

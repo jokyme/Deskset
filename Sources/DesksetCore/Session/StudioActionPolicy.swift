@@ -8,9 +8,12 @@ import Foundation
 /// outside the widget (`RunCommand`, players, the volume, the Trash…). A bang whose Config argument names another
 /// widget is recorded too.
 ///
-/// What its scripts write to files (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and what its WebParser
-/// measures save to a `DownloadFile` goes to a private copy (`fileSandbox`): the scripts go on as they would, reading
-/// back what they wrote, and the widget's files are left to the desktop copy. Each such write is recorded too.
+/// What its plugins and scripts do outside the widget on their own goes to a recording (`sideEffects`, the skin's side
+/// effects under this policy): the files its scripts write (`io.open` for writing, `io.output`, `os.remove`,
+/// `os.rename`), what its WebParser measures save to a `DownloadFile` or dump go to a private copy (`fileSandbox`), so
+/// the scripts go on as they would, reading back what they wrote, and the widget's files are left to the desktop copy;
+/// programs, the Mac's audio and players are only recorded. Each is recorded here too (`.file` for a file, `.effect`
+/// for the rest).
 ///
 /// While the Studio designs, clicks never reach the instance: only its measures' actions (OnUpdateAction,
 /// IfCondition…) and scripts run. The same policy guards the interactive preview of later stages, where clicks do.
@@ -23,6 +26,8 @@ public final class StudioActionPolicy: SkinActionPolicy {
             case execute
             /// A file a script or a download wrote, removed or renamed: kept in the private copy (`fileSandbox`).
             case file
+            /// Something else a plugin would have done outside the widget (a program, the audio, a player).
+            case effect
         }
 
         public var kind: Kind
@@ -43,26 +48,45 @@ public final class StudioActionPolicy: SkinActionPolicy {
 
     public init() {}
 
-    /// Where the instance's file writes go (made on first use).
-    public var fileSandbox: SkinFileSandbox? {
-        hasFiles = true
-        return files
+    /// What the instance's plugins and scripts do outside it: recorded, its file writes kept in a private copy (made on
+    /// first use).
+    public var sideEffects: SideEffects? {
+        hasEffects = true
+        return effects
     }
 
-    private lazy var files: SkinFileSandbox = {
-        let sandbox = SkinFileSandbox()
-        sandbox.onRecord = { [weak self] change in
-            self?.record(Recorded(kind: .file, text: change.description, name: change.operation))
-        }
-        return sandbox
+    /// Where the instance's file writes go.
+    public var fileSandbox: SkinFileSandbox? { sideEffects?.fileSandbox }
+
+    private lazy var effects: RecordingSideEffects = {
+        let effects = RecordingSideEffects()
+        effects.onRecord = { [weak self] effect in self?.record(effect) }
+        return effects
     }()
-    private var hasFiles = false
+    private var hasEffects = false
 
     /// A new instance starts from the widget's real files (as the desktop copy does when it reloads): the private copy
     /// of the files is forgotten.
     public func resetFiles() {
-        guard hasFiles else { return }
-        files.reset()
+        guard hasEffects else { return }
+        effects.reset()
+    }
+
+    /// A side effect as the Studio lists it: a file change as the sandbox says it (`write …`, `os.remove …`), the rest as
+    /// the effect says it.
+    private func record(_ effect: SideEffect) {
+        switch effect {
+        case .writeFile(let path):
+            record(Recorded(kind: .file, text: "write \(path)", name: "write"))
+        case .removeFile(let path):
+            record(Recorded(kind: .file, text: "os.remove \(path)", name: "remove"))
+        case .renameFile(let from, let to):
+            record(Recorded(kind: .file, text: "os.rename \(from) \(to)", name: "rename"))
+        case .writeKeyValue:
+            record(Recorded(kind: .file, text: effect.description, name: "writekeyvalue"))
+        default:
+            record(Recorded(kind: .effect, text: effect.description, name: String(effect.description.prefix { $0 != " " })))
+        }
     }
 
     public func skin(_ skin: Skin, allows bang: Bang) -> Bool {

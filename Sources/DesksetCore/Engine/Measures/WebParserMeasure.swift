@@ -521,7 +521,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                                                                relativePath: options.downloadFile)
         }
         // An instance that must not change the widget's files (the Studio's) saves its DownloadFile in a copy of its own.
-        let sandbox = isTemporary ? nil : skin.actionPolicy?.fileSandbox
+        let sandbox = isTemporary ? nil : skin.sideEffects.fileSandbox
         // The same file is already on its way: let that transfer finish (it runs this measure's actions). Restarting
         // it would starve the download whenever the parent re-reads its resource faster than the file arrives
         // (e.g. UpdateRate=1 and a slow image) — the value would never be set.

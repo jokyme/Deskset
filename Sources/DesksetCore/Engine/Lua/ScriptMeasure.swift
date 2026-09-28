@@ -623,22 +623,22 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             return [.number(osExecute(try args("execute").string(0)))]
         case .removeFile:
             let path = fixPath(try args("remove").string(0))
-            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(path)] }
+            guard let sandbox = skin.sideEffects.fileSandbox else { return [.text(path)] }
             if sandbox.remove(path) { return [.text(path), .boolean(true)] }
             return [.text(path), .boolean(false), .text("\(path): No such file or directory")]
         case .renameFile:
             let a = args("rename")
             let from = fixPath(try a.string(0)), to = fixPath(try a.string(1))
-            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(from), .text(to)] }
+            guard let sandbox = skin.sideEffects.fileSandbox else { return [.text(from), .text(to)] }
             if sandbox.rename(from, to: to) { return [.text(from), .text(to), .boolean(true)] }
             return [.text(from), .text(to), .boolean(false), .text("\(from): No such file or directory")]
         }
     }
 
     /// `path` as the skin's scripts open it for `access`: the file itself, or — for an instance of the widget that must
-    /// not change its files (`SkinActionPolicy.fileSandbox`, the Studio's) — its private copy.
+    /// not change its files (a recording's `SideEffects.fileSandbox`: the Studio's) — its private copy.
     private func sandboxed(_ path: String, _ access: SkinFileSandbox.Access) -> String {
-        skin.actionPolicy?.fileSandbox?.path(for: path, access: access) ?? path
+        skin.sideEffects.fileSandbox?.path(for: path, access: access) ?? path
     }
 
     /// The measure named `name` (this script itself included, even before the skin knows it).
