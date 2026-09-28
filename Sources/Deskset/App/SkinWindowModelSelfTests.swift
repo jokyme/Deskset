@@ -5,14 +5,14 @@ import DesksetCore
 /// step 3). A skin's own window bangs change its window model at once and the main thread follows; its bangs for other
 /// skins go straight to their runtimes. Every skin of the app still runs on the main executor, where all of it happens
 /// inline (the existing suites check that nothing changed, and the debug comparison checks the model against the live
-/// window wherever they read the environment); skins on test threads (`TestThreadExecutor`, through
+/// window wherever they read the environment); skins on test threads (`SkinThreadExecutor`, through
 /// `AppController.skinExecutor`) show what happens once they run elsewhere.
 enum SkinWindowModelSelfTests {
     static func run(_ t: AppTestRunner) {
         t.suite("App: window model: a skin on a thread reads its clamped place right after !Move, before its window moved") {
             guard let app = try AppSelfTest.makeApp(t) else { return }
             EnvironmentStore.shared.publish()
-            let executor = TestThreadExecutor(name: "Window model mover")
+            let executor = SkinThreadExecutor(name: "Window model mover")
             try write(app, ["Mover": moverSkin])
             app.skinExecutor = { $0 == "Model\\Mover" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
@@ -194,7 +194,7 @@ enum SkinWindowModelSelfTests {
 
             // The members on a thread of their own: they get the bangs in load order there.
             for c in loaded { c.runtime.messageObserver = nil }
-            let executor = TestThreadExecutor(name: "Skin directory group")
+            let executor = SkinThreadExecutor(name: "Skin directory group")
             app.skinExecutor = { names.contains($0) ? executor as SkinExecutor : MainSkinExecutor.shared }
             for name in names { app.deactivate(config: name) }
             weak var anySkin: Skin?
@@ -224,7 +224,7 @@ enum SkinWindowModelSelfTests {
         t.suite("App: skin directory: bangs to a skin on a thread arrive in order, and the 17th hop is dropped once") {
             guard let app = try AppSelfTest.makeApp(t) else { return }
             try write(app, ["PingA": pingSkin("Model\\PingB"), "PingB": pingSkin("Model\\PingA")])
-            let executor = TestThreadExecutor(name: "Skin directory hops")
+            let executor = SkinThreadExecutor(name: "Skin directory hops")
             app.skinExecutor = { $0 == "Model\\PingB" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skinB: Skin?
             autoreleasepool {
@@ -278,7 +278,7 @@ enum SkinWindowModelSelfTests {
                 .write(to: app.skinsDirectory.appendingPathComponent("Model/Target/Other.ini"), atomically: true,
                        encoding: .utf8)
             app.rescanLibrary()
-            let executor = TestThreadExecutor(name: "Skin directory loads")
+            let executor = SkinThreadExecutor(name: "Skin directory loads")
             app.skinExecutor = { $0 == "Model\\Sender" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var sender: Skin?
             autoreleasepool {
@@ -398,7 +398,7 @@ enum SkinWindowModelSelfTests {
 
     /// Waits for a skin on a test thread to be let go of (its runtime went with its window controller), then ends the
     /// thread.
-    static func finish(_ t: AppTestRunner, skin: () -> Skin?, _ executor: TestThreadExecutor) {
+    static func finish(_ t: AppTestRunner, skin: () -> Skin?, _ executor: SkinThreadExecutor) {
         t.check(AppSelfTest.spin(timeout: 30) { skin() == nil }, "the skin on the thread is let go of")
         executor.stop()
     }

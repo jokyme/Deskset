@@ -670,7 +670,7 @@ extension StudioSessionSelfTests {
 // MARK: - The desktop copy on a thread of its own
 
 /// The suites about reloads and following the desktop copy again, with the desktop copy on test threads
-/// (`TestThreadExecutor`, through `AppController.skinExecutor`; docs/skin-threading.md §8.5, §15 phase 2 step 6): the
+/// (`SkinThreadExecutor`, through `AppController.skinExecutor`; docs/skin-threading.md §8.5, §15 phase 2 step 6): the
 /// Studio's instance stays on the main thread, and the desktop copy is reached only through messages, its snapshot, its
 /// window controller and exclusive access. Its reloads report when their work gets there, so every wait here is for a
 /// condition; only "nothing reloads" is watched over a stretch of time, as in the suites above.
@@ -682,10 +682,10 @@ extension StudioSessionSelfTests {
         let editor: Editor
         let url: URL
         let config: String
-        let threads: [TestThreadExecutor]
+        let threads: [SkinThreadExecutor]
         private var skins: [() -> Skin?] = []
 
-        init(app: AppController, editor: Editor, url: URL, config: String, threads: [TestThreadExecutor]) {
+        init(app: AppController, editor: Editor, url: URL, config: String, threads: [SkinThreadExecutor]) {
             self.app = app
             self.editor = editor
             self.url = url
@@ -751,7 +751,7 @@ extension StudioSessionSelfTests {
         let url = folder.appendingPathComponent("\(name).ini")
         try text.write(to: url, atomically: true, encoding: .utf8)
         let config = "Studio\\\(name)"
-        let threads = (0..<max(count, 1)).map { TestThreadExecutor(name: "Studio \(name) \($0 + 1)") }
+        let threads = (0..<max(count, 1)).map { SkinThreadExecutor(name: "Studio \(name) \($0 + 1)") }
         var loads = 0
         app.skinExecutor = { asked in
             guard asked.caseInsensitiveCompare(config) == .orderedSame else { return MainSkinExecutor.shared }

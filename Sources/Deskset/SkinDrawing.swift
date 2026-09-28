@@ -297,6 +297,8 @@ extension MainSkinExecutor: SkinRunLoopExecutor {
     var runLoop: CFRunLoop? { CFRunLoopGetMain() }
 }
 
+extension SkinThreadExecutor: SkinRunLoopExecutor {}
+
 /// A skin's frames (docs/skin-threading.md §7.3, frame delivery E on bitmaps): on the skin's executor, whichever it is,
 /// the producer draws the skin with `SkinBitmapDrawing` and presents the picture through its window's `ContentProvider`.
 ///

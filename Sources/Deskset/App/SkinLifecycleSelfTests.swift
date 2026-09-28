@@ -6,7 +6,7 @@ import DesksetCore
 /// backdrop and InputText's box are companions of the window on the main thread, and the skin menu reads the live skin
 /// only when it lets go within 50 ms. Every skin of the app still runs on the main executor, where all of it happens
 /// inline (the existing suites check that nothing changed); here the desktop skin runs on a test thread
-/// (`TestThreadExecutor`, through `AppController.skinExecutor`). Nothing waits for a fixed time: a gate holds a skin's
+/// (`SkinThreadExecutor`, through `AppController.skinExecutor`). Nothing waits for a fixed time: a gate holds a skin's
 /// thread where a test needs the skin busy, and the tests wait for conditions.
 enum SkinLifecycleSelfTests {
     static func run(_ t: AppTestRunner) {
@@ -29,7 +29,7 @@ enum SkinLifecycleSelfTests {
                 $0.y = 150
                 $0.savePosition = true
             }
-            let executor = TestThreadExecutor(name: "Lifecycle placed")
+            let executor = SkinThreadExecutor(name: "Lifecycle placed")
             app.skinExecutor = { $0 == "Life\\Placed" ? executor as SkinExecutor : MainSkinExecutor.shared }
             var notices = 0
             let token = NotificationCenter.default.addObserver(forName: .desksetSkinsChanged, object: app,
@@ -78,7 +78,7 @@ enum SkinLifecycleSelfTests {
                 DynamicVariables=1
 
                 """ + meter])
-            let executor = TestThreadExecutor(name: "Lifecycle seeded")
+            let executor = SkinThreadExecutor(name: "Lifecycle seeded")
             app.skinExecutor = { $0 == "Life\\Seeded" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
             autoreleasepool {
@@ -102,7 +102,7 @@ enum SkinLifecycleSelfTests {
             t.equal(app.library.filter { $0.name.hasPrefix("Life\\Broken") }.count, 2, "in the library")
             // Deleted after the library found them: loading them fails.
             for name in ["Broken", "BrokenMain"] { try FileManager.default.removeItem(at: file(app, name)) }
-            let executor = TestThreadExecutor(name: "Lifecycle broken")
+            let executor = SkinThreadExecutor(name: "Lifecycle broken")
             app.skinExecutor = { $0 == "Life\\Broken" ? executor as SkinExecutor : MainSkinExecutor.shared }
             // The main executor: all of it inside activate, which returns nil as it always did.
             t.check(app.activate(config: "Life\\BrokenMain", file: nil) == nil, "on the main executor: nil at once")
@@ -135,7 +135,7 @@ enum SkinLifecycleSelfTests {
                 Formula=Counter
 
                 """ + meter])
-            let executor = TestThreadExecutor(name: "Lifecycle counter")
+            let executor = SkinThreadExecutor(name: "Lifecycle counter")
             app.skinExecutor = { $0 == "Life\\Counter" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
             autoreleasepool {
@@ -185,7 +185,7 @@ enum SkinLifecycleSelfTests {
                     $0.loadOrder = order + 1
                 }
             }
-            let executor = TestThreadExecutor(name: "Lifecycle quitting")
+            let executor = SkinThreadExecutor(name: "Lifecycle quitting")
             app.skinExecutor = { _ in executor }
             let started = names.compactMap { app.activate(config: "Life\\\($0)", file: nil) }
             t.equal(started.count, 4)
@@ -212,7 +212,7 @@ enum SkinLifecycleSelfTests {
                 Closed=0
 
                 """ + meter])
-            let executor = TestThreadExecutor(name: "Lifecycle stuck")
+            let executor = SkinThreadExecutor(name: "Lifecycle stuck")
             app.skinExecutor = { _ in executor }
             guard let c = app.activate(config: "Life\\Stuck", file: nil) else { return t.check(false, "loads") }
             t.check(AppSelfTest.spin(timeout: 30) { c.isStarted }, "started")
@@ -246,7 +246,7 @@ enum SkinLifecycleSelfTests {
 
                 """.appending(meter).write(to: installed, atomically: true, encoding: .utf8)
             app.rescanLibrary()
-            let executor = TestThreadExecutor(name: "Lifecycle installer")
+            let executor = SkinThreadExecutor(name: "Lifecycle installer")
             app.skinExecutor = { $0 == "LifePkg\\Widget" ? executor as SkinExecutor : MainSkinExecutor.shared }
             let manifest = "[rmskin]\nName=Life\nAuthor=Deskset tests\nVersion=2\nLoadType=Skin\n"
                 + "Load=LifePkg\\Widget\\Widget.ini\n"
@@ -301,7 +301,7 @@ enum SkinLifecycleSelfTests {
                 Corner=Round
 
                 """ + meter])
-            let executor = TestThreadExecutor(name: "Lifecycle glass")
+            let executor = SkinThreadExecutor(name: "Lifecycle glass")
             app.skinExecutor = { $0 == "Life\\Glass" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
             autoreleasepool {
@@ -357,7 +357,7 @@ enum SkinLifecycleSelfTests {
                 return fake
             }
             defer { SkinWindowCompanions.inputTextPromptFactory = nil }
-            let executor = TestThreadExecutor(name: "Lifecycle input")
+            let executor = SkinThreadExecutor(name: "Lifecycle input")
             app.skinExecutor = { $0 == "Life\\Input" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
             autoreleasepool {
@@ -426,7 +426,7 @@ enum SkinLifecycleSelfTests {
             LuaSupport.secondsLimit = 30
             LuaSupport.instructionLimit = 50_000_000_000
             defer { (LuaSupport.secondsLimit, LuaSupport.instructionLimit) = limits }
-            let executor = TestThreadExecutor(name: "Lifecycle menu")
+            let executor = SkinThreadExecutor(name: "Lifecycle menu")
             app.skinExecutor = { $0 == "Life\\Menu" ? executor as SkinExecutor : MainSkinExecutor.shared }
             weak var skin: Skin?
             autoreleasepool {
@@ -585,7 +585,7 @@ enum SkinLifecycleSelfTests {
 
     /// Waits for a skin on a test thread to be let go of (its runtime went with its window controller), then ends the
     /// thread.
-    static func finish(_ t: AppTestRunner, skin: () -> Skin?, _ executor: TestThreadExecutor) {
+    static func finish(_ t: AppTestRunner, skin: () -> Skin?, _ executor: SkinThreadExecutor) {
         t.check(AppSelfTest.spin(timeout: 30) { skin() == nil }, "the skin on the thread is let go of")
         executor.stop()
     }

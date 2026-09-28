@@ -745,7 +745,7 @@ enum SkinDrawingSelfTests {
 
     static func threadFrameTests(_ t: AppTestRunner) {
         t.suite("App: skin drawing: a skin on a thread of its own draws at the end of its turns and presents from there") {
-            let executor = TestThreadExecutor(name: "Skin frames test")
+            let executor = SkinThreadExecutor(name: "Skin frames test")
             let w = FrameTestWindow()
             let recorder = PresentRecorder(w.content)
             var held: SkinRuntime? = try frameRuntime(t, frameSkin, executor: executor, window: w, content: recorder)

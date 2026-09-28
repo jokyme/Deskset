@@ -43,7 +43,7 @@ enum SkinSnapshotSelfTests {
         }
 
         t.suite("App: skin snapshot: the main thread reads a skin on a thread without waiting for it") {
-            let executor = TestThreadExecutor(name: "Skin snapshot test")
+            let executor = SkinThreadExecutor(name: "Skin snapshot test")
             let window = RecordingWindow()
             defer { withExtendedLifetime(window) {} }
             var runtime: SkinRuntime? = try SkinRuntimeSelfTests.makeRuntime(t, busySkin, executor: executor,

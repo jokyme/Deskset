@@ -37,7 +37,7 @@ enum ThreadStressSelfTests {
 
     static func executorTests(_ t: AppTestRunner) {
         t.suite("App: threads: a skin thread runs its work in order, never inline, and its timers there") {
-            let executor = TestThreadExecutor(name: "Deskset self-test skin thread")
+            let executor = SkinThreadExecutor(name: "Deskset self-test skin thread")
             t.check(!executor.isCurrent, "the main thread is not the skin's thread")
             // Work handed over from the main thread: on the skin's thread, first in, first out.
             let order = SharedServiceThreadingSelfTests.Collected<Int>()
@@ -406,7 +406,7 @@ enum ThreadStressSelfTests {
         }
     }
 
-    /// One skin on a thread of its own (`TestThreadExecutor`): loads it `plan.loads` times, updates and draws it
+    /// One skin on a thread of its own (`SkinThreadExecutor`): loads it `plan.loads` times, updates and draws it
     /// `plan.updatesPerLoad` times after each load, then closes it and reports. Everything but `start`,
     /// `fontsChanged` and `report` runs on the skin's thread, the skin's owner.
     final class StressSkin {
@@ -427,7 +427,7 @@ enum ThreadStressSelfTests {
         }
 
         let file: SkinFile
-        let executor: TestThreadExecutor
+        let executor: SkinThreadExecutor
         let host: StressHost
         let report = Guarded(Report())
         private let plan: Plan
@@ -442,7 +442,7 @@ enum ThreadStressSelfTests {
         init(file: SkinFile, number: Int, plan: Plan, environment: SkinEnvironment) {
             self.file = file
             self.plan = plan
-            executor = TestThreadExecutor(name: "Deskset self-test skin \(number) \(file.config)")
+            executor = SkinThreadExecutor(name: "Deskset self-test skin \(number) \(file.config)")
             host = StressHost(environment: environment, executor: executor)
         }
 
@@ -691,136 +691,5 @@ enum ThreadStressSelfTests {
         private static func size(_ index: Int, version: Int) -> (Int, Int) {
             (320 + 24 * index + 8 * version, 240 + 16 * index + 6 * version)
         }
-    }
-}
-
-// MARK: - A skin thread
-
-/// A skin executor on a dedicated thread with its own run loop and an 8 MB stack, as docs/skin-threading.md §5.3
-/// recommends for desktop skins. A test executor for now: the stress suite runs skins on it; phase 3 turns it into the
-/// app's `SkinThreadExecutor`.
-///
-/// - `async` queues a block on the thread's run loop (`CFRunLoopPerformBlock`): first in, first out, never inline.
-/// - Delayed work and timers are Foundation timers on that run loop, installed and invalidated on the thread (a timer
-///   belongs to the thread whose run loop it was added to); cancelling from another thread invalidates it there.
-/// - `stop()` ends the thread once the work queued before it has run. Work queued later never runs: a skin's own
-///   work cannot come later (the skin is closed and let go of first), and what background work hands over holds the
-///   skin weakly (`SkinHop`), so nothing queued late keeps a skin.
-/// - `exclusive` parks the thread between two pieces of work (`SkinExecutorPark`): while the caller holds it,
-///   `isCurrent` is true on the caller's thread and false on this one.
-final class TestThreadExecutor: SkinRunLoopExecutor {
-    /// Set up on the thread before `init` returns and read-only afterwards, except `stopped` (the thread's own).
-    private final class Loop {
-        var runLoop: CFRunLoop?
-        var thread: pthread_t?
-        var stopped = false
-    }
-
-    private let loop = Loop()
-    private let exited = Guarded(false)
-    private let park = SkinExecutorPark()
-    /// Parks queued and not started yet (tests wait for one before they let a busy thread go on).
-    let queuedParks = Guarded(0)
-
-    init(name: String, stackSize: Int = 8 << 20) {
-        let loop = self.loop, exited = self.exited
-        let ready = DispatchSemaphore(value: 0)
-        let thread = Thread {
-            loop.runLoop = CFRunLoopGetCurrent()
-            loop.thread = pthread_self()
-            // A port keeps the run loop waiting when it has no timer, rather than returning at once.
-            RunLoop.current.add(NSMachPort(), forMode: .default)
-            ready.signal()
-            while !loop.stopped {
-                autoreleasepool { _ = RunLoop.current.run(mode: .default, before: .distantFuture) }
-            }
-            exited.access { $0 = true }
-        }
-        thread.name = name
-        thread.stackSize = stackSize
-        thread.qualityOfService = .userInitiated
-        thread.start()
-        // Waits for a new thread to start, never for skin work.
-        ready.wait()
-    }
-
-    var isCurrent: Bool { park.isCurrent(onThread: loop.thread) }
-
-    /// The thread's run loop, where the frame producer of a skin on it draws at the end of each turn.
-    var runLoop: CFRunLoop? { loop.runLoop }
-
-    /// On the executor's own thread, whoever holds exclusive access: where its run loop is.
-    private var isOnThread: Bool {
-        guard let thread = loop.thread else { return false }
-        return pthread_equal(thread, pthread_self()) != 0
-    }
-
-    func exclusive<T>(timeout: TimeInterval, _ body: () -> T) -> T? {
-        if isCurrent { return body() }
-        let queuedParks = self.queuedParks
-        return park.exclusive(timeout: timeout, enqueue: { wait in
-            queuedParks.access { $0 += 1 }
-            self.async {
-                queuedParks.access { $0 -= 1 }
-                wait()
-            }
-        }, body)
-    }
-
-    /// The thread has ended (after `stop()`).
-    var hasExited: Bool { exited.current }
-
-    func async(_ work: @escaping () -> Void) {
-        guard let runLoop = loop.runLoop else { return }
-        let loop = self.loop
-        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.defaultMode.rawValue) {
-            // The run loop runs every block queued before it looked, also those queued after the one that stopped it.
-            guard !loop.stopped else { return }
-            autoreleasepool { work() }
-        }
-        CFRunLoopWakeUp(runLoop)
-    }
-
-    @discardableResult
-    func async(after delay: TimeInterval, _ work: @escaping () -> Void) -> SkinScheduledWork {
-        schedule(SkinScheduledWork(work), interval: delay, leeway: 0, repeats: false)
-    }
-
-    func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
-               _ fire: @escaping () -> Void) -> SkinScheduledWork {
-        schedule(SkinScheduledWork(repeats: repeats, fire), interval: interval, leeway: leeway, repeats: repeats)
-    }
-
-    /// Ends the thread once the work queued before this has run. Any thread.
-    func stop() {
-        let loop = self.loop
-        async {
-            loop.stopped = true
-            CFRunLoopStop(CFRunLoopGetCurrent())
-        }
-    }
-
-    /// Installs a timer for `scheduled` on the thread: at once when called there (it still fires on a later turn,
-    /// never inline), else on the thread's next turn.
-    private func schedule(_ scheduled: SkinScheduledWork, interval: TimeInterval, leeway: TimeInterval,
-                          repeats: Bool) -> SkinScheduledWork {
-        let install = {
-            // Cancelled before it was installed.
-            guard scheduled.isPending else { return }
-            let timer = Timer(timeInterval: max(interval, 0), repeats: repeats) { _ in scheduled.fire() }
-            timer.tolerance = leeway
-            RunLoop.current.add(timer, forMode: .common)
-            // Weak: the run loop owns the timer until it is invalidated (a one-shot invalidates itself once it fired).
-            scheduled.setCancelHandler { [weak timer] in
-                if self.isOnThread {
-                    timer?.invalidate()
-                } else {
-                    // Until then, `fire()` does nothing.
-                    self.async { timer?.invalidate() }
-                }
-            }
-        }
-        if isOnThread { install() } else { async(install) }
-        return scheduled
     }
 }

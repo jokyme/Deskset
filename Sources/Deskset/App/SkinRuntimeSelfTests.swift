@@ -4,7 +4,7 @@ import DesksetCore
 /// A skin's two halves (docs/skin-threading.md §5.4, phase 2 step 1): `SkinRuntime` owns the skin on its executor,
 /// `SkinWindowController` keeps the window on the main thread, and they talk through messages, requests and exclusive
 /// access. Every skin of the app still runs on the main executor, where all of it happens inline; a skin on a test
-/// thread (`TestThreadExecutor`) shows what happens once it runs elsewhere.
+/// thread (`SkinThreadExecutor`) shows what happens once it runs elsewhere.
 enum SkinRuntimeSelfTests {
     static func run(_ t: AppTestRunner) {
         t.suite("App: skin runtime: the window half reaches its skin through the runtime") {
@@ -42,7 +42,7 @@ enum SkinRuntimeSelfTests {
         }
 
         t.suite("App: skin runtime: messages queue in order on a skin thread") {
-            let executor = TestThreadExecutor(name: "Skin runtime test")
+            let executor = SkinThreadExecutor(name: "Skin runtime test")
             let window = RecordingWindow()
             defer { withExtendedLifetime(window) {} }
             var runtime: SkinRuntime? = try makeRuntime(t, testSkin, executor: executor, window: window)
@@ -100,7 +100,7 @@ enum SkinRuntimeSelfTests {
             mainRuntime.send(.execute("[!Move 10 20]", section: nil))
             t.equal(window.log, ["window move on main"], "a window bang is asked of the main thread at once")
 
-            let executor = TestThreadExecutor(name: "Skin runtime requests")
+            let executor = SkinThreadExecutor(name: "Skin runtime requests")
             let threadWindow = RecordingWindow()
             var held: SkinRuntime? = try makeRuntime(t, testSkin, executor: executor, window: threadWindow)
             defer { finish(t, &held, executor) }
@@ -145,7 +145,7 @@ enum SkinRuntimeSelfTests {
             t.check(done.wait(timeout: .now() + 30) == .success, "a thread asking for the main executor's skins")
             t.equal(offMain.current, .some(.none), "gives up at once: a skin thread never waits for the main thread")
 
-            let executor = TestThreadExecutor(name: "Skin runtime re-entrant")
+            let executor = SkinThreadExecutor(name: "Skin runtime re-entrant")
             defer { executor.stop() }
             t.equal(executor.exclusive(timeout: 30) { executor.exclusive(timeout: 0) { 2 } }, .some(.some(2)),
                     "held by the main thread, again from it")
@@ -156,7 +156,7 @@ enum SkinRuntimeSelfTests {
         }
 
         t.suite("App: skin runtime: exclusive access parks a busy thread between two pieces of work") {
-            let executor = TestThreadExecutor(name: "Skin runtime park")
+            let executor = SkinThreadExecutor(name: "Skin runtime park")
             let window = RecordingWindow()
             defer { withExtendedLifetime(window) {} }
             var held: SkinRuntime? = try makeRuntime(t, testSkin, executor: executor, window: window)
@@ -180,7 +180,7 @@ enum SkinRuntimeSelfTests {
             // Lets the first piece of work finish only once the park is queued behind it.
             Thread.detachNewThread {
                 let end = Date().addingTimeInterval(30)
-                while executor.queuedParks.current == 0 && Date() < end { usleep(1000) }
+                while executor.queuedParks == 0 && Date() < end { usleep(1000) }
                 gate.signal()
             }
             let inside = executor.exclusive(timeout: 60) { () -> [String: Bool] in
@@ -214,7 +214,7 @@ enum SkinRuntimeSelfTests {
         }
 
         t.suite("App: skin runtime: exclusive access gives up on a stuck thread, whose late park returns at once") {
-            let executor = TestThreadExecutor(name: "Skin runtime stuck")
+            let executor = SkinThreadExecutor(name: "Skin runtime stuck")
             defer { executor.stop() }
             let gate = DispatchSemaphore(value: 0)
             executor.async { _ = gate.wait(timeout: .now() + 30) }
@@ -225,19 +225,19 @@ enum SkinRuntimeSelfTests {
             }
             t.check(result == nil, "nil after the timeout")
             t.check(!ran, "the closure did not run")
-            t.equal(executor.queuedParks.current, 1, "its park still waits in the queue")
+            t.equal(executor.queuedParks, 1, "its park still waits in the queue")
             gate.signal()
             let next = Guarded(false)
             executor.async { next.access { $0 = true } }
             t.check(AppSelfTest.spin(timeout: 30) { next.current }, "the late park returned at once: the work after it ran")
-            t.equal(executor.queuedParks.current, 0)
+            t.equal(executor.queuedParks, 0)
             t.check(!ran)
             t.equal(executor.exclusive(timeout: 30) { 4 }, .some(4), "a later request is served")
         }
 
         t.suite("App: skin runtime: after close the skin is let go of on its executor") {
             // On a thread of its own: the window half lets go of the runtime on the main thread.
-            let executor = TestThreadExecutor(name: "Skin runtime release")
+            let executor = SkinThreadExecutor(name: "Skin runtime release")
             defer { executor.stop() }
             let released = ReleaseProbe.Record()
             ReleaseProbe.record = released
@@ -318,7 +318,7 @@ enum SkinRuntimeSelfTests {
     }
 
     /// Loads the runtime's skin on its thread and starts it (first update).
-    static func load(_ t: AppTestRunner, _ runtime: SkinRuntime, on executor: TestThreadExecutor) -> Bool {
+    static func load(_ t: AppTestRunner, _ runtime: SkinRuntime, on executor: SkinThreadExecutor) -> Bool {
         let loaded = Guarded<Bool?>(nil)
         executor.async {
             let ok = (try? runtime.load()) != nil
@@ -331,7 +331,7 @@ enum SkinRuntimeSelfTests {
     }
 
     /// Lets go of a runtime on a test thread, waits for its skin to go (on the thread), then ends the thread.
-    static func finish(_ t: AppTestRunner, _ runtime: inout SkinRuntime?, _ executor: TestThreadExecutor) {
+    static func finish(_ t: AppTestRunner, _ runtime: inout SkinRuntime?, _ executor: SkinThreadExecutor) {
         weak var skin: Skin?
         skin = runtime?.skin
         runtime = nil
