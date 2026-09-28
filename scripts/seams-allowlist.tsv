@@ -48,6 +48,7 @@ effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooli
 mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
 random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
+wall.Date()	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input (the age of stale temporary settings folders)
 
 background.mainHop	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.fileWrite	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
