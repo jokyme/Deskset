@@ -170,7 +170,9 @@ public struct InMemoryPackageSource: PackageFileSource {
         }
         for (path, item) in items {
             let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-            for k in 1..<max(parts.count, 1) {
+            // A path that leaves the folder implies no folders; the loader reports it as it is.
+            let implied = DeskPackagePath.safeComponents(path) == nil ? 0 : parts.count - 1
+            for k in stride(from: 1, through: implied, by: 1) {
                 add(PackageEntry(path: parts[0..<k].joined(separator: "/"), type: .directory, size: 0))
             }
             switch item {

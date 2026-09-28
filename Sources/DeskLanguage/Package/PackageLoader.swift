@@ -88,6 +88,12 @@ public enum PackageLoader {
         var total = 0
         var tooLarge = false
         try source.walk { entry in
+            // A path that leaves the folder (an archive listed in memory may hold one): reported, never read.
+            guard DeskPackagePath.safeComponents(entry.path) != nil else {
+                package.diagnostics.append(Diagnostic(id: .fileOutsideWidget, severity: .error, file: DeskFileID(path: entry.path),
+                                                      range: 0..<0))
+                return .skip
+            }
             let name = entry.path.split(separator: "/").last.map(String.init) ?? entry.path
             if DeskPackagePath.isIgnoredName(name) {
                 package.files.append(DeskPackageFile(path: entry.path, kind: .ignored,
@@ -112,13 +118,6 @@ public enum PackageLoader {
             }
             entries.append(entry)
             return .next
-        }
-        // Paths that leave the folder (an archive listed in memory may hold them): reported, never read.
-        entries.removeAll { entry in
-            guard DeskPackagePath.safeComponents(entry.path) == nil else { return false }
-            package.diagnostics.append(Diagnostic(id: .fileOutsideWidget, severity: .error, file: DeskFileID(path: entry.path),
-                                                  range: 0..<0))
-            return true
         }
         // Names a Mac sees as one: the first in byte order is read, the others are shadowed (DK8602).
         var firstByKey: [String: String] = [:]
@@ -237,7 +236,9 @@ public enum PackageLoader {
         var count = 0
         var total = 0
         for entry in entries {
-            guard let parts = DeskPackagePath.safeComponents(entry.path) else {
+            // Folders are often listed with a final `/`.
+            let path = entry.isDirectory && entry.path.hasSuffix("/") ? String(entry.path.dropLast()) : entry.path
+            guard let parts = DeskPackagePath.safeComponents(path) else {
                 out.append(Diagnostic(id: .fileOutsideWidget, severity: .error, file: DeskFileID(path: entry.path), range: 0..<0))
                 continue
             }

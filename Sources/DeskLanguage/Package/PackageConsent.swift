@@ -45,7 +45,7 @@ public struct DeskConsentCommand: Sendable, Hashable {
     }
 
     public var widget: DeskFileID
-    /// As written.
+    /// As written, without the quotes of the Desk text (`open {options.target}`).
     public var template: String
     /// As it runs, each placeholder a positional parameter (`open "${1}"`).
     public var script: String
@@ -128,6 +128,18 @@ extension CheckedDeskPackage {
                                   fonts: package.files(.font).filter { !$0.isLink })
     }
 
+    /// `"open {x}"` → `open {x}`; `#"…"#` likewise.
+    static func unquoted(_ literal: String) -> String {
+        var s = Substring(literal)
+        var hashes = 0
+        while s.hasPrefix("#") && s.hasSuffix("#") && s.count >= 2 {
+            s = s.dropFirst().dropLast()
+            hashes += 1
+        }
+        if s.count >= 2, s.hasPrefix("\""), s.hasSuffix("\"") { return String(s.dropFirst().dropLast()) }
+        return hashes == 0 ? literal : String(s)
+    }
+
     /// The consent of some widgets together.
     func consent(of widgets: [DeskFileID]) -> DeskConsent {
         var consent = DeskConsent()
@@ -154,7 +166,7 @@ extension CheckedDeskPackage {
             for command in checked.requirements.commands {
                 let site = checked.tree.quickResolve(command.node).map { DeskSite(file: file, range: $0.quickTextRange) }
                 consent.commands.append(DeskConsentCommand(
-                    widget: file, template: command.template, script: command.script,
+                    widget: file, template: Self.unquoted(command.template), script: command.script,
                     placeholders: command.placeholders.map {
                         DeskConsentCommand.Placeholder(option: $0, knownValues: command.knownValues[$0] ?? [])
                     },
