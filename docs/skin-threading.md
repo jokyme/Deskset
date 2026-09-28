@@ -1573,6 +1573,8 @@ suite's `TestThreadExecutor`.
        `docs/compat/engine.md` and both summaries. MacGlass views are untouched (they stay behind `SkinView`; the
        base under them is drawn as before); FrostedGlass clips the content layer as it clipped the view. No other
        visible difference remains.
+     - Counts: Core 61,088 checks; the app suite 10,261 in each scroller style (default, `WhenScrolling`, `Always`),
+       with 3,509–3,587 debug comparisons of snapshot answers and no difference.
      - Unchanged outputs: `--render` of the default skins is byte-identical except for the skins that show live values
        (clocks, network, system, temperature), which also differ between two runs of the old build; `--snapshot-ui`
        is identical except `inspector`, which differs from run to run by as much; `--verify-drawing-cache DefaultSkins
