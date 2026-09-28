@@ -1,0 +1,224 @@
+import Foundation
+
+// Renaming own names (§4.2). A name of one file — a declaration, loop variable, element name, or a widget's own style
+// or option — goes through `Desk.apply(.rename)`. A package style or option is renamed in `package.desk` and in every
+// widget, with the widgets' declarations that replace it (D99). The new name follows the checker's rules for own
+// names: an identifier with a lowercase first letter, no reserved word or block word, at most 128 bytes, not hiding a
+// built-in value (DK3029), and not already used where the renamed name is.
+
+extension DeskSnapshot {
+    /// The name a rename at a position would change, or why nothing there can be renamed.
+    public func prepareRename(at position: DeskPosition) -> Result<DeskRenamePlace, DeskRenameRefusal> {
+        let offset = index.utf8Offset(ofUTF16: index.clampedUTF16(position.offset))
+        guard let o = symbolIndex.occurrence(at: offset) else {
+            return .failure(refusal(isInsideText(offset) ? .insideText : .notAName, name: ""))
+        }
+        switch o.kind {
+        case .translationKey, .asset:
+            return .failure(refusal(.insideText, name: o.name))
+        case _ where !o.kind.isOwnName:
+            return .failure(refusal(.builtIn, name: o.name))
+        default:
+            break
+        }
+        guard let key = o.key, renameTarget(key) != nil else { return .failure(refusal(.cannotRename, name: o.name)) }
+        return .success(DeskRenamePlace(range: index.range(utf8: o.range), name: o.name, kind: o.kind))
+    }
+
+    /// Renames the own name at a position everywhere it is declared and read, in every file that has it.
+    public func rename(at position: DeskPosition, to newName: String) -> Result<DeskRename, DeskRenameRefusal> {
+        let place: DeskRenamePlace
+        switch prepareRename(at: position) {
+        case .failure(let refusal): return .failure(refusal)
+        case .success(let p): place = p
+        }
+        let offset = index.utf8Offset(ofUTF16: place.range.start.offset)
+        guard let o = symbolIndex.occurrence(at: offset), let key = o.key, let target = renameTarget(key) else {
+            return .failure(refusal(.cannotRename, name: place.name))
+        }
+        if newName == o.name { return .success(DeskRename(edit: DeskWorkspaceEdit())) }
+        if let refused = validate(newName, kind: o.kind) { return .failure(refused) }
+        var notes: [String] = []
+        if o.kind == .option {
+            notes.append(LocalizedText(
+                "People who changed “\(o.name)” in the Options panel get its default back: saved values are kept by the option’s name.",
+                "改过“\(o.name)”的人会回到默认值：选项的设置按名字保存。").text(in: options.messageLanguage))
+        }
+        switch target {
+        case .inFile(let ref):
+            // A widget's own style or option must not take a name the package uses: it would replace the package's.
+            if !isPackage, case .style = key, packageNames.styles.contains(newName) {
+                return .failure(refusal(.alreadyUsed, name: newName, where: packageFile))
+            }
+            if !isPackage, case .option = key, packageNames.options.contains(newName) {
+                return .failure(refusal(.alreadyUsed, name: newName, where: packageFile))
+            }
+            let result = Desk.apply(.rename(ref, to: newName), to: checked, catalog: options.catalog)
+            if let failure = result.failure {
+                if case .notApplicable = failure { return .failure(refusal(.alreadyUsed, name: newName, where: nil)) }
+                return .failure(refusal(.cannotRename, name: o.name))
+            }
+            var edits = result.edits
+            // Uses the checker left unresolved in wrong code (a variable read in a style, a `computed` cycle).
+            for occurrence in symbolIndex.occurrences(of: key) where occurrence.inferred {
+                edits.append(TextEdit(file: file, range: occurrence.range, replacement: newName))
+            }
+            if case .option = key { edits += localEnumEdits(option: o.name, to: newName, in: [file]) }
+            return .success(DeskRename(edit: workspaceEdit(edits), notes: notes))
+        case .shared:
+            let files = files(searchedFor: key)
+            // Styles and options clash only with their own kind (§4.2), in the package and in every widget.
+            for file in files {
+                guard let other = checkedFile(file) else { continue }
+                let taken: Bool
+                if case .style = key { taken = other.styles[newName] != nil } else { taken = other.options[newName] != nil }
+                if taken { return .failure(refusal(.alreadyUsed, name: newName, where: file)) }
+            }
+            var edits: [TextEdit] = []
+            for file in files {
+                guard let fileIndex = symbolIndex(of: file) else { continue }
+                for occurrence in fileIndex.occurrences(of: key) {
+                    edits.append(TextEdit(file: file, range: occurrence.range, replacement: newName))
+                }
+            }
+            if case .option = key { edits += localEnumEdits(option: o.name, to: newName, in: files) }
+            return .success(DeskRename(edit: workspaceEdit(edits), notes: notes))
+        }
+    }
+
+    // MARK: Pieces
+
+    enum RenameTarget {
+        /// Renamed by `Desk.apply(.rename)` from its declaring node.
+        case inFile(NodeID)
+        /// A package style or option, renamed in every file.
+        case shared
+    }
+
+    func renameTarget(_ key: DeskSymbolKey) -> RenameTarget? {
+        switch key {
+        case .local:
+            return symbolIndex.declaringNodes[key].map { .inFile($0) }
+        case .style(_, let group), .option(_, let group):
+            if group == packageFile && (isPackage || package != nil) { return .shared }
+            return symbolIndex.declaringNodes[key].map { .inFile($0) }
+        default:
+            return nil
+        }
+    }
+
+    /// The checked file of a file of the folder.
+    func checkedFile(_ file: DeskFileID) -> CheckedFile? {
+        if file == self.file { return checked }
+        if file == packageFile, let package { return package }
+        return folderResults()[file]
+    }
+
+    /// Whether a UTF-8 offset is inside the text of a string (not in an interpolation's code).
+    func isInsideText(_ offset: Int) -> Bool {
+        let table = nodeTable
+        guard let i = table.innermost(at: offset) else { return false }
+        let kind = table.entries[i].kind
+        return kind == .stringLiteral || kind == .stringText
+    }
+
+    /// The checker's rules for a new own name.
+    func validate(_ name: String, kind: DeskNameKind) -> DeskRenameRefusal? {
+        guard Checker.isIdentifier(name), let first = name.unicodeScalars.first, !("A"..."Z").contains(first) else {
+            return refusal(.invalidName, name: name)
+        }
+        if Chars.reservedWords[name] != nil { return refusal(.reservedWord, name: name) }
+        // The checker lets a style or an option take a block word; `Desk.apply(.rename)` never gives one.
+        if Chars.blockWords.contains(name) { return refusal(.reservedWord, name: name) }
+        if name.utf8.count > 128 { return refusal(.tooLong, name: name) }
+        switch kind {
+        case .variable, .saved, .computed, .loopVariable, .element:
+            if options.catalog.namespace(named: name) != nil { return refusal(.hidesBuiltIn, name: name) }
+        default:
+            break
+        }
+        return nil
+    }
+
+    /// A Picker option's own choices are an enum named after it (`look` → `Look`, §4.13); a rename renames the enum
+    /// where it is written (`Look.calm`).
+    func localEnumEdits(option: String, to newName: String, in files: [DeskFileID]) -> [TextEdit] {
+        var edits: [TextEdit] = []
+        for file in files {
+            guard let fileIndex = symbolIndex(of: file), let oldEnum = localEnumName(of: option, in: file) else { continue }
+            let newEnum = DeskSnapshot.localEnumName(for: newName, catalog: options.catalog)
+            guard oldEnum != newEnum else { continue }
+            let table = fileIndex.table
+            for entry in table.entries where entry.kind == .identifierExpr && entry.parent >= 0 {
+                let parent = table.entries[entry.parent]
+                guard parent.kind == .memberExpr, parent.textStart == entry.textStart else { continue }
+                let token = IdentifierExprSyntax(unchecked: entry.positioned).token
+                guard token.token.name == oldEnum else { continue }
+                edits.append(TextEdit(file: file, range: token.textRange, replacement: newEnum))
+            }
+        }
+        return edits
+    }
+
+    /// The local enum of an option as a file sees it: its own option's, else the package's.
+    func localEnumName(of option: String, in file: DeskFileID) -> String? {
+        if let own = checkedFile(file)?.options[option] { return own.localEnum }
+        return (isPackage ? checked : package)?.options[option]?.localEnum
+    }
+
+    /// The name of an option's local enum (the checker's rule): its name capitalized, with `Choice` added when a
+    /// built-in type or component has that name.
+    static func localEnumName(for option: String, catalog: DeskCatalog) -> String {
+        let base = option.prefix(1).uppercased() + option.dropFirst()
+        if catalog.component(named: base) != nil || catalog.control(named: base) != nil || catalog.enumeration(base) != nil
+            || catalog.record(base) != nil || base == "Color" || base == "Paint" {
+            return base + "Choice"
+        }
+        return base
+    }
+
+    /// UTF-8 edits of files of the folder as a workspace edit.
+    func workspaceEdit(_ edits: [TextEdit]) -> DeskWorkspaceEdit {
+        var files: [DeskFileID: [DeskTextEditU16]] = [:]
+        for edit in edits {
+            guard let fileIndex = index(of: edit.file) else { continue }
+            files[edit.file, default: []].append(DeskTextEditU16(range: fileIndex.range(utf8: edit.range), newText: edit.replacement))
+        }
+        return DeskWorkspaceEdit(files)
+    }
+
+    func refusal(_ reason: DeskRenameRefusal.Reason, name: String, where file: DeskFileID? = nil) -> DeskRenameRefusal {
+        let text: LocalizedText
+        let place = file.map { $0.path.isEmpty ? "" : $0.path } ?? ""
+        switch reason {
+        case .notAName:
+            text = LocalizedText("Put the cursor on a name you gave, such as a variable, a style or an option.",
+                                 "把光标放在自己起的名字上，比如变量、样式或选项。")
+        case .builtIn:
+            text = LocalizedText("“\(name)” is a built-in name. Only names you gave can be renamed.",
+                                 "“\(name)”是内置的名字，只能给自己起的名字改名。")
+        case .insideText:
+            text = LocalizedText("This is text in quotes, not a name: edit it where it is.",
+                                 "这是引号里的文字，不是名字，直接在原处修改。")
+        case .invalidName:
+            text = LocalizedText("“\(name)” can’t be a name: start with a lowercase letter and use only letters, digits and _.",
+                                 "“\(name)”不能做名字：以小写字母开头，只用字母、数字和 _。")
+        case .reservedWord:
+            text = LocalizedText("“\(name)” is a word of the language and can’t be a name here.",
+                                 "“\(name)”是语言本身的词，不能在这里做名字。")
+        case .tooLong:
+            text = LocalizedText("A name can be at most 128 bytes long.", "名字最长 128 个字节。")
+        case .alreadyUsed:
+            text = place.isEmpty
+                ? LocalizedText("“\(name)” is already used here.", "“\(name)”已经在这里用过了。")
+                : LocalizedText("“\(name)” is already used in \(place).", "“\(name)”已经在 \(place) 里用过了。")
+        case .hidesBuiltIn:
+            text = LocalizedText("“\(name)” would hide the built-in “\(name)”. Choose another name.",
+                                 "“\(name)”会遮住内置的“\(name)”，换一个名字吧。")
+        case .cannotRename:
+            text = LocalizedText("“\(name)” can’t be renamed here. Fix the problem on this line first.",
+                                 "这里的“\(name)”不能改名，先改正这一行的问题。")
+        }
+        return DeskRenameRefusal(reason: reason, message: text.text(in: options.messageLanguage))
+    }
+}
