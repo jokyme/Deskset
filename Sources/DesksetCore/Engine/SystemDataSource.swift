@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MemoryStatus: Equatable {
+public struct MemoryStatus: Equatable, Sendable {
     /// Bytes.
     public var physicalTotal: Double
     public var physicalUsed: Double
@@ -15,7 +15,7 @@ public struct MemoryStatus: Equatable {
     }
 }
 
-public struct BatteryStatus: Equatable {
+public struct BatteryStatus: Equatable, Sendable {
     public var percent: Double
     public var isCharging: Bool
     public var isPluggedIn: Bool
@@ -30,7 +30,7 @@ public struct BatteryStatus: Equatable {
     }
 }
 
-public struct NetworkCounters: Equatable {
+public struct NetworkCounters: Equatable, Sendable {
     /// Cumulative bytes since boot.
     public var received: UInt64
     public var sent: UInt64
@@ -42,8 +42,8 @@ public struct NetworkCounters: Equatable {
 }
 
 /// Facts about the volume a FreeDiskSpace measure looks at.
-public struct VolumeInfo: Equatable {
-    public enum Kind: Equatable {
+public struct VolumeInfo: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
         /// Internal or otherwise fixed disk.
         case fixed
         /// Removable media (USB flash drive, SD card…).

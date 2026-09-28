@@ -3,12 +3,14 @@ import Foundation
 
 // Clean-room implementation from the public manual only: https://docs.rainmeter.net/manual/plugins/fileview/
 
-/// Icon files for `Type=Icon` child measures. Extracting a file's icon needs AppKit, so the app installs `writer`:
-/// it gets the file (or folder) path, the icon size in pixels (16 / 32 / 48 / 256) and the destination path, writes an
-/// image file there (PNG data is fine whatever the extension; write atomically) and returns true on success. It is
-/// called on a background queue. Without a writer, Icon measures are empty.
+/// Icon files for `Type=Icon` child measures. Extracting a file's icon needs AppKit, so the app installs `renderer`:
+/// it gets the file (or folder) path, the icon size in pixels (16 / 32 / 48 / 256) and the extension of the file the
+/// icon goes to (`ico`, `png`…), and returns the bytes of an image file (PNG data is fine whatever the extension), or
+/// nil when there is none. It is called on a background queue. The measure writes the bytes through the skin's side
+/// effects (`SideEffects.writeFile`), so a sandboxed instance keeps the file in its copy and records the write.
+/// Without a renderer, Icon measures are empty.
 public enum FileViewIcons {
-    public static var writer: ((_ source: String, _ pixelSize: Int, _ destination: String) -> Bool)?
+    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)?
 
     /// Most links and aliases followed from one item: a longer chain is taken for a loop.
     static let maxLinkHops = 16
@@ -18,7 +20,7 @@ public enum FileViewIcons {
     /// Symbolic links are followed through every component; Finder aliases are resolved without any UI and without
     /// mounting volumes. `path` itself (unchanged, trailing slash included) when it is not a link or an alias, when
     /// the chain is broken, loops or leads to an unmounted volume, or when what it leads to does not exist.
-    /// Pure file-system reads: called on FileView's background queue by the app's icon writer.
+    /// Pure file-system reads: called on FileView's background queue by the app's icon renderer.
     public static func resolvedSource(_ path: String) -> String {
         guard !path.isEmpty else { return path }
         let keys: Set<URLResourceKey> = [.isAliasFileKey, .isSymbolicLinkKey]
@@ -149,7 +151,9 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     private var dateType = DateType.modified
     private var iconPath = ""
     private var iconSize = 32
-    private var lastIcon: (source: String, size: Int, destination: String)?
+    /// The last icon written: what it shows, where the skin asked for it, and where it went (`destination`, or a
+    /// recording's copy of it).
+    private var lastIcon: (source: String, size: Int, destination: String, written: String)?
     private var iconGeneration = 0
 
     private var closed = false
@@ -319,7 +323,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
                 return 0
             }
             rawString = FileViewMeasure.dateFormatter.string(from: date)
-            return TimeFormatting.measureValue(for: date)
+            return TimeFormatting.measureValue(for: date, timeZone: skin.skinClock.timeZone())
         case .filePath:
             rawString = item.isDotDot ? parentFolder(of: listing.folder) ?? item.path : item.path
             return 0
@@ -351,30 +355,44 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     /// The icon file path once it is written (written on a background queue; the value updates when done).
     private func icon(for item: Item) -> String {
-        guard let writer = FileViewIcons.writer else {
+        guard let renderer = FileViewIcons.renderer else {
             report("icon", "FileView [\(name)]: file icons are not available")
             return ""
         }
         let destination = iconDestination()
         let source = item.isDotDot ? (parentFolder(of: parent?.listing.folder ?? "") ?? item.path) : item.path
         if let last = lastIcon, last.source == source, last.size == iconSize, last.destination == destination {
-            return destination
+            return last.written
         }
         iconGeneration += 1
         let generation = iconGeneration
         let size = iconSize
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            let ok = writer(source, size, destination)
-            hop.post {
-                guard let self, !self.closed, self.iconGeneration == generation else { return }
-                if ok {
-                    self.lastIcon = (source, size, destination)
-                    if self.childType == .icon { self.publishAsyncResult(number: 0, string: destination) }
-                }
+        // The file goes where the skin's side effects say, taken here on the skin's thread: the destination itself, or
+        // a recording's copy of it (the write recorded), which is then the path the skin sees.
+        let effects = skin.sideEffects
+        let target = effects.destination(forWriting: URL(fileURLWithPath: destination))
+        let pathExtension = (destination as NSString).pathExtension
+        // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
+        // saved.
+        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.queue, fixture: false,
+                                scripted: { $0.failureMessage == nil }) { () -> Bool in
+            guard let data = renderer(source, size, pathExtension) else { return false }
+            do {
+                try effects.writeFile(data, to: target, makingFolder: true)
+                return true
+            } catch {
+                return false
             }
         }
-        return lastIcon?.destination == destination ? destination : ""
+        skin.startBackground(job) { [weak self] ok in
+            guard let self, !self.closed, self.iconGeneration == generation else { return }
+            if ok {
+                self.lastIcon = (source, size, destination, target.path)
+                if self.childType == .icon { self.publishAsyncResult(number: 0, string: target.path) }
+            }
+        }
+        if let last = lastIcon, last.destination == destination { return last.written }
+        return ""
     }
 
     // MARK: Reading
@@ -386,15 +404,16 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         readGeneration += 1
         let generation = readGeneration
         let options = parentOptions
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            let result = FileViewMeasure.list(folder: folder, options: options)
-            hop.post {
-                guard let self, self.readGeneration == generation else { return }
-                self.reading = false
-                guard !self.closed else { return }
-                self.finishRead(result)
-            }
+        // A folder the skin removed or renamed in a recording's sandbox reads as it is there (see FolderInfo).
+        let readFolder = skin.readablePath(folder)
+        let job = BackgroundJob(.fileViewListing, subject: folder, on: PluginIO.queue, fixture: true, reads: folder) {
+            FileViewMeasure.list(folder: readFolder, options: options)
+        }
+        skin.startBackground(job) { [weak self] result in
+            guard let self, self.readGeneration == generation else { return }
+            self.reading = false
+            guard !self.closed else { return }
+            self.finishRead(result)
         }
     }
 
@@ -650,53 +669,19 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     private func showInfo(_ item: Item) { showInfo(item.path) }
 
     private func reveal(_ path: String) {
-        PluginProcess.run("/usr/bin/open", ["-R", path])
+        skin.sideEffects.launch("/usr/bin/open", ["-R", path], completion: nil)
     }
 
     private func showInfo(_ path: String) {
         let escaped = path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        PluginProcess.run("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
-                                                 "-e", "activate",
-                                                 "-e", "open information window of (POSIX file \"\(escaped)\" as alias)",
-                                                 "-e", "end tell"])
+        skin.sideEffects.launch("/usr/bin/osascript", ["-e", "tell application \"Finder\"",
+                                                       "-e", "activate",
+                                                       "-e", "open information window of (POSIX file \"\(escaped)\" as alias)",
+                                                       "-e", "end tell"], completion: nil)
     }
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
         skin.log(message, level: .notice)
-    }
-}
-
-/// Helper programs (`open`, `osascript`), started off the main thread; nothing waits for them.
-enum PluginProcess {
-    /// Starts `executable` with `arguments`; `completion` (if any) gets the exit status, on any thread (`run` hands it
-    /// to the caller's executor). Tests replace it so that nothing is launched.
-    static var launcher: (_ executable: String, _ arguments: [String], _ completion: ((Int32) -> Void)?) -> Void = {
-        executable, arguments, completion in
-        DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { p in completion?(p.terminationStatus) }
-            do {
-                try process.run()
-            } catch {
-                completion?(-1)
-            }
-        }
-    }
-
-    /// Starts a helper program without waiting for it.
-    static func run(_ executable: String, _ arguments: [String]) {
-        launcher(executable, arguments, nil)
-    }
-
-    /// Starts a helper program; `completion` gets its exit status on `executor` (the skin that asked), never inline.
-    static func run(_ executable: String, _ arguments: [String], on executor: SkinExecutor,
-                    completion: @escaping (Int32) -> Void) {
-        launcher(executable, arguments) { status in executor.async { completion(status) } }
     }
 }

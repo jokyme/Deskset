@@ -317,6 +317,35 @@ final class DemoNowPlayingBackend: NowPlayingBackend {
     }
 }
 
+extension DemoNowPlayingBackend {
+    /// The player of `--render --data`'s `nowPlaying`: the given track in Music or Spotify, its cover the given
+    /// file's bytes; `.none`: every player closed. Nothing reaches a real player.
+    convenience init(fixture: SkinInputData.Given<SkinInputData.NowPlaying>) {
+        self.init()
+        running = []
+        statuses = [:]
+        tracks = [:]
+        artworkEnabled = false
+        guard let np = fixture.value else { return }
+        let app: MediaApp = np.player == "spotify" ? .spotify : .music
+        running = [app]
+        let repeatMode: PlayerRepeatMode = np.repeatMode == 1 ? .one : np.repeatMode == 2 ? .all : .off
+        statuses[app] = NowPlayingStatus(state: np.state, volume: np.volume, shuffle: np.shuffle, repeatMode: repeatMode,
+                                         position: np.position, trackID: "DATA1", rating: np.rating)
+        var track = NowPlayingTrack()
+        track.title = np.title
+        track.artist = np.artist
+        track.album = np.album
+        track.albumArtist = np.artist
+        track.duration = np.duration
+        tracks[app] = track
+        if let cover = np.cover, let data = try? Data(contentsOf: URL(fileURLWithPath: cover)) {
+            artworkData = data
+            artworkEnabled = true
+        }
+    }
+}
+
 // MARK: - Center
 
 /// Keeps a measure subscribed to the center; polling stops when the last subscription goes away. Its measure sets
@@ -360,6 +389,14 @@ final class NowPlayingSubscription {
 final class NowPlayingCenter {
     static let shared = NowPlayingCenter()
 
+    private static let currentCenter = Guarded<NowPlayingCenter?>(nil)
+    /// The center measures made from now on read: `shared`, or a center of a `--render --data` of its own (its
+    /// fixture player, polled like a real one, with nothing left over from earlier skins). Any thread.
+    static var current: NowPlayingCenter {
+        get { currentCenter.access { $0 } ?? shared }
+        set { currentCenter.access { $0 = newValue === shared ? nil : newValue } }
+    }
+
     /// `DESKSET_NOWPLAYING_DEMO=1`: fixed demo data (for `--render` previews), never Apple Events. `=refused`: Music
     /// runs but refused Automation (the permission state's previews).
     static let demoSetting = ProcessInfo.processInfo.environment["DESKSET_NOWPLAYING_DEMO"] ?? ""
@@ -376,7 +413,10 @@ final class NowPlayingCenter {
     /// Seconds between polls.
     var interval: TimeInterval = 1
     /// Cover files go here (tests use a temporary folder).
-    var coverFolder: URL { MediaUICache.folder("NowPlaying") }
+    var coverFolder: URL { coverFolderOverride ?? MediaUICache.folder("NowPlaying") }
+    /// A folder of this center's own for its covers (a `--render --data` center: its covers stay in the render's
+    /// folder even when a cover job finishes after the render); nil: the app's cache.
+    var coverFolderOverride: URL?
 
     /// What measures read, from whichever thread runs their skin. Only the main thread changes the snapshots and
     /// the refusals; a read changes the last choice and the time of the last read.
@@ -1007,7 +1047,7 @@ final class NowPlayingCenter {
             logOnce("\(app.displayName) is not installed")
             return
         }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        NowPlayingCenter.launchPlayer(at: url)
     }
 
     private func quit(_ app: MediaApp) {

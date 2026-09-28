@@ -369,6 +369,7 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         guard force || now - lastCheck >= 2 else { return }
         lastCheck = now
         var request = Request()
+        let source = ChameleonMeasure.desktopSource
         if isDesktop {
             // The window's place and the appearance come from the skin's environment (the host's, fresh: a check after
             // a move runs between updates).
@@ -378,10 +379,10 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
                 let w = env.windowFrame
                 request.window = CGRect(x: w.x.rounded(), y: w.y.rounded(), width: max(w.width, 1).rounded(.up),
                                         height: max(w.height, 1).rounded(.up))
-                request.screen = DesktopSampler.screen(for: request.window, in: DesktopInputs.screenDesktops())
+                request.screen = DesktopSampler.screen(for: request.window, in: source.screenDesktops())
                 request.path = request.screen?.picture ?? ""
                 request.solid = request.screen?.solid
-            } else if let desktop = ChameleonMeasure.desktop(of: liveHost) {
+            } else if let desktop = source.desktop(of: liveHost) {
                 request.path = desktop.picture
                 request.solid = desktop.solid
                 if cropDesktop == .screen, crop == nil, desktop.frame.height > 0 {
@@ -402,31 +403,33 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         let analyzed = paletteKey
         let desktop = isDesktop
         pendingKey = path
-        let hop = skin.hop()
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let outcome = ChameleonMeasure.sample(request, desktop: desktop, crop: crop, analyzed: analyzed)
-            hop.post {
-                guard let self else { return }
-                self.pendingKey = nil
-                // A check started for a path that has changed since is dropped (the next check handles the new one).
-                if self.requestedPath == path, !self.closed {
-                    self.imagePath = outcome.file
-                    if outcome.protected, !self.skippedProtected {
-                        self.skin.log("Chameleon [\(self.name)]: the desktop picture is kept in a folder macOS asks "
-                                      + "about before an app reads it; not read, the fallback colors apply", level: .notice)
-                    }
-                    self.skippedProtected = outcome.protected
-                    if outcome.key != analyzed {
-                        let old = self.effectivePalette
-                        self.paletteKey = outcome.key
-                        self.palette = outcome.palette
-                        if self.samplesUnderSkin, self.effectivePalette != old { self.updateChildren() }
-                    }
+        // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake) unless
+        // the render or the data gives it (a stand-in desktop, `--data`'s desktopImage).
+        let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: DispatchQueue.global(qos: .utility),
+                                fixture: !desktop || source.isFixture, reads: path) { () -> Outcome in
+            ChameleonMeasure.sample(request, desktop: desktop, crop: crop, analyzed: analyzed)
+        }
+        skin.startBackground(job) { [weak self] outcome in
+            guard let self else { return }
+            self.pendingKey = nil
+            // A check started for a path that has changed since is dropped (the next check handles the new one).
+            if self.requestedPath == path, !self.closed {
+                self.imagePath = outcome.file
+                if outcome.protected, !self.skippedProtected {
+                    self.skin.log("Chameleon [\(self.name)]: the desktop picture is kept in a folder macOS asks "
+                                  + "about before an app reads it; not read, the fallback colors apply", level: .notice)
                 }
-                if self.recheck, !self.closed {
-                    self.recheck = false
-                    self.refreshImage(force: true)
+                self.skippedProtected = outcome.protected
+                if outcome.key != analyzed {
+                    let old = self.effectivePalette
+                    self.paletteKey = outcome.key
+                    self.palette = outcome.palette
+                    if self.samplesUnderSkin, self.effectivePalette != old { self.updateChildren() }
                 }
+            }
+            if self.recheck, !self.closed {
+                self.recheck = false
+                self.refreshImage(force: true)
             }
         }
     }
@@ -500,7 +503,9 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     private func watchWindowIfNeeded() {
         guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
-        let hop = skin.hop()
+        // The window's moves come back like a service's news, and lead to a new sample of the desktop picture (a skin
+        // window only: never in a render, so never in virtual time).
+        let hop = skin.backgroundHop(.desktopImage)
         // The widget's window controller, or the Studio's host (whose desktop copy has the window).
         let controller = self.controller
         let studio = skin.host as? StudioHost
@@ -549,6 +554,57 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     static func wallpaperFile(_ path: String) -> String {
         DesktopPicture.firstPicture(inFolder: path) ?? path
     }
+}
+
+/// Where Chameleon finds the desktop picture (`Type=Desktop`).
+protocol DesktopPictureSource: AnyObject {
+    /// The desktop picture setting and the frame of the screen the skin's window is on; nil without one.
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop?
+    /// Every screen's desktop, for `CropDesktop=Skin` (the one under the skin window is sampled).
+    func screenDesktops() -> [DesktopInputs.ScreenDesktop]
+    /// True when the picture is a given file or color (reading it is a fixture in virtual time), not the Mac's live
+    /// setting.
+    var isFixture: Bool { get }
+}
+
+extension ChameleonMeasure {
+    /// Where Chameleon measures find the desktop picture: the screens, or a `--render --data`'s `FixedDesktopPicture`.
+    static var desktopSource: DesktopPictureSource = ScreenDesktopPicture()
+}
+
+/// The Mac's screens (`ChameleonMeasure.desktop(of:)`, `DesktopInputs.screenDesktops()`), or the stand-ins that
+/// replace them (`DesktopInputs.fake`: the render command's `--wallpaper` and `--background`, the self-tests).
+final class ScreenDesktopPicture: DesktopPictureSource {
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? { ChameleonMeasure.desktop(of: host) }
+    func screenDesktops() -> [DesktopInputs.ScreenDesktop] { DesktopInputs.screenDesktops() }
+    /// A stand-in desktop is a given picture or color.
+    var isFixture: Bool { DesktopInputs.fake.current != nil }
+}
+
+/// `--render --data`'s `desktopImage`: a given picture on a screen of its own shape (so nothing is cropped away), or
+/// none.
+final class FixedDesktopPicture: DesktopPictureSource {
+    let picture: DesktopInputs.ScreenDesktop?
+
+    init(_ path: String?) {
+        guard let path else {
+            picture = nil
+            return
+        }
+        var size = CGSize(width: 1600, height: 1000)
+        if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+           w > 0, h > 0 {
+            size = CGSize(width: w, height: h)
+        }
+        let screen = CGRect(origin: .zero, size: size)
+        picture = DesktopInputs.ScreenDesktop(picture: path, frame: screen, area: screen)
+    }
+
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? { picture }
+    func screenDesktops() -> [DesktopInputs.ScreenDesktop] { picture.map { [$0] } ?? [] }
+    var isFixture: Bool { true }
 }
 
 /// The main thread's `WindowMoveWatch` of a measure.
@@ -818,6 +874,9 @@ final class FrontmostAppInfo {
 /// the focused app's process name (e.g. `Safari`; Windows skins compare with `chrome.exe`-style names, which never
 /// match on the Mac).
 final class IsFullScreenMeasure: MediaUIMeasure {
+    /// Reads the front window (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.frontWindow] }
+
     override func computeValue() -> Double {
         let info = FrontmostAppInfo.shared.current()
         publishString(info.processName)
@@ -828,6 +887,9 @@ final class IsFullScreenMeasure: MediaUIMeasure {
 /// `Plugin=GetActiveTitle`: the focused window's title (the app's name when the title cannot be read); the number
 /// is the title's length (version 1.3 of the plugin).
 final class ActiveTitleMeasure: MediaUIMeasure {
+    /// Reads the front window (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.frontWindow] }
+
     override func computeValue() -> Double {
         FrontmostAppInfo.shared.wantsTitle = true
         let title = FrontmostAppInfo.shared.current().title
@@ -903,6 +965,9 @@ enum SysColorFormat {
 /// the color was found, -1 when not. DWM_* balance / intensity values have no Mac equivalent: DWM_OPAQUE_BLEND is 1
 /// when "Reduce transparency" is on, the others 0.
 final class SysColorMeasure: MediaUIMeasure {
+    /// Reads the Mac's colours (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.systemColors] }
+
     private var colorType = "Accent"
     private var display = SysColorFormat.Display.all
     private var hex = false

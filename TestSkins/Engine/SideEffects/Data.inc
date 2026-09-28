@@ -1,0 +1,2 @@
+[Variables]
+Theme=light

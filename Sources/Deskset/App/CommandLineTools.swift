@@ -27,7 +27,9 @@ enum CommandLineTools {
                                            "--settings-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
                                            "--clock-hours", "--first-weekday", "--temperature-unit",
-                                           "--wallpaper", "--at", "--screen",
+                                           "--clock", "--time-zone", "--seed", "--color-space", "--data", "--state",
+                                           "--locale", "--languages", "--accent-color", "--screen",
+                                           "--wallpaper", "--at",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
@@ -39,13 +41,22 @@ enum CommandLineTools {
                                            "--location", "--units", "--offline", "--now",
                                            // --benchmark.
                                            "--seconds", "--warmup"]
+    /// Option flags of development builds only (not in the usage): `--render --legacy` draws with the frozen renderer.
+    #if DEBUG
+    static let debugOptionFlags: Set<String> = ["--legacy"]
+    #else
+    static let debugOptionFlags: Set<String> = []
+    #endif
 
     static let usage = """
         usage: Deskset                   start the menu bar app
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
                       [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
-                      [--wallpaper FILE] [--at X,Y] [--screen WxH] [--settings-dir DIR]
+                      [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+                      [--state out.json] [--color-space device|srgb] [--settings-dir DIR]
+                      [--locale ID|system] [--languages LIST|system] [--accent-color R,G,B[,A]|system]
+                      [--wallpaper FILE] [--at X,Y] [--screen WxH|system]
                                         draw a skin without a window into a PNG (--wallpaper: a picture that
                                         stands in for the desktop, drawn behind the skin at --at; --background
                                         alone stands in for a desktop of one color)
@@ -91,14 +102,14 @@ enum CommandLineTools {
     static func validate(_ arguments: [String]) -> Validation {
         let args = Array(arguments.dropFirst())
         if args.contains(where: { $0 == "--help" || $0 == "-h" }) { return .help }
-        let known = Set(modeFlags).union(optionFlags)
+        let known = Set(modeFlags).union(optionFlags).union(debugOptionFlags)
         let unknown = args.filter { $0.hasPrefix("--") && !known.contains($0) }
         if !unknown.isEmpty {
             let shown = unknown.prefix(5).map { $0.count > 60 ? String($0.prefix(60)) + "…" : $0 }
             return .invalid("unknown option" + (unknown.count == 1 ? " " : "s ") + shown.joined(separator: ", "))
         }
         if args.contains(where: { modeFlags.contains($0) }) { return .mode }
-        if let option = args.first(where: { optionFlags.contains($0) }) {
+        if let option = args.first(where: { optionFlags.contains($0) || debugOptionFlags.contains($0) }) {
             return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report, --benchmark")
         }
         return .app
@@ -109,17 +120,35 @@ enum CommandLineTools {
     /// Rainmeter uses the Windows locale's. It applies to the menu bar app (with the Skin Studio and the installer) and
     /// to every command-line mode. nil under `--self-test`: the checks keep the core's 1252 so they read the same on
     /// every Mac, and suites that need another code page set it and restore it.
-    static func ansiCodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) -> Int? {
+    static func ansiCodePage(for arguments: [String],
+                             preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) -> Int? {
         if arguments.dropFirst().contains("--self-test") { return nil }
         return TextDecoding.defaultANSICodePage(preferredLanguages: preferredLanguages)
     }
 
     /// Sets `TextDecoding.ansiCodePage` for these arguments (see `ansiCodePage(for:)`). Called first thing at startup:
     /// the setting is not synchronised, so it must be in place before any skin loads, on any thread.
-    static func useANSICodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) {
+    static func useANSICodePage(for arguments: [String],
+                                preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) {
         if let codePage = ansiCodePage(for: arguments, preferredLanguages: preferredLanguages) {
             TextDecoding.ansiCodePage = codePage
         }
+    }
+
+    /// `--render` runs again as a new process image with `SWIFT_DETERMINISTIC_HASHING=1` when that is not set yet:
+    /// Swift seeds the order of every set and dictionary at random in each process (and for each instance), and a few
+    /// places still let that order reach a skin (Chameleon's colors of equal weight), so without it two renders with
+    /// the same `--clock`, `--seed` and `--data` could differ. Called first thing at startup; returns only when there is
+    /// nothing to do or the new image could not be started (the render then goes on with the process's own seed).
+    static func makeHashingDeterministic(for arguments: [String]) {
+        guard arguments.dropFirst().contains("--render"),
+              ProcessInfo.processInfo.environment["SWIFT_DETERMINISTIC_HASHING"] == nil,
+              let path = Bundle.main.executablePath else { return }
+        setenv("SWIFT_DETERMINISTIC_HASHING", "1", 1)
+        var argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) }
+        argv.append(nil)
+        execv(path, &argv)
+        unsetenv("SWIFT_DETERMINISTIC_HASHING")
     }
 
     /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the

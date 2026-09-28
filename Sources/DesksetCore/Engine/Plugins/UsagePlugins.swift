@@ -20,6 +20,10 @@ import Foundation
 /// summed up as "System"; GPU usage is the whole GPU's (one instance "GPU", from the hardware sensors), GPU memory per
 /// process does not exist; names are matched case-insensitively.
 public final class UsageMonitorMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes and counters, some of them from its sensors (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system, .sensors] }
+
     private var spec: PerfCounterSpec?
     private var index = 0
     private var instanceName: String?
@@ -128,7 +132,8 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         }
         let values: [PerfValue]
         if spec.needsProcesses || spec.usesCores {
-            let samples = ProcessSampler.shared.samples(details: spec.needsDetails)
+            let read = ProcessSampler.readSamples(for: skin, details: spec.needsDetails)
+            let samples = read.samples
             guard let latest = samples.latest else {
                 rawString = cachedResult.1
                 return cachedResult.0
@@ -140,16 +145,20 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
             cachedSerial = latest.serial
             if spec.isProcessField {
                 // Per process: the same for every measure that reads this counter the same way, such as the four
-                // of a "top 4" list, which differ only in Index. Ranked once per sample for all of them.
+                // of a "top 4" list, which differ only in Index. Ranked once per sample for all of them. A skin's
+                // own samples (scripted system data) are ranked for each measure: their serials are not the shared
+                // sampler's, so they never share its rankings.
                 let key = UsageMonitorMeasure.RankingKey(
                     spec: spec, previous: samples.previous?.serial, latest: latest.serial, rollup: rollup,
                     raw: rawValue, percent: percent, whitelist: whitelist, blacklist: blacklist,
                     ranks: instanceName == nil && index > 0)
-                let ranking = UsageMonitorMeasure.sharedRanking(key) {
+                let make = {
                     let values = PerfCounters.processValues(spec, old: samples.previous, new: latest,
-                                                            mode: rawValue ? .raw : .formatted, rollup: rollup)
+                                                            mode: self.rawValue ? .raw : .formatted,
+                                                            rollup: self.rollup)
                     return self.ranking(values, ranks: key.ranks)
                 }
+                let ranking = read.shared ? UsageMonitorMeasure.sharedRanking(key, make: make) : make()
                 let result = pick(ranking, spec: spec)
                 cachedResult = result
                 rawString = result.1
@@ -171,7 +180,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 
     private func context(snapshot: ProcessSnapshot?, cores: [CoreTicks]) -> PerfCounters.Context {
         PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin), snapshot: snapshot,
-                             cores: cores, time: ProcessInfo.processInfo.systemUptime)
+                             cores: cores, time: skin.clock())
     }
 
     static func values(_ spec: PerfCounterSpec, previous: ProcessSnapshot?, latest: ProcessSnapshot,
@@ -342,6 +351,10 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 /// (judgment). Processor counters are read at each update; process-based ones from the once-a-second sample (an
 /// update that sees no new sample keeps its value). The range tracks the observed values.
 public final class PerfMonMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes and counters, some of them from its sensors (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system, .sensors] }
+
     private var spec: PerfCounterSpec?
     private var instance = ""
     private var difference = true
@@ -399,7 +412,9 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         let mode: PerfCounters.Mode = difference ? .rawDelta : .raw
         let values: [PerfValue]
         if spec.needsProcesses {
-            guard let latest = ProcessSampler.shared.samples(details: spec.needsDetails).latest else { return lastValue }
+            guard let latest = ProcessSampler.samples(for: skin, details: spec.needsDetails).latest else {
+                return lastValue
+            }
             if let lastSnapshot, lastSnapshot.serial == latest.serial { return lastValue }
             if spec.isProcessField {
                 values = PerfCounters.processValues(spec, old: lastSnapshot, new: latest, mode: mode, rollup: false)
@@ -414,7 +429,7 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         } else {
             let ctx = PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin),
                                            snapshot: nil, cores: spec.usesCores ? ProcessorTicks.read() : [],
-                                           time: ProcessInfo.processInfo.systemUptime)
+                                           time: skin.clock())
             let reading = PerfCounters.rawReading(spec, ctx)
             values = PerfCounters.values(spec, old: lastReading, new: reading, mode: mode)
             lastReading = reading
@@ -441,6 +456,9 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
 /// - Sampled once a second in the background; the value is the latest sample's CPU rate × the real time since the
 ///   measure's previous update (so it matches the skin's interval even though the two clocks are not in step).
 public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var include: Set<String>?
     private var exclude: Set<String> = []
     private var topProcess = 0
@@ -476,8 +494,12 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         }
     }
 
-    /// Monotonic clock (seconds); tests may replace it.
-    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
+    var clock: () -> TimeInterval {
+        get { clockOverride ?? skin.clock }
+        set { clockOverride = newValue }
+    }
+    private var clockOverride: (() -> TimeInterval)?
     private var lastUpdate: TimeInterval?
     /// CPU time per second of the latest sampled interval, and the top process.
     private var rate: (Double, String?)?
@@ -488,7 +510,7 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         let now = clock()
         let elapsed = lastUpdate.map { min(max(now - $0, 0), 3600) }
         lastUpdate = now
-        let samples = ProcessSampler.shared.samples()
+        let samples = ProcessSampler.samples(for: skin)
         if let latest = samples.latest, lastSnapshot?.serial != latest.serial {
             // The first value uses the sampler's own previous sample, so it does not wait for a second update.
             if let base = lastSnapshot ?? samples.previous {

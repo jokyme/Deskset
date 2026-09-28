@@ -167,7 +167,7 @@ extension AppSelfTest {
             t.equal((control("ImageAlpha") as? PercentControl)?.field.stringValue, "100", "255 is 100 %")
             check("ImageRotate", is: AngleControl.self)
             // The hour before and after building the preview: the check holds when the hour turns in between.
-            let hourBefore = TimeFormatting.format(Date(), format: "%H")
+            let hourBefore = MacTimeFormatting.format(Date(), format: "%H")
             editor.select(section: "MeasureTime")
             // Format: examples rendered now; Custom… opens the format itself with its live preview.
             t.check(find("time-format") is NSPopUpButton, "a menu of rendered examples")
@@ -175,7 +175,7 @@ extension AppSelfTest {
             editor.rebuildInspector()
             check("Format", is: FormatControl.self)
             let preview = (control("Format") as? FormatControl)?.preview.stringValue ?? ""
-            let hourAfter = TimeFormatting.format(Date(), format: "%H")
+            let hourAfter = MacTimeFormatting.format(Date(), format: "%H")
             t.check(preview.contains(hourBefore) || preview.contains(hourAfter), "live preview of the format: \(preview)")
             editor.select(section: "MeasureCalc")
             // A formula: its value, "calculated", and [Edit Formula…] for the formula itself.

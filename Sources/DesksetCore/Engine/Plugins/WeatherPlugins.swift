@@ -27,9 +27,10 @@ enum WeatherLocationResolver {
     static let unavailableSearchNote = "Weather: place search is unavailable; use latitude,longitude such as 59.91,10.75"
 
     /// Resolves a `Location=` with the service's offline lookups. `live`: this Mac's location may be asked for (skins
-    /// in skin windows only; never in previews).
+    /// in skin windows only; never in previews). `localTimeZone`: this Mac's zone, for `Location=TimeZone` (see
+    /// `localTimeZone(_:skinClock:)`).
     static func resolve(_ spec: WeatherLocationSpec, service: WeatherService, subscription: WeatherSubscription?,
-                        live: Bool, locate: Bool = false) -> WeatherResolvedLocation {
+                        live: Bool, locate: Bool = false, localTimeZone: TimeZone) -> WeatherResolvedLocation {
         var r = WeatherResolvedLocation()
         r.source = WeatherLocationSource(spec)
         switch spec {
@@ -71,7 +72,7 @@ enum WeatherLocationResolver {
             // The city of this Mac's time zone, from the offline table: no Location Services, also in previews. A zone
             // covers whole countries (all of China is Asia/Shanghai), so skins can ask "Not your city?"
             // (`Type=LocationSource` is TimeZone).
-            let zone = service.environment.localTimeZone()
+            let zone = localTimeZone
             switch service.lookUpTimeZone(zone.identifier, for: subscription) {
             case .pending:
                 r.status = .loading
@@ -134,8 +135,8 @@ enum WeatherLocationResolver {
     /// `TimeZone=`: `Place` (default), `Local`, an IANA name or hours from UTC. `DaylightSavingTime=1` adds this Mac's
     /// daylight saving offset at `date` to the hours, as the Time measure does (off by default here: hours from UTC
     /// are hours from UTC, whatever this Mac's own zone does).
-    static func zone(option: String?, place: TimeZone?, daylightSavingTime: Bool, at date: Date = Date(),
-                     localTimeZone: TimeZone = .current) -> TimeZone {
+    static func zone(option: String?, place: TimeZone?, daylightSavingTime: Bool, at date: Date,
+                     localTimeZone: TimeZone) -> TimeZone {
         let raw = option?.trimmingCharacters(in: .whitespaces) ?? ""
         switch raw.lowercased() {
         case "", "place": return place ?? localTimeZone
@@ -155,9 +156,16 @@ enum WeatherLocationResolver {
         option.flatMap { OptionValue.bool($0) } ?? false
     }
 
-    /// The clock the plugins use (the demo's fixed clock when set).
-    static func now(_ env: WeatherEnvironment) -> Date {
-        env.demo ? (env.demoNow ?? env.clock.now()) : env.clock.now()
+    /// The clock the plugins use: the demo's fixed clock when set; else the skin's when it was given one
+    /// (`Deskset --render --clock`, tests); else the weather service's.
+    static func now(_ env: WeatherEnvironment, skinClock: SkinClock) -> Date {
+        if env.demo, let demoNow = env.demoNow { return demoNow }
+        return skinClock.nowIsLive ? env.clock.now() : skinClock.now()
+    }
+
+    /// This Mac's time zone for `Location=TimeZone`: the skin's when it was given one, else the weather service's.
+    static func localTimeZone(_ env: WeatherEnvironment, skinClock: SkinClock) -> TimeZone {
+        skinClock.timeZoneIsLive ? env.localTimeZone() : skinClock.timeZone()
     }
 
     static func defaultTimeFormat(_ env: WeatherEnvironment) -> String {
@@ -233,8 +241,13 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         var location = WeatherResolvedLocation()
         var status = WeatherStatus.noLocation
         var snapshot: WeatherSnapshot?
-        var now = Date()
+        /// The time of the last refresh (the skin's clock when the binding was made, until the first one).
+        var now: Date
         var locationQuery = ""
+
+        init(now: Date) {
+            self.now = now
+        }
     }
 
     // Options (own).
@@ -258,7 +271,12 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     private var spec = WeatherLocationSpec.none
     private var subscription: WeatherSubscription?
     private weak var service: WeatherService?
-    private(set) var binding = Binding()
+    private(set) var binding: Binding
+
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        binding = Binding(now: skin.skinClock.now())
+        super.init(name: name, section: section, skin: skin, type: type)
+    }
     private var seenVersion = 0
     /// The place whose failure streak `seenStreak` counts (nil: none seen yet, or none now).
     private var streakCoordinate: RoundedCoordinate?
@@ -335,7 +353,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             spec = WeatherLocationSpec.parse(raw)
             binding.locationQuery = raw.trimmingCharacters(in: .whitespaces)
             if subscription == nil {
-                let hop = skin.hop()
+                let hop = skin.backgroundHop(.weather)
                 subscription = WeatherSubscription(hop: hop) { [weak self] in self?.weatherChanged() }
             }
         } else if option("Location") != nil {
@@ -423,12 +441,14 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             streakCoordinate = nil
         }
         let env = service.environment
-        let now = WeatherLocationResolver.now(env)
+        let now = WeatherLocationResolver.now(env, skinClock: skin.skinClock)
         binding.now = now
+        let localZone = WeatherLocationResolver.localTimeZone(env, skinClock: skin.skinClock)
         let live = env.isLive(skin)
         let enabled = env.isEnabled()
         if !live && env.demo {
-            var location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription, live: false)
+            var location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription, live: false,
+                                                           localTimeZone: localZone)
             if location.coordinate == nil {
                 location.coordinate = WeatherDemo.coordinate
                 location.name = WeatherDemo.placeName
@@ -445,7 +465,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             return
         }
         var location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription,
-                                                       live: live && enabled)
+                                                       live: live && enabled, localTimeZone: localZone)
         if !enabled && location.status == .preview { location.status = .turnedOff }
         if let line = location.log { logOnce(line, level: .notice) }
         binding.location = location
@@ -620,16 +640,16 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     private func displayZone(_ b: Binding) -> TimeZone {
         WeatherLocationResolver.zone(option: setting("TimeZone"), place: b.location.fromDevice ? nil : b.location.zone,
                                      daylightSavingTime: WeatherLocationResolver.daylightSavingTime(setting("DaylightSavingTime")),
-                                     at: b.now)
+                                     at: b.now, localTimeZone: skin.skinClock.timeZone())
     }
 
     private var locale: Locale {
-        TimeFormatting.locale(fromOption: setting("FormatLocale")) ?? TimeFormatting.defaultLocale
+        TimeFormatting.locale(fromOption: setting("FormatLocale"), local: skin.locale) ?? TimeFormatting.defaultLocale
     }
 
     /// The value of `type` for now, hour N or day N.
     func output(type: ValueType, hour requestedHour: Int?, day requestedDay: Int?, decimalsOverride: Int? = nil) -> Output {
-        let b = root?.binding ?? Binding()
+        let b = root?.binding ?? Binding(now: skin.skinClock.now())
         let env = (root?.service ?? WeatherService.shared).environment
         let u = units
         let zone = displayZone(b)
@@ -650,9 +670,12 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             guard let date else { return none() }
             let f = format ?? defaultFormat
             return Output(number: TimeFormatting.measureValue(for: date, timeZone: zone),
-                          string: TimeFormatting.format(date, format: f, timeZone: zone, locale: locale))
+                          string: TimeFormatting.format(date, format: f, timeZone: zone, locale: locale,
+                                                        systemLocale: skin.locale))
         }
         let defaultTime = WeatherLocationResolver.defaultTimeFormat(env)
+        // Times that are not about the place (when the data was fetched) are in this Mac's zone: the skin's.
+        let localZone = skin.skinClock.timeZone()
 
         // Not about the forecast.
         switch type {
@@ -687,10 +710,10 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             return Output(number: Double(zone.secondsFromGMT(for: b.now)) / 3600, string: zone.identifier)
         case .updatedAt:
             guard b.status.showsData else { return none() }
-            return time(b.snapshot?.validatedAt, zone: .current, defaultFormat: defaultTime)
+            return time(b.snapshot?.validatedAt, zone: localZone, defaultFormat: defaultTime)
         case .forecastTime:
             guard b.status.showsData else { return none() }
-            return time(b.snapshot?.forecast?.updatedAt, zone: .current, defaultFormat: defaultTime)
+            return time(b.snapshot?.forecast?.updatedAt, zone: localZone, defaultFormat: defaultTime)
         case .sunrise, .sunset, .solarNoon, .dayLength, .daylightProgress:
             guard hasPlace, let c = location.coordinate else { return none() }
             let offset = type == .daylightProgress ? 0 : (requestedDay ?? 0)
@@ -866,8 +889,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
 
     private func statusText(_ b: Binding, env: WeatherEnvironment) -> String {
         let updated = b.snapshot?.validatedAt.map {
-            TimeFormatting.format($0, format: format ?? WeatherLocationResolver.defaultTimeFormat(env), timeZone: .current,
-                                  locale: locale)
+            TimeFormatting.format($0, format: format ?? WeatherLocationResolver.defaultTimeFormat(env),
+                                  timeZone: skin.skinClock.timeZone(), locale: locale, systemLocale: skin.locale)
         } ?? ""
         switch b.status {
         case .ready: return "Updated \(updated)"
@@ -972,8 +995,9 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         let env = WeatherService.shared.environment
         let dates = roots.compactMap { $0.binding.status.showsData ? $0.binding.snapshot?.validatedAt : nil }
         let updated = dates.max().map {
-            TimeFormatting.format($0, format: WeatherLocationResolver.defaultTimeFormat(env), timeZone: .current,
-                                  locale: TimeFormatting.defaultLocale)
+            TimeFormatting.format($0, format: WeatherLocationResolver.defaultTimeFormat(env),
+                                  timeZone: skin.skinClock.timeZone(), locale: TimeFormatting.defaultLocale,
+                                  systemLocale: skin.locale)
         }
         return (true, updated)
     }
@@ -1065,7 +1089,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         if parentName.isEmpty {
             spec = WeatherLocationSpec.parse(string("Location"))
             if subscription == nil {
-                let hop = skin.hop()
+                let hop = skin.backgroundHop(.sun)
                 subscription = WeatherSubscription(hop: hop) { [weak self] in self?.locationChanged() }
             }
         }
@@ -1097,7 +1121,9 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         self.service = service
         let env = service.environment
         let live = env.isLive(skin) && env.isEnabled()
-        location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription, live: live)
+        location = WeatherLocationResolver.resolve(spec, service: service, subscription: subscription, live: live,
+                                                   localTimeZone: WeatherLocationResolver.localTimeZone(
+                                                       env, skinClock: skin.skinClock))
         if let line = location.log, loggedOnce.insert(line).inserted { skin.log("MacSun [\(name)]: " + line, level: .notice) }
         let text = location.note
         if text != note {
@@ -1127,7 +1153,8 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
 
     private func compute() -> (number: Double, string: String?) {
         let env = (root?.service ?? WeatherService.shared).environment
-        let now = WeatherLocationResolver.now(env)
+        let now = WeatherLocationResolver.now(env, skinClock: skin.skinClock)
+        let localZone = skin.skinClock.timeZone()
         let unavailableText = setting("UnavailableText") ?? ""
         let noEventText = setting("NoEventText") ?? "--:--"
         let daylightSavingTime = WeatherLocationResolver.daylightSavingTime(setting("DaylightSavingTime"))
@@ -1143,7 +1170,8 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         switch valueType {
         case .moonPhase, .moonIllumination, .moonPhaseName, .moonSymbol:
             let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: nil,
-                                                    daylightSavingTime: daylightSavingTime, at: now)
+                                                    daylightSavingTime: daylightSavingTime, at: now,
+                                                    localTimeZone: localZone)
             var at = now
             if dayOffset != 0 {
                 var c = Calendar(identifier: .gregorian)
@@ -1170,12 +1198,14 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         }
         guard let c = loc.coordinate else { return none(unavailableText) }
         let zone = WeatherLocationResolver.zone(option: setting("TimeZone"), place: loc.fromDevice ? nil : loc.zone,
-                                                daylightSavingTime: daylightSavingTime, at: now)
-        let locale = TimeFormatting.locale(fromOption: setting("FormatLocale")) ?? TimeFormatting.defaultLocale
+                                                daylightSavingTime: daylightSavingTime, at: now,
+                                                localTimeZone: localZone)
+        let locale = TimeFormatting.locale(fromOption: setting("FormatLocale"), local: skin.locale)
+            ?? TimeFormatting.defaultLocale
         func time(_ date: Date) -> (Double, String?) {
             let f = format ?? WeatherLocationResolver.defaultTimeFormat(env)
             return (TimeFormatting.measureValue(for: date, timeZone: zone),
-                    TimeFormatting.format(date, format: f, timeZone: zone, locale: locale))
+                    TimeFormatting.format(date, format: f, timeZone: zone, locale: locale, systemLocale: skin.locale))
         }
         switch valueType {
         case .place: return (0, loc.name)

@@ -860,7 +860,7 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(string(skin, "MeasurePlace"), "Oslo")
         t.equal(string(skin, "MeasureAttribution"), "Based on data from MET Norway")
         t.equal(string(skin, "MeasureSourceURL"), "https://api.met.no/")
-        let updated = TimeFormatting.format(WeatherFixtures.clock, format: "%H:%M", timeZone: .current)
+        let updated = TimeFormatting.format(WeatherFixtures.clock, format: "%H:%M", timeZone: .current, systemLocale: .autoupdatingCurrent)
         t.equal(string(skin, "MeasureStatus"), "Updated \(updated)")
         t.equal(string(skin, "MeasureUpdated"), updated)
         t.check(text(skin, "MeterAttribution").hasPrefix("Based on data from MET Norway  ·  Updated"))

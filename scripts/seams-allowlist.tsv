@@ -1,0 +1,521 @@
+# Direct uses of clocks, time zones and locales, random sources, timers, waits, background work, system callbacks and
+# outside effects that are allowed today (scripts/check-seams.swift). One line per kind and file, tab-separated:
+#
+#     kind    file    count    note
+#
+# count: how many lines of that kind the file may have; * allows any number (UI and tooling code that never runs inside
+# a skin).
+# A new direct use makes `swift scripts/check-seams.swift --check` fail (CI runs it): route it through a seam (the
+# skin's clock, random source or executor, background work, SideEffects, a service protocol with a fake), or raise the
+# count here with a note saying why. The list only shrinks: --check also fails on a count above the uses, a * entry
+# for a kind the file no longer uses, and an entry without a note. `--update` rewrites the counts from the sources and
+# keeps the notes and the * entries still in use. The kinds and what each one matches:
+# `swift scripts/check-seams.swift --kinds`.
+
+mono.C	Sources/CLua/deskset_lua.c	2	os.clock's process clock (the live branch) and the script time limits; with an injected clock os.clock reads SkinClock.uptime through the time source
+random.C	Sources/CLua/deskset_lua.c	2	the shim's math.random and math.randomseed, live branch: C rand() and srand() as in Lua 5.1; SkinRandom through the time source when seeded
+wall.C	Sources/CLua/deskset_lua.c	2	the shim's os.time and os.date, live branch: time() as in Lua 5.1; SkinClock.now through the time source when injected
+zone.C	Sources/CLua/deskset_lua.c	3	the shim's os.date and os.time, live branch: localtime, mktime (process TZ) as in Lua 5.1; strftime also formats injected times (%z and %s written from the source)
+
+random.C	Sources/CLua/lmathlib.c	2	Lua's own math.random and math.randomseed: replaced by the shim's (deskset_lua.c) when a state opens
+
+mono.C	Sources/CLua/loslib.c	1	Lua's own os.clock: replaced by the shim's when a state opens
+random.C	Sources/CLua/loslib.c	1	Lua os.tmpname: a random file name
+wall.C	Sources/CLua/loslib.c	2	Lua's own os.time and os.date: replaced by the shim's when a state opens
+zone.C	Sources/CLua/loslib.c	4	Lua's own os.date and os.time and os.setlocale: replaced or removed by the shim when a state opens
+
+background.mainHop	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.fileWrite	Sources/Deskset/App/AppIcon.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.workspace	Sources/Deskset/App/CanvasOverlays.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/CanvasOverlays.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+background.process	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.workspace	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+mono.systemUptime	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+zone.localizedText	Sources/Deskset/App/CodeEditorSettings.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.fileWrite	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
+mono.systemUptime	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
+random.UUID	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
+random.pid	Sources/Deskset/App/CommandLineTools.swift	*	command-line tooling, not a skin input
+
+background.mainHop	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.fileWrite	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.sound	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+random.UUID	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.fileWrite	Sources/Deskset/App/DefaultSkins.swift	6	installing the default skins
+effect.iniWrite	Sources/Deskset/App/DefaultSkins.swift	1	installing the default skins
+
+effect.fileWrite	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
+mono.systemUptime	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
+random.UUID	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
+
+background.mainHop	Sources/Deskset/App/EditingSession.swift	1	Skin Studio session timing and debounces
+mono.DispatchTime.now	Sources/Deskset/App/EditingSession.swift	15	Skin Studio session timing and debounces
+timer.Timer	Sources/Deskset/App/EditingSession.swift	2	Skin Studio session timing and debounces
+timer.executorTimer	Sources/Deskset/App/EditingSession.swift	1	the update timer, on the executor
+timer.runLoopAdd	Sources/Deskset/App/EditingSession.swift	2	Skin Studio session timing and debounces
+wall.Date()	Sources/Deskset/App/EditingSession.swift	3	Skin Studio session timing and debounces
+
+background.mainHop	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.sound	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/EditorCodeBridge.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.pasteboard	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.sound	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.pointerState	Sources/Deskset/App/EditorControls.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.sound	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/EditorEditing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+mono.systemUptime	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+wall.Date()	Sources/Deskset/App/EditorInspector.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.pasteboard	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+wall.Date()	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+zone.localizedText	Sources/Deskset/App/EditorLayerPages.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.workspace	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.animation	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+wall.Date()	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+zone.localizedText	Sources/Deskset/App/EditorLiveData.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+event.notification	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/EditorPreviewing.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.fileWrite	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.sound	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/EditorPropertyWriting.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+event.notification	Sources/Deskset/App/EditorSidebar.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.pointerState	Sources/Deskset/App/EditorSidebar.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+timer.animation	Sources/Deskset/App/EditorViews.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.asyncAfter	Sources/Deskset/App/EditorViews.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.pasteboard	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.workspace	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.sound	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+effect.workspace	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+random.UUID	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+random.hashSeed	Sources/Deskset/App/LayerThumbnails.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+wall.Date()	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's clock; DesksetCore has no such defaults
+zone.inferredCurrent	Sources/Deskset/App/MacTimeFormatting.swift	*	the app's own UI (the Studio's previews and menus): the Mac's time zone and locale; DesksetCore has no such defaults
+
+zone.localizedText	Sources/Deskset/App/ManageModel.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.mainHop	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+event.notification	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+zone.implicitFormatter	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+event.notification	Sources/Deskset/App/ShapeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.workspace	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+
+effect.fileWrite	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+mono.systemUptime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+mono.threadCPUTime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+random.UUID	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+timer.executorTimer	Sources/Deskset/App/SkinBenchmark.swift	1	--benchmark: the update timer, on the skin's executor as a skin window's
+
+event.pointerState	Sources/Deskset/App/SkinCanvasView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+
+background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
+background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
+
+background.fileEvents	Sources/Deskset/App/SourceWatcher.swift	2	Skin Studio watches the files of the skin it edits
+
+effect.fileWrite	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
+random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
+wait.runLoop	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
+wall.Date()	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
+
+background.mainHop	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+effect.fileWrite	Sources/Deskset/AppController.swift	1	app files (state, log, caches); not a skin effect
+effect.terminate	Sources/Deskset/AppController.swift	2	app lifecycle, menus and single-instance handover; not a skin input
+effect.workspace	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+event.KVO	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
+event.notification	Sources/Deskset/AppController.swift	1	wake, appearance, screen and locale changes reach every skin
+event.pointerState	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
+mono.systemUptime	Sources/Deskset/AppController.swift	1	config lookup rescans at most every 3 s
+random.pid	Sources/Deskset/AppController.swift	3	app lifecycle, menus and single-instance handover; not a skin input
+timer.asyncAfter	Sources/Deskset/AppController.swift	1	re-check of regional settings after a change
+zone.localizedText	Sources/Deskset/AppController.swift	1	app lifecycle, menus and single-instance handover; not a skin input
+
+effect.fileWrite	Sources/Deskset/AppState.swift	4	app files (state, log, caches); not a skin effect
+timer.asyncAfter	Sources/Deskset/AppState.swift	1	state.json saving and ordering; not a skin input
+zone.localizedText	Sources/Deskset/AppState.swift	2	state.json saving and ordering; not a skin input
+
+background.mainHop	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
+background.queue	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
+effect.fileWrite	Sources/Deskset/Fonts.swift	8	app files (state, log, caches); not a skin effect
+effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private font copies; retry throttling
+mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
+random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
+
+mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
+
+mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
+
+event.location	Sources/Deskset/Location/LocationCenter.swift	1	location service: faked in verification
+timer.asyncAfter	Sources/Deskset/Location/LocationCenter.swift	1	location service: faked in verification
+wall.Date()	Sources/Deskset/Location/LocationCenter.swift	2	location service: faked in verification
+
+background.mainHop	Sources/Deskset/MacAppearance.swift	1	appearance and accent colour changes: SkinEnvironment
+event.notification	Sources/Deskset/MacAppearance.swift	1	appearance and accent colour changes: SkinEnvironment
+
+event.runLoopObserver	Sources/Deskset/MainThreadStallMonitor.swift	*	main-thread diagnostics, not a skin input
+mono.DispatchTime.now	Sources/Deskset/MainThreadStallMonitor.swift	*	main-thread diagnostics, not a skin input
+
+event.runLoopObserver	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
+mono.DispatchTime.now	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
+timer.Timer	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
+timer.runLoopAdd	Sources/Deskset/MainThreadSteps.swift	*	main-thread diagnostics, not a skin input
+
+background.mainHop	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
+event.eventMonitor	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
+event.pointerState	Sources/Deskset/OutsidePointerMonitor.swift	2	Slider clicks outside the skin: global mouse monitor and follow timer
+timer.Timer	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
+timer.runLoopAdd	Sources/Deskset/OutsidePointerMonitor.swift	1	Slider clicks outside the skin: global mouse monitor and follow timer
+
+background.dispatch	Sources/Deskset/Plugins/Audio/AppVolumeMeasure.swift	2	the audio system's own queue (AudioHAL): the per-app volume list is a live service (the volume kind, reported in virtual time)
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AppVolumeMeasure.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+random.pid	Sources/Deskset/Plugins/Audio/AppVolumeMeasure.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioAnalysis.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioAnalysis.swift	1	not a dictionary: the weights of a band are an array named values
+
+background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	the capture backend's own queue (AudioHAL): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
+background.mainHop	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification; the Screen Recording request and the watch on System Settings are the main thread's
+background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+event.captureStream	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	audio service (AudioLevel, AppVolume): faked in verification
+event.coreAudio	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+event.notification	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	the capture engine hears when System Settings, where a permission may have been given, goes to the background or quits: live audio only (never in a command-line mode; --data's audio replaces the engine)
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+random.UUID	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	the output-activity watch listens to each audio process on its own: the order its listeners are added and removed in reaches no skin
+random.pid	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	the silence watchdog tells Deskset's own process and the apps that play from the rest: live audio only, not a skin input (--data's audio replaces the engine)
+timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+
+background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	12	the capture engine's own queues (AudioHAL, analysis): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
+background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	4	audio service (AudioLevel, AppVolume): faked in verification; the silence watchdog's looks are timed on the uptime
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	the engine's capture sources, each on its own: the order they are visited in reaches no skin
+timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	audio service (AudioLevel, AppVolume): faked in verification; system audio waits in standby a moment after the other apps stop playing
+timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+
+background.queue	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+event.coreAudio	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+
+effect.audioHardware	Sources/Deskset/Plugins/Audio/AudioSideEffects.swift	1	SideEffects, live half (app): Win7Audio and AppVolume change a device; a recording never gets here
+
+background.dispatch	Sources/Deskset/Plugins/Audio/AudioSystem.swift	5	the audio system's own queue (AudioHAL): live devices and volume, the volume kind (reported in virtual time)
+mono.DispatchTime.now	Sources/Deskset/Plugins/Audio/AudioSystem.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioSystem.swift	3	audio service (AudioLevel, AppVolume): faked in verification
+random.UUID	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	device-change observers, each refreshing its own measure: the order reaches no skin state
+timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+wait.deadline	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+
+effect.fileWrite	Sources/Deskset/Plugins/FileViewIconWriter.swift	2	FileView icon files
+
+background.dispatch	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	the players' control queue: a side effect the app carries out (SideEffects.perform; a recording never runs it)
+background.queue	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): the volume keys' own HAL queue; a recording never gets here
+effect.audioHardware	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	2	SideEffects, live half (app): MediaKey's volume keys; a recording never gets here
+effect.postEvent	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): MediaKey posts key events; a recording never gets here
+effect.workspace	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): NowPlaying opens a player; a recording never gets here
+
+background.mainHop	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	2	NowPlaying service and cover art: faked in verification
+background.thread	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	MediaUIWorker, the thread NowPlaying, Wi-Fi and the front window are read on: live services (their kinds are reported in virtual time; --data's fakes stand in behind their protocols)
+wait.deadline	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	media workers: waitUntilIdle, for --render in virtual time (a condition, with a real-time limit)
+
+background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
+background.dispatch	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	14	the NowPlaying center's worker and its main-thread hops: a live service shared by every skin (the nowPlaying kind, reported in virtual time unless --data gives the player)
+effect.appleScript	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	2	the AppleScript runner reads the players and sends their commands; the commands pass SideEffects.perform in the measures
+effect.fileWrite	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	3	NowPlaying service and cover art: faked in verification
+mono.systemUptime	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
+timer.Timer	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
+timer.asyncAfter	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
+timer.runLoopAdd	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
+
+background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	2	NowPlaying service and cover art: faked in verification
+mono.systemUptime	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	3	NowPlaying service and cover art: faked in verification
+wait.deadline	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	1	NowPlaying service and cover art: faked in verification
+zone.Locale.current	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	2	NowPlaying service and cover art: faked in verification
+
+background.dispatch	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	the front-window reader's worker and its main-thread hop: a live service (the frontWindow kind, reported in virtual time)
+background.global	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
+background.mainHop	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	3	Chameleon's CropDesktop=Skin follows its skin window's moves with AppKit's notifications, on the main thread (a skin window only, never in a render); the moves come back through the skin's backgroundHop
+event.notification	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	Chameleon's CropDesktop=Skin follows its skin window's moves with AppKit's notifications, on the main thread (a skin window only, never in a render); the moves come back through the skin's backgroundHop
+mono.systemUptime	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	front app and desktop info plugins: service, faked in verification
+random.hashOrder	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	Chameleon ranks colour bins by size and keeps hash order for bins of equal size: a known input (--render runs with deterministic hashing); breaking ties by the bin's key changes the colour of tied images, so it waits for the owner's decision
+random.pid	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
+timer.asyncAfter	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	Chameleon's window-move watch waits for the moves to stop before it samples again (main thread, a skin window only, never in a render)
+
+background.mainHop	Sources/Deskset/Plugins/UI/FrostedGlass.swift	1	FrostedGlass backdrop window follows the skin window
+event.notification	Sources/Deskset/Plugins/UI/FrostedGlass.swift	2	FrostedGlass backdrop window follows the skin window
+timer.asyncAfter	Sources/Deskset/Plugins/UI/FrostedGlass.swift	1	FrostedGlass backdrop window follows the skin window
+
+event.eventMonitor	Sources/Deskset/Plugins/UI/InputTextMeasure.swift	2	InputText prompt window and key monitors
+event.notification	Sources/Deskset/Plugins/UI/InputTextMeasure.swift	2	InputText prompt window and key monitors
+
+background.dispatch	Sources/Deskset/Plugins/UI/WiFiStatus.swift	4	the Wi-Fi reader's worker and its main-thread hop: a live service (the wifi kind, reported in virtual time unless --data gives the Wi-Fi)
+mono.systemUptime	Sources/Deskset/Plugins/UI/WiFiStatus.swift	2	Wi-Fi service: faked in verification
+random.hashOrder	Sources/Deskset/Plugins/UI/WiFiStatus.swift	1	sorted by signal and then by name: a total order, whatever the dictionary's
+
+effect.fileWrite	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output files (the image, --state); with --clock virtual time, and a real-time limit on the wait for real background work and services
+wait.runLoop	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wall.Date()	Sources/Deskset/RenderCommand.swift	5	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wall.sinceNow	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+
+mono.systemUptime	Sources/Deskset/Sensors/IOReport.swift	1	sensor service (MacSensors): faked in verification
+
+effect.fileWrite	Sources/Deskset/Sensors/SensorHardware.swift	2	app files (state, log, caches); not a skin effect
+wait.sleep	Sources/Deskset/Sensors/SensorHardware.swift	1	sensor service (MacSensors): faked in verification
+
+background.queue	Sources/Deskset/Sensors/SensorService.swift	1	sensor service (MacSensors): faked in verification
+mono.systemUptime	Sources/Deskset/Sensors/SensorService.swift	1	sensor service (MacSensors): faked in verification
+timer.asyncAfter	Sources/Deskset/Sensors/SensorService.swift	1	sensor service (MacSensors): faked in verification
+
+background.mainHop	Sources/Deskset/SharedState.swift	1	shared service snapshots expire by age
+mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots expire by age
+
+effect.workspace	Sources/Deskset/SkinController.swift	2	a skin opens a URL or file: a host request, recorded by RecordingSkinHost in sandboxed runs
+event.pointerState	Sources/Deskset/SkinController.swift	3	window dragging and hover polling read the pointer
+timer.Timer	Sources/Deskset/SkinController.swift	1	hover polling (0.1 s Foundation timer): move to MainSkinExecutor.shared.timer
+timer.animation	Sources/Deskset/SkinController.swift	2	FadeDuration window fades
+timer.executorTimer	Sources/Deskset/SkinController.swift	1	the update timer, on the executor
+timer.runLoopAdd	Sources/Deskset/SkinController.swift	1	hover polling (0.1 s Foundation timer): move to MainSkinExecutor.shared.timer
+
+random.hashSeed	Sources/Deskset/SkinDrawing.swift	1	in-process cache key
+
+background.queue	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+effect.fileWrite	Sources/Deskset/Support.swift	5	app files (state, log, caches); not a skin effect
+effect.workspace	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+mono.systemUptime	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+wall.Date()	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+zone.implicitFormatter	Sources/Deskset/Support.swift	1	log time stamps, log file, editor lookup cache; not a skin input
+
+background.mainHop	Sources/Deskset/SystemMonitor.swift	2	system data (SystemDataSource): recorded or faked in verification
+background.queue	Sources/Deskset/SystemMonitor.swift	3	system data (SystemDataSource): recorded or faked in verification
+background.socket	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+mono.bootTime	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+mono.idleTime	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+mono.systemUptime	Sources/Deskset/SystemMonitor.swift	3	system data (SystemDataSource): recorded or faked in verification
+wait.deadline	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+wall.Date()	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+zone.TimeZone.current	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+zone.localizedText	Sources/Deskset/SystemMonitor.swift	1	system data (SystemDataSource): recorded or faked in verification
+
+event.location	Sources/Deskset/Weather/WeatherCommands.swift	1	--weather-report command
+wait.runLoop	Sources/Deskset/Weather/WeatherCommands.swift	1	--weather-report command
+wall.Date()	Sources/Deskset/Weather/WeatherCommands.swift	5	--weather-report command
+zone.TimeZone.current	Sources/Deskset/Weather/WeatherCommands.swift	2	--weather-report command
+zone.inferredCurrent	Sources/Deskset/Weather/WeatherCommands.swift	1	--weather-report command
+
+event.notification	Sources/Deskset/Weather/WeatherWiring.swift	2	weather wiring: system units, sleep and wake
+zone.inferredCurrent	Sources/Deskset/Weather/WeatherWiring.swift	2	weather wiring: system units, sleep and wake
+
+mono.DispatchTime.now	Sources/DesksetCore/Actions/TextTransforms.swift	2	regular-expression time limit; matters only when a limit is hit
+mono.threadCPUTime	Sources/DesksetCore/Actions/TextTransforms.swift	1	regular-expression time limit; matters only when a limit is hit
+
+effect.fileWrite	Sources/DesksetCore/Editor/CodeDocument.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Editor/EditorModel.swift	*	Skin Studio editing (Core half); never runs inside a skin
+effect.iniWrite	Sources/DesksetCore/Editor/EditorModel.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
+effect.iniWrite	Sources/DesksetCore/Editor/EditorSchema.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Editor/EditorSupport.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+zone.implicitFormatter	Sources/DesksetCore/Editor/FormatPresets.swift	*	Skin Studio editing (Core half); never runs inside a skin
+zone.inferredCurrent	Sources/DesksetCore/Editor/FormatPresets.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
+effect.iniWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
+random.hashSeed	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
+
+background.dispatch	Sources/DesksetCore/Engine/BackgroundWork.swift	1	the background seam itself: a job done in one go on its queue (live mode; a fake stands in for it in virtual time)
+background.hop	Sources/DesksetCore/Engine/BackgroundWork.swift	2	the background seam itself: in live mode results come back through SkinHop, as before; backgroundHop gives services the same way back
+timer.executorAfter	Sources/DesksetCore/Engine/BackgroundWork.swift	1	a fake's delay, on the executor (VirtualTimeExecutor)
+wait.deadline	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle: waits for real work that has no fake (a condition, with a real-time limit)
+wall.sinceNow	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle's real-time limit
+
+zone.Locale.current	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live preferred languages (Locale.preferredLanguages)
+zone.inferredCurrent	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live locale (Locale.autoupdatingCurrent), the default a host passes
+
+random.hashOrder	Sources/DesksetCore/Engine/InputData.swift	1	filtered and then sorted: the unknown keys in name order
+
+lua.library	Sources/DesksetCore/Engine/Lua/LuaPrelude.swift	5	the prelude wraps os.date (Windows # flag; the os.date it wraps is the shim's, which reads the skin's clock) and replaces os.tmpname (a name from the skin's random numbers, the file made through its side effects)
+
+zone.inferredCurrent	Sources/DesksetCore/Engine/MacRegionalSettings.swift	1	MacRegionalSettings.system(): the live source of SkinEnvironment.appearance.regional, which the host passes (--render fixes it)
+
+background.URLSession	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	2	WebParser downloads: fake network in verification
+background.dispatch	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	2	the transfer's own work queue; the result reaches the skin through Skin.startBackground (webParserPage / webParserDownload)
+background.operationQueue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
+background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
+
+timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
+
+random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	cancelling every run, and collecting option names into a dictionary: the order reaches no skin state
+timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
+
+background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
+background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	plugin file I/O queue; results come back through Skin.hop (fake completions)
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
+
+zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
+zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
+
+timer.executorTimer	Sources/DesksetCore/Engine/Plugins/MousePlugin.swift	1	already on the executor (VirtualTimeExecutor)
+
+background.global	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
+mono.DispatchTime.now	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	3	round-trip time (fake network in verification)
+random.swift	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	2	ICMP identifier and sequence; never visible to the skin
+
+background.queue	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
+mono.machTime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	process CPU sampling interval (service clock)
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's sample times (a service shared by every skin): faked with the service
+timer.dispatchSource	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
+
+background.dispatch	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's reading on the plugins' queue; skins get it through Skin.startBackground (the trash kind)
+background.executorAsync	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	2	the Trash monitor's callbacks for callers that are not skins (EmptyBin's refresh, the tests); skins get their readings through Skin.startBackground and their hop
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
+
+timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
+
+random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
+
+timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	already on the executor (VirtualTimeExecutor)
+
+random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a dictionary: a ranking's values are an array (the counter's instances after Percent and the lists)
+
+zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
+
+random.hashOrder	Sources/DesksetCore/Engine/ScriptedSystemData.swift	2	a wrapping sum of counters, and the longest matching mount point: neither depends on the order
+
+background.dispatch	Sources/DesksetCore/Engine/SideEffects.swift	2	the live side effects: a helper program started off the skin's thread, and RunCommand's output read on its own queue (a recording starts nothing)
+background.executorAsync	Sources/DesksetCore/Engine/SideEffects.swift	1	a helper program's exit status handed to the executor of the skin that started it: move to the skin's hop with the threading work
+background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and its pipes (a recording starts none)
+background.global	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: plugin helper programs start off the skin's thread (PluginProcess.launcher)
+background.process	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and plugin helper programs (a recording starts none)
+background.queue	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand's pipe queue
+effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
+effect.iniWrite	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: !WriteKeyValue (a recording writes its copy, through here)
+effect.signal	Sources/DesksetCore/Engine/SideEffects.swift	2	SideEffects live implementation: RunCommand Close, Kill, Timeout and unload (a recording records the signal)
+timer.asyncAfter	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand drains the pipes on its own queue
+
+random.hashOrder	Sources/DesksetCore/Engine/Skin.swift	2	cancelling every pending !Delay when the skin closes or reloads: the order reaches no skin state
+timer.executorAfter	Sources/DesksetCore/Engine/Skin.swift	1	!Delay on the executor (VirtualTimeExecutor)
+
+mono.systemUptime	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
+wall.Date()	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
+zone.TimeZone.current	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
+
+background.executorAsync	Sources/DesksetCore/Engine/SkinExecutor.swift	2	the executor seam itself: SkinHop.post and Skin.async are built on it
+background.mainHop	Sources/DesksetCore/Engine/SkinExecutor.swift	3	MainSkinExecutor itself
+timer.Timer	Sources/DesksetCore/Engine/SkinExecutor.swift	1	MainSkinExecutor itself
+timer.asyncAfter	Sources/DesksetCore/Engine/SkinExecutor.swift	1	MainSkinExecutor itself
+timer.runLoopAdd	Sources/DesksetCore/Engine/SkinExecutor.swift	2	MainSkinExecutor itself
+
+effect.fileWrite	Sources/DesksetCore/Engine/SkinFileSandbox.swift	9	the recording's copy of the skin tree (SideEffects): only its own scratch folder is written
+random.UUID	Sources/DesksetCore/Engine/SkinFileSandbox.swift	1	the Lua io sandbox: temporary copies of files a script writes
+
+effect.iniWrite	Sources/DesksetCore/Engine/SkinInspection.swift	2	Skin Studio writes through the inspection API
+
+random.UUID	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation
+random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation
+random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
+
+zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
+
+effect.fileWrite	Sources/DesksetCore/Ini/IniWriter.swift	1	the writer itself
+
+effect.fileWrite	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
+random.UUID	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
+zone.localizedText	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
+
+effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinFiles.swift	*	skin installer; runs outside any skin
+random.UUID	Sources/DesksetCore/Rmskin/RmskinFiles.swift	*	skin installer; runs outside any skin
+
+effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
+zone.localizedText	Sources/DesksetCore/Rmskin/RmskinLegacy.swift	*	skin installer; runs outside any skin
+
+background.global	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+background.process	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+effect.fileWrite	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+effect.signal	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+random.pid	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+wait.deadline	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+wall.Date()	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+wall.sinceNow	Sources/DesksetCore/Rmskin/RmskinZip.swift	*	skin installer; runs outside any skin
+
+background.queue	Sources/DesksetCore/Session/DiskSync.swift	*	Skin Studio session storage; never runs inside a skin
+timer.asyncAfter	Sources/DesksetCore/Session/DiskSync.swift	*	Skin Studio session storage; never runs inside a skin
+
+effect.fileWrite	Sources/DesksetCore/Session/SourceBuffers.swift	*	Skin Studio session storage; never runs inside a skin
+effect.iniWrite	Sources/DesksetCore/Session/SourceBuffers.swift	*	Skin Studio session storage; never runs inside a skin
+
+wall.Date()	Sources/DesksetCore/Weather/PlaceDirectory.swift	1	default argument
+zone.implicitFormatter	Sources/DesksetCore/Weather/PlaceDirectory.swift	1	a Gregorian calendar whose time zone is set right after
+
+zone.implicitFormatter	Sources/DesksetCore/Weather/SolarCalculator.swift	2	a Gregorian calendar whose time zone is set right after
+
+zone.implicitFormatter	Sources/DesksetCore/Weather/WeatherDemo.swift	1	a Gregorian calendar whose time zone is set right after
+
+zone.implicitFormatter	Sources/DesksetCore/Weather/WeatherDerived.swift	1	a Gregorian calendar whose time zone is set right after
+
+random.swift	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+timer.Timer	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+timer.dispatchSource	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+wall.Date()	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+zone.TimeZone.current	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+zone.inferredCurrent	Sources/DesksetCore/Weather/WeatherEnvironment.swift	1	the weather seam's live implementation
+
+zone.inferredCurrent	Sources/DesksetCore/Weather/WeatherReport.swift	1	default argument (--weather-report)
+
+background.queue	Sources/DesksetCore/Weather/WeatherService.swift	1	weather service queue and cache files (WeatherEnvironment fakes the transport)
+effect.fileWrite	Sources/DesksetCore/Weather/WeatherService.swift	5	weather service queue and cache files (WeatherEnvironment fakes the transport)
+
+background.URLSession	Sources/DesksetCore/Weather/WeatherTransport.swift	2	met.no requests: faked through WeatherEnvironment
+background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	met.no requests: faked through WeatherEnvironment

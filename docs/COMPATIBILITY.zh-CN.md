@@ -360,7 +360,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   Studio 和安装器。写回的文件（`!WriteKeyValue`、Skin Studio、重新安装时保留的变量）保持该代码页；
   该代码页无法表示的文字会让文件改为带 BOM 的 UTF-16 LE（Skin Studio 的代码视图会先询问）。无论语言如何，都先检测 BOM、
   UTF-16 和有效的 UTF-8；在该代码页中无效的文件按 Windows-1252 读取。命令行模式同样如此（`--render` 遵循
-  `-AppleLanguages`）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
+  `-AppleLanguages` 或 `--languages`；带 `--clock` 时按 1252 读取，除非 `--languages` 另行指定）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
 - **原因：** macOS 没有系统代码页，Mac 的语言最接近 Windows 的区域设置（取舍判断：只看第一个语言）。
 - **对皮肤的影响：** 与你的语言代码页相同的 ANSI 皮肤能正确显示文字和字体名（在设为简体中文的 Mac 上，
   `FontFace=微软雅黑` 的 GBK 皮肤用苹方 PingFang SC 绘制）。其他代码页的 ANSI 皮肤会显示错误的字符，就像在设为其他区域的
@@ -1136,17 +1136,72 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] [--screen WxH] [--skins-dir DIR]` 在没有窗口的情况下
-  加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C
-  （或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--wallpaper` 指定一张图片代替桌面壁纸
-  （Chameleon 从它取样，皮肤下方的部分画在皮肤背后），屏幕大小为 `--screen`（默认 1512 × 982 点），皮肤左上角位于 `--at`
-  （默认 0,0）；不给 `--wallpaper` 时，`--background` 代表一张该颜色的纯色壁纸。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+  [--state out.json] [--color-space device|srgb] [--locale ID|system] [--languages LIST|system]
+  [--accent-color R,G,B[,A]|system] [--wallpaper FILE] [--at X,Y] [--screen WxH|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
+  每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--wallpaper`
+  指定一张图片代替桌面壁纸（Chameleon 从它取样，皮肤下方的部分画在皮肤背后），屏幕为 1512 × 982 点（带 `--clock` 时为
+  1920 × 1080；`--screen` 可另行指定），皮肤左上角位于 `--at`（默认 0,0）；不给 `--wallpaper` 时，`--background` 代表一张该颜色的
+  纯色壁纸。有替身壁纸时，皮肤看到的就是这一块屏幕。`--clock`
+  让皮肤从给定时刻起在虚拟时间里运行：第 i 次更新发生在给定时间加 i 个间隔，时区为 UTC，除非 `--time-zone` 指定别的时区
+  （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤自己目录树里的
+  文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取，渲染的设置文件夹、`--data` 文件所在的
+  文件夹和 `--wallpaper` 所在的文件夹也一样；超出这些范围的工作（别的文件夹，比如“下载”，以及网络、外部程序、实时系统状态）照常执行，最多等一个间隔拿回
+  结果，并在 stderr 中标为无法验证；皮肤直接读取、又没有替身的服务（系统数据、电池、传感器、播放器、音频、Wi-Fi、前台窗口、
+  系统颜色、废纸篓）也会这样标出。带 `--clock` 时，皮肤看到的其余环境也固定下来：en_US_POSIX 区域（星期名、`%Z`、
+  `locale-date`、天气的 `Units=Auto`）、首选语言英语（旧的 ANSI 文件按代码页 1252 读取）、macOS 的蓝色强调色
+  （`#MACACCENTCOLOR#`）和一块 1920×1080 的屏幕（`#SCREENAREAWIDTH#`、`#WORKAREAHEIGHT#`…），除非用 `--locale`、
+  `--languages`、`--accent-color` 或 `--screen` 另行指定（`system` 表示用 Mac 自己的；不带 `--clock` 时这些都是 Mac 自己的，替身壁纸的屏幕除外）。
+  `--seed` 让皮肤的随机数（Calc 的 `Random`、QuotePlugin、Lua 的 `math.random`、`os.tmpname`…）每次运行都相同；渲染时
+  Swift 的哈希是确定的，集合和字典的顺序也每次相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
+  预乘的 sRGB 位图（参考图比较用的色彩空间）。开发版还接受 `--legacy`：由一份冻结的渲染器副本来测量和绘制皮肤（渲染代码搬动期间，
+  渲染器要和它逐字节比较）；发布版不接受这个选项。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
-  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目，`=refused` 模拟正在运行但拒绝了自动化权限的 Music）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
+  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目，`=refused` 模拟正在运行但拒绝了自动化权限的 Music；它的封面和 `--data` 给出的封面一样放在渲染的设置文件夹的 `Caches`
+  里，从不写进 App 的缓存）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
 - **原因：** 无需权限提示或可见屏幕即可得到可重复的截图。
+- **对皮肤的影响：** 无（开发者工具）。
+- **状态：** 仅 Mac
+
+#### 用给定的数据渲染（`--data`、`--state`）
+- **Windows：** 没有对应功能。
+- **Mac：** `--data` 给出皮肤读到的 Mac 数据：一个 JSON 对象（或存放它的文件路径；其中的路径相对于该文件所在的文件夹；
+  事件脚本则读取其中的 `data` 对象）。没有给出的键保持实时；`null` 表示没有这一项：
+  - `system`：帧列表（或 `{"frames": […]}`、单个帧、存放它们的文件路径），每次更新一帧——第一次更新用第 1 帧，之后每次更新
+    前换到下一帧，最后一帧保持不变。帧可给出 `cpu`（`[整体, 核 1, 核 2…]`，0–100）、`memory`（`physicalTotal`、
+    `physicalUsed`、`swapTotal`、`swapUsed`，字节）、`network`（`{"en0": {"received": …, "sent": …}}`，累计字节）、
+    `bestInterface`、`disks`（按挂载点：`{"/": {"total", "free", "available", "label", "kind"}}`）、`uptime`（秒）、
+    `processes`（`[{"name", "pid", "cpu": 占整台 Mac 的比例 0–100, "memory": 字节}]`：Process、UsageMonitor、AdvancedCPU、
+    PerfMon）、`sysInfo`（`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`）、`cpuFrequency`（Hz）和 `graphicsAdapter`；帧里
+    没写的沿用上一帧。给出 `system` 时这些读数一概不取自 Mac：没有任何帧给出的读数为 0、空或未知。
+  - `battery`：`{"level", "charging", "onAC", "timeRemaining"}`（分钟）；`null`：没有电池的 Mac。
+  - `sensors`：按 MacSensors 键给出，如 `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}`；
+    没写的传感器即这台 Mac 没有。
+  - `nowPlaying`：`{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",
+    "position", "duration", "cover": 图片文件, "volume", "shuffle", "repeat": "off"|"one"|"all", "rating"}`；
+    `null`：所有播放器都关着。
+  - `audio`：`{"frames": [{"rms": [左, 右], "peak": [左, 右], "bands": [[…], […]], "fft": …}], "deviceName",
+    "sampleRate", "channels"}`（或文件路径）：每个 AudioLevel 父 measure 报告的电平，0–1，乘增益之前，每次更新一帧；
+    单个值或单个列表表示所有声道。`null`：没有音频设备。
+  - `weather`：MET Norway locationforecast 2.0 响应（服务收到的原样）的文件路径，或
+    `{"forecast": 路径, "location": [纬度, 经度] | null, "status": 200}`；`null`：断网。渲染的皮肤算作实时；
+    `Location=auto` 是预报自己的地点（除非 `location` 另有指定），`Location=timezone` 是皮肤时区（`--time-zone`）的城市。
+  - `wifi`：`{"ssid", "rssi", "transmitRate", "encryption", "auth", "phy", "networks": [...]}`；`null`：没有 Wi-Fi。
+  - `desktopImage`：桌面图片（Chameleon 的 `Type=Desktop`、注册表的 Wallpaper）；`null`：没有。
+  - `programs`：`{"命令行的一部分": "它的输出" | ["行", …]}`：RunCommand 不启动任何程序；每个程序立即结束，输出为命令行
+    包含的最长一项的内容（都不包含则没有输出）；皮肤自己的文件写入（`!WriteKeyValue` 等）写进其文件的副本。
+  - `trash`：`{"count": 3, "size": 2048}`（字节；`"size": null` 表示读不到大小）或一个数量：RecycleManager 的每次读数；
+    `null`：空的废纸篓。（Deskset 新增。）
+
+  再加上 `--clock` 和 `--seed`，每次渲染、在每台 Mac 上都相同，除了标为无法验证的部分和少数仍从 Mac 读取的内容
+  （SysColor 的颜色、FileView 的日期格式、已安装的字体）。数据有误时指出是哪个键并停止渲染。`--state` 把皮肤最后的状态（尺寸；
+  每个 measure 的数值、字符串、是否禁用或暂停；每个 meter 的框、是否隐藏和文字；变量）写成 JSON。x86_64 版在 Rosetta 下
+  画文字和形状边缘与 arm64 版略有不同（每个通道差几级，满级 255），三角函数的结果也可能在最后一位不同，两者请用
+  `--state` 比较，而不是逐字节比较。
+- **原因：** 可重复的渲染，用于让绘制代码和自身对照，在任何 Mac 上都一样，不联网、不碰播放器、不请求权限。
 - **对皮肤的影响：** 无（开发者工具）。
 - **状态：** 仅 Mac
 
@@ -1358,7 +1413,8 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 
 #### `os.date`、`os.clock` 及其他 `os` 函数
 - **Windows：** 微软 C 库（`%#d` 去掉前导零；`clock()` 是挂钟时间）。
-- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同。
+- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同；
+  `os.tmpname` 创建 `/tmp/lua_XXXXXX`，名字取自皮肤的随机数。
 - **原因：** 脚本用 `os.clock` 为动画计时。
 - **对皮肤的影响：** 预计无。
 - **状态：** 模拟实现

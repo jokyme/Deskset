@@ -13,7 +13,7 @@ import Foundation
 ///   rotated (the renderer caches the result). UseExifOrientation=1 turns the image upright first.
 public final class RotatorMeter: Meter {
     /// Image processing requested by the general image options, applied once to the decoded image.
-    public struct ImageProcessing: Hashable {
+    public struct ImageProcessing: Hashable, Sendable {
         /// `ImageCrop=X,Y,W,H[,Origin]` resolved to a rectangle relative to the image's top-left corner given
         /// the image size — see `Crop.rect(imageWidth:imageHeight:)`.
         public var crop: Crop?
@@ -56,7 +56,7 @@ public final class RotatorMeter: Meter {
     }
 
     /// `ImageCrop` values; `origin` 1 top-left (default), 2 top-right, 3 bottom-right, 4 bottom-left, 5 center.
-    public struct Crop: Hashable {
+    public struct Crop: Hashable, Sendable {
         public var x: Double
         public var y: Double
         public var width: Double

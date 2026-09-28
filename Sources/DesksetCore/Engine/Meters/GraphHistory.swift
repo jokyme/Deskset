@@ -100,7 +100,7 @@ public struct GraphHistory {
 }
 
 /// GraphStart / GraphOrientation / Flip.
-public struct GraphDirection: Equatable {
+public struct GraphDirection: Equatable, Sendable {
     /// GraphStart=Right (default): the newest sample is at the right (bottom when horizontal).
     public var startRight = true
     /// GraphOrientation=Vertical (default): time runs along X, values along Y.
@@ -126,7 +126,7 @@ public struct GraphDirection: Equatable {
 }
 
 /// Maps graph samples to skin coordinates inside a meter's content rectangle.
-public struct GraphGeometry: Equatable {
+public struct GraphGeometry: Equatable, Sendable {
     public var frame: SkinRect
     public var direction: GraphDirection
 

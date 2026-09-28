@@ -27,6 +27,7 @@ enum LuaHostOp: Int {
     case execute = 22            // (command) → status
     case removeFile = 23         // (path) → path[, done, message] (done: a sandboxed skin removed its copy)
     case renameFile = 24         // (from, to) → from, to[, done, message]
+    case temporaryName = 25      // () → the name of a new empty file | nil, message
 }
 
 /// Section kinds passed to `getOption` / `getNumberOption`.
@@ -263,6 +264,14 @@ os.rename = function(from, to)
     return nil, message
   end
   return rename(a, b)
+end
+-- os.tmpname: the C library's makes a file with a name from its own random numbers, outside the skin's side effects;
+-- this one takes the name from the skin's random numbers (the same with a seed) and makes the file through them (a
+-- sandboxed instance keeps it in its copy).
+os.tmpname = function()
+  local name, message = host(25)
+  if name == nil then error(message, 2) end
+  return name
 end
 -- Nothing may read the app's standard input (io.read() without io.input, or io.stdin:read(), would wait for it
 -- when the app runs from a terminal): the default input and io.stdin read /dev/null.

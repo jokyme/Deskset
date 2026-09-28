@@ -877,7 +877,7 @@ extension InspectorWindowController {
 
     /// Format [14:05 ▾] for a text showing a time: the examples of §8.2, written to the time's Format.
     func timeFormatRow(_ measure: Measure, skin: Skin) -> InspectorRow {
-        let zone = TimeFormatting.timeZone(forOption: measure.option("TimeZone"))
+        let zone = MacTimeFormatting.timeZone(forOption: measure.option("TimeZone"))
         let presets = FormatPresets.timePresets(at: Date(), timeZone: zone)
         // A format written as a shared value (#DateFormat#): its value, and choosing one changes the shared value.
         let raw = measure.rawOption("Format") ?? ""
@@ -887,7 +887,7 @@ extension InspectorWindowController {
         popup.identifier = NSUserInterfaceItemIdentifier("time-format")
         let menu = NSMenu()
         if !presets.contains(where: { $0.format == current }) {
-            let item = NSMenuItem(title: "Custom — \(TimeFormatting.format(Date(), format: current, timeZone: zone))",
+            let item = NSMenuItem(title: "Custom — \(MacTimeFormatting.format(Date(), format: current, timeZone: zone))",
                                   action: nil, keyEquivalent: "")
             item.representedObject = current
             menu.addItem(item)

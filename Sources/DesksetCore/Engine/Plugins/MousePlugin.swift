@@ -69,8 +69,12 @@ public class MouseMeasure: Measure, PluginLifecycle, SkinPointerObserver {
     private var moveTimer: SkinScheduledWork?
     private var lastMoveTime = -Double.infinity
 
-    /// Monotonic clock (seconds); tests may replace it.
-    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
+    var clock: () -> TimeInterval {
+        get { clockOverride ?? skin.clock }
+        set { clockOverride = newValue }
+    }
+    private var clockOverride: (() -> TimeInterval)?
 
     static let defaultUpdateRate = 20.0
     static let maxUpdateRate = 10_000.0

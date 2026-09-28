@@ -127,6 +127,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             guard let self else { throw LuaHostError("the script measure no longer exists") }
             return try self.host(args)
         }
+        state.useTimeSource(clock: skin.skinClock, random: skin.random)
         lua = state
         if case .failure(let message) = invoke("start", flush: false, { state.callInternal("start", [.text(name)]) }) {
             report(message, level: .error)
@@ -435,7 +436,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
 
     /// `print()`: to the skin log, at most `LuaSupport.maxPrintsPerSecond` lines per second.
     private func printLine(_ text: String) {
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = skin.clock()
         if printWindowStart < 0 || now - printWindowStart >= 1 {
             printWindowStart = now
             printsInWindow = 0
@@ -622,22 +623,50 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             return [.number(osExecute(try args("execute").string(0)))]
         case .removeFile:
             let path = fixPath(try args("remove").string(0))
-            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(path)] }
+            guard let sandbox = skin.sideEffects.fileSandbox else { return [.text(path)] }
             if sandbox.remove(path) { return [.text(path), .boolean(true)] }
             return [.text(path), .boolean(false), .text("\(path): No such file or directory")]
         case .renameFile:
             let a = args("rename")
             let from = fixPath(try a.string(0)), to = fixPath(try a.string(1))
-            guard let sandbox = skin.actionPolicy?.fileSandbox else { return [.text(from), .text(to)] }
+            guard let sandbox = skin.sideEffects.fileSandbox else { return [.text(from), .text(to)] }
             if sandbox.rename(from, to: to) { return [.text(from), .text(to), .boolean(true)] }
             return [.text(from), .text(to), .boolean(false), .text("\(from): No such file or directory")]
+        case .temporaryName:
+            if let path = temporaryFileName() { return [.text(path)] }
+            return [.none, .text("unable to generate a unique filename")]
         }
     }
 
+    /// `os.tmpname`: a new empty file `/tmp/lua_XXXXXX` (the name the C library's `mkstemp` would make), its six
+    /// letters and digits from the skin's random numbers, made through the skin's side effects: on the Mac for a live
+    /// skin, in the copy of a sandboxed one (recorded as a write). nil when no free name was found or the file could
+    /// not be made.
+    private func temporaryFileName() -> String? {
+        let effects = skin.sideEffects
+        let letters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+        for _ in 0..<100 {
+            let name = String((0..<6).map { _ in letters[skin.random.int(in: 0..<letters.count)] })
+            let path = "/tmp/lua_" + name
+            // Taken already: on the Mac, or in the copy (a name made earlier and not removed).
+            if FileManager.default.fileExists(atPath: effects.fileSandbox?.path(for: path, access: .read) ?? path) {
+                continue
+            }
+            do {
+                try effects.writeFile(Data(), to: effects.destination(forWriting: URL(fileURLWithPath: path)),
+                                      makingFolder: false)
+                return path
+            } catch {
+                return nil
+            }
+        }
+        return nil
+    }
+
     /// `path` as the skin's scripts open it for `access`: the file itself, or — for an instance of the widget that must
-    /// not change its files (`SkinActionPolicy.fileSandbox`, the Studio's) — its private copy.
+    /// not change its files (a recording's `SideEffects.fileSandbox`: the Studio's) — its private copy.
     private func sandboxed(_ path: String, _ access: SkinFileSandbox.Access) -> String {
-        skin.actionPolicy?.fileSandbox?.path(for: path, access: access) ?? path
+        skin.sideEffects.fileSandbox?.path(for: path, access: access) ?? path
     }
 
     /// The measure named `name` (this script itself included, even before the skin knows it).
