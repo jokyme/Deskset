@@ -265,7 +265,7 @@ event.notification	Sources/Deskset/Plugins/UI/InputTextMeasure.swift	2	InputText
 
 mono.systemUptime	Sources/Deskset/Plugins/UI/WiFiStatus.swift	2	Wi-Fi service: faked in verification
 
-effect.fileWrite	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+effect.fileWrite	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output files (the image, --state); with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.runLoop	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
 wall.Date()	Sources/Deskset/RenderCommand.swift	5	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
