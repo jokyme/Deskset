@@ -341,7 +341,9 @@ final class SkinFrameProducer {
     /// When the skin asked for the frame it waits for (the monotonic clock).
     private var askedAt: TimeInterval = 0
     private var isStopped = false
-    private var observer: CFRunLoopObserver?
+    /// The turns of the executor's run loop it draws in (`SkinFrameTurn`), once started.
+    private let turn = Guarded<SkinFrameTurn?>(nil)
+    private var isStarted = false
 
     // From the window's facts.
     private(set) var scale: CGFloat = 2
@@ -395,35 +397,40 @@ final class SkinFrameProducer {
     }
 
     deinit {
-        if let observer { CFRunLoopObserverInvalidate(observer) }
+        turn.current?.remove(self)
     }
 
-    /// Starts drawing at the end of `executor`'s turns. Any thread.
+    /// Starts drawing at the end of `executor`'s turns, with the other producers of its run loop (`SkinFrameTurn`).
+    /// Any thread.
     func start(on executor: SkinExecutor) {
-        guard provider != nil, observer == nil else { return }
+        guard provider != nil, !isStarted else { return }
+        isStarted = true
         self.executor = executor
-        let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
-        guard let observer = CFRunLoopObserverCreateWithHandler(nil, activities.rawValue, true,
-                                                                  SkinFrameProducer.observerOrder,
-                                                                  { [weak self] _, activity in
-                                                                      self?.runLoopTurn(activity)
-                                                                  })
-        else { return }
-        self.observer = observer
         if let executor = executor as? SkinRunLoopExecutor, let loop = executor.runLoop {
-            CFRunLoopAddObserver(loop, observer, .commonModes)
+            join(SkinFrameTurn.on(loop))
         } else {
-            // Its work runs on its run loop: the observer goes there.
-            executor.async { CFRunLoopAddObserver(CFRunLoopGetCurrent(), observer, .commonModes) }
+            // Its work runs on its run loop: it joins that one's turns there.
+            executor.async { [weak self] in self?.join(SkinFrameTurn.on(CFRunLoopGetCurrent())) }
         }
+    }
+
+    private func join(_ turn: SkinFrameTurn) {
+        let joined = self.turn.access { current -> Bool in
+            guard current == nil, !isStopped else { return false }
+            current = turn
+            return true
+        }
+        if joined { turn.add(self) }
     }
 
     /// The skin closed: no more frames.
     func stop() {
         isStopped = true
         needsFrame = false
-        if let observer { CFRunLoopObserverInvalidate(observer) }
-        observer = nil
+        turn.access { current in
+            current?.remove(self)
+            current = nil
+        }
     }
 
     /// Whether the window can be seen, as far as its facts tell.
@@ -572,6 +579,145 @@ final class SkinFrameProducer {
     }
 }
 
+/// The turns of one run loop in which its skins' frames are drawn (docs/skin-threading.md §7.3): one run-loop observer
+/// (before waiting, on exit and before timers, order 1,999,000, common modes) lets every frame producer on that run loop
+/// draw, in the order they joined, and the frames of the turn go to the render server in one Core Animation
+/// transaction (`SkinFrameBatch`) instead of one each: skins with the same update interval wake together.
+final class SkinFrameTurn {
+    private static let turns = Guarded<[ObjectIdentifier: SkinFrameTurn]>([:])
+
+    private let loop: CFRunLoop
+    private var observer: CFRunLoopObserver?
+    /// The producers, weakly, under the registry's lock.
+    private var producers: [WeakProducer] = []
+
+    private struct WeakProducer {
+        weak var producer: SkinFrameProducer?
+    }
+
+    private init(loop: CFRunLoop) {
+        self.loop = loop
+    }
+
+    /// The turns of `loop` (made with the first producer that joins them). Any thread.
+    static func on(_ loop: CFRunLoop) -> SkinFrameTurn {
+        turns.access { turns in
+            if let turn = turns[ObjectIdentifier(loop)] { return turn }
+            let turn = SkinFrameTurn(loop: loop)
+            turns[ObjectIdentifier(loop)] = turn
+            return turn
+        }
+    }
+
+    /// Any thread.
+    func add(_ producer: SkinFrameProducer) {
+        SkinFrameTurn.turns.access { turns in
+            producers.removeAll { $0.producer == nil }
+            producers.append(WeakProducer(producer: producer))
+            // Back in the registry when the last producer had left it meanwhile.
+            turns[ObjectIdentifier(loop)] = self
+            guard observer == nil else { return }
+            let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
+            let observer = CFRunLoopObserverCreateWithHandler(nil, activities.rawValue, true,
+                                                              SkinFrameProducer.observerOrder) { [weak self] _, activity in
+                self?.run(activity)
+            }
+            self.observer = observer
+            if let observer { CFRunLoopAddObserver(loop, observer, .commonModes) }
+        }
+    }
+
+    /// Any thread. The last one to leave takes the observer with it.
+    func remove(_ producer: SkinFrameProducer) {
+        SkinFrameTurn.turns.access { turns in
+            producers.removeAll { $0.producer == nil || $0.producer === producer }
+            guard producers.isEmpty else { return }
+            if let observer { CFRunLoopObserverInvalidate(observer) }
+            observer = nil
+            if turns[ObjectIdentifier(loop)] === self { turns[ObjectIdentifier(loop)] = nil }
+        }
+    }
+
+    /// Producers in this run loop's turns (tests).
+    var count: Int { SkinFrameTurn.turns.access { _ in producers.filter { $0.producer != nil }.count } }
+    /// Turns that committed frames (tests, measurements).
+    private let committedTurns = Guarded(0)
+    var commits: Int { committedTurns.current }
+
+    private func run(_ activity: CFRunLoopActivity) {
+        let now = SkinFrameTurn.turns.access { _ in producers.compactMap(\.producer) }
+        guard !now.isEmpty else { return }
+        let committed = SkinFrameBatch.run {
+            for producer in now { producer.runLoopTurn(activity) }
+        }
+        if committed { committedTurns.access { $0 += 1 } }
+    }
+}
+
+/// The Core Animation transaction a turn's frames go in (`SkinFrameTurn`): opened by the first frame presented in it,
+/// committed once when the turn's producers are done (and flushed off the main thread, where no run loop observer of
+/// Core Animation's commits it). A frame presented outside a turn (the first frame, drawn while a skin loads) has a
+/// transaction of its own. Per thread.
+enum SkinFrameBatch {
+    private final class State {
+        var depth = 0
+        var opened = false
+        var commits = 0
+    }
+
+    private static let key = "DesksetSkinFrameBatch"
+    /// Outermost transactions committed for frames and layer changes of skin content (measurements, tests).
+    private static let commitCount = Guarded(0)
+
+    private static var state: State {
+        let dictionary = Thread.current.threadDictionary
+        if let state = dictionary[key] as? State { return state }
+        let state = State()
+        dictionary[key] = state
+        return state
+    }
+
+    /// Runs `body` as a turn's batch: what is presented in it is committed once, at the end (true when there was).
+    @discardableResult
+    static func run(_ body: () -> Void) -> Bool {
+        let state = self.state
+        state.depth += 1
+        body()
+        state.depth -= 1
+        guard state.depth == 0, state.opened else { return false }
+        state.opened = false
+        CATransaction.commit()
+        committed()
+        return true
+    }
+
+    /// A content provider is about to change its layer: inside a batch its transaction is opened now (once) and the
+    /// change goes with it (true); outside one the provider commits its own (false).
+    static func join() -> Bool {
+        let state = self.state
+        guard state.depth > 0 else { return false }
+        if !state.opened {
+            state.opened = true
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+        }
+        return true
+    }
+
+    /// An outermost transaction was committed: flushed off the main thread, and counted.
+    static func committed() {
+        if !Thread.isMainThread { CATransaction.flush() }
+        state.commits += 1
+        commitCount.access { $0 += 1 }
+        FrameTimingLog.noteCommit()
+    }
+
+    /// Outermost commits so far.
+    static var commits: Int { commitCount.current }
+    /// Outermost commits so far on this thread (tests).
+    static var threadCommits: Int { state.commits }
+}
+
 /// `defaults write app.deskset.Deskset FrameTimingLog -int 10`: every 10 seconds, each skin that presented frames logs
 /// how evenly they came (the time between two frames presented: median, 95th percentile and longest), how many there
 /// were and its longest drawing. For measuring frame pacing (docs/skin-threading.md §15); read at launch, off by
@@ -586,6 +732,28 @@ enum FrameTimingLog {
         let seconds = (value as? NSNumber)?.doubleValue ?? (value as? String).flatMap(Double.init) ?? 0
         period = seconds.isFinite && seconds > 0 ? seconds : 0
         if period > 0 { Log.write("Frame timing log on: every \(Int(period)) s") }
+    }
+
+    /// The Core Animation commits of skin frames since the last report (`SkinFrameBatch`), app-wide.
+    private static let commits = Guarded<(count: Int, since: TimeInterval?)>((0, nil))
+
+    /// A commit of skin frames: every `period` the app logs how many there were a second.
+    static func noteCommit() {
+        guard period > 0 else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let report = commits.access { c -> String? in
+            c.count += 1
+            guard let since = c.since else {
+                c.since = now
+                return nil
+            }
+            guard now - since >= period else { return nil }
+            let text = String(format: "%d in %.1f s (%.1f a second)", c.count, now - since,
+                              Double(c.count) / (now - since))
+            c = (0, now)
+            return text
+        }
+        if let report { Log.write("Frame commits: \(report)") }
     }
 
     /// The frames of one skin since its last report. On the skin's executor.

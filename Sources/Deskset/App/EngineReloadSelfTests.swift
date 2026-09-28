@@ -526,6 +526,43 @@ enum EngineReloadSelfTests {
             E.finish(t, app, tracked)
         }
 
+        t.suite("App: engine thread: the frames of one turn go to the render server in one transaction") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["One": E.plain, "Two": E.plain])
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let one = app.activate(config: "Engine\\One", file: nil),
+                      let two = app.activate(config: "Engine\\Two", file: nil), let engine = app.engineThread,
+                      let loop = engine.runLoop else { return t.check(false, "load") }
+                tracked += [E.track(one), E.track(two)]
+                t.check(AppSelfTest.spin(timeout: 60) { one.isStarted && two.isStarted }, "started")
+                one.visibilityForTesting = true
+                two.visibilityForTesting = true
+                t.check(AppSelfTest.spin(timeout: 60) {
+                    one.content.state.presented >= 1 && two.content.state.presented >= 1
+                }, "both shown")
+                let turn = SkinFrameTurn.on(loop)
+                t.check(turn.count >= 2, "both skins draw in the engine thread's turns")
+                // Both redraw in the same turn of the thread.
+                let before = (turn.commits, one.content.state.presented, two.content.state.presented)
+                let commitsBefore = E.onEngine(app) { SkinFrameBatch.threadCommits } ?? -1
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(engine)
+                one.runtime.send(.redraw)
+                two.runtime.send(.redraw)
+                gate.open()
+                t.check(AppSelfTest.spin(timeout: 30) {
+                    one.content.state.presented == before.1 + 1 && two.content.state.presented == before.2 + 1
+                }, "a frame each")
+                t.equal(E.onEngine(app) { SkinFrameBatch.threadCommits }, commitsBefore + 1,
+                        "one commit on the thread for the two frames")
+                t.equal(turn.commits, before.0 + 1, "at the end of the turn")
+                app.deactivate(config: "Engine\\One")
+                app.deactivate(config: "Engine\\Two")
+            }
+            E.finish(t, app, tracked)
+        }
+
         t.suite("App: engine thread: a window hidden for a while lets go of its kept pictures and its frame, and draws again when shown") {
             let saved = SkinFrameProducer.releaseDelay
             SkinFrameProducer.releaseDelay = 0.2

@@ -52,8 +52,9 @@ extension ContentProvider {
 /// - Its bounds are always the size of the frame it shows, set in the same transaction as the frame, so a frame is
 ///   never stretched. For as long as the window has not followed a new size yet it clips the frame, or leaves a
 ///   transparent margin.
-/// - Every change is an explicit transaction with actions disabled; off the main thread it is flushed at once (on the
-///   main thread it goes with the run loop's own commit, as AppKit's drawing did).
+/// - Every change is an explicit transaction with actions disabled. The frames of one turn of the executor's run loop
+///   go together, in one transaction committed at the end of the turn (`SkinFrameTurn`, `SkinFrameBatch`); off the main
+///   thread it is flushed at once.
 /// - Nothing outside this class touches `contentLayer`.
 final class LayerContentProvider: ContentProvider {
     /// Guards the layer and the state below: `teardown` comes from the main thread, frames from the skin's executor.
@@ -134,14 +135,16 @@ final class LayerContentProvider: ContentProvider {
         }
     }
 
-    /// An explicit transaction with actions disabled, flushed at once off the main thread (docs/skin-threading.md §7.3,
-    /// rule 2).
+    /// An explicit transaction with actions disabled (docs/skin-threading.md §7.3, rule 2). Inside a turn of frames it
+    /// goes with the turn's one transaction (`SkinFrameBatch`); otherwise it is committed now, and flushed at once off
+    /// the main thread.
     private func transaction(_ body: () -> Void) {
+        let batched = SkinFrameBatch.join()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         body()
         CATransaction.commit()
-        if !Thread.isMainThread { CATransaction.flush() }
+        if !batched { SkinFrameBatch.committed() }
     }
 
     // MARK: What the self-tests read
