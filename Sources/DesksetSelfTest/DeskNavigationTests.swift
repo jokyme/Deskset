@@ -482,4 +482,206 @@ func runDeskNavigationGoldenTests(_ t: TestRunner) {
                                           resources: PackageResources(package: deskHarbor()))
         t.equal(deskNavDefinition(service.snapshot, "none", into: 1), [], "the folder has no such picture")
     }
+
+    t.suite("Desk: service — rename") {
+        let m = monthView
+        func refusal(_ snapshot: DeskSnapshot, _ needle: String, occurrence: Int = 1, into: Int = 0, to newName: String? = nil) -> String {
+            let position = deskNavPosition(snapshot, needle, occurrence: occurrence, into: into)
+            if let newName {
+                if case .failure(let r) = snapshot.rename(at: position, to: newName) { return r.reason.rawValue }
+                return "renamed"
+            }
+            if case .failure(let r) = snapshot.prepareRename(at: position) { return r.reason.rawValue }
+            return "allowed"
+        }
+        // What can be renamed.
+        if case .success(let place) = m.prepareRename(at: deskNavPosition(m, "monthsFromNow + 1", into: 4)) {
+            t.equal(place.name, "monthsFromNow")
+            t.equal(place.kind, .variable)
+            t.equal("\(place.range)", "26:74-26:87")
+        } else {
+            t.check(false, "monthsFromNow can be renamed")
+        }
+        t.equal(refusal(m, "day.isToday"), "allowed", "a loop variable")
+        t.equal(refusal(m, "todayCell"), "allowed", "a style")
+        t.equal(refusal(m, "weekStart"), "allowed", "an option")
+        t.equal(refusal(m, "calendar"), "builtIn")
+        t.equal(refusal(m, ".font", into: 1), "builtIn")
+        t.equal(refusal(m, "Column"), "builtIn")
+        t.equal(refusal(m, "spacing"), "builtIn", "a label")
+        t.equal(refusal(m, "\"Month View\"", into: 3), "insideText")
+        t.equal(refusal(m, "chevron.left", into: 2), "insideText", "text no translation keys")
+        t.equal(refusal(m, "variable"), "notAName")
+        t.equal(refusal(m, "12)"), "notAName")
+        t.equal(refusal(m, "Row {", into: 4), "notAName", "punctuation")
+        t.equal(refusal(m, "month.title", into: 6), "builtIn", "a field of a record")
+        // Messages in both languages.
+        let chinese = deskNavService(m.text, file: "MonthView.desk", language: .simplifiedChinese).snapshot
+        if case .failure(let r) = chinese.prepareRename(at: deskNavPosition(chinese, "calendar")) {
+            t.equal(r.message, "“calendar”是内置的名字，只能给自己起的名字改名。")
+            t.equal(deskMessageLeaks(r.message), [])
+        }
+        if case .failure(let r) = m.prepareRename(at: deskNavPosition(m, "calendar")) {
+            t.equal(r.message, "“calendar” is a built-in name. Only names you gave can be renamed.")
+        }
+        // New names the checker would not take.
+        t.equal(refusal(m, "monthsFromNow", to: "Offset"), "invalidName", "a capital first letter")
+        t.equal(refusal(m, "monthsFromNow", to: "9lives"), "invalidName")
+        t.equal(refusal(m, "monthsFromNow", to: "my-offset"), "invalidName")
+        t.equal(refusal(m, "monthsFromNow", to: "页码"), "invalidName")
+        t.equal(refusal(m, "monthsFromNow", to: "if"), "reservedWord")
+        t.equal(refusal(m, "monthsFromNow", to: "event"), "reservedWord")
+        t.equal(refusal(m, "monthsFromNow", to: "widget"), "reservedWord")
+        t.equal(refusal(m, "todayCell", to: "style"), "reservedWord")
+        t.equal(refusal(m, "monthsFromNow", to: String(repeating: "a", count: 129)), "tooLong")
+        t.equal(refusal(m, "monthsFromNow", to: "cpu"), "hidesBuiltIn")
+        t.equal(refusal(m, "monthsFromNow", to: "month"), "alreadyUsed")
+        t.equal(refusal(m, "day.isToday", to: "name"), "alreadyUsed", "Desk.apply refuses any name the file writes, even out of sight")
+        t.equal(refusal(m, "day.isToday", to: "monthsFromNow"), "alreadyUsed")
+        t.equal(refusal(m, "todayCell", to: "dateCell"), "alreadyUsed")
+        t.equal(refusal(m, "weekStart", to: "highlight"), "alreadyUsed")
+        t.equal(refusal(m, "todayCell", to: "cpu"), "renamed", "a style is read only in .style(…)")
+        t.equal(refusal(m, "todayCell", to: "todayCell"), "renamed", "the same name: nothing to do")
+
+        // Renames and their results.
+        func renamed(_ snapshot: DeskSnapshot, _ needle: String, occurrence: Int = 1, into: Int = 0, to newName: String) -> (String, DeskRename)? {
+            guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, needle, occurrence: occurrence, into: into),
+                                                              to: newName) else {
+                t.check(false, "\(needle) is renamed to \(newName)")
+                return nil
+            }
+            return (DeskTextEditU16.apply(rename.edit.edits(for: snapshot.file), to: snapshot.text), rename)
+        }
+        if let (text, rename) = renamed(m, "monthsFromNow", to: "offset") {
+            t.equal(rename.edit.changedFiles, [DeskFileID(path: "MonthView.desk")])
+            t.equal(rename.edit.edits(for: m.file).count, 7)
+            t.equal(rename.notes, [])
+            t.check(!text.contains("monthsFromNow") && text.contains("monthsFromNow = 0") == false)
+            t.check(text.contains("variable offset = 0") && text.contains("offset: offset,") && text.contains("{ offset = offset - 1 }"))
+            let after = deskNavService(text, file: "MonthView.desk").snapshot
+            t.equal(deskNavIDs(after.diagnostics), deskNavIDs(m.diagnostics))
+            t.equal(deskNavStructure(after), deskNavStructure(m))
+        } else {
+            t.check(false, "monthsFromNow is renamed")
+        }
+        if let (text, _) = renamed(m, "{day.number}", into: 2, to: "cell") {
+            t.check(text.contains("for cell in month.days") && text.contains("\"{cell.number}\"") && text.contains("if: cell.isToday")
+                    && text.contains("not cell.inMonth"))
+        }
+        if let (text, rename) = renamed(m, "options.highlight", into: 9, to: "accentColor") {
+            t.equal(rename.edit.edits(for: m.file).count, 4)
+            t.equal(rename.notes, ["People who changed “highlight” in the Options panel get its default back: saved values are kept by the option’s name."])
+            t.check(text.contains("accentColor = ColorPicker(") && !text.contains("options.highlight"))
+        }
+        if let (text, _) = renamed(m, "style todayCell", into: 6, to: "today") {
+            t.check(text.contains(".style(today, if: day.isToday)") && text.contains("style today    {"))
+        }
+        // A quoted element name, the element's uses, and a Picker's own enum written in full.
+        let quoted = deskNavService("""
+            info { name: "T" }
+            options { theme = Picker("Theme", [.light, .sepia], default: .sepia) }
+            widget {
+                Column {
+                    Text("A").name("title").style("big").hidden(if: options.theme == Theme.light)
+                    Text("B").onClick { showOrHide(title) }
+                }
+            }
+            style big { .font(20) }
+            """).snapshot
+        if let (text, _) = renamed(quoted, "showOrHide(title)", into: 11, to: "heading") {
+            t.check(text.contains(".name(\"heading\")") && text.contains("showOrHide(heading)"), "the quoted name keeps its quotes")
+        }
+        if let (text, _) = renamed(quoted, "big {", to: "large") {
+            t.check(text.contains(".style(\"large\")") && text.contains("style large {"))
+        }
+        if let (text, rename) = renamed(quoted, "theme =", to: "look") {
+            t.check(text.contains("look = Picker(") && text.contains("options.look == Look.light"), text)
+            t.equal(rename.notes.count, 1)
+            let after = deskNavService(text).snapshot
+            t.equal(deskNavIDs(after.diagnostics), deskNavIDs(quoted.diagnostics))
+        }
+        // Chinese note.
+        if case .success(let rename) = chinese.rename(at: deskNavPosition(chinese, "weekStart"), to: "firstDay") {
+            t.equal(rename.notes, ["改过“weekStart”的人会回到默认值：选项的设置按名字保存。"])
+        } else {
+            t.check(false, "weekStart is renamed")
+        }
+    }
+
+    t.suite("Desk: service — rename across the package") {
+        let harbor = deskHarbor()
+        let before = CheckedDeskPackage(package: harbor, context: CheckContext(fonts: DeskFakeFonts()))
+        /// Applies a rename to the folder and checks it as a whole.
+        func apply(_ rename: DeskRename) -> CheckedDeskPackage {
+            var package = harbor
+            for file in rename.edit.changedFiles {
+                package = package.settingText(DeskTextEditU16.apply(rename.edit.edits(for: file), to: harbor.texts[file] ?? ""), of: file)
+            }
+            return CheckedDeskPackage(package: package, context: CheckContext(fonts: DeskFakeFonts()))
+        }
+        func ids(_ checked: CheckedDeskPackage) -> [String] {
+            checked.allDiagnostics.map { "\($0.file.path) \($0.id.rawValue)" }.sorted()
+        }
+        func text(_ checked: CheckedDeskPackage, _ file: String) -> String { checked.package.texts[DeskFileID(path: file)] ?? "" }
+        let widgets = ["Lamp.desk", "Radio.desk", "Tide.desk", "package.desk"].map { DeskFileID(path: $0) }
+
+        // A package style, from the package and from a widget: every widget changes.
+        for (open, needle) in [("package.desk", "style card"), ("Lamp.desk", "card")] {
+            let snapshot = deskNavHarbor(open).snapshot
+            guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, needle, into: needle.count - 4), to: "panel")
+            else { t.check(false, "card is renamed from \(open)"); continue }
+            t.equal(rename.edit.changedFiles, widgets, "every widget and the package")
+            t.equal(rename.notes, [])
+            let after = apply(rename)
+            t.equal(ids(after), ids(before), "the folder checks the same")
+            t.check(text(after, "package.desk").contains("style panel {"))
+            for file in ["Lamp.desk", "Radio.desk", "Tide.desk"] { t.check(text(after, file).contains(".style(panel)"), file) }
+            t.equal(after.uses.styles["panel"]?.widgets.map(\.path), ["Lamp.desk", "Radio.desk", "Tide.desk"])
+        }
+        // A package option a widget replaces (D99): the widget's declaration and uses change with the package's.
+        let tide = deskNavHarbor("Tide.desk").snapshot
+        if case .success(let rename) = tide.rename(at: deskNavPosition(tide, "accent ="), to: "tint") {
+            t.equal(rename.edit.changedFiles, [DeskFileID(path: "Tide.desk"), DeskFileID(path: "package.desk")])
+            t.equal(rename.notes.count, 1)
+            let after = apply(rename)
+            t.equal(ids(after), ids(before))
+            t.check(text(after, "package.desk").contains("tint = ColorPicker(") && text(after, "package.desk").contains("options.tint"))
+            t.check(text(after, "Tide.desk").contains("tint = ColorPicker(") && text(after, "Tide.desk").contains(".color(options.tint)"))
+        } else {
+            t.check(false, "accent is renamed")
+        }
+        let package = deskNavHarbor("package.desk").snapshot
+        if case .success(let rename) = package.rename(at: deskNavPosition(package, "metric"), to: "useMetric") {
+            t.equal(rename.edit.changedFiles, [DeskFileID(path: "Tide.desk"), DeskFileID(path: "package.desk")])
+            t.equal(ids(apply(rename)), ids(before))
+        } else {
+            t.check(false, "metric is renamed")
+        }
+        // Names already taken somewhere in the folder.
+        func reason(_ snapshot: DeskSnapshot, _ needle: String, into: Int = 0, _ newName: String) -> String {
+            if case .failure(let r) = snapshot.rename(at: deskNavPosition(snapshot, needle, into: into), to: newName) {
+                return r.reason.rawValue + " " + r.message
+            }
+            return "renamed"
+        }
+        t.equal(reason(package, "style card", into: 6, "heading"), "alreadyUsed “heading” is already used in package.desk.")
+        t.equal(reason(package, "metric", "look"), "alreadyUsed “look” is already used in Tide.desk.",
+                "a widget's own option would start replacing it")
+        t.equal(reason(tide, "showWaves", "metric"), "alreadyUsed “metric” is already used in package.desk.",
+                "a widget's option would start replacing the package's")
+        t.equal(reason(tide, "look =", "height"), "alreadyUsed “height” is already used here.")
+        t.equal(reason(tide, "heading", "Heading"), "invalidName “Heading” can’t be a name: start with a lowercase letter and use only letters, digits and _.")
+        // A widget's own style stays in the widget, and cannot take a package style's name.
+        let own = DeskLanguageService(openFile: DeskFileID(path: "Lamp.desk"),
+                                      files: [DeskFileID(path: "Lamp.desk"): "info { name: \"L\" }\nwidget { Text(\"A\").style(small).style(card) }\nstyle small { .font(12) }\n",
+                                              DeskFileID(path: "package.desk"): "style card { .padding(4) }\n",
+                                              DeskFileID(path: "Tide.desk"): "info { name: \"T\" }\nwidget { Text(\"B\").style(card) }\nstyle small { .font(14) }\n"]).snapshot
+        t.equal(deskNavReferences(own, "small"), ["Lamp.desk 2:26 small", "Lamp.desk 3:7 small"], "not Tide's style of that name")
+        if case .success(let rename) = own.rename(at: deskNavPosition(own, "small"), to: "tiny") {
+            t.equal(rename.edit.changedFiles, [DeskFileID(path: "Lamp.desk")])
+        } else {
+            t.check(false, "small is renamed")
+        }
+        t.equal(reason(own, "small", "card"), "alreadyUsed “card” is already used in package.desk.")
+    }
 }
