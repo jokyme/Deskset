@@ -35,6 +35,12 @@ enum CommandLineTools {
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
                                            // --weather-report.
                                            "--location", "--units", "--offline", "--now"]
+    /// Option flags of development builds only (not in the usage): `--render --legacy` draws with the frozen renderer.
+    #if DEBUG
+    static let debugOptionFlags: Set<String> = ["--legacy"]
+    #else
+    static let debugOptionFlags: Set<String> = []
+    #endif
 
     static let usage = """
         usage: Deskset                   start the menu bar app
@@ -83,14 +89,14 @@ enum CommandLineTools {
     static func validate(_ arguments: [String]) -> Validation {
         let args = Array(arguments.dropFirst())
         if args.contains(where: { $0 == "--help" || $0 == "-h" }) { return .help }
-        let known = Set(modeFlags).union(optionFlags)
+        let known = Set(modeFlags).union(optionFlags).union(debugOptionFlags)
         let unknown = args.filter { $0.hasPrefix("--") && !known.contains($0) }
         if !unknown.isEmpty {
             let shown = unknown.prefix(5).map { $0.count > 60 ? String($0.prefix(60)) + "…" : $0 }
             return .invalid("unknown option" + (unknown.count == 1 ? " " : "s ") + shown.joined(separator: ", "))
         }
         if args.contains(where: { modeFlags.contains($0) }) { return .mode }
-        if let option = args.first(where: { optionFlags.contains($0) }) {
+        if let option = args.first(where: { optionFlags.contains($0) || debugOptionFlags.contains($0) }) {
             return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report")
         }
         return .app

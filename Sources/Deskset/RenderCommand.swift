@@ -40,6 +40,11 @@ struct RenderOptions: Equatable {
     /// `--color-space`: the bitmap the skin is drawn into. `device` (the default, what `--render` always drew) is the
     /// device RGB space; `srgb` is 8-bit premultiplied sRGB, the space reference images are compared in.
     var colorSpace = ColorSpace.device
+    #if DEBUG
+    /// `--legacy` (debug builds only): the skin is measured and drawn by the frozen copy of the renderer
+    /// (`LegacySkinRenderer`), the reference the renderer is compared with while its code moves.
+    var legacy = false
+    #endif
     var warnings: [String] = []
 
     enum Appearance: String, Equatable {
@@ -178,6 +183,9 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--color-space") {
             o.warnings.append("--color-space needs a value; using device")
         }
+        #if DEBUG
+        o.legacy = arguments.contains("--legacy")
+        #endif
         return o
     }
 
@@ -294,8 +302,13 @@ enum RenderCommand {
             }
         }
         let host = RenderHost()
+        var skinHost: SkinHost = host
+        #if DEBUG
+        // --legacy: the frozen renderer measures the skin's text and images too, not only draws it.
+        if o.legacy { skinHost = LegacyRenderHost(host) }
+        #endif
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir,
-                        system: inputs?.systemSource(base: SystemMonitor.shared) ?? SystemMonitor.shared, host: host)
+                        system: inputs?.systemSource(base: SystemMonitor.shared) ?? SystemMonitor.shared, host: skinHost)
         // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
         let virtual = o.virtualTime()
         var restoreServices: () -> Void = {}
@@ -419,7 +432,16 @@ enum RenderCommand {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = flipped
             // No window, so MacGlass shows as a stand-in, drawn for the background when one is given.
+            #if DEBUG
+            if o.legacy {
+                LegacySkinRenderer.draw(skin, in: cg,
+                                        glass: .placeholder(dark: o.background.map(LegacyGlassPlaceholder.isDark)))
+            } else {
+                SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+            }
+            #else
             SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+            #endif
             NSGraphicsContext.restoreGraphicsState()
         }
         switch o.colorSpace {
