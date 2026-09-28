@@ -97,12 +97,15 @@ public final class MeasureValueOverride {
         let zoneOption = measure.option("TimeZone").map { raw -> String in
             OptionValue.number(raw).map { NumberFormatting.plain($0) } ?? raw
         }
+        let skin = measure.skin
         let zone = TimeFormatting.timeZone(forOption: zoneOption,
-                                           daylightSavingTime: measure.bool("DaylightSavingTime", true), at: date)
-        let locale = TimeFormatting.locale(fromOption: measure.option("FormatLocale")) ?? TimeFormatting.defaultLocale
+                                           daylightSavingTime: measure.bool("DaylightSavingTime", true), at: date,
+                                           localTimeZone: skin.skinClock.timeZone())
+        let locale = TimeFormatting.locale(fromOption: measure.option("FormatLocale"), local: skin.locale)
+            ?? TimeFormatting.defaultLocale
         let timestamp = TimeFormatting.measureValue(for: date, timeZone: zone)
         let text = TimeFormatting.format(windowsTimestamp: timestamp, format: format ?? TimeFormatting.defaultFormat,
-                                         locale: locale, nameTimeZone: zone)
+                                         locale: locale, nameTimeZone: zone, systemLocale: skin.locale)
         measure.rawString = text
         measure.value = format != nil ? TimeFormatting.numberValue(ofFormatted: text) : timestamp
         return true

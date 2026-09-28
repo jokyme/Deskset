@@ -185,6 +185,10 @@ struct StudioHeldAction: Equatable {
         case .file:
             sentence = StudioText.format(.wouldChange, recorded.text)
             button = nil
+        case .effect:
+            // Something a plugin would do outside the widget (a program, the audio, a player): said, not offered.
+            sentence = StudioText[.wouldActOutside]
+            button = nil
         }
     }
 
