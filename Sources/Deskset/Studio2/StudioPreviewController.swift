@@ -282,6 +282,22 @@ final class StudioPreviewController {
         refreshAll()
     }
 
+    /// A notice over the canvas for a while (a file opened for editing whose skin is no longer installed).
+    private(set) var notice: String?
+    private var noticeTimer: Timer?
+
+    func showNotice(_ text: String) {
+        notice = text
+        noticeTimer?.invalidate()
+        let timer = Timer(timeInterval: 10, repeats: false) { [weak self] _ in
+            self?.notice = nil
+            self?.refreshBars()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        noticeTimer = timer
+        refreshBars()
+    }
+
     /// Zoom to Selection (⇧⌘9): the selected parts fill the canvas (at most 800%), centered.
     func zoomToSelection() {
         let canvas = canvasController.canvas
@@ -332,6 +348,10 @@ final class StudioPreviewController {
                 [weak self] in self?.performHeldAction()
             }
             canvas.statusCapsule.toolTip = heldAction.recorded.text
+            canvas.statusCapsule.isHidden = false
+        } else if let notice {
+            canvas.statusCapsule.toolTip = nil
+            canvas.statusCapsule.show(notice, symbol: "exclamationmark.triangle")
             canvas.statusCapsule.isHidden = false
         } else if let sentence = state.previewingSentence {
             canvas.statusCapsule.toolTip = nil

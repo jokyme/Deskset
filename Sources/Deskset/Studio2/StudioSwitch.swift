@@ -49,13 +49,18 @@ enum StudioSwitch {
 
 extension AppController {
     /// "Use New Studio" (the hidden menu item): turns the new Studio window on or off. An open Studio window of the
-    /// other kind closes, so the next "Edit Skin…" opens the one chosen.
+    /// other kind closes (asking first about code it can't save), so the next "Edit Skin…" opens the one chosen.
     @objc func toggleNewStudioAction(_ sender: Any?) {
         let on = !StudioSwitch.isOn(for: self)
-        StudioSwitch.set(on, for: self)
+        // The open one closes as closing it would: what waits is written, and typed code it can't save is asked about
+        // (Cancel: the switch stays as it was).
         if on {
+            if let inspector, !inspector.canTerminate() { return }
+            StudioSwitch.set(on, for: self)
             inspector?.window?.close()
         } else {
+            if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return }
+            StudioSwitch.set(on, for: self)
             StudioWindowController.window(for: self)?.window?.close()
         }
     }

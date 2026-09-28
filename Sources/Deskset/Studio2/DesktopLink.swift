@@ -21,6 +21,8 @@ final class DesktopLink {
     var onChange: ((Change) -> Void)?
     /// The desktop copy last linked (`link`).
     private weak var linked: SkinController?
+    /// The widget on the desktop the window shows (nil once it is gone).
+    var controller: SkinController? { linked }
     /// `!WriteKeyValue` bangs the desktop copy had run when the files were last looked at (`takeOwnWrites`).
     private var keyValueWrites = 0
     private var observer: NSObjectProtocol?

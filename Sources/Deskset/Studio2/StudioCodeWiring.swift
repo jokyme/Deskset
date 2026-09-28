@@ -324,6 +324,24 @@ extension StudioWindowController {
         return true
     }
 
+    /// A file opened for editing (Finder's Open With, `!EditSkin`, `#CONFIGEDITOR#`, "Open in built-in editor"): the
+    /// code beside the canvas at `line` of `file` (the file itself without one), with the keyboard; `notice` (the
+    /// skin that was asked for is no longer installed) shows over the canvas and is spoken.
+    func reveal(file: URL, line: Int?, notice: String?) {
+        setCodeMode(.alongside)
+        if let line {
+            codeView.reveal(line: line, in: file, select: false)
+        } else {
+            codeView.show(file: file)
+        }
+        window?.makeFirstResponder(codeView.textView)
+        showDiagnostics()
+        if let notice {
+            preview.showNotice(notice)
+            announce(notice)
+        }
+    }
+
     /// Commits typed code before a visual step writes, so the step starts from what the user sees.
     func flushCode() {
         guard !codeState.committing, codeController.isViewLoaded, codeView.hasUncommittedChanges else { return }

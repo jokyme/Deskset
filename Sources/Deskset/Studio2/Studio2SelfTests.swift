@@ -112,9 +112,38 @@ enum Studio2SelfTests {
             t.check(StudioWindowController.window(for: app) == nil, "the new window closed")
             app.showInspector(for: c)
             t.check(app.inspector != nil, "the old Studio opens again")
+            // The old Studio holds typed code it can't save: the switch asks first (Cancel: nothing changes).
+            if let old = app.inspector {
+                let code = old.codeView
+                _ = try? code.open(files: [c.skin.fileURL], current: c.skin.fileURL)
+                let tv = code.textView
+                tv.setSelectedRange(NSRange(location: 0, length: 0))
+                tv.insertText("; typed\n", replacementRange: NSRange(location: 0, length: 0))
+                code.onCommit = { _, _ in false }
+                var asked = 0
+                old.closeChoice = {
+                    asked += 1
+                    return .cancel
+                }
+                app.toggleNewStudioAction(item)
+                t.equal(asked, 1, "the old Studio asked about its code")
+                t.check(!StudioSwitch.headlessValue, "Cancel: the switch stays off")
+                t.check(app.inspector === old, "and the old Studio stays open")
+                old.closeChoice = { .discard }
+            }
             app.toggleNewStudioAction(item)
             t.check(StudioSwitch.headlessValue, "turned on")
             t.check(app.inspector == nil, "the old Studio closed")
+
+            // Opening the skin's file at a line (Finder, !EditSkin, #CONFIGEDITOR#): the new window, the code at it.
+            t.check(CodeEditorRouter.openBuiltIn(file: c.skin.fileURL, line: 3, app: app, notice: "Old is no longer installed"))
+            guard let opened = StudioWindowController.window(for: app) else { return t.check(false, "the new window") }
+            t.atSuiteEnd { opened.window?.close() }
+            t.check(opened.isCodeShown, "the code beside the canvas")
+            t.equal(opened.codeView.currentFile?.lastPathComponent, c.skin.fileURL.lastPathComponent)
+            t.equal(opened.codeView.caretLine, 3, "at the line")
+            t.equal(opened.preview.notice, "Old is no longer installed", "the notice over the canvas")
+            t.check(app.inspector == nil, "never the old Studio")
         }
     }
 

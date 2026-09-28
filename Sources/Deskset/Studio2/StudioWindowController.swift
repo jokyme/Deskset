@@ -31,7 +31,12 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// Opens the Studio on the widget `c` (moving the open window to it), in front. The old Studio closes: one Studio
     /// edits at a time, and a session has one window.
     static func show(for c: SkinController, app: AppController) {
-        app.inspector?.window?.close()
+        // The old Studio closes as closing it would (its typed code asked about; Cancel keeps it open, and this one
+        // does not open).
+        if let inspector = app.inspector {
+            guard inspector.canTerminate() else { return }
+            inspector.window?.close()
+        }
         let controller: StudioWindowController
         if let open = window(for: app) {
             controller = open
