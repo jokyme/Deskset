@@ -95,8 +95,9 @@ enum EditorOpeningSelfTests {
             var busyRan = false
             let busy = Timer(timeInterval: 0.05, repeats: false) { _ in
                 Monitor.note("busy")
-                let end = Date().addingTimeInterval(0.15)
-                while Date() < end {}
+                // On the clock the monitor times steps with (the wall clock may be slewed meanwhile).
+                let end = DispatchTime.now().uptimeNanoseconds + 150_000_000
+                while DispatchTime.now().uptimeNanoseconds < end {}
                 busyRan = true
             }
             RunLoop.main.add(busy, forMode: .common)
@@ -110,7 +111,7 @@ enum EditorOpeningSelfTests {
             t.check(fired, "the busy timer fires")
             let busySteps = steps.all.filter { $0.notes.contains("busy") }
             t.equal(busySteps.count, 1, "one step: \(describe(steps, over: 0.03))")
-            t.check((busySteps.first?.duration ?? 0) >= 0.15, "as long as the timer")
+            t.check((busySteps.first?.duration ?? 0) >= 0.15, "as long as the timer: \(describe(steps, over: 0.03))")
             t.equal(busySteps.first?.notes, ["busy"], "it says what it did")
             // Measured against the recording's own length: a machine that stalls inside a step adds as much to both,
             // and most of the 600 ms after the busy step is asleep.
