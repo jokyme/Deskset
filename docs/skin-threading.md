@@ -674,14 +674,16 @@ occlusion, backing scale).
   - They change the model **synchronously**. Everything the skin reads afterwards (`#CURRENTCONFIGX#` in the next
     action or update, the `SavePosition` rules) sees the result, even before the main thread has moved the window.
     Today the same holds because `!Move` moves the window at once.
-  - They then post a `SkinRequest.window(model, sequence)` to the main thread. The main thread applies it in order,
-    saves it to `AppState` and echoes back what it really did, clamped by KeepOnScreen and screens.
+  - They then post a `SkinRequest.window(model, sequence)` to the main thread, with the change they made (phase 2 step
+    3: `SkinWindowChange`). The main thread applies the change in order, saves it to `AppState` and echoes back what
+    it really did, clamped by KeepOnScreen and screens.
 - **Changes that start on main** (a drag, the skin menu, the Manage window, a screen change) are sent to the skin as
   `windowFacts` with the next sequence number.
 - **Conflicts:**
   - Last writer wins, by sequence number.
-  - While the user is dragging, the main thread ignores the skin's move requests until mouse-up. Rainmeter's manual
-    says nothing about a `!Move` during a drag; this is a judgment call.
+  - While a press may drag the window, the skin's moves wait for the release: a press that became a drag wins and the
+    move is dropped; otherwise the move is made at the release. Rainmeter's manual says nothing about a `!Move`
+    during a drag; this is a judgment call.
 - **Bangs aimed at other configs' windows** (`!Move … Config`, the group forms) go to the target skin as messages
   (§8.2). The target applies them to its own model, as above.
 - **App-level bangs:**
@@ -1485,6 +1487,33 @@ suite's `TestThreadExecutor`.
    - Tests: on a test thread, a skin reads the new `#CURRENTCONFIGX#` right after `!Move`, before the main thread
      has moved its window; both sides end at the same frame and state; a drag in progress wins; bangs between skins
      arrive in order and the 17th hop is dropped and logged once.
+   - **Done (2026-09-28):** `SkinWindowModel.swift` (the settings, the facts, the operations and `SkinWindowBangs`,
+     which names a window bang's targets), `EnvironmentStore.swift`, `SkinDirectory.swift`. The window controller
+     publishes its facts after every change it makes or applies and from `windowDidMove` / `windowDidResize` /
+     occlusion / backing changes, so a frame set from anywhere reaches the model; `AppController` republishes the
+     directory whenever its controllers, its pending loads or a load order change. `SkinRuntime` carries window
+     bangs, group bangs, `*` and bangs for configs by name itself. Differences from the plan:
+     - `.window` carries the operation with the values the runtime worked out (a clamped frame, a resolved flag) as
+       well as the model, and the main thread applies the operation with the code the window bangs always ran. Applying
+       the whole model would undo a setting the menu or the Manage window changed meanwhile.
+     - The facts also carry the window settings (`AppState`'s values, !Hide, a Lua FadeWindow) and the last of the
+       skin's changes they include (`modelSequence`). The model takes the frame and the settings only once that is
+       its latest change: that is "the last writer wins".
+     - On the main thread the store works the screens, `#CONFIGEDITOR#` and the appearance out at every read
+       (`MainPublished`), exactly as the old code did, and publishes them for other threads; the app also publishes
+       them at launch and on screen and editor changes. So the debug comparison checks what the model adds: the
+       frame, the Z position, AutoSelectScreen's monitor and whether the window takes the pointer.
+     - A skin's move during a press that may drag the window is held until the release: dropped when the press became
+       a drag, made when it did not (a judgment call, now in `docs/compat/app.md` and both summaries). While it is
+       held the comparison skips the frame.
+     - Bangs for a config the skin asked to load from another thread go through the main thread until the main thread
+       has scheduled that load (`loadsInFlight`): the directory cannot know of the load before then.
+     - Group bangs to other skins now count a hop and stop at the limit, as forwards always did. A window bang for a
+       config that does not run is still ignored without a log line.
+     - Until step 5's lifecycle messages, the self-tests put app skins on a test thread with
+       `AppController.skinExecutor`; such a skin loads on its thread under exclusive access.
+     - New suites "App: window model: …" and "App: skin directory: …" (73 checks). The app suite made COMPARISONS
+       debug comparisons with no difference; Main Thread Checker reported nothing for the new suites.
 4. **`ContentProvider` and frame delivery E, still on the main executor.**
    - The provider and `LayerContentProvider`. The frame producer, with `SkinBitmapDrawing` moved out of `SkinView`,
      presents at the end of the turn and skips while the window cannot be seen.

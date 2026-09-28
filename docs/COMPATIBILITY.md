@@ -928,9 +928,13 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** Draggable (default 1); a LeftMouseDownAction disables dragging; DragMargins limits where a drag can
   start; holding Ctrl overrides mouse actions and Draggable.
 - **Mac:** the same rules; a drag starts after 3 points of movement. The override key is **⌘ (Command)**: ⌘-drag moves
-  any skin and runs no click action; ⌘ while dragging inverts SnapEdges. The position is saved when the drag ends.
-- **Why:** on the Mac, Control-click is the secondary (right) click.
-- **Skin impact:** read-me files that say "hold CTRL" mean ⌘ on the Mac.
+  any skin and runs no click action; ⌘ while dragging inverts SnapEdges. The position is saved when the drag ends. A
+  `!Move` or `!SetWindowPosition` the skin runs during a press that may drag it waits for the release: a drag wins and
+  the move is dropped; a press that did not drag gets the move then.
+- **Why:** on the Mac, Control-click is the secondary (right) click. The manual does not say what a `!Move` during a
+  drag does (judgment call).
+- **Skin impact:** read-me files that say "hold CTRL" mean ⌘ on the Mac. A skin that moves itself while it is dragged
+  ends where the pointer let go of it.
 - **Status:** emulated
 
 #### `DragGroup` (moving several skins together)
