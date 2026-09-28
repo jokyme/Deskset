@@ -1,6 +1,6 @@
 import Foundation
 
-// A widget folder as Deskset installs and shares it (DESK-DESIGN §5.4, the language specification §8.3): the widget
+// A widget folder as Deskset installs and shares it (the language specification §8.3): the widget
 // files at its top, an optional `package.desk` with the package's own fields, shared options, styles and
 // translations, and the pictures and fonts the widgets name by relative paths. The model holds only what the folder
 // contains (the files, their kinds and sizes, the `.desk` texts, what loading found), so a folder read from disk and

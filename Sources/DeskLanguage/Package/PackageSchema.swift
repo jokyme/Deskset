@@ -1,6 +1,6 @@
 import Foundation
 
-// The Options panel of each widget (§4.13, §5.4, DESK-DESIGN §3.4): its `options { }` block, with the package's
+// The Options panel of each widget (§4.13, §5.4): its `options { }` block, with the package's
 // options merged in — a widget option of the same name replaces the package's for that widget (D99) — and where each
 // value is stored when a widget is placed several times: widget options and `saved` values per placed widget,
 // package options once per package, secrets in the Keychain.
