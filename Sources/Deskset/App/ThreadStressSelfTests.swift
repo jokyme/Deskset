@@ -706,6 +706,8 @@ enum ThreadStressSelfTests {
 /// - `stop()` ends the thread once the work queued before it has run. Work queued later never runs: a skin's own
 ///   work cannot come later (the skin is closed and let go of first), and what background work hands over holds the
 ///   skin weakly (`SkinHop`), so nothing queued late keeps a skin.
+/// - `exclusive` parks the thread between two pieces of work (`SkinExecutorPark`): while the caller holds it,
+///   `isCurrent` is true on the caller's thread and false on this one.
 final class TestThreadExecutor: SkinExecutor {
     /// Set up on the thread before `init` returns and read-only afterwards, except `stopped` (the thread's own).
     private final class Loop {
@@ -716,6 +718,9 @@ final class TestThreadExecutor: SkinExecutor {
 
     private let loop = Loop()
     private let exited = Guarded(false)
+    private let park = SkinExecutorPark()
+    /// Parks queued and not started yet (tests wait for one before they let a busy thread go on).
+    let queuedParks = Guarded(0)
 
     init(name: String, stackSize: Int = 8 << 20) {
         let loop = self.loop, exited = self.exited
@@ -739,9 +744,24 @@ final class TestThreadExecutor: SkinExecutor {
         ready.wait()
     }
 
-    var isCurrent: Bool {
+    var isCurrent: Bool { park.isCurrent(onThread: loop.thread) }
+
+    /// On the executor's own thread, whoever holds exclusive access: where its run loop is.
+    private var isOnThread: Bool {
         guard let thread = loop.thread else { return false }
         return pthread_equal(thread, pthread_self()) != 0
+    }
+
+    func exclusive<T>(timeout: TimeInterval, _ body: () -> T) -> T? {
+        if isCurrent { return body() }
+        let queuedParks = self.queuedParks
+        return park.exclusive(timeout: timeout, enqueue: { wait in
+            queuedParks.access { $0 += 1 }
+            self.async {
+                queuedParks.access { $0 -= 1 }
+                wait()
+            }
+        }, body)
     }
 
     /// The thread has ended (after `stop()`).
@@ -789,7 +809,7 @@ final class TestThreadExecutor: SkinExecutor {
             RunLoop.current.add(timer, forMode: .common)
             // Weak: the run loop owns the timer until it is invalidated (a one-shot invalidates itself once it fired).
             scheduled.setCancelHandler { [weak timer] in
-                if self.isCurrent {
+                if self.isOnThread {
                     timer?.invalidate()
                 } else {
                     // Until then, `fire()` does nothing.
@@ -797,7 +817,7 @@ final class TestThreadExecutor: SkinExecutor {
                 }
             }
         }
-        if isCurrent { install() } else { async(install) }
+        if isOnThread { install() } else { async(install) }
         return scheduled
     }
 }

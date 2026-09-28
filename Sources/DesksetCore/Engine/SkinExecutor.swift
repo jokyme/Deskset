@@ -39,6 +39,28 @@ public protocol SkinExecutor: AnyObject {
     /// fires inline, even with interval 0.
     func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
                _ fire: @escaping () -> Void) -> SkinScheduledWork
+
+    /// Exclusive access (docs/skin-threading.md §5.2): runs `body` on the calling thread while the executor's own work
+    /// waits, and returns what it returned.
+    /// - On the executor itself (`isCurrent`) it runs at once: exclusive access is re-entrant, and the main executor
+    ///   runs it inline on the main thread.
+    /// - From another thread, an executor with a thread of its own parks that thread between two pieces of work (never
+    ///   in the middle of one) and runs `body` once it is parked. While `body` runs, `isCurrent` is true on the calling
+    ///   thread and false on the parked one, so `Skin.assertOwned` holds for what `body` does.
+    /// - nil when the executor does not park within `timeout` seconds (it is busy with a long piece of work); the caller
+    ///   then falls back on what it knew (docs: the snapshot, the previous value, the next tick). A park that comes
+    ///   later finds itself given up and returns at once.
+    ///
+    /// Nothing ever waits upwards (§5.2): a skin thread must not ask for the main executor's skins this way.
+    func exclusive<T>(timeout: TimeInterval, _ body: () -> T) -> T?
+}
+
+extension SkinExecutor {
+    /// Executors without a thread of their own to park (tests' executors that run nothing by themselves): at once on
+    /// the executor, else nil.
+    public func exclusive<T>(timeout: TimeInterval, _ body: () -> T) -> T? {
+        isCurrent ? body() : nil
+    }
 }
 
 // MARK: - Scheduled work
@@ -182,6 +204,94 @@ public final class MainSkinExecutor: SkinExecutor {
             DispatchQueue.main.async { RunLoop.main.add(timer, forMode: .common) }
         }
         return scheduled
+    }
+
+    /// Inline on the main thread, which owns every skin of this executor. Off the main thread it gives up at once
+    /// (nil): a skin thread never waits for the main thread (§5.2).
+    public func exclusive<T>(timeout: TimeInterval, _ body: () -> T) -> T? {
+        guard Thread.isMainThread else { return nil }
+        return body()
+    }
+}
+
+// MARK: - Parking a skin thread
+
+/// Exclusive access for an executor with a thread of its own (docs/skin-threading.md §5.2): what such an executor
+/// answers for `isCurrent` and `exclusive`. The executor keeps one and hands it the thread it runs on.
+///
+/// A caller on another thread queues a park on the executor, behind the work already queued there, and waits for it
+/// with a timeout. Once the thread has parked, the caller holds the executor's skins: it runs its closure and then lets
+/// the thread go on. A park that starts after its caller gave up returns at once. Thread-safe.
+public final class SkinExecutorPark: @unchecked Sendable {
+    private let lock = NSLock()
+    /// The thread that holds exclusive access (nil: the executor's own thread owns its skins).
+    private var holder: pthread_t?
+
+    public init() {}
+
+    /// `SkinExecutor.isCurrent` for an executor running on `thread`: the holder of exclusive access while someone
+    /// holds it, else that thread.
+    public func isCurrent(onThread thread: pthread_t?) -> Bool {
+        let me = pthread_self()
+        lock.lock()
+        let holder = self.holder
+        lock.unlock()
+        if let holder { return pthread_equal(holder, me) != 0 }
+        guard let thread else { return false }
+        return pthread_equal(thread, me) != 0
+    }
+
+    /// `SkinExecutor.exclusive` from a thread that is not current: `enqueue` queues the park on the executor (as its
+    /// `async` does). Re-entrancy is the executor's: it runs `body` at once while it is current.
+    public func exclusive<T>(timeout: TimeInterval, enqueue: (@escaping () -> Void) -> Void, _ body: () -> T) -> T? {
+        let park = Park()
+        enqueue { park.wait() }
+        let deadline: DispatchTime = timeout.isFinite && timeout < 1e6 ? .now() + max(timeout, 0) : .distantFuture
+        if park.parked.wait(timeout: deadline) == .timedOut, park.giveUp() { return nil }
+        lock.lock()
+        holder = pthread_self()
+        lock.unlock()
+        defer {
+            lock.lock()
+            holder = nil
+            lock.unlock()
+            park.release.signal()
+        }
+        return body()
+    }
+
+    /// One request for exclusive access: the executor's thread parks in `wait` until the caller is done, unless the
+    /// caller gave up first.
+    private final class Park: @unchecked Sendable {
+        private enum State { case waiting, parked, givenUp }
+        private let lock = NSLock()
+        private var state = State.waiting
+        let parked = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+
+        /// On the executor's thread, between two pieces of work.
+        func wait() {
+            lock.lock()
+            guard state == .waiting else {
+                // The caller gave up: go on with the next piece of work at once.
+                lock.unlock()
+                return
+            }
+            state = .parked
+            lock.unlock()
+            parked.signal()
+            release.wait()
+        }
+
+        /// The caller's wait timed out: true when the thread had not parked (it will not now); false when it parked
+        /// right then, and the caller goes ahead after all.
+        func giveUp() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard state == .waiting else { return false }
+            state = .givenUp
+            return true
+        }
     }
 }
 
