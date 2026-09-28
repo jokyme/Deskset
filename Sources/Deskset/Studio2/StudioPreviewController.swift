@@ -385,7 +385,8 @@ final class StudioPreviewController {
 
     private func popUp(_ menu: NSMenu, from item: NSView) {
         guard presentsWindows, item.window?.isVisible == true else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: item)
+        // Above the bar (the item is flipped: up is negative).
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -(menu.size.height + 6)), in: item)
     }
 
     func showTimePicker() {

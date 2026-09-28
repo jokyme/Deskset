@@ -387,6 +387,13 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { session?.undoStack ?? ownUndoManager }
 
+    /// Back in the window: the desktop picture and the other widgets may have changed meanwhile.
+    func windowDidBecomeKey(_ notification: Notification) {
+        guard session != nil else { return }
+        preview.refreshBackdrop()
+        preview.refreshNeighbours()
+    }
+
     func windowWillClose(_ notification: Notification) {
         runningPopover?.close()
         pendingDiskCheck?.invalidate()
