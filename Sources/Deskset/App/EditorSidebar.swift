@@ -907,7 +907,6 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
     /// Outlines layers on the canvas from the list (a row or a "Used by" link under the pointer); [] clears.
     func setListHoverHighlight(_ names: [String]) {
         canvas.hoverHighlight = names
-        canvas.needsDisplay = true
         sidebar.listHover = !names.isEmpty
     }
 

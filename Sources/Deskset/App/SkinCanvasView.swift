@@ -83,10 +83,10 @@ final class SkinCanvasView: NSView {
     private(set) var selectedNames: [String] = []
     var selection: String? { selectedNames.last }
     /// Layers related to the inspector's selection (those showing the selected data source), outlined softly.
-    var relatedNames: [String] = [] { didSet { if relatedNames != oldValue { needsDisplay = true } } }
+    var relatedNames: [String] = [] { didSet { if relatedNames != oldValue { overlayNeedsDisplay() } } }
     /// Layers outlined because the pointer is over their row in the sidebar (docs/editor-friendly.md §5.2 "Hover links
     /// the list and the canvas"): the rest of the widget is veiled.
-    var hoverHighlight: [String] = [] { didSet { if hoverHighlight != oldValue { needsDisplay = true } } }
+    var hoverHighlight: [String] = [] { didSet { if hoverHighlight != oldValue { overlayNeedsDisplay() } } }
     /// The layer under the pointer changed (nil: none), for the sidebar to highlight its row.
     var onHoverChange: ((String?) -> Void)?
     var backdrop = Backdrop.checkerboard { didSet { needsDisplay = true } }
@@ -96,7 +96,7 @@ final class SkinCanvasView: NSView {
     // MARK: What the editor tells the canvas
 
     /// Runs of repeated layers (section names, file order), selected as one by a first click (`LayerSeries`).
-    var groups: [[String]] = [] { didSet { if groups != oldValue { enteredGroup = nil; needsDisplay = true } } }
+    var groups: [[String]] = [] { didSet { if groups != oldValue { enteredGroup = nil; overlayNeedsDisplay() } } }
     /// The run the user double-clicked into: clicks on its layers select them one by one.
     private(set) var enteredGroup: [String]?
     /// Whether a layer is locked in the editor (§9.6): clicks and selection boxes pass through it.
@@ -116,9 +116,9 @@ final class SkinCanvasView: NSView {
         }
     }
     /// Layers placed relative to the ones being moved (follower → the layer it follows), outlined while they move (§9.5).
-    var followers: [String: String] = [:] { didSet { if followers != oldValue { needsDisplay = true } } }
+    var followers: [String: String] = [:] { didSet { if followers != oldValue { overlayNeedsDisplay() } } }
     /// The text layer being edited in place: its placeholder is not drawn.
-    var editingText: String? { didSet { if editingText != oldValue { needsDisplay = true } } }
+    var editingText: String? { didSet { if editingText != oldValue { overlayNeedsDisplay() } } }
 
     /// Called when the user changes the selection on the canvas (click, ⇧-click, selection box, ⌘A, Esc).
     var onSelectionChange: (([String]) -> Void)?
@@ -160,6 +160,8 @@ final class SkinCanvasView: NSView {
     /// Where the skin's (0, 0) is in view coordinates.
     private(set) var origin = NSPoint(x: margin, y: margin)
 
+    /// The workbench, content and overlay planes the canvas is drawn in (CanvasPlanes.swift).
+    let planes = CanvasPlanes()
     private var trackingArea: NSTrackingArea?
     private(set) var gesture: Gesture?
     private var gestureStart: NSPoint = .zero
@@ -180,6 +182,7 @@ final class SkinCanvasView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.desksetComponent])
+        planes.install(in: self)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -269,7 +272,7 @@ final class SkinCanvasView: NSView {
         leaveGroupUnlessInside(names)
         guard names != selectedNames else { return }
         selectedNames = names
-        needsDisplay = true
+        overlayNeedsDisplay()
         window?.invalidateCursorRects(for: self)
         if reveal, let name = names.last, let skin, let m = skin.meter(named: name) {
             scrollToVisible(viewRect(m.frame).insetBy(dx: -24, dy: -24))
@@ -314,7 +317,7 @@ final class SkinCanvasView: NSView {
     private func setHover(_ name: String?) {
         guard name != hover else { return }
         hover = name
-        needsDisplay = true
+        overlayNeedsDisplay()
         onHoverChange?(name)
     }
 
@@ -630,7 +633,7 @@ final class SkinCanvasView: NSView {
         }.map(\.name)
         enteredGroup = nil
         changeSelection(marqueeBase + hits.filter { !marqueeBase.contains($0) })
-        needsDisplay = true
+        overlayNeedsDisplay()
     }
 
     /// The gesture's pointer moved to `p` (view coordinates). Also used by the self-tests.
@@ -700,7 +703,7 @@ final class SkinCanvasView: NSView {
     override func mouseUp(with event: NSEvent) {
         if marquee != nil {
             marquee = nil
-            needsDisplay = true
+            overlayNeedsDisplay()
             return
         }
         guard gesture != nil else { return }
@@ -842,16 +845,28 @@ final class SkinCanvasView: NSView {
 
     // MARK: Drawing
 
-    override func draw(_ dirtyRect: NSRect) {
-        let paint = StudioSignposts.signposter.beginInterval("canvas.paint")
-        defer { StudioSignposts.signposter.endInterval("canvas.paint", paint) }
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+    // The canvas draws nothing itself: its planes (CanvasPlanes.swift) draw these three parts, bottom to top.
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            super.needsDisplay = newValue
+            if newValue { planes.invalidate(for: self) }
+        }
+    }
+
+    /// The workbench plane: the work surface and the widget card on it (its shadow and backdrop).
+    func drawWorkbench(_ dirtyRect: NSRect, _ ctx: CGContext) {
         let z = max(zoom, 0.01)
         drawSurface(dirtyRect, zoom: z, ctx)
-        guard let skin else { return }
-        let rect = skinRect
+        guard skin != nil else { return }
+        drawBackdrop(skinRect, zoom: z, ctx)
+    }
 
-        drawBackdrop(rect, zoom: z, ctx)
+    /// The content plane: the widget, the hatch, the ghost outside the card, what is cut off and the pixel grid.
+    func drawContent(_ dirtyRect: NSRect, _ ctx: CGContext) {
+        guard let skin else { return }
+        let z = max(zoom, 0.01)
+        let rect = skinRect
         // The hatch marks areas the desktop shows transparent or cuts off; the layers are drawn over it.
         drawHatch(skin, card: rect, zoom: z, ctx)
         ctx.saveGState()
@@ -863,6 +878,12 @@ final class SkinCanvasView: NSView {
         drawOutside(skin, card: rect, ctx)
         drawCutOffOutlines(skin, card: rect, zoom: z, ctx)
         if z >= Self.gridZoom { drawGrid(rect, dirty: dirtyRect, zoom: z, ctx) }
+    }
+
+    /// The overlay plane: hover and selection, handles, guides, tags, badges, placeholders and a dragged component.
+    func drawOverlayPlane(_ dirtyRect: NSRect, _ ctx: CGContext) {
+        guard let skin else { return }
+        let z = max(zoom, 0.01)
         // The badges are placed first (off the layers being dragged), the tags then keep off them, and the badges are
         // drawn last, over everything: "Cut off on the desktop" stays readable when it matters most.
         let badges = badgePlacements(zoom: z)

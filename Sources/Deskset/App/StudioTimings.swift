@@ -40,8 +40,9 @@ final class StudioPhaseClock {
 }
 
 /// The Studio's signposts, for Instruments (subsystem app.deskset.Deskset, category Studio): `inspector.update`,
-/// `layers.update`, `code.sync` (the window following a reload) and `canvas.paint` (each draw of the canvas), next to
-/// the editing session's own (`edit.plan`, `runtime.apply`, `disk.flush`, `desktop.refresh`).
+/// `layers.update`, `code.sync` (the window following a reload), `canvas.paint` (each draw of the canvas's content
+/// plane), `canvas.overlay` and `canvas.workbench` (its other two planes), next to the editing session's own
+/// (`edit.plan`, `runtime.apply`, `disk.flush`, `desktop.refresh`).
 enum StudioSignposts {
     static let signposter = OSSignposter(subsystem: "app.deskset.Deskset", category: "Studio")
 

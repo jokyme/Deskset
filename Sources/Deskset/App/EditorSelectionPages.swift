@@ -621,7 +621,6 @@ extension InspectorWindowController {
         b.onHover = { [weak self] inside in
             guard let self else { return }
             self.canvas.hoverHighlight = inside ? users : []
-            self.canvas.needsDisplay = true
         }
         b.onAction { [weak self] _ in
             guard let self, users.count > 1 else { return }
