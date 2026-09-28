@@ -325,7 +325,7 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
                 produce = inline
                 how = "fixture: done on the executor from the files on disk"
             } else {
-                reason = "no fixture: it reaches beyond the Mac's files"
+                reason = "no fixture: it depends on the network, a program or the Mac's live state"
             }
         case .value(let value)?:
             if let scripted = job.scripted {
