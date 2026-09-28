@@ -67,7 +67,7 @@ final class EditingSession {
     private(set) var fileURL: URL?
     /// The widget on the desktop, as the Studio window last linked it (`bind`). A refresh while no window follows the
     /// widget makes a new one: `currentDesktop` finds it.
-    weak var desktop: SkinController? {
+    weak var desktop: SkinWindowController? {
         didSet { host.desktop = desktop }
     }
     /// The Studio window showing the widget.
@@ -111,10 +111,10 @@ final class EditingSession {
     /// Links the widget on the desktop (each refresh makes a new one). Returns true when it runs another file than
     /// before (another variant, or the first link).
     @discardableResult
-    func bind(desktop c: SkinController) -> Bool {
+    func bind(desktop c: SkinWindowController) -> Bool {
         desktop = c
         config = c.config
-        let url = c.skin.fileURL
+        let url = c.fileURL
         let other = fileURL.map { SourceFileID($0) != SourceFileID(url) } ?? true
         fileURL = url
         followInput(of: c)
@@ -124,22 +124,22 @@ final class EditingSession {
     /// The input the widget on the desktop takes reaches the Studio's instance too (`Skin.inputMirror`): what a click,
     /// a hover or another widget's bang shows there — a page turned, a theme picked — the canvas shows, as it did when
     /// it drew the desktop copy.
-    private func followInput(of c: SkinController) {
-        let skin: Skin = c.skin
-        let mirror: (SkinInput) -> Void = { [weak self, weak skin] input in
+    private func followInput(of c: SkinWindowController) {
+        let runtime = c.runtime
+        let mirror: (SkinInput) -> Void = { [weak self, weak runtime] input in
             let replay = {
-                guard let self, let skin, self.desktop?.skin === skin, let studio = self.studioSkin else { return }
+                guard let self, let runtime, self.desktop?.runtime === runtime, let studio = self.studioSkin else { return }
                 studio.replay(input)
             }
             if Thread.isMainThread { replay() } else { DispatchQueue.main.async(execute: replay) }
         }
-        if skin.executor.isCurrent { skin.inputMirror = mirror } else { skin.async { skin.inputMirror = mirror } }
+        runtime.send(.mirrorInput(mirror))
     }
 
     /// The widget on the desktop now: the linked one, or — after it was loaded again while no Studio window followed it
     /// (the session outlives the window) — the one the app runs for the widget now, which is linked from then on. nil
     /// when the widget is not loaded (then the linked one, stopped, can still be loaded again: `refreshDesktop`).
-    var currentDesktop: SkinController? {
+    var currentDesktop: SkinWindowController? {
         if let linked = desktop, app.controller(for: linked.config) === linked { return linked }
         guard let now = app.controller(for: desktop?.config ?? config) else { return nil }
         desktop = now
@@ -147,7 +147,7 @@ final class EditingSession {
     }
 
     /// The widget on the desktop when it runs there now (for steps outside the files: its window's settings).
-    var runningDesktop: SkinController? {
+    var runningDesktop: SkinWindowController? {
         guard let c = currentDesktop, !c.isStopped else { return nil }
         return c
     }
@@ -182,20 +182,20 @@ final class EditingSession {
         if Fonts.registerFonts(for: skin) { app.fontsChanged() }
         let old = studioSkin
         // Opened: the canvas shows what the widget on the desktop shows — its Calc Counter and its graphs — as it did
-        // when it drew that one (a widget on a thread of its own is not read from here).
-        var mirrored: Skin?
-        if old == nil, let running = runningDesktop?.skin, running.executor.isCurrent,
+        // when it drew that one (a widget on a thread of its own is not read from here yet: step 6 of phase 2).
+        var mirrored: SkinRuntime?
+        if old == nil, let running = runningDesktop?.runtime, running.executor.isCurrent,
            SourceFileID(running.fileURL) == SourceFileID(fileURL) {
             mirrored = running
         }
         if let old {
             skin.continueCounter(from: old)
         } else if let mirrored {
-            skin.mirrorCounter(of: mirrored)
+            mirrored.exclusive { skin.mirrorCounter(of: $0) }
         }
         skin.update()
         takeOwnWrites(since: stamps)
-        if let mirrored { skin.takeGraphs(from: mirrored) }
+        if let mirrored { mirrored.exclusive { skin.takeGraphs(from: $0) } }
         studioSkin = skin
         startUpdates(skin)
         old?.close()
@@ -210,9 +210,7 @@ final class EditingSession {
         updates?.cancel()
         updates = nil
         watcher.stop()
-        if let skin = desktop?.skin {
-            if skin.executor.isCurrent { skin.inputMirror = nil } else { skin.async { skin.inputMirror = nil } }
-        }
+        desktop?.runtime.send(.mirrorInput(nil))
         let old = studioSkin
         studioSkin = nil
         old?.close()
@@ -227,7 +225,7 @@ final class EditingSession {
             updates?.cancel()
             updates = nil
         } else if let skin = studioSkin {
-            if SkinController.updateInterval(skin.settings.update) != nil { skin.update() }
+            if SkinRuntime.updateInterval(skin.settings.update) != nil { skin.update() }
             startUpdates(skin)
         }
     }
@@ -236,8 +234,8 @@ final class EditingSession {
     private func startUpdates(_ skin: Skin) {
         updates?.cancel()
         updates = nil
-        guard !updatesPaused, let interval = SkinController.updateInterval(skin.settings.update) else { return }
-        updates = skin.executor.timer(interval: interval, leeway: SkinController.timerTolerance(interval), repeats: true) {
+        guard !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
+        updates = skin.executor.timer(interval: interval, leeway: SkinRuntime.timerTolerance(interval), repeats: true) {
             [weak self, weak skin] in
             guard let self, let skin, self.studioSkin === skin else { return }
             skin.update()
@@ -451,7 +449,7 @@ final class EditingSession {
         desktopPreviewTimer = nil
         pendingSections = []
         pendingVariables = [:]
-        desktopSkin { $0.endPreview() }
+        runningDesktop?.runtime.send(.endPreview)
     }
 
     /// Sends the waiting previews now when the last ones went at least `desktopPreviewInterval` ago, else once that
@@ -482,17 +480,7 @@ final class EditingSession {
         pendingVariables = [:]
         lastDesktopPreview = DispatchTime.now().uptimeNanoseconds
         desktopPreviewsSent += 1
-        desktopSkin { skin in
-            if !variables.isEmpty { skin.previewVariables(variables) }
-            for (section, values) in sections { skin.preview(section: section, values) }
-        }
-    }
-
-    /// Runs `work` on the desktop copy of the widget, where it is owned.
-    private func desktopSkin(_ work: @escaping (Skin) -> Void) {
-        guard let c = runningDesktop else { return }
-        let skin: Skin = c.skin
-        if skin.executor.isCurrent { work(skin) } else { skin.async { work(skin) } }
+        c.runtime.send(.preview(sections: sections, variables: variables))
     }
 
     // MARK: The desktop and the disk
@@ -524,7 +512,7 @@ final class EditingSession {
         // Nothing loaded (the file is broken), or a copy on the main thread, which arrived inside the call when a
         // Studio window follows it (none follows: nobody waits for it): nothing more will arrive.
         let loaded = app.controller(for: c.config)
-        if loaded == nil || loaded === c || loaded?.skin.executor.isCurrent == true { awaitedReload = nil }
+        if loaded == nil || loaded === c || loaded?.runtime.executor.isCurrent == true { awaitedReload = nil }
         absorbDesktopWrites()
         if let place { runningDesktop?.moveTo(x: place.x, y: place.y) }
     }
@@ -568,7 +556,7 @@ final class EditingSession {
     }
 
     /// The desktop copy `c` arrived: true when it is the reload the session asked for (which then ends).
-    func takeOwnReload(_ c: SkinController) -> Bool {
+    func takeOwnReload(_ c: SkinWindowController) -> Bool {
         guard isAwaitingOwnReload, awaitedReload.map({ Date() < $0.deadline }) == true, let awaited = awaitedReload,
               awaited.key == SkinLibrary.normalizedConfigName(c.config).lowercased() else { return false }
         awaitedReload = nil

@@ -483,7 +483,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
     }
 
-    private var selectedController: SkinController? {
+    private var selectedController: SkinWindowController? {
         guard let selection else { return nil }
         return app.controller(for: selection.config)
     }
@@ -509,7 +509,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         // Header
         let metadata: [String: String]
         if loaded, let running {
-            metadata = running.skin.metadata
+            metadata = running.runtime.exclusive { $0.metadata } ?? [:]
         } else if let file {
             metadata = ManageModel.readMetadata(config.directory.appendingPathComponent(file))
         } else {
@@ -607,7 +607,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         issuesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let issues: [String]
         if loaded, let running {
-            issues = running.skin.issues
+            issues = running.runtime.exclusive { $0.issues } ?? []
         } else if let file {
             issues = cachedIssues(config: config, file: file)
         } else {
@@ -725,7 +725,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         ManageWindowController.apply(control: control, of: self, to: c, app: app)
     }
 
-    private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinController,
+    private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinWindowController,
                               app: AppController) {
         if control === w.transparencySlider {
             let percent = w.transparencySlider.integerValue

@@ -63,8 +63,8 @@ class MediaUIMeasure: Measure {
     /// skins — never for `--render` or self-tests; those that add windows need the skin window (`controller`).
     var runsInApp: Bool { skin.host is LiveSkinHost }
 
-    /// The window controller of the skin, when it runs in the app.
-    var controller: SkinController? { skin.host as? SkinController }
+    /// The window controller of the skin, when it runs in the app (the window half, which its runtime reaches).
+    var controller: SkinWindowController? { (skin.host as? SkinRuntime)?.window as? SkinWindowController }
 
     /// The app host of the skin: its window controller, or the Studio's host of its own instance of the widget.
     var liveHost: LiveSkinHost? { skin.host as? LiveSkinHost }

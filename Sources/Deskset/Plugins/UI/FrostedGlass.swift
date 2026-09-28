@@ -216,7 +216,7 @@ final class FrostedGlassMeasure: MediaUIMeasure {
 final class FrostedGlassBackdrop: NSObject {
     private static var byController: [ObjectIdentifier: FrostedGlassBackdrop] = [:]
 
-    private weak var controller: SkinController?
+    private weak var controller: SkinWindowController?
     private weak var parent: NSWindow?
     private let window: NSPanel
     private let effect = NSVisualEffectView()
@@ -232,7 +232,7 @@ final class FrostedGlassBackdrop: NSObject {
     var followedWindow: NSWindow? { parent }
     var effectView: NSVisualEffectView { effect }
 
-    private init(controller: SkinController) {
+    private init(controller: SkinWindowController) {
         self.controller = controller
         window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -262,7 +262,7 @@ final class FrostedGlassBackdrop: NSObject {
     }
 
     /// The backdrop of a skin controller (created on first use).
-    static func attach(to controller: SkinController) -> FrostedGlassBackdrop {
+    static func attach(to controller: SkinWindowController) -> FrostedGlassBackdrop {
         let key = ObjectIdentifier(controller)
         if let existing = byController[key] {
             if existing.controller === controller {
@@ -403,7 +403,7 @@ final class FrostedGlassBackdrop: NSObject {
 
     /// Backdrops currently alive (tests).
     static var count: Int { byController.count }
-    static func backdrop(for controller: SkinController) -> FrostedGlassBackdrop? {
+    static func backdrop(for controller: SkinWindowController) -> FrostedGlassBackdrop? {
         byController[ObjectIdentifier(controller)]
     }
 }

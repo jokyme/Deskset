@@ -22,7 +22,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var defersDesktopUpdates: Bool
 
     /// Running skins keyed by lowercased config name.
-    private(set) var controllers: [String: SkinController] = [:]
+    private(set) var controllers: [String: SkinWindowController] = [:]
     /// Last position of each config in this session (used on refresh when SavePosition is off).
     var sessionPositions: [String: (Double, Double)] = [:]
     private var statusItem: NSStatusItem?
@@ -334,14 +334,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let now = MacAppearance.current.refresh()
         guard now != appearanceSeen else { return }
         appearanceSeen = now
-        for c in sortedControllers where !c.isStopped {
-            let skin: Skin = c.skin
-            if skin.executor.isCurrent {
-                skin.appearanceDidChange()
-            } else {
-                skin.async { skin.appearanceDidChange() }
-            }
-        }
+        for c in sortedControllers where !c.isStopped { c.runtime.send(.appearanceChanged) }
         // The Studio's own instances follow the appearance as the desktop copies do.
         for session in studioSessions.values { session.studioSkin?.appearanceDidChange() }
     }
@@ -419,12 +412,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return library.first { $0.name.caseInsensitiveCompare(key) == .orderedSame }
     }
 
-    func controller(for config: String) -> SkinController? {
+    func controller(for config: String) -> SkinWindowController? {
         controllers[SkinLibrary.normalizedConfigName(config).lowercased()]
     }
 
     /// Active skins sorted by load order, then name.
-    var sortedControllers: [SkinController] {
+    var sortedControllers: [SkinWindowController] {
         controllers.values.sorted {
             let a = $0.state, b = $1.state
             return (a.loadOrder, $0.config.lowercased()) < (b.loadOrder, $1.config.lowercased())
@@ -432,7 +425,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Skins a bang's optional Config argument names: empty → `current`, `*` → every active skin.
-    func controllers(forConfigArgument raw: String, current: SkinController?) -> [SkinController] {
+    func controllers(forConfigArgument raw: String, current: SkinWindowController?) -> [SkinWindowController] {
         let name = SkinLibrary.normalizedConfigName(raw)
         if name.isEmpty { return current.map { [$0] } ?? [] }
         if name == "*" { return sortedControllers }
@@ -440,9 +433,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Active skins in the skin group `group` (`Group=` in `[Rainmeter]`, case-insensitive), in load order.
-    func controllers(inGroup group: String) -> [SkinController] {
+    func controllers(inGroup group: String) -> [SkinWindowController] {
         guard !group.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        return sortedControllers.filter { !$0.isStopped && $0.skin.isInSkinGroup(group) }
+        return sortedControllers.filter { c in
+            !c.isStopped && c.runtime.exclusive({ $0.isInSkinGroup(group) }) == true
+        }
     }
 
     /// Runs `body` on the next run loop turn. Bangs load, unload and refresh skins this way: loading a skin runs its
@@ -485,7 +480,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// loaded again - not when the skin is refreshed".
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
-                  continuing previous: Skin? = nil) -> SkinController? {
+                  continuing previous: SkinRuntime? = nil) -> SkinWindowController? {
         guard !isTerminating else { return nil }
         guard let entry = config(named: rawConfig) else {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
@@ -505,10 +500,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.active = true
         }
         do {
-            let c = try SkinController(config: entry.name, file: chosen, app: self)
+            let c = try SkinWindowController(config: entry.name, file: chosen, app: self)
             controllers[key] = c
             if firstLoad { c.seedWindowSettings() }
-            if let previous { c.skin.continueCounter(from: previous) }
+            if let previous { c.runtime.continueCounter(from: previous) }
             c.start(fadeIn: fade && !replacing)
             if let inspector, inspector.config.lowercased() == key { inspector.attach(c) }
             if updatesPaused { c.pauseUpdates() }
@@ -568,7 +563,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Unloads this particular controller (a no-op when its config has been reloaded or unloaded meanwhile).
-    func deactivate(_ c: SkinController, fade: Bool = false) {
+    func deactivate(_ c: SkinWindowController, fade: Bool = false) {
         guard controller(for: c.config) === c else { return }
         deactivate(config: c.config, fade: fade)
     }
@@ -589,9 +584,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return entry.files[(index + 1) % entry.files.count]
     }
 
-    func refresh(_ c: SkinController) {
+    func refresh(_ c: SkinWindowController) {
         guard controller(for: c.config) === c else { return }
-        activate(config: c.config, file: c.file, continuing: c.skin)
+        activate(config: c.config, file: c.file, continuing: c.runtime)
     }
 
     /// "Refresh all": image files are decoded again (a skin author may have edited them), font folders are read
@@ -613,7 +608,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// other applications' windows.
     func restack() {
         guard presentsWindows else { return }
-        let items = controllers.values.filter(\.isShown).map { c -> (item: SkinController, alwaysOnTop: Int, loadOrder: Int, name: String) in
+        let items = controllers.values.filter(\.isShown).map { c -> (item: SkinWindowController, alwaysOnTop: Int, loadOrder: Int, name: String) in
             let s = c.state
             return (c, s.alwaysOnTop, s.loadOrder, c.config)
         }
@@ -635,14 +630,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fontsGenerationSeen = max(fontsGenerationSeen, Fonts.generation)
         // Measure text again and recompute fixed window sizes (skins laid out with a fallback font), each skin where it
         // is owned: at once when that is here.
-        for c in controllers.values where !c.isStopped {
-            let skin: Skin = c.skin
-            if skin.executor.isCurrent {
-                skin.fontsDidChange()
-            } else {
-                skin.async { skin.fontsDidChange() }
-            }
-        }
+        for c in controllers.values where !c.isStopped { c.runtime.send(.fontsChanged) }
         for session in studioSessions.values { session.studioSkin?.fontsDidChange() }
     }
 
@@ -666,7 +654,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Opens the inspector on a loaded skin (moving it from another skin if it was open). A new editor window comes
     /// to the front once it is ready to be shown (its panes, toolbar and the widget on the canvas: `whenReadyToShow`);
     /// the rest of it is built while it shows.
-    func showInspector(for c: SkinController) {
+    func showInspector(for c: SkinWindowController) {
         if let inspector {
             inspector.attach(c)
             return bringToFront(inspector)
@@ -885,7 +873,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Custom skin actions (https://docs.rainmeter.net/manual/skins/rainmeter-section/#ContextTitle), as the
     /// engine reads them when the menu opens (titles "are always dynamic"; separators, 30-character titles and the
     /// rules for invalid items are the engine's). Each item runs its action from `[Rainmeter]`.
-    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinController, to menu: NSMenu) {
+    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinWindowController, to menu: NSMenu) {
         for entry in items {
             if entry.isSeparator {
                 menu.addItem(.separator())
@@ -898,8 +886,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Menu with only the skin's custom items (`!SkinCustomMenu`), nil when it has none.
-    func customSkinMenu(for c: SkinController) -> NSMenu? {
-        let items = c.skin.contextMenuItems()
+    func customSkinMenu(for c: SkinWindowController) -> NSMenu? {
+        let items = c.runtime.exclusive { $0.contextMenuItems() } ?? []
         guard !items.isEmpty else { return nil }
         let menu = NSMenu()
         addCustomItems(items, for: c, to: menu)
@@ -907,13 +895,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
-    func skinMenu(for c: SkinController, includeCustomItems: Bool) -> NSMenu {
+    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
         let s = c.state
+        // What the menu shows of the skin, read at once (the custom items' titles "are always dynamic").
+        let facts = c.runtime.exclusive { skin in
+            (name: ManageModel.metadataValue(skin.metadata, "Name"),
+             custom: includeCustomItems ? skin.contextMenuItems() : [],
+             weather: includeCustomItems
+                ? WeatherWiring.menuItems(for: skin, target: self, action: #selector(openWeatherSourceAction(_:))) : [],
+             issues: skin.issues)
+        }
         if includeCustomItems {
-            let title = ManageModel.metadataValue(c.skin.metadata, "Name") ?? c.config
+            let title = facts?.name ?? c.config
             menu.addItem(withTitle: title, action: nil, keyEquivalent: "").isEnabled = false
-            let custom = c.skin.contextMenuItems()
+            let custom = facts?.custom ?? []
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
             if custom.count > 3 {
                 let submenu = NSMenu()
@@ -925,9 +921,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 addCustomItems(custom, for: c, to: menu)
             }
             // CC BY 4.0: every skin that shows MET Norway's forecasts credits them, whoever wrote it.
-            for weather in WeatherWiring.menuItems(for: c.skin, target: self, action: #selector(openWeatherSourceAction(_:))) {
-                menu.addItem(weather)
-            }
+            for weather in facts?.weather ?? [] { menu.addItem(weather) }
             menu.addItem(.separator())
         }
 
@@ -987,13 +981,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(i)
         }
 
-        if !c.skin.issues.isEmpty {
+        if let skinIssues = facts?.issues, !skinIssues.isEmpty {
             menu.addItem(.separator())
             let issues = NSMenu()
-            for issue in c.skin.issues.prefix(50) {
+            for issue in skinIssues.prefix(50) {
                 issues.addItem(withTitle: issue, action: nil, keyEquivalent: "").isEnabled = false
             }
-            let issuesItem = NSMenuItem(title: "Compatibility Notes (\(c.skin.issues.count))", action: nil, keyEquivalent: "")
+            let issuesItem = NSMenuItem(title: "Compatibility Notes (\(skinIssues.count))", action: nil, keyEquivalent: "")
             issuesItem.submenu = issues
             menu.addItem(issuesItem)
         }
@@ -1003,7 +997,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Settings ▸ Editor gets an item of its own.
         var entries: [(String, Selector)] = [("Manage Skin…", #selector(manageSkinAction(_:))),
                                              ("Edit Skin…", #selector(inspectSkinAction(_:)))]
-        if case .external(let editor, _) = CodeEditorRouter.route(file: c.skin.fileURL, line: nil,
+        if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
                                                                   preferences: state.editor,
                                                                   locator: CodeEditorRouter.locator) {
             entries.append(("Edit in \(editor.name)", #selector(editSkinAction(_:))))
@@ -1030,7 +1024,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Settings (shared by menus and the Manage window)
 
     /// Changes a skin's window settings and applies them.
-    func changeSettings(of c: SkinController, animated: Bool = false, _ change: (inout SkinState) -> Void) {
+    func changeSettings(of c: SkinWindowController, animated: Bool = false, _ change: (inout SkinState) -> Void) {
         let before = c.state
         state.update(c.config, change)
         let after = c.state
@@ -1065,7 +1059,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
               !entry.action.isEmpty else { return }
-        c.skin.executeInput(entry.action, from: c.skin.rainmeterSection)
+        c.runtime.send(.execute(entry.action, section: "Rainmeter"))
     }
 
     @objc private func zPositionAction(_ sender: NSMenuItem) {
@@ -1115,11 +1109,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func editSkinAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { CodeEditorRouter.open(file: c.skin.fileURL, app: self) }
+        if let c = args(sender).first.flatMap(controller(for:)) { CodeEditorRouter.open(file: c.fileURL, app: self) }
     }
 
     @objc private func openSkinFolderAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { Workspace.reveal(c.skin.directory) }
+        if let c = args(sender).first.flatMap(controller(for:)) { Workspace.reveal(c.fileURL.deletingLastPathComponent()) }
     }
 
     @objc private func unloadSkinAction(_ sender: NSMenuItem) {
@@ -1157,10 +1151,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 /// A custom context menu item: the skin it belongs to (a refreshed or unloaded skin runs nothing) and its action.
 final class CustomMenuAction: NSObject {
-    weak var controller: SkinController?
+    weak var controller: SkinWindowController?
     let action: String
 
-    init(controller: SkinController, action: String) {
+    init(controller: SkinWindowController, action: String) {
         self.controller = controller
         self.action = action
     }

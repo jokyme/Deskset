@@ -1,7 +1,7 @@
 import AppKit
 import DesksetCore
 
-/// A host whose skins run in the app on live data: the widgets on the desktop (`SkinController`) and the Studio's own
+/// A host whose skins run in the app on live data: the widgets on the desktop (`SkinRuntime`) and the Studio's own
 /// instance of the widget it edits (`StudioHost`). Their plugins read the shared services — sound, the player that is
 /// playing, the weather — and may ask macOS for what those need; a skin read for a thumbnail, a dry run or `--render`
 /// does not.
@@ -13,10 +13,6 @@ protocol LiveSkinHost: SkinHost {
     var windowScreen: NSScreen? { get }
 }
 
-extension SkinController: LiveSkinHost {
-    var windowScreen: NSScreen? { window.screen }
-}
-
 /// The host of the Studio's own instance of the widget it edits. The widget on the desktop keeps running as it is; this
 /// instance loads the editing session's text from memory and is what the canvas draws. It has no window of its own:
 /// text and images are measured as the desktop measures them, its screens and window place are the desktop copy's, and
@@ -24,7 +20,7 @@ extension SkinController: LiveSkinHost {
 /// desktop copy does it. What it would log is kept here, not written to the app's log a second time.
 final class StudioHost: LiveSkinHost {
     /// The widget on the desktop (its window's place and screens).
-    weak var desktop: SkinController?
+    weak var desktop: SkinWindowController?
     let policy = StudioActionPolicy()
     /// The editing session pauses its instance with the widgets on the desktop (`EditingSession.setUpdatesPaused`).
     var updatesPaused = false
@@ -69,7 +65,7 @@ final class StudioHost: LiveSkinHost {
         if let c = desktop, !c.isStopped {
             env = c.environment(for: skin)
         } else {
-            env = SkinController.environment(windowFrame: nil)
+            env = SkinWindowController.environment(windowFrame: nil)
         }
         env.windowFrame.width = skin.width
         env.windowFrame.height = skin.height

@@ -1367,7 +1367,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         let own = session.takeOwnReload(c)
         controller = c
         config = c.config
-        keyValueWrites = c.skin.keyValueWrites
+        keyValueWrites = Self.keyValueWrites(of: c) ?? keyValueWrites
         let otherFile = session.bind(desktop: c)
         if own && !otherFile {
             session.absorbDesktopWrites()
@@ -1390,7 +1390,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             session.undoStack.hasPendingEdits = { [weak self] in self?.hasPendingVisualEdits ?? false }
         }
         let otherFile = session.bind(desktop: c)
-        keyValueWrites = c.skin.keyValueWrites
+        keyValueWrites = Self.keyValueWrites(of: c) ?? keyValueWrites
         if session.studioSkin == nil || otherFile { session.reloadStudioSkin(notify: false) }
     }
 
@@ -1444,12 +1444,13 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             // The Studio edits its own instance of the widget, loaded from the session's text in memory.
             editor.bindSession(to: c)
             editor.canvas.isEditable = true
-            let skin: Skin = editor.skin ?? c.skin
-            if newWidget {
-                editor.canvas.backdrop = editor.backdrop(for: skin, config: c.config)
-                editor.updateBackdropButton()
-            }
-            let name = Self.skinName(skin, config: c.config)
+            let name = editor.withShownSkin(of: c) { skin -> String in
+                if newWidget {
+                    editor.canvas.backdrop = editor.backdrop(for: skin, config: c.config)
+                    editor.updateBackdropButton()
+                }
+                return Self.skinName(skin, config: c.config)
+            } ?? ""
             editor.window?.title = name.isEmpty ? c.config : name
             // The widget's name only: "Audio\Visualizer" is an engine path (with Rainmeter Details, it is shown).
             editor.window?.subtitle = editor.app.state.editor.showIniNames ? c.config : ""
@@ -1463,24 +1464,34 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             if opening != nil { editor.fitIfAutomatic() }
         }
         if let opening {
-            part("layer cells") { $0.prepareListCells(in: opening, skin: $0.skin ?? c.skin) }
+            part("layer cells") { editor in
+                editor.withShownSkin(of: c) { editor.prepareListCells(in: opening, skin: $0) }
+            }
         }
         part("layers") { editor in
             if let opening { editor.loadListRowsInSteps(opening) }
             editor.rebuildSidebar()
-            let skin: Skin = editor.skin ?? c.skin
+            // Which of the names to select are meters or measures of the shown skin.
+            let candidates = (editor.pendingSelection ?? []) + editor.selectedMeters
+            let kinds = editor.withShownSkin(of: c) { skin in
+                Dictionary(candidates.map { ($0, (meter: skin.meter(named: $0) != nil,
+                                                 measure: skin.measure(named: $0) != nil)) },
+                           uniquingKeysWith: { first, _ in first })
+            } ?? [:]
+            func isMeter(_ name: String) -> Bool { kinds[name]?.meter ?? false }
+            func isMeasure(_ name: String) -> Bool { kinds[name]?.measure ?? false }
             if let pending = editor.pendingSelection {
                 editor.pendingSelection = nil
-                let names = pending.filter { skin.meter(named: $0) != nil || skin.measure(named: $0) != nil }
-                let meters = names.filter { skin.meter(named: $0) != nil }
+                let names = pending.filter { isMeter($0) || isMeasure($0) }
+                let meters = names.filter { isMeter($0) }
                 editor.selectedMeters = meters.count > 1 ? meters : []
                 editor.selectedSection = names.last ?? editor.selectedSection
-                if let name = names.last, skin.measure(named: name) != nil, editor.sidebarTab == .layers {
+                if let name = names.last, isMeasure(name), editor.sidebarTab == .layers {
                     editor.sidebarTab = .data
                     editor.reloadList()
                 }
             }
-            editor.selectedMeters = editor.selectedMeters.filter { skin.meter(named: $0) != nil }
+            editor.selectedMeters = editor.selectedMeters.filter { isMeter($0) }
             if editor.selectedMeters.count < 2 { editor.selectedMeters = [] }
             keep = editor.selectedSection.flatMap { name in
                 editor.allItems.first { $0.title.caseInsensitiveCompare(name) == .orderedSame }
@@ -1493,7 +1504,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             editor.fitIfAutomatic()
             editor.refreshInlineTextEditor()
             editor.updateCanvasOverlays()
-            editor.keyValueWrites = c.skin.keyValueWrites
+            editor.keyValueWrites = Self.keyValueWrites(of: c) ?? editor.keyValueWrites
             editor.startTimers()
         }
         part("code") { editor in
@@ -1503,6 +1514,18 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             editor.syncCodePane(reveal: reveal, otherSkin: otherSkin)
         }
         return parts
+    }
+
+    /// Runs `body` with the skin the Studio shows: its own instance of the widget, else (none loaded) the live widget on
+    /// the desktop, with exclusive access (nil when that does not let go in time).
+    func withShownSkin<T>(of c: SkinController, _ body: (Skin) -> T) -> T? {
+        if let skin { return body(skin) }
+        return c.runtime.exclusive(body)
+    }
+
+    /// How many `!WriteKeyValue` writes the widget on the desktop made (nil when it cannot be asked now).
+    static func keyValueWrites(of c: SkinController) -> Int? {
+        c.runtime.exclusive { $0.keyValueWrites }
     }
 
     /// The name the window shows: the skin's `[Metadata] Name`, else its folder.
@@ -1963,8 +1986,9 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         let changed = session.filesChangedOnDisk()
         let touched = session.filesTouchedOnDisk()
         guard !changed.isEmpty || !touched.isEmpty else { return }
-        let skinWroteThem = c.skin.keyValueWrites != keyValueWrites
-        keyValueWrites = c.skin.keyValueWrites
+        let written = Self.keyValueWrites(of: c) ?? keyValueWrites
+        let skinWroteThem = written != keyValueWrites
+        keyValueWrites = written
         session.takeChangesFromDisk()
         if skinWroteThem || !liveReload {
             // Its own writes of the same bytes are seen too.

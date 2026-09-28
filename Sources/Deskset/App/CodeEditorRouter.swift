@@ -145,7 +145,7 @@ enum CodeEditorRouter {
     /// when no skin owns it (not a skin file, or an included file of a skin that is not loaded).
     @discardableResult
     static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil) -> Bool {
-        func show(_ c: SkinController) {
+        func show(_ c: SkinWindowController) {
             if let inspector = app.inspector, inspector.controller === c {
                 // Already editing this skin (the editor is open: it forgets its skin when it closes): no re-attach (it
                 // would rebuild the layers and the inspector), but the window comes in front of the other apps'
@@ -179,14 +179,14 @@ enum CodeEditorRouter {
 
     /// The running skin that reads `file`: the one being edited when it does (an include shared by several skins
     /// stays in the open editor), else one whose main file it is, else the first (in load order) including it.
-    static func owningController(of file: URL, in app: AppController) -> SkinController? {
+    static func owningController(of file: URL, in app: AppController) -> SkinWindowController? {
         let key = comparablePath(file)
-        func owns(_ c: SkinController) -> Bool {
-            !c.isStopped && c.skin.sourceFiles.contains { comparablePath($0) == key }
+        func owns(_ c: SkinWindowController) -> Bool {
+            !c.isStopped && c.runtime.exclusive({ $0.sourceFiles.contains { comparablePath($0) == key } }) == true
         }
         if let edited = app.inspector?.controller, owns(edited) { return edited }
         let running = app.sortedControllers
-        if let main = running.first(where: { !$0.isStopped && comparablePath($0.skin.fileURL) == key }) { return main }
+        if let main = running.first(where: { !$0.isStopped && comparablePath($0.fileURL) == key }) { return main }
         return running.first(where: owns)
     }
 

@@ -136,7 +136,9 @@ final class OutsidePointerMonitor {
     /// A skin's needs changed, or a skin stopped: watches what the running skins ask for now.
     func needsChanged() {
         var union = OutsidePointerNeeds()
-        for c in app.controllers.values where !c.isStopped { union.formUnion(c.skin.outsidePointerNeeds) }
+        for c in app.controllers.values where !c.isStopped {
+            union.formUnion(c.runtime.exclusive { $0.outsidePointerNeeds } ?? OutsidePointerNeeds())
+        }
         needs = union
         // The release of a button no longer watched would not be seen.
         heldElsewhere.formIntersection(union.buttons)
@@ -300,13 +302,13 @@ final class OutsidePointerMonitor {
 
     private func deliver(_ record: Record) {
         let targets = app.controllers.values
-            .filter { !$0.isStopped && !$0.skin.outsidePointerNeeds.isEmpty }
+            .filter { c in !c.isStopped && c.runtime.exclusive({ $0.outsidePointerNeeds.isEmpty }) == false }
             .sorted { ($0.state.loadOrder, $0.config.lowercased()) < ($1.state.loadOrder, $1.config.lowercased()) }
         for c in targets where !c.isStopped {
             // A skin's own window reports its input itself (SkinView → Skin.pointerEvent).
             if record.window > 0 && c.window.windowNumber == record.window { continue }
             let p = c.skinPoint(fromScreen: record.location)
-            c.skin.outsidePointerEvent(record.event, x: p.x, y: p.y)
+            c.runtime.send(.outsidePointer(record.event, x: p.x, y: p.y))
         }
     }
 

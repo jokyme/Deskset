@@ -278,9 +278,10 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
 
     /// The first row of the layers: the widget itself (its colors, update speed, desktop settings).
     func skinRow() -> Item? {
-        guard let c = controller else { return nil }
-        let shown: Skin = skin ?? c.skin
-        let name = Self.skinName(shown, config: c.config)
+        guard let c = controller,
+              let shown = withShownSkin(of: c, { (name: Self.skinName($0, config: c.config), width: $0.width,
+                                                  height: $0.height) }) else { return nil }
+        let name = shown.name
         let n = EditorStyle.number
         let item = Item(title: name.isEmpty ? c.config : name, detail: "\(n(shown.width)) × \(n(shown.height))",
                         kind: .rainmeter, isSkin: true)

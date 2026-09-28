@@ -99,17 +99,30 @@ final class InputTextMeasure: MediaUIMeasure {
             return
         }
         prompt.show(settings) { [weak self] input in
-            guard let self, self.batch === batch else { return }
-            if let input {
-                self.lastInput = input
-                self.publishString(input)
-                batch.submit(input, for: step)
-                self.advance()
-            } else {
-                self.batch = nil
-                let action = settings.onDismissAction.muiTrimmed
-                if !action.isEmpty && action != "0" { self.skin.executeInput(action, from: self) }
+            // The box answers on the main thread: taken with the skin's own work waiting (at once on the main
+            // executor), or queued on the skin's executor when it does not let go in time.
+            guard let self else { return }
+            let answer = { [weak self] () -> Void in self?.answered(input, batch: batch, step: step, settings: settings) }
+            let skin: Skin = self.skin
+            if skin.executor.exclusive(timeout: SkinRuntime.defaultExclusiveTimeout, answer) == nil {
+                skin.async(answer)
             }
+        }
+    }
+
+    /// The person typed `input` into the box of `step` (nil: they dismissed it).
+    private func answered(_ input: String?, batch: InputTextBatch, step: InputTextBatch.Step,
+                          settings: InputTextSettings) {
+        guard self.batch === batch else { return }
+        if let input {
+            lastInput = input
+            publishString(input)
+            batch.submit(input, for: step)
+            advance()
+        } else {
+            self.batch = nil
+            let action = settings.onDismissAction.muiTrimmed
+            if !action.isEmpty && action != "0" { skin.executeInput(action, from: self) }
         }
     }
 }
@@ -125,7 +138,7 @@ final class InputTextPanel: NSPanel {
 
 /// The AppKit input box, positioned over the skin window at the measure's X/Y/W/H.
 final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDelegate, NSWindowDelegate {
-    private weak var controller: SkinController?
+    private weak var controller: SkinWindowController?
     private var panel: InputTextPanel?
     private var field: NSTextField?
     private var completion: ((String?) -> Void)?
@@ -135,7 +148,7 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
     private var becameKey = false
     private weak var previousKeyWindow: NSWindow?
 
-    init(controller: SkinController) {
+    init(controller: SkinWindowController) {
         self.controller = controller
     }
 
@@ -190,7 +203,8 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
         let skinWindow = controller.window
         let font = InputTextPanelPrompt.font(settings)
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        let frame = InputTextPanelPrompt.frame(settings, skinFrame: skinWindow.frame, skinWidth: controller.skin.width,
+        let frame = InputTextPanelPrompt.frame(settings, skinFrame: skinWindow.frame,
+                                               skinWidth: InputTextPanelPrompt.skinWidth(of: controller),
                                                lineHeight: lineHeight)
         let panel = InputTextPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                                    backing: .buffered, defer: false)
@@ -297,9 +311,14 @@ final class InputTextPanelPrompt: NSObject, InputTextPrompting, NSTextFieldDeleg
         guard let controller, let panel else { return }
         let font = InputTextPanelPrompt.font(settings)
         let frame = InputTextPanelPrompt.frame(settings, skinFrame: controller.window.frame,
-                                               skinWidth: controller.skin.width,
+                                               skinWidth: InputTextPanelPrompt.skinWidth(of: controller),
                                                lineHeight: ceil(font.ascender - font.descender + font.leading))
         panel.setFrameOrigin(frame.origin)
+    }
+
+    /// The skin's width (points), read from the live skin; the window's while it cannot be asked.
+    static func skinWidth(of controller: SkinWindowController) -> Double {
+        controller.runtime.exclusive { $0.width } ?? Double(controller.window.frame.width)
     }
 
     // MARK: NSTextFieldDelegate
