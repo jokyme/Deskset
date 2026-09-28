@@ -346,7 +346,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             spec = WeatherLocationSpec.parse(raw)
             binding.locationQuery = raw.trimmingCharacters(in: .whitespaces)
             if subscription == nil {
-                let hop = skin.hop()
+                let hop = skin.backgroundHop(.weather)
                 subscription = WeatherSubscription(hop: hop) { [weak self] in self?.weatherChanged() }
             }
         } else if option("Location") != nil {
@@ -1047,7 +1047,7 @@ public final class MacSunMeasure: Measure, PluginLifecycle {
         if parentName.isEmpty {
             spec = WeatherLocationSpec.parse(string("Location"))
             if subscription == nil {
-                let hop = skin.hop()
+                let hop = skin.backgroundHop(.sun)
                 subscription = WeatherSubscription(hop: hop) { [weak self] in self?.locationChanged() }
             }
         }
