@@ -1532,6 +1532,7 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         try link("link to alias", to: path("Doc alias"))
         try alias("alias to link", to: URL(fileURLWithPath: path("folder link")))
         try alias("alias to alias", to: URL(fileURLWithPath: path("Tool alias")))
+        try link("private tmp", to: "/private/tmp")
         try link("broken.app", to: path("Nothing.app"))
         try link("loop A", to: path("loop B"))
         try link("loop B", to: path("loop A"))
@@ -1553,6 +1554,7 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.check(isItem(r(path("link to alias")), doc), "a link to an alias")
         t.check(isItem(r(path("alias to link")), folder), "an alias to a link")
         t.check(isItem(r(path("alias to alias")), app), "an alias to an alias")
+        t.equal(r(path("private tmp")), "/private/tmp", "never shortened to the link /tmp")
         // What cannot be followed keeps its own path, exactly as given (the link's own icon is shown).
         t.equal(r(path("broken.app")), path("broken.app"), "a broken link")
         t.equal(r(path("loop A")), path("loop A"), "a loop")

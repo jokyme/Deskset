@@ -31,8 +31,11 @@ public enum FileViewIcons {
             guard hops <= maxLinkHops else { return path }
             let next: URL
             if values.isSymbolicLink == true {
-                // Every link on the way, relative ones included; a broken link or a loop comes back unchanged.
-                next = url.resolvingSymlinksInPath()
+                // Every link on the way, relative ones included (realpath: unlike resolvingSymlinksInPath it never
+                // turns /private/tmp back into the link /tmp); a broken link or a loop fails.
+                guard let real = realpath(url.path, nil) else { return path }
+                defer { free(real) }
+                next = URL(fileURLWithPath: String(cString: real))
             } else {
                 guard let resolved = try? URL(resolvingAliasFileAt: url, options: [.withoutUI, .withoutMounting])
                 else { return path }
