@@ -13,6 +13,7 @@ enum Studio2SelfTests {
         snapshotTests(t)
         textTests(t)
         Studio2PreviewSelfTests.run(t)
+        Studio2PageSelfTests.run(t)
     }
 
     static let ini = """

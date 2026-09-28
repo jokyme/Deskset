@@ -85,7 +85,7 @@ final class StudioWidgetPage {
 
     /// The design's order of moving things off an overfull page: options beyond four go to All Options…, part colors
     /// beyond four to More…, the two fonts become one row, the size joins the fonts when there are no look
-    /// thumbnails; still too many: fewer part colors, fewer Shows rows, fewer options.
+    /// thumbnails; still too many: Shows rows beyond two go to All Data…, then fewer part colors, then fewer options.
     static func plan(_ facts: StudioWidgetFacts, limit: Int = StudioPage.controlLimit) -> Plan {
         var p = Plan()
         p.options = facts.options
@@ -100,11 +100,11 @@ final class StudioWidgetPage {
             p.options = Array(p.options.prefix(4))
         }
         if p.count > limit, p.fonts > 1 { p.fontsMerged = true }
-        while p.count > limit, p.parts.count > 1 { p.parts.removeLast() }
         while p.count > limit, p.shows.count > 2 {
             p.shows.removeLast()
             p.hiddenShows += 1
         }
+        while p.count > limit, p.parts.count > 1 { p.parts.removeLast() }
         while p.count > limit, p.options.count > 1 {
             p.options.removeLast()
             p.hiddenOptions += 1
@@ -246,6 +246,15 @@ final class StudioWidgetPage {
 
     // MARK: Colors
 
+    /// What a color paints, as the page and the popover name it: Text and Card by those words.
+    static func title(_ role: StudioWidgetFacts.ColorRole) -> String {
+        switch role.kind {
+        case .text: return StudioText[.swatchText]
+        case .card: return StudioText[.swatchCard]
+        default: return StudioWords.title(short: role.label, kind: role.partKind)
+        }
+    }
+
     /// The swatches' roles by id.
     func colorRoles(_ facts: StudioWidgetFacts) -> [String: StudioWidgetFacts.ColorRole] {
         var map: [String: StudioWidgetFacts.ColorRole] = [:]
@@ -279,8 +288,7 @@ final class StudioWidgetPage {
         let follows = (text?.followsLook ?? true) && (card?.followsLook ?? true)
         var caption: String?
         if let id = activeSwatch ?? hoveredSwatch, let role = colorRoles(facts)[id] {
-            caption = StudioText.format(.paints, StudioWords.title(short: role.label, kind: role.partKind),
-                                        StudioWords.parts(role.parts))
+            caption = StudioText.format(.paints, Self.title(role), StudioWords.parts(role.parts))
         }
         let block = StudioPage.Swatches(parts: parts, pair: pair, followNote: follows ? StudioText[.followTheLook] : nil,
                                         caption: caption)
@@ -628,7 +636,7 @@ final class StudioWidgetPage {
         let header = StudioPageView.heading(StudioText[.moreColorsTitle])
         menu.addItem(header)
         for role in facts.colors.all where role.color.a >= 10 && !role.meters.isEmpty {
-            let title = StudioWords.title(short: role.label, kind: role.partKind) + " · " + StudioWords.parts(role.parts)
+            let title = Self.title(role) + " · " + StudioWords.parts(role.parts)
             let item = ClosureMenuItem(title) { [weak self] in self?.openColor(role, swatch: "more") }
             item.image = Self.swatchImage(role.color)
             menu.addItem(item)
@@ -656,7 +664,7 @@ final class StudioWidgetPage {
         hoveredSwatch = nil
         window.canvasController.canvas.relatedNames = []
         let written = StudioColorWriting.currentText(role, skin: skin)
-        let target = StudioColorPopover.Target(title: StudioWords.title(short: role.label, kind: role.partKind),
+        let target = StudioColorPopover.Target(title: Self.title(role),
                                                color: role.color, written: written, parts: role.parts,
                                                acceptsAlpha: role.acceptsAlpha)
         let widgetColors = facts.colors.parts.map(\.color) + [facts.colors.text, facts.colors.card].compactMap { $0?.color }
@@ -665,6 +673,7 @@ final class StudioWidgetPage {
         popover.onPreview = { [weak self] color in self?.previewColor(role, color) }
         popover.onClose = { [weak self] color, name in self?.commitColor(role, color, name: name, swatch: swatch) }
         popover.anchorItem = swatch.hasPrefix("option:") ? swatch : "colors"
+        _ = popover.view
         colorPopover = popover
         refresh()
         if app.presentsWindows, window.window?.isVisible == true, let anchor = popoverAnchor() {
@@ -696,10 +705,17 @@ final class StudioWidgetPage {
         activeSwatch = nil
         session?.endPreview()
         guard let color, let skin,
-              ValueUsageIndex.colorKey(color) != ValueUsageIndex.colorKey(role.color) else { return refresh() }
-        let ops = StudioColorWriting.ops(role, color, skin: skin)
+              ValueUsageIndex.colorKey(color) != ValueUsageIndex.colorKey(role.color) || name == "accent"
+        else { return refresh() }
+        var ops = StudioColorWriting.ops(role, color, skin: skin)
+        // The accent that follows the Mac, where the color may carry its alpha: the Mac's own accent variable.
+        if name == "accent", role.acceptsAlpha, let v = role.variable,
+           let target = skin.localTarget(section: "Variables", key: v) {
+            ops = [.setValue(file: target.file, section: target.section, key: v,
+                             value: "#\(BuiltInVariables.macAccentColor)#", afterIncludes: true)]
+        }
         let words = name.map(StudioWords.color) ?? StudioWords.color(LayerNaming.colorName(color))
-        let what = StudioWords.title(short: role.label, kind: role.partKind)
+        let what = Self.title(role)
         let section = swatch.hasPrefix("option:") ? "options" : "colors"
         apply(StudioText[.undoColor], ops, confirm: StudioText.format(.confirmColor, what, words),
               item: swatch.hasPrefix("option:") ? swatch : "colors", section: section)

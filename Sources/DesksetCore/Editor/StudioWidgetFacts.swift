@@ -89,6 +89,17 @@ public struct StudioWidgetFacts {
         public var current: String
         /// The file that defines it.
         public var file: URL?
+
+        public init(variable: String?, measure: String?, kind: OptionKind, label: String, raw: String, current: String,
+                    file: URL?) {
+            self.variable = variable
+            self.measure = measure
+            self.kind = kind
+            self.label = label
+            self.raw = raw
+            self.current = current
+            self.file = file
+        }
     }
 
     // MARK: Shows
