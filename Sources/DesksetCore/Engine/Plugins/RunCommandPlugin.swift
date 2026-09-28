@@ -174,11 +174,12 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         setState(0)
         let jobID = ObjectIdentifier(newJob)
         // No fake in virtual time: a real program runs. A recording's program (`RecordingSideEffects`) starts nothing
-        // and exits as soon as it is resumed, with the output the recording gives it.
+        // and exits as soon as it is resumed, with the output the recording gives it: a fixture.
+        let recorded = !skin.sideEffects.isLive
         let exit = BackgroundJob<Void>(.runCommandProcess, subject: line, start: { deliver in
             newJob.onExit = { deliver(()) }
             newJob.resume()
-        })
+        }, inline: recorded ? { newJob.resume() } : nil)
         skin.startBackground(exit) { [weak self] in self?.jobExited(jobID, generation: generation) }
         if timeout > 0 {
             let seconds = min(timeout, 86_400_000) / 1000

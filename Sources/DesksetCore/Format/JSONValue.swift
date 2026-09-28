@@ -88,9 +88,13 @@ public enum JSONValue: Hashable, Sendable, Codable, CustomStringConvertible {
     }
 
     /// Compact JSON text (keys sorted).
-    public var description: String {
+    public var description: String { text(pretty: false) }
+
+    /// JSON text with the keys sorted, on one line or indented.
+    public func text(pretty: Bool) -> String {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = pretty ? [.sortedKeys, .withoutEscapingSlashes, .prettyPrinted]
+            : [.sortedKeys, .withoutEscapingSlashes]
         return (try? encoder.encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? "null"
     }
 }

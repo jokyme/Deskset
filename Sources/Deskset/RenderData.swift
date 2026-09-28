@@ -11,6 +11,7 @@ import DesksetCore
 ///   weather                                  the weather service with `FixtureWeatherTransport`
 ///   wifi                                     `FixedWiFi` as the WiFiStatus measures' reader
 ///   desktopImage                             `FixedDesktopPicture` as Chameleon's desktop
+///   programs                                 `RecordingSideEffects` as the skin's side effects (nothing runs)
 ///
 /// Frames (`system`, `audio`) move on once before every update after the first. Main thread.
 final class RenderData {
@@ -18,6 +19,8 @@ final class RenderData {
     /// The skin's system readings (nil when the data gives none of them).
     private(set) var system: ScriptedSystemData?
     private var audio: ScriptedAudioLevels?
+    /// The skin's side effects when the data gives its programs: what it started and wrote.
+    private(set) var recording: RecordingSideEffects?
     private var restores: [() -> Void] = []
 
     init(_ data: SkinInputData) {
@@ -34,9 +37,21 @@ final class RenderData {
         return scripted
     }
 
-    /// Puts the other fakes in place, after the skin is made and its clock set and before it loads. `clock`: the
-    /// skin's (the weather's `Location=timezone` is its time zone's city); `virtual`: the render's virtual time, if any.
-    func install(clock: SkinClock, virtual: VirtualTimeExecutor?) {
+    /// Puts the other fakes in place, after the skin is made and its clock set and before it loads (the weather's
+    /// `Location=timezone` is the city of the skin's time zone). `virtual`: the render's virtual time, if any.
+    func install(for skin: Skin, virtual: VirtualTimeExecutor?) {
+        let clock = skin.skinClock
+        if data.programs != nil {
+            // Programs only recorded: each exits at once with the data's output. The skin's own writes
+            // (!WriteKeyValue…) go to a copy of its files, where it reads them back.
+            let effects = RecordingSideEffects(skinsDirectory: skin.skinsDirectory)
+            let data = self.data
+            effects.programOutput = { Data(data.programOutput(for: $0).utf8) }
+            skin.sideEffects = effects
+            if skin.sourceProvider == nil { skin.sourceProvider = effects }
+            recording = effects
+            virtual?.background.setFake(.fixture, for: .runCommandProcess)
+        }
         if let desktop = data.desktopImage {
             let saved = ChameleonMeasure.desktopSource
             ChameleonMeasure.desktopSource = FixedDesktopPicture(desktop.value)

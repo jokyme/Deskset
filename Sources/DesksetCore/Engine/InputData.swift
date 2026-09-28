@@ -255,6 +255,18 @@ public struct SkinInputData: Equatable, Sendable {
         }
     }
 
+    /// A program RunCommand starts, and what it writes to its standard output.
+    public struct Program: Equatable, Sendable {
+        /// Matches a command line that contains it (the longest match wins).
+        public var match: String
+        public var output: String
+
+        public init(match: String, output: String) {
+            self.match = match
+            self.output = output
+        }
+    }
+
     public struct WiFi: Equatable, Sendable {
         public var current: WiFiNetwork
         /// Visible networks (`WiFiInfoType=LIST`).
@@ -279,6 +291,10 @@ public struct SkinInputData: Equatable, Sendable {
     public var weather: Given<Weather>?
     public var wifi: Given<WiFi>?
     public var desktopImage: Given<String>?
+    /// RunCommand's programs: none starts; each "runs" at once with the output of the longest entry its command line
+    /// contains (no output when none does). A Deskset addition to the runtime design's keys: programs are side effects
+    /// there (the sandbox records them), and this gives them their output.
+    public var programs: [Program]?
     /// Keys the reader did not know (a newer format): reported, not an error.
     public var unknownKeys: [String] = []
 
@@ -287,7 +303,13 @@ public struct SkinInputData: Equatable, Sendable {
     /// True when no key is given.
     public var isEmpty: Bool {
         system == nil && battery == nil && sensors == nil && thermalState == nil && nowPlaying == nil && audio == nil
-            && weather == nil && wifi == nil && desktopImage == nil
+            && weather == nil && wifi == nil && desktopImage == nil && programs == nil
+    }
+
+    /// What a program started with `command` writes (`programs`): the output of the longest entry the command line
+    /// contains, "" when none does.
+    public func programOutput(for command: String) -> String {
+        (programs ?? []).first { command.contains($0.match) }?.output ?? ""
     }
 
     /// The keys given, in the order of the format.
@@ -301,6 +323,7 @@ public struct SkinInputData: Equatable, Sendable {
         if weather != nil { keys.append("weather") }
         if wifi != nil { keys.append("wifi") }
         if desktopImage != nil { keys.append("desktopImage") }
+        if programs != nil { keys.append("programs") }
         return keys
     }
 }
@@ -322,7 +345,8 @@ public struct SkinInputDataError: Error, Equatable, CustomStringConvertible {
 
 extension SkinInputData {
     /// The keys the format knows.
-    public static let keys = ["system", "battery", "sensors", "nowPlaying", "audio", "weather", "wifi", "desktopImage"]
+    public static let keys = ["system", "battery", "sensors", "nowPlaying", "audio", "weather", "wifi", "desktopImage",
+                              "programs"]
 
     /// Reads `--data`: JSON text (starting with `{`) or the path of a JSON file. Relative paths inside are relative
     /// to the file's folder (to `directory` for text). A whole event script (with `data`, `steps`…) is read for its
@@ -371,6 +395,7 @@ struct SkinInputDataReader {
                 return path(s)
             }
         }
+        if let v = top["programs"] { d.programs = try programs(v, "programs") }
         return d
     }
 
@@ -656,6 +681,29 @@ struct SkinInputDataReader {
                                    deviceName: try string(o["deviceName"], "\(key).deviceName") ?? "Deskset Test Signal",
                                    sampleRate: max(try number(o["sampleRate"], "\(key).sampleRate", default: 48000), 1),
                                    channels: channels)
+    }
+
+    // MARK: programs
+
+    func programs(_ v: JSONValue, _ key: String) throws -> [SkinInputData.Program] {
+        let o = try object(v, key)
+        var list: [SkinInputData.Program] = []
+        for (match, output) in o {
+            guard !match.isEmpty else { throw SkinInputDataError(key, "has an empty command") }
+            let k = "\(key).\(match)"
+            switch output {
+            case .string(let text): list.append(.init(match: match, output: text))
+            case .array(let lines):
+                let text = try lines.enumerated().map { i, line -> String in
+                    guard let s = line.string else { throw SkinInputDataError("\(k)[\(i)]", "is not a string") }
+                    return s
+                }
+                list.append(.init(match: match, output: text.joined(separator: "\n") + "\n"))
+            default: throw SkinInputDataError(k, "is not the program's output (a string or a list of lines)")
+            }
+        }
+        // The longest match first; the same length in the order of the text.
+        return list.sorted { $0.match.count != $1.match.count ? $0.match.count > $1.match.count : $0.match < $1.match }
     }
 
     // MARK: weather, wifi

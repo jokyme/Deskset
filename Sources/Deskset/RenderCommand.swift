@@ -34,6 +34,9 @@ struct RenderOptions: Equatable {
     /// `--data`: what the skin reads about the Mac, as JSON text or the path of a JSON file (`SkinInputData`; read
     /// when the render starts).
     var data: String?
+    /// `--state`: where to write the skin's state after the last update (JSON: its measures, meters and variables;
+    /// `RenderCommand.state`), nil: nowhere.
+    var stateOutput: String?
     /// `--color-space`: the bitmap the skin is drawn into. `device` (the default, what `--render` always drew) is the
     /// device RGB space; `srgb` is 8-bit premultiplied sRGB, the space reference images are compared in.
     var colorSpace = ColorSpace.device
@@ -56,7 +59,7 @@ struct RenderOptions: Equatable {
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
         + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
-        + "[--seed N] [--data FILE|JSON] [--color-space device|srgb] [--skins-dir DIR]"
+        + "[--seed N] [--data FILE|JSON] [--state out.json] [--color-space device|srgb] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -161,6 +164,10 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--data") {
             o.warnings.append("--data needs a file or JSON text; the skin reads this Mac")
         }
+        o.stateOutput = value("--state")
+        if o.stateOutput == nil, arguments.contains("--state") {
+            o.warnings.append("--state needs a file; the state is not written")
+        }
         if let raw = value("--color-space") {
             let word = raw.trimmingCharacters(in: .whitespaces).lowercased()
             if let space = ColorSpace(rawValue: word) {
@@ -230,7 +237,7 @@ struct RenderOptions: Equatable {
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
 ///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
-///            [--data data.json] [--color-space srgb] [--skins-dir path/to/Skins]
+///            [--data data.json] [--state state.json] [--color-space srgb] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
@@ -245,7 +252,9 @@ struct RenderOptions: Equatable {
 /// `--seed` makes its random numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
 /// `--data` gives what the skin reads about the Mac (system readings, battery, sensors, NowPlaying, audio levels, the
 /// weather, Wi-Fi, the desktop picture; `RenderData`): with `--clock` and `--seed`, the same image on every run and
-/// every Mac.
+/// every Mac. `--state` writes what the skin ended up with (its measures' values and strings, its meters' frames and
+/// texts, its variables) as JSON, to compare runs where pixels may differ (the x86_64 build under Rosetta draws edges
+/// a little differently).
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -306,7 +315,7 @@ enum RenderCommand {
             skin.skinClock.timeZone = { zone }
         }
         if let seed = o.seed { skin.random = SkinRandom(seed: seed) }
-        inputs?.install(clock: skin.skinClock, virtual: virtual)
+        inputs?.install(for: skin, virtual: virtual)
         defer { inputs?.restore() }
         do {
             try skin.load()
@@ -352,6 +361,15 @@ enum RenderCommand {
             fputs("error: cannot write \(output.path): \(error)\n", stderr)
             return 1
         }
+        if let stateOutput = o.stateOutput {
+            do {
+                try state(of: skin).text(pretty: true).appending("\n")
+                    .write(toFile: stateOutput, atomically: true, encoding: .utf8)
+            } catch {
+                fputs("error: cannot write \(stateOutput): \(error)\n", stderr)
+                return 1
+            }
+        }
         print("rendered \(config) \(Int(min(skinW, 1e9)))x\(Int(min(skinH, 1e9))) pt -> \(output.path)")
         for issue in skin.issues { fputs("issue: \(issue)\n", stderr) }
         for line in host.logs { fputs("log: \(line)\n", stderr) }
@@ -359,6 +377,28 @@ enum RenderCommand {
             fputs("note: not verifiable in virtual time: \(work)\n", stderr)
         }
         return 0
+    }
+
+    /// `--state`: the skin as it stands — its size, each measure's value, string and whether it is disabled or paused,
+    /// each meter's frame, visibility and text (String meters), and its variables (`Skin.runtimeVariables`).
+    static func state(of skin: Skin) -> JSONValue {
+        func number(_ v: Double) -> JSONValue { v.isFinite ? .number(v) : .string(String(v)) }
+        let measures: [JSONValue] = skin.measures.map { m in
+            .object(["name": .string(m.name), "value": number(m.value), "string": .string(m.stringValue),
+                     "disabled": .bool(m.disabled), "paused": .bool(m.paused)])
+        }
+        let meters: [JSONValue] = skin.meters.map { m in
+            var o: [String: JSONValue] = ["name": .string(m.name), "type": .string(m.type),
+                                          "frame": .array([m.frame.x, m.frame.y, m.frame.width, m.frame.height]
+                                            .map(number)),
+                                          "hidden": .bool(m.hidden)]
+            if let text = (m as? StringMeter)?.text { o["text"] = .string(text) }
+            return .object(o)
+        }
+        var variables: [String: JSONValue] = [:]
+        for v in skin.runtimeVariables { variables[v.name] = .string(v.value) }
+        return .object(["config": .string(skin.config), "width": number(skin.width), "height": number(skin.height),
+                        "measures": .array(measures), "meters": .array(meters), "variables": .object(variables)])
     }
 
     /// Draws the skin into a new bitmap of `width` × `height` pixels at `scale` and returns it as PNG: in the device
