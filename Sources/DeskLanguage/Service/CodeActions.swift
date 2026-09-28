@@ -126,15 +126,20 @@ extension DeskSnapshot {
 
     // MARK: Pieces
 
-    /// Files up to this size have their quick fixes tried before one is preferred (a check each).
+    /// Files up to this size, with at most this many diagnostics, have their quick fixes tried before one is
+    /// preferred (a check each), at most `maximumFixTrials` per snapshot; beyond that a fix is taken at its word.
     static let maximumTriedFixBytes = 32 * 1024
+    static let maximumTriedDiagnostics = 40
+    static let maximumFixTrials = 64
 
     /// Whether a quick fix does what it says: applied to the open file and checked again, its diagnostic is fewer,
     /// and no new kind of error nor more errors appeared. Tried once per fix and snapshot; a fix of other files, or
     /// of a snapshot whose check is pending or a large file, is taken at its word.
     func fixWorks(_ fix: DeskServiceFixIt, of d: DeskServiceDiagnostic) -> Bool {
-        guard isChecked, fix.edit.changedFiles == [file], index.bytes.count <= DeskSnapshot.maximumTriedFixBytes else { return true }
+        guard isChecked, fix.edit.changedFiles == [file], index.bytes.count <= DeskSnapshot.maximumTriedFixBytes,
+              checked.diagnostics.count <= DeskSnapshot.maximumTriedDiagnostics else { return true }
         let key = DeskFixTrial(diagnostic: d.id, range: d.range, edit: fix.edit)
+        if caches.fixTrials.peek(key) == nil, caches.fixTrials.count >= DeskSnapshot.maximumFixTrials { return true }
         return caches.fixTrials.value(for: key) {
             let text = DeskTextEditU16.apply(fix.edit.edits(for: file), to: self.text)
             let tree = Desk.parse(text, file: file)

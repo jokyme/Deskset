@@ -272,62 +272,7 @@ extension DeskSnapshot {
     /// The completion context at a position: what may be written there, what is typed, and what an item replaces.
     public func completionContext(at position: DeskPosition) -> DeskCompletionContext {
         guard hasStackRoom else { return onLargeStack { completionContext(at: position) } }
-        if let closed = closingInterpolation(at: position) {
-            var context = closed.snapshot.scanCompletion(at: position).context
-            context.range = closed.back(context.range)
-            return context
-        }
         return scanCompletion(at: position).context
-    }
-
-    /// A copy of the snapshot with `}` written at the cursor, and how to bring its ranges back to this text.
-    struct ClosedInterpolation {
-        let snapshot: DeskSnapshot
-        let index: DeskTextIndex
-        /// The cursor, in UTF-16 units: the copy has one more unit after it.
-        let cursor: Int
-
-        func back(_ range: DeskRange) -> DeskRange {
-            func map(_ p: DeskPosition) -> DeskPosition { index.position(utf16: p.offset > cursor ? p.offset - 1 : p.offset) }
-            return DeskRange(start: map(range.start), end: map(range.end))
-        }
-    }
-
-    /// The cursor is in an interpolation whose `}` is not typed yet (`Text("{cpu.|")`): the lexer made the rest of the
-    /// string text, so completion asks a copy of the snapshot with the `}` written at the cursor, as the editor's
-    /// text will have it once it is typed.
-    func closingInterpolation(at position: DeskPosition) -> ClosedInterpolation? {
-        let utf16 = index.clampedUTF16(position.offset)
-        let offset = index.utf8Offset(ofUTF16: utf16)
-        let tokens = tokenTable
-        guard var i = tokens.lastStarting(before: offset) else { return nil }
-        while i > 0, !tokens.entries[i].isPresent, tokens.entries[i].kind != .eof { i -= 1 }
-        let e = tokens.entries[i]
-        guard e.kind == .stringText, e.isPresent, e.textStart < offset,
-              offset <= e.textEnd || e.token.flags.contains(.unterminated) else { return nil }
-        let bytes = index.bytes
-        let open = tree.diagnostics.last {
-            $0.id == .unterminatedInterpolation && $0.range.lowerBound >= e.textStart && $0.range.lowerBound < offset
-        }
-        guard let open, open.range.lowerBound + 1 <= offset, offset <= bytes.count,
-              !bytes[(open.range.lowerBound + 1)..<offset].contains(where: { $0 == 0x7D || $0 == 0x22 || $0 == 0x0A || $0 == 0x0D })
-        else { return nil }
-        var closedBytes = bytes
-        closedBytes.insert(0x7D, at: offset)
-        let text = String(decoding: closedBytes, as: UTF8.self)
-        let closedTree = Desk.parse(text, file: file)
-        let packageContext = isPackage ? nil : package.map { CheckedPackage(file: $0) }
-        let closedChecked = isChecked
-            ? Desk.check(closedTree, context: options.checkContext(package: packageContext, resources: resources))
-            : CheckedFile(syntaxOf: closedTree, context: options.checkContext(package: packageContext, resources: resources))
-        let closedIndex = DeskTextIndex(tree: closedTree)
-        var closedFolder = folder
-        closedFolder[file] = text
-        let copy = DeskSnapshot(version: version, generation: generation, file: file, tree: closedTree, checked: closedChecked,
-                                index: closedIndex, options: options, packageFile: packageFile,
-                                package: isPackage ? closedChecked : package, packageIndex: isPackage ? closedIndex : packageIndex,
-                                folder: closedFolder, resources: resources, model: model, isChecked: isChecked)
-        return ClosedInterpolation(snapshot: copy, index: index, cursor: utf16)
     }
 
     // MARK: Scanning
@@ -448,11 +393,73 @@ extension DeskSnapshot {
 
     // MARK: Strings and numbers
 
+    /// The `{` of an interpolation whose `}` is not typed yet that the cursor is in (`Text("{cpu.|")`): the lexer
+    /// made the rest of the string text. Only a name, a member chain and format options between it and the cursor.
+    func unclosedInterpolation(in e: DeskTokenTable.Entry, before offset: Int) -> Int? {
+        guard e.textStart < offset else { return nil }
+        let bytes = index.bytes
+        guard let open = tree.diagnostics.last(where: {
+            $0.id == .unterminatedInterpolation && $0.range.lowerBound >= e.textStart && $0.range.lowerBound < offset
+        })?.range.lowerBound, offset - open <= 128, offset <= bytes.count else { return nil }
+        for b in bytes[(open + 1)..<offset] {
+            let allowed = (b >= 0x61 && b <= 0x7A) || (b >= 0x41 && b <= 0x5A) || (b >= 0x30 && b <= 0x39)
+                || b == 0x5F || b == 0x2E || b == 0x20 || b == 0x2C || b == 0x3A || b >= 0x80
+            guard allowed else { return nil }
+        }
+        return open
+    }
+
+    /// What goes at the cursor in an interpolation whose `}` is not typed yet, worked out from its text as the
+    /// same place with the `}` typed would be: a value, a member after `x.`, or a format option after `,`.
+    private func scanUnclosedInterpolation(open: Int, offset: Int, _ scan: DeskCompletionScan) -> DeskCompletionScan {
+        var s = scan
+        let bytes = index.bytes
+        let fragment = String(decoding: bytes[(open + 1)..<offset], as: UTF8.self)
+        // The word being typed, and the chain of names before it.
+        var start = offset
+        while start > open + 1, Chars.isNameByte(bytes[start - 1]) || bytes[start - 1] >= 0x80 { start -= 1 }
+        let word = String(decoding: bytes[start..<offset], as: UTF8.self)
+        s.utf8Range = start..<offset
+        s.context.range = range(s.utf8Range)
+        s.context.prefix = word
+        func path(_ text: Substring) -> [String]? {
+            let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+            return parts.allSatisfy({ Checker.isIdentifier($0) }) ? parts : nil
+        }
+        if let comma = fragment.firstIndex(of: ",") {
+            // `{cpu.usage, dec|`: a format option of the value before the comma.
+            let rest = fragment[fragment.index(after: comma)...]
+            guard !rest.contains(":") || rest.split(separator: ",").last?.contains(":") == false else { return s }
+            s.context.place = .formatOption
+            if let parts = path(fragment[..<comma]), case .value(let type)? = memberBase(ofPath: parts, at: open) {
+                s.formatValueType = type
+                s.context.expectedType = type
+            }
+            return s
+        }
+        let before = fragment.dropLast(word.utf8.count)
+        if before.trimmingCharacters(in: .whitespaces).isEmpty {
+            s.context.place = .value
+            s.displaySlot = true
+            return s
+        }
+        guard before.hasSuffix("."), let parts = path(before.dropLast()), let base = memberBase(ofPath: parts, at: open) else {
+            return s
+        }
+        s.context.place = .member
+        s.context.memberBase = base
+        s.displaySlot = true
+        return s
+    }
+
     private func scanString(offset: Int, tokenIndex: Int, _ scan: DeskCompletionScan) -> DeskCompletionScan {
         var s = scan
         let tokens = tokenTable
         let table = nodeTable
         let e = tokens.entries[tokenIndex]
+        if e.kind == .stringText, let open = unclosedInterpolation(in: e, before: offset) {
+            return scanUnclosedInterpolation(open: open, offset: offset, s)
+        }
         // The string literal and the piece of text the cursor is in.
         var literal = e.parent
         while literal >= 0, table.entries[literal].kind != .stringLiteral { literal = table.entries[literal].parent }
