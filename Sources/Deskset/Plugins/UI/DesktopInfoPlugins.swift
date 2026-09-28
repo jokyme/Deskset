@@ -501,11 +501,13 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
         let hop = skin.hop()
-        let host = skin.host
+        // The widget's window controller, or the Studio's host (whose desktop copy has the window).
+        let controller = self.controller
+        let studio = skin.host as? StudioHost
         let box = windowWatch
         let start = { [weak self] in
             guard box.watch == nil else { return }
-            guard let window = ChameleonMeasure.window(of: host) else {
+            guard let window: NSWindow = controller?.window ?? studio?.desktop?.window else {
                 // No window yet (the Studio's instance before its desktop copy is known): asked again at the next update.
                 hop.post { [weak self] in self?.watchRequested = false }
                 return
@@ -529,13 +531,6 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
 
     /// Whether the skin window's moves are followed (tests; main thread).
     var followsWindow: Bool { windowWatch.watch != nil }
-
-    /// The window a live skin is drawn in (main thread): its own, or for the Studio's instance the desktop copy's.
-    static func window(of host: SkinHost?) -> NSWindow? {
-        if let c = host as? SkinController { return c.window }
-        if let studio = host as? StudioHost { return studio.desktop?.window }
-        return nil
-    }
 
     /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
     /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
