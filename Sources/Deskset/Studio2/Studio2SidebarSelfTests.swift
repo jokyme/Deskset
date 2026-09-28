@@ -118,6 +118,31 @@ enum Studio2SidebarSelfTests {
             t.check(studio.sidebarController.hint.isHidden, "the hint goes")
         }
 
+        t.suite("Studio2: sidebar: no engine words with Rainmeter details off") {
+            Studio2SelfTests.prepare(t)
+            for language in [StudioLanguage.english, .chinese] {
+                StudioText.languageOverride = language
+                for page in [StudioSidebarViewController.Page.layers, .add] {
+                    guard var screen = StudioScreen.named("07-layers") else { continue }
+                    screen.sidebarPage = page
+                    guard let opened = StudioSnapshot.open(screen) else { continue }
+                    defer { opened.close() }
+                    let studio = opened.controller
+                    t.check(!studio.showsRainmeterDetails, "a built-in widget: details stay off")
+                    var text = Studio2PageSelfTests.words(in: studio.sidebarController.view)
+                    if let lists = studio.sidebarController.layersView.lists, page == .layers {
+                        for item in [lists.widget] + lists.parts + lists.data {
+                            text += " " + [item.title, item.subtitle ?? "", item.word ?? "", item.chip?.text ?? "",
+                                           item.issue ?? "", item.accessibility].joined(separator: " ")
+                        }
+                    }
+                    let found = Studio2PageSelfTests.engineWords(in: text, chinese: language == .chinese)
+                    t.equal(found, [], "\(language) \(page): \(found)")
+                }
+            }
+            StudioText.languageOverride = .english
+        }
+
         t.suite("Studio2: sidebar: finding a layer") {
             Studio2SelfTests.prepare(t)
             guard let opened = open(t, "13b-compat") else { return }
