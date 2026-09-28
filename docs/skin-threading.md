@@ -1612,12 +1612,16 @@ suite's `TestThreadExecutor`.
        `Default…` options, the fonts and notes loading found), after which the main thread saves the seeded settings
        and applies StartHidden and the window settings, as it did before the first update; then `.started` (the size
        after the first update, the metadata), after which it places and shows the window. The runtime seeds its window
-       model itself before the first update (`#CURRENTCONFIGZPOS#`); until `.loaded` arrives the window's facts wait
-       (the first ones excepted) and the debug comparison skips the environment. With the main executor both arrive
-       where the old code did these things, so the debug comparisons run as before.
+       model itself before the first update (`#CURRENTCONFIGZPOS#`), over what the skin's own window bangs did while it
+       loaded, as the main thread seeds `AppState`; until `.loaded` arrives the window's facts wait (the first ones
+       excepted), so facts without the seeded settings never reach the model. With the main executor both reports
+       arrive where the old code did these things, and the debug comparisons run as before.
      - A pause at the time of loading travels in the load order (the first update happens, the clock waits), instead of
        a `.pause` after the start. `AppController` had no `executor.isCurrent` branch left (step 1 took them out);
        screens need no message: the store publishes them and the window's facts follow the new placement.
+     - Quitting sends `.close` to every skin in reverse load order before it waits: a skin on the main executor closes
+       inside that loop, one on a thread when the thread gets to it, so the order holds among the skins of one thread
+       (in this phase every desktop skin shares one).
      - The window controller made on its own (`init(config:file:app:)`) still loads at once, for the self-tests that
        build one; `activate` never uses it. `stopAllForTermination(budget:)` returns the skins that did not close in
        time. The installer goes on after 10 s even if a skin never closes, and says so in the log.
@@ -1626,14 +1630,20 @@ suite's `TestThreadExecutor`.
        stay until the fade ended). An InputText box still open when its skin unloads closes without an answer (the
        skin has closed; before, the closing window dismissed it). A busy skin's menu credits the weather without the
        time of the data (the snapshot keeps only whether the skin shows it, `usesWeather`).
-     - Checks: new suites "App: skin lifecycle: …" (97 checks) with the skin on a test thread: placed and shown only
+     - Checks: new suites "App: skin lifecycle: …" (100 checks) with the skin on a test thread: placed and shown only
        after `.started`; the seeded settings before the first update; `.failed` and an inactive config (on the main
        executor `activate` still returns nil); the Calc counter across a refresh; OnCloseActions in reverse load order
        within the 2 s budget, and a skin that does not close letting quitting go on after its budget; the installer
        waiting for `.closed` (a mutation that skips the wait fails it); FrostedGlass and InputText through the
        companions; the menu with the snapshot's items during a 2 s Lua call and the live ones after, a chosen item
-       running on the skin's thread. A `Gate` holds a skin's thread where a test needs it busy; nothing waits for a
-       fixed time. Main Thread Checker reports nothing for them.
+       running on the skin's thread; the snapshot's weather credit. A `Gate` holds a skin's thread where a test needs
+       it busy; nothing waits for a fixed time. Main Thread Checker reports nothing for them, nor for the MediaUI,
+       runtime, window model, directory, menu and installer suites. Core: 61,089 checks. The app suite: 10,368 checks in
+       each scroller style, 3,526–3,551 debug comparisons of snapshot answers, no difference.
+     - For step 7: callers that use the window right after `activate` (the first-run layout moves it,
+       `CodeEditorRouter` opens the Studio on it) get a window whose skin has not started yet when it runs on a thread.
+       A move before the start is kept as the session's position, which the placement takes; the Studio must wait for
+       `.started`.
 6. **The Studio beside a desktop copy on another executor** (§8.5).
    - Previews are messages. `keyValueWrites` comes from the snapshot. `StudioHost` gets its environment and screen
      from the window controller. The counter and the graphs are copied with exclusive access.
