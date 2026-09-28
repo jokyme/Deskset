@@ -808,6 +808,15 @@ enum SkinDrawingSelfTests {
             t.check(view.layer?.contents == nil, "its layer has no contents")
             t.equal(view.layer?.sublayers?.count, 1)
             t.check(view.layer?.sublayers?.first.map(c.content.isContentLayer) == true, "only the content layer")
+            // Snapshots of the view (`cacheDisplay`) draw the skin with draw(_:) and leave the layer without contents.
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let middle = rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)
+                t.check((middle?.alphaComponent ?? 0) > 0, "a snapshot shows the skin")
+                t.check(view.layer?.contents == nil, "and leaves the view's layer without contents")
+            } else {
+                t.check(false, "a snapshot")
+            }
             endTurn()
             t.equal(frames.framesDrawn, 0, "headless: never shown, never drawn")
 

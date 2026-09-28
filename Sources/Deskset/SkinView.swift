@@ -88,10 +88,26 @@ final class SkinView: NSView, NSViewToolTipOwner {
         runtime.exclusive { SkinRenderer.draw($0, in: ctx, glass: .window) }
     }
 
-    override var wantsUpdateLayer: Bool { true }
+    /// A snapshot is being taken (`cacheDisplay`).
+    private var isCaching = false
+
+    /// Except while a snapshot is taken: AppKit then draws the view with `draw(_:)` (with `updateLayer` it would only
+    /// ask for the layer's contents, and there are none).
+    override var wantsUpdateLayer: Bool { !isCaching }
 
     override func updateLayer() {
         layer?.contents = nil
+    }
+
+    override func cacheDisplay(in rect: NSRect, to bitmapImageRep: NSBitmapImageRep) {
+        isCaching = true
+        defer {
+            isCaching = false
+            // AppKit keeps what it drew for the snapshot as the layer's contents: the skin's frames are the content
+            // layer's alone.
+            layer?.contents = nil
+        }
+        super.cacheDisplay(in: rect, to: bitmapImageRep)
     }
 
     /// The frames are drawn at the window's backing scale, in its colour space and with the view's appearance: another
