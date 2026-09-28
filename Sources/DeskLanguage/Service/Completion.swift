@@ -366,6 +366,52 @@ enum DeskSnippet {
 
 /// Every template of one catalog, made on first use.
 final class DeskCompletionCatalog: @unchecked Sendable {
+    private let suitingLock = NSLock()
+    private var suiting: [DeskType: Set<String>?] = [:]
+
+    /// The top-level namespaces that have a member, a nested namespace's member or a field of a member's record of
+    /// the expected type; nil when any data may go there (text, any value). Worked out once per type.
+    func namespaces(suiting expected: DeskType, catalog: DeskCatalog) -> Set<String>? {
+        suitingLock.lock()
+        defer { suitingLock.unlock() }
+        if let known = suiting[expected] { return known }
+        func open(_ t: DeskType) -> Bool {
+            switch t {
+            // A condition compares any data (`if cpu.usage > 80`).
+            case .any, .typeVar, .string, .json, .bool: return true
+            case .oneOf(let types): return types.contains(where: open)
+            case .binding(let inner): return open(inner)
+            default: return false
+            }
+        }
+        guard !open(expected) else {
+            suiting[expected] = .some(nil)
+            return nil
+        }
+        func fits(_ t: DeskType, depth: Int) -> Bool {
+            if DeskCompletionBuilder.fits(t, expected) || DeskSnapshot.fits(t, expected) { return true }
+            guard depth < 2, case .record(let id) = t, let record = catalog.record(id) else { return false }
+            return record.fields.contains { fits($0.type, depth: depth + 1) }
+        }
+        var visited = Set<String>()
+        func suits(_ ns: String) -> Bool {
+            guard visited.insert(ns).inserted else { return false }
+            if let t = namespaces[ns]?.valueType, fits(t, depth: 0) { return true }
+            for (member, template) in members[ns] ?? [] {
+                if let member {
+                    if member.kind != .action, fits(member.type, depth: 0) { return true }
+                } else if case .namespace(let nested)? = template.path, suits(nested) {
+                    return true
+                }
+            }
+            return false
+        }
+        var out = Set<String>()
+        for name in namespaces.keys where !name.contains(".") && suits(name) { out.insert(name) }
+        suiting[expected] = .some(out)
+        return out
+    }
+
     let components: [DeskCompletionTemplate]
     let controls: [DeskCompletionTemplate]
     let modifiers: [(spec: ModifierSpec, template: DeskCompletionTemplate)]
@@ -1246,13 +1292,47 @@ struct DeskCompletionBuilder {
                 tier: 4)
         }
         if let options = templates.namespaces["options"], !allOptions().isEmpty { add(options, tier: 3, nearness: 3) }
+        // Only data that has something of the expected type (`.every(|)`: no `cpu`), and plain values that do.
+        let suiting = expected.flatMap { templates.namespaces(suiting: $0, catalog: catalog) }
         for (name, t) in templates.namespaces where !name.contains(".") && name != "options" {
+            if let suiting, !suiting.contains(name) { continue }
             add(t, tier: 4, nearness: 5)
         }
+        if let expected { addLiterals(for: expected) }
         for (spec, t) in templates.functions where spec.kind == .function {
             if spec.onlyInActions && !context.inActions { continue }
             if !suits(t.valueType, expected) { continue }
             add(t, tier: 5, nearness: 5)
+        }
+    }
+
+    /// Values written as they are for a type the choices and data rarely give: durations, lengths, and a quoted
+    /// picture of the folder.
+    private mutating func addLiterals(for expected: DeskType) {
+        let components = expected.components
+        var literals: [(String, L)] = []
+        if components.contains(.duration) {
+            literals += [("1s", L("One second", "一秒")), ("500ms", L("Half a second", "半秒")), ("5min", L("Five minutes", "五分钟"))]
+        }
+        if components.contains(.length) || components.contains(.lengthSpec) {
+            literals += [("8", L("A length in points", "以点为单位的长度")), ("16", L("A length in points", "以点为单位的长度"))]
+        }
+        for (k, (text, detail)) in literals.enumerated() {
+            add(DeskCompletionTemplate(label: text, kind: .unit, detail: detail, snippet: DeskSnippet.escapeLiteral(text),
+                                       plain: text, rank: 90 - k), tier: 2)
+        }
+        guard components.contains(.imageSource), let model = snapshot.model else { return }
+        let base = (snapshot.file.path as NSString).deletingLastPathComponent
+        for file in model.files(.image) where file.isAsset {
+            var path = file.path
+            if !base.isEmpty {
+                guard path.hasPrefix(base + "/") else { continue }
+                path = String(path.dropFirst(base.count + 1))
+            }
+            let quoted = "\"" + path + "\""
+            add(DeskCompletionTemplate(label: quoted, kind: .file, detail: L("A picture in the widget's folder", "组件文件夹里的图片"),
+                                       snippet: DeskSnippet.escapeLiteral(quoted), plain: quoted,
+                                       words: [path, (path as NSString).lastPathComponent]), tier: 1)
         }
     }
 
@@ -1271,25 +1351,35 @@ struct DeskCompletionBuilder {
         guard let site = scan.callSite else { return }
         let written = Set(site.arguments.compactMap(\.label))
         let current = scan.argumentIndex < site.arguments.count ? site.arguments[scan.argumentIndex].label : nil
-        var labels: [(ParamSpec, Int)] = []
+        var labels: [(param: ParamSpec, otherSignature: Int, position: Int)] = []
         var seenLabels = Set<String>()
         let active = snapshot.activeSignature(site, argument: scan.argumentIndex)
         let ordered = [active] + site.signatures.indices.filter { $0 != active }
         for s in ordered {
             let signature = site.signatures[s]
             guard signature.since <= ceiling else { continue }
-            for p in signature.params {
+            for (position, p) in signature.params.enumerated() {
                 guard let label = p.label, !written.contains(label) || label == current, seenLabels.insert(label).inserted else { continue }
-                labels.append((p, s == active ? 0 : 1))
+                labels.append((p, s == active ? 0 : 1, position))
             }
         }
-        for (p, otherSignature) in labels {
+        // Before the first value without a label, that value comes first (`.color(|)`: the colors, not `dark:`).
+        let positionalWritten = site.arguments.prefix(scan.argumentIndex).contains { $0.label == nil }
+        let valuesFirst = !scan.labelsOnly && scan.allowsPositionalValue && !positionalWritten && current == nil
+        for (p, otherSignature, position) in labels {
             guard let label = p.label else { continue }
             let (stop, plain) = DeskSnippet.stop(1, DeskSnippet.value(of: p, catalog: catalog))
+            // In the catalog's order, `if:` last.
+            let rank = label == "if" ? 0 : max(1, (p.required ? 90 : 50) - position)
             let t = DeskCompletionTemplate(label: label + ":", kind: .label, detail: catalog.displayName(for: p.type),
                                            documentation: p.doc, snippet: "\(label): \(stop)$0", plain: "\(label): \(plain)",
-                                           words: [label], rank: p.required ? 90 : 50, valueType: nil)
-            add(t, tier: p.required ? 0 : 2 + otherSignature)
+                                           words: [label], rank: rank, valueType: nil)
+            let needed = p.required && otherSignature == 0
+            if valuesFirst {
+                add(t, tier: needed ? 4 : 6)
+            } else {
+                add(t, tier: needed ? 0 : 2 + otherSignature)
+            }
         }
         guard !scan.labelsOnly, scan.allowsPositionalValue else { return }
         addValues(expected: scan.context.expectedType)

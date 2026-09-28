@@ -438,4 +438,30 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let (_, list) = deskCompletions("options {\n    x = |\n}\n", options: chinese)
         t.equal(list.items.first { $0.label == "Toggle" }?.plainText, "Toggle(\"X\")")
     }
+
+    t.suite("Desk: service — arguments: the value first, labels in the catalog's order, data only of the expected type") {
+        func labels(_ marked: String) -> [String] { deskCompletions(marked).1.labels }
+        let color = labels("widget {\n    Text(\"a\").color(|)\n}\n")
+        t.check(color.first?.hasPrefix(".") == true, "a color first: \(color.prefix(5))")
+        if let white = color.firstIndex(of: ".white"), let dark = color.firstIndex(of: "dark:") {
+            t.check(white < dark, "the colors before the other form's labels")
+        } else {
+            t.check(false, "colors and labels offered: \(color)")
+        }
+        let progress = labels("widget {\n    Progress(|)\n}\n")
+        t.check(progress.first.map { !$0.hasSuffix(":") } == true, "a value first: \(progress.prefix(5))")
+        let padding = labels("widget {\n    Text(\"a\").padding(4, |)\n}\n").filter { $0.hasSuffix(":") }
+        t.equal(padding.last, "if:", "if: last")
+        t.equal(Array(padding.prefix(2)), ["horizontal:", "vertical:"], "the catalog's order")
+        // Data only when it has a value of the expected type; durations and lengths written out.
+        let every = labels("widget {\n    Text(\"a\").every(|)\n}\n")
+        t.equal(Array(every.prefix(3)), ["1s", "500ms", "5min"])
+        t.check(!every.contains("time") && !every.contains("memory"), "\(every)")
+        t.check(!labels("widget {\n    Text(\"a\").color(re|)\n}\n").contains("trash"))
+        t.check(labels("widget {\n    if |\n}\n").contains("cpu"), "a condition compares any data")
+        t.check(labels("widget {\n    Text(|)\n}\n").contains("memory"), "text shows any data")
+        // A picture of the folder, quoted.
+        let (_, images) = deskHarborCompletions("widget {\n    Image(|)\n}\n")
+        t.check(images.labels.contains("\"images/waves.png\""), "\(images.labels.prefix(8))")
+    }
 }

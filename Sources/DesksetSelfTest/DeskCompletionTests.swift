@@ -461,7 +461,7 @@ func deskCompletionCases() -> [DeskCompletionCase] {
         C(deskW("        Grid(|) {\n            Text(\"G\")\n        }"), .argument, top: ["columns:"], absent: ["cpu"]),
         C(deskW("        Grid(col|) {\n            Text(\"G\")\n        }"), .argument, top: ["columns:"]),
         C(deskW("        Progress(cpu.usage, |)"), .argument, top: ["total:"], absent: ["cpu", "page"]),
-        C(deskW("        Text(\"A\").padding(|)"), .argument, top: ["horizontal:"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").padding(|)"), .argument, top: ["8"], present: ["horizontal:"], absent: ["caption", "time"]),
         C(deskW("        Text(\"A\").color(.red, |)"), .argument, top: ["if:"]),
         C(deskW("        Text(\"A\").font(|)"), .argument, top: [".caption"], absent: ["columns:"]),
         C(deskW("        Text(|)"), .argument, top: ["page", "month"], absent: ["columns:"]),
