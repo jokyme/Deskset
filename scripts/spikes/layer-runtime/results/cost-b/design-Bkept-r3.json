@@ -1,0 +1,265 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "B",
+  "--kept",
+  "--out",
+  "results/cost-b/design-Bkept-r3.json"
+ ],
+ "command": "cost",
+ "config": "B+kept",
+ "contexts": {
+  "B+kept [main] kCGContextTypeBitmap Color LCD 8bpc": 46
+ },
+ "cpu": {
+  "framesPerSecond": 0.99,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 1.447,
+  "processPercentOfOneCore": 0.145,
+  "provisional": false,
+  "windowServerIdleWakeupsPerSecond": 1.2,
+  "windowServerIdleWakeupsPerSecondIncrease": -2.6,
+  "windowServerIdleWakeupsPerSecondOff": 3.8,
+  "windowServerPercentOfOneCore": 55.527,
+  "windowServerPercentOfOneCoreIncrease": 0.73,
+  "windowServerPercentOfOneCoreOff": 54.797
+ },
+ "frameCost": {
+  "p50us": 849,
+  "p99us": 3538,
+  "updates": 39,
+  "what": "updateLayer on the main thread (drawing the bitmap)"
+ },
+ "keptPicturesLastFrame": {
+  "elements": 10,
+  "elementsDrawn": 3,
+  "picturesCopied": 3,
+  "picturesMade": 0
+ },
+ "keptPicturesVsFullDrawing": {
+  "byMaxDiff": {
+   "1": 2203,
+   "2": 0,
+   "3": 0,
+   "4-7": 0,
+   "8+": 0
+  },
+  "differingBounds": [
+   73,
+   394,
+   249,
+   260
+  ],
+  "differingPercent": 0.425,
+  "differingPixels": 2203,
+  "maxChannelDiff": 1,
+  "pixels": 518400
+ },
+ "loadAverageAtEnd": [
+  7.02,
+  6.96,
+  8.02
+ ],
+ "memory": {
+  "footprintAfterCloseMB": 27.59,
+  "footprintAfterSettleMB": 23.42,
+  "footprintAtEndMB": 29.53,
+  "footprintBeforeMB": 17.09,
+  "footprintCategoriesAfterSettleMB": {
+   "CG raster data": 12,
+   "MALLOC metadata": 0.8,
+   "MALLOC_SMALL": 6.36,
+   "MALLOC_TINY": 0.28,
+   "TOTAL": 23,
+   "__DATA": 0.56,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.3,
+   "page table": 0.52,
+   "total": "23 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.28,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "CG raster data": 5.98,
+   "MALLOC metadata": 0.78,
+   "MALLOC_SMALL": 6.11,
+   "MALLOC_TINY": 0.28,
+   "TOTAL": 17,
+   "__DATA": 0.54,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.31,
+   "page table": 0.49,
+   "stack": 0.31,
+   "total": "17 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.27,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 12.438,
+  "footprintIncreaseMB": 6.328,
+  "footprintIncreasePerWidgetMB": 6.328,
+  "layerBitmapsPerWidgetMB": 1.978,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 3.04,
+   "freeGB": 0.14,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 3.05,
+   "freeGB": 0.17,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 1.978,
+  "ownedBitmapsPerWidgetMB": 9.888,
+  "windowServerCloseStepsMB": [
+   0,
+   -1
+  ],
+  "windowServerIncreaseMB": 2,
+  "windowServerIncreasePerWidgetMB": 2,
+  "windowServerOpenStepsMB": [
+   -26,
+   2
+  ]
+ },
+ "mode": "B",
+ "offPhases": "windows ordered out, updates stopped",
+ "openAllMs": 6.4,
+ "pairs": 3,
+ "phaseSeconds": 5,
+ "phases": [
+  {
+   "framesPerSecond": 0.99,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.38,
+   "loadAverageAfter": [
+    6.2,
+    6.89,
+    8.06
+   ],
+   "loadAverageBefore": [
+    6.13,
+    6.89,
+    8.06
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.15,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 54.67
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    6.35,
+    6.91,
+    8.06
+   ],
+   "loadAverageBefore": [
+    6.2,
+    6.89,
+    8.06
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.052,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 54.45
+  },
+  {
+   "framesPerSecond": 0.99,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.58,
+   "loadAverageAfter": [
+    6.13,
+    6.84,
+    8.02
+   ],
+   "loadAverageBefore": [
+    6.32,
+    6.89,
+    8.04
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.155,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0.6,
+   "windowServerPercentOfOneCore": 57.04
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    6.12,
+    6.83,
+    8.01
+   ],
+   "loadAverageBefore": [
+    6.13,
+    6.84,
+    8.02
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.034,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 55.07
+  },
+  {
+   "framesPerSecond": 0.99,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.38,
+   "loadAverageAfter": [
+    6.44,
+    6.87,
+    8.01
+   ],
+   "loadAverageBefore": [
+    5.95,
+    6.78,
+    7.98
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.129,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 3,
+   "windowServerPercentOfOneCore": 54.87
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    6,
+    6.77,
+    7.97
+   ],
+   "loadAverageBefore": [
+    6.44,
+    6.87,
+    8.01
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.035,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 11.4,
+   "windowServerPercentOfOneCore": 54.87
+  }
+ ],
+ "scenario": "design",
+ "settleSeconds": 20,
+ "updateIntervalMs": 1000,
+ "widgets": 1
+}

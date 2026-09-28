@@ -103,6 +103,7 @@ def cost(directory="cost"):
         loads = [l for run in runs for l in phase_loads(run)]
         entry["loadAverage1mMax"] = max(loads) if loads else None
         entry["provisional"] = bool(loads) and max(loads) > LOAD_LIMIT
+        entry["provisionalRounds"] = sum(1 for run in runs if phase_loads(run) and max(phase_loads(run)) > LOAD_LIMIT)
         entry["memoryPressureLevels"] = sorted({dig(run, "memory.memoryPressureAfterSettle.pressureLevel")
                                                 for run in runs} - {None})
         for key, path in per_round:
