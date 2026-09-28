@@ -73,6 +73,9 @@ enum AppSelfTest {
         VirtualTimeRenderSelfTests.run(t)
         RenderDataSelfTests.run(t)
         PluginSideEffectsSelfTests.run(t)
+        #if DEBUG
+        LegacyRenderSelfTests.run(t)
+        #endif
         // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
         StudioLatencySelfTests.run(t)
         return t.finish()
