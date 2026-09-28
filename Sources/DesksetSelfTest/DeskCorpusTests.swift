@@ -357,8 +357,9 @@ func runDeskCorpusTests(_ t: TestRunner) {
             let formatted = Desk.formatted(tree)
             let format = ProcessInfo.processInfo.systemUptime - formatStart
             t.equal(deskTreeProblems(tree) + deskDiagnosticProblems(tree) + deskWrapperProblems(tree), [], name)
-            t.check(parse < 3, "\(name): parse took \(parse) s")
-            t.check(format < 10, "\(name): format took \(format) s")
+            // Bounds that only tell "finishes" from "runs away": CI's Intel runner is several times slower.
+            t.check(parse < 30, "\(name): parse took \(parse) s")
+            t.check(format < 60, "\(name): format took \(format) s")
             t.equal(Desk.formatted(deskParse(formatted)), formatted, "\(name): formatting is idempotent")
         }
     }
