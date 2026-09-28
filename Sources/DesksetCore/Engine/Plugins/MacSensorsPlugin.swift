@@ -126,14 +126,16 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
             skin.log("MacSensors [\(name)]: hardware sensors are not available here", level: .notice)
             return
         }
-        let hop = skin.hop()
         let scale = self.scale
-        sensors.discoverSensors { [weak self] list in
-            let lines = MacSensorsMeasure.listLines(list, values: { sensors.sensorValue($0) }, scale: scale)
-            hop.post {
-                guard let self, !self.closed else { return }
-                for line in lines { self.skin.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
+        // Live hardware: scripted lines stand in for the list in virtual time.
+        let job = BackgroundJob(.sensorList, subject: "List", start: { deliver in
+            sensors.discoverSensors { list in
+                deliver(MacSensorsMeasure.listLines(list, values: { sensors.sensorValue($0) }, scale: scale))
             }
+        }, scripted: { $0.lines ?? [] })
+        skin.startBackground(job) { [weak self] lines in
+            guard let self, !self.closed else { return }
+            for line in lines { self.skin.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
         }
     }
 

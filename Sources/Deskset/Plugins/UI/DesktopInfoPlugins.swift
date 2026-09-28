@@ -330,8 +330,9 @@ final class ChameleonMeasure: MediaUIMeasure {
         let analyzed = paletteKey
         let desktop = isDesktop
         pendingKey = path
-        let hop = skin.hop()
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake).
+        let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: .global(qos: .utility),
+                                fixture: !desktop) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
             let file = desktop ? ChameleonMeasure.wallpaperFile(path) : path
             let modified = file.isEmpty ? 0 : ((try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate]
                 as? Date)?.map { $0.timeIntervalSince1970 } ?? 0)
@@ -342,16 +343,17 @@ final class ChameleonMeasure: MediaUIMeasure {
                 let pixels = ChameleonPalette.pixels(at: URL(fileURLWithPath: file), crop: crop, aspect: aspect)
                 result = pixels.flatMap(ChameleonPalette.analyze)
             }
-            hop.post {
-                guard let self else { return }
-                self.pendingKey = nil
-                // A check started for a path that has changed since is dropped (the next check handles the new one).
-                guard self.requestedPath == path else { return }
-                self.imagePath = file
-                if changed {
-                    self.paletteKey = key
-                    self.palette = result
-                }
+            return (file, key, changed, result)
+        }
+        skin.startBackground(job) { [weak self] file, key, changed, result in
+            guard let self else { return }
+            self.pendingKey = nil
+            // A check started for a path that has changed since is dropped (the next check handles the new one).
+            guard self.requestedPath == path else { return }
+            self.imagePath = file
+            if changed {
+                self.paletteKey = key
+                self.palette = result
             }
         }
     }

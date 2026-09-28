@@ -172,11 +172,12 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         output = ""
         setState(0)
         let jobID = ObjectIdentifier(newJob)
-        let hop = skin.hop()
-        newJob.onExit = { [weak self] in
-            hop.post { self?.jobExited(jobID, generation: generation) }
-        }
-        newJob.resume()
+        // No fake: the program runs (the seam for starting programs comes with the other side effects).
+        let exit = BackgroundJob<Void>(.runCommandProcess, subject: line, start: { deliver in
+            newJob.onExit = { deliver(()) }
+            newJob.resume()
+        })
+        skin.startBackground(exit) { [weak self] in self?.jobExited(jobID, generation: generation) }
         if timeout > 0 {
             let seconds = min(timeout, 86_400_000) / 1000
             schedule(after: seconds) { [weak self] in
@@ -228,8 +229,9 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         let data = job.outputSnapshot()
         let path = outputFile.isEmpty ? nil : PluginPaths.resolve(outputFile, skin: skin)
         let type = outputType
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
+        // A fixture: it decodes what the program wrote and saves OutputFile, a file of the skin's.
+        let save = BackgroundJob(.runCommandOutput, subject: path ?? "", on: PluginIO.queue, fixture: true) {
+            () -> (text: String, failure: String?) in
             let text = RunCommandMeasure.decode(data)
             var failure: String?
             if let path {
@@ -241,17 +243,18 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
                     failure = "cannot save \(path): \(error.localizedDescription)"
                 }
             }
-            hop.post {
-                guard let self else { return }
-                self.finishing = false
-                guard self.runGeneration == generation, self.job === job else { return }
-                self.job = nil
-                guard !self.closed else { return }
-                if let failure { self.report("file", "RunCommand [\(self.name)]: \(failure)") }
-                self.output = text
-                self.setState(failure == nil ? 1 : 104)
-                if !self.finishAction.isEmpty { self.skin.execute(self.finishAction, from: self) }
-            }
+            return (text, failure)
+        }
+        skin.startBackground(save) { [weak self] text, failure in
+            guard let self else { return }
+            self.finishing = false
+            guard self.runGeneration == generation, self.job === job else { return }
+            self.job = nil
+            guard !self.closed else { return }
+            if let failure { self.report("file", "RunCommand [\(self.name)]: \(failure)") }
+            self.output = text
+            self.setState(failure == nil ? 1 : 104)
+            if !self.finishAction.isEmpty { self.skin.execute(self.finishAction, from: self) }
         }
     }
 

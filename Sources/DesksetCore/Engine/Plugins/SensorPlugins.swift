@@ -241,14 +241,14 @@ public final class ResMonMeasure: Measure, PluginLifecycle {
         if !closed, lookingUp != processName, stale {
             let name = processName
             lookingUp = name
-            let hop = skin.hop()
-            PluginIO.queue.async { [weak self] in
-                let list = ProcessNames.pids(named: name)
-                hop.post {
-                    guard let self, !self.closed, self.lookingUp == name else { return }
-                    self.lookingUp = nil
-                    self.pids = (name, list, self.skin.clock())
-                }
+            // Live process state: no fake (the counts it leads to are read live anyway).
+            let job = BackgroundJob(.resMon, subject: name, on: PluginIO.queue, fixture: false) {
+                ProcessNames.pids(named: name)
+            }
+            skin.startBackground(job) { [weak self] list in
+                guard let self, !self.closed, self.lookingUp == name else { return }
+                self.lookingUp = nil
+                self.pids = (name, list, self.skin.clock())
             }
         }
         return Double(ResMonMeasure.fileDescriptorCount(pids: current?.list ?? []))
