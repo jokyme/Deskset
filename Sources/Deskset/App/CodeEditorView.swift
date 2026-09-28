@@ -260,16 +260,27 @@ final class CodeEditorView: NSView {
         ])
     }
 
+    /// Whether the jump bar shows above the code (a host with a header of its own hides it).
+    var showsJumpBar = true {
+        didSet {
+            jumpBar.isHidden = !showsJumpBar
+            jumpBarHeight?.constant = showsJumpBar ? 28 : 0
+        }
+    }
+    private var jumpBarHeight: NSLayoutConstraint?
+
     private func layOut() {
         jumpBar.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(jumpBar)
         addSubview(scrollView)
+        let height = jumpBar.heightAnchor.constraint(equalToConstant: 28)
+        jumpBarHeight = height
         NSLayoutConstraint.activate([
             jumpBar.topAnchor.constraint(equalTo: topAnchor),
             jumpBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             jumpBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            jumpBar.heightAnchor.constraint(equalToConstant: 28),
+            height,
             scrollView.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),

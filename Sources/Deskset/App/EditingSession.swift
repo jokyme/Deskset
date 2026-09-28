@@ -537,6 +537,11 @@ final class EditingSession {
     /// instance, loaded from memory — so a step reaches the canvas without waiting for the second load.
     func scheduleDesktopRefresh(thenMoveTo place: WidgetPosition? = nil) {
         if let place { placeAfterRefresh = place }
+        if let holds = holdsDesktop, let skin = studioSkin, holds(skin) {
+            isHoldingDesktop = true
+            return
+        }
+        isHoldingDesktop = false
         guard app.defersDesktopUpdates else { return refreshDesktop() }
         guard scheduledRefresh == nil else { return }
         // A timer, not the main queue: the run loop draws the windows before it waits for the timer, while it runs
@@ -548,6 +553,14 @@ final class EditingSession {
         RunLoop.main.add(timer, forMode: .common)
         scheduledRefresh = timer
     }
+
+    /// While it says so for the Studio's instance, the desktop copy keeps the version it runs — the last working one:
+    /// the files have a problem that stops a part from drawing (the code pane's red diagnostics). Steps are still
+    /// written; the reload waits, and happens once, at the first step or undo after which it no longer holds. nil (the
+    /// default): never held.
+    var holdsDesktop: ((Skin) -> Bool)?
+    /// A reload of the desktop copy waits because `holdsDesktop` held it.
+    private(set) var isHoldingDesktop = false
 
     /// Whether a reload of the desktop copy waits for its turn.
     var hasScheduledDesktopRefresh: Bool { scheduledRefresh != nil }
