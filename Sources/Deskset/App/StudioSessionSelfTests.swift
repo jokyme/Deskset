@@ -18,6 +18,7 @@ enum StudioSessionSelfTests {
         insideTests(t)
         failureTests(t)
         typingTests(t)
+        threadTests(t)
     }
 
     static let ini = """
@@ -312,21 +313,6 @@ enum StudioSessionSelfTests {
 
     static func ownWritesTests(_ t: AppTestRunner) {
         t.suite("App: studio session: what the widget writes as it reloads is its own") {
-            // Writes a new value each time it closes: taken for a change made elsewhere, it would reload the widget,
-            // which writes again, and so on.
-            let seeded = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
-                [Rainmeter]
-                Update=1000
-                OnCloseAction=[!WriteKeyValue Variables Seed [MeasureRandom]]
-
-                [MeasureRandom]
-                Measure=Calc
-                Formula=Random
-                LowBound=1
-                HighBound=1000000000
-                UpdateRandom=1
-
-                """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nSeed=0\n")
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Seeded", seeded) else { return }
             guard let session = editor.session else { return t.check(false, "session") }
             editor.select(section: "MeterTitle")
@@ -349,17 +335,9 @@ enum StudioSessionSelfTests {
         }
 
         t.suite("App: studio session: a widget that counts its loads counts one per step") {
-            let counting = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
-                [Rainmeter]
-                Update=1000
-                OnRefreshAction=[!WriteKeyValue Variables Loads (#Loads#+1)]
-
-                """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nLoads=0\n")
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Counting", counting) else { return }
             guard let session = editor.session else { return t.check(false, "session") }
-            func loads() -> Int? {
-                read(url).components(separatedBy: "\n").first { $0.hasPrefix("Loads=") }.flatMap { Int($0.dropFirst(6)) }
-            }
+            func loads() -> Int? { loadsWritten(url) }
             _ = AppSelfTest.spin(timeout: 5) { loads() == 1 }
             RunLoop.main.run(until: Date().addingTimeInterval(0.5))
             t.equal(loads(), 1, "the desktop copy counted its first load")
@@ -382,24 +360,8 @@ enum StudioSessionSelfTests {
         }
 
         t.suite("App: studio session: a script that rewrites an include as it loads does not start a loop") {
-            let generated = ini.replacingOccurrences(of: "[Variables]\n", with: "[Variables]\n@Include=Gen.inc\n")
-                + """
-
-                [MeasureGen]
-                Measure=Script
-                ScriptFile=gen.lua
-
-                """
-            let lua = """
-                function Initialize()
-                  local f = io.open(SKIN:MakePathAbsolute('Gen.inc'), 'w')
-                  f:write('[Variables]\\nGen=' .. os.time() .. '-' .. math.random(1, 1000000000) .. '\\n')
-                  f:close()
-                end
-                function Update() return 0 end
-                """
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Generated", generated,
-                                                       files: ["Generated/gen.lua": lua, "Generated/Gen.inc": "[Variables]\nGen=0\n"])
+                                                                              files: generatedFiles("Generated"))
             else { return }
             guard let session = editor.session else { return t.check(false, "session") }
             let gen = url.deletingLastPathComponent().appendingPathComponent("Gen.inc")
@@ -423,37 +385,6 @@ enum StudioSessionSelfTests {
 
     static func followTests(_ t: AppTestRunner) {
         t.suite("App: studio session: the canvas follows clicks on the widget on the desktop") {
-            let paged = """
-                [Rainmeter]
-                Update=1000
-
-                [Variables]
-                Theme=light
-
-                [Tab2]
-                Meter=Image
-                SolidColor=0,0,0
-                W=20
-                H=20
-                LeftMouseUpAction=[!HideMeterGroup Page1][!ShowMeterGroup Page2][!SetVariable Theme dark][!WriteKeyValue Variables Theme dark]
-                MouseOverAction=[!SetOption Tab2 SolidColor 255,0,0][!UpdateMeter Tab2]
-                MouseLeaveAction=[!SetOption Tab2 SolidColor 0,0,0][!UpdateMeter Tab2]
-
-                [P1]
-                Meter=String
-                Y=30
-                Text=one
-                Group=Page1
-
-                [P2]
-                Meter=String
-                Y=30
-                Text=two #Theme#
-                Group=Page2
-                Hidden=1
-                DynamicVariables=1
-
-                """
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Paged", paged) else { return }
             guard let c = app.controller(for: "Studio\\Paged"), let session = editor.session, let studio = editor.skin else {
                 return t.check(false, "loaded")
@@ -643,6 +574,506 @@ enum StudioSessionSelfTests {
             editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "30", own: true)], name: "Change Font Size")
             t.check(read(url).contains("FontSize=30\n"), "written once it can be")
             editor.window?.close()
+        }
+    }
+}
+
+// MARK: - Widgets the suites share
+
+extension StudioSessionSelfTests {
+    /// Writes a new value each time it closes: taken for a change made elsewhere, it would reload the widget, which
+    /// writes again, and so on.
+    static let seeded = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
+        [Rainmeter]
+        Update=1000
+        OnCloseAction=[!WriteKeyValue Variables Seed [MeasureRandom]]
+
+        [MeasureRandom]
+        Measure=Calc
+        Formula=Random
+        LowBound=1
+        HighBound=1000000000
+        UpdateRandom=1
+
+        """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nSeed=0\n")
+
+    /// Counts its loads in its own file (OnRefreshAction).
+    static let counting = ini.replacingOccurrences(of: "[Rainmeter]\nUpdate=1000\n", with: """
+        [Rainmeter]
+        Update=1000
+        OnRefreshAction=[!WriteKeyValue Variables Loads (#Loads#+1)]
+
+        """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nLoads=0\n")
+
+    /// The loads `counting` counted in `url`.
+    static func loadsWritten(_ url: URL) -> Int? {
+        read(url).components(separatedBy: "\n").first { $0.hasPrefix("Loads=") }.flatMap { Int($0.dropFirst(6)) }
+    }
+
+    /// Includes a file its script writes anew as it loads (`generatedFiles`).
+    static let generated = ini.replacingOccurrences(of: "[Variables]\n", with: "[Variables]\n@Include=Gen.inc\n")
+        + """
+
+        [MeasureGen]
+        Measure=Script
+        ScriptFile=gen.lua
+
+        """
+
+    /// `generated`'s script and include, for a widget in `folder` (under Studio).
+    static func generatedFiles(_ folder: String) -> [String: String] {
+        let lua = """
+            function Initialize()
+              local f = io.open(SKIN:MakePathAbsolute('Gen.inc'), 'w')
+              f:write('[Variables]\\nGen=' .. os.time() .. '-' .. math.random(1, 1000000000) .. '\\n')
+              f:close()
+            end
+            function Update() return 0 end
+            """
+        return ["\(folder)/gen.lua": lua, "\(folder)/Gen.inc": "[Variables]\nGen=0\n"]
+    }
+
+    /// Pages turned by a click, a theme it writes to its file, a hover.
+    static let paged = """
+        [Rainmeter]
+        Update=1000
+
+        [Variables]
+        Theme=light
+
+        [Tab2]
+        Meter=Image
+        SolidColor=0,0,0
+        W=20
+        H=20
+        LeftMouseUpAction=[!HideMeterGroup Page1][!ShowMeterGroup Page2][!SetVariable Theme dark][!WriteKeyValue Variables Theme dark]
+        MouseOverAction=[!SetOption Tab2 SolidColor 255,0,0][!UpdateMeter Tab2]
+        MouseLeaveAction=[!SetOption Tab2 SolidColor 0,0,0][!UpdateMeter Tab2]
+
+        [P1]
+        Meter=String
+        Y=30
+        Text=one
+        Group=Page1
+
+        [P2]
+        Meter=String
+        Y=30
+        Text=two #Theme#
+        Group=Page2
+        Hidden=1
+        DynamicVariables=1
+
+        """
+}
+
+// MARK: - The desktop copy on a thread of its own
+
+/// The suites about reloads and following the desktop copy again, with the desktop copy on test threads
+/// (`TestThreadExecutor`, through `AppController.skinExecutor`; docs/skin-threading.md §8.5, §15 phase 2 step 6): the
+/// Studio's instance stays on the main thread, and the desktop copy is reached only through messages, its snapshot, its
+/// window controller and exclusive access. Its reloads report when their work gets there, so every wait here is for a
+/// condition; only "nothing reloads" is watched over a stretch of time, as in the suites above.
+extension StudioSessionSelfTests {
+    /// A Studio on a widget whose copies on the desktop run on test threads: the first on `threads[0]`, every later one
+    /// on the last thread (two threads let a test hold the old copy while the new one starts).
+    final class Threaded {
+        let app: AppController
+        let editor: Editor
+        let url: URL
+        let config: String
+        let threads: [TestThreadExecutor]
+        private var skins: [() -> Skin?] = []
+
+        init(app: AppController, editor: Editor, url: URL, config: String, threads: [TestThreadExecutor]) {
+            self.app = app
+            self.editor = editor
+            self.url = url
+            self.config = config
+            self.threads = threads
+        }
+
+        var session: EditingSession? { editor.session }
+        /// The copy on the desktop now.
+        var desktop: SkinController? { app.controller(for: config) }
+
+        /// What the copy on the desktop now answers, read on its thread while it waits (nil: it did not let go).
+        func live<T>(_ body: (Skin) -> T) -> T? {
+            guard let c = desktop else { return nil }
+            note(c)
+            return c.runtime.exclusive(timeout: 30, body)
+        }
+
+        /// Waits until the reload the session asked for has ended and the copy on the desktop has started.
+        @discardableResult
+        func settle() -> Bool {
+            let done = AppSelfTest.spin(timeout: 30) { [self] in
+                guard let session, !session.isAwaitingOwnReload, let c = desktop else { return false }
+                return c.isStarted
+            }
+            if let c = desktop { note(c) }
+            return done
+        }
+
+        /// Keeps track of a copy's skin (weakly), to wait for it to be let go of at the end.
+        func note(_ c: SkinController) {
+            weak var skin = c.runtime.skin
+            skins.append { skin }
+        }
+
+        /// Closes the Studio, unloads the widget, waits for the skins of the copies it saw to be let go of on their
+        /// threads, and ends the threads.
+        func finish(_ t: AppTestRunner) {
+            // (What AppKit autoreleases meanwhile goes before the wait.)
+            autoreleasepool {
+                editor.window?.close()
+                app.inspector?.window?.close()
+                app.deactivate(config: config)
+            }
+            t.check(AppSelfTest.spin(timeout: 30) { self.skins.allSatisfy { $0() == nil } },
+                    "the copies' skins are let go of")
+            for thread in threads { thread.stop() }
+        }
+    }
+
+    /// `StudioReviewSelfTests.openSkin` with the copies on the desktop on `threads` test threads (see `Threaded`). The
+    /// Studio opens once the first copy has started.
+    static func openOnThread(_ t: AppTestRunner, _ name: String, _ text: String, files: [String: String] = [:],
+                             threads count: Int = 1) throws -> Threaded? {
+        guard let app = try AppSelfTest.makeApp(t) else { return nil }
+        let folder = app.skinsDirectory.appendingPathComponent("Studio/\(name)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for (path, content) in files {
+            let url = app.skinsDirectory.appendingPathComponent("Studio").appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        }
+        let url = folder.appendingPathComponent("\(name).ini")
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        let config = "Studio\\\(name)"
+        let threads = (0..<max(count, 1)).map { TestThreadExecutor(name: "Studio \(name) \($0 + 1)") }
+        var loads = 0
+        app.skinExecutor = { asked in
+            guard asked.caseInsensitiveCompare(config) == .orderedSame else { return MainSkinExecutor.shared }
+            defer { loads += 1 }
+            return threads[min(loads, threads.count - 1)]
+        }
+        guard let c = app.activate(config: config, file: "\(name).ini"),
+              AppSelfTest.spin(timeout: 30, until: { c.isStarted }) else {
+            t.check(false, "\(config) starts on its thread")
+            threads.forEach { $0.stop() }
+            return nil
+        }
+        app.showInspector(for: c)
+        guard let editor = app.inspector else {
+            t.check(false, "the editor opens")
+            threads.forEach { $0.stop() }
+            return nil
+        }
+        let threaded = Threaded(app: app, editor: editor, url: url, config: config, threads: threads)
+        threaded.note(c)
+        return threaded
+    }
+
+    /// Runs `body` on a Studio opened by `openOnThread`, then `Threaded.finish` (once what the opening and `body`
+    /// held, and what AppKit autoreleased meanwhile, has gone).
+    static func onThread(_ t: AppTestRunner, _ name: String, _ text: String, files: [String: String] = [:],
+                         threads: Int = 1, _ body: (Threaded) throws -> Void) throws {
+        let opened: Threaded? = try autoreleasepool {
+            guard let w = try openOnThread(t, name, text, files: files, threads: threads) else { return nil }
+            try body(w)
+            return w
+        }
+        opened?.finish(t)
+    }
+
+    static func threadTests(_ t: AppTestRunner) {
+        threadOwnWritesTests(t)
+        threadFollowTests(t)
+        threadInsideTests(t)
+        threadSeedingTests(t)
+    }
+
+    static func threadOwnWritesTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: on a thread, what the widget writes as it reloads is its own") {
+            try onThread(t, "SeededThread", seeded) { w in
+                guard let session = w.session else { return t.check(false, "session") }
+                let editor = w.editor, url = w.url
+                t.check(w.desktop?.runtime.executor !== MainSkinExecutor.shared, "the desktop copy runs on a thread")
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                t.check(read(url).contains("FontSize=20\n"), "written")
+                t.check(w.settle(), "the reload ends once the old copy closed and the new one started")
+                t.check(!read(url).contains("Seed=0\n"), "and the old copy wrote its seed as it closed")
+                t.equal(session.buffers.buffer(url)?.text, read(url), "the memory took the widget's own write")
+                t.equal(editor.skin?.variable("Seed"), w.live { $0.variable("Seed") }, "the Studio's instance follows it")
+                t.equal(w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "20", "the desktop copy shows the step")
+                t.check(session.desktop === w.desktop, "the session follows the new copy")
+                let toast = editor.toastText
+                t.check(toast.hasPrefix("Changed"), toast)
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "no reload follows, let alone a loop")
+                t.equal(editor.toastText, toast, "the step's toast stays")
+                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+                editor.refreshSkin()
+                t.check(w.settle(), "Refresh")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "after Refresh")
+                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            }
+        }
+
+        t.suite("App: studio session: on threads, the old copy's OnCloseAction may write after the new copy started") {
+            // The old copy on one thread, held there; the new one starts on another.
+            try onThread(t, "SeededLate", seeded, threads: 2) { w in
+                guard let session = w.session, let old = w.desktop else { return t.check(false, "session") }
+                let editor = w.editor, url = w.url
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(w.threads[0])
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                let toast = editor.toastText
+                t.check(toast.hasPrefix("Changed"), toast)
+                t.check(AppSelfTest.spin(timeout: 30) { w.desktop !== old && w.desktop?.isStarted == true },
+                        "the new copy started")
+                if let c = w.desktop { w.note(c) }
+                t.check(w.desktop?.runtime.executor === w.threads[1], "on the other thread")
+                t.check(session.isAwaitingOwnReload, "the reload waits for the old copy's close")
+                t.check(read(url).contains("Seed=0\n"), "which has not run yet")
+                t.check(session.desktop === w.desktop, "the Studio follows the new copy already")
+                gate.open()
+                t.check(AppSelfTest.spin(timeout: 30) { !session.isAwaitingOwnReload }, "the reload ends with the close")
+                t.check(old.hasClosed, "the old copy reported its close")
+                t.check(!read(url).contains("Seed=0\n"), "written as it closed")
+                t.equal(session.buffers.buffer(url)?.text, read(url), "the memory took the widget's own write")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "no reload follows")
+                t.equal(editor.toastText, toast, "the step's toast stays")
+                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            }
+        }
+
+        t.suite("App: studio session: on a thread, a widget that counts its loads counts one per step") {
+            try onThread(t, "CountingThread", counting) { w in
+                guard let session = w.session else { return t.check(false, "session") }
+                let editor = w.editor, url = w.url
+                t.equal(loadsWritten(url), 1, "the desktop copy counted its first load")
+                t.equal(session.host.policy.recorded.filter { $0.name == "writekeyvalue" }.count, 1,
+                        "the Studio's instance did not write")
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+                t.check(w.settle(), "reloaded")
+                t.equal(loadsWritten(url), 2, "one load for the step")
+                t.equal(session.buffers.buffer(url)?.text, read(url), "taken into memory")
+                t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "21")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "no reload follows")
+                t.equal(loadsWritten(url), 2, "no more loads")
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "22", own: true)], name: "Change Font Size")
+                t.check(w.settle(), "reloaded again")
+                t.equal(loadsWritten(url), 3)
+                t.equal(reloads(w.app, w.config, during: 1), 0)
+            }
+        }
+
+        t.suite("App: studio session: on a thread, a script that rewrites an include as it loads does not start a loop") {
+            try onThread(t, "GeneratedThread", generated, files: generatedFiles("GeneratedThread")) { w in
+                guard let session = w.session else { return t.check(false, "session") }
+                let editor = w.editor
+                let gen = w.url.deletingLastPathComponent().appendingPathComponent("Gen.inc")
+                let written = read(gen)
+                t.check(written.hasPrefix("[Variables]\nGen=") && written != "[Variables]\nGen=0\n", "the desktop copy wrote it")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "opening the Studio reloads nothing")
+                t.equal(read(gen), written, "the Studio's instance wrote to a copy of its own")
+                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "19", own: true)], name: "Change Font Size")
+                t.check(w.settle(), "reloaded")
+                t.check(read(gen) != written, "written by the reloaded desktop copy")
+                t.equal(session.buffers.buffer(gen)?.text, read(gen), "taken into memory")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "no loop")
+                t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+            }
+        }
+    }
+
+    static func threadFollowTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: on a thread, the canvas follows clicks on the widget on the desktop") {
+            try onThread(t, "PagedThread", paged) { w in
+                guard let c = w.desktop, let session = w.session, let studio = w.editor.skin else {
+                    return t.check(false, "loaded")
+                }
+                let editor = w.editor, url = w.url
+                // As the widget's window reports it: messages to the desktop copy, whose input the Studio replays.
+                c.runtime.send(.hover(x: 5, y: 5))
+                t.check(AppSelfTest.spin(timeout: 30) { studio.meter(named: "Tab2")?.rawOption("SolidColor") == "255,0,0" },
+                        "the hover")
+                c.runtime.send(.mouse(.leftUp, x: 5, y: 5))
+                t.check(AppSelfTest.spin(timeout: 30) { studio.meter(named: "P2")?.hidden == false }, "page 2 on the canvas")
+                t.equal(studio.meter(named: "P1")?.hidden, true)
+                t.equal(studio.variable("Theme"), "dark")
+                t.check(read(url).contains("Theme=dark\n"), "the desktop copy wrote the theme")
+                t.check(session.host.policy.recorded.contains { $0.name == "writekeyvalue" }, "the Studio's instance did not")
+                t.check(AppSelfTest.spin(timeout: 30) { session.buffers.buffer(url)?.text.contains("Theme=dark\n") == true },
+                        "the memory took its write")
+                t.equal(reloads(w.app, w.config, during: 1.5), 0, "not reloaded: the widget wrote its own file")
+                t.check(w.desktop === c)
+                t.check(editor.skin === studio, "nor the Studio's instance, which already shows it")
+                t.equal(editor.skin?.meter(named: "P2")?.hidden, false, "still on page 2")
+                editor.canvasSelectionChanged(["P2"])
+                t.equal(editor.selectedSection, "P2", "a layer of page 2 can be picked")
+                c.runtime.send(.exited)
+                t.check(AppSelfTest.spin(timeout: 30) { studio.meter(named: "Tab2")?.rawOption("SolidColor") == "0,0,0" },
+                        "the hover ends")
+                editor.window?.close()
+                t.equal(c.runtime.exclusive(timeout: 30) { $0.inputMirror == nil }, true, "no mirror without a Studio")
+            }
+        }
+
+        t.suite("App: studio session: on a thread, the desktop copy follows a moment later") {
+            try onThread(t, "LaterThread", ini) { w in
+                guard let session = w.session, let c = w.desktop else { return t.check(false, "loaded") }
+                let app = w.app, editor = w.editor, url = w.url
+                app.defersDesktopUpdates = true
+                defer { app.defersDesktopUpdates = false }
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                t.check(read(url).contains("FontSize=20\n"), "written")
+                t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20", "the canvas shows the step at once")
+                t.check(w.desktop === c, "the desktop copy loads it on the next turn")
+                t.check(session.hasScheduledDesktopRefresh)
+                editor.checkFilesOnDisk()
+                t.check(editor.pendingDiskCheck, "changes on disk wait for it")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+                t.equal(reloads(app, w.config, during: 0.3), 1, "one reload for both steps")
+                t.check(!session.hasScheduledDesktopRefresh)
+                t.check(w.settle(), "the new copy started")
+                t.equal(w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "21")
+                t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
+                let before = w.desktop
+                editor.window?.undoManager?.undo()
+                t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
+                t.check(w.desktop === before, "the desktop copy on the next turn")
+                t.check(AppSelfTest.spin(timeout: 5) { !session.hasScheduledDesktopRefresh }, "reloaded")
+                t.check(w.settle(), "the new copy started")
+                t.equal(w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "12")
+
+                // A gesture: the previews are messages to the desktop copy, at most 20 a second, always the latest values.
+                guard let box = editor.skin?.meter(named: "MeterBox") else { return t.check(false, "box") }
+                editor.canvasSelectionChanged(["MeterBox"])
+                let start = NSPoint(x: editor.canvas.origin.x + CGFloat(box.frame.x + 5),
+                                    y: editor.canvas.origin.y + CGFloat(box.frame.y + 5))
+                func desktopX() -> Double? { w.live { skin -> Double? in skin.meter(named: "MeterBox")?.frame.x } ?? nil }
+                editor.canvas.beginGesture(.move, at: start)
+                editor.canvas.drag(to: NSPoint(x: start.x + 10, y: start.y), snapping: false)
+                t.equal(desktopX(), 10, "the first preview at once")
+                editor.canvas.drag(to: NSPoint(x: start.x + 20, y: start.y), snapping: false)
+                editor.canvas.drag(to: NSPoint(x: start.x + 30, y: start.y), snapping: false)
+                t.equal(editor.skin?.meter(named: "MeterBox")?.frame.x, 30, "the canvas follows every event")
+                t.equal(desktopX(), 10, "the desktop copy waits")
+                t.check(AppSelfTest.spin(timeout: 5) { desktopX() == 30 }, "then gets the latest values")
+                editor.canvas.endGesture(keep: false)
+                t.equal(desktopX(), 0, "a cancelled gesture ends the previews there too")
+                t.equal(w.live { $0.isPreviewing }, false)
+                t.check(!read(url).contains("X=30"), "nothing written")
+            }
+        }
+    }
+
+    static func threadInsideTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: on a thread, plugins of the Studio's instance know it is paused, and where the widget is") {
+            try onThread(t, "HostThread", ini) { w in
+                guard let c = w.desktop, let session = w.session, let studio = w.editor.skin,
+                      let host = studio.host as? StudioHost else { return t.check(false, "loaded") }
+                t.check(host === session.host, "the Studio's host")
+                session.setUpdatesPaused(true)
+                t.check(host.areUpdatesPaused, "paused with the widgets on the desktop")
+                session.setUpdatesPaused(false)
+                t.check(!host.areUpdatesPaused)
+                t.equal(host.windowDisplay, c.window.screen.flatMap(DesktopInputs.displayID(of:)), "the desktop copy's screen")
+                // The desktop copy's place, from its window controller.
+                c.moveTo(x: 321, y: 123)
+                t.equal(host.environment(for: studio).windowFrame.x, 321, "#CURRENTCONFIGX#")
+                t.equal(host.environment(for: studio).windowFrame.y, 123)
+                t.equal(c.runtime.exclusive(timeout: 30) { $0.variable("CURRENTCONFIGX") }, "321",
+                        "as the desktop copy reads it")
+                // A reload by a step whose new copy has not started: the Studio's instance keeps the widget's place.
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(w.threads[0])
+                w.editor.select(section: "MeterTitle")
+                w.editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                t.check(w.desktop !== c && w.desktop?.isStarted == false, "the new copy waits to load")
+                t.equal(w.editor.skin.map { host.environment(for: $0).windowFrame.x }, 321, "the Studio's instance keeps the place")
+                t.check(w.editor.isWidgetRunning, "the widget counts as on the desktop meanwhile")
+                gate.open()
+                t.check(w.settle(), "the new copy started")
+                t.equal(w.editor.skin.map { host.environment(for: $0).windowFrame.x }, 321, "where the old one was")
+            }
+        }
+
+        t.suite("App: studio session: on a thread, a step that moves the widget moves it once the new copy started") {
+            try onThread(t, "MovedThread", ini) { w in
+                guard let c = w.desktop, let session = w.session else { return t.check(false, "loaded") }
+                c.moveTo(x: 100, y: 100)
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(w.threads[0])
+                let place = WidgetPosition(x: 150, y: 170)
+                try session.apply("Move", [.setValue(file: w.url, section: "MeterTitle", key: "FontSize", value: "18",
+                                                     afterIncludes: false)],
+                                  commands: [.moveWidget(from: WidgetPosition(x: 100, y: 100), to: place)])
+                guard let fresh = w.desktop, fresh !== c else { return t.check(false, "a new copy") }
+                t.check(!fresh.isStarted, "not started")
+                t.close(c.topLeftPosition.x, 100, accuracy: 0.5, "nothing moved yet")
+                gate.open()
+                t.check(w.settle(), "started")
+                t.close(fresh.topLeftPosition.x, 150, accuracy: 0.5, "then the window moved")
+                t.close(fresh.topLeftPosition.y, 170, accuracy: 0.5)
+                t.equal(fresh.showCount, 1)
+            }
+        }
+    }
+
+    static func threadSeedingTests(_ t: AppTestRunner) {
+        let graph = """
+            [Rainmeter]
+            Update=-1
+
+            [MeasureCount]
+            Measure=Calc
+            Formula=Counter % 7
+            MaxValue=7
+
+            [MeterGraph]
+            Meter=Line
+            MeasureName=MeasureCount
+            W=40
+            H=20
+
+            """
+        t.suite("App: studio session: on a thread, the Studio opens on the graphs the desktop shows") {
+            try onThread(t, "GraphThread", graph) { w in
+                w.editor.window?.close()
+                guard let c = w.desktop else { return t.check(false, "loaded") }
+                for _ in 0..<6 { c.runtime.send(.update(hops: 0)) }
+                let shown = w.live { skin -> ([Double], Int, Double?) in
+                    let line = (skin.meter(named: "MeterGraph") as? LineMeter)?.lines[0].history
+                    let samples = line.map { h in (0..<h.count).map { h.value(age: $0) } } ?? []
+                    return (samples, skin.counter, skin.measure(named: "MeasureCount")?.value)
+                }
+                w.app.showInspector(for: c)
+                guard let editor = w.app.inspector, let studio = editor.skin?.meter(named: "MeterGraph") as? LineMeter else {
+                    return t.check(false, "the Studio shows the graph")
+                }
+                let history = studio.lines[0].history
+                t.equal((0..<history.count).map { history.value(age: $0) }, shown?.0, "the desktop's samples, in order")
+                t.equal(editor.skin?.counter, shown?.1, "the counter the desktop shows")
+                t.equal(editor.skin?.measure(named: "MeasureCount")?.value, shown?.2)
+                editor.window?.close()
+
+                // A desktop copy busy past the wait: the Studio's instance starts from its own first update.
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(w.threads[0])
+                w.app.showInspector(for: c)
+                t.equal(w.app.inspector?.skin?.counter, 1, "its own first update")
+                gate.open()
+            }
         }
     }
 }
