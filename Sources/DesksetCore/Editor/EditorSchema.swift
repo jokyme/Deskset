@@ -1589,6 +1589,11 @@ public enum EditorSchema {
                     Property("Type", "Sample", pick([Choice("Desktop", "Wallpaper"), Choice("File", "Image file")]),
                              default: "Desktop", visibleWhen: main),
                     Property("Path", "Image", .image, visibleWhen: [.isNotSet("Parent"), .equals("Type", "File")]),
+                    // Skin: a Deskset extension (the part under the widget, again when it moves).
+                    Property("CropDesktop", "Wallpaper part",
+                             pick([Choice("1", "What the screen shows"), Choice("Skin", "Under the widget"),
+                                   Choice("0", "The whole picture")], style: .popup),
+                             default: "1", visibleWhen: [.isNotSet("Parent"), .notEquals("Type", "File")]),
                     Property("Color", "Color",
                              pick(list(["Background1", "Background2", "Foreground1", "Foreground2", "Light1", "Light2",
                                         "Light3", "Light4", "Dark1", "Dark2", "Dark3", "Dark4", "Average", "Luminance"]),
