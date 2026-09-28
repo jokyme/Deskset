@@ -15,8 +15,8 @@ import Foundation
 //   so it fetches every UpdateRate updates (Update × UpdateDivider × UpdateRate ms). `!UpdateMeasure` only advances
 //   the counter; `!CommandMeasure Parent "Update"` fetches right away and restarts the cycle.
 // - Fetching, decoding and RegExp parsing run off the skin's thread; nothing ever blocks Skin.update. The results are
-//   applied on the skin's executor (`Skin.hop()`), to the parent and all its child measures, and only then are the
-//   actions run (FinishAction, OnRegExpErrorAction, OnConnectErrorAction, OnDownloadErrorAction).
+//   applied on the skin's executor (`Skin.startBackground`), to the parent and all its child measures, and only then
+//   are the actions run (FinishAction, OnRegExpErrorAction, OnConnectErrorAction, OnDownloadErrorAction).
 // - Unloading or refreshing the skin (`skinWillClose`) cancels the transfers in flight; a result that arrives after
 //   that is dropped: no values, log lines, actions or child downloads. A temporary download it saved is deleted, also
 //   when the skin itself is gone by then. A skin dropped without being closed cancels them as its measures go.
@@ -353,16 +353,12 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             skin.log("WebParser [\(name)]: fetching \(target.displayString)", level: .debug)
         }
         fetchInFlight = true
-        let hop = skin.hop()
-        // Weak, like every closure that runs off the skin's thread: the transfer does not keep the measure alive (its
-        // deinit cancels the transfer when the skin is dropped), and the measure is never released on the background
-        // queue. The results find the measure again on the skin's executor.
-        fetchHandle = WebParserNetwork.shared.start(request) { [weak self] result in
-            // Background queue: decode and parse, then hand the results to the skin's executor.
-            let outcome: Result<WebParserNodeResult, WebParserFetchError>
+        // Background queue: decode and parse, then hand the results to the skin's executor.
+        let process = { (result: Result<WebParserResponse, WebParserFetchError>)
+            -> Result<WebParserNodeResult, WebParserFetchError> in
             switch result {
             case .failure(let error):
-                outcome = .failure(error)
+                return .failure(error)
             case .success(let response):
                 let text = WebParserText.decode(response.data, codePage: codePage, charset: response.charset)
                 var parsed = WebParserProcessor.process(tree, text: text)
@@ -374,12 +370,22 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                                                             message: "WebParser [\(tree.options.name)]: cannot write \(dumpPath)"))
                     }
                 }
-                outcome = .success(parsed)
-            }
-            hop.post {
-                self?.finishFetch(outcome, generation: generation, base: target)
+                return .success(parsed)
             }
         }
+        var handle: WebParserFetchHandle?
+        // A local file is a fixture in virtual time; a web page needs a scripted result.
+        let page = BackgroundJob(.webParserPage, subject: target.displayString, start: { deliver in
+            handle = WebParserNetwork.shared.start(request) { deliver(process($0)) }
+        }, inline: WebParserNetwork.readAtOnce(request).map { read in { process(read()) } },
+           scripted: { process(WebParserNetwork.scripted($0)) })
+        // Weak, like every closure that runs off the skin's thread: the transfer does not keep the measure alive (its
+        // deinit cancels the transfer when the skin is dropped), and the measure is never released on the background
+        // queue. The results find the measure again on the skin's executor.
+        skin.startBackground(page) { [weak self] outcome in
+            self?.finishFetch(outcome, generation: generation, base: target)
+        }
+        fetchHandle = handle
     }
 
     /// Request settings of this (parent) measure. Downloads of child measures use their parent's settings: the
@@ -547,9 +553,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         request.target = target
         request.maxBytes = WebParserNetwork.maxDownloadBytes
         if options.debug == 1 { skin.log("WebParser [\(name)]: downloading \(target.displayString)", level: .debug) }
-        let hop = skin.hop()
-        // Weak, as for the page (see `startFetch`).
-        downloadHandle = WebParserNetwork.shared.start(request) { [weak self] result in
+        // Background queue: save what arrived, then hand the outcome to the skin's executor.
+        let save = { (result: Result<WebParserResponse, WebParserFetchError>)
+            -> (outcome: Result<String, WebParserFetchError>, transportFailure: Bool) in
             let outcome: Result<String, WebParserFetchError>
             var saveFailure: String?
             switch result {
@@ -572,17 +578,26 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                 }
                 outcome = saveFailure.map { .failure(.connect($0)) } ?? .success(destination.path)
             }
-            let transportFailure = saveFailure == nil
-            // A temporary file that nobody takes — the skin or the measure is gone by the time the result gets back —
-            // is deleted: nothing else would ever delete it. (A DownloadFile stays, as the skin asked.)
-            let saved: String? = isTemporary ? (try? outcome.get()) : nil
-            let discard = { if let saved { try? FileManager.default.removeItem(atPath: saved) } }
-            hop.post({
-                guard let self else { return discard() }
-                self.finishDownload(outcome, generation: generation, isResource: isResource && transportFailure,
-                                    isTemporary: isTemporary)
-            }, orElse: discard)
+            return (outcome, saveFailure == nil)
         }
+        // A temporary file that nobody takes — the skin or the measure is gone by the time the result gets back — is
+        // deleted: nothing else would ever delete it. (A DownloadFile stays, as the skin asked.)
+        let discard = { (outcome: Result<String, WebParserFetchError>, _: Bool) in
+            if isTemporary, let saved = try? outcome.get() { try? FileManager.default.removeItem(atPath: saved) }
+        }
+        var handle: WebParserFetchHandle?
+        // A local file is a fixture in virtual time; a web resource needs a scripted result.
+        let download = BackgroundJob(.webParserDownload, subject: target.displayString, start: { deliver in
+            handle = WebParserNetwork.shared.start(request) { deliver(save($0)) }
+        }, inline: WebParserNetwork.readAtOnce(request).map { read in { save(read()) } },
+           scripted: { save(WebParserNetwork.scripted($0)) })
+        // Weak, as for the page (see `startFetch`).
+        skin.startBackground(download, then: { [weak self] outcome, transportFailure in
+            guard let self else { return discard(outcome, transportFailure) }
+            self.finishDownload(outcome, generation: generation, isResource: isResource && transportFailure,
+                                isTemporary: isTemporary)
+        }, orElse: discard)
+        downloadHandle = handle
     }
 
     private func finishDownload(_ outcome: Result<String, WebParserFetchError>, generation: Int, isResource: Bool,
