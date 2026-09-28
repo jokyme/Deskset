@@ -274,6 +274,99 @@ match B like E does, was not measured.)
 
 ## 3. Memory and CPU at 2× (`cost/`, `cost-b/`, `wscpu/`, `wscpu-b/`, `wsmem/`, `wsmem-b/`, `memtrace/`, `memtrace-b/`, `summary.json`)
 
+### After review: memory (`sysmem/`; bitmap bytes from `cost/`, `cost-b/`)
+
+The comparisons of memory below `phys_footprint` (in "As measured before review") rank the ways by how the kernel
+attributes pages, not by what they hold (see Conditions). Two views that count every buffer:
+
+**Bitmap bytes, each buffer once** (uncompressed, per widget; from the runs' own counts). For E the layers' backing
+stores plus the runtime's own bitmaps, the base counted once (the tiles show it); for B, C and D the runtime's own
+bitmaps or surfaces, whose images the layers show:
+
+| way | System widget (260 × 196 pt) | design skin (360 pt) | visualizer |
+|---|---|---|---|
+| E1 (one layer) | 1.55 | 3.96 | 1.43 |
+| **EPw** (partition, E) | **1.58** | **3.11** | 0.77 |
+| EPxw (partition through a scratch bitmap) | 2.32 | 5.09 | 1.24 |
+| C1 (one layer) | 1.55 | 3.96 | 0.95 |
+| **CPw** (partition, C) | **1.73** | **3.77** | 1.06 |
+| CPxw | 2.51 | 5.75 | 1.53 |
+| D1 / DP (sRGB IOSurfaces, first campaign) | 1.66 / 2.89 | 4.06 / 5.40 | 1.00 / 2.05 |
+| B drawn in full / **B+kept** (today) | 1.55 / **4.67** | 3.96 / **9.89** | 0.95 / 1.43 |
+
+By bytes **C holds more than E**: +0.15 MB per System widget, +0.65 MB per design skin (the partition's groups have
+two bitmaps each in C, while CA gives a second buffer only to layers that keep changing). This reverses the
+phys_footprint reading ("C 2.19 vs E 2.70 MB for the design skin"). These counts leave out copies made behind the
+scenes (a C bitmap redrawn while the window server still holds its previous image is copied on write), which the
+next view sees.
+
+<!-- sysmem table -->
+
+### After review: CPU (`cost-d/`, `wspair/`, `frames60/`, `schedpair/`)
+
+**One interleaved batch** (`cost-d/`): every combination below once per round, three rounds, in its own folder;
+each run records the proc_pid_rusage v6 counters of its on phases (instructions retired, cycles, the share of CPU
+time on performance cores, average clock) and the skin thread's CPU time per update. This Mac's load stayed high
+(1-minute load 5.6–43, 50 of 66 runs above 8): every CPU number here is provisional in absolute terms; the batch is
+for comparisons within it, and the counters show what the time went into.
+
+| scenario | way | process % of one core, median (min–max) | instructions M/s | cycles per instruction | P-core share | wakeups/s |
+|---|---|---|---|---|---|---|
+| 60 Hz | A | 8.35 (7.91–8.82) | 824 | 0.35 | 0.96 | 358 |
+| 60 Hz | B drawn in full | 7.73 (7.62–9.55) | 1,023 | 0.29 | 1.00 | 75 |
+| 60 Hz | **B+kept** (today) | **3.90** (3.89–4.76) | 413 | 0.36 | 0.99 | 78 |
+| 60 Hz | E1 | 6.87 (6.64–8.01) | 1,019 | 0.25 | 1.00 | 64 |
+| 60 Hz | **EPw** | **5.41** (5.39–7.02) | 594 | 0.35 | 0.99 | 62 |
+| 60 Hz | C1 | 7.43 (6.97–8.01) | 1,046 | 0.26 | 1.00 | 62 |
+| 60 Hz | **CPw** | **4.21** (4.17–4.84) | 517 | 0.31 | 1.00 | 62 |
+| 10 widgets, 1 s | A | 0.76 (0.75–0.87) | 50 | 0.56 | 0.99 | 8.1 |
+| 10 widgets | **B+kept**, timers aligned | **0.87** (0.81–0.96) | 109 | 0.29 | 0.99 | 3.7 |
+| 10 widgets | B+kept, timers spread over the second | 1.19 (1.12–1.34) | 110 | 0.41 | 0.99 | 12.7 |
+| 10 widgets | E1, 10 threads, aligned | 2.09 (2.02–2.11) | 307 | 0.25 | 0.96 | 5.4 |
+| 10 widgets | E1, one thread, aligned | 1.55 (1.47–1.70) | 305 | 0.19 | 0.99 | 6.6 |
+| 10 widgets | C1, 10 threads, aligned | 2.19 (2.10–2.26) | 309 | 0.26 | 0.94 | 3.3 |
+| 10 widgets | **EPw, 10 threads, aligned** | **1.61** (1.50–1.65) | 95 | **0.60** | 0.93 | 5.3 |
+| 10 widgets | EPw, 10 threads, spread | 1.21 (1.19–1.28) | 96 | 0.48 | 0.99 | 15.3 |
+| 10 widgets | EPw, one thread, aligned | 0.78 (0.72–0.82) | 88 | 0.32 | 0.99 | 5.8 |
+| 10 widgets | EPw, one thread, spread | 1.17 (1.16–1.37) | 95 | 0.47 | 1.00 | 14.7 |
+| 10 widgets | **EPw, one thread, coalesced** (one timer, one commit) | **0.71** (0.69–0.92) | 86 | 0.32 | 0.99 | 5.3 |
+| 10 widgets | CPw, 10 threads, aligned | 1.32 (1.29–1.38) | 92 | 0.53 | 0.97 | 3.2 |
+| 10 widgets | CPw, 10 threads, spread | 0.97 (0.96–1.17) | 91 | 0.41 | 1.00 | 12.0 |
+| 10 widgets | CPw, one thread, aligned | 0.71 (0.67–0.87) | 85 | 0.32 | 0.99 | 3.3 |
+| 10 widgets | **CPw, one thread, coalesced** | **0.69** (0.67–0.90) | 88 | 0.30 | 0.99 | 3.5 |
+
+What the counters show:
+
+- **The scheduling changes the cycles, not the work.** For each way the instructions per second stay within about
+  10 % across all its scheduling variants (EPw 86–96 M/s), and nearly all CPU time is on performance cores (0.93–1.00)
+  at 3.4–3.8 GHz, so neither efficiency cores nor a low clock explain the differences. What changes is the cycles
+  per instruction: EPw needs 0.32 cycles per instruction when the 10 updates run back to back on one thread, 0.47–0.48
+  when they are spread over the second (on one thread or ten), and 0.60 when ten threads run them at the same moment
+  (with 18 ms per second spent runnable, waiting for a core, against 8 on one thread). Cold caches for each isolated
+  update, and contention when ten run at once, are the likely causes; the per-update thread CPU time follows (EPw:
+  1,219 µs of CPU per update on ten aligned threads, 737 µs spread, 483 µs on one thread; wall clock 1,450 / 738 /
+  483 µs).
+- **It is the timing of the updates, not the number of threads.** One thread with spread timers costs as much as ten
+  threads with spread timers (1.17 vs 1.21 %). **Today's B+kept pays the same when its timers are spread** (0.87 %
+  aligned, 1.19 % spread): with the unaligned timers real skins have, the partition costs what B+kept costs (EPw
+  1.17–1.21 %) or less (CPw 0.97 %). The earlier "one shared thread 0.62 % vs B+kept 0.75 %" compared aligned with
+  aligned; the "ten threads spread 1.03 % and 13 wakeups" compared spread E with aligned B+kept.
+- **Coalescing is what saves**: one timer for all 10 widgets on one thread, one transaction and one flush: EPw 0.71 %,
+  CPw 0.69 %, below today's B+kept aligned (0.87 %), with 3.5–5.3 wakeups per second.
+- **Wakeups**: DESK-DESIGN's target is "10 widgets updating every second, ≤ 12 wakeups per second", so it is per
+  process. Spread timers cost 12.0–15.3 wakeups per second in every way, B+kept included (12.7): no engine meets it
+  with 10 unaligned 1 Hz skins; it needs updates that fall due together to be run together.
+- **At 60 Hz** the interleaved batch agrees with the paired step: E (EPw) 5.41 % against B+kept 3.90 % (+1.5 points in
+  this process alone, over the plan's 1-point rule), C (CPw) 4.21 % (+0.3). CPw draws the same pixels as EPw with
+  13 % fewer instructions (517 vs 594 M/s).
+- 60 Hz frames in this batch (5 s each, after the phases): rounds below 298 / 300 under this load for A (291), B (295,
+  296), B+kept (297, 296) and EPw (297); none for CPw, C1 and E1. Longest freezes 19–56 ms. `frames60/` (10 s,
+  10 rounds) is the cleaner check; the one long freeze there is EPw's 170 ms commit stall.
+
+<!-- schedpair -->
+
+### As measured before review
+
 **How** (`CostRun.swift`). Every run is a fresh process that opens one scenario in one mode: **ten** = 10 System
 widgets (19 groups each; 12 groups change every second, `Update=1000`), **design** = one 360 pt design skin (8 groups,
 2 change every second), **sixty** = one visualizer at 60 Hz (34 groups, 33 change every frame). Each widget has its own
