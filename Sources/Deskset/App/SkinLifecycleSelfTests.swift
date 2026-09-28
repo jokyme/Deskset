@@ -14,6 +14,7 @@ enum SkinLifecycleSelfTests {
         closeTests(t)
         companionTests(t)
         menuTests(t)
+        weatherCreditTests(t)
     }
 
     // MARK: Starting
@@ -480,6 +481,28 @@ enum SkinLifecycleSelfTests {
                 app.deactivate(config: "Life\\Menu")
             }
             finish(t, skin: { skin }, executor)
+        }
+    }
+
+    // MARK: The weather credit of a busy skin
+
+    static func weatherCreditTests(_ t: AppTestRunner) {
+        t.suite("App: skin lifecycle: a busy skin's menu still credits the weather it shows, from its snapshot") {
+            let (weather, _) = try MediaUITests.bareSkin(t, "[Rainmeter]\nUpdate=-1\n[MeasureWeather]\nMeasure=Plugin\n"
+                                                         + "Plugin=MacWeather\nLocation=Oslo, NO\nDisabled=1\n")
+            defer { weather.close() }
+            var snapshot = SkinSnapshot()
+            snapshot.rebuild(from: weather, generation: 0)
+            t.check(snapshot.usesWeather, "the skin shows MET Norway's data")
+            let target = NSObject()
+            let items = WeatherWiring.menuItems(for: (snapshot.usesWeather, nil), target: target,
+                                                action: #selector(AppController.openWeatherSourceAction(_:)))
+            t.equal(items.map(\.title), ["Weather: \(METNorway.attribution) ↗"], "the credit, without the time of the data")
+            let (plain, _) = try MediaUITests.bareSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeasure=Calc\n")
+            defer { plain.close() }
+            var none = SkinSnapshot()
+            none.rebuild(from: plain, generation: 0)
+            t.check(!none.usesWeather, "a skin without weather has no credit")
         }
     }
 

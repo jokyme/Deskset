@@ -108,8 +108,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return LoadResult(registeredFonts: Fonts.registerFonts(for: skin), issues: skin.issues)
     }
 
-    /// `SkinMessage.load`: loads the skin and starts it, then tells the main thread what it needs to place and show the
-    /// window (`.started`), or that the skin could not be loaded (`.failed`: the skin counts as closed). On the executor.
+    /// `SkinMessage.load`: loads the skin and starts it. The main thread hears that it loaded (`.loaded`: the settings a
+    /// first load seeds, its fonts and notes), then what it needs to place and show the window (`.started`), or that
+    /// the skin could not be loaded (`.failed`: the skin counts as closed). On the executor.
     private func start(_ order: SkinLoadOrder) {
         let loaded: LoadResult
         do {
@@ -122,23 +123,25 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             markClosed()
             return
         }
-        // A first load: the skin's Default… options seed its window settings. The main thread saves them when it hears
-        // of the start; the model has them before the first update, which may read #CURRENTCONFIGZPOS#.
+        // A first load: the skin's Default… options seed its window settings (over what its own window bangs did while it
+        // loaded, as the main thread seeds them over `AppState`), and StartHidden hides it. The main thread does the same
+        // when it hears of the load; the model has them at once, before the first update, which may read
+        // #CURRENTCONFIGZPOS#.
         let defaults = order.firstLoad ? skin.settings.windowDefaults : [:]
-        let state = defaults.isEmpty ? order.state : order.state.seeded(with: defaults)
-        model.settings = SkinWindowSettings(state, hidden: state.startHidden, fadedAlpha: nil)
+        if !defaults.isEmpty { model.settings = model.settings.seeded(with: defaults) }
+        if order.state.seeded(with: defaults).startHidden { model.settings.hidden = true }
+        request(.loaded(SkinLoadReport(windowDefaults: defaults, registeredFonts: loaded.registeredFonts,
+                                       issues: loaded.issues)))
         // A refresh: the Calc Counter "only resets when the skin is unloaded and then loaded again".
         if let previous = order.continuing { skin.continueCounter(at: previous.snapshot.counter) }
         // Paused (sleep, locked screens): the first update happens, the clock waits for the resume.
         updatesPaused = order.paused
         skin.update()
         startTimer()
-        // A window about to be shown never shows before its skin has drawn (a skin that starts hidden draws when shown).
-        if order.presentsWindows && !state.startHidden { frames.drawFirstFrame() }
+        // A window about to be shown never shows before its skin has drawn (a skin that stays hidden draws when shown).
+        if order.presentsWindows && !model.settings.hidden { frames.drawFirstFrame() }
         let snapshot = self.snapshot
-        request(.started(SkinStartReport(size: snapshot.size, windowDefaults: defaults, hidden: model.settings.hidden,
-                                         registeredFonts: loaded.registeredFonts, issues: loaded.issues,
-                                         metadata: snapshot.metadata)))
+        request(.started(SkinStartReport(size: snapshot.size, metadata: snapshot.metadata)))
     }
 
     // MARK: Messages

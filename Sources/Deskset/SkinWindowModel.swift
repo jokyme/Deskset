@@ -45,6 +45,21 @@ struct SkinWindowSettings: Equatable {
         self.init(SkinState(file: ""), hidden: false, fadedAlpha: nil)
     }
 
+    /// The settings with the values of a first load's `Default…` options that can be read (`SkinState.seeded(with:)`).
+    func seeded(with defaults: [String: String]) -> SkinWindowSettings {
+        var state = SkinState(file: "")
+        state.alwaysOnTop = zPosition
+        state.alphaValue = alphaValue
+        state.draggable = draggable
+        state.clickThrough = clickThrough
+        state.keepOnScreen = keepOnScreen
+        state.snapEdges = snapEdges
+        state.savePosition = savePosition
+        state.fadeDuration = fadeDuration
+        state.autoSelectScreen = autoSelectScreen
+        return SkinWindowSettings(state.seeded(with: defaults), hidden: hidden, fadedAlpha: fadedAlpha)
+    }
+
     init(_ state: SkinState, hidden: Bool, fadedAlpha: SkinFadedAlpha?) {
         zPosition = state.alwaysOnTop
         alphaValue = state.alphaValue

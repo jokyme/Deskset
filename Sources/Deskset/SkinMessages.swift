@@ -59,9 +59,9 @@ enum SkinMessage {
 
     // MARK: Life
 
-    /// Loads the skin and starts it (`SkinRuntime.start(_:)`): its fonts, the window defaults of a first load, the
-    /// counter of the skin it replaces, the first update, the update clock and, when the window is to be shown, the
-    /// first frame. The runtime then reports `.started` or `.failed`.
+    /// Loads the skin and starts it (`SkinRuntime.start(_:)`): its fonts, the window defaults of a first load (then
+    /// `.loaded`), the counter of the skin it replaces, the first update, the update clock and, when the window is to be
+    /// shown, the first frame (then `.started`); `.failed` when the skin cannot be loaded.
     case load(SkinLoadOrder)
     /// The first update, then the update clock (a skin loaded at once: `SkinWindowController.start(fadeIn:)`).
     case start
@@ -123,26 +123,31 @@ struct SkinLoadOrder {
     var paused: Bool
 }
 
-/// What a runtime reports once its skin loaded and made its first update (`SkinRequest.started`).
-struct SkinStartReport {
-    /// The window size for the skin's size after its first update (points).
-    var size: CGSize
-    /// The skin's `Default…` window options (`SkinSettings.windowDefaults`), read on a first load; empty otherwise.
+/// What a runtime reports once its skin loaded, before its first update (`SkinRequest.loaded`).
+struct SkinLoadReport {
+    /// The skin's `Default…` window options (`SkinSettings.windowDefaults`), read on a first load; empty otherwise. The
+    /// runtime seeded its window model with them already.
     var windowDefaults: [String: String]
-    /// Whether the window stays hidden: StartHidden, unless the skin's first update showed it (`!Show`), or hidden by
-    /// the skin itself (`!Hide`).
-    var hidden: Bool
     /// The skin registered fonts of its own (`@Resources/Fonts`): skins laid out before are measured again.
     var registeredFonts: Bool
     /// The compatibility notes loading found.
     var issues: [String]
+}
+
+/// What a runtime reports once its skin made its first update (`SkinRequest.started`).
+struct SkinStartReport {
+    /// The window size for the skin's size after its first update (points).
+    var size: CGSize
     /// `[Metadata]`.
     var metadata: [String: String]
 }
 
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
 enum SkinRequest {
-    /// The skin loaded and made its first update (`SkinMessage.load`): the main thread places and shows the window.
+    /// The skin loaded (`SkinMessage.load`): the main thread saves a first load's Default… settings, StartHidden and
+    /// the window settings apply, before the window is placed.
+    case loaded(SkinLoadReport)
+    /// The skin made its first update: the main thread places and shows the window.
     case started(SkinStartReport)
     /// The skin could not be loaded (the error, as text): the main thread unloads it.
     case failed(String)

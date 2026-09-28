@@ -2704,6 +2704,11 @@ private func runEngineReviewTests(_ t: TestRunner) {
         let (fresh, _, _) = try makeEngineSkin(t, ini)
         fresh.update()
         t.close(value(fresh, "C"), 0, "a newly loaded skin starts from 0")
+        // A host that kept the counter of the skin it closed (a skin on another thread is not read directly).
+        let (kept, _, _) = try makeEngineSkin(t, ini)
+        kept.continueCounter(at: old.counter)
+        kept.update()
+        t.close(value(kept, "C"), 5, "the same from the counter the host kept")
     }
 
     t.suite("Engine review: padded label/value rows (layout pattern of the manual's WebParser tutorial)") {
