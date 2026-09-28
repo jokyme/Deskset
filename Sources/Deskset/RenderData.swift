@@ -13,7 +13,7 @@ import DesksetCore
 ///   desktopImage                             `FixedDesktopPicture` as Chameleon's desktop
 ///   programs                                 `RecordingSideEffects` as the skin's side effects (nothing runs)
 ///
-/// Frames (`system`, `audio`) move on once before every update after the first. Main thread.
+/// Frames (`system`, `audio`) move on right before every update after the first: update i sees frame i. Main thread.
 final class RenderData {
     let data: SkinInputData
     /// The skin's system readings (nil when the data gives none of them).

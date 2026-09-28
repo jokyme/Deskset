@@ -12,9 +12,11 @@ import Foundation
 //   weather       the weather service's transport: MET Norway's raw JSON
 //   wifi          the app's Wi-Fi reader
 //   desktopImage  the desktop picture (Chameleon, the Registry's Wallpaper)
+//   programs      what RunCommand's programs write (a Deskset addition: they are side effects, `SideEffects`)
 //
 // A key that is not given leaves that service live. `null` means "there is none": no battery, no player, no network
-// for the weather, no Wi-Fi interface, no desktop picture. The format: docs/COMPATIBILITY.md, "--render --data".
+// for the weather, no Wi-Fi interface, no desktop picture. The format: docs/COMPATIBILITY.md, "Rendering with given
+// data".
 
 /// The `data` object, read and checked. Paths in it are absolute (made so relative to the data file's folder).
 public struct SkinInputData: Equatable, Sendable {

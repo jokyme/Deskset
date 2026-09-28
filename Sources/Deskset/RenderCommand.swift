@@ -326,7 +326,6 @@ enum RenderCommand {
         Fonts.registerFonts(for: skin)
         for i in 0..<o.updates {
             if i > 0 {
-                inputs?.advance()
                 if let virtual {
                     // Update i is at exactly the start plus i intervals.
                     step(virtual, until: Double(i) * o.interval / 1000,
@@ -334,6 +333,8 @@ enum RenderCommand {
                 } else {
                     wait(milliseconds: o.interval)
                 }
+                // --data: frame i of the readings is what update i sees.
+                inputs?.advance()
             }
             skin.update()
         }
