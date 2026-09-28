@@ -8,7 +8,7 @@ extension DeskCatalog {
     /// The documentation of a built-in name. A namespace that is also a value (`uptime`) and a function that reads
     /// data (`files(…)`) have two; a case of an enum whose cases have their own entries (a color, a permission, a
     /// feature) has the case's first, then the enum's.
-    func serviceDocs(for path: CatalogPath) -> [Doc] {
+    func serviceDocs(for path: CatalogPath, call: Bool? = nil) -> [Doc] {
         var docs: [Doc] = []
         func add(_ doc: Doc?) {
             guard let doc, !docs.contains(where: { $0.en == doc.en && $0.zh == doc.zh }) else { return }
@@ -22,7 +22,7 @@ extension DeskCatalog {
             add(ns?.doc)
             add(ns?.value?.doc)
         case .member, .recordField, .typeMember:
-            add(serviceMember(for: path)?.doc)
+            add(serviceMember(for: path, call: call)?.doc)
         case .record(let id): add(record(id)?.doc)
         case .function(let name):
             let f = function(named: name)
@@ -51,12 +51,12 @@ extension DeskCatalog {
     }
 
     /// How pickers and menus name a built-in item ("Progress bar" / "进度条"), when the catalog gives it a title.
-    func serviceTitle(for path: CatalogPath) -> LocalizedText? {
+    func serviceTitle(for path: CatalogPath, call: Bool? = nil) -> LocalizedText? {
         switch path {
         case .component(let name): return component(named: name)?.title
         case .modifier(let name): return modifier(named: name)?.title
         case .namespace(let name): return namespace(named: name)?.title
-        case .member, .recordField, .typeMember: return serviceMember(for: path)?.title
+        case .member, .recordField, .typeMember: return serviceMember(for: path, call: call)?.title
         case .function(let name): return function(named: name)?.title
         case .control(let name): return control(named: name)?.title
         case .enumCase(let type, let name):
@@ -68,12 +68,13 @@ extension DeskCatalog {
     }
 
     /// The member, record field or member of a value type a path names.
-    func serviceMember(for path: CatalogPath) -> MemberSpec? {
+    func serviceMember(for path: CatalogPath, call: Bool? = nil) -> MemberSpec? {
         switch path {
         case .member(let ns, let name): return index.member(ns, name)
         case .recordField(let record, let name): return self.record(record)?.field(named: name)
         case .typeMember(let type, let name):
-            return index.typeMember(type, name, call: false) ?? index.typeMember(type, name, call: true)
+            let asCall = call ?? false
+            return index.typeMember(type, name, call: asCall) ?? index.typeMember(type, name, call: !asCall)
         case .namespace(let name): return namespace(named: name)?.value
         case .function(let name): return function(named: name)?.data
         default: return nil

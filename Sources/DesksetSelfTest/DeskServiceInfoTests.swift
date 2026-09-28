@@ -41,6 +41,7 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
         return
     }
     runDeskSemanticTokenTests(t)
+    runDeskHoverTests(t)
 }
 
 /// A service for one harness text (every catalog example is checked in one).
@@ -292,5 +293,82 @@ func runDeskSemanticTokenTests(_ t: TestRunner) {
         t.equal(DeskSemanticTokenLegend.tokenTypes.count, DeskSemanticTokenType.allCases.count)
         t.equal(DeskSemanticTokenLegend.tokenTypes[DeskSemanticTokenType.translationKey.rawValue], "translationKey")
         t.equal(DeskSemanticTokenLegend.tokenModifiers, ["declaration", "write", "deprecated", "unused", "macOnly"])
+    }
+}
+
+/// The UTF-8 offsets in `text` (from `range`) where `needle` starts as a whole word: not after a letter, digit or
+/// `_`, and not followed by one.
+func deskWordStarts(_ needle: String, in text: String, range: Range<Int>) -> [Int] {
+    let bytes = Array(text.utf8)
+    let n = Array(needle.utf8)
+    guard !n.isEmpty else { return [] }
+    func isWord(_ b: UInt8) -> Bool { (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || b == 0x5F }
+    var out: [Int] = []
+    var i = range.lowerBound
+    while i + n.count <= min(range.upperBound, bytes.count) {
+        if Array(bytes[i..<(i + n.count)]) == n,
+           i == 0 || !isWord(bytes[i - 1]) || !isWord(n[0]),
+           i + n.count >= bytes.count || !isWord(bytes[i + n.count]) || !isWord(n[n.count - 1]) {
+            out.append(i)
+        }
+        i += 1
+    }
+    return out
+}
+
+/// Where a catalog item's name is written in its example (UTF-8 offsets of the name itself); every name-like word
+/// for the items whose name is not written (an enum, a record).
+func deskItemNameStarts(_ path: CatalogPath, in text: String, range: Range<Int>) -> [Int] {
+    func after(_ prefix: String, _ name: String) -> [Int] {
+        deskWordStarts(prefix + name, in: text, range: range).map { $0 + prefix.utf8.count }
+    }
+    switch path {
+    case .component(let n), .control(let n), .function(let n): return deskWordStarts(n, in: text, range: range)
+    case .modifier(let n), .recordField(_, let n), .typeMember(_, let n), .namedValue(_, let n), .permission(let n),
+         .feature(let n):
+        return after(".", n)
+    case .namespace(let n):
+        return deskWordStarts(n, in: text, range: range).filter { $0 == 0 || Array(text.utf8)[$0 - 1] != UInt8(ascii: ".") }
+            .map { $0 + (n.split(separator: ".").dropLast().map { $0.utf8.count + 1 }.reduce(0, +)) }
+    case .member(let ns, let n): return after(ns + ".", n)
+    case .infoField(let n), .packageField(let n): return deskWordStarts(n + ":", in: text, range: range)
+    case .formatOption(let l): return deskWordStarts(l + ":", in: text, range: range)
+    case .enumCase(_, let n): return after(".", n)
+    case .enumeration, .record:
+        var starts: [Int] = []
+        let bytes = Array(text.utf8)
+        var i = range.lowerBound
+        while i < range.upperBound {
+            let b = bytes[i]
+            let isStart = ((b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A)) && (i == 0 || !((bytes[i - 1] >= 0x30 && bytes[i - 1] <= 0x39) || (bytes[i - 1] >= 0x41 && bytes[i - 1] <= 0x5A) || (bytes[i - 1] >= 0x61 && bytes[i - 1] <= 0x7A)))
+            if isStart { starts.append(i) }
+            i += 1
+        }
+        return starts
+    }
+}
+
+func runDeskHoverTests(_ t: TestRunner) {
+    t.suite("Desk: service — hover, every catalog example") {
+        let harness = DeskExampleHarness(catalog: .current)
+        var examples = 0
+        var hovers = 0
+        for item in DeskCatalog.current.documentedItems() where !item.doc.example.isEmpty {
+            examples += 1
+            let built = harness.build(item.doc.example, context: item.doc.exampleContext)
+            let snapshot = deskInfoHarnessSnapshot(built.text)
+            let starts = deskItemNameStarts(item.path, in: built.text, range: built.exampleRange)
+            var found = false
+            var seen: [String] = []
+            for start in starts {
+                guard let hover = snapshot.hover(at: snapshot.index.position(utf8: start)) else { continue }
+                hovers += 1
+                if hover.paragraphs.contains(item.doc.text) { found = true; break }
+                seen.append(hover.title.en)
+            }
+            if !found { t.check(false, "\(item.path): \(item.doc.example) — \(starts.count) places, hovers \(seen)") }
+        }
+        t.check(examples > 400, "examples: \(examples)")
+        print("    \(examples) examples, \(hovers) hovers")
     }
 }

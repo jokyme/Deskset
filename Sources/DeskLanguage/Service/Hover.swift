@@ -170,9 +170,15 @@ extension DeskSnapshot {
             if let n = table.innermost(at: o.range.lowerBound, where: { $0.kind == .numberLiteral }) { return numberHover(entry: n) }
             return nil
         case .event:
-            return DeskHover(range: range, title: LocalizedText("`event`", "`event`"),
-                             paragraphs: [LocalizedText("What happened: the event this block runs for, with its details.",
-                                                        "发生了什么：这个块所响应的事件及其细节。")])
+            var hover = DeskHover(range: range, title: LocalizedText("`event`", "`event`"),
+                                  paragraphs: [LocalizedText("What happened: the event this block runs for, with its details.",
+                                                             "发生了什么：这个块所响应的事件及其细节。")], reference: "events")
+            let record = eventRecord(at: o.range.lowerBound)
+            if let spec = options.catalog.record(record) {
+                hover.paragraphs.append(spec.doc.text)
+                hover.facts.append(DeskHoverFact(DeskServiceWords.type, options.catalog.displayName(for: .record(record))))
+            }
+            return hover
         default:
             guard let path = o.path else { return fallbackHover(at: offset) }
             let node = table.innermost(at: o.range.lowerBound)
@@ -184,9 +190,14 @@ extension DeskSnapshot {
 
     func builtInHover(_ path: CatalogPath, range: DeskRange, written: String, node: Int?) -> DeskHover {
         let catalog = options.catalog
-        let docs = catalog.serviceDocs(for: path)
+        // A member written as a call (`list.first(5)`) is the call, not the field of the same name.
+        let isCall = node.map { n -> Bool in
+            let parent = nodeTable.entries[n].parent
+            return parent >= 0 && nodeTable.entries[parent].kind == .callExpr && nodeTable.children(of: parent).first == n
+        }
+        let docs = catalog.serviceDocs(for: path, call: isCall)
         let first = docs.first
-        var hover = DeskHover(range: range, title: catalog.serviceTitle(for: path) ?? LocalizedText("`\(written)`", "`\(written)`"),
+        var hover = DeskHover(range: range, title: catalog.serviceTitle(for: path, call: isCall) ?? LocalizedText("`\(written)`", "`\(written)`"),
                               codeLine: writtenCallLine(node: node) ?? codeLine(for: path), paragraphs: docs.map(\.text),
                               example: first.map { DeskSnapshot.firstLines($0.example, 3) },
                               rainmeter: (first?.rainmeter ?? []).map(DeskSnapshot.rainmeterText),
@@ -196,13 +207,11 @@ extension DeskSnapshot {
                                                   "正在被 `\(deprecated.replacement)` 取代（从 Deskset \(deprecated.since) 起）。"))
         }
         // What data gives, and how often.
-        var data = catalog.serviceMember(for: path)
+        var data = catalog.serviceMember(for: path, call: isCall)
         if case .namespace(let name) = path, catalog.namespace(named: name)?.value == nil { data = nil }
         if let data, data.kind != .action {
             var semType = SemType(type: data.type, displayBase: data.displayBase)
-            if let node, let recorded = checked.types[nodeTable.id(node)], nodeTable.entries[node].kind != .identifierExpr || data.kind == .field {
-                if data.kind == .field { semType = recorded }
-            }
+            if data.kind == .field, let node, let recorded = recordedType(node), recorded.type != .any { semType = recorded }
             hover.facts.append(DeskHoverFact(DeskServiceWords.value, typeWords(semType)))
             hover.paragraphs += recordDocs(of: semType.type)
             switch path {
@@ -265,6 +274,27 @@ extension DeskSnapshot {
               let open = table.entries[clause].positioned.childTokens.first, open.kind == .lParen, !open.token.isMissing,
               let site = callSite(at: open.textRange.upperBound), site.clause == clause, site.signatures.count > 1 else { return nil }
         return signatureItem(site.signatures[activeSignature(site, argument: 0)], site: site).label
+    }
+
+    /// The record `event` holds where an offset is: the one of the event modifier whose block holds it.
+    func eventRecord(at offset: Int) -> String {
+        let table = nodeTable
+        guard let i = table.innermost(at: offset) else { return "Event" }
+        for a in [i] + table.ancestors(of: i) where table.entries[a].kind == .modifierApp {
+            let tokens = table.entries[a].positioned.childTokens
+            if tokens.count >= 2, let event = options.catalog.modifier(named: tokens[1].token.name)?.event {
+                return event.eventRecord ?? "Event"
+            }
+        }
+        return "Event"
+    }
+
+    /// The type the checker recorded for a node of the open file, when the record is the node's own: nested nodes of
+    /// one kind that start at one place share a key, and the record is the outermost one's.
+    func recordedType(_ i: Int) -> SemType? {
+        let id = nodeTable.id(i)
+        guard nodeTable.indexes(of: id).first == i else { return nil }
+        return checked.types[id]
     }
 
     /// The permission a built-in name needs to read or do what it does.
@@ -353,7 +383,8 @@ extension DeskSnapshot {
         case .loopVariable:
             // The list's element type.
             if let declaring, declaring.file == file, let list = declaring.node.childNodes.first(where: { $0.kind.isExpression }),
-               let type = checked.types[tree.id(of: list)] {
+               let listEntry = nodeTable.innermost(at: list.quickTextStart, where: { $0.offset == list.offset && $0.node === list.node }),
+               let type = recordedType(listEntry) {
                 if case .list(let element) = type.type {
                     let semType = SemType(type: element, displayBase: type.displayBase)
                     hover.facts.append(DeskHoverFact(DeskHoverWords.each, typeWords(semType)))
@@ -497,7 +528,7 @@ extension DeskSnapshot {
         guard let token = entry.positioned.childTokens.first, !token.token.isMissing, let value = token.token.numberValue else { return nil }
         let catalog = options.catalog
         let range = index.range(utf8: token.textRange)
-        let semType = checked.types[table.id(n)]
+        let semType = recordedType(n)
         let written = token.token.unit.flatMap { unit -> UnitSpec? in
             guard case .known = unit.status else { return nil }
             return catalog.unit(spelling: unit.text)
@@ -552,9 +583,9 @@ extension DeskSnapshot {
         while p >= 0 {
             let kind = table.entries[p].kind
             guard kind == .binaryExpr || kind == .parenExpr || kind == .prefixExpr else { return nil }
-            if let base = checked.types[table.id(p)]?.displayBase { return base }
+            if let base = recordedType(p)?.displayBase { return base }
             for sibling in table.children(of: p) where sibling != child {
-                if let base = checked.types[table.id(sibling)]?.displayBase { return base }
+                if let base = recordedType(sibling)?.displayBase { return base }
             }
             child = p
             p = table.entries[p].parent

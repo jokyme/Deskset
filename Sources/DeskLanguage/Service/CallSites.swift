@@ -215,7 +215,7 @@ extension DeskSnapshot {
         guard let first = options.first, offset > table.entries[first].textStart else { return nil }
         let end = entry.positioned.childTokens.last.flatMap { $0.kind == .interpolationEnd && !$0.token.isMissing ? $0.textStart : nil }
         if let end, offset > end { return nil }
-        let valueType = checked.types[table.id(valueIndex)]?.type
+        let valueType = recordedType(valueIndex)?.type
         let catalog = self.options.catalog
         var params: [ParamSpec] = []
         for spec in catalog.formatOptions where DeskSnapshot.formatOption(spec, appliesTo: valueType) {

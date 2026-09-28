@@ -144,11 +144,10 @@ extension DeskSnapshot {
     /// The signature the written labels fit best (then the positional values' types; ties go to the earliest).
     func activeSignature(_ site: DeskCallSite, argument k: Int) -> Int {
         guard site.signatures.count > 1 else { return 0 }
-        let table = nodeTable
         let written = site.arguments.compactMap(\.label)
         var positional: [(index: Int, type: DeskType?)] = []
         for (i, argument) in site.arguments.enumerated() where argument.label == nil && (argument.value != nil || i == k) {
-            positional.append((i, argument.value.flatMap { checked.types[table.id($0)]?.type }))
+            positional.append((i, argument.value.flatMap { recordedType($0)?.type }))
         }
         var best = 0
         var bestScore = Int.max
