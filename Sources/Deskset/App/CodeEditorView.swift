@@ -395,9 +395,10 @@ final class CodeEditorView: NSView {
         return retained.map(\.url)
     }
 
-    /// Shows another open file (commits the shown buffer first). Not reported through `onFileChange`.
+    /// Shows another open file (commits the shown buffer first). Not reported through `onFileChange`. The file shown
+    /// already stays as it is (its buffer's stash is not its text: the text view holds that).
     func show(file url: URL) {
-        guard let buffer = buffer(for: url) else { return }
+        guard let buffer = buffer(for: url), buffer !== current else { return }
         show(buffer)
     }
 
