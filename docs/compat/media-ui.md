@@ -141,12 +141,15 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 
 ### `PlayerType=MacPermission` (refused Automation)
 - Windows (Rainmeter): no counterpart. Windows players need no permission, so a player that runs can always be read.
-- Mac (Deskset): `PlayerType=MacPermission` tells whether macOS keeps Deskset from reading a running player. Number:
-  **1** while a running Music or Spotify has refused Automation (in the prompt or in System Settings › Privacy &
-  Security › Automation), **2** while a running player has not been asked yet (macOS asks at its first poll, so its
-  prompt may be on screen), else **0**. The measure's preferred player comes first, and a refusal before an undecided
-  player. It is 0 while the measure shows a track of another player (the refusal hides nothing then), and 0 for a
-  refused player that is closed (not playing is what is true; its first poll after it opens tells again). String: the
+- Mac (Deskset): `PlayerType=MacPermission` tells whether macOS keeps Deskset from reading a running player. It is
+  about the player the measure would show if it could read it: the preferred player while it runs, else the other
+  one. Number: **1** while that player runs and has refused Automation (in the prompt or in System Settings › Privacy &
+  Security › Automation), **2** while it runs and has not been asked yet (macOS asks at its first poll, so its prompt
+  may be on screen), else **0**. So the other player's refusal counts only while the preferred player is closed: while
+  the preferred one runs, the measure shows it, not playing and with its own controls, whatever the other one refused
+  (judgment: a user may refuse the other player on purpose and keep it open). It is 0 while the measure shows a track
+  of another player (the refusal hides nothing then), and 0 for a refused player that is closed (not playing is what
+  is true; its first poll after it opens tells again). String: the
   player the number is about (`Music`, `Spotify`); with 0, the player the measure shows (the preferred one when none
   runs), so it is never empty. Automatic MaxValue 2. `PlayerName=[MainMeasure]` works as for every PlayerType, and
   WebNowPlaying accepts it too. Reading it never asks: it is the answer of the last poll, or of the check Apple's API

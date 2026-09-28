@@ -16,9 +16,9 @@ https://docs.rainmeter.net/manual/plugins/win7audio/, the version history — pl
 
 | Feature | macOS permission (asked the first time a skin needs it) | Info.plist key | When refused |
 |---|---|---|---|
-| AudioLevel `Port=Output` (macOS 14.2+) | System Audio Recording ("Screen & System Audio Recording → System Audio Recording Only"), asked the first time another app plays sound while a visualizer is loaded | `NSAudioCaptureUsageDescription` | Levels read 0 (macOS delivers silence); once the silence watchdog suspects a refusal, `DeviceStatus` reads 2 and the skin gets a compatibility note |
-| AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording, then restart Deskset | — | Levels read 0, `DeviceStatus` 0, logged once, compatibility note |
-| AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | Levels read 0, `DeviceStatus` 0, logged once, compatibility note; tried again every 10 s |
+| AudioLevel `Port=Output` (macOS 14.2+) | System Audio Recording ("Screen & System Audio Recording → System Audio Recording Only"), asked the first time another app plays sound while a visualizer is loaded | `NSAudioCaptureUsageDescription` | Levels read 0 (macOS delivers silence); once the silence watchdog suspects a refusal, `MacPermission` reads 1 and the skin gets a compatibility note |
+| AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording, then restart Deskset | — | Levels read 0, `DeviceStatus` 0, `MacPermission` 1, logged once, compatibility note |
+| AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | Levels read 0, `DeviceStatus` 0, `MacPermission` 1 (2 while the prompt waits for an answer), logged once, compatibility note; tried again every 10 s |
 | AppVolume `NumberType=Peak`, `Mute` | System Audio Recording | `NSAudioCaptureUsageDescription` | Peak 0; mute has no effect |
 | Win7Audio | none | — | — |
 
@@ -72,7 +72,7 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   indicator in the menu bar, and the output device stays active (as with any app that records system audio; not for
   output devices with inputs, see the next entry). The tap runs only while another app plays sound (next entry but
   one). If the user refuses, macOS delivers silence: every level is 0, and Deskset can only suspect a refusal (see
-  [DeviceStatus 2](#typedevicestatus-value-2-a-refused-system-audio-recording)). The tap captures what apps play; the
+  [Type=MacPermission](#typemacpermission-a-missing-permission)). The tap captures what apps play; the
   output device's own volume and mute are expected to apply after it, so turning the Mac's volume down should not
   shrink the meters (not verified: see "Verification" below).
 - Status: emulated
@@ -127,8 +127,8 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Mac (Deskset): an IOProc directly on the input device (default input, or the device named by `ID`); follows default-input
   changes. The Microphone permission is requested the first time; capture starts as soon as it is granted.
 - Why: —
-- Skin impact: while capturing, macOS shows the orange microphone indicator. Refused → 0, `DeviceStatus` 0, one log
-  line and a compatibility note; the source is started again every 10 s, so allowing the microphone later in System
+- Skin impact: while capturing, macOS shows the orange microphone indicator. Refused → 0, `DeviceStatus` 0,
+  `MacPermission` 1, one log line and a compatibility note; the source is started again every 10 s, so allowing the microphone later in System
   Settings starts the levels (and removes the note) without a restart.
 - Status: identical (behaviour), different permission UI
 
@@ -309,30 +309,39 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 ### Type=DeviceStatus
 - Windows (Rainmeter): "Status (0 or 1) of the device."
 - Mac (Deskset): 1 while the capture runs, or while system audio waits for another app to play sound; 0 otherwise (no
-  device, microphone refused, Screen Recording missing on 13–14.1, command-line mode). A refused System Audio
-  Recording permission reads 2 once the silence watchdog suspects it (next entry).
+  device, microphone refused, Screen Recording missing on 13–14.1, command-line mode). A suspected refusal of System
+  Audio Recording reads 1 too, since the device is there: `Type=MacPermission` tells it (next entry).
 - Why: see Port=Output.
-- Skin impact: a skin that tests `DeviceStatus = 1` treats a suspected refusal like a missing device.
+- Skin impact: none; a skin that wants to say that a permission is missing reads `Type=MacPermission`.
 - Status: emulated
 
-### Type=DeviceStatus value 2: a refused System Audio Recording
-- Windows (Rainmeter): no counterpart (0 or 1 only).
-- Mac (Deskset): macOS reports a refused System Audio Recording permission as a tap that runs and carries only digital
-  silence, so it cannot be seen up front. A watchdog looks every 10 s while a system-audio tap runs: nothing but
-  digital silence at two looks in a row, while another app runs its audio output each time, is its verdict.
-  `DeviceStatus` then reads 2 (instead of 1) and the skin gets a compatibility note pointing to the permission. The
-  verdict holds while the tap waits for sound and in the next taps, until a tap carries sound, which clears both
-  within 10 s. While it holds, every look that still finds silence while another app plays takes a new tap (a
-  permission given in System Settings may reach only a new one), so allowing it takes effect within about 20 s even
-  while the music never stops. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
-  silence is only silence (a call app that keeps its output running between calls, a paused video): no verdict until
-  Deskset restarts.
-- Why: Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
-- Skin impact: none for skins that test `DeviceStatus = 1` or `= 0`. Deskset's Spectrum and Studio VU show "Allow
-  System Audio Recording" and open Privacy & Security
-  (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). It takes about 20 s of silence to
-  appear, and it is a suspicion, not a certainty: an app that sends nothing but digital silence to its output from the
-  moment Deskset starts, before anything else was heard, looks the same.
+### Type=MacPermission (a missing permission)
+- Windows (Rainmeter): no counterpart; Windows asks for no permission to capture audio.
+- Mac (Deskset): a child with `Type=MacPermission` reads **1** while a refused macOS permission keeps its parent's
+  stream silent, **2** while macOS waits for an answer (the microphone's prompt is up), else **0**. Its string names
+  the permission as System Settings does: `System Audio Recording`, `Screen Recording` (macOS 13 – 14.1) or
+  `Microphone`; "" with 0. Automatic MaxValue 2. A refused microphone or Screen Recording is known when the capture
+  starts (Screen Recording reads 1 from the first try, also while macOS's prompt is up: macOS does not say whether it
+  was answered). A refused System Audio Recording is not: macOS gives a tap that runs and carries only digital
+  silence. So a watchdog looks every 10 s while a system-audio tap runs, and nothing but digital silence at two looks
+  in a row while the same app plays each time is its verdict: `MacPermission` reads 1 and the skin gets a
+  compatibility note pointing to the permission. Only apps count: a process counts as the app it works for (as Activity
+  Monitor groups them: a browser's audio helper is the browser), and only apps with a Dock icon, so daemons and agents
+  that keep an output open while silent (system sounds, speech, call services, audio routers) do not. The verdict
+  holds while the tap waits for sound and in the next taps, until a tap carries sound, which clears it within 10 s.
+  While it holds the tap is kept; as the silence goes on, a new tap is taken after 10 s, then 30 s, 60 s, 3 min and
+  5 min (a permission given in System Settings may reach only a new tap), then no more until another app starts
+  playing, which starts the delays again. Leaving or quitting System Settings takes a new tap at once. Once any
+  system-audio tap has carried sound since Deskset started, the permission was given, and later silence is only
+  silence (a call app that keeps its output running between calls, a paused video): no verdict until Deskset
+  restarts. `DeviceStatus` stays 1 meanwhile.
+- Why: Deskset extension: without it a skin can only say "nothing playing" when a permission is missing, and a
+  `DeviceStatus` other than 0 or 1 would mislead skins that test for them.
+- Skin impact: none for skins that do not use it (Rainmeter logs an unknown Type). Deskset's Spectrum and Studio VU
+  show "Allow System Audio Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security
+  (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). For System Audio Recording it
+  takes about 20 s of silence to appear, and it is a suspicion, not a certainty: an app that sends nothing but digital
+  silence to its output from the moment Deskset starts, before anything else was heard, looks the same.
 - Status: Deskset extension
 
 ### Type=DeviceName, Type=DeviceID
@@ -362,7 +371,7 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Mac (Deskset): environment variables for development: `DESKSET_AUDIO_DEMO=1` replaces every audio stream by a generated
   demo signal (pink noise, kick, hi-hat, melody) — no permission, works with `--render`, useful for screenshots and demo
   videos; `DESKSET_AUDIO_DEMO=silent` gives the same streams carrying only digital silence (a visualizer at rest);
-  `DESKSET_AUDIO_DEMO=refused` gives that silence with the silence watchdog's verdict already given (`DeviceStatus` 2,
+  `DESKSET_AUDIO_DEMO=refused` gives that silence with the silence watchdog's verdict already given (`MacPermission` 1,
   a visualizer's refused state);
   `DESKSET_AUDIO_CAPTURE=0` turns capture off in the app and `=1` on in command-line modes (for skin windows
   only: `--render` never captures real audio); `DESKSET_AUDIO_FORCE_SCK=1` uses ScreenCaptureKit instead of a process
@@ -528,8 +537,10 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
   white-noise slope, band-count independence), the ring buffer (interleaved, non-interleaved, overflow, tap buffer
   selection), the engine with fake backends (sharing, restart debounce, stop after the last subscriber, refusal paths),
   system audio with a fake "another app plays" (no tap while nothing plays, a tap at the first sound, the 5 s standby
-  delay and a shorter gap that keeps the tap, sleep and wake while waiting), the watchdog's verdict as `DeviceStatus` 2
-  (kept while waiting and in the next tap, cleared by sound, never again once sound was heard), `!DisableMeasure` and
+  delay and a shorter gap that keeps the tap, sleep and wake while waiting), the watchdog's verdict as `MacPermission` 1
+  with `DeviceStatus` still 1 (only when the same app plays at both looks; kept while waiting and in the next tap; the
+  tap kept between new ones, which come further apart and stop, start again when another app plays and at once
+  after System Settings; cleared by sound, never again once sound was heard), `!DisableMeasure` and
   `!EnableMeasure` on a parent, option parsing, all measure types, Win7Audio commands against fakes, AppVolume
   filtering and section variables, the permission notes (added, and taken back once the microphone is allowed or sound
   arrives), which skins capture (the Manage window's check of a skin that is not loaded and a render subscribe nothing;
@@ -562,7 +573,8 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
   with Bluetooth headphones (the headphones must stay in their high-quality profile and no microphone indicator may
   appear) and with a USB audio interface or BlackHole as the output. With nothing playing, the purple indicator must
   go out about 5 s after the music stops and come back with the next sound; refusing the permission and playing for
-  20 s must turn `DeviceStatus` to 2 (Spectrum's Notice), and allowing it and playing again must bring it back to 1.
+  20 s must turn `MacPermission` to 1 (Spectrum's Notice), and allowing it in System Settings and leaving it while
+  the music plays must bring it back to 0 within about 10 s.
 
 ## Engine integration notes (for maintainers)
 

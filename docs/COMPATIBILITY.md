@@ -110,9 +110,9 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 
 | Feature (skin option) | macOS permission | When it is asked | If you refuse |
 | --- | --- | --- | --- |
-| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only"); the purple indicator shows only while another app plays sound | First time another app plays sound while a visualizer skin runs | macOS delivers silence: levels read 0. If a visualizer stays silent for about 20 s while another app plays sound, `DeviceStatus` reads 2 (Deskset extension) and the skin gets a compatibility note pointing to the permission |
-| AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, one log line |
-| AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, one log line. Tried again every 10 s, so allowing it later works without a restart |
+| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only"); the purple indicator shows only while another app plays sound | First time another app plays sound while a visualizer skin runs | macOS delivers silence: levels read 0. If a visualizer stays silent for about 20 s while the same app plays sound, `MacPermission` reads 1 (Deskset extension) and the skin gets a compatibility note pointing to the permission |
+| AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, `MacPermission` 1, one log line |
+| AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, `MacPermission` 1, one log line. Tried again every 10 s, so allowing it later works without a restart |
 | AppVolume `NumberType=Peak`, AppVolume mute | System Audio Recording | First peak / mute use | Peak 0; mute has no effect |
 | NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing; `PlayerType=MacPermission` tells a skin (Deskset extension). Re-checked every 30 s, so granting it later works without a restart |
 | WiFiStatus `SSID`, `LIST` | Location Services (macOS shares Wi-Fi names only with such apps) | First time a skin with an SSID / LIST measure loads | SSID is empty and the list is empty; quality, rates and security still work |
@@ -147,7 +147,7 @@ by the 15 tested packages.
 | --- | --- | --- |
 | ActionTimer | identical | Lists, Wait, Repeat, Execute, Stop; drift-free timing on the main run loop |
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
-| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; needs a permission; `DeviceStatus` 2 for a suspected refusal |
+| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; needs a permission; `Type=MacPermission` tells a missing one |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |
 | FolderInfo | emulated | Background scans; Mac hidden / system files |
@@ -838,7 +838,7 @@ belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mod
 temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
 with the measures ([§6.4](#64-measures)), NowPlaying's `PlayerType=MacPermission` with the music players
-([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)), AudioLevel's `DeviceStatus` value 2 with the audio plugins
+([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)), AudioLevel's `Type=MacPermission` with the audio plugins
 ([§10.1](#101-audiolevel-visualizers-and-level-meters)), Chameleon's `CropDesktop=Skin` with the desktop plugins
 ([§10.7](#107-window-desktop-and-color-plugins-third-party)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
@@ -1972,7 +1972,7 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   aggregate, so a visualizer never records a microphone or switches Bluetooth headphones to their call profile.
 - **Why:** process taps are the public API for system audio capture.
 - **Skin impact:** macOS asks once for **System Audio Recording** and shows its purple recording indicator while the
-  tap runs. If refused, macOS delivers silence (levels 0); `DeviceStatus` 2 (below) is Deskset's suspicion of it.
+  tap runs. If refused, macOS delivers silence (levels 0); `MacPermission` 1 (below) is Deskset's suspicion of it.
 - **Status:** emulated
 
 #### System audio only while another app plays (macOS 14.2+)
@@ -1998,8 +1998,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Windows:** capture of the default (or `ID`) input endpoint.
 - **Mac:** the input device directly, following default-input changes; needs the **Microphone** permission.
 - **Why:** —
-- **Skin impact:** the orange microphone indicator while capturing; refused → 0, `DeviceStatus` 0 and a compatibility
-  note. Deskset tries again every 10 s, so the levels start (and the note goes away) once the microphone is allowed.
+- **Skin impact:** the orange microphone indicator while capturing; refused → 0, `DeviceStatus` 0, `MacPermission` 1
+  and a compatibility note. Deskset tries again every 10 s, so the levels start (and the note goes away) once the microphone is allowed.
 - **Status:** identical (different permission UI)
 
 #### `ID`
@@ -2056,23 +2056,27 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 #### `Type=Format`, `DeviceStatus`, `DeviceName`, `DeviceID`, `DeviceList`
 - **Windows:** format text, status 0 / 1, name / ID, a list of device IDs.
 - **Mac:** Format like `48000 Hz, 32-bit float, 2 channels`; DeviceStatus 1 while capturing or while system audio
-  waits for sound, 2 for a suspected refusal (next entry); Mac device names and UIDs, available even before capture;
-  DeviceList has one `UID: Name` per line.
+  waits for sound (also while a refused permission is suspected: the device is there), else 0; Mac device names and
+  UIDs, available even before capture; DeviceList has one `UID: Name` per line.
 - **Why:** these formats are not documented.
 - **Skin impact:** different wording; skins that parse the Windows list format will not match.
 - **Status:** emulated
 
-#### `Type=DeviceStatus` value 2: a refused System Audio Recording
-- **Windows:** no counterpart (0 or 1).
-- **Mac:** macOS reports a refused System Audio Recording as a tap that carries only digital silence. When a tap
-  carries nothing but digital silence at two looks 10 s apart while another app runs its audio output, and no
-  system-audio tap has carried sound since Deskset started, `DeviceStatus` reads 2 and the skin gets a compatibility
-  note. It holds while the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s);
-  meanwhile a new tap is taken every 10 s, so a permission given later takes effect while music plays on.
+#### `Type=MacPermission`: a missing permission
+- **Windows:** no counterpart; Windows asks for no permission to capture audio.
+- **Mac:** 1 while a refused permission keeps the stream silent, 2 while macOS waits for an answer (the microphone's
+  prompt), else 0; the string names it (`System Audio Recording`, `Screen Recording`, `Microphone`). A refused
+  microphone or Screen Recording is known when the capture starts. A refused System Audio Recording is a tap that
+  carries only digital silence: when a tap carries nothing else at two looks 10 s apart while the same app plays
+  each time (an app with a Dock icon, its helpers included; not daemons or agents), and no system-audio tap has
+  carried sound since Deskset started, `MacPermission` reads 1 and the skin gets a compatibility note. It holds while
+  the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s). Meanwhile the tap is
+  kept; new taps come after 10 s, 30 s, 60 s, 3 min and 5 min of silence and then stop until another app plays, and
+  leaving System Settings takes one at once, so a permission given there reaches the capture. `DeviceStatus` stays 1.
 - **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
-- **Skin impact:** none for skins that test for 1 or 0. It is a suspicion: an app that sends only digital silence to
+- **Skin impact:** none for skins that do not use it. It is a suspicion: an app that sends only digital silence to
   its output from the moment Deskset starts looks the same. Deskset's Spectrum and Studio VU show "Allow System Audio
-  Recording" and open Privacy & Security.
+  Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security.
 - **Status:** Mac-only
 
 ### 10.2 Win7Audio (volume, mute, output device)
@@ -2156,9 +2160,10 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 
 #### NowPlaying: `PlayerType=MacPermission` (refused Automation)
 - **Windows:** no counterpart; Windows players need no permission.
-- **Mac:** 1 while a running Music or Spotify has refused Automation, 2 while a running player has not been asked yet
-  (macOS's prompt may be on screen), else 0: the preferred player first, a refusal before an undecided one. It stays 0
-  while the measure shows another player's track, and for a refused player that is closed. The string is the player
+- **Mac:** about the player the measure would show: the preferred player while it runs, else the other one. 1 while
+  that player runs and has refused Automation, 2 while it has not been asked yet (macOS's prompt may be on screen),
+  else 0; so the other player's refusal counts only while the preferred player is closed. It stays 0 while the
+  measure shows another player's track, and for a refused player that is closed. The string is the player
   the number is about (`Music`, `Spotify`; with 0, the player the measure shows). Reading it never asks; a refusal is
   re-checked every 30 s, so allowing it later brings it back to 0. WebNowPlaying accepts it too.
 - **Why:** Deskset extension: a refused player looks closed to every other PlayerType, so a skin could only say "not

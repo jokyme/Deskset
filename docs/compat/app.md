@@ -511,7 +511,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
   | Feature | macOS permission | Info.plist key | When refused |
   |---|---|---|---|
-  | AudioLevel `Port=Output`, AppVolume peaks (macOS 14.2+) | Screen & System Audio Recording → System Audio Recording Only (AudioLevel: asked the first time another app plays sound while the skin is loaded) | `NSAudioCaptureUsageDescription` | levels read 0; AudioLevel `DeviceStatus` 2 once the silence watchdog suspects it |
+  | AudioLevel `Port=Output`, AppVolume peaks (macOS 14.2+) | Screen & System Audio Recording → System Audio Recording Only (AudioLevel: asked the first time another app plays sound while the skin is loaded) | `NSAudioCaptureUsageDescription` | levels read 0; AudioLevel `MacPermission` 1 once the silence watchdog suspects it |
   | AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording (then restart Deskset) | — | levels read 0 |
   | AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | levels read 0 (tried again every 10 s) |
   | NowPlaying / iTunes / WebNowPlaying, RecycleManager Empty, FileView Properties | Automation (Music, Spotify, Finder) | `NSAppleEventsUsageDescription` | player shown as closed; Trash / Get Info do nothing |
@@ -532,9 +532,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): besides the log line, the skin gets a compatibility note when: the microphone is refused (Port=Input);
   on macOS 13 – 14.1 Screen Recording is missing; a system-audio stream carried nothing but digital silence over two
-  looks 10 seconds apart while another app was playing sound, and no system-audio stream had carried sound since
+  looks 10 seconds apart while the same app was playing sound, and no system-audio stream had carried sound since
   Deskset started (the usual sign of a refused System Audio Recording permission, which macOS reports as silence;
-  AudioLevel's `DeviceStatus` then reads 2); Location Services are off for a WiFiStatus SSID / LIST measure or a
+  AudioLevel's `MacPermission` then reads 1); Location Services are off for a WiFiStatus SSID / LIST measure or a
   MacWeather / MacSun `Location=auto` measure (the weather note is taken back at the measure's next update once they
   are allowed); Deskset
   may not control Music or Spotify; a MediaKey track key is sent without Accessibility (it reaches only Music and
