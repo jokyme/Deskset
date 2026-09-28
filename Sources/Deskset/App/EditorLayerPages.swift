@@ -1262,37 +1262,9 @@ extension InspectorWindowController {
             }
             return popup
         case .color:
-            var current = ""
-            if case .changeColor(_, _, let c) = parsed { current = c }
-            let colorKey = Self.colorKey(forMeterType: m.type)
             let popup = CompactPopUpButton()
             popup.identifier = NSUserInterfaceItemIdentifier("\(section)/\(key)/color")
-            let menu = NSMenu()
-            for (title, value) in widgetColors(skin) {
-                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-                item.representedObject = value
-                if let rgba = OptionValue.color(skin.resolve(value, in: nil, sectionVariables: false)) {
-                    item.image = Self.swatchImage(rgba)
-                }
-                menu.addItem(item)
-            }
-            popup.menu = menu
-            // The choice written, else the one of the same color (same-value colors are one choice).
-            let resolved = OptionValue.color(skin.resolve(current, in: nil, sectionVariables: false))
-            if let item = menu.items.first(where: { ($0.representedObject as? String) == current })
-                ?? menu.items.first(where: { item in
-                    (item.representedObject as? String).flatMap { OptionValue.color(skin.resolve($0, in: nil, sectionVariables: false)) } == resolved
-                        && resolved != nil
-                }) {
-                popup.select(item)
-            }
-            popup.toolTip = popup.titleOfSelectedItem
-            let original = skin.section(named: section)?.rawOption(colorKey) ?? ""
-            popup.onAction { c in
-                guard let v = (c as? NSPopUpButton)?.selectedItem?.representedObject as? String else { return }
-                write(.changeColor(section: section, key: colorKey, color: v),
-                      leave: .changeColor(section: section, key: colorKey, color: original.isEmpty ? "255,255,255,255" : original))
-            }
+            fillColorChoice(popup, parsed: parsed, section: section, key: key, meter: m, skin: skin)
             return popup
         case .custom:
             let written: String? = {
@@ -1320,6 +1292,42 @@ extension InspectorWindowController {
     }
 
     /// A choice made in a click picker: written at once when it needs nothing more, otherwise its detail is shown.
+    /// "Change Color To…": the widget's colors, the one written chosen; picking one writes it, and leaving puts back
+    /// the layer's color as it is now.
+    func fillColorChoice(_ popup: CompactPopUpButton, parsed: ClickAction, section: String, key: String, meter m: Meter,
+                         skin: Skin) {
+        var current = ""
+        if case .changeColor(_, _, let c) = parsed { current = c }
+        let colorKey = Self.colorKey(forMeterType: m.type)
+        let menu = NSMenu()
+        for (title, value) in widgetColors(skin) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.representedObject = value
+            if let rgba = OptionValue.color(skin.resolve(value, in: nil, sectionVariables: false)) {
+                item.image = Self.swatchImage(rgba)
+            }
+            menu.addItem(item)
+        }
+        popup.menu = menu
+        // The choice written, else the one of the same color (same-value colors are one choice).
+        let resolved = OptionValue.color(skin.resolve(current, in: nil, sectionVariables: false))
+        if let item = menu.items.first(where: { ($0.representedObject as? String) == current })
+            ?? menu.items.first(where: { item in
+                (item.representedObject as? String).flatMap { OptionValue.color(skin.resolve($0, in: nil, sectionVariables: false)) } == resolved
+                    && resolved != nil
+            }) {
+            popup.select(item)
+        }
+        popup.toolTip = popup.titleOfSelectedItem
+        let original = skin.section(named: section)?.rawOption(colorKey) ?? ""
+        popup.onAction { [weak self] c in
+            guard let v = (c as? NSPopUpButton)?.selectedItem?.representedObject as? String else { return }
+            self?.writeClickAction(.changeColor(section: section, key: colorKey, color: v),
+                                   leave: .changeColor(section: section, key: colorKey, color: original.isEmpty ? "255,255,255,255" : original),
+                                   section: section, key: key)
+        }
+    }
+
     func clickChoiceMade(_ choice: ClickChoice, section: String, key: String, pointing: Bool, meter: String) {
         let prefix = "click/\(section.lowercased())/\(key.lowercased())="
         inspectorState.disclosures = inspectorState.disclosures.filter { !$0.hasPrefix(prefix) }

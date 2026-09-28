@@ -252,10 +252,13 @@ extension InspectorWindowController {
                 shape.append("popup \(v)")
             }
         case .color:
+            // The color control follows its color, name and tooltip (`ColorControl.follow`, which also tells when it
+            // would be laid out differently).
             let fallback = ctx.isSet ? nil : Self.visibleDefaultColor(p)
             let color = ctx.isSet ? OptionValue.color(ctx.resolved) : fallback
-            shape += [ctx.raw, ctx.resolved, colorName(ctx), colorTooltip(color, ctx: ctx),
-                      matchTheOthersLink(section: section, key: key) == nil ? "" : "match"]
+            shape += [matchTheOthersLink(section: section, key: key) == nil ? "" : "match",
+                      color.map { $0.a < 254.5 && (ctx.isSet || fallback != nil) } == true ? "opacity" : ""]
+            value += [ctx.raw, ctx.resolved, colorName(ctx), colorTooltip(color, ctx: ctx)]
         default:
             shape += [ctx.raw, ctx.resolved, ctx.effective]
         }
@@ -278,6 +281,8 @@ extension InspectorWindowController {
         case (.text, let field as ValueField):
             setValueField(field, to: ctx.raw)
             return true
+        case (.color, let control as ColorControl):
+            return control.follow(ctx)
         case (.choice(let choices, _), let seg as ChoiceSegmentedControl):
             let written = ctx.effective.trimmingCharacters(in: .whitespaces)
             let match = EditorSchema.choice(for: written.isEmpty ? p.defaultValue : written, in: choices)
@@ -767,6 +772,7 @@ extension InspectorWindowController {
         case is ChoiceSegmentedControl: return control.findSubview(where: { $0 is ChoiceSegmentedControl }) ?? (control as? ChoiceSegmentedControl)
         case is GeometryField: return control.findSubview(where: { $0 is GeometryField })
         case is NSSegmentedControl: return control.findSubview(where: { $0 is NSSegmentedControl }) ?? (control as? NSSegmentedControl)
+        case is ColorControl: return control.findSubview(where: { $0 is ColorControl }) ?? (control as? ColorControl)
         case is ValueField: return control.findSubview(where: { $0 is ValueField }) ?? (control as? ValueField)
         default: return nil
         }
@@ -951,16 +957,29 @@ extension InspectorWindowController {
         guard inPlace.collecting, inPlace.page == .meter(m.name) else { return row }
         let name = m.name, p = ctx.property, key = ctx.key
         let slot = InspectorSlot(claims: [InspectorInPlace.rowID(name, key)]) { [weak self] in
-            guard let self, let skin = self.skin else { return nil }
+            guard let self, let skin = self.skin, let m = skin.meter(named: name) else { return nil }
             let c = self.context(p, section: name, rows: self.rows)
-            var shape = [c.key, c.raw]
-            if case .changeColor = ClickAction.parse(c.raw) {
-                shape += self.widgetColors(skin).map { "\($0.title)=\($0.value)=\(skin.resolve($0.value, in: nil, sectionVariables: false))" }
+            var value: [String] = []
+            // (The row's picker shows "Change Color To…" with its menu; a color change another row cannot pick reads as
+            // a sentence.)
+            let pending = self.inspectorState.disclosures.contains { $0.hasPrefix("click/\(name.lowercased())/\(key.lowercased())=") }
+            if !pending, pointing, case .changeColor = ClickAction.parse(c.raw) {
+                // Its menu lists the widget's colors; leaving puts back the layer's color as it is now.
+                value = self.widgetColors(skin).map { "\($0.title)=\($0.value)=\(skin.resolve($0.value, in: nil, sectionVariables: false))" }
+                value.append(m.rawOption(Self.colorKey(forMeterType: m.type)) ?? "")
             }
-            return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "")
+            return InspectorSlot.Shown(shape: [c.key, c.raw].joined(separator: "\u{1F}"), value: value.joined(separator: "\u{1F}"))
         }
         slot.label = row.label
         slot.control = row.control
+        slot.set = { [weak self, weak slot] in
+            guard let self, let skin = self.skin, let m = skin.meter(named: name),
+                  let popup = slot?.control?.findSubview(where: { $0.identifier?.rawValue == "\(name)/\(key)/color" }) as? CompactPopUpButton
+            else { return false }
+            let c = self.context(p, section: name, rows: self.rows)
+            self.fillColorChoice(popup, parsed: ClickAction.parse(c.raw), section: name, key: key, meter: m, skin: skin)
+            return true
+        }
         slot.remakeRow = { [weak self] in
             guard let self, let m = self.skin?.meter(named: name) else { return nil }
             return self.clickRow(self.context(p, section: name, rows: self.rows), meter: m, label: label, pointing: pointing)

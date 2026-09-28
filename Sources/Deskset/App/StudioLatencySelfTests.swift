@@ -199,7 +199,9 @@ enum StudioLatencySelfTests {
         print(String(format: "    LATENCY %@ | layer %@ | load average %.2f", config, target, load[0]))
         let files = skin.sourceFiles
         let original = files.map { (try? Data(contentsOf: $0)) ?? Data() }
-        for (i, run) in runs.enumerated() {
+        // `DESKSET_STUDIO_LATENCY_RUNS` (part of a run's label, e.g. "FontColor"): only the runs it names.
+        let only = ProcessInfo.processInfo.environment["DESKSET_STUDIO_LATENCY_RUNS"]?.lowercased()
+        for (i, run) in runs.enumerated() where only.map({ run.label.lowercased().contains($0) }) ?? true {
             if editor.mode != run.mode {
                 editor.setMode(run.mode)
                 RunLoop.main.run(until: Date().addingTimeInterval(0.1))
@@ -220,6 +222,7 @@ enum StudioLatencySelfTests {
         guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return t.check(false, "canvas") }
         func frame() { canvas.cacheDisplay(in: canvas.bounds, to: rep) }
         frame()
+        print("    TEMP canvas \(canvas.bounds.size) zoom \(canvas.zoom)")
         let written = editor.skin?.meter(named: target)?.rawOption(run.key)
 
         var edits: [Double] = [], undos: [Double] = []

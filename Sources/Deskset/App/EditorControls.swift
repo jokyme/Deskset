@@ -1166,8 +1166,10 @@ final class ColorControl: NSStackView {
     let nameButton = NSButton(title: "", target: nil, action: nil)
     let opacityLabel = EditorStyle.label("", size: 11, color: .secondaryLabelColor)
     private weak var controller: InspectorWindowController?
-    private let ctx: InspectorWindowController.PropertyContext
+    private var ctx: InspectorWindowController.PropertyContext
     private let selection: [String]
+    /// The opacity is under the name (the name and it do not fit beside the swatch).
+    private var opacityUnder = false
 
     init(ctx: InspectorWindowController.PropertyContext, controller: InspectorWindowController, selection: [String]? = nil) {
         self.ctx = ctx
@@ -1223,6 +1225,7 @@ final class ColorControl: NSStackView {
         let line = EditorStyle.hstack([swatch, nameButton] + (fits ? [opacityLabel] : []) + [EditorStyle.spacer()], spacing: 6)
         addArrangedSubview(line)
         line.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        opacityUnder = !fits
         if !fits {
             opacityLabel.stringValue += " opacity"
             let under = EditorStyle.hstack([opacityLabel, EditorStyle.spacer()], spacing: 0)
@@ -1248,6 +1251,43 @@ final class ColorControl: NSStackView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Takes a new value of its option as `init` would show it (`InspectorInPlace`). False when it would be made
+    /// differently: set or not, another variable, the opacity shown or not, under the name or beside it, the link to
+    /// the look's value or the code field there or not.
+    func follow(_ new: InspectorWindowController.PropertyContext) -> Bool {
+        guard let controller, new.isSet == ctx.isSet, new.variable == ctx.variable, new.key == ctx.key else { return false }
+        let p = new.property
+        let fallback = new.isSet ? nil : InspectorWindowController.visibleDefaultColor(p)
+        let color = new.isSet ? OptionValue.color(new.resolved) : fallback
+        var opacity = ""
+        if let color, color.a < 254.5, new.isSet || fallback != nil { opacity = "\(Int((color.a / 255 * 100).rounded()))%" }
+        let hasLink = arrangedSubviews.contains { $0.identifier?.rawValue == "\(new.section)/\(new.key)/match" }
+        let field = arrangedSubviews.compactMap { $0 as? ValueField }.first
+        let wantsField = controller.app.state.editor.showIniNames && new.variable == nil
+        guard opacity.isEmpty == opacityLabel.isHidden, (controller.matchTheOthersLink(section: new.section, key: new.key) != nil) == hasLink,
+              (field != nil) == wantsField else { return false }
+        let name = controller.colorName(new)
+        let before = (nameButton.title, opacityLabel.stringValue)
+        nameButton.title = name
+        opacityLabel.stringValue = opacity
+        let room = controller.inspectorControlWidth - 24 - 6
+        let fits = opacityLabel.isHidden || nameButton.intrinsicContentSize.width + 6 + opacityLabel.intrinsicContentSize.width <= room
+        guard fits != opacityUnder else {
+            (nameButton.title, opacityLabel.stringValue) = before
+            return false
+        }
+        if !fits { opacityLabel.stringValue += " opacity" }
+        swatch.color = color
+        controller.swatchEdits[ObjectIdentifier(swatch)] = (new.section, new.key, new.raw, new.variable)
+        nameButton.setAccessibilityLabel("\(new.label): \(name)")
+        let tip = controller.colorTooltip(color, ctx: new)
+        swatch.toolTip = tip
+        nameButton.toolTip = "\(name)\n\(tip)"
+        if let field, field.stringValue != new.raw || field.original != new.raw { controller.setValueField(field, to: new.raw) }
+        ctx = new
+        return true
+    }
 
     /// The color menu (§7.4), below the swatch.
     var colorMenu: NSMenu? { controller?.colorMenu(ctx, selection: selection) }
