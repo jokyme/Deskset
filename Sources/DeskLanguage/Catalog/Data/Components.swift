@@ -276,7 +276,7 @@ extension CatalogData {
                 "它显示并修改的是/否值",
                 page: page(.content, "Changes", "修改的值", .dataPicker, .essential)))],
                   backing: .native,
-                  doc: doc("A system switch bound to a Bool", "系统开关，绑定一个是/否值",
+                  doc: doc("A system switch bound to a yes-or-no value", "系统开关，绑定一个是/否值",
                            #"Toggle("Show seconds", options.showSeconds)"#,
                            keywords: ["switch", "checkbox", "toggle", "on off", "开关", "复选框"], mac: true, rank: 45)),
         component("Slider", .slider, .controls, "Slider", "滑块", [sig(

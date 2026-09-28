@@ -481,4 +481,35 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let rectangle = deskCompletions("widget {\n    Rectangle().|\n}\n").1.labels
         t.check(Array(rectangle.prefix(3)).contains("fill"), "a shape's fill stays near the top: \(rectangle.prefix(5))")
     }
+
+    t.suite("Desk: service — details and signature help read cleanly") {
+        let (_, music) = deskCompletions("widget {\n    Text(\"a\").onClick {\n        music.|\n    }\n}\n")
+        for item in music.items {
+            t.check(!item.detail.en.contains("()") && !item.detail.zh.contains("（）"), "\(item.label): \(item.detail.en) / \(item.detail.zh)")
+        }
+        let (_, views) = deskCompletions("widget {\n    |\n}\n")
+        for item in views.items {
+            t.check(!item.detail.en.contains("((") && !item.detail.en.contains("))") && !item.detail.zh.contains("（（")
+                    && !item.detail.en.contains("Bool"), "\(item.label): \(item.detail.en) / \(item.detail.zh)")
+        }
+        t.equal(views.items.first { $0.label == "Toggle" }?.detail.en, "Switch (text in quotes, yes or no)")
+        t.check(views.items.first { $0.label == "Toggle" }?.documentation?.en.contains("Bool") == false)
+        // Parameters in the order they are written, the one being written in bold.
+        let text = "widget {\n    Progress(cpu.usage, total: |)\n}\n"
+        let (marked, offset) = deskCursorText(text)
+        let snapshot = deskNavService(marked).snapshot
+        if let help = snapshot.signatureHelp(at: snapshot.index.position(utf16: offset)) {
+            let lines = help.markdown(.english).split(separator: "\n").filter { $0.hasPrefix("- ") }
+            t.check(lines.first?.hasPrefix("- `") == true, "the first parameter first, not in bold: \(lines)")
+            t.check(lines.contains { $0.hasPrefix("- **total:**") }, "the active one in bold: \(lines)")
+        } else {
+            t.check(false, "signature help for Progress")
+        }
+        let font = deskNavService("widget {\n    Text(\"a\").font()\n}\n", language: .simplifiedChinese).snapshot
+        if let help = font.signatureHelp(at: deskNavPosition(font, "font()", into: 5)) {
+            let markdown = help.markdown(.simplifiedChinese)
+            t.check(markdown.components(separatedBy: "文字预设").count <= 2, markdown)
+        }
+        t.equal(DeskHoverWords.choiceOf.zh, "可选值，属于")
+    }
 }

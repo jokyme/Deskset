@@ -142,7 +142,7 @@ enum DeskHoverWords {
     static let gives = L("Gives", "得到")
     static let fieldOf = L("In", "位于")
     static let settingIn = L("Written in", "写在")
-    static let choiceOf = L("Choice of", "选项，属于")
+    static let choiceOf = L("Choice of", "可选值，属于")
 }
 
 extension DeskSnapshot {

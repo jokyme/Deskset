@@ -31,17 +31,38 @@ public struct DeskParameterHelp: Sendable, Hashable {
         self.doc = doc
     }
 
-    /// `**total:** a number, `1` if left out — The total the value is a part of.`
-    public func markdown(_ language: DiagnosticLanguage) -> String {
-        var line = "**\(label.map { "\($0):" } ?? name)** " + type.text(in: language)
+    /// `**total:** a number, `1` if left out — The total the value is a part of.` The name is bold for the
+    /// parameter being written (`active`), in code style otherwise. What it does is left out when it only says
+    /// again what it takes.
+    public func markdown(_ language: DiagnosticLanguage, active: Bool = true) -> String {
+        let shown = label.map { "\($0):" } ?? name
+        let typeText = type.text(in: language)
+        var line = (active ? "**\(shown)**" : "`\(shown)`") + " " + typeText
         if let defaultValue {
             line += language == .simplifiedChinese ? "，默认 " + defaultValue.zh : ", " + defaultValue.en + " if left out"
         } else if isRequired {
             line += language == .simplifiedChinese ? "，必填" : ", required"
         }
         let doc = self.doc.text(in: language)
-        if !doc.isEmpty { line += language == .simplifiedChinese ? "。" + doc : " — " + doc }
+        if !doc.isEmpty, !DeskParameterHelp.repeats(doc, typeText) {
+            line += language == .simplifiedChinese ? "。" + doc : " — " + doc
+        }
         return line
+    }
+
+    /// Whether a parameter's words only say again what its type's words say ("a text style, such as `.caption`"
+    /// and "A text style, such as .headline").
+    static func repeats(_ doc: String, _ type: String) -> Bool {
+        func essence(_ s: String) -> String {
+            var t = s.lowercased().replacingOccurrences(of: "`", with: "")
+            for marker in ["such as", "比如", "e.g.", "例如"] {
+                if let r = t.range(of: marker) { t = String(t[..<r.lowerBound]) }
+            }
+            return String(t.unicodeScalars.filter { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) }
+                .map(Character.init))
+        }
+        let d = essence(doc), t = essence(type)
+        return !d.isEmpty && (d == t || t.hasPrefix(d))
     }
 }
 
@@ -86,16 +107,18 @@ public struct DeskSignatureHelp: Sendable, Hashable {
         self.reference = reference
     }
 
-    /// The active signature with its parameters, the active one first.
+    /// The active signature with its parameters in the order they are written, the active one's name in bold (all
+    /// in bold when no parameter is active).
     public func markdown(_ language: DiagnosticLanguage) -> String {
         guard signatures.indices.contains(activeSignature) else { return "" }
         let signature = signatures[activeSignature]
         var out = "**\(title.text(in: language))**\n\n```desk\n\(signature.label)\n```\n"
         if let doc, !doc.text(in: language).isEmpty { out += "\n" + doc.text(in: language) + "\n" }
-        var order = Array(signature.parameters.indices)
-        if let active = activeParameter, order.contains(active) { order.removeAll { $0 == active }; order.insert(active, at: 0) }
-        if !order.isEmpty { out += "\n" }
-        for p in order { out += "- " + signature.parameters[p].markdown(language) + "\n" }
+        let active = activeParameter.flatMap { signature.parameters.indices.contains($0) ? $0 : nil }
+        if !signature.parameters.isEmpty { out += "\n" }
+        for p in signature.parameters.indices {
+            out += "- " + signature.parameters[p].markdown(language, active: active == nil || active == p) + "\n"
+        }
         if signatures.count > 1 {
             out += "\n" + (language == .simplifiedChinese ? "第 \(activeSignature + 1) 种写法，共 \(signatures.count) 种"
                                                           : "Form \(activeSignature + 1) of \(signatures.count)") + "\n"

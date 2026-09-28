@@ -462,16 +462,33 @@ final class DeskCompletionCatalog: @unchecked Sendable {
         }
         func words(_ doc: Doc, _ key: String) -> [String] { doc.keywords + (synonyms[key] ?? []) }
         func docText(_ doc: Doc) -> L { L(doc.en, doc.zh) }
+        // A type's words inside the list, without their own remarks in brackets ("yes or no", not
+        // "yes or no (`true` or `false`)").
+        func bare(_ text: String) -> String {
+            var out = ""
+            var depth = 0
+            for c in text {
+                if c == "(" || c == "（" { depth += 1; continue }
+                if c == ")" || c == "）" { depth = max(0, depth - 1); continue }
+                if depth == 0 { out.append(c) }
+            }
+            for marker in [", such as", "，比如", " such as"] {
+                if let r = out.range(of: marker) { out = String(out[..<r.lowerBound]) }
+            }
+            return out.replacingOccurrences(of: "  ", with: " ").trimmingCharacters(in: .whitespaces)
+        }
         func shape(_ signature: Signature?) -> L {
-            guard let signature else { return L("", "") }
+            guard let signature, !signature.params.isEmpty else { return L("", "") }
             let shown = signature.params.filter { $0.required }
             var en: [String] = []
             var zh: [String] = []
             for p in shown {
-                let words = catalog.displayName(for: p.type)
+                var words = catalog.displayName(for: p.type)
+                if p.type == .any, p.role == .display { words = L("what it shows", "要显示的内容") }
+                words = L(bare(words.en), bare(words.zh))
                 if let label = p.label {
-                    en.append("\(label) (\(words.en))")
-                    zh.append("\(label)（\(words.zh)）")
+                    en.append("\(label): \(words.en)")
+                    zh.append("\(label)：\(words.zh)")
                 } else {
                     en.append(words.en)
                     zh.append(words.zh)
@@ -500,7 +517,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 DeskSnippet.neutralValue(c.name, $0)
             }
             components.append(DeskCompletionTemplate(
-                label: c.name, kind: .component, detail: L(c.title.en + " " + shape(signature).en, c.title.zh + shape(signature).zh),
+                label: c.name, kind: .component, detail: L((c.title.en + " " + shape(signature).en).trimmingCharacters(in: .whitespaces), c.title.zh + shape(signature).zh),
                 documentation: docText(c.doc), example: c.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(c.doc, c.name), rank: c.doc.rank, since: c.doc.since, deprecated: c.doc.deprecated != nil,
                 path: .component(c.name), nameOnly: c.name,
@@ -516,7 +533,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             if case .optionItems = c.block { block = true } else { block = false }
             let text = DeskSnippet.call(c.name, params: signature.map(DeskSnippet.params) ?? [], block: block, catalog: catalog)
             controls.append(DeskCompletionTemplate(
-                label: c.name, kind: .control, detail: L(c.title.en + " " + shape(signature).en, c.title.zh + shape(signature).zh),
+                label: c.name, kind: .control, detail: L((c.title.en + " " + shape(signature).en).trimmingCharacters(in: .whitespaces), c.title.zh + shape(signature).zh),
                 documentation: docText(c.doc), example: c.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(c.doc, c.name), rank: c.doc.rank, since: c.doc.since, deprecated: c.doc.deprecated != nil,
                 path: .control(c.name), nameOnly: c.name))
@@ -539,7 +556,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             }
             let text = DeskSnippet.call(m.name, params: params, block: block, catalog: catalog)
             modifiers.append((m, DeskCompletionTemplate(
-                label: m.name, kind: .modifier, detail: L(m.title.en + " " + shape(signature).en, m.title.zh + shape(signature).zh),
+                label: m.name, kind: .modifier, detail: L((m.title.en + " " + shape(signature).en).trimmingCharacters(in: .whitespaces), m.title.zh + shape(signature).zh),
                 documentation: docText(m.doc), example: m.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(m.doc, "." + m.name), rank: m.doc.rank, since: m.doc.since, deprecated: m.doc.deprecated != nil,
                 path: .modifier(m.name), commit: [], nameOnly: m.name, call: DeskSnippetCall(name: m.name, params: params, block: block))))
@@ -562,7 +579,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 detail = shape(signature)
             }
             return DeskCompletionTemplate(
-                label: m.name, kind: kind, detail: L(m.title.en + " · " + detail.en, m.title.zh + " · " + detail.zh),
+                label: m.name, kind: kind, detail: detail.en.isEmpty ? m.title : L(m.title.en + " · " + detail.en, m.title.zh + " · " + detail.zh),
                 documentation: docText(m.doc), example: m.doc.example, snippet: snippet, plain: plain,
                 words: words(m.doc, key), rank: m.doc.rank, since: m.doc.since, deprecated: m.doc.deprecated != nil,
                 path: path, commit: m.kind == .field ? ["."] : [], valueType: m.kind == .action ? nil : m.type,
@@ -599,7 +616,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             if let data = f.data { type = data.type }
             functions.append((f, DeskCompletionTemplate(
                 label: f.name, kind: f.kind == .action ? .action : .function,
-                detail: L(f.title.en + " " + shape(signature).en, f.title.zh + shape(signature).zh),
+                detail: L((f.title.en + " " + shape(signature).en).trimmingCharacters(in: .whitespaces), f.title.zh + shape(signature).zh),
                 documentation: docText(f.doc), example: f.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(f.doc, f.name), rank: f.doc.rank, since: f.doc.since, deprecated: f.doc.deprecated != nil,
                 path: .function(f.name), valueType: type, nameOnly: f.name,
