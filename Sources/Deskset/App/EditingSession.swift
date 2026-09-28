@@ -311,7 +311,7 @@ final class EditingSession {
         let reloaded = studioSkin != nil ? reloadStudioSkin() : nil
         Self.signposter.endInterval("runtime.apply", runtime)
         lap("studio", t0)
-        timings.merge(reloadPhases.take()) { own, _ in own }
+        if reloaded != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         if let verify, let reloaded, !verify(reloaded) {
             try? buffers.apply(changes, reverse: true)
             try? write()
@@ -385,7 +385,7 @@ final class EditingSession {
         let t0 = DispatchTime.now().uptimeNanoseconds
         if studioSkin != nil { reloadStudioSkin() }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
-        timings.merge(reloadPhases.take()) { own, _ in own }
+        if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         // The window moves with the files once the desktop copy loaded them (next turn).
         scheduleDesktopRefresh(thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))
