@@ -205,14 +205,27 @@ func runIniDiagnosticsTests(_ t: TestRunner) {
             Y=(#UNDEFINEDTHING# + 1)
             CustomNote=kept for a script
             DynamicVariables=1
+            InlineSetting2=Color | 255,0,0
+            InlinePattern2=Hel
+            MacNotYetAnOption=1
+
+            [MeterShape]
+            Meter=Shape
+            Shape=Path MyPth | Fill Color 0,0,0
+            MyPth=0,0 | LineTo 10,10
 
             [MeterB]
             Meter=Image
             ImageName=sf:cpu
+            [MeterPicture]
+            Meter=Image
+            MeasureName=MeasureCPU
+            ImageName=#@#Weather\\%1.png
             W=(5+5) junk
             """
         let (skin, _) = try makeSkin(t, ini)
-        t.equal(IniDiagnostics.check(skin), [], "add-on keys, dynamic values, keys far from any option, sf: symbols")
+        t.equal(IniDiagnostics.check(skin), [], "add-on keys, dynamic values, keys far from any option, sf: symbols, inline settings, Mac options, a "
+                + "shape's own paths")
     }
 
     t.suite("INI diagnostics: did you mean") {

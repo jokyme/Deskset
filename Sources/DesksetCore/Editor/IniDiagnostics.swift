@@ -387,7 +387,8 @@ private struct Checker {
                         meters: [meter.name])
                 }
             }
-            if isImage, !value.isEmpty, !value.contains("["), !value.contains("#"),
+            // `%1`: the name comes from the meter's measure while it runs.
+            if isImage, !value.isEmpty, !value.contains("["), !value.contains("#"), !value.contains("%"),
                !value.lowercased().hasPrefix("sf:") {
                 let imagePath = options.first { $0.key.lowercased() == "imagepath" }
                     .map { resolve($0.value, in: meter.name) } ?? ""
