@@ -2,7 +2,8 @@
 
 > Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, and phase 1,
 > thread-safe shared services and the stress suite, are done (2026-09-26, §15). Every skin still runs on the main
-> thread.
+> thread. Phase 2 is planned step by step in §15 (2026-09-28); §8.5 was revised for the Studio's own instance of the
+> widget it edits.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
@@ -42,8 +43,9 @@ A hop to the main thread would be cheap, but it freezes the skins whenever the m
 very problem we are trying to remove.
 
 **Migration.** Six phases. The first user-visible win, "the UI no longer stalls skins", comes after phase 2. It
-uses one shared engine thread, and while the Studio has a skin open, that skin runs on the main thread. Phase 3
-moves to one thread per skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–48 with it
+uses one shared engine thread. The Studio edits an instance of the widget of its own on the main thread, so the
+widget on the desktop stays on the engine thread while the Studio is open (§8.5). Phase 3 moves to one thread per
+skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–48 with it
 (§12).
 
 ---
@@ -374,7 +376,7 @@ It has three implementations:
 
 | Executor | Used for |
 |---|---|
-| `MainSkinExecutor` | the main queue and main run loop: exactly today's behaviour. Phase 0; also `--render`, `--snapshot-ui`, the self-tests, throwaway skins, and a skin open in the Studio (§8.5). |
+| `MainSkinExecutor` | the main queue and main run loop: exactly today's behaviour. Phase 0; also `--render`, `--snapshot-ui`, the self-tests, throwaway skins, and the Studio's own instance of the widget it edits (§8.5). |
 | `SkinThreadExecutor` | a dedicated `Thread` with its own run loop. **Recommended for desktop skins.** |
 | `SkinQueueExecutor` | a serial `DispatchQueue` (the spike's default executor); kept for comparison and for tests |
 
@@ -506,7 +508,7 @@ nothing.
 | Mouse, cursor, tooltips, focus | Decisions from the **snapshot**, events as **messages** | 2 |
 | FrostedGlass backdrop, InputText prompt | **Window companions** on main, driven by messages | 2 |
 | Context-menu items, Manage details | **Exclusive access** with a timeout; snapshot fallback | 2 |
-| Studio | Phase 2: its skin **moves to the main executor** while it is open. Phase 4: **exclusive access** at the Studio's entry points | 2 / 4 |
+| Studio | It edits its own instance of the widget on the main executor; the desktop copy **stays on its executor** and gets previews and reloads as **messages**, a reload recognized by a **ticket** (§8.5). Phase 4 (optional): the Studio's own instance off the main thread | 2 / 4 |
 
 ---
 
@@ -751,38 +753,52 @@ for the drag decision.
 
 ### 8.5 Skin Studio
 
-The Studio edits the same object the desktop shows, and hundreds of its lines read and write the live skin (§4.11).
-It moves in two steps.
+*Revised on 2026-09-28.* When this design was written, the Studio edited the very skin the desktop showed, and the
+plan was to move that skin to the main executor while the Studio had it open. Since the Studio got its editing
+session (2026-09-27) it no longer does:
+- the Studio edits **an instance of the widget of its own** (`EditingSession.studioSkin`), loaded from the editing
+  session's text in memory and hosted by `StudioHost`. It runs on the main thread (`MainSkinExecutor`), draws on the
+  canvas, and of its actions runs only what stays inside the widget (`StudioActionPolicy`);
+- the widget on the desktop is **a separate skin**. It shows a gesture's previews and reloads when a step is written.
 
-**Step 1 (phase 2): a skin open in the Studio runs on the main thread.**
-- `attach` moves the runtime to `MainSkinExecutor`.
-- The switch happens at a safe point:
-  1. the skin thread parks;
-  2. its timers are cancelled and re-created on the new executor;
-  3. work still queued on the old executor is re-posted to the new one;
-  4. `detach` moves the skin back.
-- While the skin is on main, every Studio path works unchanged: previews, `m.frame` read-backs, the canvas's
-  `SkinRenderer.draw`, write-then-refresh-then-read.
-- That one skin can again stall while the Studio is busy, which is acceptable for the skin being edited. Every
-  other skin stays isolated.
+So **the desktop copy stays on its executor while the Studio is open.** Nothing moves between executors, and the
+executor switch planned here before (park, move the timers, re-post queued work, move back on `detach`) is dropped.
+Every other Studio path already reads the Studio's own instance, on the main thread, where it is owned.
 
-**Step 2 (phase 4, optional): the edited skin stays on its own thread.**
-- The Studio's entry points take exclusive access: `attach`, `tick`, `rebuildSidebar` / `rebuildInspector`,
-  `refreshLiveValues`, the canvas `draw(_:)`, gestures, menu builders, previews, `perform`.
-- Previews and their read-back run inside one exclusive block:
-  ```swift
-  runtime.withExclusiveAccess(timeout: 0.05) { skin in
-      skin.preview(section: …)
-      let frame = skin.meter(named: …)?.frame
-      …
-  }
-  ```
-  `skinNeedsDisplay` only schedules a frame on the skin thread, so the desktop shows the preview right after the
-  block.
-- The canvas draws with exclusive access and a short timeout (8 ms). When the skin is busy, it draws the previous
-  canvas image.
-- Write, then refresh: `activate` stays synchronous for the Studio. The main thread waits, with a generous timeout,
-  for the new runtime to load and run its first update, then reads it with exclusive access.
+What the Studio still asks of the desktop copy, and how it gets it from phase 2 on:
+
+| Need | Today | Phase 2 |
+|---|---|---|
+| A gesture's previews, at most about 20 a second, and their end | `EditingSession.desktopSkin`: at once on the owner, `skin.async` elsewhere | messages to the runtime (`.preview`, `.previewVariables`, `.endPreview`) |
+| A reload after a step, an undo or a live reload, then a move of the window with the files | `app.refresh`; the session knows the new copy is its own because `activate` attaches it *inside* `refreshDesktop` | a **reload ticket** (below); the move goes with the reload and is made once the new copy started |
+| The input the desktop copy takes, replayed in the Studio's instance (`Skin.inputMirror`) | set on the skin's executor, replayed on main | unchanged |
+| How many `!WriteKeyValue` writes the desktop copy made (`keyValueWrites`) | read from the live skin | the snapshot (§5.5) |
+| The Calc counter and the graphs when the Studio opens | copied only when the desktop copy runs on the main thread | copied with **exclusive access** and a short timeout; without it the Studio starts from its own first update, as it does today for a skin on another thread |
+| The window's place and screens for the Studio's instance (`#CURRENTCONFIGX#`…, Chameleon's screen) | `SkinController.environment(for:)`, `window.screen` | the window controller's copy of the window model, with `EnvironmentStore` (§8.1) |
+| The window's settings (Always on Top, Draggable…) and their undo steps | `app.changeSettings` on main | unchanged: window settings are the window half's |
+
+**Own reloads.** A reload the session asked for must be recognized as its own: what the widget writes to its files
+while it reloads (the old copy's OnCloseAction, the new copy's OnRefreshAction or first update, a script) is its own
+write, not a change made elsewhere that would reload it again, and again. Today the session knows it because
+`app.refresh` loads the new copy and attaches it to the Studio while `refreshDesktop` is still running. Once loading
+is asynchronous that no longer holds, so the reload carries a ticket:
+1. `refreshDesktop` asks `app.refresh(c, ticket:, thenMoveTo:)`. The ticket rides on the activation.
+2. The old runtime reports `.closed(ticket)` after its OnCloseAction; the new runtime reports `.started(ticket)` after
+   its OnRefreshAction and first update (or `.failed(ticket)`).
+3. The Studio decides "own reload" by the ticket the new window controller carries, not by when it arrived. The reload
+   ends when both reports are in, when the load failed, or at the old 5-second deadline.
+4. Only then are the widget's writes taken as its own (`absorbDesktopWrites`). A change FSEvents reports while a ticket
+   is open waits for it, and is then compared with what was taken.
+
+The two reports can come in either order: on one engine thread they come in the order of the work, on threads of
+their own (phase 3) they need not. With the main executor both still arrive inside `app.refresh`, as today.
+
+**Phase 4 (optional)** is now only about the Studio's own instance. It runs on the main thread, so its updates
+(a visualizer's, every 16 ms) and its first update after a step share the main thread with the Studio's UI. If that
+shows, the instance can move to a thread of its own, with exclusive access at the Studio's entry points: `attach`,
+`tick`, `rebuildSidebar` / `rebuildInspector`, `refreshLiveValues`, the canvas `draw(_:)` (with a short timeout and
+the previous canvas image as the fallback), gestures, menu builders, previews and `perform`. The widgets on the desktop
+are isolated from the Studio either way.
 
 ### 8.6 Manage window, status menu, lifecycle
 
@@ -791,10 +807,12 @@ It moves in two steps.
 - **`activate`:**
   1. creates the runtime and the window;
   2. the skin thread loads the skin, registers its fonts on the fonts queue, runs the first update and draws;
-  3. the main thread waits for "started", with a timeout, and places and shows the window.
+  3. the main thread does not wait: the runtime reports `.started` (or `.failed`), and the main thread then places
+     and shows the window. (Planned first as a wait with a timeout; a skin whose Lua main chunk takes a second would
+     then stall the UI for that second.) With the main executor all of it still happens inside `activate`.
 
-  `continueCounter(from:)` reads the old skin's counter before the old runtime is released. The old skin is closed
-  on its own thread.
+  The new skin takes the Calc counter from the snapshot the old runtime published when it closed
+  (`continueCounter`). The old skin is closed on its own thread.
 - **Pause and resume, wake, screen changes, `fontsChanged`:** broadcast as messages.
 - **Refresh All:** purges the now thread-safe caches, then refreshes the skins in load order.
 - **Quit:** `applicationWillTerminate` sends `.close` to every runtime in reverse load order. It waits with a total
@@ -874,7 +892,8 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
   `SkinDirectory`, frame delivery E.
 - Mouse, cursor, tooltips and focus from the snapshot. Context menu through exclusive access.
 - FrostedGlass and InputText companions. Lifecycle, pause/wake/screens/fonts messages.
-- The Studio moves its skin to the main executor (§8.5).
+- The Studio keeps editing its own instance on the main thread; the desktop copy stays on the engine thread and
+  gets previews and ticketed reloads as messages (§8.5).
 - **All runtimes share one engine thread.** This isolates the UI from every skin while the skins can still only
   race against main.
 - Measure real skins on a quiet screen:
@@ -887,9 +906,9 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 - Stress with 30 skins, including the 15 real skin packs used for compatibility testing (local only).
 - Check thread count and memory.
 
-**Phase 4 (optional): the Studio on exclusive access (6–10 days)**
-- The Studio's entry points (§8.5), so the edited skin also stays isolated.
-- Update the Studio self-tests that assume the main executor.
+**Phase 4 (optional): the Studio's own instance off the main thread (6–10 days)**
+- Only if its updates are seen to slow the Studio down (§8.5): the Studio's entry points take exclusive access.
+- The widgets on the desktop are already isolated from the Studio after phase 2.
 
 **Phase 5: cleanup (3–5 days)**
 - Make `perSkin` the default; keep `main` for debugging.
@@ -909,7 +928,7 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 | Behaviour change for skins that rely on synchronous bangs to other skins | low / low–medium | Documented judgment call; hop limit; test with the real skin packs |
 | Stale snapshot gives a surprising click or cursor for one frame | low / low | The snapshot matches what is on screen; the event still runs on the live skin |
 | CPU or energy: many skins committing at 60 Hz, each on its own clock; per-skin caches and threads | medium / medium | No drawing while hidden or occluded; E costs Deskset what A costs in the spike, the window server perhaps a few percent more; measure real skins in phase 2; display-link pacing if the gap holds; the 8 MB stacks are only reserved |
-| The Studio's hidden assumptions (synchronous refresh, read-back after preview) | medium / medium | Phase 2 keeps the edited skin on main; phase 4 is optional and bounded |
+| The Studio's hidden assumptions (synchronous refresh, read-back after preview) | medium / medium | The Studio edits its own instance on main (§8.5); the desktop copy's reloads carry a ticket instead of arriving inside the call; phase 4 is optional and bounded |
 | Tests that assume main-thread timing (`RunLoop.main` pumping in 48 places, `MediaUIMainHop.runsInline`) | high / low | `MainSkinExecutor` for existing tests; new tests for threads |
 | Libraries that are not thread-safe in skin code (`rand()`, `getutxent`, locale functions) | low / low | Found in the audit and listed in §4; fix as listed |
 | Priority inversion: the main thread waits for exclusive access on a skin thread with a low QoS | low / low | Exclusive access is rare and bounded; raise the skin thread's QoS while the main thread waits (`pthread_override_qos_class_start_np`) |
@@ -928,7 +947,7 @@ For one developer who knows the codebase:
 | 2. Runtime split on one engine thread (UI no longer stalls skins) | 10–14 | 19–27 |
 | 3. One thread per skin (skins no longer stall each other) | 4–6 | 23–33 |
 | 5. Cleanup, compatibility notes, soak | 3–5 | 26–38 |
-| 4. (optional) Studio on exclusive access | 6–10 | 32–48 |
+| 4. (optional) The Studio's own instance off the main thread | 6–10 | 32–48 |
 
 That is about six to eight weeks without phase 4, and seven to ten weeks with it. The largest uncertainties:
 - phase 2's window and mouse details;
@@ -986,6 +1005,8 @@ Decided on 2026-09-25, all as recommended:
 3. **Bangs to other skins become asynchronous and ordered** (§8.2, §9). Phase 5 records this in
    `docs/compat/engine.md` as a judgment call.
 4. **Studio:** phase 2 only for now. A skin open in the Studio runs on the main thread (§8.5); phase 4 is deferred.
+   Revised on 2026-09-28: the Studio now edits an instance of the widget of its own, on the main thread, and the
+   desktop copy stays on its executor (§8.5).
 5. **The `main` executor stays** after phase 5, as a hidden setting (a `defaults` key, not in the Settings window)
    for debugging and comparisons.
 
@@ -1062,7 +1083,7 @@ Delayed work and timers do not hold the skin either:
 | `AppController.later`: lifecycle host bangs, bangs for a config that is loading, `AppState` saves, the installer | The app's lifecycle and state live on main and must stay in order with `later(loading:)` |
 | UI events that call the skin synchronously: mouse, hover, focus, context menu, sleep / wake / screens, outside-pointer delivery, the InputText completion | They start on main and use the answer, or must run in the same turn as a panel swap or the Slider's event order. An `async` would add a turn. They become messages in phase 2 (§8.3) |
 | The NowPlaying, WiFi and focused-window centres (`MediaUIMainHop`), `SystemMonitor`'s caches | Shared services that never call a skin; skins read them at their next update. Phase 1 gives them locks (§4.5, §4.6) |
-| The Studio's timers and deferred edits | The Studio's skin stays on the main executor (§8.5, decision 4) |
+| The Studio's timers and deferred edits | The Studio's own instance of the widget stays on the main executor (§8.5, decision 4) |
 | Audio capture, `ProcessSampler`, `WebParserNetwork`, `PluginIO` | Already off the main thread, and they never call a skin |
 
 **Main Thread Checker:** `scripts/check-main-thread.sh` runs both self-test programs with it loaded. First run, all
@@ -1075,7 +1096,8 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 "App: skin threading: …" do the same for the update clock and Chameleon.
 
 **Left for later phases:** the assertion against `DispatchQueue.main.sync` on a skin thread and the busy-skin watchdog
-(§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5).
+(§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5;
+no longer needed since the Studio edits its own instance).
 
 ### Phase 1: done (2026-09-26)
 
