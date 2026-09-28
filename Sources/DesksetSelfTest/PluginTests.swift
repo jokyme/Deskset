@@ -1793,6 +1793,61 @@ private func runPluginRecycleTests(_ t: TestRunner) {
         t.check(TrashMonitor.size(of: dir.appendingPathComponent("missing").path) == nil)
     }
 
+    t.suite("Plugin: RecycleManager reads the size although a Count measure's reading is in flight") {
+        // A skin with a Count measure before a Size measure: at each update (a second apart) the Count measure starts
+        // a reading without the size, and the Size measure asks while that reading is still running. The size used to
+        // be dropped then, at every update: it kept an old value (or 0), and a Trash macOS does not let Deskset list
+        // was never noted.
+        let dir = t.temporaryDirectory("trash-order")
+        writeFile(dir.appendingPathComponent("a"), String(repeating: "x", count: 1234))
+        final class Gate: @unchecked Sendable {
+            let lock = NSLock()
+            var closed = false
+            let opened = DispatchSemaphore(value: 0)
+            func pass() {
+                lock.lock(); let wait = closed; lock.unlock()
+                if wait { opened.wait() }
+            }
+            func close() { lock.lock(); closed = true; lock.unlock() }
+            func open() { lock.lock(); closed = false; lock.unlock(); opened.signal() }
+        }
+        let gate = Gate()
+        let saved = TrashMonitor.folders
+        TrashMonitor.folders = { gate.pass(); return [dir.path] }
+        defer { TrashMonitor.folders = saved }
+        let (skin, _) = try makeSkin(t, """
+        [Count]
+        Measure=RecycleManager
+        [Size]
+        Measure=RecycleManager
+        RecycleType=Size
+        """)
+        let count = measure(skin, "Count", RecycleManagerMeasure.self)
+        let size = measure(skin, "Size", RecycleManagerMeasure.self)
+        spin(for: 0.6) // past the half second in which a finished reading is reused
+        gate.close()
+        update(count)
+        update(size) // the Count measure's reading is held in flight
+        gate.open()
+        t.check(spin { TrashMonitor.shared.latest.size == 1234 }, "the size follows: \(TrashMonitor.shared.latest)")
+        t.check(spin { size.value == 1234 }, "the Size measure's first reading waits for it: \(size.value)")
+        update(count); update(size)
+        t.equal(count.value, 1)
+        t.equal(size.value, 1234)
+
+        // The Trash changes: the next update round reads the new size, again behind the Count measure's reading.
+        writeFile(dir.appendingPathComponent("b"), String(repeating: "y", count: 766))
+        spin(for: 0.6)
+        gate.close()
+        update(count)
+        update(size)
+        gate.open()
+        t.check(spin { TrashMonitor.shared.latest.size == 2000 }, "a changed Trash is measured again")
+        update(count); update(size)
+        t.equal(count.value, 2)
+        t.equal(size.value, 2000)
+    }
+
     t.suite("Plugin: RecycleManager measures and Finder commands") {
         let dir = t.temporaryDirectory("trash")
         writeFile(dir.appendingPathComponent("a"), "1234")

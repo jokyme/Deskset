@@ -158,6 +158,13 @@ final class TrashMonitor: @unchecked Sendable {
     private var sizeTime: TimeInterval = -1
     /// Callbacks waiting for the reading in flight, each with the executor of the skin that asked.
     private var waiters: [(executor: SkinExecutor, callback: () -> Void)] = []
+    /// Whether the reading in flight measures the size.
+    private var inFlightIncludesSize = false
+    /// The size was asked for while a reading without it was in flight (a skin's `RecycleType=Count` measure started
+    /// it, and its `Size` measure came next in the same update): another reading, with the size, follows at once, and
+    /// these callbacks wait for it.
+    private var sizeFollowUp = false
+    private var sizeWaiters: [(executor: SkinExecutor, callback: () -> Void)] = []
 
     /// Size readings are reused while the folders look unchanged, but not longer than this (seconds).
     static let sizeMaxAge: TimeInterval = 30
@@ -181,20 +188,34 @@ final class TrashMonitor: @unchecked Sendable {
     }
 
     private func refresh(includeSize: Bool, force: Bool, waiter: (executor: SkinExecutor, callback: () -> Void)?) {
+        refresh(includeSize: includeSize, force: force, throttled: true, waiters: waiter.map { [$0] } ?? [])
+    }
+
+    /// `throttled`: a reading that finished less than half a second ago is reused (not for a size follow-up, which
+    /// comes right after a reading that left the size out).
+    private func refresh(includeSize: Bool, force: Bool, throttled: Bool,
+                         waiters asking: [(executor: SkinExecutor, callback: () -> Void)]) {
         let now = ProcessInfo.processInfo.systemUptime
         lock.lock()
         if inFlight {
-            if let waiter { waiters.append(waiter) }
+            if includeSize && !inFlightIncludesSize {
+                sizeFollowUp = true
+                sizeWaiters += asking
+            } else {
+                waiters += asking
+            }
             lock.unlock()
             return
         }
-        if !force && now - lastRefresh < 0.5 && (!includeSize || status.size != nil || status.sizeDenied) {
+        if throttled && !force && now - lastRefresh < 0.5
+            && (!includeSize || status.size != nil || status.sizeDenied) {
             lock.unlock()
-            if let waiter { waiter.executor.async(waiter.callback) }
+            TrashMonitor.deliver(asking)
             return
         }
-        if let waiter { waiters.append(waiter) }
+        waiters += asking
         inFlight = true
+        inFlightIncludesSize = includeSize
         let previousSignature = sizeSignature
         let previousSizeTime = sizeTime
         let previous = status
@@ -229,8 +250,13 @@ final class TrashMonitor: @unchecked Sendable {
             lastRefresh = ProcessInfo.processInfo.systemUptime
             let done = waiters
             waiters = []
+            let followUp = sizeFollowUp
+            let later = sizeWaiters
+            sizeFollowUp = false
+            sizeWaiters = []
             lock.unlock()
             TrashMonitor.deliver(done)
+            if followUp { refresh(includeSize: true, force: false, throttled: false, waiters: later) }
         }
     }
 
