@@ -599,7 +599,7 @@ func runDeskCompletionPropertyTests(_ t: TestRunner) {
         t.equal(grid?.plainText, "Grid(columns: 7) {\n        \n    }")
         t.equal(grid?.isSnippet, true)
         let text = views.items.first { $0.label == "Text" }
-        t.equal(text?.insertText, "Text(\"${1:Wednesday, 30 September}\")$0")
+        t.equal(text?.insertText, "Text(\"${1:Text}\")$0")
         // Editing a name before its `(`: the name alone replaces the whole word.
         let (snapshot, renamed) = deskCompletions("widget {\n    Te|xt(\"A\")\n}\n")
         let replacement = renamed.items.first { $0.label == "Text" }

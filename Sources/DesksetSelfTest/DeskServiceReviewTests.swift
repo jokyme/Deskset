@@ -420,4 +420,22 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
             t.check(false, "Toggle offered")
         }
     }
+
+    t.suite("Desk: service — placeholders are no sample data, and option labels come from their names") {
+        func plain(_ marked: String, _ label: String, file: String = "Test.desk") -> String? {
+            deskCompletions(marked, file: file).1.items.first { $0.label == label }?.plainText
+        }
+        t.equal(plain("options {\n    |\n}\n", "ColorPicker"), "accent = ColorPicker(\"Accent\")")
+        t.equal(plain("options {\n    |\n}\n", "Slider"), "amount = Slider(\"Amount\", min: 0, max: 100)")
+        t.equal(plain("options {\n    |\n}\n", "Toggle"), "showDetails = Toggle(\"Show details\")")
+        t.equal(plain("options {\n    city = |\n}\n", "Input"), "Input(\"City\")")
+        t.equal(plain("options {\n    showWaves = Tog|\n}\n", "Toggle"), "Toggle(\"Show waves\")")
+        t.equal(plain("widget {\n    Te|\n}\n", "Text"), "Text(\"Text\")")
+        t.equal(plain("info {\n    |\n}\n", "name", file: "Tide.desk"), "name: \"Tide\"")
+        t.equal(plain("info {\n    |\n}\n", "author"), "author: \"\"")
+        t.equal(plain("info {\n    |\n}\n", "license"), "license: \"\"")
+        let chinese = DeskServiceOptions(messageLanguage: .simplifiedChinese)
+        let (_, list) = deskCompletions("options {\n    x = |\n}\n", options: chinese)
+        t.equal(list.items.first { $0.label == "Toggle" }?.plainText, "Toggle(\"X\")")
+    }
 }

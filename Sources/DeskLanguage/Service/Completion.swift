@@ -293,6 +293,21 @@ enum DeskSnippet {
     }
 
     /// The Desk text a parameter's tab stop starts with.
+    /// A placeholder that is no sample data where the catalog's preview is (`Text("Wednesday, 30 September")`
+    /// would put a date that never changes on the desktop): `Text("Text")`.
+    static func neutralValue(_ call: String, _ param: ParamSpec) -> String? {
+        call == "Text" && param.label == nil && param.role == .display ? "\"Text\"" : nil
+    }
+
+    /// An option's label made from its name: `showDetails` → "Show details", `accent` → "Accent".
+    static func label(forOption name: String) -> String {
+        var out = ""
+        for c in name {
+            if c.isUppercase, !out.isEmpty { out += " " + c.lowercased() } else { out.append(c) }
+        }
+        return out.prefix(1).uppercased() + out.dropFirst()
+    }
+
     static func value(of param: ParamSpec, catalog: DeskCatalog) -> String {
         if let preview = param.previewValue { return preview }
         if case .source(let text)? = param.defaultValue { return text }
@@ -435,7 +450,9 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             case .none: hasBlock = false
             default: hasBlock = true
             }
-            let text = DeskSnippet.call(c.name, params: signature.map(DeskSnippet.params) ?? [], block: hasBlock, catalog: catalog)
+            let text = DeskSnippet.call(c.name, params: signature.map(DeskSnippet.params) ?? [], block: hasBlock, catalog: catalog) {
+                DeskSnippet.neutralValue(c.name, $0)
+            }
             components.append(DeskCompletionTemplate(
                 label: c.name, kind: .component, detail: L(c.title.en + " " + shape(signature).en, c.title.zh + shape(signature).zh),
                 documentation: docText(c.doc), example: c.doc.example, snippet: text.snippet, plain: text.plain,
@@ -554,6 +571,8 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             } else if case .source(let text)? = f.defaultValue, text != "\"\"" {
                 value = text
             }
+            // A quoted example is someone's data (`author: "Deskset"`): the text is left for the author to write.
+            if value.hasPrefix("\""), f.name != "version", f.name != "convertedFrom" { value = "\"\"" }
             let stop = DeskSnippet.stop(1, value)
             return DeskCompletionTemplate(
                 label: f.name, kind: .field, detail: catalog.displayName(for: f.type), documentation: docText(f.doc),
@@ -699,7 +718,7 @@ struct DeskCompletionBuilder {
             if let declared { extra.append(declared.edit) }
             let text = DeskSnippet.call(call.name, params: call.params, block: call.block, catalog: catalog) { p in
                 if let declared, case .binding = p.type { return declared.name }
-                return me.contextualValue(p)
+                return me.contextualValue(p) ?? DeskSnippet.neutralValue(call.name, p)
             }
             let lead = snippet != nil ? "." : ""
             snippetText = lead + text.snippet
@@ -862,6 +881,13 @@ struct DeskCompletionBuilder {
             }
         }
         for t in isPackageBlock ? templates.packageFields : templates.infoFields where !written.contains(t.label) {
+            if t.label == "name", !isPackageBlock {
+                // The widget's name: its file's, as the fix of a missing name writes it.
+                let stem = ((snapshot.file.path as NSString).lastPathComponent as NSString).deletingPathExtension
+                let stop = DeskSnippet.stop(1, "\"" + stem.replacingOccurrences(of: "\"", with: "") + "\"")
+                add(t, tier: 1, snippet: "name: \(stop.snippet)$0", plain: "name: \(stop.plain)")
+                continue
+            }
             add(t, tier: 1)
         }
     }
@@ -875,14 +901,34 @@ struct DeskCompletionBuilder {
                 continue
             }
             let name = uniqueName(DeskCompletionBuilder.optionName(for: t.label), taken: taken)
-            // `name = Control(…)`: the control's tab stops after the name's.
-            let shifted = DeskCompletionBuilder.shiftStops(t.snippet, by: 1)
-            add(t, tier: 1, snippet: "${1:\(name)} = " + shifted, plain: "\(name) = " + t.plain)
+            // `name = Control(…)`: the control's tab stops after the name's, its label made from the name.
+            let label = DeskSnippet.label(forOption: name)
+            let shifted = DeskCompletionBuilder.shiftStops(DeskCompletionBuilder.relabel(t.snippet, label), by: 1)
+            add(t, tier: 1, snippet: "${1:\(name)} = " + shifted, plain: "\(name) = " + DeskCompletionBuilder.relabel(t.plain, label))
         }
     }
 
     private mutating func addControls() {
-        for t in templates.controls where catalog.control(named: t.label)?.block != .optionItems { add(t, tier: 1) }
+        // After `name =`: the label is made from that name, else it is the control's title.
+        let tokens = snapshot.tokenTable
+        var option: String?
+        if let equal = tokens.previousPresent(endingAtOrBefore: scan.utf8Range.lowerBound), tokens.entries[equal].kind == .equal,
+           let name = tokens.previousPresent(endingAtOrBefore: tokens.entries[equal].textStart),
+           tokens.entries[name].kind == .identifier, Checker.isIdentifier(tokens.entries[name].token.name) {
+            option = tokens.entries[name].token.name
+        }
+        for t in templates.controls where catalog.control(named: t.label)?.block != .optionItems {
+            let label = option.map(DeskSnippet.label(forOption:))
+                ?? catalog.control(named: t.label).map { $0.title.text(in: snapshot.options.messageLanguage) } ?? t.label
+            add(t, tier: 1, snippet: DeskCompletionBuilder.relabel(t.snippet, label), plain: DeskCompletionBuilder.relabel(t.plain, label))
+        }
+    }
+
+    /// A control's text with the catalog's shared label (`"Show seconds"`) replaced.
+    static func relabel(_ text: String, _ label: String) -> String {
+        let clean = label.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "}", with: "").replacingOccurrences(of: "\\", with: "")
+        return text.replacingOccurrences(of: "Show seconds", with: clean)
     }
 
     private mutating func addViews() {
