@@ -1,0 +1,269 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "EP",
+  "--window-space-base",
+  "--stagger",
+  "--out",
+  "results/cost-b/ten-EPw-stagger-r3.json"
+ ],
+ "command": "cost",
+ "config": "EP+windowSpaceBase",
+ "contexts": {
+  "EP+windowSpaceBase group [skin] kCGContextTypeBitmap Color LCD 8bpc": 5621
+ },
+ "cpu": {
+  "framesPerSecond": 10.05,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 13.307,
+  "processPercentOfOneCore": 1.008,
+  "provisional": false,
+  "windowServerIdleWakeupsPerSecond": 0,
+  "windowServerIdleWakeupsPerSecondIncrease": 0,
+  "windowServerIdleWakeupsPerSecondOff": 0,
+  "windowServerPercentOfOneCore": 49.11,
+  "windowServerPercentOfOneCoreIncrease": 0.653,
+  "windowServerPercentOfOneCoreOff": 48.457
+ },
+ "frameCost": {
+  "commitP50us": 86,
+  "commitP99us": 187,
+  "p50us": 688,
+  "p99us": 839,
+  "updates": 385,
+  "what": "drawing before the commit"
+ },
+ "loadAverageAtEnd": [
+  6.69,
+  7.95,
+  7.84
+ ],
+ "memory": {
+  "backingStores": {
+   "CABackingStore [101 45] BGRA8888 + [101 45] BGRA8888": 1,
+   "CABackingStore [126 34] BGRA8888": 2,
+   "CABackingStore [170 38] BGRA8888": 1,
+   "CABackingStore [225 68] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888 + [298 44] BGRA8888": 1,
+   "CABackingStore [298 44] BGRA8888 + [298 44] BGRA8888 volatile": 1,
+   "CABackingStore [454 18] BGRA8888 + [454 18] BGRA8888": 1,
+   "CABackingStore [454 18] BGRA8888 + [454 18] BGRA8888 volatile": 1,
+   "CABackingStore [456 88] BGRA8888 + [456 88] BGRA8888": 1,
+   "CGImage 14x28 8bpc/32bpp Color LCD": 8,
+   "CGImage 520x392 8bpc/32bpp Color LCD": 38,
+   "CGImage 66x34 8bpc/32bpp Color LCD": 1
+  },
+  "footprintAfterCloseMB": 27.84,
+  "footprintAfterSettleMB": 28.28,
+  "footprintAtEndMB": 27.8,
+  "footprintBeforeMB": 10.53,
+  "footprintCategoriesAfterSettleMB": {
+   "CG raster data": 5.94,
+   "CoreAnimation": 9.14,
+   "MALLOC metadata": 0.8,
+   "MALLOC_SMALL": 7.72,
+   "MALLOC_TINY": 0.31,
+   "TOTAL": 29,
+   "__DATA": 0.58,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.31,
+   "page table": 0.55,
+   "stack": 0.88,
+   "total": "29 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.42,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "MALLOC metadata": 0.78,
+   "MALLOC_SMALL": 5.66,
+   "MALLOC_TINY": 0.31,
+   "TOTAL": 11,
+   "__DATA": 0.56,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.25,
+   "page table": 0.49,
+   "stack": 0.31,
+   "total": "11 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.27,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 1.727,
+  "footprintIncreaseMB": 17.75,
+  "footprintIncreasePerWidgetMB": 1.775,
+  "layerBitmapsPerWidgetMB": 1.583,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 4.19,
+   "freeGB": 4.65,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 5.44,
+   "freeGB": 0.26,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 0.778,
+  "ownedBitmapsPerWidgetMB": 0.778,
+  "partitionMinimumMB": 1.247,
+  "windowServerCloseStepsMB": [
+   -6,
+   0
+  ],
+  "windowServerIncreaseMB": 1,
+  "windowServerIncreasePerWidgetMB": 0.1,
+  "windowServerOpenStepsMB": [
+   -2,
+   1
+  ]
+ },
+ "mode": "EP",
+ "offPhases": "windows ordered out, updates stopped",
+ "oneSkinThread": false,
+ "openAllMs": 66.1,
+ "pairs": 3,
+ "partition": {
+  "baseElements": 1,
+  "groupPixels": 122949,
+  "groups": 19,
+  "largestGroupPixels": 40128,
+  "tiles": 38,
+  "windowPixels": 203840
+ },
+ "phaseSeconds": 5,
+ "phases": [
+  {
+   "framesPerSecond": 10,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 12.79,
+   "loadAverageAfter": [
+    7.61,
+    8.28,
+    7.95
+   ],
+   "loadAverageBefore": [
+    7.66,
+    8.31,
+    7.96
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 0.972,
+   "provisional": false,
+   "seconds": 5,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 48.78
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.2,
+   "loadAverageAfter": [
+    7.56,
+    8.26,
+    7.95
+   ],
+   "loadAverageBefore": [
+    7.61,
+    8.28,
+    7.95
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.054,
+   "provisional": false,
+   "seconds": 5,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 50.56
+  },
+  {
+   "framesPerSecond": 9.98,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 11.38,
+   "loadAverageAfter": [
+    7.01,
+    8.12,
+    7.9
+   ],
+   "loadAverageBefore": [
+    7.36,
+    8.21,
+    7.93
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 1.023,
+   "provisional": false,
+   "seconds": 5.01,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 48.5
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.6,
+   "loadAverageAfter": [
+    7.09,
+    8.12,
+    7.9
+   ],
+   "loadAverageBefore": [
+    7.01,
+    8.12,
+    7.9
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.054,
+   "provisional": false,
+   "seconds": 5.01,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 45.75
+  },
+  {
+   "framesPerSecond": 10.17,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 15.75,
+   "loadAverageAfter": [
+    7,
+    8.08,
+    7.89
+   ],
+   "loadAverageBefore": [
+    7.09,
+    8.12,
+    7.9
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 1.028,
+   "provisional": false,
+   "seconds": 5.02,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 50.05
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.6,
+   "loadAverageAfter": [
+    7,
+    8.06,
+    7.88
+   ],
+   "loadAverageBefore": [
+    7,
+    8.08,
+    7.89
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.052,
+   "provisional": false,
+   "seconds": 5.01,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 49.06
+  }
+ ],
+ "scenario": "ten",
+ "settleSeconds": 20,
+ "staggered": true,
+ "updateIntervalMs": 1000,
+ "widgets": 10
+}
