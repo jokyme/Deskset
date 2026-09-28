@@ -111,14 +111,14 @@ public struct DeskProblemCount: Sendable, Hashable, CustomStringConvertible {
 extension DeskSnapshot {
     /// The open file's diagnostics, in the checker's order: `diagnostics[i]` is `checked.diagnostics[i]`.
     public var diagnostics: [DeskServiceDiagnostic] {
-        guard hasStackRoom else { return onLargeStack { diagnostics } }
+        guard hasStackRoom else { return onLargeStack { self.diagnostics } }
         return caches.diagnostics.value { checked.diagnostics.map(serviceDiagnostic) }
     }
 
     /// `package.desk`'s own diagnostics when a widget is open (the package checked on its own); empty when the
     /// folder has no package or the open file is the package.
     public var packageDiagnostics: [DeskServiceDiagnostic] {
-        guard hasStackRoom else { return onLargeStack { packageDiagnostics } }
+        guard hasStackRoom else { return onLargeStack { self.packageDiagnostics } }
         return caches.packageDiagnostics.value {
             guard let package, !isPackage else { return [] }
             return package.diagnostics.map(serviceDiagnostic)
