@@ -296,6 +296,20 @@ private func studioPolicy(_ t: TestRunner) throws {
     _ = policy.sideEffects?.destination(forWriting: URL(fileURLWithPath: "/tmp/x/DownloadFile/a.png"))
     t.equal(policy.recorded.map(\.kind), [.effect, .file])
     t.equal(policy.recorded.map(\.text), ["MediaKey PlayPause", "write /tmp/x/DownloadFile/a.png"])
+
+    // The recording keeps no more than the policy does (a widget whose script saves a file at every update would
+    // otherwise grow the Studio for as long as it stays open), and clearing the policy's list clears it too.
+    let recording = policy.sideEffects as? RecordingSideEffects
+    t.equal(recording?.limit, policy.limit, "bounded like the policy's list")
+    policy.limit = 5
+    t.equal(recording?.limit, 5, "and follows it")
+    for i in 0..<40 { recording?.perform(.mediaKey("Key\(i)")) { t.check(false, "not run") } }
+    t.equal(recording?.records.count, 5)
+    t.equal(recording?.records.last, .mediaKey("Key39"), "the last ones")
+    t.equal(policy.recorded.count, 5)
+    policy.clearRecorded()
+    t.equal(recording?.records ?? [.mediaKey("x")], [], "cleared with the policy's list")
+    t.equal(policy.recorded.count, 0)
     skin.close()
 }
 

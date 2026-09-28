@@ -41,8 +41,10 @@ public final class StudioActionPolicy: SkinActionPolicy {
 
     /// The actions recorded, oldest first (the last `limit`).
     public private(set) var recorded: [Recorded] = []
-    /// How many recorded actions are kept.
-    public var limit = 100
+    /// How many recorded actions are kept; the recording of side effects keeps as many.
+    public var limit = 100 {
+        didSet { if hasEffects { effects.limit = limit } }
+    }
     /// Told of each recorded action (the Studio can say what the widget would do).
     public var onRecord: ((Recorded) -> Void)?
 
@@ -60,6 +62,9 @@ public final class StudioActionPolicy: SkinActionPolicy {
 
     private lazy var effects: RecordingSideEffects = {
         let effects = RecordingSideEffects()
+        // The recording keeps its own list too: bounded like this one, so that a widget that writes a file at every
+        // update does not make the Studio grow for as long as it stays open.
+        effects.limit = limit
         effects.onRecord = { [weak self] effect in self?.record(effect) }
         return effects
     }()
@@ -102,7 +107,10 @@ public final class StudioActionPolicy: SkinActionPolicy {
         return false
     }
 
-    public func clearRecorded() { recorded = [] }
+    public func clearRecorded() {
+        recorded = []
+        if hasEffects { effects.clearRecords() }
+    }
 
     private func record(_ action: Recorded) {
         recorded.append(action)
