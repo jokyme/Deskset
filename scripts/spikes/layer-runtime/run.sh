@@ -192,11 +192,14 @@ COST_C=(
     "sixty Bkept --mode B --kept --frames"
 )
 # The skin threads' drawing cost when the 10 widgets update at the same moment on 10 threads (as in every run above)
-# vs one after another on one shared thread.
+# vs one after another on one shared thread, and on 10 threads with their updates spread over the second.
 COST_THREADS=(
     "ten E1-onethread --mode E1 --one-thread"
     "ten C1-onethread --mode D1 --cgimage --one-thread"
     "ten EPw-onethread --mode EP --window-space-base --one-thread"
+    "ten CPw-onethread --mode DP --cgimage --window-space-base --one-thread"
+    "ten EPw-stagger --mode EP --window-space-base --stagger"
+    "ten E1-stagger --mode E1 --stagger"
 )
 WSCPU_C=(
     "ten CPw --mode DP --cgimage --window-space-base"

@@ -880,9 +880,12 @@ final class SkinWindow {
 
     /// Starts an update timer on the skin's executor: every `interval` seconds the next tick is drawn (only the
     /// groups whose elements changed) and committed.
-    func start(interval: Double) {
-        // Every update drains its own autorelease pool (see RunLoopThread.perform).
-        let t = Timer(timeInterval: interval, repeats: true) { [unowned self] _ in autoreleasepool { step() } }
+    func start(interval: Double, after delay: Double = 0) {
+        // Every update drains its own autorelease pool (see RunLoopThread.perform). `delay` shifts the first update
+        // (and so every later one) by that much.
+        let t = Timer(fire: Date().addingTimeInterval(interval + delay), interval: interval, repeats: true) {
+            [unowned self] _ in autoreleasepool { step() }
+        }
         t.tolerance = interval >= 0.5 ? 0.01 : 0.001
         if config.mode.isView || thread == nil {
             RunLoop.main.add(t, forMode: .common)

@@ -22,6 +22,7 @@
 //                      without it, showing the widgets hides whatever animates under them (other apps), which
 //                      changes WindowServer's work by more than the widgets cost
 //   --one-thread       all widgets share one skin thread (default: one thread per widget, as Deskset plans)
+//   --stagger          widget i updates i / N of an interval after the first (default: all at the same moment)
 //   --off-shown        off phases keep the windows on screen and only stop their updates (instead of ordering them
 //                      out): the difference is then only what the updates cost, without the window server's work of
 //                      ordering windows out and in (which spills into the next phase)
@@ -78,7 +79,7 @@ func costRun() -> JSON {
         }
     }()
     var j: JSON = ["mode": mode.rawValue, "config": config.label, "scenario": scenario, "widgets": count,
-                   "oneSkinThread": flag("--one-thread"), "phaseSeconds": seconds, "pairs": pairs, "settleSeconds": settle,
+                   "oneSkinThread": flag("--one-thread"), "staggered": flag("--stagger"), "phaseSeconds": seconds, "pairs": pairs, "settleSeconds": settle,
                    "updateIntervalMs": r(interval * 1000, 2),
                    "offPhases": offShown ? "windows on screen, updates stopped" : "windows ordered out, updates stopped"]
     let mb = 1024.0 * 1024.0
@@ -94,6 +95,8 @@ func costRun() -> JSON {
     /// One `top` sample.
     func windowServerMB() -> Double? { windowServerMemory().mem.map { $0 / mb } }
 
+    /// --stagger: widget i updates i / count of an interval after the first one (default: all at the same moment).
+    func stagger(_ i: Int) -> Double { flag("--stagger") ? Double(i) * interval / Double(count) : 0 }
     var threads: [RunLoopThread] = []
     func open(_ n: Int, start: Bool = true) -> [SkinWindow] {
         autoreleasepool {
@@ -109,7 +112,7 @@ func costRun() -> JSON {
                 w.show()
                 ws.append(w)
             }
-            if start { for w in ws { w.start(interval: interval) } }
+            if start { for (i, w) in ws.enumerated() { w.start(interval: interval, after: stagger(i)) } }
             return ws
         }
     }
@@ -238,9 +241,9 @@ func costRun() -> JSON {
         }
         pump(0.5)
         phases.append(phase("off"))
-        for w in windows {
+        for (k, w) in windows.enumerated() {
             if !offShown { w.show() }
-            w.start(interval: interval)
+            w.start(interval: interval, after: stagger(k))
         }
         pump(i == pairs - 1 ? 0.5 : offShown ? 0.5 : reshowWait)
     }
@@ -285,7 +288,7 @@ func costRun() -> JSON {
         j["keptPicturesLastFrame"] = ["picturesCopied": k.copied, "picturesMade": k.made, "elementsDrawn": k.drawn,
                                       "elements": w.widget.elements.count]
         if let c = v.keptCheck(tick: w.tick) { j["keptPicturesVsFullDrawing"] = c }
-        for w in windows { w.start(interval: interval) }
+        for (k, w) in windows.enumerated() { w.start(interval: interval, after: stagger(k)) }
         pump(0.5)
     }
 
