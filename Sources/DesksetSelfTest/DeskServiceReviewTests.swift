@@ -512,4 +512,17 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         }
         t.equal(DeskHoverWords.choiceOf.zh, "可选值，属于")
     }
+
+    t.suite("Desk: service — a fix's title says what it writes") {
+        func titles(_ body: String, _ language: DiagnosticLanguage = .english) -> [String] {
+            let snapshot = deskNavService("info { name: \"T\" }\nwidget {\n    \(body)\n}\n", language: language).snapshot
+            return snapshot.codeActions(in: snapshot.index.range(utf16: 0..<(snapshot.text as NSString).length), source: false)
+                .filter { $0.kind == .quickFix }.map(\.title)
+        }
+        let swiftUI = titles("Text(\"CPU\").frame(width: 100, height: 20).cornerRadius(8)")
+        t.check(swiftUI.contains("Change to `.size(100, 20)`") && swiftUI.contains("Change to `.rounded(8)`"), "\(swiftUI)")
+        t.equal(Set(swiftUI).count, swiftUI.count, "no title twice")
+        t.check(titles("Text(\"CPU\").font-size(14)").contains("Remove `-size(14)`"))
+        t.check(titles("VStack { Text(\"a\") }", .simplifiedChinese).contains("改成 `Column`"))
+    }
 }

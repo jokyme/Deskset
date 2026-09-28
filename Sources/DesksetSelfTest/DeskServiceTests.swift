@@ -339,7 +339,12 @@ func runDeskServiceTests(_ t: TestRunner) {
                 }
                 t.equal(d.fixIts.count, source.fixIts.count, "\(fixture.id): fix-its")
                 for (fix, sourceFix) in zip(d.fixIts, source.fixIts) {
-                    t.equal(fix.title, sourceFix.title(in: .english))
+                    // A generic title says what the fix writes when it is one line of short text.
+                    if DeskSnapshot.genericFixTitles.contains(sourceFix.titleKey), fix.title != sourceFix.title(in: .english) {
+                        t.check(["Change to `", "Remove `", "Insert `"].contains { fix.title.hasPrefix($0) }, "\(fixture.id): \(fix.title)")
+                    } else {
+                        t.equal(fix.title, sourceFix.title(in: .english))
+                    }
                     t.equal(fix.group, sourceFix.group)
                     for (editedFile, original) in files {
                         let expected = TextEdit.apply(sourceFix.edits.filter { $0.file == editedFile }, to: original)

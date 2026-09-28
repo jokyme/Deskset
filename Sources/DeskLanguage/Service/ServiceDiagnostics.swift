@@ -174,7 +174,7 @@ extension DeskSnapshot {
         }
         let fixIts = d.fixIts.compactMap { fix -> DeskServiceFixIt? in
             guard let edit = workspaceEdit(fix.edits) else { return nil }
-            return DeskServiceFixIt(title: fix.title(in: language, catalog: catalog), edit: edit, group: fix.group)
+            return DeskServiceFixIt(title: fixTitle(fix), edit: edit, group: fix.group)
         }
         var dropped: DeskDroppedUnit?
         if let unit = d.dropped {
@@ -184,6 +184,65 @@ extension DeskSnapshot {
         return DeskServiceDiagnostic(id: d.id, severity: d.severity, file: d.file, range: range,
                                      message: d.message(in: language, catalog: catalog), notes: notes, fixIts: fixIts,
                                      dropped: dropped)
+    }
+
+    /// The catalog's titles that do not say what a fix writes.
+    static let genericFixTitles: Set<String> = ["fix", "replace", "remove", "rewrite", "add"]
+
+    /// A fix's title in the service's language. A generic one ("Replace", "Fix") becomes what the fix writes when
+    /// its edits are on one line: "Change to `.color(.red)`", "Remove `-size(14)`", "Insert `)`".
+    func fixTitle(_ fix: FixIt) -> String {
+        let language = options.messageLanguage
+        let catalog = options.catalog
+        guard DeskSnapshot.genericFixTitles.contains(fix.titleKey), let described = describedFix(fix.edits) else {
+            return fix.title(in: language, catalog: catalog)
+        }
+        return described.title(in: language, catalog: catalog)
+    }
+
+    /// What edits on one line of one file write, as a fix title; nil when they span lines or the text is long.
+    func describedFix(_ edits: [TextEdit]) -> FixIt? {
+        guard let first = edits.first, edits.allSatisfy({ $0.file == first.file }), let fileIndex = index(of: first.file)
+        else { return nil }
+        let bytes = fileIndex.bytes
+        let sorted = edits.sorted { $0.range.lowerBound < $1.range.lowerBound }
+        guard let lo = sorted.first?.range.lowerBound, let hi = sorted.map(\.range.upperBound).max(), lo >= 0, hi <= bytes.count
+        else { return nil }
+        func isBreak(_ b: UInt8) -> Bool { b == 0x0A || b == 0x0D }
+        guard !bytes[lo..<hi].contains(where: isBreak), !edits.contains(where: { $0.replacement.utf8.contains(where: isBreak) })
+        else { return nil }
+        for (a, b) in zip(sorted, sorted.dropFirst()) where a.range.upperBound > b.range.lowerBound { return nil }
+        let limit = 40
+        func code(_ text: String) -> [String: DiagnosticArgument]? {
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            // Only text that shows: an invisible mark or a lone space keeps the catalog's words.
+            let visible = trimmed.unicodeScalars.allSatisfy { s in
+                s == " " || !(s.properties.generalCategory == .format || s.properties.generalCategory == .control
+                              || s.properties.isWhitespace || s.properties.generalCategory == .privateUse)
+            }
+            guard !trimmed.isEmpty, trimmed.count <= limit, !trimmed.contains("`"), visible else { return nil }
+            return ["text": .code(trimmed)]
+        }
+        if sorted.count == 1 {
+            let e = sorted[0]
+            if e.replacement.isEmpty {
+                return code(String(decoding: bytes[e.range], as: UTF8.self)).map { FixIt(titleKey: "removeText", titleArguments: $0, edits: edits) }
+            }
+            if e.range.isEmpty {
+                return code(e.replacement).map { FixIt(titleKey: "insert", titleArguments: $0, edits: edits) }
+            }
+            return code(e.replacement).map { FixIt(titleKey: "changeTo", titleArguments: $0, edits: edits) }
+        }
+        // Several edits of one line: the text they leave between the first and the last.
+        var result: [UInt8] = []
+        var at = lo
+        for e in sorted {
+            result += bytes[at..<e.range.lowerBound]
+            result += Array(e.replacement.utf8)
+            at = e.range.upperBound
+        }
+        result += bytes[at..<hi]
+        return code(String(decoding: result, as: UTF8.self)).map { FixIt(titleKey: "changeTo", titleArguments: $0, edits: edits) }
     }
 
     /// Checker edits (UTF-8, per file) as a workspace edit; nil when an edit is in a file the folder does not have.
