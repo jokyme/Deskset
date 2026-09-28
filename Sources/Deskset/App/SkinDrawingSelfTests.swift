@@ -803,6 +803,8 @@ enum SkinDrawingSelfTests {
         t.suite("App: skin drawing: a skin window shows its frames in a layer of its own") {
             guard let app = try AppSelfTest.makeApp(t),
                   let c = app.activate(config: "App\\Focus", file: "Focus.ini") else { return t.check(false, "loads") }
+            // Its clock stops, so that only the test redraws it (the frames are counted).
+            c.pauseUpdates()
             let view = c.view, frames = c.runtime.frames
             t.check(view.wantsUpdateLayer, "the view asks AppKit for no drawing of its own")
             view.updateLayer()
@@ -897,6 +899,7 @@ enum SkinDrawingSelfTests {
             guard let app = try AppSelfTest.makeApp(t),
                   let c = app.activate(config: "App\\Focus", file: "Focus.ini") else { return t.check(false, "loads") }
             defer { app.stopAllForTermination() }
+            c.pauseUpdates()
             c.visibilityForTesting = true
             c.skin.execute("[!Redraw]", from: nil)
             endTurn()
