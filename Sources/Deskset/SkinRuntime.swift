@@ -2,10 +2,11 @@ import AppKit
 import DesksetCore
 
 /// The half of a running skin that owns the `Skin` (docs/skin-threading.md §5.4): it is the skin's `SkinHost`, runs its
-/// update clock, pause and wake, handles the messages sent to it (`send`) and asks the main thread for what only the
-/// main thread can do (`request`). Everything here runs on the skin's executor; the window half,
-/// `SkinWindowController`, stays on the main thread and reaches the skin only through this object: messages, or
-/// exclusive access (`exclusive`) where it still needs an answer at once.
+/// update clock, pause and wake, handles the messages sent to it (`send`), publishes what the main thread reads of the
+/// skin (`snapshot`) and asks the main thread for what only the main thread can do (`request`). Everything here runs on
+/// the skin's executor, except reading the snapshot; the window half, `SkinWindowController`, stays on the main thread
+/// and reaches the skin only through this object: messages, the snapshot, or exclusive access (`exclusive`) where it
+/// still needs the live skin at once.
 ///
 /// Every skin runs on the main executor so far (phase 2 of the design moves the desktop's skins to an engine thread
 /// later), so messages and requests run inline and in the order they always did.
@@ -211,10 +212,47 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         body()
     }
 
+    // MARK: The snapshot
+
+    /// The snapshot the main thread reads, swapped under `snapshotLock`.
+    private let snapshotLock = NSLock()
+    private var publishedSnapshot = SkinSnapshot()
+    /// The executor's copy of the last snapshot published, and the skin's snapshot generation it was built at.
+    private var ownSnapshot = SkinSnapshot()
+    private var builtGeneration: Int?
+    private var isPublishing = false
+
+    /// What the main thread reads of the skin (see `SkinSnapshot`): as of the skin's last piece of work. Any thread. On
+    /// the skin's executor what changed since is published first, so a reader there (on the main thread for a skin of
+    /// the main executor) always reads the skin as it is.
+    var snapshot: SkinSnapshot {
+        if let skin, skin.executor.isCurrent { publishSnapshot() }
+        snapshotLock.lock()
+        defer { snapshotLock.unlock() }
+        return publishedSnapshot
+    }
+
+    /// Publishes the snapshot that follows the skin's last piece of work (`SkinSnapshot.next`) when anything in it
+    /// changed, and asks the main thread to act on what it acts on (`.snapshotChanged`). On the executor: after every
+    /// piece of the skin's work (`skinDidFinishWork`), and before a read there.
+    func publishSnapshot() {
+        guard let skin, !isPublishing else { return }
+        isPublishing = true
+        defer { isPublishing = false }
+        let old = ownSnapshot
+        guard let next = SkinSnapshot.next(after: old, of: skin, builtGeneration: &builtGeneration) else { return }
+        ownSnapshot = next
+        snapshotLock.lock()
+        publishedSnapshot = next
+        snapshotLock.unlock()
+        let changes = next.changes(from: old)
+        if !changes.isEmpty { request(.snapshotChanged(changes)) }
+    }
+
     // MARK: Exclusive access
 
-    /// How long the main thread waits for a skin on another thread to park by default: a stand-in until the snapshot
-    /// (step 2 of phase 2) answers what the window reads of the skin.
+    /// How long the main thread waits for a skin on another thread to park by default, where it still needs the live
+    /// skin (the snapshot answers the window's mouse questions).
     static let defaultExclusiveTimeout: TimeInterval = 0.25
 
     /// Runs `body` with the live skin while its own work waits (`SkinExecutor.exclusive`): at once on the executor,
@@ -365,8 +403,11 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return true
     }
 
-    func skinOutsidePointerNeedsChanged(_ skin: Skin) {
-        request(.outsidePointerNeedsChanged)
+    /// The needs travel in the snapshot, published when the work ends (`.snapshotChanged(.outsidePointerNeeds)`).
+    func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
+
+    func skinDidFinishWork(_ skin: Skin) {
+        publishSnapshot()
     }
 
     /// MacGlass: the glass views follow the engine's regions (asked right before the redraw that shows the new layout).

@@ -94,8 +94,8 @@ enum SkinRuntimeSelfTests {
             _ = try mainRuntime.load()
             mainRuntime.send(.start)
             window.log = []
-            mainRuntime.request(.snapshotChanged)
-            t.equal(window.log, ["snapshotChanged on main"], "applied before request returned")
+            mainRuntime.request(.snapshotChanged([]))
+            t.equal(window.log, ["marker on main"], "applied before request returned")
             window.log = []
             mainRuntime.send(.execute("[!Move 10 20]", section: nil))
             t.equal(window.log, ["window move on main"], "a window bang is asked of the main thread at once")
@@ -106,8 +106,8 @@ enum SkinRuntimeSelfTests {
             defer { finish(t, &held, executor) }
             guard let runtime = held, load(t, runtime, on: executor) else { return }
             // What its first update asked for has arrived: the requests after a marker queued behind it.
-            executor.async { runtime.request(.snapshotChanged) }
-            t.check(AppSelfTest.spin(timeout: 30) { threadWindow.log.last == "snapshotChanged on main" }, "marker")
+            executor.async { runtime.request(.snapshotChanged([])) }
+            t.check(AppSelfTest.spin(timeout: 30) { threadWindow.log.last == "marker on main" }, "marker")
             threadWindow.log = []
             executor.async {
                 for i in 0..<20 { runtime.request(.fadeWindow(from: i, to: i)) }
@@ -254,7 +254,8 @@ enum SkinRuntimeSelfTests {
             }
             t.check(skin != nil, "the closed skin stays while its runtime does")
             runtime = nil
-            t.check(AppSelfTest.spin(timeout: 30) { skin == nil }, "then goes")
+            // The weak reference is cleared when the skin starts to go; its measures go right after, on its thread.
+            t.check(AppSelfTest.spin(timeout: 30) { skin == nil && !released.threads.current.isEmpty }, "then goes")
             t.equal(released.threads.current, [true], "released on the skin's thread")
 
             // On the main executor, through the app: unloaded, the skin goes with its window controller.
@@ -372,12 +373,16 @@ enum SkinRuntimeSelfTests {
 /// The main-thread side of a runtime in the tests: records the requests it gets, and where.
 final class RecordingWindow: SkinRuntimeWindow {
     var log: [String] = []
+    /// What the runtime's `.snapshotChanged` requests said changed, in order.
+    var snapshotPosts: [SkinSnapshotChanges] = []
 
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         let place = Thread.isMainThread ? "on main" : "off main"
         switch request {
         case .display: return   // every redraw
-        case .snapshotChanged: log.append("snapshotChanged \(place)")
+        case .snapshotChanged(let changes):
+            // With nothing in it: a test's marker; else what the runtime posted.
+            if changes.isEmpty { log.append("marker \(place)") } else { snapshotPosts.append(changes) }
         case .window(let host): log.append("window \(host.bang.name) \(place)")
         case .system(let host): log.append("system \(host.bang.name) \(place)")
         case .fadeWindow(let from, _): log.append("fade \(from) \(place)")

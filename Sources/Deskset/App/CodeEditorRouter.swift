@@ -178,11 +178,12 @@ enum CodeEditorRouter {
     }
 
     /// The running skin that reads `file`: the one being edited when it does (an include shared by several skins
-    /// stays in the open editor), else one whose main file it is, else the first (in load order) including it.
+    /// stays in the open editor), else one whose main file it is, else the first (in load order) including it. The
+    /// files a skin reads come from its snapshot.
     static func owningController(of file: URL, in app: AppController) -> SkinWindowController? {
         let key = comparablePath(file)
         func owns(_ c: SkinWindowController) -> Bool {
-            !c.isStopped && c.runtime.exclusive({ $0.sourceFiles.contains { comparablePath($0) == key } }) == true
+            !c.isStopped && c.runtime.snapshot.sourceFiles.contains { comparablePath($0) == key }
         }
         if let edited = app.inspector?.controller, owns(edited) { return edited }
         let running = app.sortedControllers

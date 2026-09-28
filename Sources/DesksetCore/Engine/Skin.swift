@@ -203,7 +203,13 @@ public final class Skin {
     /// Mac differences (`SkinFileLoader`'s warnings); the editor says them in plain words.
     public private(set) var loadWarnings: [String] = []
 
-    private var variables: [String: String] = [:]
+    private var variables: [String: String] = [:] {
+        didSet { variablesGeneration &+= 1 }
+    }
+    /// Counts the changes of the skin's variables (`!SetVariable`, the appearance, a preview) and of its context menu
+    /// options (`!SetOption Rainmeter ContextTitle…`): the context menu's titles and actions, which are read with them
+    /// on demand, may have changed. Never decreases.
+    public private(set) var variablesGeneration = 0
     /// The `[Variables]` definitions as last resolved (at load, and when the appearance changes), and the built-in
     /// values they were resolved with: `refreshAppearanceVariables()` updates the ones built from appearance variables.
     private var definedVariables: [String: String] = [:]
@@ -1773,6 +1779,7 @@ public final class Skin {
             }
             section.overrides[lower] = value
             settings.contextItems = contextMenuItems().filter { !$0.isSeparator }.map { ($0.title, $0.action) }
+            variablesGeneration &+= 1
             return
         }
         section.overrides[lower] = value

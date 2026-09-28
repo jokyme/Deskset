@@ -432,11 +432,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return controller(for: name).map { [$0] } ?? []
     }
 
-    /// Active skins in the skin group `group` (`Group=` in `[Rainmeter]`, case-insensitive), in load order.
+    /// Active skins in the skin group `group` (`Group=` in `[Rainmeter]`, case-insensitive), in load order: their
+    /// snapshots say.
     func controllers(inGroup group: String) -> [SkinWindowController] {
         guard !group.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         return sortedControllers.filter { c in
-            !c.isStopped && c.runtime.exclusive({ $0.isInSkinGroup(group) }) == true
+            !c.isStopped && SnapshotAudit.check("isInSkinGroup(\(group))", c.runtime,
+                                                snapshot: c.runtime.snapshot.isInSkinGroup(group),
+                                                live: { $0.isInSkinGroup(group) })
         }
     }
 
@@ -636,6 +639,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .desksetSkinsChanged, object: self)
+    }
+
+    /// Told on the next turn, once however many there were.
+    private var detailsChangePending = false
+
+    /// A running skin's compatibility notes or metadata changed (its snapshot says): the Manage window and the menus
+    /// hear of it on the next turn, not in the middle of the skin's work.
+    func skinDetailsChanged() {
+        guard !detailsChangePending else { return }
+        detailsChangePending = true
+        later { app in
+            app.detailsChangePending = false
+            app.notifyChanged()
+        }
     }
 
     // MARK: Windows
@@ -898,16 +915,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
         let s = c.state
-        // What the menu shows of the skin, read at once (the custom items' titles "are always dynamic").
+        // The name and the compatibility notes from the skin's snapshot; the custom items read at once (their titles
+        // "are always dynamic").
+        let snapshot = c.runtime.snapshot
         let facts = c.runtime.exclusive { skin in
-            (name: ManageModel.metadataValue(skin.metadata, "Name"),
-             custom: includeCustomItems ? skin.contextMenuItems() : [],
+            (custom: includeCustomItems ? skin.contextMenuItems() : [],
              weather: includeCustomItems
-                ? WeatherWiring.menuItems(for: skin, target: self, action: #selector(openWeatherSourceAction(_:))) : [],
-             issues: skin.issues)
+                ? WeatherWiring.menuItems(for: skin, target: self, action: #selector(openWeatherSourceAction(_:))) : [])
         }
         if includeCustomItems {
-            let title = facts?.name ?? c.config
+            let title = ManageModel.metadataValue(snapshot.metadata, "Name") ?? c.config
             menu.addItem(withTitle: title, action: nil, keyEquivalent: "").isEnabled = false
             let custom = facts?.custom ?? []
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
@@ -981,7 +998,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(i)
         }
 
-        if let skinIssues = facts?.issues, !skinIssues.isEmpty {
+        let skinIssues = snapshot.issues
+        if !skinIssues.isEmpty {
             menu.addItem(.separator())
             let issues = NSMenu()
             for issue in skinIssues.prefix(50) {

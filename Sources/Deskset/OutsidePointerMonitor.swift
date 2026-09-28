@@ -137,7 +137,7 @@ final class OutsidePointerMonitor {
     func needsChanged() {
         var union = OutsidePointerNeeds()
         for c in app.controllers.values where !c.isStopped {
-            union.formUnion(c.runtime.exclusive { $0.outsidePointerNeeds } ?? OutsidePointerNeeds())
+            union.formUnion(c.runtime.snapshot.outsidePointerNeeds)
         }
         needs = union
         // The release of a button no longer watched would not be seen.
@@ -302,7 +302,7 @@ final class OutsidePointerMonitor {
 
     private func deliver(_ record: Record) {
         let targets = app.controllers.values
-            .filter { c in !c.isStopped && c.runtime.exclusive({ $0.outsidePointerNeeds.isEmpty }) == false }
+            .filter { c in !c.isStopped && !c.runtime.snapshot.outsidePointerNeeds.isEmpty }
             .sorted { ($0.state.loadOrder, $0.config.lowercased()) < ($1.state.loadOrder, $1.config.lowercased()) }
         for c in targets where !c.isStopped {
             // A skin's own window reports its input itself (SkinView → Skin.pointerEvent).

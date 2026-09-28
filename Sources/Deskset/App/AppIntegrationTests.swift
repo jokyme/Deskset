@@ -201,10 +201,9 @@ extension AppSelfTest {
         t.suite("App: buttons, right presses, cursors and tooltips") {
             guard let app = try makeApp(t), let c = app.activate(config: "App\\Buttons", file: nil) else { return }
             func v(_ name: String) -> String { c.skin.variable(name) ?? "" }
-            let skin: Skin = c.skin
             // Button meter: its disc is the button, the transparent corners are not.
-            t.check(SkinView.isOnButton(skin, x: 10, y: 10))
-            t.check(!SkinView.isOnButton(skin, x: 1, y: 1), "transparent corner")
+            t.check(SkinView.isOnButton(c, x: 10, y: 10))
+            t.check(!SkinView.isOnButton(c, x: 1, y: 1), "transparent corner")
             t.equal(SkinView.leftMouseDown(c, x: 10, y: 90, clickCount: 1, override: false), true,
                     "the bottom 20 points drag (DragMargins=0,-20,0,0)")
             t.equal(SkinView.leftMouseDown(c, x: 150, y: 50, clickCount: 1, override: false), false,
@@ -248,10 +247,10 @@ extension AppSelfTest {
             t.check(SkinView.isDoubleClick(2) && SkinView.isDoubleClick(4) && !SkinView.isDoubleClick(3))
 
             // Cursors: the pointer over a Button and over mouse actions, MouseActionCursorName otherwise.
-            t.equal(SkinView.cursorName(skin, x: 10, y: 10), "HAND")
-            t.equal(SkinView.cursorName(skin, x: 1, y: 1), nil)
-            t.equal(SkinView.cursorName(skin, x: 40, y: 10), "Text")
-            t.equal(SkinView.cursorName(skin, x: 65, y: 10), nil, "tooltips alone do not change the cursor")
+            t.equal(SkinView.cursorName(c, x: 10, y: 10), "HAND")
+            t.equal(SkinView.cursorName(c, x: 1, y: 1), nil)
+            t.equal(SkinView.cursorName(c, x: 40, y: 10), "Text")
+            t.equal(SkinView.cursorName(c, x: 65, y: 10), nil, "tooltips alone do not change the cursor")
             t.check(SkinView.cursor(named: "HAND") === NSCursor.pointingHand)
             t.check(SkinView.cursor(named: "text") === NSCursor.iBeam)
             t.check(SkinView.cursor(named: nil) === NSCursor.arrow)
@@ -441,15 +440,14 @@ extension AppSelfTest {
     static func integrationReviewTests(_ t: AppTestRunner) {
         t.suite("App: a label over a Button, right double clicks") {
             guard let app = try makeApp(t), let c = app.activate(config: "App\\Buttons", file: nil) else { return }
-            let skin: Skin = c.skin
             // The label (no actions) is on top of the button; clicks there still press the button, so the pointer
             // shows there too.
-            t.check(SkinView.isOnButton(skin, x: 10, y: 10), "the press goes to the button under the label")
-            t.equal(SkinView.cursorName(skin, x: 10, y: 10), "HAND", "pointer over the label on the button")
-            t.equal(SkinView.cursorName(skin, x: 1, y: 1), nil, "transparent corner")
+            t.check(SkinView.isOnButton(c, x: 10, y: 10), "the press goes to the button under the label")
+            t.equal(SkinView.cursorName(c, x: 10, y: 10), "HAND", "pointer over the label on the button")
+            t.equal(SkinView.cursorName(c, x: 1, y: 1), nil, "transparent corner")
             // RightMouseDoubleClickAction alone "disables the context menu" (the menu would swallow the second click).
-            t.equal(SkinView.showsSkinMenu(skin, x: 130, y: 10), false)
-            t.equal(SkinView.showsSkinMenu(skin, x: 150, y: 50), true, "no right actions: the menu opens")
+            t.equal(SkinView.showsSkinMenu(c, x: 130, y: 10), false)
+            t.equal(SkinView.showsSkinMenu(c, x: 150, y: 50), true, "no right actions: the menu opens")
             t.equal(SkinView.buttonDown(c, down: .rightDown, double: .rightDoubleClick, x: 130, y: 10, clickCount: 2),
                     true)
             t.equal(c.skin.variable("DoubleRight"), "1")

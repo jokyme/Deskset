@@ -4,8 +4,8 @@ import DesksetCore
 /// The main-thread half of a running skin (docs/skin-threading.md §5.4): its window (`SkinPanel`, `SkinView`, the
 /// glass), fades, hover polling, placement, dragging, snapping and keeping on screen, and the skin's `AppState`. The
 /// other half, `SkinRuntime`, owns the `Skin`; this one reaches it only through the runtime: messages (`runtime.send`),
-/// or exclusive access (`runtime.exclusive`) where it still reads the live skin (the snapshot replaces that later). It
-/// applies what the runtime asks of the main thread (`apply`).
+/// the skin's snapshot (`runtime.snapshot`), or exclusive access (`runtime.exclusive`) where it still reads the live
+/// skin. It applies what the runtime asks of the main thread (`apply`).
 final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow {
     let config: String
     let file: String
@@ -50,9 +50,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
 
     var state: SkinState { app.state.skin(config) ?? SkinState(file: file) }
 
-    /// The skin defines OnFocusAction or OnUnfocusAction.
+    /// The skin defines OnFocusAction or OnUnfocusAction (from the snapshot).
     var wantsFocus: Bool {
-        runtime.exclusive { !$0.settings.onFocusAction.isEmpty || !$0.settings.onUnfocusAction.isEmpty } ?? false
+        SnapshotAudit.check("wantsFocus", runtime, snapshot: runtime.snapshot.wantsFocus,
+                            live: { !$0.settings.onFocusAction.isEmpty || !$0.settings.onUnfocusAction.isEmpty })
     }
 
     /// Whether the skin can currently be seen (loaded, not hidden by a bang).
@@ -365,10 +366,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     private var screens: [WindowGeometry.Screen] { WindowGeometry.currentScreens() }
     private var primaryHeight: CGFloat { WindowGeometry.primaryHeight(screens) }
 
-    /// The window size for the skin's size now (the window's own size when the skin cannot be asked).
-    private var skinSize: NSSize {
-        runtime.exclusive { SkinRuntime.windowSize(width: $0.width, height: $0.height) } ?? window.frame.size
-    }
+    /// The window size for the skin's size (from the snapshot).
+    private var skinSize: NSSize { runtime.snapshot.size }
 
     /// KeepOnScreen, or at least not lost entirely off-screen.
     private func constrained(_ frame: CGRect) -> CGRect {
@@ -545,13 +544,19 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             open(plan)
         case .forward(let bang, let config, let hops):
             forward(bang, toConfig: config, hops: hops)
-        case .outsidePointerNeedsChanged:
-            app.outsidePointer.needsChanged()
         case .companion(let companion):
             switch companion {}
-        case .snapshotChanged:
-            break
+        case .snapshotChanged(let changes):
+            snapshotChanged(changes)
         }
+    }
+
+    /// The skin published a snapshot in which something changed that the main thread acts on.
+    private func snapshotChanged(_ changes: SkinSnapshotChanges) {
+        if changes.contains(.toolTips) { view.updateToolTips() }
+        // Also once the skin closed: it no longer wants anything.
+        if changes.contains(.outsidePointerNeeds) { app.outsidePointer.needsChanged() }
+        if !changes.isDisjoint(with: [.issues, .metadata]) { app.skinDetailsChanged() }
     }
 
     /// The skin redrew: the window follows its size (the top-left corner stays) and shows the new picture.

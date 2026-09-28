@@ -127,12 +127,11 @@ enum SkinRequest {
     /// A bang the engine performed, or `*`, for other skins (`SkinHost.skin(_:forward:toConfig:)`), with the sender's
     /// hops.
     case forward(Bang, toConfig: String, hops: Int)
-    /// What the skin wants to hear of the pointer outside its window changed (`Plugin=Slider`).
-    case outsidePointerNeedsChanged
     /// A window companion (FrostedGlass's backdrop, InputText's box): step 5 of phase 2 moves them here.
     case companion(SkinCompanionRequest)
-    /// Something the main thread reads of the skin changed (step 2 of phase 2 posts it with the snapshot).
-    case snapshotChanged
+    /// The skin published a snapshot in which something the main thread acts on changed (`SkinSnapshotChanges`): the
+    /// tooltip areas, the compatibility notes, what it wants of the mouse outside its window… Posted only then.
+    case snapshotChanged(SkinSnapshotChanges)
 }
 
 /// What a window companion is asked to do (none yet: FrostedGlass and InputText still reach their window directly).

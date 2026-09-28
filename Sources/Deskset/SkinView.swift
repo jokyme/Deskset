@@ -12,8 +12,12 @@ final class SkinPanel: NSPanel {
 }
 
 /// Draws the skin and turns mouse events into skin actions / window dragging. It reaches the skin through its
-/// window controller's runtime: events are messages (`SkinRuntime.send`), and what it needs to know at once (whether a
-/// press may drag, the cursor, tooltips, the picture) it reads from the live skin with exclusive access.
+/// window controller's runtime: events are messages (`SkinRuntime.send`); what it needs to know at once — whether a
+/// press may drag, whether a right click opens the skin menu, the cursor, the tooltips, whether the panel becomes key —
+/// it reads from the skin's snapshot (`SkinSnapshot`, as of the skin's last piece of work: the frame on screen), and
+/// the picture from the live skin with exclusive access. Whether an event was handled is the skin's answer when the
+/// message ran at once (the skin runs on the main thread), else what the snapshot predicted. Debug builds compare every
+/// answer taken from the snapshot with the live skin's while the skin runs on the main thread (`SnapshotAudit`).
 ///
 /// Mouse rules (manual: Mouse actions):
 /// - "LeftMouseDownAction … disables dragging the skin": no drag starts where a LeftMouseDownAction is set (on a
@@ -203,30 +207,53 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// start a drag. With the CTRL override no click action runs and the skin can always be dragged.
     static func leftMouseDown(_ c: SkinWindowController, x: Double, y: Double, clickCount: Int, override: Bool) -> Bool {
         if override { return true }
-        let runtime = c.runtime
-        // Decided before any action runs (an action may hide or move meters).
-        let decided = runtime.exclusive { skin in
-            (blocksDrag: skin.hasAction(.leftDown, x: x, y: y) || isOnButton(skin, x: x, y: y),
-             hasDoubleClick: skin.hasAction(.leftDoubleClick, x: x, y: y))
-        }
-        guard let decided else { return false }
+        // Decided before any action runs (an action may hide or move meters), on the frame on screen.
+        let blocksDrag = hasAction(c, .leftDown, x: x, y: y) || isOnButton(c, x: x, y: y)
+        let hasDoubleClick = hasAction(c, .leftDoubleClick, x: x, y: y)
         var handled = false
-        if isDoubleClick(clickCount), decided.hasDoubleClick {
-            handled = runtime.send(.mouse(.leftDoubleClick, x: x, y: y)) ?? false
+        if isDoubleClick(clickCount), hasDoubleClick {
+            handled = deliver(c, .leftDoubleClick, x: x, y: y)
             guard !c.isStopped else { return false }
         }
-        if runtime.send(.mouse(.leftDown, x: x, y: y)) == true { handled = true }
+        if deliver(c, .leftDown, x: x, y: y) { handled = true }
         guard !c.isStopped else { return false }
-        return !decided.blocksDrag && !handled && c.state.draggable
-            && runtime.exclusive({ $0.isInDragArea(x: x, y: y) }) == true
+        return !blocksDrag && !handled && c.state.draggable && isInDragArea(c, x: x, y: y)
+    }
+
+    /// Sends a mouse action at (x, y) and tells whether it was handled: the skin's own answer when the message ran at
+    /// once (the skin runs on the main thread), else what the snapshot predicted when it was sent.
+    @discardableResult
+    static func deliver(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
+        let runtime = c.runtime
+        let predicted = runtime.snapshot.hitMap.handles(kind, x: x, y: y)
+        guard let live = runtime.send(.mouse(kind, x: x, y: y)) else { return predicted }
+        SnapshotAudit.compare("handles(\(kind.rawValue)) at (\(x), \(y))", runtime, snapshot: predicted, live: live)
+        return live
+    }
+
+    /// A click there runs (or is caught by) an action (`Skin.hasAction`), from the snapshot.
+    static func hasAction(_ c: SkinWindowController, _ kind: MouseEventKind, x: Double, y: Double) -> Bool {
+        let runtime = c.runtime
+        return SnapshotAudit.check("hasAction(\(kind.rawValue)) at (\(x), \(y))", runtime,
+                                   snapshot: runtime.snapshot.hitMap.hasAction(kind, x: x, y: y),
+                                   live: { $0.hasAction(kind, x: x, y: y) })
     }
 
     /// The press is on the image of the topmost Button meter there (transparent pixels are not the button), like
-    /// the engine's dispatch of clicks (Buttons first, even under other meters).
-    static func isOnButton(_ skin: Skin, x: Double, y: Double) -> Bool {
-        guard let button = skin.meters.last(where: { $0.handlesMouseItself && $0.isHit(x: x, y: y) }) as? ButtonMeter
-        else { return false }
-        return button.hitTest(x: x, y: y)
+    /// the engine's dispatch of clicks (Buttons first, even under other meters): from the snapshot.
+    static func isOnButton(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
+        let runtime = c.runtime
+        return SnapshotAudit.check("isOnButton at (\(x), \(y))", runtime,
+                                   snapshot: runtime.snapshot.hitMap.isOnButton(x: x, y: y),
+                                   live: { $0.isOnButton(x: x, y: y) })
+    }
+
+    /// Outside the skin's DragMargins (`Skin.isInDragArea`), from the snapshot.
+    static func isInDragArea(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
+        let runtime = c.runtime
+        return SnapshotAudit.check("isInDragArea at (\(x), \(y))", runtime,
+                                   snapshot: runtime.snapshot.hitMap.isInDragArea(x: x, y: y),
+                                   live: { $0.isInDragArea(x: x, y: y) })
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -295,11 +322,11 @@ final class SkinView: NSView, NSViewToolTipOwner {
     static func buttonDown(_ c: SkinWindowController, down: MouseEventKind, double: MouseEventKind, x: Double, y: Double,
                            clickCount: Int) -> Bool {
         var handled = false
-        if isDoubleClick(clickCount), c.runtime.exclusive({ $0.hasAction(double, x: x, y: y) }) == true {
-            handled = c.runtime.send(.mouse(double, x: x, y: y)) ?? false
+        if isDoubleClick(clickCount), hasAction(c, double, x: x, y: y) {
+            handled = deliver(c, double, x: x, y: y)
             guard !c.isStopped else { return true }
         }
-        if c.runtime.send(.mouse(down, x: x, y: y)) == true { handled = true }
+        if deliver(c, down, x: x, y: y) { handled = true }
         return handled
     }
 
@@ -314,9 +341,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
         // menu".
         let override = event.modifierFlags.contains(.control) || SkinView.isOverride(event.modifierFlags)
         if !override {
-            let upHandled = c.runtime.send(.mouse(.rightUp, x: x, y: y)) ?? false
-            if upHandled || pressHandled || c.isStopped
-                || c.runtime.exclusive({ SkinView.showsSkinMenu($0, x: x, y: y) }) != true { return }
+            let upHandled = SkinView.deliver(c, .rightUp, x: x, y: y)
+            if upHandled || pressHandled || c.isStopped || !SkinView.showsSkinMenu(c, x: x, y: y) { return }
         }
         c.showContextMenu(with: event, in: self)
     }
@@ -324,8 +350,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Whether a right click at the point may open the skin menu (its Down / Up actions did not catch it). A
     /// RightMouseDoubleClickAction there also "disables the context menu": the menu opened by the first click
     /// would swallow the second one, so the double click could never happen.
-    static func showsSkinMenu(_ skin: Skin, x: Double, y: Double) -> Bool {
-        !skin.hasAction(.rightDoubleClick, x: x, y: y)
+    static func showsSkinMenu(_ c: SkinWindowController, x: Double, y: Double) -> Bool {
+        !hasAction(c, .rightDoubleClick, x: x, y: y)
     }
 
     override func otherMouseDown(with event: NSEvent) {
@@ -436,7 +462,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard !c.state.clickThrough else { return }
         c.runtime.send(.hover(x: x, y: y))
         guard !c.isStopped else { return }
-        guard let name = c.runtime.exclusive({ SkinView.cursorName($0, x: x, y: y) }) else { return }
+        let name = SkinView.cursorName(c, x: x, y: y)
         if name != cursorName || name != nil {
             cursorName = name
             SkinView.cursor(named: name).set()
@@ -451,16 +477,15 @@ final class SkinView: NSView, NSViewToolTipOwner {
         }
     }
 
-    /// Cursor at a skin point: the pointer over the image of a Button meter (the button that a click there presses:
-    /// the engine gives Buttons the clicks before other meters, so a label drawn over a button does not hide it),
-    /// otherwise the engine's choice (MouseActionCursor / MouseActionCursorName over mouse actions).
-    static func cursorName(_ skin: Skin, x: Double, y: Double) -> String? {
-        if let button = skin.meters.last(where: { $0.handlesMouseItself && $0.isHit(x: x, y: y) }) as? ButtonMeter,
-           button.hitTest(x: x, y: y) {
-            guard button.mouseActionCursor else { return nil }
-            return button.mouseActionCursorName.isEmpty ? "HAND" : button.mouseActionCursorName
-        }
-        return skin.mouseCursorName(at: x, y)
+    /// Cursor at a skin point (`Skin.pointerCursorName`), from the snapshot: the pointer over the image of a Button
+    /// meter (the button that a click there presses: the engine gives Buttons the clicks before other meters, so a label
+    /// drawn over a button does not hide it), otherwise the engine's choice (MouseActionCursor / MouseActionCursorName
+    /// over mouse actions).
+    static func cursorName(_ c: SkinWindowController, x: Double, y: Double) -> String? {
+        let runtime = c.runtime
+        return SnapshotAudit.check("cursor at (\(x), \(y))", runtime,
+                                   snapshot: runtime.snapshot.hitMap.pointerCursorName(at: x, y),
+                                   live: { $0.pointerCursorName(x: x, y: y) })
     }
 
     /// `MouseActionCursorName` values with a macOS equivalent; everything else (HELP, BUSY, custom .cur / .ani
@@ -480,16 +505,16 @@ final class SkinView: NSView, NSViewToolTipOwner {
     // MARK: Tooltips
 
     /// Registers one tooltip area per meter that has a tooltip, so AppKit shows a new tooltip when the pointer moves
-    /// from one meter to another (a single view-wide tooltip keeps showing the first text). The text is read when
-    /// the tooltip appears. Called after every redraw request; AppKit is only touched when the areas change.
-    ///
-    /// A meter's area includes its glass (`MacGlass`), which is part of the meter for the mouse (`Meter.isOnGlass`)
-    /// also where it lies outside the frame: moved by a TransformationMatrix, or a Shape's Rectangle beyond it.
+    /// from one meter to another (a single view-wide tooltip keeps showing the first text). The areas come from the
+    /// snapshot (`SkinHitMap.toolTipAreas`: a meter's area includes its glass), the text is read when the tooltip
+    /// appears. Called when the snapshot's areas change and after every redraw request; AppKit is only touched when the
+    /// areas change.
     func updateToolTips() {
         var rects: [CGRect] = []
         if let c = controller, !c.isStopped, !c.state.clickThrough {
-            guard let areas = c.runtime.exclusive(SkinView.toolTipAreas) else { return }
-            rects = areas
+            let runtime = c.runtime
+            rects = SnapshotAudit.check("tooltip areas", runtime, snapshot: runtime.snapshot.toolTipAreas,
+                                        live: { $0.toolTipAreas().map(\.cgRect) })
         }
         guard rects != toolTipRects else { return }
         toolTipRects = rects
@@ -497,36 +522,14 @@ final class SkinView: NSView, NSViewToolTipOwner {
         for r in rects { addToolTip(r, owner: self, userData: nil) }
     }
 
-    /// The tooltip areas of a skin (skin coordinates): one per meter that shows a tooltip, at most 512.
-    static func toolTipAreas(_ skin: Skin) -> [CGRect] {
-        var rects: [CGRect] = []
-        guard !skin.settings.toolTipHidden else { return rects }
-        for m in skin.meters where !m.hidden && !m.toolTipHidden && !m.toolTipText.isEmpty {
-            var r = m.frame.cgRect
-            if let container = m.container {
-                // Content of a hidden container "in effect doesn't exist" (no tooltip either).
-                guard !container.hidden else { continue }
-                r = r.intersection(container.frame.cgRect)
-            }
-            if let glass = skin.shownGlassRegion(of: m) {
-                // Already cut off at the container's frame (`clip`), as shown.
-                var area = glass.rect.cgRect
-                if let clip = glass.clip { area = area.intersection(clip.cgRect) }
-                if !area.isNull, area.width > 0, area.height > 0 {
-                    r = r.isNull || r.width <= 0 || r.height <= 0 ? area : r.union(area)
-                }
-            }
-            guard !r.isNull, r.width > 0, r.height > 0, r.minX.isFinite, r.minY.isFinite else { continue }
-            rects.append(r)
-            if rects.count >= 512 { break }
-        }
-        return rects
-    }
-
-    /// Tooltip text at a skin point: the title on its own line above the text.
+    /// Tooltip text at a skin point, from the snapshot: the title on its own line above the text.
     func toolTipText(x: Double, y: Double) -> String? {
-        guard let c = controller, !c.isStopped,
-              let info = c.runtime.exclusive({ $0.toolTipInfo(at: x, y) }) ?? nil else { return nil }
+        guard let c = controller, !c.isStopped else { return nil }
+        let runtime = c.runtime
+        let info = SnapshotAudit.check("tooltip at (\(x), \(y))", runtime,
+                                       snapshot: runtime.snapshot.hitMap.toolTipInfo(at: x, y),
+                                       live: { $0.toolTipInfo(at: x, y) })
+        guard let info else { return nil }
         return info.title.isEmpty ? info.text : "\(info.title)\n\(info.text)"
     }
 

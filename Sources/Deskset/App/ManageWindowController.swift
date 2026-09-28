@@ -509,7 +509,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         // Header
         let metadata: [String: String]
         if loaded, let running {
-            metadata = running.runtime.exclusive { $0.metadata } ?? [:]
+            metadata = running.runtime.snapshot.metadata
         } else if let file {
             metadata = ManageModel.readMetadata(config.directory.appendingPathComponent(file))
         } else {
@@ -607,7 +607,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         issuesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let issues: [String]
         if loaded, let running {
-            issues = running.runtime.exclusive { $0.issues } ?? []
+            issues = running.runtime.snapshot.issues
         } else if let file {
             issues = cachedIssues(config: config, file: file)
         } else {

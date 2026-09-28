@@ -49,6 +49,7 @@ enum AppSelfTest {
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
+        SkinSnapshotSelfTests.run(t)
         RenderContextSelfTests.run(t)
         SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
@@ -1231,6 +1232,11 @@ final class AppTestRunner {
         self.filter = filter?.lowercased()
         IconServiceGuard.install()
         IconServiceGuard.onUse = { [weak self] stack in self?.iconServiceUsed(stack) }
+        // Debug builds compare the window's answers from a skin's snapshot with the live skin (skins on the main
+        // executor): a difference fails the suite that ran into it.
+        SnapshotAudit.onDifference = { [weak self] message in
+            self?.record("a snapshot answer differs from the live skin: \(message)", line: #line)
+        }
         // Line by line, so a run that is stopped (CI's time limit, the watchdog) still shows how far it got.
         setvbuf(stdout, nil, _IOLBF, 0)
     }
@@ -1316,6 +1322,8 @@ final class AppTestRunner {
         printSlowest(durations)
         if let suite = SuiteWatchdog.overran { failures.append("[\(suite)] ran over the watchdog's limit (see HANG)") }
         print("")
+        print("Snapshot answers compared with the live skins: \(SnapshotAudit.comparisons), "
+              + "differences: \(SnapshotAudit.differences).")
         if failures.isEmpty {
             print("All \(passed) checks passed.")
             return 0
