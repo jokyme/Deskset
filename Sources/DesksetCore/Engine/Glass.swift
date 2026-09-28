@@ -65,7 +65,7 @@ public struct GlassOptions: Equatable, Sendable {
 
 /// Where one piece of glass goes: a plain value, so it can travel to the host (and, later, in a skin's snapshot to
 /// the main thread; docs/skin-threading.md §5.5).
-public struct GlassRegion: Equatable, Sendable {
+public struct GlassRegion: Equatable {
     /// `id` of the glass behind the whole skin (`[Rainmeter]`, which is never a meter's name).
     public static let skinID = "Rainmeter"
 
@@ -211,3 +211,6 @@ extension Skin {
         return regions
     }
 }
+
+/// A plain value, so a scene built on a skin's thread can carry it to the thread that draws and compares it.
+extension GlassRegion: Sendable {}

@@ -360,9 +360,6 @@ final class ChameleonMeasure: MediaUIMeasure {
         }
     }
 
-    /// Where Chameleon measures find the desktop picture: the screens, or a `--render --data`'s `FixedDesktopPicture`.
-    static var desktopSource: DesktopPictureSource = ScreenDesktopPicture()
-
     /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
     /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
     /// main thread only: a skin on another thread gets the main screen's, as the main thread last saw it
@@ -387,6 +384,11 @@ protocol DesktopPictureSource: AnyObject {
     func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop?
     /// True when the picture is a given file (reading it is a fixture in virtual time), not the Mac's live setting.
     var isFixture: Bool { get }
+}
+
+extension ChameleonMeasure {
+    /// Where Chameleon measures find the desktop picture: the screens, or a `--render --data`'s `FixedDesktopPicture`.
+    static var desktopSource: DesktopPictureSource = ScreenDesktopPicture()
 }
 
 /// The Mac's screens (`ChameleonMeasure.desktop(of:)`).
