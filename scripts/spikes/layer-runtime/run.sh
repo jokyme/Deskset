@@ -9,6 +9,7 @@
 #                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b cost-c wscpu-c
 #                                                     wsmem-c cost-threads, and the corrections (2026-09-28,
 #                                                     second half): q1s q5r q5x sysmem cschange wspair cost-d frames60
+#                                                     schedpair wspair-billed
 #                                                     cschange-person (a person changes the display's color profile)
 #                                                     wsfootprint-person (a person types the administrator password
 #                                                     once: WindowServer's footprint per way)
@@ -56,7 +57,7 @@ while [[ $# -gt 0 ]]; do
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
         -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads|q1s|q5r|q5x|sysmem|cschange|cschange-person|wspair|cost-d|frames60|wsfootprint-person)
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads|q1s|q5r|q5x|sysmem|cschange|cschange-person|wspair|wspair-billed|schedpair|cost-d|frames60|wsfootprint-person)
             STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
@@ -522,6 +523,16 @@ for step in "${STEPS[@]}"; do
                 waitload
                 run "wspair/r$r" wspair --cycles 10 --seed "$r"
             done ;;
+        schedpair)
+            for r in $(seq 1 "$ROUNDS"); do
+                wanted "$r" ten schedpair || continue
+                waitload
+                run "schedpair/EPw-r$r" schedpair --mode EPw --seed "$r"
+            done ;;
+        wspair-billed)
+            # Whether WindowServer's lower readings for the main-thread ways are CPU time billed to this process.
+            waitload
+            run "wspair-billed/r1" wspair --sets A,B,Bkept,E1,EPw,CPw --cycles 8 --seed 11 ;;
         cost-d)
             for r in $(seq 1 "$ROUNDS"); do
                 for entry in "${COST_D[@]}"; do

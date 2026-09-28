@@ -14,6 +14,8 @@
 //   wsmem         WindowServer's footprint when a fresh process opens several widgets of one scenario and mode
 //   cschange      a partitioned window when its color space changes: which thread draws, and base vs groups
 //                 (ColorSpaceChange.swift)
+//   schedpair     how 10 widgets' updates are scheduled (threads, alignment, coalescing), measured against each
+//                 other in one process (SchedPair.swift)
 //   wspair        WindowServer's and this process's CPU for several ways of showing the 60 Hz visualizer, measured
 //                 against each other in one process (WsPair.swift)
 //   sysmem        what opening windows costs the whole machine (GPU memory in use, system pages), with a positive
@@ -155,6 +157,8 @@ case "hold":
     runApp { holdWidgets() }
 case "wspair":
     runApp { windowServerPairs() }
+case "schedpair":
+    runApp { schedulingPairs() }
 case "cschange":
     runApp { colorSpaceChange() }
 case "q6":

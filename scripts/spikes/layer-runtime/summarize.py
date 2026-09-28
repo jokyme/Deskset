@@ -285,13 +285,17 @@ def wspair(directory="wspair"):
                     return None if x is None or y is None else x + y
                 if key == "gpu":
                     return p.get("gpu", {}).get("deviceUtilizationPercent")
+                if key in ("billedSystemMsPerSecond", "servicedSystemMsPerSecond", "pCoreShareOfCPU",
+                           "instructionsMillionsPerSecond"):
+                    return p.get("counters", {}).get(key)
                 return p.get(key)
             x, y = v(a), v(b or "idle")
             if x is not None and y is not None:
                 vals.append(x - y)
         return vals
 
-    keys = ("windowServerPercentOfOneCore", "processPercentOfOneCore", "sum", "gpu")
+    keys = ("windowServerPercentOfOneCore", "processPercentOfOneCore", "sum", "gpu", "billedSystemMsPerSecond",
+            "servicedSystemMsPerSecond", "instructionsMillionsPerSecond")
     per_set = {}
     for name in sets:
         per_set[name] = {k: stats([v for run in runs for v in cycle_values(run, k, name)]) for k in keys}
@@ -341,7 +345,7 @@ def main():
     summary = {"cost": cost(), "wscpu": cost("wscpu"), "wsmem": wsmem(), "costB": cost("cost-b"),
                "wscpuB": cost("wscpu-b"), "wsmemB": wsmem("wsmem-b"), "memtrace": memtrace("memtrace"),
                "memtraceB": memtrace("memtrace-b"), "costD": cost("cost-d"), "sysmem": sysmem(),
-               "wspair": wspair(), "frames60": frames60()}
+               "wspair": wspair(), "wspairBilled": wspair("wspair-billed"), "frames60": frames60()}
     off, load_max = keyed_stats(rounds("offmain"), [
         "framesCommitted", "distinctFramesSeen", "tornSamples(codeA != codeB)", "unreadable", "samples",
         "longestSameFrameMs", "framesCommittedDuringStalls", "distinctFramesSeenDuringStalls", "layers"])
