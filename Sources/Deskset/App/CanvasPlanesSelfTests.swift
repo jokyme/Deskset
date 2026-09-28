@@ -134,6 +134,38 @@ enum CanvasPlanesSelfTests {
             t.equal(now.overlay, ticked.overlay + 1, "and the overlay")
             t.equal(now.workbench, ticked.workbench, "not the workbench")
 
+            // The canvas timer (the widget's update rate): the content draws again; the overlay only when what it reads
+            // from the widget moved — a selected layer that grew, a layer that showed.
+            editor.select(section: "MeterValue")
+            display()
+            let idle = planes.drawCounts
+            canvas.widgetUpdated()
+            t.check(asked(planes.content), "a tick draws the content")
+            t.check(!asked(planes.overlay), "not the overlay, when nothing it outlines moved")
+            t.check(!asked(planes.workbench), "nor the workbench")
+            display()
+            now = planes.drawCounts
+            t.equal(now.content, idle.content + 1)
+            t.equal(now.overlay, idle.overlay, "no overlay draw for a tick that moved nothing")
+            guard let skin = editor.skin, let value = skin.meter(named: "MeterValue") else { return t.check(false, "value") }
+            skin.execute("[!SetOption MeterValue FontSize 30][!UpdateMeter MeterValue]", from: nil)
+            skin.layout()
+            t.check(skin.meter(named: "MeterValue") === value)
+            canvas.widgetUpdated()
+            t.check(asked(planes.overlay), "a tick after the selected layer grew draws the overlay too")
+            display()
+            t.equal(planes.drawCounts.overlay, idle.overlay + 1)
+            canvas.widgetUpdated()
+            t.check(!asked(planes.overlay), "and the next one does not")
+            skin.execute("[!HideMeter MeterBar]", from: nil)
+            canvas.widgetUpdated()
+            t.check(asked(planes.overlay), "a layer hidden by the widget draws the overlay")
+            skin.execute("[!ShowMeter MeterBar][!SetOption MeterValue FontSize 12][!UpdateMeter MeterValue]", from: nil)
+            skin.layout()
+            display()
+            canvas.click(skinX: -40, y: -40)
+            display()
+
             // Fitting a fitted canvas again (the editor fits after every step) leaves the planes alone.
             canvas.zoomToFit()
             display()

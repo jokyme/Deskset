@@ -1933,7 +1933,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             let before = self.canvas.frame.size
             self.canvas.updateSize()
             if self.canvas.frame.size != before { self.fitIfAutomatic() }
-            self.canvas.needsDisplay = true
+            self.canvas.widgetUpdated()
         }
         ct.tolerance = interval * 0.1
         RunLoop.main.add(ct, forMode: .common)

@@ -11,9 +11,10 @@ import DesksetCore
 /// - **overlay**: hover and selection outlines, handles, guides, the selection box, tags, badges, editor-only
 ///   placeholders and the ghost of a component dragged in from Add.
 ///
-/// Pointing at a layer or selecting one draws the overlay only (`SkinCanvasView.overlayNeedsDisplay`); anything else
-/// that asks the canvas to draw (`needsDisplay = true`: the widget updated, a preview, a gesture) draws the content
-/// and the overlay. The planes draw with the canvas's own drawing code in the order it always drew, and they are
+/// Pointing at a layer or selecting one draws the overlay only (`SkinCanvasView.overlayNeedsDisplay`); the widget's
+/// update (`SkinCanvasView.widgetUpdated`) draws the content, and the overlay only when what it outlines moved; anything
+/// else that asks the canvas to draw (`needsDisplay = true`: a step, a preview, a gesture) draws the content and the
+/// overlay. The planes draw with the canvas's own drawing code in the order it always drew, and they are
 /// plain subviews, so an off-screen picture of the canvas (`cacheDisplay`, the snapshots and the latency frame)
 /// composes exactly the pixels one drawing gave. They take no events: clicks, drags, drops and the pointer all go to
 /// the canvas. A view the canvas adds later (the in-place text field) lies over all three.
@@ -35,6 +36,25 @@ final class CanvasPlanes {
     /// What the workbench plane was last asked to draw (recorded when it is asked, so an off-screen picture, which
     /// draws every plane, can't make the screen's copy look current).
     private var workbenchShows: Workbench?
+    /// What the overlay plane read from the running widget when it last drew (`SkinCanvasView.overlayInputs`).
+    var overlayDrew: OverlayInputs?
+
+    /// What the overlay plane reads from the widget as it runs: where each layer is, whether it shows, and whether a text
+    /// is empty (its placeholder) — the outlines, tags, placeholders and cut-off marks follow these — and the zoom, the
+    /// card and the visible area the tags are kept in. Anything else it shows changes with a step, a preview, the
+    /// pointer or a gesture, which draw it anyway.
+    struct OverlayInputs: Equatable {
+        struct Layer: Equatable {
+            var frame: SkinRect
+            var hidden: Bool
+            var emptyText: Bool
+        }
+        var skin: ObjectIdentifier?
+        var zoom: CGFloat
+        var card: CGRect
+        var visible: CGRect
+        var layers: [Layer]
+    }
     /// Self-tests: the canvas drawn as it was before it had planes — the workbench plane draws all three parts in one
     /// drawing and the other two are hidden.
     var drawsInOne = false {
@@ -128,6 +148,7 @@ final class CanvasPlane: NSView {
         case .overlay:
             let state = StudioSignposts.signposter.beginInterval("canvas.overlay")
             defer { StudioSignposts.signposter.endInterval("canvas.overlay", state) }
+            canvas.planes.overlayDrew = canvas.overlayInputs
             canvas.drawOverlayPlane(dirtyRect, ctx)
         }
     }
@@ -145,6 +166,29 @@ extension SkinCanvasView {
     func overlayNeedsDisplay() {
         planes.overlay.needsDisplay = true
         if planes.drawsInOne { planes.workbench.needsDisplay = true }
+    }
+
+    /// The widget updated (the Studio's canvas timer, at its update rate): the content draws again, and the overlay only
+    /// when what it reads from the widget changed since it last drew (a selected layer grew, a hidden one showed) — an
+    /// animated widget does not draw its outlines and tags again 30 times a second while nothing about them moved.
+    func widgetUpdated() {
+        guard !planes.drawsInOne else {
+            needsDisplay = true
+            return
+        }
+        planes.content.needsDisplay = true
+        if planes.overlayDrew != overlayInputs { planes.overlay.needsDisplay = true }
+    }
+
+    /// What the overlay reads from the widget now (`CanvasPlanes.OverlayInputs`).
+    var overlayInputs: CanvasPlanes.OverlayInputs {
+        let skin = skinProvider()
+        return CanvasPlanes.OverlayInputs(
+            skin: skin.map(ObjectIdentifier.init), zoom: zoom, card: skinRect, visible: visibleRect,
+            layers: (skin?.meters ?? []).map { m in
+                CanvasPlanes.OverlayInputs.Layer(frame: m.frame, hidden: m.hidden,
+                                                 emptyText: (m as? StringMeter)?.text.isEmpty ?? false)
+            })
     }
 
     override func setFrameSize(_ newSize: NSSize) {
