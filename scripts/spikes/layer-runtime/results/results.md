@@ -2,7 +2,8 @@
 
 Measured on 2026-09-27 and 2026-09-28 with the spike in this folder (`run.sh`, then `python3 summarize.py`). Every
 number below comes from a JSON file next to this one; each section names its files. Questions 1–7 and the side checks
-of the H1 experiment are answered here; question 8 (a `CARenderer` probe on the CI runners) is a separate step.
+of the H1 experiment are answered here, and question 8 (a `CARenderer` probe on the CI runners, `../ci-probe/`,
+measured on the runners on 2026-09-28) in its own section.
 
 On 2026-09-27, while this experiment ran, Deskset itself stopped drawing skins with `draw(_:)` (called **A** below)
 and started drawing each skin window on the main thread into a bitmap of its own, in the window's color space, that
@@ -107,6 +108,7 @@ Two consecutive captures of every window were identical.
 | 5 | gradients cut at box edges (pure CG) | 270° StylePanel gradient cut by a 100 × 30 pt box: max 1 in 70.8 % of the box; **64.4 % reproduced exactly** (298 box positions on a 1 pt grid); over all positions median 67.9 %, 0–84 %. Box at the panel's top left, translation only, solid translucent panel: 0. **Whole-window base bitmap + whole-pixel sub-rectangles: 0.** |
 | 6 | base tiles sharing one image | **Counted once**: 61 tiles cost what one layer with the image costs (this process within 0.08 MB; WindowServer +12–13 MB either way; in the default window CA's color-converted copy, +19.6 MB, is made once for all 61 tiles, but once per image for separate copies: 8 copies +156.6 MB). **Read back byte for byte**: 0 differing pixels offscreen (`CARenderer`) and on screen (vs one layer). |
 | 7 | ContentHost flipping | All markers in place in 5 of 5 captures over 4 resizes; **AppKit wrote to `contentRoot` 0 times** (25 times to a layer-hosting root). Screen change not tested (one screen). |
+| 8 | offscreen `CARenderer` on the CI runners | **Both runners have a Metal device** ("Apple Paravirtual device" on `macos-26` and on `macos-26-intel`) and render every tree; **within a run, tiles vs one layer and E groups vs one layer are identical (0) on both.** Against this Mac: `macos-26` is byte-identical for bitmaps and flat colors (Core Animation's own shapes: max 1 in 0.2–0.65 %); `macos-26-intel` differs everywhere except copied bitmaps (CoreGraphics output depends on the CPU architecture: identical to this Mac's x86_64 build under Rosetta). Two silent traps: `CARenderer` does not clear the texture, and on the Intel runner a shared texture never sees the GPU's writes (the first run compared garbage with garbage and called it identical). Per render at 2× (a new 20-layer tree each time, one renderer): 3.4 ms on `macos-26`, 7.0 ms on `macos-26-intel`, 0.5 ms here. |
 | – | layers committed off the main thread | 65 layers at 60 Hz from a skin thread: 179–180 of 180 frames reached the screen, 0 of 13,428 captures (12 runs) showed two commits mixed, and frames kept reaching the screen while the main thread was blocked (53–54 committed, 54–56 distinct frames seen during 3 × 300 ms blocks). |
 | – | glass following a moving element | Every frame a main-thread frame at 60 Hz: **the 50 ms bound holds** (no patch waited longer than 50.7 ms; with 120 ms main-thread stalls 5–7 of 216 frames per run were reclaimed). No drift while stalls stay under 50 ms (0 of about 1,300 captures per run); 120 ms stalls leave the glass up to 6 pt (two frames' movement) behind the element in 6.3–7.1 % of the captures. |
 | – | refresh by swapping windows | **No blank and no doubled frame** in 300 swaps (4 ways, 3 rounds, about 240 captures per second); a new window with its first frame takes 58 ms, replacing `contentRoot`'s layers in the same window 7 ms. |
@@ -153,7 +155,11 @@ The plan's table picks E or D from four outcomes. What H1 found for each:
 5. **What the layer runtime buys over today's B+kept**: drawing and committing on the skin thread (frames arrive
    while the main thread is blocked; the glass patch's 50 ms bound holds), glass and native views in the same tree,
    and less memory than B+kept's whole-window pictures (design: 2.2–2.7 MB vs 6.3 MB). With batched updates its CPU
-   is at B+kept's level or below; with one thread per widget it is not. The CI question (8) is still open.
+   is at B+kept's level or below; with one thread per widget it is not.
+6. **CI (question 8)**: the offscreen pixel gate can run on both runners, comparing two trees rendered in the same run
+   (never pixels from another machine), provided the renderer clears the texture before every render, reads back
+   through a managed texture where the GPU has no unified memory, and refuses to pass when a canary image does not
+   come back byte for byte. Its `CARenderer` time is about a minute per runner.
 
 ## 1. Partitioned layers vs one E layer vs A and B on screen (`q1.json`, crops in `crops/`)
 
@@ -625,6 +631,113 @@ logged with its thread.
   with a skin thread writing the same layer.
 - Changing screens: not tested (one screen).
 
+## 8. Offscreen `CARenderer` on the CI runners (`../ci-probe/`, `ci-probe/*.json`)
+
+The planned pixel gate G2 renders two layer trees offscreen with `CARenderer` (one layer showing the whole skin, and
+the partition) and compares them. `ci-probe/main.swift` is a minimal version of that, run by `ci-probe/run.sh` here
+and by `.github/workflows/h1-probe.yml` on both runners for every push to this branch. It renders seven trees at 1×
+and 2× (320 × 240 pt, so 640 × 480 px at 2×) into an sRGB `BGRA8Unorm` Metal texture, clears the texture before every
+render, waits for the GPU, reads the texture back (top row first) and hashes it:
+
+| scene | what | layers |
+|---|---|---|
+| `image` | an image made from integer math (opaque, translucent and clear areas) shown pixel for pixel | 1 |
+| `solids` | flat colors, translucent and overlapping, and a group with opacity | 8 |
+| `vector` | what Core Animation draws itself: rounded corners, border, shadow, shape layer, rotation, gradient layer, mask, fractional positions | 10 |
+| `cg` | a CoreGraphics bitmap (gradient, translucent rounded panel, hairlines, Helvetica text) as contents | 1 |
+| `g2-single` | a widget (StylePanel-like gradient panel, time, bar, ring, chart, list) as one layer showing one bitmap | 1 |
+| `g2-tiles` | the same widget partitioned: 15 base tiles sharing one base image through `contentsRect`, 5 group bitmaps | 20 |
+| `g2-e` | the same partition with group layers that paint in `draw(in:)` (E; their context was sRGB, 8 bpc, everywhere) | 20 |
+
+It checks `image` and `cg` and `g2-single` against their source bytes and both partitions against `g2-single`,
+compares every scene with this Mac's run (`ci-probe/local-arm64/`, the pixels deflate-compressed), and times the
+partitioned widget: three rounds of 20 renders each, in four ways, with the texture overwritten with garbage before
+every render and every read-back required to hash like the first. Each machine ran it three times: this Mac
+natively three times and once as an x86_64 build under Rosetta (`local-*.json`), each runner three times (workflow run
+36383643743, attempts 1–3, `ci-36383643743-attempt*.json`). The 1-minute load average stayed between 1.6 and 7.3 in
+every timed round, so nothing is provisional. (Run 36383370736, `ci-36383370736-*.json`, was the probe before the
+read-back fix below; its arm64 load was 16–23.)
+
+| | this Mac | `macos-26` | `macos-26-intel` |
+|---|---|---|---|
+| machine | Mac16,8, Apple M4 Pro, 14 cores | VirtualMac2,1, "Apple M1 (Virtual)", 3 cores, 7 GB | a virtual machine reporting Macmini6,2, Intel Core i7-8700B, 4 cores, 14 GB |
+| macOS | 26.5.2 (25F84) | 26.6.2 (25G83) | 26.6.1 (25G76) |
+| `MTLCreateSystemDefaultDevice()` | Apple M4 Pro | **Apple Paravirtual device** (unified memory, family `mac2` only, 4.8 GB working set) | **Apple Paravirtual device** (no unified memory, no GPU family, 1 GB working set) |
+| display | built-in XDR, 1512 × 982 pt | 1024 × 768 | 1920 × 1080 |
+
+**Both runners can composite offscreen.** Every scene rendered on both, the read-backs are not the bytes written
+before the render, and every scene hashes the same in all three runs of a runner (three separate virtual machines).
+Within a run, what G2 compares is exact on both runners:
+
+| check (1× and 2×) | this Mac | `macos-26` | `macos-26-intel` |
+|---|---|---|---|
+| `image` == its source; `cg`, `g2-single` == their source bitmaps | 0 | 0 | 0 |
+| `g2-tiles` == `g2-single` | 0 | 0 | 0 |
+| `g2-e` == `g2-single` | 0 | 0 | 0 |
+| the G2 trees rendered a second time, and `g2-tiles` 240 more times per run (4 ways × 3 rounds × 20) | same bytes | same bytes | same bytes |
+| `vector` rendered a second time | same bytes | same bytes | **max 1 in 301 px (0.098 %) at 2×** in all three runs (the second render differs from the first the same way each time); at 1× 0, 4 and 4 px |
+
+**Two traps, both silent:**
+
+- `CARenderer` composites over whatever the texture holds: it does not clear it. Found here first (translucent pixels
+  showed the previous render). The probe clears with an empty Metal render pass before every render.
+- The Intel runner's device has no unified memory. A texture with `.shared` storage can be created there, but the
+  GPU's writes never reach the CPU's copy: in run 36383370736 every read-back was the garbage written before the
+  render, so every scene "failed" its source check, and **every comparison of two trees said identical** (the same
+  garbage on both sides). With `.managed` storage and a blit `synchronize(resource:)` before `getBytes` it works.
+
+**Against this Mac** (arm64 build unless stated; "max" in 8-bit levels, share of differing pixels at 1× / 2×):
+
+| scene | `macos-26` | `macos-26-intel` | this Mac, x86_64 under Rosetta | `macos-26-intel` vs this Mac under Rosetta |
+|---|---|---|---|---|
+| `image` | 0 | 0 | 0 | 0 |
+| `cg` | 0 | max 1, 3.4 / 2.5 % | max 1, 3.4 / 2.5 % | **0** |
+| `g2-single`, `g2-tiles`, `g2-e` | 0 | max 2 / 1, 17.7 / 16.9 % | max 2 / 1, 17.7 / 16.9 % | **0** |
+| `solids` | 0 | max 1, 29.7 / 29.7 % | max 1, 33.6 / 33.6 % | max 1, 3.9 / 3.9 % |
+| `vector` | max 1, 0.20 / 0.65 % | max 8 / 3, 9.3 / 9.0 % | max 1, 12.5 / 12.0 % | max 8 / 3, 15.2 / 15.2 % |
+
+- **CoreGraphics' output depends on the CPU architecture of the process, not on the machine**: the x86_64 build gets
+  the same bytes on the Intel runner and under Rosetta here, the arm64 build the same bytes here and on `macos-26`;
+  between the two, text, gradients and antialiased edges differ by 1–2 levels in 2.5–18 % of the pixels.
+- **Core Animation's own drawing depends on the architecture and on the GPU**: translucent flat colors and group
+  opacity differ by 1 between the architectures (and by 1 in 3.9 % between the Intel runner and Rosetta here);
+  shapes, shadows and gradient layers by up to 8 on the Intel runner, by 1 in under 1 % on `macos-26`.
+- **Bitmaps shown pixel for pixel (nearest filtering, whole-pixel positions) come through exactly everywhere.** That
+  is all a G2 tree contains: base tiles, group bitmaps and the glass stand-ins baked into the base.
+
+**Time per render** (median of the 9 round medians per machine, range of the round medians in parentheses; each round
+20 renders; the widget partitioned into 20 layers; "render" includes clearing and waiting for the GPU):
+
+| way | this Mac | `macos-26` | `macos-26-intel` | this Mac, Rosetta |
+|---|---|---|---|---|
+| the same tree again, 2× | 0.20 ms (0.19–0.24) | 1.39 ms (0.59–1.58) | 1.81 ms (1.66–2.78) | 0.55 ms |
+| the same tree again, 1× | 0.18 ms (0.17–0.19) | 1.12 ms (0.64–1.69) | 1.19 ms (1.11–1.76) | 0.44 ms |
+| a new tree each time (built, attached, committed, rendered), 2× | 0.49 ms (0.44–0.58) | **3.39 ms** (1.52–4.19) | **7.03 ms** (6.45–11.97) | 1.03 ms |
+| a new texture and renderer each time, 2× | 0.88 ms (0.84–0.94) | 21.7 ms (12.0–22.9) | 9.26 ms (8.53–14.81) | 1.85 ms |
+| read-back and flip, 2× | 0.44 ms | 0.72 ms | 0.26 ms | 5.06 ms |
+| first render in the process | 5–8 ms | 111–209 ms | 139–724 ms | 57 ms |
+
+The plan budgets about 10,000 renders for the G2 matrix at 5–20 ms each. With one renderer and texture per size and a
+new tree per render, the measured cost is about 4 ms per render on `macos-26` and 7.3 ms on `macos-26-intel`
+including the read-back (less at 1×): roughly 40 s and 75 s of `CARenderer` time, far inside the 10 and 20 minute
+caps. A new renderer per render would cost about 22 ms on `macos-26` (almost 4 minutes). Building the skins' scenes
+and bitmaps, which the probe does not measure, will be the larger part.
+
+**For G2 on CI:**
+
+1. Run it on both runners. Compare only trees rendered in the same run; keep no reference pixels from another machine,
+   architecture or macOS version (the runners were already on 26.6.x while this Mac is on 26.5.2).
+2. Clear the texture before every render; on a device without unified memory use a managed texture and synchronize
+   it before reading back.
+3. Start the suite with a canary that must come back byte for byte (an image layer against its source, like the
+   probe's `image` scene) and a check that the read-back is not what was written before the render; if either fails,
+   the suite has not run (the plan's "not run", exit 4), it has not passed.
+4. Keep G2's trees to bitmap contents. Content that Core Animation draws itself (a later Desk-native shape) is not
+   stable from one render to the next on the Intel runner (1 level in 0.1 % of the pixels, at the edge of G2's
+   tolerance) and would need its own tolerance or a render-twice rule.
+5. Reuse one `CARenderer` per texture size and attach each new tree; the Intel subset fallback is not needed for
+   rendering time.
+
 ## Side checks
 
 ### Committing many layers off the main thread (`offmain/r1–r3.json`)
@@ -711,7 +824,6 @@ window's first frame is committed before it is shown.
 
 ## Not covered
 
-- Question 8 (the `CARenderer` probe on the `macos-26` and `macos-26-intel` runners).
 - A 1× external display, an sRGB display, and moving a window between screens (only the built-in XDR display here).
   With E layers in the window's color space (like B), a window moved to a screen with another color space needs its
   base bitmap drawn again; B already does this (Deskset draws kept pictures again when the display's color space

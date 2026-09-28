@@ -1,0 +1,826 @@
+{
+  "checks" : {
+    "cg == its source@1x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 76800
+    },
+    "cg == its source@2x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 307200
+    },
+    "g2-e == g2-single@1x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 76800
+    },
+    "g2-e == g2-single@2x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 307200
+    },
+    "g2-single == its source@1x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 76800
+    },
+    "g2-single == its source@2x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 307200
+    },
+    "g2-tiles == g2-single@1x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 76800
+    },
+    "g2-tiles == g2-single@2x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 307200
+    },
+    "image == its source@1x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 76800
+    },
+    "image == its source@2x" : {
+      "byMaxDiff" : {
+        "1" : 0,
+        "2" : 0,
+        "3" : 0,
+        "4-7" : 0,
+        "8+" : 0
+      },
+      "differingPercent" : 0,
+      "differingPixels" : 0,
+      "maxChannelDiff" : 0,
+      "pixels" : 307200
+    }
+  },
+  "drawInContexts" : [
+    "kCGColorSpaceSRGB, 8 bpc"
+  ],
+  "environment" : {
+    "binaryArch" : "arm64",
+    "cpu" : "Apple M1 (Virtual)",
+    "cpus" : 3,
+    "displays" : [
+      {
+        "colorSpace" : "unnamed",
+        "main" : true,
+        "pixels" : "1024x768",
+        "points" : "1024x768"
+      }
+    ],
+    "loadAverage" : [
+      3.6299999999999999,
+      11.51,
+      9.4299999999999997
+    ],
+    "memoryGB" : 7,
+    "model" : "VirtualMac2,1",
+    "os" : "Version 26.6.2 (Build 25G83)",
+    "osBuild" : "25G83",
+    "rosetta" : false,
+    "virtualMachine" : true
+  },
+  "firstRenderMs" : 111.22,
+  "fonts" : {
+    "Helvetica" : "Helvetica",
+    "Helvetica-Bold" : "Helvetica-Bold"
+  },
+  "metal" : {
+    "allDevices" : [
+      {
+        "families" : [
+          "mac2"
+        ],
+        "headless" : false,
+        "location" : "built-in",
+        "lowPower" : false,
+        "name" : "Apple Paravirtual device",
+        "recommendedMaxWorkingSetMB" : 4778,
+        "registryID" : "100000193",
+        "removable" : false,
+        "unifiedMemory" : true
+      }
+    ],
+    "createSeconds" : 0.021700000000000001,
+    "device" : {
+      "families" : [
+        "mac2"
+      ],
+      "headless" : false,
+      "location" : "built-in",
+      "lowPower" : false,
+      "name" : "Apple Paravirtual device",
+      "recommendedMaxWorkingSetMB" : 4778,
+      "registryID" : "100000193",
+      "removable" : false,
+      "unifiedMemory" : true
+    }
+  },
+  "probe" : "h1-carenderer",
+  "reference" : {
+    "dir" : "local-arm64",
+    "environment" : {
+      "binaryArch" : "arm64",
+      "cpu" : "Apple M4 Pro",
+      "cpus" : 14,
+      "displays" : [
+        {
+          "colorSpace" : "unnamed",
+          "main" : true,
+          "pixels" : "1512x982",
+          "points" : "1512x982"
+        }
+      ],
+      "loadAverage" : [
+        5.0099999999999998,
+        6.8899999999999997,
+        7.5700000000000003
+      ],
+      "memoryGB" : 24,
+      "model" : "Mac16,8",
+      "os" : "Version 26.5.2 (Build 25F84)",
+      "osBuild" : "25F84",
+      "rosetta" : false,
+      "virtualMachine" : false
+    },
+    "identicalScenes" : "12 of 14",
+    "metalDevice" : "Apple M4 Pro",
+    "sameSources" : {
+      "cg@1x" : true,
+      "cg@2x" : true,
+      "g2Base@1x" : true,
+      "g2Base@2x" : true,
+      "g2Full@1x" : true,
+      "g2Full@2x" : true,
+      "pattern@1x" : true,
+      "pattern@2x" : true
+    },
+    "scenes" : {
+      "cg@1x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 76800
+      },
+      "cg@2x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 307200
+      },
+      "g2-e@1x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 76800
+      },
+      "g2-e@2x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 307200
+      },
+      "g2-single@1x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 76800
+      },
+      "g2-single@2x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 307200
+      },
+      "g2-tiles@1x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 76800
+      },
+      "g2-tiles@2x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 307200
+      },
+      "image@1x" : {
+        "pixelsNotKept" : true,
+        "sameHash" : true
+      },
+      "image@2x" : {
+        "pixelsNotKept" : true,
+        "sameHash" : true
+      },
+      "solids@1x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 76800
+      },
+      "solids@2x" : {
+        "byMaxDiff" : {
+          "1" : 0,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0,
+        "differingPixels" : 0,
+        "maxChannelDiff" : 0,
+        "pixels" : 307200
+      },
+      "vector@1x" : {
+        "bounds" : "x 6–165, y 0–116",
+        "byMaxDiff" : {
+          "1" : 153,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0.19900000000000001,
+        "differingPixels" : 153,
+        "maxChannelDiff" : 1,
+        "pixels" : 76800
+      },
+      "vector@2x" : {
+        "bounds" : "x 0–328, y 0–233",
+        "byMaxDiff" : {
+          "1" : 1996,
+          "2" : 0,
+          "3" : 0,
+          "4-7" : 0,
+          "8+" : 0
+        },
+        "differingPercent" : 0.65000000000000002,
+        "differingPixels" : 1996,
+        "maxChannelDiff" : 1,
+        "pixels" : 307200
+      }
+    }
+  },
+  "scenes" : {
+    "cg@1x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "99cbe6ce32bf305893f5dcd280e9bbb73eee34ac94725143e4367c8499b50c44",
+      "stillScribbled" : false
+    },
+    "cg@2x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "089988318b6a979bebc57738bdcc617d0c7880df92e42e34e544677990dd001d",
+      "stillScribbled" : false
+    },
+    "g2-e@1x" : {
+      "blank" : false,
+      "layers" : 20,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
+    },
+    "g2-e@2x" : {
+      "blank" : false,
+      "layers" : 20,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
+    },
+    "g2-single@1x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
+    },
+    "g2-single@2x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
+    },
+    "g2-tiles@1x" : {
+      "blank" : false,
+      "layers" : 20,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
+    },
+    "g2-tiles@2x" : {
+      "blank" : false,
+      "layers" : 20,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
+    },
+    "image@1x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "b1c34cb0d60250c028d62ec027abff5500473c9a46efd7c758a52de766d7c45a",
+      "stillScribbled" : false
+    },
+    "image@2x" : {
+      "blank" : false,
+      "layers" : 1,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "755469edd0a71a61a0713746b2510669f38a51581a224e2215d8cf1270dce6c8",
+      "stillScribbled" : false
+    },
+    "solids@1x" : {
+      "blank" : false,
+      "layers" : 8,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "3662d739e43d42367039b3c6eaabba6039c21c86c83926d321ecfe18a8a49516",
+      "stillScribbled" : false
+    },
+    "solids@2x" : {
+      "blank" : false,
+      "layers" : 8,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "12e3e9d8f5da9c43514e74be6eb3534639f1613a2db5cb1c83d68ef641a7d4f2",
+      "stillScribbled" : false
+    },
+    "vector@1x" : {
+      "blank" : false,
+      "layers" : 10,
+      "pixels" : "320x240",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "eb3f5d8865a7a99786fd2350ea1fe12af2985b43d307089d1f819283b46a4c34",
+      "stillScribbled" : false
+    },
+    "vector@2x" : {
+      "blank" : false,
+      "layers" : 10,
+      "pixels" : "640x480",
+      "sameWhenRenderedAgain" : true,
+      "sha256" : "8cbcda7707d6d19e0d54b41dd5fbd9ea4a865943203ba25bc868c326438947f4",
+      "stillScribbled" : false
+    }
+  },
+  "seconds" : 3.3100000000000001,
+  "sourceHashes" : {
+    "@1x" : {
+      "cg" : "0a5b40fdb3cfd26ad6402e8125ad27b6f3ba770e9b85fad2d0b9f4c9bacb3fe0",
+      "g2Base" : "b276173619b6016e862adfb82507f8c5ee1ff05639fd3585da1d7676fe95be75",
+      "g2Full" : "abd2abbcb8a0ff9c0b960219b8c8abbe3f5ac957ed35de1f2a0ad02ede590939",
+      "pattern" : "98dac9de0502ea33e3cbeb1340b8040ae6af3e3bd8a8b9b22bc78377e13dfd26"
+    },
+    "@2x" : {
+      "cg" : "93ce9795fefad4b893fc4d84aab7497750b9dddb0362f73c56a55a5be82d48dd",
+      "g2Base" : "96533bcb54fcf76a8efbede726b78ab4f2ba00a1c26da931d541dc4e6d756556",
+      "g2Full" : "423309da8c602d848e7a34c9726828a6880344369f5969284cc3a19af200faf8",
+      "pattern" : "fa76326e339f8f38d22bb5e83f3c80b442d9e19f296338a8a1443f329907c672"
+    }
+  },
+  "stage" : "timing round 3: same tree@1x",
+  "status" : "ran",
+  "textureStorage" : "shared",
+  "timing" : {
+    "everyRenderMatchedFirstRender" : true,
+    "rendersPerRound" : 20,
+    "rounds" : [
+      {
+        "loadAfter" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "loadBefore" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "new renderer@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.98099999999999998,
+            "median" : 0.69099999999999995,
+            "min" : 0.55300000000000005,
+            "p90" : 0.78600000000000003
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 16.443000000000001,
+            "median" : 11.978999999999999,
+            "min" : 9.0559999999999992,
+            "p90" : 13.647
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "new tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.58899999999999997,
+            "median" : 0.39500000000000002,
+            "min" : 0.33700000000000002,
+            "p90" : 0.41899999999999998
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 9.6159999999999997,
+            "median" : 1.52,
+            "min" : 1.2869999999999999,
+            "p90" : 1.73
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "provisional" : false,
+        "same tree@1x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.747,
+            "median" : 0.53900000000000003,
+            "min" : 0.39700000000000002,
+            "p90" : 0.61299999999999999
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 13.637,
+            "median" : 1.018,
+            "min" : 0.79500000000000004,
+            "p90" : 1.2609999999999999
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "same tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.56399999999999995,
+            "median" : 0.44500000000000001,
+            "min" : 0.34699999999999998,
+            "p90" : 0.45900000000000002
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 8.4930000000000003,
+            "median" : 0.58599999999999997,
+            "min" : 0.53900000000000003,
+            "p90" : 0.61899999999999999
+          },
+          "rendersNotMatchingFirstRender" : 0
+        }
+      },
+      {
+        "loadAfter" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "loadBefore" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "new renderer@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 1.294,
+            "median" : 0.65600000000000003,
+            "min" : 0.54700000000000004,
+            "p90" : 0.86799999999999999
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 17.870000000000001,
+            "median" : 12.202999999999999,
+            "min" : 10.582000000000001,
+            "p90" : 15.887
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "new tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.621,
+            "median" : 0.53100000000000003,
+            "min" : 0.48199999999999998,
+            "p90" : 0.61699999999999999
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 2.7949999999999999,
+            "median" : 2.2530000000000001,
+            "min" : 1.8320000000000001,
+            "p90" : 2.3330000000000002
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "provisional" : false,
+        "same tree@1x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.55500000000000005,
+            "median" : 0.37,
+            "min" : 0.315,
+            "p90" : 0.45300000000000001
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 1.1419999999999999,
+            "median" : 0.64300000000000002,
+            "min" : 0.56599999999999995,
+            "p90" : 0.94899999999999995
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "same tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.74399999999999999,
+            "median" : 0.50600000000000001,
+            "min" : 0.42599999999999999,
+            "p90" : 0.69299999999999995
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 1.3100000000000001,
+            "median" : 0.80300000000000005,
+            "min" : 0.66000000000000003,
+            "p90" : 1.111
+          },
+          "rendersNotMatchingFirstRender" : 0
+        }
+      },
+      {
+        "loadAfter" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "loadBefore" : [
+          3.7400000000000002,
+          11.4,
+          9.4100000000000001
+        ],
+        "new renderer@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.89900000000000002,
+            "median" : 0.67200000000000004,
+            "min" : 0.56100000000000005,
+            "p90" : 0.871
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 21.989999999999998,
+            "median" : 12.372,
+            "min" : 11.614000000000001,
+            "p90" : 16.933
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "new tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.57799999999999996,
+            "median" : 0.52300000000000002,
+            "min" : 0.44900000000000001,
+            "p90" : 0.54500000000000004
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 3.5579999999999998,
+            "median" : 2.2559999999999998,
+            "min" : 1.887,
+            "p90" : 2.7429999999999999
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "provisional" : false,
+        "same tree@1x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.501,
+            "median" : 0.39100000000000001,
+            "min" : 0.33200000000000002,
+            "p90" : 0.47899999999999998
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 1.1399999999999999,
+            "median" : 0.72299999999999998,
+            "min" : 0.55800000000000005,
+            "p90" : 0.86899999999999999
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "same tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.627,
+            "median" : 0.48899999999999999,
+            "min" : 0.437,
+            "p90" : 0.55400000000000005
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 0.999,
+            "median" : 0.76900000000000002,
+            "min" : 0.64600000000000002,
+            "p90" : 0.83499999999999996
+          },
+          "rendersNotMatchingFirstRender" : 0
+        }
+      }
+    ],
+    "summary" : {
+      "new renderer@2x" : {
+        "readBackMsMedianOfRounds" : 0.67200000000000004,
+        "renderMsMedianOfRounds" : 12.202999999999999,
+        "renderMsRoundMedians" : [
+          11.978999999999999,
+          12.202999999999999,
+          12.372
+        ]
+      },
+      "new tree@2x" : {
+        "readBackMsMedianOfRounds" : 0.52300000000000002,
+        "renderMsMedianOfRounds" : 2.2530000000000001,
+        "renderMsRoundMedians" : [
+          1.52,
+          2.2530000000000001,
+          2.2559999999999998
+        ]
+      },
+      "same tree@1x" : {
+        "readBackMsMedianOfRounds" : 0.39100000000000001,
+        "renderMsMedianOfRounds" : 0.72299999999999998,
+        "renderMsRoundMedians" : [
+          1.018,
+          0.64300000000000002,
+          0.72299999999999998
+        ]
+      },
+      "same tree@2x" : {
+        "readBackMsMedianOfRounds" : 0.48899999999999999,
+        "renderMsMedianOfRounds" : 0.76900000000000002,
+        "renderMsRoundMedians" : [
+          0.58599999999999997,
+          0.80300000000000005,
+          0.76900000000000002
+        ]
+      }
+    },
+    "tree" : "g2-tiles (20 layers)"
+  },
+  "version" : 1
+}
