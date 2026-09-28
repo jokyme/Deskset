@@ -33,6 +33,37 @@ enum ManageModel {
             .joined(separator: "\n")
     }
 
+    /// What the details say about a loaded skin that is off the desktop because a skin action (`!Hide`, `!HideFade`,
+    /// a widget's own "hide when idle") or StartHidden hid it: moving it or changing its settings does not bring it
+    /// back, only a show does (the notice's Show button, `!Show`).
+    enum Hidden {
+        static let status = "● Loaded, hidden"
+        static let title = "Hidden by the skin"
+        static let showTitle = "Show"
+
+        /// The notice's text. `startHidden`: the skin's settings say StartHidden, so it may never have been shown.
+        static func explanation(startHidden: Bool) -> String {
+            let why = startHidden
+                ? "It is set to start hidden (StartHidden), or a skin action (!Hide) took it off the desktop."
+                : "It is loaded and running, but a skin action (!Hide) took it off the desktop, as some widgets do "
+                    + "while they have nothing to show."
+            let after = startHidden ? "Moving it does not bring it back; Show does, until it is loaded again."
+                : "Moving it does not bring it back; Show does, until the skin hides itself again."
+            return why + " " + after
+        }
+
+        /// Under the coordinates of a hidden skin; `moved`: coordinates were just typed for it.
+        static func coordinatesHint(moved: Bool) -> String {
+            moved ? "Moved, but still hidden: click Show above to see it."
+                : "The skin is hidden: it moves, but stays out of sight."
+        }
+
+        /// The outline row's accessibility label of a loaded file.
+        static func accessibilityLabel(name: String, loaded: Bool, hidden: Bool) -> String {
+            name + (loaded ? (hidden ? ", loaded, hidden" : ", loaded") : "")
+        }
+    }
+
     /// Files larger than this are not parsed just to show metadata.
     static let maxMetadataFileSize = 8 * 1024 * 1024
 

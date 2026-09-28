@@ -43,6 +43,17 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     private let snapEdgesBox = NSButton(checkboxWithTitle: "Snap to edges", target: nil, action: nil)
     private let savePositionBox = NSButton(checkboxWithTitle: "Save position", target: nil, action: nil)
     private let issuesStack = NSStackView()
+    /// A loaded skin that a skin action (or StartHidden) hid: says so, with a Show button.
+    private let hiddenNotice = HiddenSkinNotice()
+    /// Under the coordinates while the skin is hidden (typing coordinates moves it, out of sight).
+    private let coordinatesHint = NSTextField(wrappingLabelWithString: "")
+    private var coordinatesHintRow: NSGridRow?
+    /// The config whose coordinates were typed while it was hidden (the hint says it moved but is still hidden).
+    private var movedWhileHidden: String?
+    /// Loaded configs that were hidden when the details were last drawn (lowercased), and the timer that looks for
+    /// changes while the window is on screen: skins hide and show themselves without telling the app's windows.
+    private var hiddenConfigs: [String] = []
+    private var hiddenWatch: Timer?
     private let launchAtLoginBox = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
     private var skinSections: [NSView] = []
     /// Width of the label column shared by the metadata and settings grids, so their labels line up.
@@ -75,7 +86,10 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        hiddenWatch?.invalidate()
+    }
 
     /// First launch: moves the window, while it has no saved frame, beside the skins in `frames` (the first-run widget
     /// column, top left), so it does not cover them: to their right when it fits there at least at its minimum width,
@@ -125,6 +139,40 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     func windowDidResize(_ notification: Notification) {
         keepMinimumSize()
+    }
+
+    /// Watches for skins hiding and showing themselves only while some of the window can be seen.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        watchHiddenSkins(window?.occlusionState.contains(.visible) == true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        watchHiddenSkins(false)
+    }
+
+    private func watchHiddenSkins(_ on: Bool) {
+        if !on {
+            hiddenWatch?.invalidate()
+            hiddenWatch = nil
+            return
+        }
+        guard hiddenWatch == nil else { return }
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshHiddenState() }
+        timer.tolerance = 0.25
+        RunLoop.main.add(timer, forMode: .common)
+        hiddenWatch = timer
+        refreshHiddenState()
+    }
+
+    /// Redraws what depends on whether loaded skins are hidden, when that changed (a skin ran `!Hide` / `!Show`).
+    /// The text fields are left alone, so nothing typed into them is lost.
+    func refreshHiddenState() {
+        guard currentHiddenConfigs() != hiddenConfigs else { return }
+        updateHiddenState()
+    }
+
+    private func currentHiddenConfigs() -> [String] {
+        app.controllers.values.filter { !$0.isStopped && $0.isHiddenByBang }.map { $0.config.lowercased() }.sorted()
     }
 
     // MARK: Building
@@ -368,6 +416,20 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         settingsGrid.addRow(with: [formLabel("Transparency:"), row([transparencySlider, transparencyLabel])])
         settingsGrid.addRow(with: [formLabel("On hover:"), row([hoverPopup, formLabel("Fade duration:"), fadeField, ms])])
         settingsGrid.addRow(with: [formLabel("Coordinates:"), row([formLabel("X"), xField, formLabel("Y"), yField])])
+        coordinatesHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        coordinatesHint.textColor = .secondaryLabelColor
+        coordinatesHint.preferredMaxLayoutWidth = 340
+        let hintSymbol = NSImageView(image: NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)
+                                        ?? NSImage())
+        hintSymbol.symbolConfiguration = .init(pointSize: NSFont.smallSystemFontSize, weight: .regular)
+        hintSymbol.contentTintColor = .systemOrange
+        hintSymbol.setContentHuggingPriority(.required, for: .horizontal)
+        let hint = row([hintSymbol, coordinatesHint])
+        hint.spacing = 5
+        hint.alignment = .firstBaseline
+        coordinatesHintRow = settingsGrid.addRow(with: [NSGridCell.emptyContentView, hint])
+        coordinatesHintRow?.topPadding = -4
+        coordinatesHintRow?.isHidden = true
         settingsGrid.addRow(with: [formLabel("Load order:"), row([loadOrderField])])
         let checks = NSGridView(views: [[draggableBox, clickThroughBox], [keepOnScreenBox, snapEdgesBox],
                                         [savePositionBox, NSGridCell.emptyContentView]])
@@ -388,11 +450,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         issuesStack.alignment = .leading
         issuesStack.spacing = 6
 
-        skinSections = [header, buttons, separatorLine(), metadataGrid, separatorLine(), sectionTitle("Settings"),
-                        settingsGrid, settingsNote, separatorLine(), sectionTitle("Compatibility"), issuesStack]
+        hiddenNotice.showButton.target = self
+        hiddenNotice.showButton.action = #selector(showClicked)
+
+        skinSections = [header, buttons, hiddenNotice, separatorLine(), metadataGrid, separatorLine(),
+                        sectionTitle("Settings"), settingsGrid, settingsNote, separatorLine(), sectionTitle("Compatibility"),
+                        issuesStack]
         for view in skinSections {
             detailStack.addArrangedSubview(view)
-            if view is NSBox {
+            if view is NSBox || view === hiddenNotice {
                 view.widthAnchor.constraint(equalTo: detailStack.widthAnchor, constant: -48).isActive = true
             }
         }
@@ -494,17 +560,15 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         launchAtLoginBox.toolTip = LaunchAtLogin.isAvailable ? "Start Deskset when you log in."
             : "Available when Deskset runs as an installed app."
 
-        guard let selection, let config = app.config(named: selection.config) ?? folderOnly(selection.config) else {
+        guard let target = detailTarget() else {
             emptyLabel.isHidden = false
             skinSections.forEach { $0.isHidden = true }
+            updateHiddenState()
             return
         }
+        let (config, file, running, loaded) = target
         emptyLabel.isHidden = true
         skinSections.forEach { $0.isHidden = false }
-
-        let file = selection.file.flatMap { f in config.files.first { $0.caseInsensitiveCompare(f) == .orderedSame } }
-        let running = app.controller(for: config.name)
-        let loaded = running != nil && file.map { $0.caseInsensitiveCompare(running!.file) == .orderedSame } == true
 
         // Header
         let metadata: [String: String]
@@ -521,19 +585,6 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         iconView.image = NSImage(systemSymbolName: file == nil ? "folder" : "square.grid.2x2",
                                  accessibilityDescription: nil)
         iconView.contentTintColor = loaded ? .controlAccentColor : .secondaryLabelColor
-        if file == nil {
-            statusLabel.stringValue = "Folder"
-            statusLabel.textColor = .secondaryLabelColor
-        } else if loaded {
-            statusLabel.stringValue = "● Loaded"
-            statusLabel.textColor = .systemGreen
-        } else if let running {
-            statusLabel.stringValue = "\(running.file) is loaded"
-            statusLabel.textColor = .secondaryLabelColor
-        } else {
-            statusLabel.stringValue = "Not loaded"
-            statusLabel.textColor = .secondaryLabelColor
-        }
 
         loadButton.title = loaded ? "Unload" : "Load"
         loadButton.isEnabled = file != nil
@@ -627,6 +678,61 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         if !loaded && file != nil {
             issuesStack.addArrangedSubview(note("Checked without loading; some problems only show up while the skin runs."))
         }
+        updateHiddenState()
+    }
+
+    /// The selected config, the selected file of it (nil for a folder), the config's running skin and whether the
+    /// selected file is the one running.
+    private func detailTarget() -> (config: SkinConfig, file: String?, running: SkinController?, loaded: Bool)? {
+        guard let selection, let config = app.config(named: selection.config) ?? folderOnly(selection.config)
+        else { return nil }
+        let file = selection.file.flatMap { f in config.files.first { $0.caseInsensitiveCompare(f) == .orderedSame } }
+        let running = app.controller(for: config.name)
+        let loaded = running.map { r in file.map { $0.caseInsensitiveCompare(r.file) == .orderedSame } ?? false } ?? false
+        return (config, file, running, loaded)
+    }
+
+    /// The status, the hidden notice and the coordinates' hint: what depends on whether the skin is hidden.
+    private func updateHiddenState() {
+        let hiddenNow = currentHiddenConfigs()
+        if hiddenNow != hiddenConfigs {
+            hiddenConfigs = hiddenNow
+            // The rows' icons (a crossed-out eye for a hidden skin).
+            if outline.numberOfRows > 0 {
+                outline.reloadData(forRowIndexes: IndexSet(integersIn: 0..<outline.numberOfRows),
+                                   columnIndexes: IndexSet(integer: 0))
+            }
+        }
+        guard let target = detailTarget() else { return }
+        let (_, file, running, loaded) = target
+        let hidden = running.map { !$0.isStopped && $0.isHiddenByBang } ?? false
+        if file == nil {
+            statusLabel.stringValue = "Folder"
+            statusLabel.textColor = .secondaryLabelColor
+        } else if loaded {
+            statusLabel.stringValue = hidden ? ManageModel.Hidden.status : "● Loaded"
+            statusLabel.textColor = hidden ? .systemOrange : .systemGreen
+        } else if let running {
+            statusLabel.stringValue = "\(running.file) is loaded" + (hidden ? ", hidden" : "")
+            statusLabel.textColor = .secondaryLabelColor
+        } else {
+            statusLabel.stringValue = "Not loaded"
+            statusLabel.textColor = .secondaryLabelColor
+        }
+        // The notice for the file that runs; the settings (and so the coordinates) belong to the config, whichever
+        // of its files runs.
+        hiddenNotice.isHidden = !(loaded && hidden)
+        if loaded && hidden, let running {
+            hiddenNotice.set(title: ManageModel.Hidden.title,
+                             text: ManageModel.Hidden.explanation(startHidden: running.state.startHidden))
+        }
+        let settingsShowHint = file != nil && hidden
+        if !hidden, let moved = movedWhileHidden, moved.caseInsensitiveCompare(running?.config ?? "") == .orderedSame {
+            movedWhileHidden = nil
+        }
+        let moved = running.map { r in movedWhileHidden?.caseInsensitiveCompare(r.config) == .orderedSame } ?? false
+        coordinatesHint.stringValue = ManageModel.Hidden.coordinatesHint(moved: moved)
+        coordinatesHintRow?.isHidden = !settingsShowHint
     }
 
     /// A folder that is not a config (e.g. a root folder that only holds sub-configs).
@@ -758,7 +864,22 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         guard let c = selectedController,
               let x = Double(xField.stringValue), let y = Double(yField.stringValue) else { return }
         c.moveTo(x: x, y: y)
+        // A hidden skin moves out of sight: the hint under the coordinates says it is still hidden.
+        movedWhileHidden = c.isHiddenByBang ? c.config : nil
         updateDetail()
+    }
+
+    /// Shows a loaded skin that a skin action hid, fading in over its FadeDuration as `!ShowFade` does.
+    @objc private func showClicked() {
+        guard let c = selectedController else { return }
+        show(c)
+    }
+
+    private func show(_ c: SkinController) {
+        guard !c.isStopped, c.isHiddenByBang else { return }
+        c.setHidden(false, fade: true)
+        movedWhileHidden = nil
+        updateHiddenState()
     }
 
     @objc private func launchAtLoginChanged() {
@@ -822,12 +943,16 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             cell.setAccessibilityLabel(node.name + (hasLoaded ? ", has loaded skins" : ""))
         case .file:
             let loaded = running.map { $0.file.caseInsensitiveCompare(node.file ?? "") == .orderedSame } ?? false
-            cell.imageView?.image = NSImage(systemSymbolName: loaded ? "checkmark.circle.fill" : "doc.text",
-                                            accessibilityDescription: loaded ? "Loaded" : nil)
-            cell.imageView?.contentTintColor = loaded ? .systemGreen : .secondaryLabelColor
+            // Loaded but hidden by a skin action: an orange crossed-out eye instead of the green tick.
+            let hidden = loaded && running.map { !$0.isStopped && $0.isHiddenByBang } ?? false
+            cell.imageView?.image = NSImage(systemSymbolName: hidden ? "eye.slash.circle.fill"
+                                                : loaded ? "checkmark.circle.fill" : "doc.text",
+                                            accessibilityDescription: hidden ? "Loaded, hidden" : loaded ? "Loaded" : nil)
+            cell.imageView?.contentTintColor = hidden ? .systemOrange : loaded ? .systemGreen : .secondaryLabelColor
             cell.textField?.font = loaded ? .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
                 : .systemFont(ofSize: NSFont.systemFontSize)
-            cell.setAccessibilityLabel(node.name + (loaded ? ", loaded" : ""))
+            cell.setAccessibilityLabel(ManageModel.Hidden.accessibilityLabel(name: node.name, loaded: loaded,
+                                                                            hidden: hidden))
         }
         return cell
     }
@@ -847,10 +972,14 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
 
     // MARK: Outline context menu
 
+    /// The row a self-test "right-clicks" (`testContextMenuTitles`).
+    private var testContextNode: ManageModel.Node?
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let row = outline.clickedRow
-        guard row >= 0, let node = outline.item(atRow: row) as? ManageModel.Node else { return }
+        guard let node = testContextNode ?? (row >= 0 ? outline.item(atRow: row) as? ManageModel.Node : nil)
+        else { return }
         if node.kind == .file, let file = node.file {
             let loaded = app.controller(for: node.path)?.file.caseInsensitiveCompare(file) == .orderedSame
             let toggle = NSMenuItem(title: loaded ? "Unload" : "Load", action: #selector(contextToggle(_:)),
@@ -858,6 +987,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             toggle.representedObject = [node.path, file]
             toggle.target = self
             menu.addItem(toggle)
+            if loaded, let running = app.controller(for: node.path), !running.isStopped, running.isHiddenByBang {
+                let show = NSMenuItem(title: ManageModel.Hidden.showTitle, action: #selector(contextShow(_:)),
+                                      keyEquivalent: "")
+                show.representedObject = [node.path]
+                show.target = self
+                menu.addItem(show)
+            }
             let edit = NSMenuItem(title: "Edit", action: #selector(contextEdit(_:)), keyEquivalent: "")
             edit.representedObject = [node.path, file]
             edit.target = self
@@ -872,6 +1008,12 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     @objc private func contextToggle(_ sender: NSMenuItem) {
         guard let a = sender.representedObject as? [String], a.count == 2 else { return }
         toggleLoad(config: a[0], file: a[1])
+    }
+
+    @objc private func contextShow(_ sender: NSMenuItem) {
+        guard let a = sender.representedObject as? [String], let config = a.first,
+              let c = app.controller(for: config) else { return }
+        show(c)
     }
 
     @objc private func contextEdit(_ sender: NSMenuItem) {
@@ -922,6 +1064,121 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
     var testDraggableBox: NSButton { draggableBox }
     var testFadeField: NSTextField { fadeField }
     var testTransparencySlider: NSSlider { transparencySlider }
+    var testStatus: String { statusLabel.stringValue }
+    /// The hidden notice's title and text when it shows, nil when it does not.
+    var testHiddenNotice: (title: String, text: String)? {
+        hiddenNotice.isHidden ? nil : (hiddenNotice.titleLabel.stringValue, hiddenNotice.textLabel.stringValue)
+    }
+    /// The hint under the coordinates when it shows.
+    var testCoordinatesHint: String? { coordinatesHintRow?.isHidden == false ? coordinatesHint.stringValue : nil }
+    var testHiddenNoticeView: NSView { hiddenNotice }
+    var testShowButton: NSButton { hiddenNotice.showButton }
+    /// Types coordinates into the X and Y fields and ends editing, as Return does.
+    func testTypeCoordinates(x: Int, y: Int) {
+        xField.stringValue = String(x)
+        yField.stringValue = String(y)
+        positionFieldChanged(yField)
+    }
+    /// The outline row of a config's file: its accessibility label.
+    func testRowLabel(config: String, file: String) -> String? {
+        for row in 0..<outline.numberOfRows {
+            guard let node = outline.item(atRow: row) as? ManageModel.Node, node.kind == .file,
+                  node.path.caseInsensitiveCompare(config) == .orderedSame,
+                  node.file?.caseInsensitiveCompare(file) == .orderedSame else { continue }
+            return outline.view(atColumn: 0, row: row, makeIfNecessary: true)?.accessibilityLabel()
+        }
+        return nil
+    }
+    /// The outline's context menu for a config's file (as right-clicking its row builds it).
+    func testContextMenuTitles(config: String, file: String) -> [String] {
+        guard let node = roots.flatMap(allNodes).first(where: {
+            $0.kind == .file && $0.path.caseInsensitiveCompare(config) == .orderedSame
+                && $0.file?.caseInsensitiveCompare(file) == .orderedSame
+        }) else { return [] }
+        let menu = NSMenu()
+        testContextNode = node
+        defer { testContextNode = nil }
+        menuNeedsUpdate(menu)
+        return menu.items.map(\.title)
+    }
+    /// Chooses Show in the outline's context menu of a config's file.
+    func testContextShow(config: String) {
+        let item = NSMenuItem()
+        item.representedObject = [config]
+        contextShow(item)
+    }
+}
+
+/// The notice at the top of a hidden skin's details: a crossed-out eye, what happened, and a Show button.
+final class HiddenSkinNotice: NSView {
+    let titleLabel = NSTextField(labelWithString: "")
+    let textLabel = NSTextField(wrappingLabelWithString: "")
+    let showButton = NSButton(title: ManageModel.Hidden.showTitle, target: nil, action: nil)
+
+    init() {
+        super.init(frame: .zero)
+        let symbol = NSImageView(image: NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil) ?? NSImage())
+        symbol.symbolConfiguration = .init(pointSize: 15, weight: .medium)
+        symbol.contentTintColor = .systemOrange
+        symbol.setContentHuggingPriority(.required, for: .horizontal)
+        titleLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        textLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        textLabel.textColor = .secondaryLabelColor
+        textLabel.isSelectable = true
+        textLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        showButton.bezelStyle = .rounded
+        showButton.setContentHuggingPriority(.required, for: .horizontal)
+        showButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Crossed-out eye | title over text | Show, centred. The text is as wide as the room between the title's left
+        // edge and the button, so it wraps there whatever its own size.
+        for view in [symbol, titleLabel, textLabel, showButton] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            symbol.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 10),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: showButton.leadingAnchor, constant: -12),
+            textLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            textLabel.trailingAnchor.constraint(equalTo: showButton.leadingAnchor, constant: -16),
+            textLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 3),
+            textLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -11),
+            showButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            showButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func set(title: String, text: String) {
+        titleLabel.stringValue = title
+        textLabel.stringValue = text
+        setAccessibilityLabel(title)
+    }
+
+    /// The text wraps at the width it is given (one more layout pass when that width changed).
+    override func layout() {
+        super.layout()
+        let width = textLabel.frame.width
+        if width > 0, abs(textLabel.preferredMaxLayoutWidth - width) > 0.5 {
+            textLabel.preferredMaxLayoutWidth = width
+            needsLayout = true
+        }
+    }
+
+    /// Drawn rather than a layer's colours, so off-screen snapshots show it too.
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
+        NSColor.systemOrange.withAlphaComponent(0.09).setFill()
+        path.fill()
+        NSColor.systemOrange.withAlphaComponent(0.35).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
 }
 
 /// Top-left origin container for the scrolling detail pane.
