@@ -2,8 +2,9 @@ import Foundation
 
 // The seam for running skins off the main thread (docs/skin-threading.md, phase 0). Every piece of skin work that
 // runs later — the update clock, `!Delay`, plugin and meter timers, the results of background work — is scheduled
-// through the skin's executor instead of the main queue or the main run loop. Today every skin uses
-// `MainSkinExecutor`, which is exactly what the engine did before; later phases give each skin a thread of its own.
+// through the skin's executor instead of the main queue or the main run loop. `MainSkinExecutor` is exactly what the
+// engine did before; `SkinThreadExecutor` runs skins on a thread of their own (with `SkinThreading=engine`, every
+// desktop skin shares one; phase 3 gives each skin one).
 
 // MARK: - Executor
 
@@ -155,9 +156,10 @@ public final class SkinScheduledWork: @unchecked Sendable {
 
 // MARK: - The main thread
 
-/// The main queue and the main run loop: how skins have always run. Every skin uses it in this phase; later phases
-/// keep it for the headless modes (`--render`, `--snapshot-ui`), the self-tests, throwaway skins and a skin open in
-/// the Skin Studio (docs/skin-threading.md §5.3, §8.5).
+/// The main queue and the main run loop: how skins have always run. Desktop skins use it with `SkinThreading=main` (the
+/// app's default for now); the headless modes (`--render`, `--snapshot-ui`), the self-tests, throwaway skins (the
+/// Manage window's dry runs, thumbnails) and the Skin Studio's own instance of a widget always do
+/// (docs/skin-threading.md §5.3, §8.5, §8.7).
 ///
 /// It does exactly what the engine did before, so that nothing changes order:
 /// - `async` is `DispatchQueue.main.async` and `async(after:)` is `DispatchQueue.main.asyncAfter`: the same FIFO queue
