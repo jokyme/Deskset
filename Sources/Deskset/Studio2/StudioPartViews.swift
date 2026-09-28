@@ -222,14 +222,14 @@ final class StudioDataChip: NSControl {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 6 + size + 4 + ceil(title.intrinsicContentSize.width) + 6, height: size + 8)
+        NSSize(width: 6 + size + 4 + ceil(title.intrinsicContentSize.width) + 4 + 6, height: size + 8)
     }
 
     override func layout() {
         super.layout()
         let h = bounds.height
         icon.frame = NSRect(x: 6, y: (h - size) / 2, width: size, height: size)
-        title.frame = NSRect(x: 6 + size + 4, y: (h - size - 4) / 2, width: bounds.width - size - 16, height: size + 4)
+        title.frame = NSRect(x: 6 + size + 4, y: (h - size - 4) / 2, width: bounds.width - size - 16, height: size + 5)
         layer?.cornerRadius = h / 2
     }
 
@@ -382,7 +382,7 @@ final class StudioColorLabelView: NSView {
         super.layout()
         let h = bounds.height
         swatch.frame = NSRect(x: 0, y: (h - 18) / 2, width: 18, height: 18)
-        let tw = ceil(title.intrinsicContentSize.width) + 2
+        let tw = ceil(title.intrinsicContentSize.width) + 4
         title.frame = NSRect(x: 25, y: (h - 16) / 2, width: min(tw, bounds.width - 25), height: 16)
         let nx = 25 + tw + 6
         note.frame = NSRect(x: nx, y: (h - 15) / 2, width: max(bounds.width - nx, 0), height: 15)
@@ -481,7 +481,7 @@ final class StudioDenseRowView: NSView, StudioPageItemView {
     init(dense: StudioPage.Dense) {
         self.dense = dense
         var r = StudioPage.Row(label: dense.label, control: dense.control)
-        r.labelWidth = 80
+        r.labelWidth = 100
         r.tooltip = dense.tooltip
         row = StudioRowView(row: r, dense: true)
         super.init(frame: .zero)
@@ -497,7 +497,7 @@ final class StudioDenseRowView: NSView, StudioPageItemView {
         guard case .dense(let d) = kind else { return }
         dense = d
         var r = StudioPage.Row(label: d.label, control: d.control)
-        r.labelWidth = 80
+        r.labelWidth = 100
         r.tooltip = d.tooltip
         row.scrubbing = d.scrubbing
         row.update(.row(r))
@@ -513,6 +513,6 @@ final class StudioDenseRowView: NSView, StudioPageItemView {
     override func layout() {
         super.layout()
         row.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 23.5)
-        note.frame = NSRect(x: 88, y: 22, width: max(bounds.width - 88, 0), height: 14)
+        note.frame = NSRect(x: 108, y: 22, width: max(bounds.width - 108, 0), height: 14)
     }
 }

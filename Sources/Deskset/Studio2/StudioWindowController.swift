@@ -56,6 +56,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     private(set) var preview: StudioPreviewController!
     /// The widget page (the inspector while nothing is selected).
     private(set) var widgetPage: StudioWidgetPage!
+    /// The page of the part (or data item) selected, and Every Setting.
+    private(set) var partPage: StudioPartPage!
+    /// Moving and resizing parts on the canvas.
+    private(set) var geometry: StudioGeometry!
+    private var flagsMonitor: Any?
     /// The editing session of the widget shown (nil before it shows one, and once closed).
     private(set) var session: EditingSession?
     /// The widget on the desktop (nil with no session).
@@ -121,7 +126,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         preview = StudioPreviewController(windowController: self, canvas: canvasController,
                                           presentsWindows: app.presentsWindows)
         widgetPage = StudioWidgetPage(window: self)
-        inspectorController.pageView.onEvent = { [weak self] event in self?.widgetPage.handle(event) }
+        partPage = StudioPartPage(window: self)
+        geometry = StudioGeometry(window: self)
+        inspectorController.pageView.onEvent = { [weak self] event in self?.pageEvent(event) }
+        inspectorController.onEscape = { [weak self] in self?.goUp() }
+        wireCanvas()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -159,6 +168,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// fields left on the stack goes, and anything registered for the window itself.
     func unbindSession() {
         guard let session else { return }
+        geometry.cancel()
+        partPage.reset()
         widgetPage.close()
         widgetPage.thumbnails.clear()
         preview.detach()
@@ -185,6 +196,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         updateToolbar()
         preview?.refreshAll()
         widgetPage?.rebuild()
+        partPage?.refresh()
         scheduleThumbnails()
     }
 
@@ -311,6 +323,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// Done: an open color popover hands its pick over, whatever is still waiting is written, then the window closes.
     @objc func doneAction(_ sender: Any?) {
         widgetPage.colorPopover?.close()
+        partPage.closePopover()
+        geometry.commitNudge()
         flush()
         window?.close()
     }
@@ -379,11 +393,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             widgetChanged()
         case .applied(let t):
             refreshOthers(t)
+            partPage.refresh()
             updateToolbar()
         case .reverted(let t, _):
             refreshOthers(t)
             widgetPage.stepReverted()
+            partPage.stepReverted()
             widgetPage.refresh()
+            partPage.refresh()
             updateToolbar()
         case .revertFailed:
             if app.presentsWindows { NSSound.beep() }
@@ -442,7 +459,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     func windowWillClose(_ notification: Notification) {
         thumbnailTimer?.invalidate()
+        if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
+        flagsMonitor = nil
+        geometry.commitNudge()
         widgetPage.colorPopover?.close()
+        partPage.closePopover()
         runningPopover?.close()
         pendingDiskCheck?.invalidate()
         pendingDiskCheck = nil
@@ -520,5 +541,139 @@ final class StudioRunningViewController: NSViewController {
 
     @objc func showInFinder() {
         link.showInFinder()
+    }
+}
+
+// MARK: - Selecting parts
+
+extension StudioWindowController {
+    /// The canvas selects parts (the first click passes over parts that draw nothing), drags them, and says what
+    /// they are called; ⇧Return and Esc go one level up; ⌥ held shows distances.
+    func wireCanvas() {
+        let canvas = canvasController.canvas
+        canvas.onSelectionChange = { [weak self] names in self?.selectionChanged(names) }
+        canvas.onBeginGesture = { [weak self] names, gesture in
+            let resize: Bool = { if case .resize = gesture { return true } else { return false } }()
+            self?.geometry.begin(names, resize: resize)
+        }
+        canvas.onGestureFrames = { [weak self] frames in self?.geometry.preview(frames) }
+        canvas.onEndGesture = { [weak self] keep in self?.geometry.end(keep: keep) }
+        canvas.onNudge = { [weak self] dx, dy in self?.geometry.nudge(dx: dx, dy: dy) }
+        canvas.selectionTag = { [weak self] m in
+            guard let self, let skin = self.skin else { return m.name }
+            return self.partPage.partTitle(m, skin: skin)
+        }
+        canvas.layerName = { [weak self] name in
+            guard let self, let skin = self.skin, let m = skin.meter(named: name) else { return name }
+            return self.partPage.partTitle(m, skin: skin)
+        }
+        canvas.onContextMenu = { [weak self] x, y in self?.contextMenu(x: x, y: y) }
+        if let container = canvasController.view as? StudioCanvasContainer {
+            let previous = container.onKeyEquivalent
+            container.onKeyEquivalent = { [weak self] event in
+                if previous?(event) == true { return true }
+                return self?.keyEquivalent(event) ?? false
+            }
+            container.onKeyDown = { [weak self] event in
+                // ⇧Return: one level up.
+                guard event.keyCode == 36 || event.keyCode == 76,
+                      event.modifierFlags.intersection([.shift, .command, .option, .control]) == [.shift] else { return false }
+                self?.goUp()
+                return true
+            }
+        }
+        if app.presentsWindows {
+            flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+                self?.optionChanged(event.modifierFlags.contains(.option) && event.window === self?.window)
+                return event
+            }
+        }
+    }
+
+    /// ⌥ held (or let go): the selected part's distances on the canvas.
+    func optionChanged(_ held: Bool) {
+        canvasController.overlay.setShowsDistances(held && canvasController.canvas.selectedNames.count == 1)
+    }
+
+    /// One part selected: its page; nothing (or several): the widget page.
+    func selectionChanged(_ names: [String]) {
+        if names.count == 1 {
+            partPage.show(part: names[0])
+        } else {
+            partPage.show(part: nil)
+            partPage.reset()
+            widgetPage.refresh()
+        }
+        canvasController.overlay.setShowsDistances(false)
+    }
+
+    /// Selects a part (a data page's "Used by", the self-tests).
+    func select(part name: String?) {
+        canvasController.canvas.setSelection(name, reveal: true)
+        selectionChanged(name.map { [$0] } ?? [])
+    }
+
+    /// Esc (on the inspector) or ⇧Return: back one level — Every Setting to the part's page, a part to the widget.
+    func goUp() {
+        if partPage.everySetting, partPage.meter != nil { return partPage.toggleEverySetting() }
+        if case .data? = partPage.focus {
+            if let name = canvasController.canvas.selectedNames.last, skin?.meter(named: name) != nil {
+                return partPage.show(part: name)
+            }
+        }
+        canvasController.canvas.selectLevelUp()
+        if canvasController.canvas.selectedNames.isEmpty, partPage.focus != nil { partPage.leave() }
+    }
+
+    /// The inspector's events go to the page it shows.
+    func pageEvent(_ event: StudioPageEvent) {
+        if partPage.focus != nil { partPage.handle(event) } else { widgetPage.handle(event) }
+    }
+
+    /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code.
+    func keyEquivalent(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard flags == [.command, .option] else { return false }
+        if event.charactersIgnoringModifiers?.lowercased() == "e" || event.keyCode == 14 {
+            partPage.toggleEverySetting()
+            return true
+        }
+        if event.keyCode == 36 || event.keyCode == 76 {
+            showInCode(nil)
+            return true
+        }
+        return false
+    }
+
+    /// Show in Code: the code of what is selected (the code pane comes in a later step; until then, the widget's own
+    /// editor as Settings choose it).
+    @objc func showInCode(_ sender: Any?) {
+        codeAction(sender)
+    }
+
+    /// The canvas's menu on a part: hide it.
+    func contextMenu(x: Double, y: Double) -> NSMenu? {
+        guard let skin, let m = canvasController.canvas.pickableMeter(atSkinX: x, y) else { return nil }
+        let menu = NSMenu()
+        let title = partPage.partTitle(m, skin: skin)
+        menu.addItem(ClosureMenuItem(StudioText.format(.menuHide, title)) { [weak self] in self?.hide(part: m.name) })
+        return menu
+    }
+
+    /// Hides a part (its own `Hidden=1`), one step, confirmed: it cannot be seen afterwards.
+    func hide(part name: String) {
+        guard let skin, let m = skin.meter(named: name) else { return }
+        let title = partPage.partTitle(m, skin: skin)
+        let ops = WriteScopes.ops(.element, meter: m.name, key: "Hidden", value: "1", in: skin)
+        let step = StudioText[.undoHide]
+        guard partPage.apply(step, ops) else { return }
+        canvasController.canvas.setSelection(nil)
+        partPage.show(part: nil)
+        partPage.reset()
+        widgetPage.refresh()
+        partPage.confirm(StudioText.format(.confirmHidden, title), step: step, item: "", section: "",
+                         change: .invisible, fromCanvas: true)
+        if let c = partPage.topConfirmation { widgetPage.showTop(c) }
     }
 }

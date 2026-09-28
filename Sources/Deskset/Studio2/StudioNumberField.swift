@@ -97,6 +97,7 @@ final class StudioNumberBox: NSView, NSTextFieldDelegate {
 
     func show(_ n: StudioPage.Number) {
         number = n
+        if n.isText { field.font = StudioPageStyle.valueFont }
         if field.currentEditor() == nil { field.stringValue = n.text }
         shown = n.text
         field.placeholderString = n.placeholder
@@ -113,14 +114,14 @@ final class StudioNumberBox: NSView, NSTextFieldDelegate {
         let h = bounds.height
         var x: CGFloat = 8
         if !prefixLabel.isHidden {
-            let w = ceil(prefixLabel.intrinsicContentSize.width)
+            let w = ceil((prefixLabel.stringValue as NSString).size(withAttributes: [.font: prefixLabel.font!]).width) + 3
             prefixLabel.frame = NSRect(x: x, y: (h - 16) / 2, width: w, height: 16)
             x += w + 5
         }
         var right = bounds.width - 7
         if !unitLabel.isHidden {
-            let w = ceil(unitLabel.intrinsicContentSize.width)
-            unitLabel.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
+            let w = ceil((unitLabel.stringValue as NSString).size(withAttributes: [.font: unitLabel.font!]).width) + 4
+            unitLabel.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
             right -= w + 4
         }
         field.frame = NSRect(x: x, y: (h - 17) / 2, width: max(right - x, 12), height: 17)
@@ -145,10 +146,12 @@ final class StudioNumberBox: NSView, NSTextFieldDelegate {
                 onChange?(.typed(text))
             }
             return true
-        case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveUpAndModifySelection(_:)):
+        case #selector(NSResponder.moveUp(_:)) where !number.isText,
+             #selector(NSResponder.moveUpAndModifySelection(_:)) where !number.isText:
             onChange?(.step(shift || selector == #selector(NSResponder.moveUpAndModifySelection(_:)) ? 10 : 1))
             return true
-        case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveDownAndModifySelection(_:)):
+        case #selector(NSResponder.moveDown(_:)) where !number.isText,
+             #selector(NSResponder.moveDownAndModifySelection(_:)) where !number.isText:
             onChange?(.step(shift || selector == #selector(NSResponder.moveDownAndModifySelection(_:)) ? -10 : -1))
             return true
         case #selector(NSResponder.cancelOperation(_:)):

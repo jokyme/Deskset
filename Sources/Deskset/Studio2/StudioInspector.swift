@@ -6,6 +6,8 @@ import DesksetCore
 final class StudioInspectorViewController: NSViewController {
     let scrollView = OverlayScrollView()
     let pageView = StudioPageView()
+    /// Esc on the inspector: one level up.
+    var onEscape: (() -> Void)?
 
     override func loadView() {
         let v = StudioInspectorContainer()
@@ -25,6 +27,7 @@ final class StudioInspectorViewController: NSViewController {
         scrollView.autoresizingMask = [.width, .height]
         v.addSubview(scrollView)
         v.onLayout = { [weak self] in self?.layoutPage() }
+        v.onEscape = { [weak self] in self?.onEscape?() }
         view = v
     }
 
@@ -50,7 +53,12 @@ final class StudioInspectorViewController: NSViewController {
 
 final class StudioInspectorContainer: NSView {
     var onLayout: (() -> Void)?
+    var onEscape: (() -> Void)?
     override var isFlipped: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let onEscape { onEscape() } else { super.cancelOperation(sender) }
+    }
 
     override func layout() {
         super.layout()

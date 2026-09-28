@@ -149,6 +149,18 @@ enum StudioSnapshot {
             StudioColorPopover.recentInMemory = screen.recentColors
             controller.widgetPage.openColor(role, swatch: swatch)
         }
+        // The part's page, as the screen has it.
+        if let part = screen.selection {
+            StudioPartPage.rememberedInMemory = []
+            controller.select(part: part)
+            if screen.everySetting { controller.partPage.toggleEverySetting() }
+            if let row = screen.scrubbing {
+                controller.partPage.scrubbingItem = row
+                controller.partPage.refresh()
+            }
+            if screen.scopeHover { controller.partPage.handle(.scopeHover(true)) }
+            if screen.distances { controller.canvasController.overlay.setShowsDistances(true) }
+        }
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         controller.canvasController.geometryChanged()
         controller.canvasController.layoutFloating()
@@ -282,7 +294,8 @@ enum StudioSnapshot {
     /// materials.
     private static func drawPanes(_ controller: StudioWindowController, in content: NSView, dark: Bool) {
         let canvas = controller.canvasController
-        for plane in [canvas.backdropView, canvas.neighboursView, canvas.glassPlane, canvas.canvas] as [NSView] {
+        for plane in [canvas.backdropView, canvas.neighboursView, canvas.glassPlane, canvas.canvas, canvas.overlay]
+            as [NSView] {
             draw(plane, in: content)
         }
         for floating in [canvas.captionTag, canvas.statusCapsule, canvas.previewBar, canvas.zoomCapsule] as [NSView] {

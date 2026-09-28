@@ -37,8 +37,16 @@ struct StudioScreen {
     var inspectorShown = true
     /// The canvas zoom (nil: fit).
     var zoom: CGFloat?
-    /// The layer selected (later: the part's page).
+    /// The part selected: its page shows.
     var selection: String?
+    /// Every Setting is open on the selected part.
+    var everySetting = false
+    /// The pointer is on the scope sentence's link (the canvas outlines what it would reach).
+    var scopeHover = false
+    /// ⌥ is held: the distances show.
+    var distances = false
+    /// A row whose label is being dragged (drawn with ↔).
+    var scrubbing: String?
     /// The backdrop (a sample, or "Your Desktop": the procedural hills in snapshots).
     var backdrop = StudioBackdropKind.desktop
     /// Sample data shown as a preset (the preview bar says so), and the time frozen at 10:09.
@@ -94,14 +102,19 @@ struct StudioScreen {
                      zoom: 1.65,
                      later: ["wallpaper backdrop", "the city row (city search)", "the Colors scope sentence for two copies",
                              "what-it-paints outline", "Accent among the colors"]),
-        StudioScreen(name: "04-part", fixture: .system, edits: [systemDemo], zoom: 1.65, selection: "MeterCPUValue",
-                     updates: 4,
-                     later: ["part page", "scope sentence", "breadcrumb"]),
+        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
+                     scopeHover: true, updates: 4, pinned: systemReadings,
+                     later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
+                             "Shows examples (the number is written by the widget's data, not the part)",
+                             "the pointer drawn on the link"]),
         StudioScreen(name: "07-layers", fixture: .system, edits: [systemDemo], depth: .build, zoom: 1.9,
                      updates: 4,
                      later: ["layers", "connect menu"]),
-        StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3,
-                     later: ["workbench backdrop", "every-setting page", "distances"]),
+        StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3, selection: "MeterValue", everySetting: true,
+                     distances: true, scrubbing: "every:FontSize", backdrop: .workbench, updates: 2,
+                     pinned: ["measurecpu": (23, nil)],
+                     later: ["Tracking, Line height, Digits, Nudge, Turn (settings an INI text does not have)",
+                             "Pointed at presets", "the rule's source chip on Color"]),
         StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5, backdrop: .bright, data: .level(1), frozen: true,
                      previewPopover: true,
                      later: ["part page with the contrast card", "selection of the caption", "Build's layers"]),

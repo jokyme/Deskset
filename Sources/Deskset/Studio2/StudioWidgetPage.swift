@@ -20,6 +20,8 @@ final class StudioWidgetPage {
     private(set) var hoveredSwatch: String?
     /// The color popover, while it is open (off screen: made, not shown; the snapshot composes it).
     private(set) var colorPopover: StudioColorPopover?
+    /// A confirmation at the top of the page (a part hidden from the canvas).
+    private(set) var topConfirmation: StudioPage.Confirmation?
     let thumbnails: StudioLookThumbnails
 
     struct Confirmation {
@@ -59,9 +61,19 @@ final class StudioWidgetPage {
     /// Shows the page again from the facts it has (a swatch opened, a confirmation came or went).
     func refresh() {
         guard let facts else { return }
-        let page = build(facts)
+        var page = build(facts)
+        page.topConfirmation = topConfirmation
         self.page = page
+        // A part's page is shown instead while a part is selected.
+        guard window.partPage?.focus == nil else { return }
         window.inspectorController.show(page)
+    }
+
+    /// Shows a confirmation at the top of the page (a change made on the canvas).
+    func showTop(_ c: StudioPage.Confirmation) {
+        topConfirmation = c
+        confirmation = nil
+        refresh()
     }
 
     /// What goes on the page, after fitting it to twelve controls.
@@ -793,6 +805,7 @@ final class StudioWidgetPage {
     }
 
     private func setConfirmation(_ c: Confirmation) {
+        topConfirmation = nil
         // Building (the sidebar open), a change to one value stays quiet: the canvas shows it.
         confirmation = window.depth == .customize ? c : nil
         refresh()
@@ -801,6 +814,7 @@ final class StudioWidgetPage {
     /// A step was undone or redone: the confirmation of an undone step goes.
     func stepReverted() {
         confirmation = nil
+        topConfirmation = nil
     }
 
     /// The window closes or shows another widget: the popover closes (what it picked is kept).

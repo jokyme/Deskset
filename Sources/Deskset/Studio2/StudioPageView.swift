@@ -726,8 +726,9 @@ final class StudioRowView: NSView, StudioPageItemView {
         let labelWidth = row.labelWidth
         label.frame = NSRect(x: 0, y: (h - lh) / 2, width: labelWidth, height: lh)
         if !scrubMark.isHidden {
-            let lw = min(ceil(label.intrinsicContentSize.width), labelWidth - 14)
-            label.frame.size.width = lw + 2
+            let natural = (label.stringValue as NSString).size(withAttributes: [.font: label.font!]).width
+            let lw = min(ceil(natural) + 7, labelWidth - 14)
+            label.frame.size.width = lw
             scrubMark.frame = NSRect(x: lw + 4, y: (h - 12) / 2, width: 12, height: 12)
         }
         scrubArea.frame = NSRect(x: 0, y: 0, width: labelWidth, height: h)

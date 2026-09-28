@@ -7,6 +7,8 @@ final class StudioCanvasContainer: NSView {
     var onLayout: (() -> Void)?
     /// ⇧⌘D, ⌥⌘P: the Studio's keys without menu items of their own yet.
     var onKeyEquivalent: ((NSEvent) -> Bool)?
+    /// Keys the canvas passes up (⇧Return: one level up).
+    var onKeyDown: ((NSEvent) -> Bool)?
 
     override var isFlipped: Bool { true }
 
@@ -18,6 +20,11 @@ final class StudioCanvasContainer: NSView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if onKeyEquivalent?(event) == true { return true }
         return super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if onKeyDown?(event) == true { return }
+        super.keyDown(with: event)
     }
 }
 
@@ -34,6 +41,8 @@ final class StudioCanvasViewController: NSViewController {
     let glassPlane: StudioGlassPlane
     let scrollView = OverlayScrollView()
     let canvas = SkinCanvasView()
+    /// What pointed-at things draw, a wider scope's reach, the distances with ⌥ held.
+    let overlay = StudioCanvasOverlay()
     let interactionView = StudioInteractionView()
     let captionTag: StudioCaptionTag
     let statusCapsule: StudioStatusCapsule
@@ -44,6 +53,7 @@ final class StudioCanvasViewController: NSViewController {
         didSet {
             canvas.skinProvider = skinProvider
             interactionView.skinProvider = skinProvider
+            overlay.skinProvider = skinProvider
         }
     }
     /// Where the widget is on the desktop (its window's frame, global coordinates; nil: not on the desktop).
@@ -106,7 +116,12 @@ final class StudioCanvasViewController: NSViewController {
         scrollView.contentInsets = NSEdgeInsets(top: Self.toolbarHeight, left: 0, bottom: Self.previewBarRoom, right: 0)
         canvas.paintsSurface = false
         canvas.glassDrawing = SkinRenderer.GlassDrawing.none
-        canvas.isEditable = false
+        // Parts are selected and dragged; the first click passes over parts that draw nothing.
+        canvas.isEditable = true
+        canvas.hitFilter = { StudioHitRule.pick($0) }
+        overlay.canvas = canvas
+        overlay.skinProvider = skinProvider
+        overlay.animates = !standIns
         canvas.skinProvider = skinProvider
         canvas.postsFrameChangedNotifications = true
         canvas.onUserZoom = { [weak self] in self?.autoFit = false }
@@ -116,7 +131,7 @@ final class StudioCanvasViewController: NSViewController {
         interactionView.canvas = canvas
         interactionView.skinProvider = skinProvider
         interactionView.onEvent = { [weak self] in self?.canvas.needsDisplay = true }
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, interactionView] as [NSView] {
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, interactionView] as [NSView] {
             plane.autoresizingMask = [.width, .height]
             container.addSubview(plane)
         }
@@ -138,7 +153,7 @@ final class StudioCanvasViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, interactionView] as [NSView] {
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, interactionView] as [NSView] {
             plane.frame = view.bounds
         }
         fitIfAutomatic()
@@ -214,6 +229,7 @@ final class StudioCanvasViewController: NSViewController {
         glassPlane.zoom = m.zoom
         updateGlass()
         placeCaption()
+        overlay.needsDisplay = true
         if abs(m.zoom - lastZoom) > 0.0001 {
             lastZoom = m.zoom
             onZoomChange?()
@@ -281,6 +297,7 @@ final class StudioCanvasViewController: NSViewController {
             self.canvas.updateSize()
             if self.canvas.frame.size != before { self.fitIfAutomatic() }
             self.canvas.needsDisplay = true
+            if self.overlay.showsDistances { self.overlay.needsDisplay = true }
             self.updateGlass()
         }
         timer.tolerance = interval * 0.1

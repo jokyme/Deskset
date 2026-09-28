@@ -97,6 +97,11 @@ final class SkinCanvasView: NSView {
     var glassDrawing: SkinRenderer.GlassDrawing? { didSet { needsDisplay = true } }
     /// Editing is off while no skin is loaded.
     var isEditable = true
+    /// Which of the parts under the pointer (front first) a click takes; nil: the frontmost (the new Studio window
+    /// passes over parts that draw nothing).
+    var hitFilter: (([Meter]) -> Meter?)?
+    /// The words of the selected part's tag; nil: its name and size.
+    var selectionTag: ((Meter) -> String)?
 
     // MARK: What the editor tells the canvas
 
@@ -331,11 +336,13 @@ final class SkinCanvasView: NSView {
     /// The topmost unlocked meter drawn at a point in skin coordinates (an empty text counts where its placeholder is).
     func pickableMeter(atSkinX x: Double, _ y: Double) -> Meter? {
         guard let skin else { return nil }
-        return skin.meters.last { m in
-            guard !m.isContainer, !isLocked(m.name) else { return false }
+        let hit: (Meter) -> Bool = { m in
+            guard !m.isContainer, !self.isLocked(m.name) else { return false }
             if m.frame.width > 0, m.frame.height > 0, m.isHit(x: x, y: y) { return true }
-            return placeholderRect(m).map { $0.contains(x: x, y: y) } ?? false
+            return self.placeholderRect(m).map { $0.contains(x: x, y: y) } ?? false
         }
+        if let hitFilter { return hitFilter(skin.meters.reversed().filter(hit)) }
+        return skin.meters.last(where: hit)
     }
 
     /// The meter a click at a point in view coordinates picks.
@@ -1267,7 +1274,7 @@ final class SkinCanvasView: NSView {
             ctx.setLineWidth(px)
             ctx.strokePath()
         }
-        let text = gesture == nil
+        let text = gesture == nil && selectionTag != nil ? selectionTag!(m) : gesture == nil
             ? "\(layerName(m.name)) · \(Self.format(m.frame.width)) × \(Self.format(m.frame.height))"
             : "X \(Self.format(m.frame.x))  Y \(Self.format(m.frame.y))  \(Self.format(m.frame.width)) × \(Self.format(m.frame.height))"
         // Outside the handles, so it never covers them or the layer.

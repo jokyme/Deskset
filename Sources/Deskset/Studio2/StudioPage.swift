@@ -184,6 +184,8 @@ struct StudioPage: Equatable {
         var step: Double = 1
         var minimum: Double?
         var maximum: Double?
+        /// Words, not a number: no arrow steps, the text font.
+        var isText = false
     }
 
     struct ColorLabel: Equatable {
