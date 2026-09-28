@@ -7,7 +7,7 @@ import DesksetCore
 ///     Deskset --verify-drawing-cache Skins… [...]          kept pictures against full drawings (DrawingCacheCheck)
 ///     Deskset --self-test [filter]                         app-level checks (window rules, state, UI, install flow)
 ///     Deskset --make-icon Deskset.iconset                   writes the app icon PNGs (build-app.sh)
-///     Deskset --snapshot-ui manage|inspector|settings|install|icon|menubar --out x.png [--dark] [--skins-dir DIR]
+///     Deskset --snapshot-ui manage|inspector|studio2|settings|install|icon|menubar --out x.png [--dark] [--skins-dir DIR]
 ///     Deskset --system-report                              prints every system reading
 ///     Deskset --weather-report [--location PLACE] [...]    one MET Norway forecast (see WeatherReportCommand)
 ///     Deskset --cover-lookup ARTIST TITLE [ALBUM]          NowPlaying's online cover lookup, every request printed
@@ -37,6 +37,8 @@ enum CommandLineTools {
                                            "--hidden", "--coordinates",
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
+                                           // The new Studio window's screens.
+                                           "--screen", "--language",
                                            // --weather-report.
                                            "--location", "--units", "--offline", "--now",
                                            // --benchmark.
@@ -67,13 +69,14 @@ enum CommandLineTools {
                                         run skins without a window and print what an update and a drawing cost
                Deskset --self-test [filter]
                                         run the app's self-tests
-               Deskset --snapshot-ui manage|inspector|settings|codeeditor|library|install|install-zip|icon|menubar
+               Deskset --snapshot-ui manage|inspector|studio2|settings|codeeditor|library|install|install-zip|icon|menubar
                       [--out x.png] [--dark] [--select NAME|A,B|none] [--size WxH] [--zoom N] [--skins-dir DIR]
                       [--mode design|split|code] [--tab add|layers|live] [--code-below] [--inspector-width N]
                       [--config NAME] [--category NAME] [--search TEXT] [--pane general|editor]
                       [--hover NAME] [--drag NAME:DX,DY] [--expert] [--tip N] [--expand NAME] [--edit-text NAME]
-                      [--scroll "CARD TITLE"] [--hidden] [--coordinates X,Y]
-                                        draw app UI off-screen into a PNG
+                      [--scroll "CARD TITLE"] [--hidden] [--coordinates X,Y] [--screen NAME] [--language en|zh]
+                                        draw app UI off-screen into a PNG (studio2: the new Studio window on a
+                                        designed screen, --screen 03-customize and so on)
                Deskset --system-report   print every system reading skins can get
                Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
                       [--offline FILE] [--now ISO8601]

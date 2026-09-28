@@ -101,6 +101,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         window.toolbar = toolbar.toolbar
         window.setContentSize(Self.defaultSize)
         window.minSize = NSSize(width: 900, height: 560)
+        window.contentView?.layoutSubtreeIfNeeded()
+        placeInspector()
         window.center()
         observations.append(sidebarItem.observe(\.isCollapsed) { [weak self] _, _ in
             DispatchQueue.main.async { self?.updateToolbar() }
@@ -197,6 +199,18 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         updateToolbar()
     }
 
+    /// The inspector's width when the window opens (the design's 318 pt, within 300–330).
+    static let inspectorWidth: CGFloat = 318
+
+    /// Gives the inspector its opening width.
+    func placeInspector() {
+        guard !inspectorItem.isCollapsed, let index = splitController.splitViewItems.firstIndex(of: inspectorItem),
+              index > 0 else { return }
+        let split = splitController.splitView
+        split.layoutSubtreeIfNeeded()
+        split.setPosition(split.bounds.width - Self.inspectorWidth - split.dividerThickness, ofDividerAt: index - 1)
+    }
+
     func setInspectorShown(_ shown: Bool) {
         guard inspectorItem.isCollapsed == shown else { return }
         inspectorItem.isCollapsed = !shown
@@ -215,7 +229,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         s.canRedo = undo?.canRedo ?? false
         s.undoName = undo?.undoActionName ?? ""
         s.redoName = undo?.redoActionName ?? ""
-        s.addOn = depth == .build
+        // Add shows as on while the sidebar is on its Add page (the sidebar's pages come later).
+        s.addOn = false
         s.primary = StudioText[.done]
         return s
     }
@@ -279,7 +294,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         popover.contentViewController = StudioRunningViewController(link: link)
         runningPopover = popover
         guard app.presentsWindows, window?.isVisible == true else { return }
-        popover.show(relativeTo: toolbar.titleView.bounds, of: toolbar.titleView, preferredEdge: .maxY)
+        popover.show(relativeTo: toolbar.titleView.bounds, of: toolbar.titleView, preferredEdge: .minY)
     }
 
     /// The popover's content (headless too: the snapshot composes it).
