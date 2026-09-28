@@ -248,7 +248,10 @@ extension Skin {
             for section in (measures as [SkinSection]) + (meters as [SkinSection])
             where changed[ObjectIdentifier(section)] == nil {
                 if section.dynamicVariables {
-                    // Read on every update anyway: once more is what the next update does.
+                    // Read on every update anyway. A measure of another type is left to its next update: with an
+                    // UpdateDivider that may be a while, and reading it now could start its work early (a download).
+                    if let measure = section as? Measure,
+                       !LiveOptions.canReadAgain(measureType: Skin.liveMeasureType(measure)) { continue }
                     readAgain.insert(ObjectIdentifier(section))
                 } else if section.mentionsSectionVariables {
                     if let measure = section as? Measure,

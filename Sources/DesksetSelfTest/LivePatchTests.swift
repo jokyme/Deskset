@@ -150,6 +150,7 @@ private func setting(_ text: String, section: String, key: String, value: String
 func runLivePatchTests(_ t: TestRunner) {
     runLivePatchPlannerTests(t)
     runLivePatchConsistencyTests(t)
+    runLivePatchReferenceTests(t)
     runLivePatchStateTests(t)
 }
 
@@ -356,6 +357,17 @@ private func runLivePatchPlannerTests(_ t: TestRunner) {
         }
         t.equal(skin.metadata["Author"], "Me")
         t.equal(skin.sourceGeneration, 2)
+        // A shared file's text, held in memory like the widget's own.
+        guard let shared = skin.includedFiles.first else { return t.check(false, "the include") }
+        let texts = folder.texts(comment.replacingOccurrences(of: "Author=Someone", with: "Author=Me")
+            + "\nFontSize=#Shared#")
+        texts.set(shared, "[Variables]\nShared=15\n")
+        guard case .applied(let fromShared) = skin.patch(sources: texts) else {
+            return t.check(false, "a variable of an included file")
+        }
+        t.equal(fromShared.changedVariables, ["shared"])
+        t.equal(skin.meter(named: "Other")?.rawOption("FontSize"), "#Shared#")
+        t.equal((skin.meter(named: "Other") as? StringMeter)?.style.fontSize, 15)
         skin.close()
         t.equal(skin.patch(sources: folder.texts(base)), .needsReload(.closed))
     }
@@ -679,6 +691,59 @@ private func runLivePatchConsistencyTests(_ t: TestRunner) {
         }
         try checkConsistency(t, folder, base: base, section: "Variables", key: "Zone", samples: ["2", "-7"],
                              variables: ["Zone"])
+    }
+}
+
+/// The five widgets the Studio's latency is measured on (0.1's example widgets): a text size and a color of their first
+/// text layer, patched and reloaded. Their clocks read the real time, so a comparison that falls on a second boundary is
+/// tried again.
+private func runLivePatchReferenceTests(_ t: TestRunner) {
+    t.suite("Session: live patch — the reference widgets patch as they reload") {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let skins = repository.appendingPathComponent("TestSkins")
+        let references = [("Deskset\\Clock", "Deskset/Clock/Clock.ini"), ("Deskset\\System", "Deskset/System/System.ini"),
+                          ("Deskset\\Calendar", "Deskset/Calendar/Calendar.ini"),
+                          ("Audio\\Visualizer", "Audio/Visualizer/Visualizer.ini"), ("Mac\\Glass", "Mac/Glass/Glass.ini")]
+        for (config, path) in references {
+            let url = skins.appendingPathComponent(path)
+            let original = try TextDecoding.readFile(at: url)
+            var hosts: [FakeHost] = []
+            func make(_ text: String) throws -> Skin {
+                let host = FakeHost()
+                hosts.append(host)
+                let skin = Skin(config: config, fileURL: url, skinsDirectory: skins, system: FakeSystem(), host: host)
+                skin.sourceProvider = PatchTexts(url, text)
+                try skin.load()
+                return skin
+            }
+            let patched = try make(original)
+            patched.update()
+            patched.update()
+            guard let target = patched.meters.first(where: { $0 is StringMeter })?.name else {
+                t.check(false, "\(config) has a text layer")
+                continue
+            }
+            for (key, value) in [("FontSize", "17"), ("FontColor", "13,121,201,254"), ("FontSize", "9")] {
+                let text = setting(original, section: target, key: key, value: value)
+                guard case .applied = patched.patch(sources: PatchTexts(url, text)) else {
+                    t.check(false, "\(config) [\(target)] \(key)=\(value) is applied")
+                    continue
+                }
+                var a: [String] = [], b: [String] = []
+                for _ in 0..<3 {
+                    patched.update()
+                    let reloaded = try make(text)
+                    reloaded.update()
+                    a = patchState(patched, variables: [])
+                    b = patchState(reloaded, variables: [])
+                    reloaded.close()
+                    if a == b { break }
+                }
+                t.check(a == b, "\(config) [\(target)] \(key)=\(value) patched differs from reloaded:\n\(difference(a, b))")
+            }
+            patched.close()
+        }
     }
 }
 
