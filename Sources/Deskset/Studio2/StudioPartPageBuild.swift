@@ -586,7 +586,7 @@ extension StudioPartPage {
             let label = StudioText[key == "X" ? .rowX : .rowY]
             if !notation, Self.isCalculated(written) {
                 let row = StudioPage.Row(label: label, control: .text(StudioText.format(.calculatedValue,
-                                                                                        NumberFormatting.plain(value))))
+                                                                                        Self.points(value))))
                 items.append(.init(id: id, kind: .row(row)))
                 calculated = true
                 continue
@@ -610,7 +610,7 @@ extension StudioPartPage {
         if !notation, [w, h].contains(where: Self.isCalculated) {
             // Worked out from other values: its size, read-only (the canvas's handles still resize it).
             let size = StudioPage.Row(label: StudioText[.rowSize], control: .text(StudioText.format(
-                .calculatedSize, NumberFormatting.plain(m.frame.width), NumberFormatting.plain(m.frame.height))))
+                .calculatedSize, Self.points(m.frame.width), Self.points(m.frame.height))))
             items.append(.init(id: "layout.size", kind: .row(size)))
             calculated = true
         } else {
@@ -632,6 +632,9 @@ extension StudioPartPage {
         }
         return StudioPage.Section(id: "layout", title: StudioText[.sectionLayout], items: items)
     }
+
+    /// Points as the page shows them: to half a point.
+    static func points(_ v: Double) -> String { NumberFormatting.plain((v * 2).rounded() / 2) }
 
     /// A value worked out from others: a formula, a variable, a section's value.
     static func isCalculated(_ written: String) -> Bool {
