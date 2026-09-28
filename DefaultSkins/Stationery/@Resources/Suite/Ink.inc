@@ -16,11 +16,12 @@
 ; @Include lines: the last value read wins) runs after each switch; by default it updates the meters of group Ink and
 ; redraws.
 ;
-; The switch: the wallpaper's mean luminance under the piece, sampled every 5 s (the picture is decoded only when it
-; changes), with hysteresis: below 0.32 white ink, above 0.36 dark ink, in between the ink stays. A piece starts in
-; white ink. The suite setting Ink=Auto|White|Dark overrides it.
-; Until Deskset's Chameleon can crop to the skin (CropDesktop=Skin), it samples the middle of the whole wallpaper;
-; the Ink setting is the fix where that guess is wrong.
+; The switch: the mean luminance of the wallpaper under the piece (Chameleon's CropDesktop=Skin: the part of the
+; picture that lies under the window, as macOS lays it on the screen; in dark mode a dynamic wallpaper's dark picture),
+; with hysteresis: below 0.32 white ink, above 0.36 dark ink, in between the ink stays. It is checked every 5 s (the
+; picture is decoded only when it changes, or when the Mac switches between light and dark) and again as soon as the
+; piece has been moved. A piece starts in white ink. A wallpaper kept in Desktop, Documents or Downloads is not read
+; (macOS would ask first), so the piece keeps white ink there. The suite setting Ink=Auto|White|Dark overrides it.
 
 [Variables]
 InkChangeAction=[!UpdateMeterGroup Ink][!Redraw]
@@ -53,11 +54,13 @@ CropDesktop=Skin
 UpdateDivider=#InkDivider#
 
 [MeasureInkLuminance]
+; updated at once when a new sample is in (the piece moved, the wallpaper changed), and the ink with it
 Measure=Plugin
 Plugin=Chameleon
 Parent=MeasureInkWall
 Color=Luminance
 UpdateDivider=#InkDivider#
+OnChangeAction=[!UpdateMeasure MeasureInkDark]
 
 [MeasureInkDark]
 ; reads its own previous value for the hysteresis; the Ink setting wins
