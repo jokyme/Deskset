@@ -160,7 +160,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### StartHidden
 - Windows (Rainmeter): the skin starts hidden; `!Show` shows it.
 - Mac (Deskset): same (also from `DefaultStartHidden`). A hidden skin keeps updating and running its actions, like one
-  hidden with `!Hide`.
+  hidden with `!Hide`. The Manage window marks it as hidden and can show it (see "A loaded skin that is hidden").
 - Why: —
 - Skin impact: none.
 - Status: identical
@@ -346,6 +346,22 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Why: users need to know why a skin shows no data.
 - Skin impact: none.
 - Status: Deskset extension
+
+### A loaded skin that is hidden (Manage window)
+- Windows (Rainmeter): the Manage window lists the active skins with their Coordinates, Position, Load order,
+  Transparency and other settings (https://docs.rainmeter.net/manual/user-interface/manage/); the manual does not
+  describe any sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows it again.
+- Mac (Deskset): a loaded skin hidden by a skin action (`!Hide`, `!HideFade`, `!Toggle`, their group forms, a bang
+  from another skin) or by StartHidden is marked: its row has a crossed-out eye, its status reads "Loaded, hidden",
+  and a notice says that it is loaded and running but off the desktop, with a Show button that shows it as
+  `!ShowFade` does (the row's menu has Show too). Typing coordinates for a hidden skin moves it out of sight, and a
+  hint under the coordinates says it is still hidden. The window looks for skins hiding and showing themselves twice a
+  second while it is on screen. Show changes no setting: a skin that hides itself can hide again (the Stationery
+  Spectrum strip with Hide When Idle, the next time it goes quiet), and StartHidden hides it again at its next load.
+- Why: a skin that hid itself (for example while it has nothing to show) looked lost: its window and its menu were
+  gone, and moving it did not bring it back.
+- Skin impact: none.
+- Status: Mac-only UI
 
 ---
 

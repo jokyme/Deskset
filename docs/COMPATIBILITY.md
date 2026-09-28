@@ -988,7 +988,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### StartHidden
 - **Windows:** the skin starts hidden; `!Show` shows it.
-- **Mac:** the same (also from `DefaultStartHidden`); a hidden skin keeps updating and running its actions.
+- **Mac:** the same (also from `DefaultStartHidden`); a hidden skin keeps updating and running its actions. The Manage
+  window marks it as hidden and can show it ([§7.3](#73-menus-and-the-manage-window)).
 - **Why:** —
 - **Skin impact:** none.
 - **Status:** identical
@@ -1124,6 +1125,21 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Why:** macOS lets users hide menu bar items.
 - **Skin impact:** none.
 - **Status:** emulated
+
+#### A loaded skin that is hidden (Manage window)
+- **Windows:** the Manage window lists the active skins with their Coordinates, Position, Load order, Transparency and
+  other settings; the manual describes no sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows
+  it again.
+- **Mac:** a loaded skin hidden by a skin action (`!Hide`, `!HideFade`, `!Toggle`, their group forms, a bang from
+  another skin) or by StartHidden is marked: a crossed-out eye on its row, the status "Loaded, hidden", and a notice
+  that it is loaded and running but off the desktop, with a Show button that shows it as `!ShowFade` does (Show is in
+  the row's menu too). Typing coordinates for a hidden skin moves it out of sight, and a hint under the coordinates
+  says it is still hidden. Show changes no setting: a skin that hides itself can hide again (the Stationery Spectrum
+  strip with Hide When Idle, the next time it goes quiet), and StartHidden hides it again at its next load.
+- **Why:** a skin that hid itself, for example while it has nothing to show, looked lost: no window, no menu, and
+  moving it did not bring it back.
+- **Skin impact:** none.
+- **Status:** Mac-only
 
 #### The default skins and the first launch
 - **Windows:** Rainmeter comes with its illustro skins, loaded when it is first installed.
