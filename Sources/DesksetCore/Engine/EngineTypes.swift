@@ -256,7 +256,8 @@ public struct SkinEnvironment: Equatable {
     }
     private var preferredLanguagesSet: [String]?
 
-    /// The Mac's preferred languages (the live value of `preferredLanguages`).
+    /// The Mac's preferred languages (the live value of `preferredLanguages`): the one place that reads them, also for
+    /// the ANSI code page the app sets at startup (`TextDecoding.defaultANSICodePage`).
     public static func systemPreferredLanguages() -> [String] { Locale.preferredLanguages }
 
     public init(windowFrame: SkinRect = SkinRect(),

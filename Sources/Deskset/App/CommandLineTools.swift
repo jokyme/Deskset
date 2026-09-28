@@ -107,14 +107,16 @@ enum CommandLineTools {
     /// Rainmeter uses the Windows locale's. It applies to the menu bar app (with the Skin Studio and the installer) and
     /// to every command-line mode. nil under `--self-test`: the checks keep the core's 1252 so they read the same on
     /// every Mac, and suites that need another code page set it and restore it.
-    static func ansiCodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) -> Int? {
+    static func ansiCodePage(for arguments: [String],
+                             preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) -> Int? {
         if arguments.dropFirst().contains("--self-test") { return nil }
         return TextDecoding.defaultANSICodePage(preferredLanguages: preferredLanguages)
     }
 
     /// Sets `TextDecoding.ansiCodePage` for these arguments (see `ansiCodePage(for:)`). Called first thing at startup:
     /// the setting is not synchronised, so it must be in place before any skin loads, on any thread.
-    static func useANSICodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) {
+    static func useANSICodePage(for arguments: [String],
+                                preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) {
         if let codePage = ansiCodePage(for: arguments, preferredLanguages: preferredLanguages) {
             TextDecoding.ansiCodePage = codePage
         }

@@ -429,8 +429,6 @@ zone.inferredCurrent	Sources/DesksetCore/Format/TimeStampParsing.swift	3	default
 
 effect.fileWrite	Sources/DesksetCore/Ini/IniWriter.swift	1	the writer itself
 
-zone.Locale.current	Sources/DesksetCore/Ini/TextDecoding.swift	1	ANSI code page from the preferred languages: SkinEnvironment
-
 effect.fileWrite	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
 random.UUID	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin
 zone.localizedText	Sources/DesksetCore/Rmskin/Rmskin.swift	*	skin installer; runs outside any skin

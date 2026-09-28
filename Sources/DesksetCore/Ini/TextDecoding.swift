@@ -43,7 +43,8 @@ public enum TextDecoding {
     /// The Windows system ANSI code page for a language list (the first entry decides), e.g. `zh-Hans` → 936,
     /// `zh-Hant` → 950, `ja` → 932, `ko` → 949, `ru` → 1251, `pl` → 1250, `el` → 1253, `tr` → 1254, `he` → 1255,
     /// `ar` → 1256, `lt` → 1257, `vi` → 1258, `th` → 874; anything else → 1252.
-    public static func defaultANSICodePage(preferredLanguages: [String] = Locale.preferredLanguages) -> Int {
+    public static func defaultANSICodePage(
+        preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) -> Int {
         guard let first = preferredLanguages.first else { return 1252 }
         let parts = first.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).map(String.init)
         guard let language = parts.first else { return 1252 }
