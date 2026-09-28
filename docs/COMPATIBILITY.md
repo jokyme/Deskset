@@ -1274,8 +1274,9 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   With `--clock` and `--seed` as well, the render is the same on every run. A mistake in the data names the key and
   stops the render. `--state` writes what the skin ended up with (its size; each measure's value, string and whether
   it is disabled or paused; each meter's frame, visibility and text; its variables) as JSON. The x86_64 build under
-  Rosetta draws the edges of text and shapes slightly differently from the arm64 one (at most 4 of 255 per channel),
-  so compare the two with `--state` rather than byte for byte.
+  Rosetta draws the edges of text and shapes slightly differently from the arm64 one (a few levels of 255 per
+  channel), and trigonometric functions may differ in the last digit, so compare the two with `--state` rather than
+  byte for byte.
 - **Why:** repeatable renders for comparing the drawing code with itself, on any Mac and without reaching the network,
   a player or a permission.
 - **Skin impact:** none (developer tool).

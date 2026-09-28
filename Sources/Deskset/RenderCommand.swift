@@ -254,7 +254,7 @@ struct RenderOptions: Equatable {
 /// weather, Wi-Fi, the desktop picture; `RenderData`): with `--clock` and `--seed`, the same image on every run and
 /// every Mac. `--state` writes what the skin ended up with (its measures' values and strings, its meters' frames and
 /// texts, its variables) as JSON, to compare runs where pixels may differ (the x86_64 build under Rosetta draws edges
-/// a little differently).
+/// a little differently, and its trigonometric functions may differ in the last digit).
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
