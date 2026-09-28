@@ -19,6 +19,8 @@
 //        g2-tiles   the same widget partitioned as the plan does it: base tiles that all show one base bitmap through
 //                   contentsRect, and one layer per group showing that group's pixels (bitmaps as contents)
 //        g2-e       the same partition with group layers that paint in draw(in:) (CA's own backing stores)
+//      A texture on a GPU without unified memory is managed and synchronized before the read-back. Every scene
+//      records whether the read-back is still the garbage written before the render ("stillScribbled").
 //      It checks image == its source, cg == its source, g2-single == its source, g2-tiles == g2-single and
 //      g2-e == g2-single.
 //   3. With --reference DIR (an earlier run's --out), compares every scene with that run's pixels.
@@ -709,6 +711,10 @@ let queue: MTLCommandQueue = foundQueue!
 /// Bytes that are not a picture, written into a texture before a render.
 var garbage: [UInt8] = []
 
+/// Managed storage without unified memory; H1_PROBE_MANAGED=1 forces it (to try that path on Apple silicon).
+let managedStorage = !device.hasUnifiedMemory || ProcessInfo.processInfo.environment["H1_PROBE_MANAGED"] == "1"
+report["textureStorage"] = managedStorage ? "managed" : "shared"
+
 /// A renderer into one sRGB BGRA8 texture of `w` × `h` pixels.
 final class Offscreen {
     let w: Int, h: Int
@@ -720,7 +726,10 @@ final class Offscreen {
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h,
                                                             mipmapped: false)
         desc.usage = [.renderTarget, .shaderRead]
-        desc.storageMode = .shared
+        // Shared storage is what the GPU and the CPU both see only with unified memory. Elsewhere (the Intel
+        // runner's paravirtual device) the CPU reads a copy of its own: the texture must be managed and synchronized
+        // after the render, or the read-back returns whatever the CPU last wrote (measured).
+        desc.storageMode = managedStorage ? .managed : .shared
         texture = device.makeTexture(descriptor: desc)!
         renderer = CARenderer(mtlTexture: texture, options: [kCARendererColorSpace: sRGB,
                                                              kCARendererMetalCommandQueue: queue])
@@ -736,7 +745,7 @@ final class Offscreen {
     /// Overwrites the texture, so a render that did not touch every pixel shows in the read-back.
     func scribble() {
         let count = w * h * 4
-        if garbage.count != count { garbage = (0..<count).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 7) } }
+        if garbage.count != count { garbage = (0..<count).map { UInt8(truncatingIfNeeded: ($0 &* 131) ^ ($0 >> 9) &+ 7) } }
         texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: garbage, bytesPerRow: w * 4)
     }
 
@@ -757,8 +766,18 @@ final class Offscreen {
         renderer.render()
         renderer.endFrame()
         let done = queue.makeCommandBuffer()!
+        if managedStorage, let blit = done.makeBlitCommandEncoder() {
+            blit.synchronize(resource: texture)
+            blit.endEncoding()
+        }
         done.commit()
         done.waitUntilCompleted()
+    }
+
+    /// What read() returns when the texture still holds the bytes scribble() wrote.
+    func scribbledReadBack() -> [UInt8] {
+        let row = w * 4
+        return (0..<h).flatMap { y in garbage[(h - 1 - y) * row..<(h - y) * row] }
     }
 
     /// The texture's bytes, top row first (the texture's rows are bottom-up).
@@ -894,7 +913,9 @@ for scale: CGFloat in [1, 2] {
         rendered[key] = (bytes, sources.pw, sources.ph)
         var s: JSON = ["pixels": "\(sources.pw)x\(sources.ph)", "sha256": sha256(bytes),
                        "layers": sources.layerCount(tree), "sameWhenRenderedAgain": bytes == again,
-                       "blank": !bytes.contains { $0 != 0 }]
+                       "blank": !bytes.contains { $0 != 0 },
+                       // Still the bytes written before the render: the render never reached the read-back.
+                       "stillScribbled": bytes == offscreen.scribbledReadBack()]
         if bytes != again { s["renderedAgain"] = diff(bytes, again, width: sources.pw, height: sources.ph) }
         scenes[key] = s
         writePixels(bytes, width: sources.pw, height: sources.ph, name: key)
@@ -1087,7 +1108,11 @@ print("  Metal device: \(device.name)")
 for key in checks.keys.sorted() { print("  \(key): \(summary(checks[key] as! JSON))") }
 for key in scenes.keys.sorted() {
     let s = scenes[key] as! JSON
-    print("  \(key): sha256 \(s["sha256"]!)\((s["sameWhenRenderedAgain"] as? Bool) == false ? " (NOT stable)" : "")")
+    var flags: [String] = []
+    if (s["sameWhenRenderedAgain"] as? Bool) == false { flags.append("NOT stable") }
+    if (s["stillScribbled"] as? Bool) == true { flags.append("NOT RENDERED: the read-back is what was written before") }
+    if (s["blank"] as? Bool) == true { flags.append("blank") }
+    print("  \(key): sha256 \(s["sha256"]!)\(flags.isEmpty ? "" : " (" + flags.joined(separator: "; ") + ")")")
 }
 if let ref = report["reference"] as? JSON { print("  identical to the reference: \(ref["identicalScenes"] ?? "?")") }
 for way in timedWays {
