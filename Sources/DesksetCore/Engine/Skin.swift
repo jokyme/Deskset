@@ -2286,14 +2286,18 @@ extension Skin {
         (definedVariables, definitionBuiltins.merging(currentEnvironment().appearance.variables) { _, new in new })
     }
 
-    /// New definitions of the `[Variables]` in `changed` (nil: no longer defined). A variable keeps a value set while the
-    /// skin runs (`!SetVariable`, an editor preview) — the value a preview gives back when it ends follows the file.
+    /// New definitions of the `[Variables]` in `changed` (nil: no longer defined). The new definition wins over a value
+    /// set while the skin ran (`!SetVariable`), as after a reload — and as `seed(from:)` takes such a value only while its
+    /// definition is the one it was set over. An editor preview goes on showing its value, and gives back the new
+    /// definition when it ends.
     func redefineVariables(_ changed: [String: String?]) {
         for (key, value) in changed {
-            let old = definedVariables[key]
-            if variables[key] == old { variables[key] = value }
             definedVariables[key] = value
-            if let saved = previewSavedVariables[key], saved == old { previewSavedVariables[key] = .some(value) }
+            if previewSavedVariables[key] != nil {
+                previewSavedVariables[key] = .some(value)
+            } else {
+                variables[key] = value
+            }
         }
     }
 
