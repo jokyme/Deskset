@@ -783,9 +783,9 @@ What the Studio still asks of the desktop copy, and how it gets it from phase 2 
 | A gesture's previews, at most about 20 a second, and their end | `EditingSession.desktopSkin`: at once on the owner, `skin.async` elsewhere | messages to the runtime (`.preview`, `.previewVariables`, `.endPreview`) |
 | A reload after a step, an undo or a live reload, then a move of the window with the files | `app.refresh`; the session knows the new copy is its own because `activate` attaches it *inside* `refreshDesktop` | a **reload ticket** (below); the move goes with the reload and is made once the new copy started |
 | The input the desktop copy takes, replayed in the Studio's instance (`Skin.inputMirror`) | set on the skin's executor, replayed on main | unchanged |
-| How many `!WriteKeyValue` writes the desktop copy made (`keyValueWrites`) | read from the live skin | the snapshot (§5.5) |
-| The Calc counter and the graphs when the Studio opens | copied only when the desktop copy runs on the main thread | copied with **exclusive access** and a short timeout; without it the Studio starts from its own first update, as it does today for a skin on another thread |
-| The window's place and screens for the Studio's instance (`#CURRENTCONFIGX#`…, Chameleon's screen) | `SkinController.environment(for:)`, `window.screen` | the window controller's copy of the window model, with `EnvironmentStore` (§8.1) |
+| How many `!WriteKeyValue` writes the desktop copy made (`keyValueWrites`) | read from the live skin | the snapshot (§5.5); the live-reload check reads it once the desktop copy's work in progress has run (FSEvents may report a write before the work that made it ends) |
+| The Calc counter and the graphs when the Studio opens | copied only when the desktop copy runs on the main thread | copied with **exclusive access** and a short timeout, around the Studio's first update, so both are of one moment; without it the Studio starts from its own first update |
+| The window's place and screens for the Studio's instance (`#CURRENTCONFIGX#`…, Chameleon's screen) | `SkinController.environment(for:)`, `window.screen` | the window controller's copy of the window model (the facts it last published), with `EnvironmentStore` (§8.1); while a reload's new copy has not started, the old copy's |
 | The window's settings (Always on Top, Draggable…) and their undo steps | `app.changeSettings` on main | unchanged: window settings are the window half's |
 
 **Own reloads.** A reload the session asked for must be recognized as its own: what the widget writes to its files
@@ -797,7 +797,9 @@ is asynchronous that no longer holds, so the reload carries a ticket:
 2. The old runtime reports `.closed(ticket)` after its OnCloseAction; the new runtime reports `.started(ticket)` after
    its OnRefreshAction and first update (or `.failed(ticket)`).
 3. The Studio decides "own reload" by the ticket the new window controller carries, not by when it arrived. The reload
-   ends when both reports are in, when the load failed, or at the old 5-second deadline.
+   ends when both reports are in (a failed load counts as the new copy's), or at the old 5-second deadline. A reload
+   asked for while one is still open joins it; a new copy stopped before it started (a later reload replaced it)
+   reports nothing more.
 4. Only then are the widget's writes taken as its own (`absorbDesktopWrites`). A change FSEvents reports while a ticket
    is open waits for it, and is then compared with what was taken.
 
@@ -1651,6 +1653,49 @@ suite's `TestThreadExecutor`.
      the ticket ends, FSEvents changes wait for it, and the move after a step goes with the reload.
    - The "App: studio session: …" suites about reloads and following the desktop copy run again with the desktop
      copy on a test thread, also with the old copy's OnCloseAction forced to arrive after the new copy started.
+   - **Done (2026-09-28):** `SkinReloadTicket` and `SkinReloadEvent` (`SkinMessages.swift`): the ticket rides in the
+     load order (`SkinLoadOrder.ticket`) and in `.close(fadeOut:ticket:)`, and comes back in `.started`, `.failed` and
+     `.closed`; `AppController.refresh(_:ticket:thenMoveTo:)`, `activate(…ticket:thenMoveTo:)` and `studioReload`,
+     which hands each copy's report to the widget's editing session; `EditingSession.OwnReload`, `isOwnReload` and
+     `reload(_:_:from:)`; `SkinWindowController.reloadTicket`, `moveWhenStarted` and `publishedFacts`;
+     `SkinRuntime.whenCaughtUp`; `EditorWidgetPage.desktopCopy`. Previews, their end and the input mirror were messages
+     already (step 1), and the previews' occlusion check reads the window controller. Differences from the plan:
+     - The session learns what to wait for as it happens, on the main thread: the old copy tells it when it is sent
+       `.close` with the ticket (`.closing`), the app when it made the new copy (`.loading`). A new copy stopped before
+       it started (a later reload replaced it, or it was unloaded) says so (`.abandoned`): its `.started` never comes.
+       A reload asked for while one is open joins it and ends when every copy either touched has reported.
+     - A failed load ends the reload once the old copy's close is in too (its OnCloseAction may still write); the
+       5-second deadline bounds it either way. A copy of the session's latest reload that starts after the deadline is
+       still its own, and what it wrote is taken then.
+     - A window half stopped with a ticket keeps itself until its skin has closed (`runtime.whenClosed`), so the
+       `.closed(ticket)` of a skin on another thread still finds it.
+     - The move after a step is made right after the new copy's window is placed, before it is shown, so the window
+       does not jump. With the main executor it is still made inside `app.refresh`, now just before the writes are
+       taken rather than after.
+     - The live-reload check reads the snapshot's `keyValueWrites` once the desktop copy's work in progress has run
+       (`whenCaughtUp`, at once on the main executor): FSEvents can report a `!WriteKeyValue` before the piece of work
+       that made it ends and publishes the snapshot.
+     - The Studio's first instance is seeded in one exclusive section (the counter, its first update, the graphs), so
+       both are of one moment. A copy busy past 0.25 s is not read: the instance starts from its own first update.
+     - `StudioHost` keeps the window facts of the last copy that had started: a new copy linked before it started has
+       not placed its window yet. Debug builds compare the environment it gives with the live window ("the Studio's
+       environment").
+     - While the new copy of the session's own reload has not started, the widget page counts the widget as on the
+       desktop and sends desktop settings to that copy (`desktopCopy`), instead of saying it is not on the desktop.
+     - Checks: new suites "App: studio session: on a thread, …" and "…on threads, …" (9 suites, 115 checks) with the
+       desktop copy on test threads: what the widget writes as it reloads is its own (no reload within 1.5 s, the toast
+       unchanged), after a step and after Refresh; the old copy's OnCloseAction held on one thread until the new copy
+       started on another (the reload stays open for it; a mutation that ignores the close fails it with a live
+       reload); one load counted per step; a script that rewrites an include; the canvas following the desktop copy's
+       hover and click, and the input mirror cleared when the Studio closes; the desktop copy following a moment later
+       (previews as messages, at most 20 a second, the latest values); the Studio's instance paused, and the widget's
+       place and display, kept through a reload whose new copy has not started; a step's move made once the new copy
+       started; the counter and graphs when the Studio opens, and its own first update when the desktop copy is busy.
+       Every wait is for a condition. The existing Studio session, review, opening and latency suites are unchanged in
+       what they assert. Core: 61,089 checks; the app suite: 10,483 checks by default and 10,476 with `WhenScrolling`
+       and `Always` (the same suites; some count their checks by what the scroller style shows), with 6,489–6,561 debug
+       comparisons (now also `keyValueWrites` and the Studio's environment) and no difference. Main Thread Checker
+       reports nothing for the Studio suites (session, review, latency), the opening suites and the lifecycle suite.
 7. **The engine thread, the `SkinThreading` key, and suites that run skins on it.**
    - `SkinThreadExecutor` in DesksetCore (`TestThreadExecutor` promoted: a dedicated thread with an 8 MB stack and a
      run loop of its own, plus the park). One shared engine thread for every desktop runtime, at `.userInitiated`.
