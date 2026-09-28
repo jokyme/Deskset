@@ -70,6 +70,7 @@ enum AppSelfTest {
         // The Studio's editing session.
         StudioSessionSelfTests.run(t)
         SensorSelfTests.run(t)
+        VirtualTimeRenderSelfTests.run(t)
         // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
         StudioLatencySelfTests.run(t)
         return t.finish()
