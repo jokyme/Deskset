@@ -528,6 +528,16 @@ func runDeskPackageTests(_ t: TestRunner) {
         t.equal(moreSchema.item("face")?.defaultValue, "\"System\"")
         t.equal(moreSchema.item("script")?.userOnly, true)
         t.equal(moreSchema.item("note")?.userOnly, false)
+        // An option declared twice (DK8010) shows once, as the checker kept it.
+        let twice = CheckedDeskPackage(package: deskMemoryPackage(["A.desk": """
+            info { name: "A" }
+            options {
+                a = Toggle("First")
+                a = Toggle("Second")
+            }
+            widget { Text("A").hidden(if: options.a) }
+            """]))
+        t.equal(twice.optionsSchema(for: DeskFileID("A.desk")).items.map(\.label), ["First"])
         t.equal(SchemaBuilder.words("darkBlue"), "Dark Blue")
         t.equal(SchemaBuilder.words("level2Alarm"), "Level 2 Alarm")
     }

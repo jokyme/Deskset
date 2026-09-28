@@ -219,7 +219,9 @@ struct SchemaBuilder {
                 let name = decl.target.name.token.name
                 guard !skipping.contains(name), let facts = file.options[name], let call = decl.controlCall else { continue }
                 // An option declared twice: only the one the checker kept.
-                guard facts.node == tree.id(of: statement) || tree.quickResolve(facts.node)?.range == statement.range else { continue }
+                guard facts.node == NodeID(kind: statement.kind, utf8Start: statement.quickTextStart, treeVersion: tree.version) else {
+                    continue
+                }
                 items.append(item(name: name, facts: facts, call: call, file: file, scope: scope, table: table, section: section,
                                   declaration: DeskSite(file: tree.file, range: decl.target.name.textRange)))
             default:
