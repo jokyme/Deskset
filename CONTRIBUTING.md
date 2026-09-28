@@ -56,9 +56,14 @@ bash scripts/build-app.sh            # build/Deskset.app
   `Skin.skinClock`, the locale through `Skin.locale`, random numbers through `Skin.random`, timers and delays through
   the executor, background work and its result through `Skin.startBackground` / `Skin.backgroundHop`, and every
   effect outside the skin (starting a program, writing a file, opening a URL, sending a key or setting the volume)
-  through `Skin.sideEffects`. Services a skin reads (NowPlaying, weather, audio levels…) sit behind a protocol with a
-  fake. `swift scripts/check-seams.swift --check` (run by CI, a few seconds) fails on a new direct `Date()`,
-  `.random`, timer, queue or outside effect in the engine, plugins and services; route it through a seam, or add it
+  through `Skin.sideEffects` (files the skin reads back go through `Skin.readablePath`). Services a skin reads
+  (NowPlaying, weather, audio levels…) sit behind a protocol with a fake, and a measure that reads one directly names
+  it in `Measure.liveInputs`, so that a run in virtual time reports it when it is not faked. Iterate in a defined
+  order where the order reaches the skin (the skin's meters, sorted keys), never a set's or dictionary's own: Swift
+  seeds it at random in every process. `DesksetCore`'s formatting takes the clock, time zone and locale as arguments
+  (the engine passes the skin's; the app's UI uses `MacTimeFormatting`). `swift scripts/check-seams.swift --check`
+  (run by CI, a few seconds) fails on a new direct `Date()`, `.random`, timer, queue, thread, `async` hand-over,
+  iteration in hash order or outside effect in the engine, plugins and services; route it through a seam, or add it
   to `scripts/seams-allowlist.tsv` with a note saying why. The list only shrinks: the check also fails when an
   allowance is higher than the sources need, so lower it (`--update` does) when you remove a direct call.
 - `Deskset --render Skin.ini --out skin.png` draws a skin without a window, which is handy for checking a change by eye.

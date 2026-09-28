@@ -40,6 +40,8 @@ struct Kind {
     let pattern: NSRegularExpression
     let language: Language
     let about: String
+    /// Folders the kind is looked for in (nil: everywhere).
+    let onlyIn: [String]?
 }
 
 /// swift: Swift code; swiftText: the contents of Swift string literals (names passed as strings, such as sysctl and
@@ -60,10 +62,14 @@ let classes: [(id: String, title: String)] = [
 ]
 
 var kinds: [Kind] = []
-func kind(_ id: String, _ klass: String, _ pattern: String, lang language: Language = .swift, _ about: String) {
+func kind(_ id: String, _ klass: String, _ pattern: String, lang language: Language = .swift, onlyIn: [String]? = nil,
+          _ about: String) {
     let regex = try! NSRegularExpression(pattern: pattern)
-    kinds.append(Kind(id: id, klass: klass, pattern: regex, language: language, about: about))
+    kinds.append(Kind(id: id, klass: klass, pattern: regex, language: language, about: about, onlyIn: onlyIn))
 }
+
+/// Where skins run: the engine (with its measures and plugins) and the app's plugins.
+let skinCode = ["Sources/DesksetCore/Engine/", "Sources/Deskset/Plugins/"]
 
 // Wall clock
 kind("wall.Date()", "wall", #"\b(NS)?Date\(\)"#, "the current date")
@@ -128,6 +134,10 @@ kind("random.UUID", "random", #"\b(NS)?UUID\(\)|\bgloballyUniqueString\b"#, "a r
 kind("random.pid", "random", #"\bprocessIdentifier\b|\bgetpid\(\)"#, "the process identifier")
 kind("random.hashSeed", "random", #"\.hashValue\b|\bHasher\(\)"#,
      "Swift hashing, seeded at random per process (set SWIFT_DETERMINISTIC_HASHING to fix it)")
+kind("random.hashOrder", "random",
+     #"\.(keys|values)\b(?!\s*\()(?!\s*\.(sorted\(\)|min\(\)|max\(\)|contains\b|count\b|isEmpty\b|allSatisfy\b))|\bfor\b[^\n]*\bin\b[^\n]*\.(subtracting|union|intersection|symmetricDifference)\("#,
+     onlyIn: skinCode,
+     "iterating a dictionary's keys or values (also sorting them with a comparator, whose ties keep that order), or a set made by set algebra: the order is Swift's hash order, seeded at random per process and per instance (sort it totally, or iterate in the skin's own order)")
 kind("random.C", "random", #"\b(rand|srand|random|srandom|arc4random\w*|tmpnam|lua_tmpnam|mkstemp)\s*\("#, lang: .c,
      "C random sources (Lua's math.random, os.tmpname)")
 
@@ -163,7 +173,8 @@ kind("background.global", "background", #"\bDispatchQueue\.global\("#,
      "a global concurrent queue")
 kind("background.queue", "background", #"\bDispatchQueue\(\s*label:"#, "a private dispatch queue")
 kind("background.operationQueue", "background", #"\bOperationQueue\(\)"#, "an operation queue")
-kind("background.thread", "background", #"\bThread\s*\(\s*(block|target):|\bThread\.detachNewThread\b|\bpthread_create\("#,
+kind("background.thread", "background",
+     #"\bThread\s*\(\s*(block|target):|\bThread\s*\{|\bThread\.detachNewThread\b|\bpthread_create\("#,
      "a thread of its own")
 kind("background.task", "background", #"\bTask(\.detached)?\s*(\(\s*priority:[^)\n]*\))?\s*\{"#,
      "a Swift concurrency task")
@@ -181,8 +192,13 @@ kind("background.fileEvents", "background",
 kind("background.mainHop", "background",
      #"\bDispatchQueue\.main\.(async|sync)\b|\bOperationQueue\.main\.addOperation\b|\bRunLoop\.main\.perform\b|\bperformSelector\(\s*onMainThread"#,
      "work handed to the main thread (how most service results come back)")
-kind("background.hop", "background", #"\.hop\(\)"#,
+kind("background.hop", "background", #"\.hop\(\)|(?<!func )(?<![.\w])hop\(\)"#,
      "Skin.hop(): a skin starts background work and its result comes back through the executor")
+kind("background.dispatch", "background",
+     #"(?<!executor)(?<!skin)(?<!DispatchQueue\.main)\.async\s*(\{|\((?!\s*after\s*:))"#, onlyIn: skinCode,
+     "work handed to a queue or thread with async on any receiver (a queue of the plugin's, a worker): a completion point unless it goes through Skin.startBackground or a hop")
+kind("background.executorAsync", "background", #"\bexecutor\.async\s*(\{|\((?!\s*after\s*:))"#,
+     "work handed straight to a skin's executor, not through the skin (Skin.async) or its hop (SkinHop.post), which the threading work wraps")
 
 // System callbacks
 kind("event.notification", "event", #"\.addObserver\(|\.publisher\(\s*for:|\bNSDistributedNotificationCenter\b"#,
@@ -427,11 +443,12 @@ func scan() -> [Hit] {
         }
         let (code, strings) = split(text, swift: isSwift)
         let raw = text.components(separatedBy: "\n")
-        var found = matchLines(code, kinds.filter { $0.language == (isSwift ? .swift : .c) })
+        let here = kinds.filter { k in k.onlyIn.map { $0.contains { file.hasPrefix($0) } } ?? true }
+        var found = matchLines(code, here.filter { $0.language == (isSwift ? .swift : .c) })
         if isSwift {
             // String contents: names passed as strings everywhere, Lua code in the Lua support.
             let languages: Set<Language> = file.contains("/Lua/") ? [.swiftText, .lua] : [.swiftText]
-            found += matchLines(strings, kinds.filter { languages.contains($0.language) })
+            found += matchLines(strings, here.filter { languages.contains($0.language) })
         }
         for (kind, line) in found {
             hits.append(Hit(kind: kind, file: file, line: line, text: raw[line - 1]))
@@ -686,7 +703,10 @@ if arguments.contains("--help") || arguments.contains("-h") {
     exit(0)
 }
 if arguments.contains("--kinds") {
-    for k in kinds { write("\(k.id)\t\(k.klass)\t\(k.about)\n\t\(k.pattern.pattern)") }
+    for k in kinds {
+        let scope = k.onlyIn.map { "\n\tonly in \($0.joined(separator: ", "))" } ?? ""
+        write("\(k.id)\t\(k.klass)\t\(k.about)\n\t\(k.pattern.pattern)\(scope)")
+    }
     exit(0)
 }
 let hits = scan()
