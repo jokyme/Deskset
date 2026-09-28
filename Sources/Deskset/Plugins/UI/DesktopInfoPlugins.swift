@@ -592,6 +592,9 @@ final class FrontmostAppInfo {
 /// the focused app's process name (e.g. `Safari`; Windows skins compare with `chrome.exe`-style names, which never
 /// match on the Mac).
 final class IsFullScreenMeasure: MediaUIMeasure {
+    /// Reads the front window (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.frontWindow] }
+
     override func computeValue() -> Double {
         let info = FrontmostAppInfo.shared.current()
         publishString(info.processName)
@@ -602,6 +605,9 @@ final class IsFullScreenMeasure: MediaUIMeasure {
 /// `Plugin=GetActiveTitle`: the focused window's title (the app's name when the title cannot be read); the number
 /// is the title's length (version 1.3 of the plugin).
 final class ActiveTitleMeasure: MediaUIMeasure {
+    /// Reads the front window (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.frontWindow] }
+
     override func computeValue() -> Double {
         FrontmostAppInfo.shared.wantsTitle = true
         let title = FrontmostAppInfo.shared.current().title
@@ -677,6 +683,9 @@ enum SysColorFormat {
 /// the color was found, -1 when not. DWM_* balance / intensity values have no Mac equivalent: DWM_OPAQUE_BLEND is 1
 /// when "Reduce transparency" is on, the others 0.
 final class SysColorMeasure: MediaUIMeasure {
+    /// Reads the Mac's colours (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.systemColors] }
+
     private var colorType = "Accent"
     private var display = SysColorFormat.Display.all
     private var hex = false

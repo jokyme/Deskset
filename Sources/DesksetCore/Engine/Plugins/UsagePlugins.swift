@@ -20,6 +20,10 @@ import Foundation
 /// summed up as "System"; GPU usage is the whole GPU's (one instance "GPU", from the hardware sensors), GPU memory per
 /// process does not exist; names are matched case-insensitively.
 public final class UsageMonitorMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes and counters, some of them from its sensors (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system, .sensors] }
+
     private var spec: PerfCounterSpec?
     private var index = 0
     private var instanceName: String?
@@ -241,6 +245,10 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 /// (judgment). Processor counters are read at each update; process-based ones from the once-a-second sample (an
 /// update that sees no new sample keeps its value). The range tracks the observed values.
 public final class PerfMonMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes and counters, some of them from its sensors (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system, .sensors] }
+
     private var spec: PerfCounterSpec?
     private var instance = ""
     private var difference = true
@@ -339,6 +347,9 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
 /// - Sampled once a second in the background; the value is the latest sample's CPU rate × the real time since the
 ///   measure's previous update (so it matches the skin's interval even though the two clocks are not in step).
 public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's processes (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var include: Set<String>?
     private var exclude: Set<String> = []
     private var topProcess = 0

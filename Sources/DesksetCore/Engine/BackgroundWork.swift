@@ -50,6 +50,29 @@ public enum BackgroundWorkKind: String, CaseIterable, Sendable {
     /// fixture, such as `--data`'s `trash`).
     case trash
 
+    // Shared services a measure reads directly at its updates (`Measure.liveInputs`, noted on its first update): not
+    // background work of the skin, but inputs that differ from one run to the next unless the host fakes the service
+    // (`.service`) or the skin's system data is scripted (`ScriptedSystemData`, for the first three).
+
+    /// The Mac's system data: CPU, memory, network, disks, uptime, processes, SysInfo (`SystemDataSource`).
+    case system
+    /// The battery (PowerPlugin).
+    case battery
+    /// Hardware sensors: temperatures, fans, power (MacSensors, CoreTemp, SpeedFan, MSIAfterburner).
+    case sensors
+    /// A media player (NowPlaying, iTunes, WebNowPlaying: the NowPlaying center).
+    case nowPlaying
+    /// The Mac's audio levels (AudioLevel).
+    case audio
+    /// The Mac's audio devices and volume (Win7Audio, AppVolume).
+    case volume
+    /// The Wi-Fi interface (WiFiStatus).
+    case wifi
+    /// The front window (GetActiveTitle, IsFullScreen).
+    case frontWindow
+    /// The Mac's system colours (SysColor).
+    case systemColors
+
     /// What it does, for reports.
     public var summary: String {
         switch self {
@@ -68,6 +91,15 @@ public enum BackgroundWorkKind: String, CaseIterable, Sendable {
         case .resMon: return "ResMon looks up processes by name"
         case .desktopImage: return "Chameleon reads and analyses an image"
         case .trash: return "RecycleManager reads the Trash"
+        case .system: return "the skin reads the Mac's system data"
+        case .battery: return "PowerPlugin reads the battery"
+        case .sensors: return "the skin reads the Mac's sensors"
+        case .nowPlaying: return "the skin reads a media player"
+        case .audio: return "AudioLevel reads the Mac's audio"
+        case .volume: return "the skin reads the Mac's audio devices and volume"
+        case .wifi: return "WiFiStatus reads the Wi-Fi"
+        case .frontWindow: return "the skin reads the front window"
+        case .systemColors: return "SysColor reads the Mac's colours"
         }
     }
 }
@@ -247,6 +279,16 @@ extension Skin {
         return self.hop()
     }
 
+    /// In virtual time: the skin reads `kind` from a shared service (`Measure.liveInputs`). It counts as faked when the
+    /// host put a fake of the service in place (`.service`) or, for the system data, the battery and the sensors, when
+    /// the skin's system data gives them (`ScriptedSystemData`); otherwise the skin is reported as not verifiable.
+    /// Live: nothing.
+    public func noteService(_ kind: BackgroundWorkKind) {
+        guard let virtual = executor as? VirtualTimeExecutor else { return }
+        let scripted = (system as? ScriptedSystemData)?.gives(kind) ?? false
+        virtual.background.noteService(kind, config: config, scripted: scripted)
+    }
+
     /// Whether the skin runs in virtual time (`runInVirtualTime`): its measures then take what shared services tell
     /// them only as it comes back through the executor, never by reading the service's latest state, which a thread
     /// of the service changes at any moment.
@@ -371,7 +413,7 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         case .fixture?:
             if let inline = job.inline {
                 if let reads = job.reads, !fixtureMayRead(reads, tree: tree) {
-                    reason = "it reads the user's files (\(reads)), not the skin's own"
+                    reason = "it reads files outside the skin's own (\(reads)), which differ from one Mac to the next"
                 } else {
                     produce = inline
                     how = "fixture: done on the executor from the files on disk"
@@ -431,9 +473,11 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         }
     }
 
-    func noteService(_ kind: BackgroundWorkKind, config: String) {
+    func noteService(_ kind: BackgroundWorkKind, config: String, scripted: Bool = false) {
         let request = BackgroundWorkRequest(kind: kind, subject: "", config: config)
-        if case .service? = fake(for: kind)?.source {
+        if scripted {
+            report(request, faked: true, "the skin's scripted system data")
+        } else if case .service? = fake(for: kind)?.source {
             report(request, faked: true, "the host's fake service")
         } else {
             report(request, faked: false, "the service is not faked")

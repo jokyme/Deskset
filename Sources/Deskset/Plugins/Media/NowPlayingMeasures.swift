@@ -7,6 +7,9 @@ import DesksetCore
 
 /// A measure reading `NowPlayingCenter`: subscribes (so the center polls) as long as it lives.
 class NowPlayingClientMeasure: MediaUIMeasure {
+    /// Reads a player through the NowPlaying center (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.nowPlaying] }
+
     /// A compatibility note for every player of `apps` Deskset may not control (asked by macOS, not needed on
     /// Windows). NowPlaying and WebNowPlaying show whichever player plays, so every refused player matters to them;
     /// the iTunes plugin reads Music only.

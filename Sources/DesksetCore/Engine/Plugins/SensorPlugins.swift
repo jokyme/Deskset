@@ -25,6 +25,9 @@ import Foundation
 /// time). Temperatures are Celsius (Core Temp's Fahrenheit setting has no counterpart). As the manual says, MinValue /
 /// MaxValue must be set for percentages: like every plugin measure the range otherwise tracks the observed values.
 public final class CoreTempMeasure: Measure {
+    /// Reads the Mac's sensors, and its CPU use and frequency (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors, .system] }
+
     enum Kind: String, CaseIterable {
         case cpuName = "cpuname", cpuSpeed = "cpuspeed", maxTemperature = "maxtemperature", busSpeed = "busspeed"
         case busMultiplier = "busmultiplier", vid = "vid", tdp = "tdp", power = "power", temperature = "temperature"
@@ -142,6 +145,9 @@ func sysctlInt(_ name: String) -> Int? {
 /// lacks reading 0 in its place. Without a source, or past the end of a list, the value is 0 (logged once).
 /// Like every plugin measure, the range tracks the observed values unless MinValue / MaxValue are set.
 public final class SpeedFanMeasure: Measure {
+    /// Reads the Mac's sensors (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors] }
+
     private var sensorType = "temperature"
     private var number = 0
     private var scale = TemperatureScale.celsius

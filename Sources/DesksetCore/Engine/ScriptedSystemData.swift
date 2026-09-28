@@ -28,6 +28,19 @@ public final class ScriptedSystemData: SystemDataSource, HardwareSensorSource, @
         desktop = data.desktopImage
     }
 
+    /// Whether the data gives the readings of `kind` (`.system`, `.battery`, `.sensors`): the skin's reads of them
+    /// then depend on the data, not on the Mac (`Skin.noteService`).
+    public func gives(_ kind: BackgroundWorkKind) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        switch kind {
+        case .system: return !frames.isEmpty
+        case .battery: return batteryGiven != nil
+        case .sensors: return sensorValues != nil || thermal != nil
+        default: return false
+        }
+    }
+
     /// Moves to the next frame (the last one stays current).
     public func advance() {
         lock.lock()

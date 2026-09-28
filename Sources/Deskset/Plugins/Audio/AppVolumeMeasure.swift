@@ -173,6 +173,9 @@ final class AudioAppCatalog {
 }
 
 final class AppVolumeMeasure: Measure, SectionVariableFunctions {
+    /// Reads the Mac's audio devices and volume (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.volume] }
+
     enum NumberType: Equatable { case volume, peak }
     enum StringType: Equatable { case fileName, filePath }
 

@@ -28,6 +28,10 @@ import Foundation
 ///   (`ProcessInfo.thermalState`), 0 nominal, 1 fair, 2 serious, 3 critical, with "Nominal", "Fair", "Serious" or
 ///   "Critical" as the string and 0–3 as the range. It needs no hardware access and is read at every update.
 public final class MacSensorsMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's sensors, and its CPU and memory use for those keys (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors, .system] }
+
     private var key = SensorKeys.cpu
     private var kind: SensorKind? = .temperature
     private var scale = TemperatureScale.celsius
@@ -168,6 +172,9 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
 /// - `GPU1 …` means the same as `GPU …` (a Mac has one GPU for these values); `GPU2 …` and other names are 0, logged
 ///   once. Names are matched case-insensitively.
 public final class MSIAfterburnerMeasure: Measure {
+    /// Reads the Mac's sensors (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors] }
+
     enum Source: Equatable {
         case sensor(String)
         case megabytes(String)

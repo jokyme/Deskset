@@ -117,6 +117,9 @@ struct AudioLevelChildOptions: Equatable {
 }
 
 final class AudioLevelMeasure: Measure {
+    /// Reads the Mac's audio (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.audio] }
+
     /// Parent options, set by the first option read of a measure without `Parent=`.
     private(set) var parentOptions: AudioLevelParentOptions?
     private(set) var analyzer: AudioAnalyzer?

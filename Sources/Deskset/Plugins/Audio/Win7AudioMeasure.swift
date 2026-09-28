@@ -92,6 +92,9 @@ enum Win7AudioCommand: Equatable {
 }
 
 final class Win7AudioMeasure: Measure {
+    /// Reads the Mac's audio devices and volume (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.volume] }
+
     /// Replaced in tests.
     var system: AudioOutputControlling = AudioSystem.shared
     private(set) var pluginString: String?

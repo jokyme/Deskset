@@ -616,7 +616,7 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         let reports = v.background.reports
         t.equal(reports.filter { $0.kind == .quote }.map(\.faked), [true, false], "own file faked, the user's not")
         t.equal(v.background.unverifiable.map(\.kind), [.quote, .folderInfo])
-        t.check(v.background.unverifiable.allSatisfy { $0.reason.contains("the user's files") },
+        t.check(v.background.unverifiable.allSatisfy { $0.reason.contains("outside the skin's own") },
                 "\(v.background.unverifiable)")
         skin.close()
 
@@ -785,6 +785,65 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         t.equal(given.background.reports.first { $0.kind == .trash }?.faked, true, "the host's fake service")
         t.equal(given.background.unverifiable.count, 0)
         skin.close()
+    }
+
+    t.suite("Executor: virtual time — measures that read shared services are noted, faked only when scripted") {
+        let ini = """
+        [Rainmeter]
+        Update=-1
+        [CPU]
+        Measure=CPU
+        [Battery]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Percent
+        [Disabled]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=cpu
+        Disabled=1
+        [Up]
+        Measure=Uptime
+        SecondsValue=100
+        [M]
+        Meter=Image
+        """
+        // The Mac's readings (a fake source here, but not scripted data): the skin cannot be verified.
+        let live = virtualExecutor()
+        var skin = try virtualSkin(t, ini, executor: live)
+        skin.update()
+        t.equal(live.background.unverifiable.map(\.kind), [.system, .battery],
+                "the CPU and the battery; not a disabled measure, nor an Uptime given its seconds")
+        t.check(live.background.unverifiable.allSatisfy { $0.reason == "the service is not faked" })
+        skin.close()
+
+        // Scripted system data that gives the frames: those reads are faked; the battery it does not give is not.
+        let scripted = virtualExecutor()
+        var data = SkinInputData()
+        var frame = SkinInputData.SystemFrame()
+        frame.cpu = [25]
+        data.system = [frame]
+        let skins = t.temporaryDirectory("virtual-services").appendingPathComponent("Skins")
+        let dir = skins.appendingPathComponent("Root/Sub")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try ini.write(to: dir.appendingPathComponent("Skin.ini"), atomically: true, encoding: .utf8)
+        let host = FakeHost()
+        skin = Skin(config: "Root\\Sub", fileURL: dir.appendingPathComponent("Skin.ini"), skinsDirectory: skins,
+                    system: ScriptedSystemData(base: FakeSystem(), data: data), host: host)
+        skin.runInVirtualTime(scripted)
+        try skin.load()
+        skin.update()
+        t.equal(skin.measure(named: "CPU")?.value, 25)
+        t.equal(scripted.background.reports.first { $0.kind == .system }?.faked, true, "the frames stand in for the Mac")
+        t.equal(scripted.background.unverifiable.map(\.kind), [.battery])
+        // A host's fake service counts too.
+        scripted.background.setFake(.service, for: .battery)
+        let again = try virtualSkin(t, ini, executor: scripted)
+        again.update()
+        t.equal(scripted.background.reports.filter { $0.kind == .battery && $0.config == again.config }.map(\.faked),
+                [false, true], "the first skin's report stays; this one's is faked")
+        withExtendedLifetime(host) { skin.close() }
+        again.close()
     }
 
     t.suite("Executor: virtual time — live executors keep today's way back") {

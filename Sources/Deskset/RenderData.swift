@@ -69,6 +69,7 @@ final class RenderData {
             if let virtual { center.clock = { virtual.uptime } }
             NowPlayingCenter.current = center
             restores.append { NowPlayingCenter.current = .shared }
+            virtual?.background.setFake(.service, for: .nowPlaying)
         }
         if let audio = data.audio {
             let levels = ScriptedAudioLevels(audio)
@@ -76,6 +77,7 @@ final class RenderData {
             let saved = AudioLevelMeasure.sharedEngine
             AudioLevelMeasure.sharedEngine = { levels }
             restores.append { AudioLevelMeasure.sharedEngine = saved }
+            virtual?.background.setFake(.service, for: .audio)
         }
         if let weather = data.weather {
             let skinClock = clock
@@ -95,6 +97,7 @@ final class RenderData {
             let saved = WiFiStatusMeasure.sharedCenter
             WiFiStatusMeasure.sharedCenter = { fixed }
             restores.append { WiFiStatusMeasure.sharedCenter = saved }
+            virtual?.background.setFake(.service, for: .wifi)
         }
         if let trash = data.trash {
             // RecycleManager's readings are the data's; the Trash is never read.

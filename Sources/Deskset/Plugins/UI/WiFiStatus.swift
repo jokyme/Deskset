@@ -269,6 +269,9 @@ final class WiFiCenter: WiFiReading {
 
 /// `Measure=WiFiStatus` / `Plugin=WiFiStatus`.
 final class WiFiStatusMeasure: MediaUIMeasure {
+    /// Reads the Wi-Fi (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.wifi] }
+
     enum InfoType: String {
         case ssid, quality, txrate, rxrate, encryption, auth, phy, list
     }
