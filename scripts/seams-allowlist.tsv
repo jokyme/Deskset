@@ -10,14 +10,17 @@
 # `--update` rewrites the counts from the sources and keeps the notes and the * entries. The kinds and what each one
 # matches: `swift scripts/check-seams.swift --kinds`.
 
-mono.C	Sources/CLua/deskset_lua.c	2	Lua os.clock and the script time limits; os.clock goes to SkinClock.uptime through the shim
+mono.C	Sources/CLua/deskset_lua.c	2	os.clock's process clock (the live branch) and the script time limits; with an injected clock os.clock reads SkinClock.uptime through the time source
+random.C	Sources/CLua/deskset_lua.c	2	the shim's math.random and math.randomseed, live branch: C rand() and srand() as in Lua 5.1; SkinRandom through the time source when seeded
+wall.C	Sources/CLua/deskset_lua.c	2	the shim's os.time and os.date, live branch: time() as in Lua 5.1; SkinClock.now through the time source when injected
+zone.C	Sources/CLua/deskset_lua.c	3	the shim's os.date and os.time, live branch: localtime, mktime (process TZ) as in Lua 5.1; strftime also formats injected times (%z and %s written from the source)
 
-random.C	Sources/CLua/lmathlib.c	2	Lua math.random and math.randomseed: C rand(), one generator for the whole process; SkinRandom through the shim
+random.C	Sources/CLua/lmathlib.c	2	Lua's own math.random and math.randomseed: replaced by the shim's (deskset_lua.c) when a state opens
 
-mono.C	Sources/CLua/loslib.c	1	Lua's own os.clock, replaced by the shim's
+mono.C	Sources/CLua/loslib.c	1	Lua's own os.clock: replaced by the shim's when a state opens
 random.C	Sources/CLua/loslib.c	1	Lua os.tmpname: a random file name
-wall.C	Sources/CLua/loslib.c	2	Lua os.time and os.date: C time(); SkinClock.now through the shim
-zone.C	Sources/CLua/loslib.c	4	Lua os.date and os.time with a table: process-wide TZ and locale; SkinClock.timeZone through the shim
+wall.C	Sources/CLua/loslib.c	2	Lua's own os.time and os.date: replaced by the shim's when a state opens
+zone.C	Sources/CLua/loslib.c	4	Lua's own os.date and os.time and os.setlocale: replaced or removed by the shim when a state opens
 
 background.mainHop	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/AppActivation.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -265,7 +268,7 @@ effect.fileWrite	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacin
 wait.runLoop	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
 wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
 wall.Date()	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
-wall.sinceNow	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
+wall.sinceNow	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
 
 mono.systemUptime	Sources/Deskset/Sensors/IOReport.swift	1	sensor service (MacSensors): faked in verification
 
@@ -337,16 +340,12 @@ effect.iniWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio edi
 effect.fileWrite	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
 random.hashSeed	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
-lua.library	Sources/DesksetCore/Engine/Lua/LuaPrelude.swift	3	the prelude wraps os.date (Windows # flag); the wrapper keeps working once os.date reads SkinClock
+zone.Locale.current	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live preferred languages (Locale.preferredLanguages)
+zone.inferredCurrent	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live locale (Locale.autoupdatingCurrent), the default a host passes
 
-mono.systemUptime	Sources/DesksetCore/Engine/Lua/ScriptMeasure.swift	1	script update throttling: SkinClock.uptime
+lua.library	Sources/DesksetCore/Engine/Lua/LuaPrelude.swift	3	the prelude wraps os.date (Windows # flag); the os.date it wraps is the shim's, which reads the skin's clock
 
-zone.inferredCurrent	Sources/DesksetCore/Engine/MacRegionalSettings.swift	1	default arguments for the #MAC...# regional variables: SkinEnvironment.locale
-
-random.swift	Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift	2	Calc Random and UniqueRandom: SkinRandom
-wall.Date()	Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift	2	Time and SysInfo measures: SkinClock.now and SkinClock.timeZone
-zone.TimeZone.current	Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift	2	Time and SysInfo measures: SkinClock.now and SkinClock.timeZone
-zone.inferredCurrent	Sources/DesksetCore/Engine/Measures/BuiltinMeasures.swift	2	SysInfo time zone names: SkinEnvironment.locale
+zone.inferredCurrent	Sources/DesksetCore/Engine/MacRegionalSettings.swift	1	MacRegionalSettings.system(): the live source of SkinEnvironment.appearance.regional, which the host passes (--render fixes it)
 
 background.URLSession	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	2	WebParser downloads: fake network in verification
 background.operationQueue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
@@ -354,17 +353,14 @@ background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.
 
 background.hop	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 effect.fileWrite	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	7	WebParser Download=1 and Debug=2 files: SideEffects
-random.UUID	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	1	temporary download names; Download=1 without DownloadFile makes the path the measure value: SkinRandom
 
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	plugin timing: SkinClock.uptime
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.hop	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	plugin file I/O queue; results come back through Skin.hop (fake completions)
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	5	plugin timing: SkinClock.uptime
-random.swift	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	QuotePlugin: SkinRandom
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
 background.global	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
 background.hop	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
@@ -375,7 +371,6 @@ zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	fil
 
 background.hop	Sources/DesksetCore/Engine/Plugins/MacSensorsPlugin.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
 
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/MousePlugin.swift	1	plugin timing: SkinClock.uptime
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/MousePlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.global	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
@@ -385,11 +380,11 @@ random.swift	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	2	ICMP identifi
 
 background.queue	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
 mono.machTime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	process CPU sampling interval (service clock)
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	plugin timing: SkinClock.uptime
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's sample times (a service shared by every skin): faked with the service
 timer.dispatchSource	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
 
 effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	3	RecycleManager OpenBin and EmptyBin: SideEffects.launch (PluginProcess.launcher)
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	5	plugin timing: SkinClock.uptime
+mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
 
 background.fileEvents	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	3	RunCommand child process and its pipes: SideEffects.launch
 background.hop	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
@@ -397,27 +392,23 @@ background.process	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	R
 background.queue	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand child process and its pipes: SideEffects.launch
 effect.fileWrite	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCommand OutputFile: SideEffects
 effect.signal	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCommand Close/Kill: SideEffects.launch
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	plugin timing: SkinClock.uptime
 timer.asyncAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand drains the pipes on its own queue
 timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
-zone.Locale.current	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	LANG for the child process: SkinEnvironment.locale
 
 background.hop	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	2	plugin timing: SkinClock.uptime
 random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
 
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
-mono.systemUptime	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	3	plugin timing: SkinClock.uptime
-
 background.hop	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
-wall.Date()	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	2	MacWeather and MacSun: SkinClock.now and SkinClock.timeZone
-zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	MacWeather and MacSun: SkinClock.now and SkinClock.timeZone
-zone.inferredCurrent	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	5	MacWeather and MacSun: SkinClock.now and SkinClock.timeZone
+zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
 effect.iniWrite	Sources/DesksetCore/Engine/Skin.swift	1	!WriteKeyValue: SideEffects (writes go to a copy in sandboxed runs)
-mono.systemUptime	Sources/DesksetCore/Engine/Skin.swift	1	Skin.clock: becomes SkinClock.uptime
 timer.executorAfter	Sources/DesksetCore/Engine/Skin.swift	1	!Delay on the executor (VirtualTimeExecutor)
+
+mono.systemUptime	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
+wall.Date()	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
+zone.TimeZone.current	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
 
 background.mainHop	Sources/DesksetCore/Engine/SkinExecutor.swift	3	MainSkinExecutor itself
 timer.Timer	Sources/DesksetCore/Engine/SkinExecutor.swift	1	MainSkinExecutor itself
@@ -429,15 +420,17 @@ random.UUID	Sources/DesksetCore/Engine/SkinFileSandbox.swift	1	the Lua io sandbo
 
 effect.iniWrite	Sources/DesksetCore/Engine/SkinInspection.swift	2	Skin Studio writes through the inspection API
 
-wall.Date()	Sources/DesksetCore/Format/TimeFormatting.swift	2	default argument; engine callers pass the skin clock and time zone
-zone.inferredCurrent	Sources/DesksetCore/Format/TimeFormatting.swift	6	default argument; engine callers pass the skin clock and time zone
+random.UUID	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation
+random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation
+random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
 
-zone.Locale.current	Sources/DesksetCore/Format/TimeLocaleSupport.swift	1	FormatLocale=Local: SkinEnvironment.locale
+wall.Date()	Sources/DesksetCore/Format/TimeFormatting.swift	2	default arguments for UI callers; engine callers pass the skin's clock, time zone and locale
+zone.inferredCurrent	Sources/DesksetCore/Format/TimeFormatting.swift	9	default arguments for UI callers; engine callers pass the skin's clock, time zone and locale
+
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
-zone.inferredCurrent	Sources/DesksetCore/Format/TimeLocaleSupport.swift	1	locale names for FormatLocale; locale and zone are set explicitly
 
-wall.Date()	Sources/DesksetCore/Format/TimeStampParsing.swift	1	default argument; engine callers pass the skin clock and time zone
-zone.inferredCurrent	Sources/DesksetCore/Format/TimeStampParsing.swift	1	default argument; engine callers pass the skin clock and time zone
+wall.Date()	Sources/DesksetCore/Format/TimeStampParsing.swift	1	default arguments for UI callers; engine callers pass the skin's clock, time zone and locale
+zone.inferredCurrent	Sources/DesksetCore/Format/TimeStampParsing.swift	3	default arguments for UI callers; engine callers pass the skin's clock, time zone and locale
 
 effect.fileWrite	Sources/DesksetCore/Ini/IniWriter.swift	1	the writer itself
 
