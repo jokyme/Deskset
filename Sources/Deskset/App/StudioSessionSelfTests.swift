@@ -9,6 +9,7 @@ enum StudioSessionSelfTests {
 
     static func run(_ t: AppTestRunner) {
         ownInstanceTests(t)
+        patchTests(t)
         seedingTests(t)
         undoStackTests(t)
         filesElsewhereTests(t)
@@ -111,6 +112,178 @@ enum StudioSessionSelfTests {
             editor.window?.undoManager?.undo()
             editor.window?.undoManager?.undo()
             t.equal(read(url), ini, "back to the bytes it started from")
+            editor.window?.close()
+        }
+    }
+
+    /// A widget whose graphs and counter show whether the Studio's instance was loaded again: it updates only when the
+    /// test says so (`Update=-1`).
+    static let graphs = """
+        [Rainmeter]
+        Update=-1
+
+        [MeasureCount]
+        Measure=Calc
+        Formula=Counter % 7
+        MaxValue=7
+
+        [MeterGraph]
+        Meter=Line
+        MeasureName=MeasureCount
+        W=40
+        H=20
+
+        [MeterBars]
+        Meter=Histogram
+        MeasureName=MeasureCount
+        X=44
+        W=40
+        H=20
+
+        [MeterTitle]
+        Meter=String
+        Text=Hello
+        FontSize=12
+        Y=24
+
+        """
+
+    /// What the graphs of the Studio's instance hold.
+    static func samples(_ skin: Skin?) -> [[Double]] {
+        [(skin?.meter(named: "MeterGraph") as? LineMeter)?.lines.first?.history.samples ?? [],
+         (skin?.meter(named: "MeterBars") as? HistogramMeter)?.primaryHistory.samples ?? []]
+    }
+
+    static func patchTests(_ t: AppTestRunner) {
+        t.suite("App: studio session: steps and undos reach the Studio's instance as a patch") {
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "Patched", graphs) else { return }
+            guard let session = editor.session, let studio = editor.skin else { return t.check(false, "loaded") }
+            for _ in 0..<5 { studio.update() }
+            let shown = samples(studio), counter = studio.counter
+            t.check(shown.allSatisfy { $0.count >= 5 }, "the graphs have samples: \(shown)")
+            let canvas = editor.canvas
+            canvas.updateSize()
+            func graphPixels() -> Data? {
+                guard let meter = editor.skin?.meter(named: "MeterBars") else { return nil }
+                let area = NSRect(x: canvas.origin.x, y: canvas.origin.y, width: CGFloat(meter.frame.maxX),
+                                  height: CGFloat(meter.frame.maxY))
+                guard let rep = canvas.bitmapImageRepForCachingDisplay(in: area) else { return nil }
+                canvas.cacheDisplay(in: area, to: rep)
+                return rep.tiffRepresentation
+            }
+            let drawn = graphPixels()
+            t.check(drawn != nil, "the canvas draws the graphs")
+
+            editor.select(section: "MeterTitle")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+            t.check(read(url).contains("FontSize=20\n"), "written")
+            t.check(editor.skin === studio, "the Studio's instance took the step without loading again")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
+            t.equal(samples(editor.skin), shown, "the graphs keep their history")
+            t.equal(editor.skin?.counter, counter, "and the counter")
+            t.equal(graphPixels(), drawn, "the canvas draws the same graphs")
+            t.check(session.lastTimings["studio.patch"] != nil && session.lastTimings["studio.reload"] == nil,
+                    "timed as a patch: \(session.lastTimings.keys.sorted())")
+            t.check(session.lastTimings["studio.load"] == nil && session.lastTimings["studio.update"] == nil)
+            t.check(session.lastTimings["window.inspector"] != nil, "the window followed it")
+            t.equal(editor.selectedSection, "MeterTitle", "the selection stays")
+            settle()
+
+            editor.window?.undoManager?.undo()
+            t.equal(read(url), graphs, "undone, byte for byte")
+            t.check(editor.skin === studio, "the undo is a patch too")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12")
+            t.equal(samples(editor.skin), shown, "the graphs still keep their history")
+            t.equal(graphPixels(), drawn)
+            t.check(session.lastTimings["studio.patch"] != nil && session.lastTimings["studio.reload"] == nil)
+            settle()
+            editor.window?.undoManager?.redo()
+            t.check(read(url).contains("FontSize=20\n"), "redone")
+            t.check(editor.skin === studio, "and so is the redo")
+            settle()
+            editor.window?.undoManager?.undo()
+            settle()
+            editor.window?.close()
+        }
+
+        t.suite("App: studio session: a step a patch cannot make loads the instance again, graphs and counter kept") {
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "Structure", graphs) else { return }
+            guard let session = editor.session, var studio = editor.skin else { return t.check(false, "loaded") }
+            for _ in 0..<4 { studio.update() }
+            let shown = samples(studio)
+            func step(_ name: String, _ ops: [EditOp], _ what: String) {
+                let counter = studio.counter
+                do {
+                    try session.apply(name, ops)
+                } catch {
+                    return t.check(false, "\(what): \(error)")
+                }
+                t.check(editor.skin !== studio, "\(what): the Studio's instance loaded again")
+                t.check(session.lastTimings["studio.reload"] != nil && session.lastTimings["studio.load"] != nil,
+                        "\(what): timed as a reload: \(session.lastTimings.keys.sorted())")
+                t.equal(samples(editor.skin), shown, "\(what): the graphs keep their history")
+                t.equal(editor.skin?.counter, counter + 1, "\(what): the counter goes on")
+                if let now = editor.skin { studio = now }
+                settle()
+            }
+            let added = graphs + "[MeterNew]\nMeter=String\nText=New\nY=40\n"
+            step("Add Layer", [.editSource(file: url, text: added, encoding: nil)], "a layer added")
+            t.check(editor.skin?.meter(named: "MeterNew") != nil)
+            step("Delete Layer", [.removeSection("MeterNew", files: [url])], "a layer deleted")
+            t.equal(read(url), graphs)
+            step("Change Type", [.setValue(file: url, section: "MeterTitle", key: "Meter", value: "Image", afterIncludes: false)],
+                 "Meter= changed")
+            t.check(editor.skin?.meter(named: "MeterTitle") is ImageMeter)
+            step("Change Update", [.setValue(file: url, section: "Rainmeter", key: "Update", value: "-2", afterIncludes: false)],
+                 "a [Rainmeter] option changed")
+            editor.window?.undoManager?.undo()
+            editor.window?.undoManager?.undo()
+            t.equal(read(url), graphs, "undone")
+            t.check(editor.skin?.meter(named: "MeterTitle") is StringMeter, "the undo of a type change loads it again too")
+            t.equal(samples(editor.skin), shown)
+            editor.window?.close()
+        }
+
+        t.suite("App: studio session: a step that does not show is put back, in the files and the instance") {
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "Unshown", graphs) else { return }
+            guard let session = editor.session, let studio = editor.skin else { return t.check(false, "loaded") }
+            for _ in 0..<3 { studio.update() }
+            let shown = samples(studio)
+            var seen: String?
+            do {
+                try session.apply("Change Font Size",
+                                  [.setValue(file: url, section: "MeterTitle", key: "FontSize", value: "30", afterIncludes: false)],
+                                  verify: { skin in
+                                      seen = skin.meter(named: "MeterTitle")?.rawOption("FontSize")
+                                      return false
+                                  })
+                t.check(false, "the step is refused")
+            } catch SessionError.notInEffect {
+            } catch {
+                t.check(false, "refused as not in effect: \(error)")
+            }
+            t.equal(seen, "30", "checked on the instance that took it")
+            t.equal(read(url), graphs, "the file is put back")
+            t.equal(session.buffers.buffer(url)?.text, graphs, "and the memory")
+            t.check(editor.skin === studio, "the instance took it back without loading again")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "and shows the file again")
+            t.equal(samples(editor.skin), shown)
+            t.check(!session.undoStack.canUndo, "no undo step")
+            editor.window?.close()
+        }
+
+        t.suite("App: studio session: a change made elsewhere still loads the instance again") {
+            guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "Elsewhere", graphs) else { return }
+            guard let studio = editor.skin else { return t.check(false, "loaded") }
+            t.check(editor.liveReload, "live reload is on")
+            try graphs.replacingOccurrences(of: "FontSize=12", with: "FontSize=14")
+                .write(to: url, atomically: true, encoding: .utf8)
+            let reloaded = AppSelfTest.spin(timeout: 10) {
+                editor.checkFilesOnDisk()
+                return editor.skin !== studio
+            }
+            t.check(reloaded, "loaded again")
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "14")
             editor.window?.close()
         }
     }
