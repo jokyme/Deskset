@@ -2,13 +2,17 @@
 ;
 ; What Music or Spotify is playing: Deskset reads those two players only (web browsers and other apps can't be read),
 ; and shows whichever of them plays, the preferred one (Player, Variables.inc) first. It polls a player only while it
-; runs, and the first poll of a running player makes macOS ask once for permission (Automation). Commands never open
-; a closed player; only OpenPlayer does. The cover is fetched only while this widget shows it.
+; runs, and the first poll of a running player makes macOS ask once for permission (Automation); a refusal shows as
+; the Notice (Media/Permission.inc tells it). Commands never open a closed player; only OpenPlayer does. The cover is
+; fetched only while this widget shows it.
 ;
 ; Every NowPlaying measure updates once a second. The meters decide what they show from MeasureMode (and MeasureView,
 ; which tells a live stream apart), in the groups State (on a change of mode), Player (on a new track) and Progress.
 
 [Variables]
+; MeasureAccess and MeasureAccessPlayer: whether macOS lets Deskset read the player
+@IncludeMediaPermission=#@#Media/Permission.inc
+
 ; ---------------------------------------------------------------- run-time state (never written to a file)
 ; the player shown: 1 Music, 2 Spotify (MeasurePlayerNow sets it every second); the preferred one until then
 PlayerNow=[#PlayerIndex[#Player]]
@@ -20,7 +24,7 @@ VolumeRow=0
 VolumeTarget=0
 
 ; ---------------------------------------------------------------- by mode (MeasureMode)
-; 0 not playing · 1 playing · 2 paused · 3 access refused (needs Deskset to tell, E26) · 4 loading
+; 0 not playing · 1 playing · 2 paused · 3 access refused · 4 loading (or macOS is asking for access)
 PlayGlyph0=play.fill
 PlayGlyph1=pause.fill
 PlayGlyph2=play.fill
@@ -157,8 +161,8 @@ Group=Player
 ; ---------------------------------------------------------------- which player is shown, its name and its icon
 ; Deskset shows the preferred player while it plays, else the other one that plays (or waits paused). Until Deskset
 ; names the player it shows, the one that runs alone is taken for it, else the preferred one (wrong only while both run
-; and the other one plays). With nothing to show it is the preferred player, which the play button opens. Checking
-; which apps run asks for nothing.
+; and the other one plays). With nothing to show it is the preferred player, which the play button opens; with access
+; refused (or being asked for), the player it is about (MeasureAccess). Checking which apps run asks for nothing.
 [MeasureMusicRunning]
 Measure=Process
 ProcessName=Music
@@ -172,7 +176,8 @@ UpdateDivider=2
 [MeasurePlayerNow]
 ; 1 Music, 2 Spotify; every update (OnChangeAction would skip the first one)
 Measure=Calc
-Formula=(MeasureState = 0) ? [#PlayerIndex[#Player]] : (((MeasureSpotifyRunning = 1) && (MeasureMusicRunning = -1)) ? 2 : (((MeasureMusicRunning = 1) && (MeasureSpotifyRunning = -1)) ? 1 : [#PlayerIndex[#Player]]))
+Formula=(MeasureAccess > 0) ? [MeasureAccess] : ((MeasureState = 0) ? [#PlayerIndex[#Player]] : (((MeasureSpotifyRunning = 1) && (MeasureMusicRunning = -1)) ? 2 : (((MeasureMusicRunning = 1) && (MeasureSpotifyRunning = -1)) ? 1 : [#PlayerIndex[#Player]])))
+DynamicVariables=1
 OnUpdateAction=[!SetVariable PlayerNow [MeasurePlayerNow:0]]
 
 [MeasurePlayerName]
@@ -230,10 +235,10 @@ Measure=Calc
 Formula=Min(MeasureTick + 1, 3)
 
 [MeasureMode]
-; 0 not playing (no player runs, or it has no track) · 1 playing · 2 paused · 4 loading. 3 (access refused) needs
-; Deskset to tell a refused permission (E26); until then a refusal reads as not playing, and the tooltip says so
+; 0 not playing (no player runs, or it has no track) · 1 playing · 2 paused · 3 access refused (the Notice) · 4 loading,
+; also while macOS asks for access (its prompt waits for an answer)
 Measure=Calc
-Formula=(#TestMode# >= 0) ? #TestMode# : ((MeasureTick < 2) ? 4 : ((MeasureState = 1) ? 1 : ((MeasureState = 2) ? 2 : 0)))
+Formula=(#TestMode# >= 0) ? #TestMode# : ((MeasureTick < 2) ? 4 : ((MeasureAccess = 1) ? 3 : ((MeasureAccess = 2) ? 4 : ((MeasureState = 1) ? 1 : ((MeasureState = 2) ? 2 : 0)))))
 OnChangeAction=[!UpdateMeterGroup State][!UpdateMeterGroup Progress][!Redraw]
 
 [MeasureView]

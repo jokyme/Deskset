@@ -23,7 +23,18 @@ struct RenderOptions: Equatable {
     var clockHours: Int? = MacRegionalSettings.standard.clockHours
     var firstWeekday: Int? = MacRegionalSettings.standard.firstWeekday
     var temperatureUnit: TemperatureUnit? = MacRegionalSettings.standard.temperatureUnit
+    /// `--wallpaper`: a picture that stands in for the desktop picture: Chameleon `Type=Desktop` samples it, and the
+    /// part under the skin is drawn behind it. Without it, `--background` stands in for a desktop of one color.
+    var wallpaper: String?
+    /// `--at X,Y`: the skin window's top-left corner on the screen (points; `#CURRENTCONFIGX#`, `CropDesktop=Skin`).
+    var at = CGPoint.zero
+    /// `--screen WxH`: the screen's size in points, with a stand-in desktop (`--wallpaper`, `--background`), so that
+    /// renders are the same on every Mac.
+    var screen = RenderOptions.standardScreen
     var warnings: [String] = []
+
+    /// A 14-inch MacBook Pro's screen at its default resolution.
+    static let standardScreen = CGSize(width: 1512, height: 982)
 
     enum Appearance: String, Equatable {
         case light, dark, system
@@ -37,7 +48,8 @@ struct RenderOptions: Equatable {
 
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
-        + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--skins-dir DIR]"
+        + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] "
+        + "[--screen WxH] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -75,6 +87,34 @@ struct RenderOptions: Equatable {
         if let raw = value("--background") {
             if let c = OptionValue.color(raw) { o.background = c } else {
                 o.warnings.append("--background \"\(raw)\" is not a color; using transparent")
+            }
+        }
+        if let raw = value("--wallpaper") {
+            o.wallpaper = raw
+        } else if arguments.contains("--wallpaper") {
+            o.warnings.append("--wallpaper needs a picture file")
+        }
+        func pair(_ flag: String, separators: Set<Character>) -> (Double, Double)? {
+            guard let raw = value(flag) else {
+                if arguments.contains(flag) { o.warnings.append("\(flag) needs a value; using the default") }
+                return nil
+            }
+            let parts = raw.split(whereSeparator: { separators.contains($0) })
+                .map { Double($0.trimmingCharacters(in: .whitespaces)) }
+            guard parts.count == 2, let a = parts[0], let b = parts[1], a.isFinite, b.isFinite else {
+                o.warnings.append("--\(flag.dropFirst(2)) \"\(raw)\" is not two numbers; using the default")
+                return nil
+            }
+            return (a, b)
+        }
+        if let (x, y) = pair("--at", separators: [","]) {
+            o.at = CGPoint(x: min(max(x, -100_000), 100_000), y: min(max(y, -100_000), 100_000))
+        }
+        if let (w, h) = pair("--screen", separators: ["x", "X", ","]) {
+            if w >= 1, h >= 1 {
+                o.screen = CGSize(width: min(w, 100_000), height: min(h, 100_000))
+            } else {
+                o.warnings.append("--screen \(raw(w))x\(raw(h)) is empty; using the default")
             }
         }
         if arguments.contains("--dark") { o.appearance = .dark }
@@ -126,6 +166,23 @@ struct RenderOptions: Equatable {
         return MacRegionalSettings(clockHours: clockHours, firstWeekday: firstWeekday, temperatureUnit: temperatureUnit)
     }
 
+    /// The screen and desktop picture that stand in for the Mac's: `--wallpaper` (laid as macOS's default, Fill
+    /// Screen), else a desktop of the `--background` color; nil without either (the Mac's own).
+    var standInDesktop: ScreenDesktop? {
+        let area = CGRect(origin: .zero, size: screen)
+        if let wallpaper {
+            let path = URL(fileURLWithPath: wallpaper).standardizedFileURL.path
+            return ScreenDesktop(picture: path, frame: area, area: area)
+        }
+        if let background {
+            func channel(_ v: Double) -> Int { v.isFinite ? Int(min(max(v, 0), 255).rounded()) : 0 }
+            return ScreenDesktop(picture: "", frame: area, area: area,
+                                 solid: ChameleonColor(r: channel(background.r), g: channel(background.g),
+                                                       b: channel(background.b)))
+        }
+        return nil
+    }
+
     /// Whole numbers without ".0". Past Int's range (`--updates -1e20`) Swift's own form ("-1e+20"): converting those
     /// to Int would trap.
     private static func raw(_ v: Double) -> String { Int(exactly: v).map(String.init) ?? String(v) }
@@ -165,8 +222,22 @@ enum RenderCommand {
         }
         let output = URL(fileURLWithPath: o.output ?? fileURL.deletingPathExtension().lastPathComponent + ".png")
 
+        if let wallpaper = o.wallpaper, !FileManager.default.fileExists(atPath: wallpaper) {
+            fputs("error: no such file: \(wallpaper)\n", stderr)
+            return 1
+        }
+        // A stand-in desktop: what Chameleon samples, and the screen the skin sees.
+        let standIn = o.standInDesktop
+        DesktopInputs.fake.access { $0 = standIn.map { [$0] } }
+        defer { DesktopInputs.fake.access { $0 = nil } }
+
         let (skinsDir, config) = locate(fileURL, skinsDir: o.skinsDirectory)
         let host = RenderHost()
+        host.windowOrigin = o.at
+        if let standIn {
+            let a = SkinRect(x: 0, y: 0, width: Double(standIn.area.width), height: Double(standIn.area.height))
+            host.screens = [SkinScreen(area: a, workArea: a)]
+        }
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir, system: SystemMonitor.shared,
                         host: host)
         do {
@@ -204,6 +275,15 @@ enum RenderCommand {
         if let background = o.background {
             cg.setFillColor(background.cgColor)
             cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        // The wallpaper behind the skin, where it sits.
+        if let standIn, !standIn.picture.isEmpty {
+            let dark = skin.host?.environment(for: skin).appearance.isDark ?? false
+            let picture = WallpaperImages.large(file: standIn.picture, dark: dark,
+                                                maxPixels: Int(max(standIn.area.width, standIn.area.height) * scale))
+            let window = CGRect(x: o.at.x, y: o.at.y, width: CGFloat(skinW), height: CGFloat(skinH))
+            DesktopSampler.draw(picture, desktop: standIn, region: window.offsetBy(dx: -standIn.area.minX, dy: -standIn.area.minY),
+                                into: cg, size: CGSize(width: width, height: height))
         }
         // Flip to Rainmeter's top-left origin and scale to the requested backing scale.
         cg.translateBy(x: 0, y: CGFloat(height))
@@ -283,6 +363,10 @@ enum RenderCommand {
 /// SkinHost used by `--render` and for checking skins that are not loaded: same metrics as the app, no window.
 final class RenderHost: SkinHost {
     var logs: [String] = []
+    /// Where the skin window's top-left corner is (`--at`).
+    var windowOrigin = CGPoint.zero
+    /// The screens the skin sees instead of the Mac's (a stand-in desktop).
+    var screens: [SkinScreen]?
 
     func skinNeedsDisplay(_ skin: Skin) {}
     func skin(_ skin: Skin, handle bang: Bang) -> Bool { true }
@@ -297,7 +381,9 @@ final class RenderHost: SkinHost {
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {
         var env = SkinController.environment(windowFrame: nil)
-        env.windowFrame = SkinRect(width: skin.width, height: skin.height)
+        if let screens { env.screens = screens }
+        env.windowFrame = SkinRect(x: Double(windowOrigin.x), y: Double(windowOrigin.y), width: skin.width,
+                                   height: skin.height)
         return env
     }
 }

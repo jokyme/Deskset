@@ -187,6 +187,16 @@ Substitute="\.0(?= U)":""," U0$":" #SystemBytes#"," U1$":" KB"," U2$":" MB"," U3
 UpdateDivider=30
 Group=Disk
 
+[MeasureDiskShown]
+; everything the Disk ring, its value and its tooltip show: they are part of the window's kept picture, and are drawn
+; again only when this changes
+Measure=String
+String=[MeasureDiskText] [MeasureDiskAvailText] [MeasureDiskTotalText] #DiskFull#
+DynamicVariables=1
+UpdateDivider=30
+Group=Disk
+OnChangeAction=[!UpdateMeterGroup Disk]
+
 [MeasureDiskLoading]
 ; Finder's figure can take a moment to arrive: while it is missing, read the disk again every second instead of at the
 ; next 30 s update, for at most half a minute
@@ -223,7 +233,7 @@ Measure=Calc
 Formula=Min(Counter, 6)
 DynamicVariables=1
 IfCondition=(MeasureGPUWatch = 5) && (#GPUReady# = 0) && (#FourthSwap# = 0)
-IfTrueAction=[!SetVariable FourthSwap 1][!SetVariable FourthRing Swap][!SetVariable GPUMissing 1][!EnableMeasureGroup Swap][!UpdateMeasureGroup Swap][!HideMeterGroup RingGPU][!ShowMeterGroup RingSwap][!UpdateMeterGroup RingSwap][!UpdateMeasure MeasureSentence][!UpdateMeter MeterCard][!Redraw]
+IfTrueAction=[!SetVariable FourthSwap 1][!SetVariable FourthRing Swap][!SetVariable GPUMissing 1][!EnableMeasureGroup Swap][!UpdateMeasureGroup Swap][!HideMeterGroup RingGPU][!ShowMeterGroup RingSwap][!UpdateMeterGroup RingSwap][!UpdateMeasure MeasureSentence][!Redraw]
 
 ; ---------------------------------------------------------------- the header
 [MeasureDesktopMac]
@@ -258,10 +268,13 @@ DynamicVariables=1
 RegExpSubstitute=1
 Substitute="^0 \S+ ":"","^(\d+ \S+ \d+ \S+) \d+ \S+$":"\1","^0 \S+ ":""," 0 \S+$":""
 UpdateDivider=60
+; the header's uptime is part of the window's kept picture: drawn again only when the text changes
+OnChangeAction=[!UpdateMeterGroup Uptime]
 
 ; ---------------------------------------------------------------- the card's sentence
 [MeasureSentence]
-; "CPU 21% · Memory 20.4 of 24 GB used · Disk 88% used, 118 GB available · GPU 34% · Up 14 d 5 h"
+; "CPU 21% · Memory 20.4 of 24 GB used · Disk 88% used, 118 GB available · GPU 34% · Up 14 d 5 h": the card's tooltip,
+; read when it opens
 Measure=String
 String=#SystemTipCard#[#SystemTipFourth[#FourthRing]]#SystemTipCardEnd#
 DynamicVariables=1

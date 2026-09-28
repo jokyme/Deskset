@@ -434,7 +434,7 @@ enum AppSelfTest {
                     "--settings-dir DIR is used as it is and kept")
             try? FileManager.default.removeItem(at: named)
             SkinController.settingsPath = savedSettings
-            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
+            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report, --benchmark"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
             let long = "--" + String(repeating: "x", count: 500)
@@ -1054,6 +1054,156 @@ enum AppSelfTest {
             window.layoutIfNeeded()
             t.equal(clip.bounds.origin.y, 60, "scrolled")
             t.equal(page.frame.origin, .zero, "the page stays")
+            manage.close()
+        }
+        t.suite("App: manage window: a skin hidden by a skin action says so and can be shown") {
+            guard let app = try makeApp(t), let focus = app.activate(config: "App\\Focus", file: "Focus.ini")
+            else { return }
+            let manage = ManageWindowController(app: app)
+            manage.select(config: "App\\Focus", file: nil)
+            t.equal(manage.testStatus, "● Loaded")
+            t.check(manage.testHiddenNotice == nil, "no notice while it shows")
+            t.equal(manage.testCoordinatesHint, nil)
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded")
+            t.check(!manage.testContextMenuTitles(config: "App\\Focus", file: "Focus.ini").contains("Show"))
+
+            // The skin hides itself: nothing tells the window, which looks again (on screen, twice a second; never
+            // while it is off screen, as here).
+            manage.windowDidChangeOcclusionState(Notification(name: NSWindow.didChangeOcclusionStateNotification))
+            t.check(!manage.testWatchesHiddenSkins, "no timer while the window cannot be seen")
+            manage.testXField.stringValue = "9999"
+            focus.skin.execute("[!HideFade]", from: nil)
+            t.check(focus.isHiddenByBang)
+            manage.refreshHiddenState()
+            t.equal(manage.testStatus, ManageModel.Hidden.status)
+            t.equal(manage.testHiddenNotice?.title, "Hidden by the skin")
+            t.equal(manage.testHiddenNotice?.text, ManageModel.Hidden.explanation(startHidden: false))
+            t.check(manage.testHiddenNotice?.text.contains("!Hide") == true, "names the bang")
+            t.equal(manage.testCoordinatesHint, ManageModel.Hidden.coordinatesHint(moved: false))
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded, hidden")
+            t.check(manage.testContextMenuTitles(config: "App\\Focus", file: "Focus.ini").contains("Show"))
+            t.check(!manage.testContextMenuTitles(config: "App\\Focus", file: "Compact.ini").contains("Show"),
+                    "only on the file that runs")
+            t.equal(manage.testXField.stringValue, "9999", "what is being typed stays")
+            manage.refreshHiddenState()
+            t.equal(manage.testHiddenNotice?.title, "Hidden by the skin", "nothing changed: nothing redrawn")
+
+            // Typing coordinates moves it, out of sight, and says so.
+            manage.testTypeCoordinates(x: 300, y: 200)
+            t.check(focus.isHiddenByBang, "moving does not show it")
+            t.equal(manage.testCoordinatesHint, ManageModel.Hidden.coordinatesHint(moved: true))
+            t.check(manage.testCoordinatesHint?.contains("hidden") == true)
+            t.check(manage.testHiddenNotice != nil)
+
+            // Another variant selected: the notice is for the file that runs; the coordinates are the config's.
+            manage.select(config: "App\\Focus", file: "Compact.ini")
+            t.equal(manage.testStatus, "Focus.ini is loaded, hidden")
+            t.check(manage.testHiddenNotice == nil)
+            t.check(manage.testCoordinatesHint != nil, "the coordinates would move the hidden Focus.ini")
+
+            // Show: back on the desktop, and everything says so.
+            manage.select(config: "App\\Focus", file: "Focus.ini")
+            manage.testShowButton.performClick(nil)
+            t.check(!focus.isHiddenByBang, "Show shows it")
+            t.equal(manage.testStatus, "● Loaded")
+            t.check(manage.testHiddenNotice == nil)
+            t.equal(manage.testCoordinatesHint, nil)
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded")
+
+            // Hidden by another skin's bang, shown from the outline's menu.
+            guard let controls = app.activate(config: "App\\Controls", file: nil) else {
+                return t.check(false, "App\\Controls loads")
+            }
+            controls.skin.execute(#"[!Hide "App\Focus"]"#, from: nil)
+            manage.refreshHiddenState()
+            t.check(manage.testHiddenNotice != nil)
+            manage.testContextShow(config: "App\\Focus")
+            t.check(!focus.isHiddenByBang, "the menu's Show shows it")
+            t.check(manage.testHiddenNotice == nil)
+
+            // Hidden, then unloaded: nothing is hidden any more.
+            focus.skin.execute("[!Hide]", from: nil)
+            manage.refreshHiddenState()
+            app.deactivate(config: "App\\Focus")
+            manage.select(config: "App\\Focus", file: "Focus.ini")
+            t.equal(manage.testStatus, "Not loaded")
+            t.check(manage.testHiddenNotice == nil)
+            t.equal(manage.testCoordinatesHint, nil)
+
+            // StartHidden (App\Defaults has DefaultStartHidden=1): loaded hidden, and the text says why.
+            guard app.activate(config: "App\\Defaults", file: nil) != nil else { return t.check(false, "Defaults") }
+            manage.select(config: "App\\Defaults", file: nil)
+            t.equal(manage.testHiddenNotice?.text, ManageModel.Hidden.explanation(startHidden: true))
+            t.check(manage.testHiddenNotice?.text.contains("StartHidden") == true)
+            manage.close()
+        }
+        t.suite("App: manage window: Show brings back the Spectrum strip hidden while idle, with its dots") {
+            guard let stationery = Paths.repositoryFolder("DefaultSkins")?.appendingPathComponent("Stationery") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let root = t.temporaryDirectory("manage-strip")
+            let skins = root.appendingPathComponent("Skins")
+            try FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: stationery, to: skins.appendingPathComponent("Stationery"))
+            // At rest (the tempo the strip writes into itself when it goes quiet), with Hide When Idle on and no
+            // track (no player is asked).
+            func edit(_ path: String, _ pairs: [(String, String)]) throws {
+                let url = skins.appendingPathComponent(path)
+                var text = try String(contentsOf: url, encoding: .utf8)
+                for (old, new) in pairs {
+                    t.check(text.contains(old), "\(path): \(old)")
+                    text = text.replacingOccurrences(of: old, with: new)
+                }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            try edit("Stationery/Spectrum/Strip.ini", [("\nTempo=Live\n", "\nTempo=Rest\n"),
+                                                        ("\nTempoLive=1\n", "\nTempoLive=0\n")])
+            try edit("Stationery/@Resources/Variables.inc", [("\nHideSpectrumWhenIdle=0", "\nHideSpectrumWhenIdle=1"),
+                                                              ("\nShowSpectrumTrack=1", "\nShowSpectrumTrack=0")])
+            let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                    skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                    backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
+            retainedApps.append(app)
+            guard let strip = app.activate(config: "Stationery\\Spectrum", file: "Strip.ini") else {
+                return t.check(false, "the strip loads")
+            }
+            t.check(strip.isHiddenByBang, "at rest with Hide When Idle it comes up hidden")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false,
+                    "its dots are there for when it is shown")
+            let manage = ManageWindowController(app: app)
+            manage.select(config: "Stationery\\Spectrum", file: "Strip.ini")
+            t.equal(manage.testStatus, ManageModel.Hidden.status)
+            t.equal(manage.testHiddenNotice?.title, ManageModel.Hidden.title)
+            manage.testShowButton.performClick(nil)
+            t.check(!strip.isHiddenByBang, "Show shows it")
+            strip.skin.update()
+            t.check(!strip.isHiddenByBang, "and it stays while nothing changes")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false, "with its row of dots")
+            manage.close()
+        }
+        t.suite("App: manage window: the hidden notice fits the details at the window's smallest") {
+            guard let app = try makeApp(t), let focus = app.activate(config: "App\\Focus", file: "Focus.ini")
+            else { return }
+            focus.skin.execute("[!Hide]", from: nil)
+            let manage = ManageWindowController(app: app)
+            guard let window = manage.window, let page = manage.testDetailDocument else { return t.check(false, "window") }
+            for size in [window.minSize, NSSize(width: 1200, height: 800)] {
+                window.setFrame(NSRect(origin: NSPoint(x: 100, y: 100), size: size), display: false)
+                manage.select(config: "App\\Focus", file: "Focus.ini")
+                window.layoutIfNeeded()
+                let notice = manage.testHiddenNoticeView, text = manage.testHiddenNoticeText
+                let button = manage.testShowButton
+                t.check(!notice.hasAmbiguousLayout && !text.hasAmbiguousLayout, "\(size): one layout")
+                t.close(Double(notice.frame.width), Double(page.frame.width - 48), accuracy: 0.5,
+                        "\(size): as wide as the other sections")
+                t.check(text.frame.width > 200, "\(size): the text has room: \(text.frame.width)")
+                t.check(text.frame.maxX <= button.frame.minX, "\(size): the text stays left of Show")
+                t.check(button.frame.maxX <= notice.bounds.maxX - 11, "\(size): Show inside the notice")
+                // Three lines at most at 11 pt (the text wraps at its own width, not at one character).
+                t.check(text.frame.height < 60, "\(size): the text wraps to its width: \(text.frame.height)")
+                t.check(notice.frame.height < 100, "\(size): \(notice.frame.height)")
+            }
             manage.close()
         }
     }

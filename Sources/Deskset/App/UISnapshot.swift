@@ -6,7 +6,8 @@ import DesksetCore
 ///
 /// - `manage`: the Manage window over a temporary copy of TestSkins/App and TestSkins/Deskset, the example skins of
 ///   Deskset 0.1 (or `--skins-dir`), with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus)
-///   selected.
+///   selected (`Config\File.ini` selects one file); `--hidden` loads the selected skin when it is not loaded and has
+///   it hide itself (`!Hide`), `--coordinates X,Y` types coordinates for it.
 /// - `install`: the .rmskin confirmation for a generated package (header image, plugin warning).
 /// - `install-zip`: the confirmation for a plain ZIP archive (no RMSKIN.ini) with fonts.
 /// - `icon`: the app icon at 1024 px.
@@ -78,8 +79,11 @@ enum UISnapshot {
             // Sizes are clamped (a typo like 90000x600 would otherwise ask for a gigabyte-sized bitmap).
             let size = (value(after: "--size").map { $0.split(separator: "x").compactMap { Double($0) } } ?? [])
                 .map { $0.isFinite ? min(max($0, 200), 3000) : 900 }
+            let typed = (value(after: "--coordinates")?.split(separator: ",").compactMap { Int($0) }) ?? []
             data = managePreview(select: value(after: "--select") ?? "App\\Focus", skinsDir: value(after: "--skins-dir"),
-                                 size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil)
+                                 size: size.count == 2 ? NSSize(width: size[0], height: size[1]) : nil,
+                                 hidden: arguments.contains("--hidden"),
+                                 coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil)
         default:
             fputs("unknown snapshot \"\(what)\" (manage, inspector, settings, codeeditor, library, install, install-zip, icon, menubar)\n", stderr)
             return 2
@@ -130,7 +134,8 @@ enum UISnapshot {
         return rep.representation(using: .png, properties: [:])
     }
 
-    private static func managePreview(select: String, skinsDir: String?, size: NSSize?) -> Data? {
+    private static func managePreview(select: String, skinsDir: String?, size: NSSize?, hidden: Bool = false,
+                                      coordinates: (x: Int, y: Int)? = nil) -> Data? {
         let root = temporaryDirectory("manage")
         let skins: URL
         if let skinsDir {
@@ -152,7 +157,18 @@ enum UISnapshot {
         app.activate(config: "Deskset\\Clock", file: nil)
         let manage = ManageWindowController(app: app)
         if let size { manage.window?.setContentSize(size) }
-        manage.select(config: select, file: nil)
+        // --select Config or Config\File.ini.
+        var config = SkinLibrary.normalizedConfigName(select), file: String?
+        if config.lowercased().hasSuffix(".ini"), let cut = config.lastIndex(of: "\\") {
+            file = String(config[config.index(after: cut)...])
+            config = String(config[..<cut])
+        }
+        // --hidden: the selected skin (loaded first when it is not) hides itself, as a widget that hides while idle does.
+        if hidden, let c = app.controller(for: config) ?? app.activate(config: config, file: file), !c.isHiddenByBang {
+            c.skin.execute("[!Hide]", from: nil)
+        }
+        manage.select(config: config, file: file)
+        if let coordinates { manage.testTypeCoordinates(x: coordinates.x, y: coordinates.y) }
         let rep = manage.snapshot()
         let data = rep?.representation(using: .png, properties: [:])
         withExtendedLifetime(app) {}

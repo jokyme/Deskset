@@ -153,6 +153,17 @@ struct NowPlayingSnapshot: Equatable {
     var trackKey: String? { hasTrack ? "\(app.rawValue):\(status.trackID)" : nil }
 }
 
+/// Deskset's Automation permission for one player, as macOS answers without asking. The raw values are what
+/// `PlayerType=MacPermission` reads.
+enum NowPlayingPermission: Int, Equatable {
+    /// Allowed (or nothing is known to be missing).
+    case allowed = 0
+    /// Refused, in the prompt or in System Settings › Privacy & Security › Automation.
+    case refused = 1
+    /// Not decided yet: macOS asks at the first Apple Event, so its prompt may be on screen now.
+    case notDetermined = 2
+}
+
 // MARK: - Values
 
 /// What a NowPlaying / iTunes / WebNowPlaying measure shows.
@@ -170,6 +181,9 @@ enum NowPlayingField: Equatable {
     case positionSeconds
     // WebNowPlaying
     case player, remaining, coverWebAddress
+    /// Deskset extension (`PlayerType=MacPermission`): a running player's refused or undecided Automation permission
+    /// (see `NowPlayingValues.permission`). Measures fill it in from the center; `value` has no data for it.
+    case macPermission
     /// 0 off, 1 repeat one, 2 repeat all (WebNowPlaying's numbering).
     case repeatMode3
     case supportsPlayPause, supportsSkipPrevious, supportsSkipNext, supportsSetPosition, supportsSetVolume
@@ -196,6 +210,7 @@ enum NowPlayingField: Equatable {
         case "state": return .state
         case "status": return .status
         case "volume": return .volume
+        case "macpermission": return .macPermission
         default: return nil
         }
     }
@@ -254,7 +269,7 @@ enum NowPlayingField: Equatable {
         switch self {
         case .progress, .volume, .ratingPercent: return 100
         case .rating: return 5
-        case .state, .repeatMode3: return 2
+        case .state, .repeatMode3, .macPermission: return 2
         case .ratingSystem: return 3
         case .position, .duration, .positionSeconds, .trackTime, .remaining:
             let d = snapshot.duration
@@ -336,7 +351,32 @@ enum NowPlayingValues {
         case .supportsSetRating: return num(snap.running && snap.app == .music ? 1 : 0)
         case .ratingSystem: return num(snap.running && snap.app == .music ? 3 : 0)
         case .usesNativeAPIs: return num(1)
+        case .macPermission: return (0, snap.app.displayName)
         }
+    }
+
+    /// `PlayerType=MacPermission`: whether a player the measure cannot read keeps it from showing what plays.
+    ///
+    /// - It is about the player the measure would show if it could read it: the preferred player while it runs, else
+    ///   the other one. 1 while that player runs and refused Automation, 2 while it runs and has not been asked yet
+    ///   (macOS asks at the first poll; its prompt may be on screen), else 0. So a refused other player counts only
+    ///   while the preferred player is closed: while the preferred one runs, the measure shows it (not playing, with
+    ///   its own controls), whatever the other one refused.
+    /// - Always 0 while the measure shows a track (another player's): the refusal hides nothing then.
+    /// - The string names the player the number is about ("Music", "Spotify"); for 0, the player the measure shows
+    ///   (the preferred one when none runs), so it is never empty.
+    ///
+    /// Judgment: a closed player is not counted, even when it was refused: with nothing running, "not playing" is
+    /// what is true, and its first poll after it opens tells again.
+    static func permission(preferred: MediaApp, shown: NowPlayingSnapshot, running: Set<MediaApp>,
+                           permissions: [MediaApp: NowPlayingPermission]) -> (number: Double, string: String) {
+        let quiet = (0.0, shown.app.displayName)
+        guard !shown.hasTrack else { return quiet }
+        let candidate = running.contains(preferred) ? preferred : preferred.other
+        guard running.contains(candidate), let permission = permissions[candidate], permission != .allowed else {
+            return quiet
+        }
+        return (Double(permission.rawValue), candidate.displayName)
     }
 }
 

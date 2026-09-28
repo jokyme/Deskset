@@ -107,10 +107,11 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         pidToName = bool("PIDToName", autoPIDToName)
         cachedSerial = nil
         let needsSampler = spec?.needsProcesses == true || spec?.usesCores == true
-        if needsSampler && !subscribed {
+        if needsSampler {
+            // Again on every read of the options: what the counter needs of a sample may have changed.
             subscribed = true
-            ProcessSampler.shared.subscribe(self)
-        } else if !needsSampler && subscribed {
+            ProcessSampler.shared.subscribe(self, details: spec?.needsDetails == true)
+        } else if subscribed {
             subscribed = false
             ProcessSampler.shared.unsubscribe(self)
         }
@@ -127,7 +128,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         }
         let values: [PerfValue]
         if spec.needsProcesses || spec.usesCores {
-            let samples = ProcessSampler.shared.samples()
+            let samples = ProcessSampler.shared.samples(details: spec.needsDetails)
             guard let latest = samples.latest else {
                 rawString = cachedResult.1
                 return cachedResult.0
@@ -137,6 +138,23 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
                 return cachedResult.0
             }
             cachedSerial = latest.serial
+            if spec.isProcessField {
+                // Per process: the same for every measure that reads this counter the same way, such as the four
+                // of a "top 4" list, which differ only in Index. Ranked once per sample for all of them.
+                let key = UsageMonitorMeasure.RankingKey(
+                    spec: spec, previous: samples.previous?.serial, latest: latest.serial, rollup: rollup,
+                    raw: rawValue, percent: percent, whitelist: whitelist, blacklist: blacklist,
+                    ranks: instanceName == nil && index > 0)
+                let ranking = UsageMonitorMeasure.sharedRanking(key) {
+                    let values = PerfCounters.processValues(spec, old: samples.previous, new: latest,
+                                                            mode: rawValue ? .raw : .formatted, rollup: rollup)
+                    return self.ranking(values, ranks: key.ranks)
+                }
+                let result = pick(ranking, spec: spec)
+                cachedResult = result
+                rawString = result.1
+                return result.0
+            }
             values = UsageMonitorMeasure.values(spec, previous: samples.previous, latest: latest,
                                                 context: context(snapshot: latest, cores: latest.cores),
                                                 rollup: rollup, raw: rawValue)
@@ -180,14 +198,35 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 
     /// Applies Percent, the lists, then Name / Index. Returns the number and string values.
     func select(_ all: [PerfValue], spec: PerfCounterSpec) -> (Double, String) {
+        pick(ranking(all, ranks: instanceName == nil && index > 0), spec: spec)
+    }
+
+    /// What `select` makes of a list of values before Name and Index: the same for every measure with the same
+    /// counter, Percent and lists.
+    struct Ranking {
+        enum Status {
+            case counted
+            /// Percent=1 and no `_Total` instance.
+            case noTotal
+            /// Percent=1 and a `_Total` of 0: nothing counted yet (a rate's first sample has no interval).
+            case nothingCounted
+        }
+
+        var status = Status.counted
+        /// After Percent and the lists.
+        var values: [PerfValue] = []
+        /// Those above 0, highest first, ties by name (only when asked for: `ranks`).
+        var ranked: [PerfValue] = []
+    }
+
+    func ranking(_ all: [PerfValue], ranks: Bool) -> Ranking {
         var values = all
         if percent {
             guard let total = values.first(where: { $0.name == "_Total" })?.value else {
-                report("percent", "UsageMonitor [\(name)]: Percent=1 needs a _Total instance; the value is 0")
-                return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
+                return Ranking(status: .noTotal)
             }
             // Nothing counted yet (a rate's first sample has no interval) or nothing at all: every share is 0 %.
-            guard total > 0 else { return (0, index == 0 ? "Total" : index == -1 ? "Average" : "") }
+            guard total > 0 else { return Ranking(status: .nothingCounted) }
             values = values.map { PerfValue(name: $0.name, value: $0.value / total * 100) }
         }
         func matches(_ list: [String], _ name: String) -> Bool {
@@ -198,6 +237,27 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         } else if !blacklist.isEmpty {
             values = values.filter { !matches(blacklist, $0.name) }
         }
+        var result = Ranking(values: values)
+        if ranks {
+            result.ranked = values.filter { $0.value > 0 }.sorted {
+                $0.value != $1.value ? $0.value > $1.value : $0.name < $1.name
+            }
+        }
+        return result
+    }
+
+    /// Name / Index from a ranking made for this measure's options.
+    func pick(_ ranking: Ranking, spec: PerfCounterSpec) -> (Double, String) {
+        switch ranking.status {
+        case .counted:
+            break
+        case .noTotal:
+            report("percent", "UsageMonitor [\(name)]: Percent=1 needs a _Total instance; the value is 0")
+            return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
+        case .nothingCounted:
+            return (0, index == 0 ? "Total" : index == -1 ? "Average" : "")
+        }
+        let values = ranking.values
         func label(_ v: PerfValue) -> String {
             if pidToName, spec.field == .processPid,
                let n = ProcessNames.name(of: pid_t(truncatingIfNeeded: Int(v.value.clamped(0, 2e9)))) {
@@ -217,13 +277,54 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         case -1:
             return (values.isEmpty ? 0 : values.reduce(0) { $0 + $1.value } / Double(values.count), "Average")
         default:
-            let sorted = values.filter { $0.value > 0 }.sorted {
-                $0.value != $1.value ? $0.value > $1.value : $0.name < $1.name
-            }
+            let sorted = ranking.ranked
             guard index - 1 < sorted.count else { return (0, "") }
             let v = sorted[index - 1]
             return (v.value, label(v))
         }
+    }
+
+    // MARK: Rankings shared between measures
+
+    /// A per-process counter read the same way from the same two samples.
+    struct RankingKey: Hashable {
+        let spec: PerfCounterSpec
+        let previous: Int?
+        let latest: Int
+        let rollup: Bool
+        let raw: Bool
+        let percent: Bool
+        let whitelist: [String]?
+        let blacklist: [String]
+        let ranks: Bool
+    }
+
+    /// Rankings of the latest sample, for measures on any skin's thread.
+    private static let rankingLock = NSLock()
+    private static var rankings: [RankingKey: Ranking] = [:]
+    private static var rankingsSample = -1
+    /// Rankings made (tests).
+    private(set) static var rankingsMade = 0
+
+    /// The ranking for `key`, made by `make` unless a measure already made it from the same sample. Only the latest
+    /// sample's are kept. `make` runs outside the lock (two measures may then both make one; either result is right).
+    static func sharedRanking(_ key: RankingKey, make: () -> Ranking) -> Ranking {
+        rankingLock.lock()
+        if let found = rankings[key] {
+            rankingLock.unlock()
+            return found
+        }
+        rankingLock.unlock()
+        let made = make()
+        rankingLock.lock()
+        defer { rankingLock.unlock() }
+        rankingsMade += 1
+        if key.latest > rankingsSample {
+            rankings = [:]
+            rankingsSample = key.latest
+        }
+        if key.latest == rankingsSample { rankings[key] = made }
+        return made
     }
 
     private func report(_ key: String, _ message: String) {
@@ -283,10 +384,11 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         instance = i
         difference = bool("PerfMonDifference", true)
         let needsSampler = spec?.needsProcesses == true
-        if needsSampler && !subscribed {
+        if needsSampler {
+            // Again on every read of the options: what the counter needs of a sample may have changed.
             subscribed = true
-            ProcessSampler.shared.subscribe(self)
-        } else if !needsSampler && subscribed {
+            ProcessSampler.shared.subscribe(self, details: spec?.needsDetails == true)
+        } else if subscribed {
             subscribed = false
             ProcessSampler.shared.unsubscribe(self)
         }
@@ -297,7 +399,7 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         let mode: PerfCounters.Mode = difference ? .rawDelta : .raw
         let values: [PerfValue]
         if spec.needsProcesses {
-            guard let latest = ProcessSampler.shared.samples().latest else { return lastValue }
+            guard let latest = ProcessSampler.shared.samples(details: spec.needsDetails).latest else { return lastValue }
             if let lastSnapshot, lastSnapshot.serial == latest.serial { return lastValue }
             if spec.isProcessField {
                 values = PerfCounters.processValues(spec, old: lastSnapshot, new: latest, mode: mode, rollup: false)
@@ -370,7 +472,7 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         topProcess = min(max(int("TopProcess", 0), 0), 2)
         if !subscribed {
             subscribed = true
-            ProcessSampler.shared.subscribe(self)
+            ProcessSampler.shared.subscribe(self, details: false)
         }
     }
 

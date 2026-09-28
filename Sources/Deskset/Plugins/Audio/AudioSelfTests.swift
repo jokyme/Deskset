@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 import DesksetCore
@@ -12,6 +13,7 @@ enum AudioSelfTests {
         bandTests(t)
         ringTests(t)
         engineTests(t)
+        standbyTests(t)
         measureTests(t)
         captureScopeTests(t)
         win7AudioTests(t)
@@ -21,6 +23,8 @@ enum AudioSelfTests {
         registrationTests(t)
         deviceTests(t)
         testSkinTests(t)
+        stationeryTests(t)
+        stripComeUpTests(t)
     }
 
     // MARK: Signals
@@ -709,6 +713,587 @@ enum AudioSelfTests {
             denied.unsubscribe(d)
             denied.unsubscribe(retry)
             denied.drain()
+        }
+    }
+
+    // MARK: Capture only while another app plays (E27)
+
+    /// Another app playing sound or not, as the test says (`AudioOutputActivity`). Setting `playing` tells the engine
+    /// on the HAL queue, as Core Audio's listeners do.
+    final class FakeActivity: AudioOutputActivity {
+        private let lock = NSLock()
+        private var _playing = false
+        /// HAL queue only.
+        private var handler: (() -> Void)?
+        private(set) var observing = false
+
+        var playing: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return _playing }
+            set {
+                lock.lock(); _playing = newValue; lock.unlock()
+                AudioHAL.queue.async { self.handler?() }
+            }
+        }
+
+        var isObserved: Bool { AudioHAL.queue.sync { observing } }
+
+        func othersPlay() -> Bool { playing }
+        func observe(_ handler: @escaping () -> Void) {
+            self.handler = handler
+            observing = true
+        }
+        func stopObserving() {
+            handler = nil
+            observing = false
+        }
+    }
+
+    static func standbyTests(_ t: AppTestRunner) {
+        t.suite("App: Audio system audio is captured only while another app plays") {
+            let activity = FakeActivity()
+            var created: [AudioSourceKey: [FakeBackend]] = [:]
+            let lock = NSLock()
+            let engine = makeEngine { key in
+                let b = FakeBackend()
+                lock.lock(); created[key, default: []].append(b); lock.unlock()
+                return b
+            }
+            engine.outputActivity = activity
+            engine.standbyDelay = 0.05
+            func backends(_ key: AudioSourceKey) -> [FakeBackend] {
+                lock.lock(); defer { lock.unlock() }
+                return created[key] ?? []
+            }
+            let output = AudioSourceKey(kind: .output, deviceID: nil)
+            let input = AudioSourceKey(kind: .input, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            let mic = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: output)
+            engine.subscribe(mic, to: input)
+            engine.drain()
+            t.equal(backends(output).count, 0, "nothing plays: no tap, so no recording indicator")
+            t.check(engine.isWaitingForSound(output))
+            let waiting = engine.status(for: output)
+            t.check(!waiting.running && waiting.standby)
+            t.equal(waiting.deviceStatus, 1, "the device is there: DeviceStatus 1")
+            t.equal(backends(input).count, 1, "an input device is read at once")
+            t.check(activity.isObserved)
+
+            activity.playing = true
+            t.check(wait { backends(output).count == 1 && engine.status(for: output).running },
+                    "captures once another app plays")
+            t.check(!engine.isWaitingForSound(output))
+            t.equal(engine.status(for: output).deviceStatus, 1)
+            t.equal(engine.status(for: output).deviceName, "Fake Speakers")
+            // Another subscriber (a second visualizer) shares the capture.
+            let b = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(b, to: output)
+            engine.drain()
+            t.equal(backends(output).count, 1)
+
+            activity.playing = false
+            t.check(wait { backends(output).first?.stops == 1 && engine.isWaitingForSound(output) },
+                    "stops standbyDelay after the last app stopped")
+            t.check(!engine.status(for: output).running)
+            t.equal(engine.status(for: output).deviceStatus, 1)
+            t.equal(backends(input).first?.stops, 0, "the input device goes on")
+
+            activity.playing = true
+            t.check(wait { backends(output).count == 2 && engine.status(for: output).running }, "captures again")
+            // A gap shorter than standbyDelay (between two tracks) keeps the capture.
+            engine.standbyDelay = 0.3
+            activity.playing = false
+            activity.playing = true
+            Thread.sleep(forTimeInterval: 0.5)
+            engine.drain()
+            t.equal(backends(output).last?.stops, 0, "a short gap keeps the capture")
+            t.check(engine.status(for: output).running)
+
+            // Suspended (the Mac asleep) and resumed while nothing plays: it waits again.
+            activity.playing = false
+            engine.setSuspended(true)
+            engine.drain()
+            t.equal(backends(output).last?.stops, 1)
+            engine.setSuspended(false)
+            engine.drain()
+            t.check(engine.isWaitingForSound(output), "resumed while nothing plays: waits")
+            t.equal(backends(output).count, 2)
+
+            engine.unsubscribe(a)
+            engine.unsubscribe(b)
+            engine.drain()
+            engine.drain()
+            t.check(!engine.activeSourceKeys().contains(output), "last subscriber gone: the source goes")
+            t.check(!activity.isObserved, "and nobody watches the other apps any more")
+            engine.unsubscribe(mic)
+            engine.drain()
+
+            // Without an activity source (macOS before 14.2, the demo signal) system audio is captured at once.
+            let always = makeEngine { _ in FakeBackend() }
+            let c = AudioAnalyzer(settings: AudioAnalysisSettings())
+            always.subscribe(c, to: output)
+            always.drain()
+            t.check(always.status(for: output).running)
+            always.unsubscribe(c)
+            always.drain()
+        }
+
+        t.suite("App: Audio MacPermission 1 is the silence watchdog's verdict") {
+            let activity = FakeActivity()
+            activity.playing = true
+            // The apps playing at each look (by the pid of the app they work for).
+            let appsLock = NSLock()
+            var apps: Set<pid_t> = [501]
+            func setApps(_ value: Set<pid_t>) { appsLock.lock(); apps = value; appsLock.unlock() }
+            var latest: AppSelfTest.SilenceBackend?
+            var made = 0
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.standbyDelay = 0.05
+            engine.outputActivity = activity
+            engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
+            // No new tap in the first part: the delays come later.
+            engine.retapDelays = [3600]
+            var watching = 0
+            engine.watchPermissionChanges = { _ in watching += 1 }
+            engine.makeBackend = { _ in
+                let b = AppSelfTest.SilenceBackend()
+                lock.lock(); latest = b; made += 1; lock.unlock()
+                return b
+            }
+            func backend() -> AppSelfTest.SilenceBackend? { lock.lock(); defer { lock.unlock() }; return latest }
+            func starts() -> Int { lock.lock(); defer { lock.unlock() }; return made }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+
+            // Measures: a parent, its DeviceStatus child and its MacPermission child.
+            let skin = try makeSkin(t, "[Rainmeter]\nUpdate=1000\n[Audio]\nMeasure=Plugin\nPlugin=AudioLevel\n"
+                                    + "[Status]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=DeviceStatus\n"
+                                    + "[Access]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=MacPermission\n",
+                                    config: "AudioVerdict")
+            guard let parentSection = skin.document.section(named: "Audio"),
+                  let statusSection = skin.document.section(named: "Status"),
+                  let accessSection = skin.document.section(named: "Access") else { return }
+            let parent = AudioLevelMeasure(name: "Audio", section: parentSection, skin: skin, type: "audiolevel")
+            let status = AudioLevelMeasure(name: "Status", section: statusSection, skin: skin, type: "audiolevel")
+            let access = AudioLevelMeasure(name: "Access", section: accessSection, skin: skin, type: "audiolevel")
+            for m in [parent, status, access] {
+                m.engine = engine
+                m.system = { fakeSnapshot() }
+                m.prepareSystem = {}
+                m.mayCapture = { _ in true }
+                m.parentLookup = { $0 == "Audio" ? parent : nil }
+                m.readOptions()
+            }
+            func read(_ m: AudioLevelMeasure) -> String { "\(Int(m.computeValue())) \(m.pluginString ?? "nil")" }
+            t.equal(access.automaticMaxValue, 2)
+            _ = parent.computeValue()   // the first update subscribes
+            engine.drain()
+            t.check(engine.status(for: key).running)
+            t.equal(status.computeValue(), 1, "capturing")
+            t.equal(read(access), "0 ", "nothing is missing")
+
+            // Silence while a different app plays at each look is no verdict: the same app must play at both.
+            var turn: pid_t = 600
+            t.check(!wait(timeout: 0.6) {
+                turn += 1
+                setApps([turn])
+                return engine.status(for: key).refusalSuspected
+            }, "a different app at every look")
+            setApps([501])
+            t.check(wait { engine.status(for: key).refusalSuspected }, "silence at two looks while the same app plays")
+            t.equal(read(access), "1 System Audio Recording")
+            t.equal(status.computeValue(), 1, "DeviceStatus stays Rainmeter's 0 or 1: the device is there")
+            t.equal(engine.status(for: key).permissionNote, AudioCaptureEngine.silenceNote)
+            _ = parent.computeValue()
+            t.check(skin.issues.contains(AudioCaptureEngine.silenceNote), "a compatibility note too")
+            t.check(wait { watching == 1 }, "the verdict watches for a permission given in System Settings")
+
+            // The verdict keeps the tap between looks (no new tap until the first delay is over).
+            let kept = starts()
+            Thread.sleep(forTimeInterval: 0.3)
+            t.equal(starts(), kept, "the tap is kept")
+
+            // The verdict outlasts the capture: waiting for sound, and in the next capture.
+            activity.playing = false
+            t.check(wait { engine.isWaitingForSound(key) }, "nothing plays: waits")
+            t.equal(read(access), "1 System Audio Recording", "still refused while it waits")
+            t.equal(status.computeValue(), 1)
+            let waiting = starts()
+            activity.playing = true
+            t.check(wait { starts() > waiting && engine.status(for: key).running }, "captures again")
+            t.equal(read(access), "1 System Audio Recording", "and the verdict stands from the start")
+
+            // Leaving System Settings takes a new tap at once.
+            let beforeSettings = starts()
+            AudioHAL.queue.sync { engine.permissionMayHaveChanged() }
+            t.check(wait { starts() > beforeSettings && engine.status(for: key).running }, "a new tap after System Settings")
+
+            // Sound: the permission is there.
+            t.check(wait {
+                backend()?.feed(0.25)
+                return !engine.status(for: key).refusalSuspected
+            }, "sound clears the verdict")
+            t.check(engine.status(for: key).permissionNote == nil)
+            t.equal(read(access), "0 ")
+            t.equal(status.computeValue(), 1)
+            _ = parent.computeValue()
+            t.check(!skin.issues.contains(AudioCaptureEngine.silenceNote), "the note is taken back")
+
+            // Once sound was heard, silence while other apps run their output is only silence.
+            activity.playing = false
+            t.check(wait { engine.isWaitingForSound(key) })
+            let heard = starts()
+            activity.playing = true
+            t.check(wait { starts() > heard && engine.status(for: key).running })
+            Thread.sleep(forTimeInterval: 0.4)
+            t.equal(read(access), "0 ", "no verdict after sound was heard")
+            t.equal(starts(), heard + 1, "and no new taps")
+            withExtendedLifetime((parent, status, access)) {}
+        }
+
+        t.suite("App: Audio new taps while the verdict stands come further and further apart, then stop") {
+            let appsLock = NSLock()
+            var apps: Set<pid_t> = [501]
+            func setApps(_ value: Set<pid_t>) { appsLock.lock(); apps = value; appsLock.unlock() }
+            var made = 0
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
+            engine.retapDelays = [0.2, 0.6]
+            engine.makeBackend = { _ in
+                lock.lock(); made += 1; lock.unlock()
+                return AppSelfTest.SilenceBackend()
+            }
+            func starts() -> Int { lock.lock(); defer { lock.unlock() }; return made }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: key)
+            engine.drain()
+            t.check(wait { engine.status(for: key).refusalSuspected }, "the verdict")
+            let verdict = Date()
+            let first = starts()
+            t.check(wait { starts() == first + 1 }, "a first new tap")
+            let firstGap = Date().timeIntervalSince(verdict)
+            t.check(firstGap >= 0.12, "after the first delay: \(firstGap)")
+            let second = Date()
+            t.check(wait { starts() == first + 2 }, "a second one")
+            let secondGap = Date().timeIntervalSince(second)
+            t.check(secondGap >= 0.45, "after the longer delay: \(secondGap)")
+            // The delays are used up: no more new taps while the same app plays.
+            Thread.sleep(forTimeInterval: 1.0)
+            t.equal(starts(), first + 2, "no more new taps")
+            t.check(engine.status(for: key).refusalSuspected, "the verdict stands")
+            // Another app starts playing: the delays start again.
+            setApps([501, 502])
+            t.check(wait { starts() == first + 3 }, "another app plays: a new tap")
+            engine.unsubscribe(a)
+            engine.drain()
+            engine.drain()
+        }
+
+        t.suite("App: Audio !DisableMeasure releases the capture") {
+            let ini = """
+            [Rainmeter]
+            Update=1000
+            [MeasureAudio]
+            Measure=Plugin
+            Plugin=AudioLevel
+            RMSAttack=0
+            RMSDecay=3600000
+            [MeasureRMS]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=RMS
+            """
+            let skin = try makeSkin(t, ini, config: "AudioDisable")
+            var created: [FakeBackend] = []
+            let lock = NSLock()
+            let engine = makeEngine { _ in
+                let b = FakeBackend()
+                lock.lock(); created.append(b); lock.unlock()
+                return b
+            }
+            func backends() -> [FakeBackend] { lock.lock(); defer { lock.unlock() }; return created }
+            guard let parent = skin.measure(named: "MeasureAudio") as? AudioLevelMeasure,
+                  let child = skin.measure(named: "MeasureRMS") as? AudioLevelMeasure else {
+                return t.check(false, "the skin's measures are AudioLevel measures")
+            }
+            for m in [parent, child] {
+                m.engine = engine
+                m.system = { fakeSnapshot() }
+                m.prepareSystem = {}
+                m.mayCapture = { _ in true }
+            }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            skin.update()
+            engine.drain()
+            t.check(parent.subscribed)
+            t.equal(backends().count, 1)
+            guard let ring = backends().first?.ring else { return t.check(false, "the capture started") }
+            let signal = sine(1000, amplitude: 0.5, seconds: 0.05)
+            t.check(wait {
+                signal.withUnsafeBufferPointer { ring.write(interleaved: $0.baseAddress!, frames: signal.count / 2,
+                                                            channels: 2) }
+                skin.update()
+                return child.value > 0.3
+            }, "the child reads the sound: \(child.value)")
+
+            skin.execute("[!DisableMeasure MeasureAudio]", from: nil)
+            engine.drain()
+            engine.drain()
+            t.check(!parent.subscribed, "the parent lets its analyzer go")
+            t.equal(backends().first?.stops, 1, "the capture stops (stopDelay 0 here)")
+            t.check(!engine.activeSourceKeys().contains(key))
+            t.check(wait { skin.update(); return child.value == 0 }, "its children read 0")
+
+            skin.execute("[!EnableMeasure MeasureAudio]", from: nil)
+            skin.update()
+            engine.drain()
+            t.check(parent.subscribed, "enabled: subscribed again at its next update")
+            t.equal(backends().count, 2)
+            t.check(engine.status(for: key).running)
+            skin.close()
+            engine.drain()
+            engine.drain()
+        }
+    }
+
+    /// A system-audio capture that runs, carries silence and says what the silence watchdog says of a refused
+    /// permission (as `DESKSET_AUDIO_DEMO=refused` does).
+    final class RefusedBackend: AudioCaptureBackend {
+        let deviceID: AudioObjectID? = 7
+        func start(ring: AudioRingBuffer, events: AudioBackendEvents) -> AudioSourceStatus {
+            var s = AudioSourceStatus(running: true, deviceName: "Fake", deviceUID: "Fake", format: "", sampleRate: 48000,
+                                      channels: 2)
+            s.refusalSuspected = true
+            s.permissionNote = AudioCaptureEngine.silenceNote
+            return s
+        }
+        func stop() {}
+    }
+
+    /// System audio on macOS 13 – 14.1 with Screen Recording refused: nothing runs, and the status says which
+    /// permission is missing.
+    final class ScreenRefusedBackend: AudioCaptureBackend {
+        let deviceID: AudioObjectID? = 7
+        func start(ring: AudioRingBuffer, events: AudioBackendEvents) -> AudioSourceStatus {
+            var s = AudioSourceStatus(message: "Screen Recording is off", permissionNote: AudioPermissions.screenRecordingNote)
+            s.missingPermission = .screenRecording
+            return s
+        }
+        func stop() {}
+    }
+
+    static func stationeryTests(_ t: AppTestRunner) {
+        t.suite("App: Audio Stationery visualizers say System Audio Recording is refused") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            // A copy: the widgets write their own files.
+            let root = t.temporaryDirectory("stationery-audio")
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.makeBackend = { _ in RefusedBackend() }
+            func file(_ config: String) -> URL { root.appendingPathComponent("Stationery/\(config)/Medium.ini") }
+            func load(_ config: String) throws -> Skin {
+                // The last widget's source goes first (stopDelay 0), so this one starts its own capture.
+                engine.drain()
+                engine.drain()
+                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config), skinsDirectory: root,
+                                system: SystemMonitor.shared, host: host)
+                try skin.load()
+                for case let m as AudioLevelMeasure in skin.measures {
+                    m.engine = engine
+                    m.mayCapture = { _ in true }
+                    m.system = { fakeSnapshot() }
+                    m.prepareSystem = {}
+                }
+                skin.update()   // the parent subscribes
+                engine.drain()
+                // MacPermission is read every 15 updates while the widgets move (every 30 for Studio VU's row), and
+                // Studio VU's grace for a capture that does not start takes 4 of its lamp steps.
+                for _ in 0..<80 { skin.update() }
+                return skin
+            }
+            func variable(_ config: String, _ key: String) -> String? {
+                let text = (try? String(contentsOf: file(config), encoding: .utf8)) ?? ""
+                guard let line = text.components(separatedBy: "\n").first(where: { $0.hasPrefix(key + "=") }) else {
+                    return nil
+                }
+                return String(line.dropFirst(key.count + 1))
+            }
+
+            let spectrum = try load("Spectrum")
+            t.equal(spectrum.meter(named: "MeterNoticeTitle")?.hidden, false, "Spectrum shows its Notice")
+            t.equal((spectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow System Audio Recording")
+            t.equal(spectrum.meter(named: "MeterBar0")?.hidden, true, "the bars rest")
+            t.check(spectrum.issues.contains(AudioCaptureEngine.silenceNote), "and a compatibility note")
+            // (The render host leaves the refresh out; the file shows the tempo the widget chose.)
+            t.equal(variable("Spectrum", "Tempo"), "Rest", "a Notice runs at the Rest tempo")
+            spectrum.close()
+
+            let studio = try load("StudioVU")
+            t.equal((studio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow System Audio Recording",
+                    "Studio VU says so in its row")
+            t.equal((studio.meter(named: "MeterArtist") as? StringMeter)?.text, "Open Privacy Settings")
+            t.equal(studio.meter(named: "MeterTime")?.hidden, true)
+            t.check(studio.meter(named: "MeterTitle")?.toolTipText.contains("System Audio Recording") == true,
+                    "its tooltip says where: \(studio.meter(named: "MeterTitle")?.toolTipText ?? "")")
+            t.equal(variable("StudioVU", "StudioFast"), "0", "the needles can't move: the slow tempo")
+            t.equal(variable("StudioVU", "StudioLive"), "1", "the lamps stay as they are")
+            studio.close()
+
+            // macOS 13 – 14.1 (the OS check made to match): Screen Recording refused.
+            engine.makeBackend = { _ in ScreenRefusedBackend() }
+            for config in ["Spectrum", "StudioVU"] {
+                var text = try String(contentsOf: file(config), encoding: .utf8)
+                text = text.replacingOccurrences(of: "\nTempo=Rest\n", with: "\nTempo=Live\n")
+                    .replacingOccurrences(of: "\nTempoLive=0\n", with: "\nTempoLive=1\n")
+                    .replacingOccurrences(of: "\nStudioFast=0\n", with: "\nStudioFast=1\n")
+                try text.write(to: file(config), atomically: true, encoding: .utf8)
+            }
+            let audioInc = root.appendingPathComponent("Stationery/@Resources/Spectrum/Audio.inc")
+            for url in [audioInc, file("StudioVU")] {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                t.check(text.contains("IfMatch=^macOS (13|14\\.[01])(\\.|$)"), "\(url.lastPathComponent): the OS check")
+                try text.replacingOccurrences(of: "IfMatch=^macOS (13|14\\.[01])(\\.|$)", with: "IfMatch=^macOS")
+                    .write(to: url, atomically: true, encoding: .utf8)
+            }
+            let oldSpectrum = try load("Spectrum")
+            t.equal((oldSpectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording")
+            t.equal(oldSpectrum.meter(named: "MeterNoticeTitle")?.hidden, false)
+            oldSpectrum.close()
+            let oldStudio = try load("StudioVU")
+            t.equal((oldStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "Studio VU on macOS 13 – 14.1")
+            t.equal((oldStudio.meter(named: "MeterArtist") as? StringMeter)?.text, "Open Privacy Settings")
+            t.check(oldStudio.meter(named: "MeterTitle")?.toolTipText.contains("Screen Recording") == true,
+                    "\(oldStudio.meter(named: "MeterTitle")?.toolTipText ?? "")")
+            oldStudio.close()
+
+            // A capture that does not start, with nothing said about why (macOS 13 – 14.1): after a few seconds the
+            // row asks for Screen Recording too.
+            engine.makeBackend = { _ in
+                let f = FakeBackend()
+                f.running = false
+                return f
+            }
+            let silentStudio = try load("StudioVU")
+            t.equal((silentStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "no capture a few seconds after load")
+            silentStudio.close()
+            engine.drain()
+            engine.drain()
+        }
+    }
+
+    static func stripComeUpTests(_ t: AppTestRunner) {
+        t.suite("App: Audio Stationery Spectrum strip comes up in view at rest for a Notice or a refused player") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let root = t.temporaryDirectory("stationery-strip")
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
+            // At rest (the tempo a Notice and the quiet write into the strip), with Hide When Idle on.
+            func edit(_ path: String, _ pairs: [(String, String)]) throws {
+                let url = root.appendingPathComponent("Stationery/" + path)
+                var text = try String(contentsOf: url, encoding: .utf8)
+                for (old, new) in pairs {
+                    t.check(text.contains(old), "\(path): \(old)")
+                    text = text.replacingOccurrences(of: old, with: new)
+                }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            try edit("Spectrum/Strip.ini", [("\nTempo=Live\n", "\nTempo=Rest\n"), ("\nTempoLive=1\n", "\nTempoLive=0\n")])
+            try edit("@Resources/Variables.inc", [("\nHideSpectrumWhenIdle=0", "\nHideSpectrumWhenIdle=1")])
+
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let backend = PermissionBackendHolder()
+            let center = NowPlayingCenter(backend: backend.backend)
+            center.forceLive = true
+            center.interval = 3600
+            center.log = { _ in }
+            /// The strip's first update, as after a refresh: returns whether it would come up hidden.
+            func firstUpdate() throws -> (hide: Double?, comeUp: Double?, mode: Double?) {
+                let skin = Skin(config: "Stationery\\Spectrum", fileURL: root.appendingPathComponent("Stationery/Spectrum/Strip.ini"),
+                                skinsDirectory: root, system: SystemMonitor.shared, host: host)
+                try skin.load()
+                for case let m as AudioLevelMeasure in skin.measures {
+                    m.engine = engine
+                    m.mayCapture = { _ in true }
+                    m.system = { fakeSnapshot() }
+                    m.prepareSystem = {}
+                }
+                for case let m as NowPlayingClientMeasure in skin.measures { m.center = center }
+                var result: (Double?, Double?, Double?) = (nil, nil, nil)
+                MediaUITests.inline([center.worker]) {
+                    skin.update()
+                    result = (skin.measure(named: "MeasureStripHide")?.value,
+                              skin.measure(named: "MeasureStripComeUp")?.value, skin.measure(named: "MeasureMode")?.value)
+                }
+                skin.close()
+                engine.drain()
+                engine.drain()
+                return result
+            }
+
+            // Nothing refused (no player runs): it rests hidden, so it comes up hidden.
+            backend.backend.running = []
+            let plain = try firstUpdate()
+            t.equal(plain.mode, 1, "at rest")
+            t.equal(plain.hide, 1, "rests hidden")
+            t.equal(plain.comeUp, 1, "comes up hidden")
+
+            // The verdict kept by the capture across the refresh: the Notice, in view.
+            engine.makeBackend = { _ in RefusedBackend() }
+            let kept = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(kept, to: key)
+            engine.drain()
+            let notice = try firstUpdate()
+            t.equal(notice.mode, 2, "the Notice")
+            t.equal(notice.hide, 0)
+            t.equal(notice.comeUp, 0, "a Notice comes up in view")
+            engine.unsubscribe(kept)
+            engine.drain()
+            engine.drain()
+
+            // Music refused Automation (at rest): in view, so its tooltip can say where to allow it.
+            backend.backend.running = [.music]
+            MediaUITests.inline([center.worker]) {
+                let subscription = center.subscribe(live: true)
+                center.poll()
+                withExtendedLifetime(subscription) {}
+            }
+            let refused = try firstUpdate()
+            t.equal(refused.mode, 1, "at rest")
+            t.equal(refused.hide, 0, "a refused player keeps the strip in view")
+            t.equal(refused.comeUp, 0)
+        }
+    }
+
+    /// Music running, with Automation refused (for widgets that read NowPlaying).
+    final class PermissionBackendHolder {
+        let backend = MediaUIReviewTests.PermissionBackend()
+        init() {
+            backend.running = [.music]
+            backend.peeked[.music] = .refused
+            backend.answers[.music] = .denied
         }
     }
 
@@ -1575,6 +2160,31 @@ enum AudioSelfTests {
             t.check(s.outputDevices.allSatisfy { $0.outputChannels > 0 })
             let list = AudioLevelMeasure.deviceList(s.outputDevices)
             t.equal(list.split(separator: "\n").count, s.outputDevices.count)
+
+            // Whether other apps play sound: Core Audio's process objects, read and listened to (nothing captured).
+            t.check(AudioCaptureEngine.shared.outputActivity == nil, "command-line modes capture nothing, so watch nothing")
+            if #available(macOS 14.2, *) {
+                guard let activity = CoreAudioOutputActivity.makeIfSupported() else {
+                    return t.check(false, "process objects exist on macOS 14.2 and later")
+                }
+                // Another app may start or stop playing between the reads, so only that they answer is checked.
+                AudioHAL.queue.sync {
+                    _ = activity.othersPlay()
+                    activity.observe {}
+                    _ = activity.othersPlay()
+                    activity.stopObserving()
+                }
+                let me = getpid()
+                t.check(AudioHAL.queue.sync { AudioProcesses.objects().contains { AudioProcesses.pid(of: $0) == me } },
+                        "Core Audio lists Deskset among its client processes")
+                // The silence watchdog's evidence: apps with a Dock icon, never Deskset itself.
+                let apps = AudioHAL.queue.sync { AudioProcesses.appsRunningOutput() }
+                t.check(!apps.contains(me), "Deskset is not an app that plays")
+                t.check(apps.allSatisfy { NSRunningApplication(processIdentifier: $0)?.activationPolicy == .regular },
+                        "only regular apps: \(apps)")
+            } else {
+                t.check(CoreAudioOutputActivity.makeIfSupported() == nil)
+            }
         }
     }
 

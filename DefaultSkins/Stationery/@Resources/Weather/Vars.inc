@@ -16,23 +16,7 @@ WxStaleKey=Updated
 WxStaleSymbolOffline=wifi.slash
 WxStaleSymbolUpdated=clock
 
-; ---------------------------------------------------------------- weather symbols by look
-; Light: Hierarchical in the secondary ink; Dark: the symbols' own colours (Multicolor, drawn in Dark Mode's colours);
-; Clear: Hierarchical in the primary white ink. Once Deskset has palette symbols (a yellow sun and blue rain on ink
-; clouds in every look), these become Palette and white, and each weather image's MacSymbolColors takes over.
-WxSymbolRenderingLightRegular=Hierarchical
-WxSymbolRenderingDarkRegular=Multicolor
-WxSymbolRenderingDarkClear=Hierarchical
-; the tint's alpha goes in ImageAlpha (which would override an alpha given in ImageTint); not up to date, 60 % of it
-WxSymbolTintLightRegular=#InkRGB#
-WxSymbolTintDarkRegular=255,255,255
-WxSymbolTintDarkClear=#InkRGB#
-WxSymbolAlphaLightRegular=#Alpha2#
-WxSymbolAlphaDarkRegular=255
-WxSymbolAlphaDarkClear=#Alpha1#
-WxSymbolRendering=[#WxSymbolRendering[#LookTheme][#Glass]]
-WxSymbolTint=[#WxSymbolTint[#LookTheme][#Glass]]
-WxSymbolAlpha=[#WxSymbolAlpha[#LookTheme][#Glass]]
+; ---------------------------------------------------------------- the curve and the range bars by look
 ; the top alpha of the curve's area (raised in Light, where the scale's pastels sit on light glass) and the ring of
 ; today's dot on the first range bar
 WxAreaAlphaLightRegular=90
@@ -43,7 +27,7 @@ WxDotRingColorDarkRegular=0,0,0,150
 WxDotRingColorDarkClear=0,0,0,120
 WxAreaAlpha=[#WxAreaAlpha[#LookTheme][#Glass]]
 WxDotRingColor=[#WxDotRingColor[#LookTheme][#Glass]]
-; Clear's temperature bars and curve area in white, once MacWeather takes ScaleColor (until then the scale's colours)
+; the colour TemperatureColor gives instead of the scale (MacWeather's ScaleColor): Clear's bars and curve area white
 WxScaleColorLightRegular=
 WxScaleColorDarkRegular=
 WxScaleColorDarkClear=255,255,255

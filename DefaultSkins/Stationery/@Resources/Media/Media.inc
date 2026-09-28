@@ -32,3 +32,10 @@ MenuPlayerAction=[!WriteKeyValue Variables Player [#PlayerNext[#Player]] "#@#Var
 ; ---------------------------------------------------------------- for widgets that name the preferred player
 ; the card's "Open …" item ("Open Music"), as Turntable and Studio VU show it
 MenuOpenPlayerTitle=[#MediaOpen[#PlayerIndex[#Player]]]
+
+; ---------------------------------------------------------------- access refused (Media/Permission.inc)
+; where the Notice's "Open Privacy Settings" leads: Privacy & Security › Automation
+AutomationPane=x-apple.systempreferences:com.apple.preference.security?Privacy_Automation
+; and for System Audio Recording refused (AudioLevel MacPermission 1; before macOS 14.2 Screen Recording): Privacy &
+; Security › Screen & System Audio Recording
+AudioPane=x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture

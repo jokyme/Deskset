@@ -9,6 +9,14 @@ import Foundation
 // is reported together as the synthetic process "System" (busy time of all cores minus the time of the visible
 // processes), and idle time as the synthetic process "Idle", so the per-process CPU values still add up to the whole
 // machine like Windows' "Process" counters do.
+//
+// What a sample costs (Apple silicon, about 600 processes, 400 of them the user's, 2026-09-28, on a performance core;
+// the sampler's utility thread may run on an efficiency core, where each call takes about five times as long,
+// measured with `taskpolicy -b`): `proc_pid_rusage` version 4 took 0.29 ms for the user's processes and version 2,
+// which has every field used here, 0.19 ms; asking for the other users' processes failed one call each, 0.11 ms;
+// `proc_taskinfo` took 0.17 ms. So a sample reads version 2, lists only the user's processes, and reads
+// `proc_taskinfo` only while a measure needs one of its counters (virtual size, threads, page faults, context
+// switches, system calls, priority): 0.63 ms → 0.19 ms.
 
 /// Cumulative counters of one process. Times are in 100-nanosecond units (Windows performance counter units).
 struct ProcessRecord: Equatable {
@@ -85,6 +93,9 @@ struct ProcessSnapshot {
     var cores: [CoreTicks]
     /// Synthetic cumulative CPU time of the processes that cannot be read (see file comment).
     var hiddenCPU: Double
+    /// The processes carry `proc_taskinfo`'s counters (virtual size, threads, page faults, context switches, system
+    /// calls, priority): read only while a subscriber needs them (`ProcessSampler.subscribe(_:details:)`).
+    var details = true
 
     var totalTicks: CoreTicks { cores.reduce(.zero, +) }
 }
@@ -92,12 +103,25 @@ struct ProcessSnapshot {
 /// Reads processes and CPU ticks. Replaceable for tests (`ProcessSampler.provider`).
 protocol ProcessDataProvider: AnyObject {
     func readProcesses() -> (visible: [ProcessRecord], total: Int)
+    /// Without `details`, the counters only `proc_taskinfo` has (virtual size, threads, context switches, system
+    /// calls, priority; page faults are page-ins then) may be left out. `readProcesses()` reads everything.
+    func readProcesses(details: Bool) -> (visible: [ProcessRecord], total: Int)
     func readCores() -> [CoreTicks]
+}
+
+extension ProcessDataProvider {
+    func readProcesses(details: Bool) -> (visible: [ProcessRecord], total: Int) { readProcesses() }
 }
 
 /// The Darwin implementation.
 final class DarwinProcessData: ProcessDataProvider {
-    private var names: [String: String] = [:]
+    /// A process: its pid and start time, since pids are reused.
+    private struct Key: Hashable {
+        let pid: Int32
+        let start: UInt64
+    }
+
+    private var names: [Key: String] = [:]
     private let timebase: (numer: Double, denom: Double) = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)
@@ -109,24 +133,31 @@ final class DarwinProcessData: ProcessDataProvider {
         Double(machTime) * timebase.numer / timebase.denom / 100
     }
 
-    func readProcesses() -> (visible: [ProcessRecord], total: Int) {
+    func readProcesses() -> (visible: [ProcessRecord], total: Int) { readProcesses(details: true) }
+
+    func readProcesses(details: Bool) -> (visible: [ProcessRecord], total: Int) {
+        // All of them are counted; only the user's can be read (the others' calls would fail, one call each).
         let pids = ProcessNames.allPids()
+        let readable = ProcessNames.readablePids() ?? pids
         var records: [ProcessRecord] = []
-        records.reserveCapacity(pids.count)
-        var seenNames: [String: String] = [:]
+        records.reserveCapacity(readable.count)
+        var seenNames: [Key: String] = [:]
+        seenNames.reserveCapacity(readable.count)
         let now = mach_absolute_time()
-        for pid in pids where pid > 0 {
-            var usage = rusage_info_v4()
+        for pid in readable where pid > 0 {
+            // Version 2 has every field read here (disk I/O came in 2); the later versions add instruction and
+            // cycle counts and energy, which made each call half as expensive again.
+            var usage = rusage_info_v2()
             let ok = withUnsafeMutablePointer(to: &usage) { pointer in
                 pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-                    proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) == 0
+                    proc_pid_rusage(pid, RUSAGE_INFO_V2, $0) == 0
                 }
             }
             guard ok else { continue }
             var task = proc_taskinfo()
             let size = Int32(MemoryLayout<proc_taskinfo>.size)
-            let hasTask = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &task, size) == size
-            let key = "\(pid):\(usage.ri_proc_start_abstime)"
+            let hasTask = details && proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &task, size) == size
+            let key = Key(pid: pid, start: usage.ri_proc_start_abstime)
             let name = names[key] ?? ProcessNames.name(of: pid) ?? "pid \(pid)"
             seenNames[key] = name
             var record = ProcessRecord(pid: pid, name: name, start: usage.ri_proc_start_abstime)
@@ -196,12 +227,28 @@ enum ProcessNames {
         return Array(pids.prefix(Int(count)))
     }
 
-    /// The executable's file name (`Google Chrome Helper (Renderer)`), else the short process name.
+    /// The processes whose counters this app may read: those of its own (effective) user, the same rule the kernel
+    /// applies to `proc_pid_rusage`. Nil for root, which may read every process, and when the list cannot be had.
+    static func readablePids() -> [pid_t]? {
+        let uid = geteuid()
+        guard uid != 0 else { return nil }
+        let estimate = proc_listpids(UInt32(PROC_UID_ONLY), uid, nil, 0)
+        guard estimate > 0 else { return nil }
+        let stride = MemoryLayout<pid_t>.stride
+        var pids = [pid_t](repeating: 0, count: Int(estimate) / stride + 128)
+        let bytes = pids.withUnsafeMutableBytes { buffer in
+            proc_listpids(UInt32(PROC_UID_ONLY), uid, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard bytes > 0 else { return nil }
+        return Array(pids.prefix(Int(bytes) / stride))
+    }
+
+    /// The executable's file name (`Google Chrome Helper (Renderer)`), else the short process name. A native Swift
+    /// string: names are hashed and compared for every process at every sample, which bridged strings made slow.
     static func name(of pid: pid_t) -> String? {
         var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         if proc_pidpath(pid, &path, UInt32(path.count)) > 0 {
-            let full = String(cString: path)
-            let last = (full as NSString).lastPathComponent
+            let last = lastPathComponent(String(cString: path))
             if !last.isEmpty { return last }
         }
         var short = [CChar](repeating: 0, count: 256)
@@ -223,6 +270,15 @@ enum ProcessNames {
         }
     }
 
+    /// What follows the last `/` (trailing slashes ignored), as `NSString.lastPathComponent` gives for an executable's
+    /// path, but native.
+    static func lastPathComponent(_ path: String) -> String {
+        var trimmed = Substring(path)
+        while trimmed.count > 1 && trimmed.hasSuffix("/") { trimmed = trimmed.dropLast() }
+        guard let slash = trimmed.lastIndex(of: "/"), trimmed.count > 1 else { return String(trimmed) }
+        return String(trimmed[trimmed.index(after: slash)...])
+    }
+
     /// Lowercased, without `.exe`.
     static func normalized(_ name: String) -> String {
         var n = name.trimmingCharacters(in: .whitespaces).lowercased()
@@ -232,8 +288,9 @@ enum ProcessNames {
 }
 
 /// Samples processes and CPU ticks once a second on a background queue while measures subscribe to it (manual,
-/// UsageMonitor: data is gathered "once a second" independently of the skin's Update). One sample of ~1000 processes
-/// costs a few milliseconds. The first subscriber gets a sample at once; sampling stops when the last one leaves.
+/// UsageMonitor: data is gathered "once a second" independently of the skin's Update). One sample of the user's
+/// ~400 processes costs about 0.2 ms of a performance core (see the file comment). The first subscriber gets a sample
+/// at once; sampling stops when the last one leaves.
 ///
 /// Any thread: skins on different threads subscribe and leave at the same time, so whether to start or stop the timer
 /// is decided and carried out under one lock (docs/skin-threading.md §4.10). Deciding under the lock and acting after
@@ -249,7 +306,8 @@ final class ProcessSampler: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "Deskset.ProcessSampler", qos: .utility)
     private let lock = NSLock()
-    private var subscribers: Set<ObjectIdentifier> = []
+    /// Each subscriber, and whether it reads `proc_taskinfo`'s counters (`ProcessSnapshot.details`).
+    private var subscribers: [ObjectIdentifier: Bool] = [:]
     private var timer: DispatchSourceTimer?
     /// Counts the timers started: a sample of an older one is not kept.
     private var timerGeneration = 0
@@ -257,11 +315,12 @@ final class ProcessSampler: @unchecked Sendable {
     private var serial = 0
     private var hiddenCPU = 0.0
 
-    /// Starts sampling for `owner` (idempotent).
-    func subscribe(_ owner: AnyObject) {
+    /// Starts sampling for `owner` (idempotent; a later call changes what it needs). `details`: it reads counters
+    /// only `proc_taskinfo` has (`PerfCounterSpec.needsDetails`); while no subscriber does, samples leave them out.
+    func subscribe(_ owner: AnyObject, details: Bool = true) {
         lock.lock()
         defer { lock.unlock() }
-        let inserted = subscribers.insert(ObjectIdentifier(owner)).inserted
+        let inserted = subscribers.updateValue(details, forKey: ObjectIdentifier(owner)) == nil
         if inserted && subscribers.count == 1 { startTimer() }
     }
 
@@ -273,14 +332,24 @@ final class ProcessSampler: @unchecked Sendable {
     func unsubscribe(id: ObjectIdentifier) {
         lock.lock()
         defer { lock.unlock() }
-        let removed = subscribers.remove(id) != nil
+        let removed = subscribers.removeValue(forKey: id) != nil
         if removed && subscribers.isEmpty { stopTimer() }
     }
 
-    /// The last two samples (previous may be nil right after sampling started).
-    func samples() -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?) {
+    /// The last two samples (previous may be nil right after sampling started). With `details`, only samples that
+    /// carry `proc_taskinfo`'s counters: one taken before the first subscriber that needs them joined has none, and
+    /// counts as not taken.
+    func samples(details: Bool = false) -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?) {
         lock.lock(); defer { lock.unlock() }
-        return snapshots
+        guard details else { return snapshots }
+        guard snapshots.latest?.details != false else { return (nil, nil) }
+        return (snapshots.previous?.details == false ? nil : snapshots.previous, snapshots.latest)
+    }
+
+    /// Whether the next sample reads `proc_taskinfo` (tests).
+    var readsDetails: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return subscribers.values.contains(true)
     }
 
     var isRunning: Bool {
@@ -314,11 +383,12 @@ final class ProcessSampler: @unchecked Sendable {
     /// `sampleNow()` to step deterministically.
     private func sample(generation: Int? = nil) {
         let provider = ProcessSampler.provider
+        let details = readsDetails
         let cores = provider.readCores()
         // The time of the core ticks: rates divide their change by the change of this time, and the process walk
         // below can take a while (cold name cache, or this utility thread waiting for a core on a busy Mac).
         let now = ProcessInfo.processInfo.systemUptime
-        let (visible, total) = provider.readProcesses()
+        let (visible, total) = provider.readProcesses(details: details)
         lock.lock()
         // Stopped (and perhaps started again) while this sample was taken: it belongs to no subscription.
         if let generation, generation != timerGeneration {
@@ -334,7 +404,7 @@ final class ProcessSampler: @unchecked Sendable {
             hiddenCPU += max(0, busyDelta - visibleDelta)
         }
         let snapshot = ProcessSnapshot(serial: serial, time: now, processes: visible, processCount: total,
-                                       cores: cores, hiddenCPU: hiddenCPU)
+                                       cores: cores, hiddenCPU: hiddenCPU, details: details)
         snapshots = (previous, snapshot)
         lock.unlock()
     }

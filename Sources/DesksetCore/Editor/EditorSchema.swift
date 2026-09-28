@@ -411,8 +411,8 @@ public enum EditorSchema {
         return list
     }
 
-    /// How an SF Symbol picture is drawn (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`; Deskset extension,
-    /// Engine/Meters/MacSymbol.swift), shown when the picture option `key` names a symbol (`sf:…`).
+    /// How an SF Symbol picture is drawn (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`;
+    /// Deskset extension, Engine/Meters/MacSymbol.swift), shown when the picture option `key` names a symbol (`sf:…`).
     static func symbolOptions(for key: String) -> [Property] {
         let when: [Condition] = [.contains(key, "sf:")]
         return [
@@ -421,13 +421,17 @@ public enum EditorSchema {
             Property("MacSymbolWeight", "Symbol weight", pick(symbolWeights), default: "Regular", visibleWhen: when),
             Property("MacSymbolRendering", "Colors", pick(symbolRenderings), default: "Monochrome",
                      help: "Tint colors the white parts", visibleWhen: when),
+            Property("MacSymbolColors", "Layer colors", .text, placeholder: "255,204,0 | 0,0,0,153",
+                     help: "One color for each layer, separated by |",
+                     visibleWhen: when + [.equals("MacSymbolRendering", "Palette")]),
         ]
     }
 
     static let symbolWeights: [Choice] = MacSymbol.Weight.allCases.map { Choice($0.optionValue, $0.optionValue) }
     static let symbolRenderings: [Choice] = [Choice("Monochrome", "One color"),
                                              Choice("Hierarchical", "Shades of one color"),
-                                             Choice("Multicolor", "Its own colors")]
+                                             Choice("Multicolor", "Its own colors"),
+                                             Choice("Palette", "Colors you choose")]
 
     /// The fading and edge options of a layer's box (SolidColor2, GradientAngle, BevelType…), for "More" sections.
     static let boxExtras: [Property] = [
@@ -1523,7 +1527,7 @@ public enum EditorSchema {
                     Property("PlayerType", "Shows",
                              pick(list(["Title", "Artist", "Album", "Cover", "Duration", "Position", "Progress", "State",
                                         "Status", "Volume", "Rating", "Repeat", "Shuffle", "Number", "Year", "Genre", "File",
-                                        "Lyrics"]), style: .popup), default: "Title"),
+                                        "Lyrics", "MacPermission"]), style: .popup), default: "Title"),
                     Property("DisableLeadingZero", "Short times", flag("Write times as 3:05 instead of 03:05"), default: "0"),
                     Property("TrackChangeAction", "When the track changes", .action)]
         case "iTunesPlugin":
@@ -1585,6 +1589,11 @@ public enum EditorSchema {
                     Property("Type", "Sample", pick([Choice("Desktop", "Wallpaper"), Choice("File", "Image file")]),
                              default: "Desktop", visibleWhen: main),
                     Property("Path", "Image", .image, visibleWhen: [.isNotSet("Parent"), .equals("Type", "File")]),
+                    // Skin: a Deskset extension (the part under the widget, again when it moves).
+                    Property("CropDesktop", "Wallpaper part",
+                             pick([Choice("1", "What the screen shows"), Choice("Skin", "Under the widget"),
+                                   Choice("0", "The whole picture")], style: .popup),
+                             default: "1", visibleWhen: [.isNotSet("Parent"), .notEquals("Type", "File")]),
                     Property("Color", "Color",
                              pick(list(["Background1", "Background2", "Foreground1", "Foreground2", "Light1", "Light2",
                                         "Light3", "Light4", "Dark1", "Dark2", "Dark3", "Dark4", "Average", "Luminance"]),
@@ -1613,6 +1622,7 @@ public enum EditorSchema {
         Choice("BandFreq", "Band frequency"), Choice("DeviceName", "Output device name"), Choice("FFT", "One frequency slice"),
         Choice("FFTFreq", "Slice frequency"), Choice("Format", "Sound format"), Choice("DeviceStatus", "Device status"),
         Choice("DeviceID", "Device ID"), Choice("DeviceList", "Device list"),
+        Choice("MacPermission", "Missing permission"),
     ]
 
     static let audioLevelSettings: [Property] = {

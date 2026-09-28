@@ -75,8 +75,9 @@ IfTrueAction=[!SetVariable Launch4Missing 1][!SetVariable Launch4State Missing]
 IfFalseAction=[!SetVariable Launch4Missing 0][!SetVariable Launch4State Open]
 
 [MeasureLaunch4Icon]
-; the Finder icon as a 256 px picture, drawn at 48 or 40 pt; FileView writes it on its own queue, and this measure sees
-; the file within 2 s and draws it once
+; the Finder icon as a 256 px picture, drawn at 48 or 40 pt. A symbolic link or Finder alias shows the icon of what it
+; leads to, without Finder's arrow (Safari is a symbolic link on macOS 26). FileView writes it on its own queue, and
+; this measure sees the file within 2 s and draws it once
 Measure=Plugin
 Plugin=FileView
 Path=[MeasureLaunch4Parent]

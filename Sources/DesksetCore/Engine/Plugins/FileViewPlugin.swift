@@ -9,6 +9,45 @@ import Foundation
 /// called on a background queue. Without a writer, Icon measures are empty.
 public enum FileViewIcons {
     public static var writer: ((_ source: String, _ pixelSize: Int, _ destination: String) -> Bool)?
+
+    /// Most links and aliases followed from one item: a longer chain is taken for a loop.
+    static let maxLinkHops = 16
+
+    /// The item whose icon a link or Finder alias stands for, so the icon is the item's own and not the link's, which
+    /// macOS draws with Finder's arrow (`/Applications/Safari.app` is a link into the system's cryptex on macOS 26).
+    /// Symbolic links are followed through every component; Finder aliases are resolved without any UI and without
+    /// mounting volumes. `path` itself (unchanged, trailing slash included) when it is not a link or an alias, when
+    /// the chain is broken, loops or leads to an unmounted volume, or when what it leads to does not exist.
+    /// Pure file-system reads: called on FileView's background queue by the app's icon writer.
+    public static func resolvedSource(_ path: String) -> String {
+        guard !path.isEmpty else { return path }
+        let keys: Set<URLResourceKey> = [.isAliasFileKey, .isSymbolicLinkKey]
+        var url = URL(fileURLWithPath: path)
+        var seen: Set<String> = [url.standardizedFileURL.path]
+        var hops = 0
+        while let values = try? url.resourceValues(forKeys: keys),
+              values.isSymbolicLink == true || values.isAliasFile == true {
+            hops += 1
+            guard hops <= maxLinkHops else { return path }
+            let next: URL
+            if values.isSymbolicLink == true {
+                // Every link on the way, relative ones included (realpath: unlike resolvingSymlinksInPath it never
+                // turns /private/tmp back into the link /tmp); a broken link or a loop fails.
+                guard let real = realpath(url.path, nil) else { return path }
+                defer { free(real) }
+                next = URL(fileURLWithPath: String(cString: real))
+            } else {
+                guard let resolved = try? URL(resolvingAliasFileAt: url, options: [.withoutUI, .withoutMounting])
+                else { return path }
+                next = resolved
+            }
+            let key = next.standardizedFileURL.path
+            guard seen.insert(key).inserted else { return path }
+            url = next
+        }
+        guard hops > 0, FileManager.default.fileExists(atPath: url.path) else { return path }
+        return url.path
+    }
 }
 
 /// `Plugin=FileView`: a "parent" measure lists a folder; "child" measures (`Path=[Parent]`) read one entry each.

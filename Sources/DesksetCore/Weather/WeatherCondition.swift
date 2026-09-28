@@ -157,8 +157,47 @@ public struct WeatherSymbol: Equatable {
     }
 }
 
+/// What a layer of a weather symbol shows, for palette drawing (MacWeather `Type=SymbolPalette`).
+public enum WeatherSymbolRole: Equatable {
+    /// The cloud, and what macOS draws in its layer or plain white under Multicolor: moons, stars, fog, snow, bolts.
+    case ink
+    case sun
+    /// Rain, drizzle and sleet drops.
+    case rain
+}
+
 /// SF Symbols for states and the moon.
 public enum WeatherSymbols {
+    /// The role of each hierarchical layer (primary, secondary, tertiary) of a weather symbol MacWeather names, filled
+    /// or outline: measured by drawing each symbol with a palette of three distinct colors. A name not in the table is
+    /// one layer of ink.
+    public static func paletteRoles(_ name: String) -> [WeatherSymbolRole] {
+        let base = name.hasSuffix(".fill") ? String(name.dropLast(5)) : name
+        return paletteRoleTable[base] ?? [.ink]
+    }
+
+    private static let paletteRoleTable: [String: [WeatherSymbolRole]] = [
+        "sun.max": [.sun],
+        "moon.stars": [.ink, .ink],
+        "cloud.sun": [.ink, .sun],
+        "cloud.moon": [.ink, .ink],
+        "cloud": [.ink],
+        "cloud.fog": [.ink, .ink],
+        "cloud.sun.rain": [.ink, .sun, .rain],
+        "cloud.moon.rain": [.ink, .ink, .rain],
+        "cloud.heavyrain": [.ink, .rain],
+        // the bolt is in the cloud's layer
+        "cloud.sun.bolt": [.ink, .sun],
+        "cloud.moon.bolt": [.ink, .ink],
+        "cloud.bolt.rain": [.ink, .rain],
+        // flakes in the cloud's layer, drops in the second
+        "cloud.sleet": [.ink, .rain],
+        "cloud.bolt": [.ink, .ink],
+        "cloud.snow": [.ink, .ink],
+        "cloud.drizzle": [.ink, .rain],
+        "cloud.rain": [.ink, .rain],
+    ]
+
     /// `Type=StatusSymbol` (empty when ready).
     public static func status(_ status: WeatherStatus) -> String {
         switch status {

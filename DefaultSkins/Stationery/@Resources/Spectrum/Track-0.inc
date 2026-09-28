@@ -25,3 +25,16 @@ Formula=0
 [MeasureTrackText]
 Measure=String
 String=
+
+; no player is read, so none can refuse (Media/Permission.inc's measures, always 0)
+[MeasureAccess]
+Measure=Calc
+Formula=0
+
+[MeasureAccessOn]
+Measure=Calc
+Formula=0
+
+[MeasureAccessPlayer]
+Measure=String
+String=

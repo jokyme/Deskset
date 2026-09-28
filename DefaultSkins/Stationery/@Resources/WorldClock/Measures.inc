@@ -28,9 +28,12 @@ TimeInk0=#TertiaryTextColor#
 TimeInk1=#TextColor#
 TimeInk2=#TertiaryTextColor#
 TimeInk3=#TextColor#
-; day and night beside a city's time, by MacSun's IsDaylight there
+; day and night beside a city's time, by MacSun's IsDaylight there: a yellow sun, the moon in the caption's ink (the
+; symbols' palettes)
 DayGlyph0=moon.fill
 DayGlyph1=sun.max.fill
+DayPalette0=#TertiaryTextColor#
+DayPalette1=#SunColor#
 ; the weekday shows (%1) only when the city's date is not today's here
 TagDay0=%1
 TagDay1=
