@@ -754,6 +754,8 @@ final class LayerNamer {
     private var naming: Set<String> = []
     /// Layers being named (the same loop, seen from the layer).
     private var namingLayers: Set<String> = []
+    /// Data item (lowercased) → the names its formula reads (`formulaNames`): a formula is read by several names.
+    private var formulaNameCache: [String: [String]] = [:]
 
     /// The skin's `sourceGeneration` when the namer was made: a patch gives the same skin new text, and the names.
     let sourceGeneration: Int
@@ -1083,16 +1085,23 @@ final class LayerNamer {
 
     /// A formula that reads its own value (`Formula=(MeasureScroll + 1) % 100`): a counter.
     private func refersToItself(_ m: Measure) -> Bool {
+        formulaNames(m).contains { $0.caseInsensitiveCompare(m.name) == .orderedSame }
+    }
+
+    /// The names a data item's formula reads: `[Name]`s, then its words (read once per namer).
+    private func formulaNames(_ m: Measure) -> [String] {
+        let key = m.name.lowercased()
+        if let cached = formulaNameCache[key] { return cached }
         let formula = m.rawOption("Formula") ?? ""
-        return (LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula))
-            .contains { $0.caseInsensitiveCompare(m.name) == .orderedSame }
+        let names = LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula)
+        formulaNameCache[key] = names
+        return names
     }
 
     /// Data a formula names, in order.
     func formulaReferences(_ m: Measure) -> [Measure] {
-        let formula = m.rawOption("Formula") ?? ""
         var seen: Set<String> = []
-        return (LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula)).compactMap { name in
+        return formulaNames(m).compactMap { name in
             guard name.caseInsensitiveCompare(m.name) != .orderedSame, let found = skin.measure(named: name),
                   seen.insert(found.name.lowercased()).inserted else { return nil }
             return found
