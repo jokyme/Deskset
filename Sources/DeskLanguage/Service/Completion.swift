@@ -157,6 +157,8 @@ struct DeskCompletionTemplate: Sendable {
     var plain: String
     /// Other words it is found by, normalized (lower case, no `-`, `_` or spaces).
     var words: [String]
+    /// The same words as written, for the item's filter text.
+    var spelledWords: [String]
     var rank: Int
     var since: AppVersion
     var deprecated: Bool
@@ -184,6 +186,9 @@ struct DeskCompletionTemplate: Sendable {
         self.snippet = snippet ?? DeskSnippet.escapeLiteral(label)
         self.plain = plain ?? label
         self.words = words.map(DeskCatalog.normalizedKeyword).filter { !$0.isEmpty }
+        var spelled: [String] = []
+        for w in words where !w.isEmpty && w != label && !spelled.contains(w) { spelled.append(w) }
+        self.spelledWords = spelled
         self.rank = rank
         self.since = since
         self.deprecated = deprecated
@@ -693,7 +698,7 @@ struct DeskCompletionBuilder {
         let item = DeskCompletionItem(
             label: shown, kind: kind ?? t.kind, detail: t.detail, documentation: t.documentation, example: t.example,
             insertText: insert, plainText: plainPlaced, isSnippet: insert.contains("$"), range: scan.context.range,
-            filterText: ([shown] + t.words).joined(separator: " "), sortText: "", isDeprecated: t.deprecated,
+            filterText: ([shown] + t.spelledWords).joined(separator: " "), sortText: "", isDeprecated: t.deprecated,
             isAlreadyPresent: alreadyPresent, commitCharacters: t.commit, catalogPath: t.path, additionalEdits: extra)
         candidates.append((item, (m, tierValue, nearness, 200 - max(0, min(200, r)), t.since, shown)))
     }

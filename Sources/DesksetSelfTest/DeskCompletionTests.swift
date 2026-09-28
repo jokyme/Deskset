@@ -73,7 +73,9 @@ func runDeskCompletionTests(_ t: TestRunner) {
         return
     }
     runDeskCompletionCaseTests(t)
+    runDeskCompletionPropertyTests(t)
     runDeskCompletionSnippetTests(t)
+    runDeskCompletionSweep(t)
 }
 
 // MARK: - Snippets
@@ -500,5 +502,141 @@ func runDeskCompletionCaseTests(_ t: TestRunner) {
         for place in DeskCompletionPlace.allCases where place != .symbolName {
             t.check(places.contains(place), "a case reaches \(place)")
         }
+    }
+}
+
+// MARK: - Properties and the sweep
+
+func runDeskCompletionPropertyTests(_ t: TestRunner) {
+    t.suite("Desk: service — completion items") {
+        // A modifier already on the element is marked, and still offered (it may be added again with `if:`).
+        let (_, present) = deskCompletions(deskW("        Text(\"A\").font(.caption).|"))
+        t.equal(present.items.first { $0.label == "font" }?.isAlreadyPresent, true)
+        t.equal(present.items.first { $0.label == "padding" }?.isAlreadyPresent, false)
+        t.check((present.items.firstIndex { $0.label == "font" } ?? 0) > (present.items.firstIndex { $0.label == "padding" } ?? 0),
+                "a present modifier comes after the others")
+        // A deprecated name is marked and comes last.
+        let future = DeskServiceOptions(catalog: deskFutureCatalog(), appVersion: AppVersion(major: 1, minor: 2))
+        let (_, deprecated) = deskCompletions("widget {\n    Text(\"A\").gl|\n}\n", options: future)
+        t.equal(deprecated.items.first { $0.label == "glow" }?.isDeprecated, true)
+        // The words an item is found by: keywords and other languages' spellings.
+        let (_, views) = deskCompletions("widget {\n    |\n}\n")
+        let column = views.items.first { $0.label == "Column" }
+        t.check(column?.filterText.contains("VStack") == true, "Column is found by VStack: \(column?.filterText ?? "")")
+        t.check(views.items.first { $0.label == "Text" }?.filterText.contains("String") == true, "Text is found by String")
+        // Documentation in both languages, a detail, a catalog path.
+        for item in views.items where item.kind == .component {
+            t.check(item.documentation?.isComplete == true, "\(item.label) documented")
+            t.check(!item.detail.en.isEmpty && !item.detail.zh.isEmpty, "\(item.label) detail")
+            t.check(item.catalogPath != nil, "\(item.label) path")
+        }
+        // Snippets: tab stops with the preview values, the final cursor, the line's indentation.
+        let grid = views.items.first { $0.label == "Grid" }
+        t.equal(grid?.insertText, "Grid(columns: ${1:7}) {\n        $0\n    }")
+        t.equal(grid?.plainText, "Grid(columns: 7) {\n        \n    }")
+        t.equal(grid?.isSnippet, true)
+        let text = views.items.first { $0.label == "Text" }
+        t.equal(text?.insertText, "Text(\"${1:Wednesday, 30 September}\")$0")
+        // Editing a name before its `(`: the name alone replaces the whole word.
+        let (snapshot, renamed) = deskCompletions("widget {\n    Te|xt(\"A\")\n}\n")
+        let replacement = renamed.items.first { $0.label == "Text" }
+        t.equal(replacement?.insertText, "Text")
+        t.equal(replacement.map { (snapshot.text as NSString).substring(with: $0.range.nsRange) }, "Text")
+        // A permission the item needs is added to `info`.
+        let (musicSnapshot, music) = deskCompletions("info {\n    name: \"A\"\n}\n\nwidget {\n    Text(\"A\").onClick {\n        music.|\n    }\n}\n")
+        if let play = music.items.first(where: { $0.label == "play" }) {
+            let edits = ([DeskTextEditU16(range: play.range, newText: play.plainText)] + play.additionalEdits)
+                .sorted { $0.range.start.offset < $1.range.start.offset }
+            let result = DeskTextEditU16.apply(edits, to: musicSnapshot.text)
+            t.check(result.contains("    permissions: [.music]\n"), "permission added: \(result)")
+            t.equal(deskSnippetErrors(result, file: "Test.desk"), [])
+        } else {
+            t.check(false, "music.play offered")
+        }
+        let (_, listed) = deskCompletions("info {\n    permissions: [.music]\n}\n\nwidget {\n    Text(\"A\").onClick {\n        music.|\n    }\n}\n")
+        t.equal(listed.items.first { $0.label == "play" }?.additionalEdits, [])
+        let (_, noInfo) = deskCompletions("widget {\n    Text(\"A\").onClick {\n        music.|\n    }\n}\n")
+        t.equal(noInfo.items.first { $0.label == "play" }?.additionalEdits.first?.newText, "info { permissions: [.music] }\n\n")
+        // Chinese text for every item of a few lists, and no leaked ids.
+        for marked in ["widget {\n    |\n}\n", deskW("        Text(\"A\").|"), deskW("        Text(cpu.|)"), "info {\n    |\n}\n"] {
+            let (_, list) = deskCompletions(marked)
+            for item in list.items {
+                t.check(!item.detail.zh.isEmpty, "\(item.label): Chinese detail")
+                t.equal(deskMessageLeaks(item.detail.zh) + deskMessageLeaks(item.documentation?.zh ?? ""), [], "\(item.label)")
+            }
+        }
+        // The limit.
+        let (_, limited) = deskCompletions("options {\n    day = Picker(\"Day\", [.|])\n}\n")
+        let (_, few) = { () -> (DeskSnapshot, DeskCompletionList) in
+            let (text, offset) = deskCursorText("options {\n    day = Picker(\"Day\", [.|])\n}\n")
+            let snapshot = DeskLanguageService(openFile: DeskFileID(path: "Test.desk"), files: [DeskFileID(path: "Test.desk"): text]).snapshot
+            return (snapshot, snapshot.completions(at: snapshot.index.position(utf16: offset), limit: 5))
+        }()
+        t.equal(few.items.count, 5)
+        t.equal(few.isIncomplete, true)
+        t.equal(few.labels, Array(limited.labels.prefix(5)))
+    }
+}
+
+/// 500 corpus snippets (the 100 longest and 400 spread evenly over the rest), then the acceptance widgets, the
+/// Harbor files and every tenth diagnostic fixture.
+func deskCompletionSweepTexts() -> [String] {
+    var texts = deskCompletionSweepSample()
+    for file in deskFixtureFiles() where !file.path.hasPrefix("Diagnostics/") && file.path.hasSuffix(".desk") && !file.path.contains(".formatted") {
+        texts.append(file.text)
+    }
+    for (k, file) in deskFixtureFiles("Diagnostics").enumerated() where k % 10 == 0 {
+        texts.append(DeskDiagnosticFixture.parse(path: file.path, text: file.text).positive)
+    }
+    return texts
+}
+
+/// 500 corpus snippets: the 100 longest and 400 spread evenly over the rest.
+func deskCompletionSweepSample() -> [String] {
+    let corpus = deskExampleCorpus()
+    let byLength = corpus.enumerated().sorted { $0.element.utf16.count > $1.element.utf16.count }
+    let longest = Set(byLength.prefix(100).map(\.offset))
+    let rest = corpus.indices.filter { !longest.contains($0) }
+    var picked = longest.sorted()
+    if !rest.isEmpty {
+        let step = max(1, rest.count / 400)
+        picked += stride(from: 0, to: rest.count, by: step).prefix(400).map { rest[$0] }
+    }
+    return picked.map { corpus[$0] }
+}
+
+func runDeskCompletionSweep(_ t: TestRunner) {
+    t.suite("Desk: service — completion sweep") {
+        t.check(deskCompletionSweepSample().count >= 500, "500 snippets sampled")
+        let sample = deskCompletionSweepTexts()
+        var positions = 0
+        var nonEmpty = 0
+        var slowest = (0.0, "")
+        for text in sample {
+            let snapshot = DeskLanguageService(openFile: DeskFileID(path: "Test.desk"), files: [DeskFileID(path: "Test.desk"): text],
+                                               resources: DeskFakeResources()).snapshot
+            let length = snapshot.index.utf16Count
+            var problems: [String] = []
+            for offset in 0...length {
+                positions += 1
+                let start = ProcessInfo.processInfo.systemUptime
+                let list = snapshot.completions(at: snapshot.index.position(utf16: offset))
+                let elapsed = ProcessInfo.processInfo.systemUptime - start
+                if elapsed > slowest.0 { slowest = (elapsed, String(text.prefix(40))) }
+                if !list.items.isEmpty { nonEmpty += 1 }
+                let r = list.context.range
+                if !(0 <= r.start.offset && r.start.offset <= r.end.offset && r.end.offset <= length) { problems.append("context range \(r) at \(offset)") }
+                if !(r.start.offset <= offset && offset <= r.end.offset) { problems.append("range \(r) does not hold \(offset)") }
+                for item in list.items {
+                    let ir = item.range
+                    if !(0 <= ir.start.offset && ir.end.offset <= length) { problems.append("\(item.label) range \(ir) at \(offset)") }
+                    for edit in item.additionalEdits where !(0 <= edit.range.start.offset && edit.range.end.offset <= length) {
+                        problems.append("\(item.label) edit \(edit) at \(offset)")
+                    }
+                }
+            }
+            t.check(problems.isEmpty, "\(text.prefix(60)): \(problems.prefix(5))")
+        }
+        print("    (\(positions) positions of \(sample.count) texts, \(nonEmpty) with items; slowest \(String(format: "%.1f", slowest.0 * 1000)) ms: \(slowest.1.replacingOccurrences(of: "\n", with: "⏎")))")
     }
 }
