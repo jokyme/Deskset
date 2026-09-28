@@ -147,9 +147,9 @@
       }
     ],
     "loadAverage" : [
-      5.0099999999999998,
-      6.8899999999999997,
-      7.5700000000000003
+      4.75,
+      5.2199999999999998,
+      6.3899999999999997
     ],
     "memoryGB" : 24,
     "model" : "Mac16,8",
@@ -158,7 +158,7 @@
     "rosetta" : false,
     "virtualMachine" : false
   },
-  "firstRenderMs" : 9,
+  "firstRenderMs" : 8.2200000000000006,
   "fonts" : {
     "Helvetica" : "Helvetica",
     "Helvetica-Bold" : "Helvetica-Bold"
@@ -182,7 +182,7 @@
         "unifiedMemory" : true
       }
     ],
-    "createSeconds" : 0.034500000000000003,
+    "createSeconds" : 0.025700000000000001,
     "device" : {
       "families" : [
         "apple7",
@@ -207,101 +207,115 @@
       "layers" : 1,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "99cbe6ce32bf305893f5dcd280e9bbb73eee34ac94725143e4367c8499b50c44"
+      "sha256" : "99cbe6ce32bf305893f5dcd280e9bbb73eee34ac94725143e4367c8499b50c44",
+      "stillScribbled" : false
     },
     "cg@2x" : {
       "blank" : false,
       "layers" : 1,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "089988318b6a979bebc57738bdcc617d0c7880df92e42e34e544677990dd001d"
+      "sha256" : "089988318b6a979bebc57738bdcc617d0c7880df92e42e34e544677990dd001d",
+      "stillScribbled" : false
     },
     "g2-e@1x" : {
       "blank" : false,
       "layers" : 20,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5"
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
     },
     "g2-e@2x" : {
       "blank" : false,
       "layers" : 20,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777"
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
     },
     "g2-single@1x" : {
       "blank" : false,
       "layers" : 1,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5"
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
     },
     "g2-single@2x" : {
       "blank" : false,
       "layers" : 1,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777"
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
     },
     "g2-tiles@1x" : {
       "blank" : false,
       "layers" : 20,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5"
+      "sha256" : "cccb54c621c3773cde128db9e57a1c6b3ef3d5a6ec9f78169f02eceb23e81be5",
+      "stillScribbled" : false
     },
     "g2-tiles@2x" : {
       "blank" : false,
       "layers" : 20,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777"
+      "sha256" : "054b5e3aca7bc5b4d2dd2477c612778d2bfd71bbcd939b2c0b05770a285bc777",
+      "stillScribbled" : false
     },
     "image@1x" : {
       "blank" : false,
       "layers" : 1,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "b1c34cb0d60250c028d62ec027abff5500473c9a46efd7c758a52de766d7c45a"
+      "sha256" : "b1c34cb0d60250c028d62ec027abff5500473c9a46efd7c758a52de766d7c45a",
+      "stillScribbled" : false
     },
     "image@2x" : {
       "blank" : false,
       "layers" : 1,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "755469edd0a71a61a0713746b2510669f38a51581a224e2215d8cf1270dce6c8"
+      "sha256" : "755469edd0a71a61a0713746b2510669f38a51581a224e2215d8cf1270dce6c8",
+      "stillScribbled" : false
     },
     "solids@1x" : {
       "blank" : false,
       "layers" : 8,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "3662d739e43d42367039b3c6eaabba6039c21c86c83926d321ecfe18a8a49516"
+      "sha256" : "3662d739e43d42367039b3c6eaabba6039c21c86c83926d321ecfe18a8a49516",
+      "stillScribbled" : false
     },
     "solids@2x" : {
       "blank" : false,
       "layers" : 8,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "12e3e9d8f5da9c43514e74be6eb3534639f1613a2db5cb1c83d68ef641a7d4f2"
+      "sha256" : "12e3e9d8f5da9c43514e74be6eb3534639f1613a2db5cb1c83d68ef641a7d4f2",
+      "stillScribbled" : false
     },
     "vector@1x" : {
       "blank" : false,
       "layers" : 10,
       "pixels" : "320x240",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "dd8e718150a7f74ab96ea968ee330f840561bc32be266058b9ed5bb06c6ae80d"
+      "sha256" : "dd8e718150a7f74ab96ea968ee330f840561bc32be266058b9ed5bb06c6ae80d",
+      "stillScribbled" : false
     },
     "vector@2x" : {
       "blank" : false,
       "layers" : 10,
       "pixels" : "640x480",
       "sameWhenRenderedAgain" : true,
-      "sha256" : "06320a380787ebe065812e31dd53b77a25864e1c25ea26fd189a28f6fbb1a809"
+      "sha256" : "06320a380787ebe065812e31dd53b77a25864e1c25ea26fd189a28f6fbb1a809",
+      "stillScribbled" : false
     }
   },
-  "seconds" : 0.62,
+  "seconds" : 0.58999999999999997,
   "sourceHashes" : {
     "@1x" : {
       "cg" : "0a5b40fdb3cfd26ad6402e8125ad27b6f3ba770e9b85fad2d0b9f4c9bacb3fe0",
@@ -318,52 +332,53 @@
   },
   "stage" : "timing round 3: same tree@1x",
   "status" : "ran",
+  "textureStorage" : "shared",
   "timing" : {
     "everyRenderMatchedFirstRender" : true,
     "rendersPerRound" : 20,
     "rounds" : [
       {
         "loadAfter" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
         ],
         "loadBefore" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
         ],
         "new renderer@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.79900000000000004,
-            "median" : 0.46500000000000002,
-            "min" : 0.434,
-            "p90" : 0.51900000000000002
+            "max" : 0.51600000000000001,
+            "median" : 0.45700000000000002,
+            "min" : 0.436,
+            "p90" : 0.503
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.508,
-            "median" : 1.0309999999999999,
-            "min" : 0.72099999999999997,
-            "p90" : 1.3009999999999999
+            "max" : 1.0429999999999999,
+            "median" : 0.876,
+            "min" : 0.77200000000000002,
+            "p90" : 0.98999999999999999
           },
           "rendersNotMatchingFirstRender" : 0
         },
         "new tree@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.47899999999999998,
-            "median" : 0.44500000000000001,
-            "min" : 0.42799999999999999,
-            "p90" : 0.46500000000000002
+            "max" : 0.50700000000000001,
+            "median" : 0.45700000000000002,
+            "min" : 0.432,
+            "p90" : 0.47599999999999998
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.4330000000000001,
-            "median" : 0.53000000000000003,
-            "min" : 0.39700000000000002,
-            "p90" : 0.875
+            "max" : 1.052,
+            "median" : 0.52300000000000002,
+            "min" : 0.374,
+            "p90" : 0.66000000000000003
           },
           "rendersNotMatchingFirstRender" : 0
         },
@@ -371,80 +386,80 @@
         "same tree@1x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.13800000000000001,
-            "median" : 0.11,
-            "min" : 0.109,
-            "p90" : 0.12
+            "max" : 0.127,
+            "median" : 0.111,
+            "min" : 0.107,
+            "p90" : 0.121
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.085,
-            "median" : 0.17199999999999999,
-            "min" : 0.157,
-            "p90" : 0.27400000000000002
+            "max" : 0.56200000000000006,
+            "median" : 0.17299999999999999,
+            "min" : 0.153,
+            "p90" : 0.22700000000000001
           },
           "rendersNotMatchingFirstRender" : 0
         },
         "same tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.61899999999999999,
+            "median" : 0.46999999999999997,
+            "min" : 0.42899999999999999,
+            "p90" : 0.54300000000000004
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 0.73699999999999999,
+            "median" : 0.245,
+            "min" : 0.20799999999999999,
+            "p90" : 0.45300000000000001
+          },
+          "rendersNotMatchingFirstRender" : 0
+        }
+      },
+      {
+        "loadAfter" : [
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
+        ],
+        "loadBefore" : [
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
+        ],
+        "new renderer@2x" : {
           "readBackMs" : {
             "count" : 20,
             "max" : 0.59199999999999997,
-            "median" : 0.45500000000000002,
-            "min" : 0.43099999999999999,
-            "p90" : 0.47999999999999998
+            "median" : 0.48699999999999999,
+            "min" : 0.435,
+            "p90" : 0.51400000000000001
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.1439999999999999,
-            "median" : 0.22900000000000001,
-            "min" : 0.18099999999999999,
-            "p90" : 0.51500000000000001
-          },
-          "rendersNotMatchingFirstRender" : 0
-        }
-      },
-      {
-        "loadAfter" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
-        ],
-        "loadBefore" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
-        ],
-        "new renderer@2x" : {
-          "readBackMs" : {
-            "count" : 20,
-            "max" : 0.71799999999999997,
-            "median" : 0.45400000000000001,
-            "min" : 0.434,
-            "p90" : 0.496
-          },
-          "renderMs" : {
-            "count" : 20,
-            "max" : 1.639,
-            "median" : 0.89500000000000002,
-            "min" : 0.66000000000000003,
-            "p90" : 1.409
+            "max" : 1.002,
+            "median" : 0.85699999999999998,
+            "min" : 0.68799999999999994,
+            "p90" : 0.95499999999999996
           },
           "rendersNotMatchingFirstRender" : 0
         },
         "new tree@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.51300000000000001,
-            "median" : 0.44,
-            "min" : 0.42899999999999999,
-            "p90" : 0.46500000000000002
+            "max" : 0.48199999999999998,
+            "median" : 0.435,
+            "min" : 0.42499999999999999,
+            "p90" : 0.45100000000000001
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 0.80400000000000005,
-            "median" : 0.52000000000000002,
-            "min" : 0.434,
-            "p90" : 0.67200000000000004
+            "max" : 0.83799999999999997,
+            "median" : 0.441,
+            "min" : 0.39400000000000002,
+            "p90" : 0.69099999999999995
           },
           "rendersNotMatchingFirstRender" : 0
         },
@@ -452,115 +467,115 @@
         "same tree@1x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.153,
-            "median" : 0.114,
+            "max" : 0.126,
+            "median" : 0.115,
             "min" : 0.109,
-            "p90" : 0.13
+            "p90" : 0.122
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 0.88200000000000001,
-            "median" : 0.17199999999999999,
-            "min" : 0.157,
-            "p90" : 0.23899999999999999
+            "max" : 0.25600000000000001,
+            "median" : 0.17699999999999999,
+            "min" : 0.152,
+            "p90" : 0.19500000000000001
           },
           "rendersNotMatchingFirstRender" : 0
         },
         "same tree@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.65400000000000003,
-            "median" : 0.441,
-            "min" : 0.434,
-            "p90" : 0.47299999999999998
+            "max" : 0.52900000000000003,
+            "median" : 0.434,
+            "min" : 0.42499999999999999,
+            "p90" : 0.45400000000000001
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.1799999999999999,
-            "median" : 0.221,
-            "min" : 0.17499999999999999,
-            "p90" : 0.38300000000000001
+            "max" : 0.20899999999999999,
+            "median" : 0.19400000000000001,
+            "min" : 0.17999999999999999,
+            "p90" : 0.20699999999999999
           },
           "rendersNotMatchingFirstRender" : 0
         }
       },
       {
         "loadAfter" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
         ],
         "loadBefore" : [
-          5.0099999999999998,
-          6.8899999999999997,
-          7.5700000000000003
+          4.75,
+          5.2199999999999998,
+          6.3899999999999997
         ],
         "new renderer@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.50900000000000001,
-            "median" : 0.45600000000000002,
-            "min" : 0.42799999999999999,
-            "p90" : 0.47999999999999998
+            "max" : 0.53300000000000003,
+            "median" : 0.47799999999999998,
+            "min" : 0.44,
+            "p90" : 0.52100000000000002
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.679,
-            "median" : 0.90800000000000003,
-            "min" : 0.69599999999999995,
-            "p90" : 1.1579999999999999
+            "max" : 1.0229999999999999,
+            "median" : 0.93999999999999995,
+            "min" : 0.73599999999999999,
+            "p90" : 0.998
           },
           "rendersNotMatchingFirstRender" : 0
         },
         "new tree@2x" : {
           "readBackMs" : {
             "count" : 20,
-            "max" : 0.499,
-            "median" : 0.44500000000000001,
-            "min" : 0.433,
+            "max" : 0.54000000000000004,
+            "median" : 0.439,
+            "min" : 0.42399999999999999,
+            "p90" : 0.47899999999999998
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 0.79100000000000004,
+            "median" : 0.46300000000000002,
+            "min" : 0.40000000000000002,
+            "p90" : 0.52600000000000002
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "provisional" : false,
+        "same tree@1x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.13,
+            "median" : 0.121,
+            "min" : 0.111,
+            "p90" : 0.127
+          },
+          "renderMs" : {
+            "count" : 20,
+            "max" : 0.26600000000000001,
+            "median" : 0.17999999999999999,
+            "min" : 0.14599999999999999,
+            "p90" : 0.215
+          },
+          "rendersNotMatchingFirstRender" : 0
+        },
+        "same tree@2x" : {
+          "readBackMs" : {
+            "count" : 20,
+            "max" : 0.50800000000000001,
+            "median" : 0.44,
+            "min" : 0.42599999999999999,
             "p90" : 0.45900000000000002
           },
           "renderMs" : {
             "count" : 20,
-            "max" : 1.234,
-            "median" : 0.54300000000000004,
-            "min" : 0.41399999999999998,
-            "p90" : 0.88300000000000001
-          },
-          "rendersNotMatchingFirstRender" : 0
-        },
-        "provisional" : false,
-        "same tree@1x" : {
-          "readBackMs" : {
-            "count" : 20,
-            "max" : 0.20300000000000001,
-            "median" : 0.11899999999999999,
-            "min" : 0.107,
-            "p90" : 0.128
-          },
-          "renderMs" : {
-            "count" : 20,
-            "max" : 0.97699999999999998,
-            "median" : 0.183,
-            "min" : 0.158,
-            "p90" : 0.33000000000000002
-          },
-          "rendersNotMatchingFirstRender" : 0
-        },
-        "same tree@2x" : {
-          "readBackMs" : {
-            "count" : 20,
-            "max" : 0.66100000000000003,
-            "median" : 0.44400000000000001,
-            "min" : 0.42999999999999999,
-            "p90" : 0.50700000000000001
-          },
-          "renderMs" : {
-            "count" : 20,
-            "max" : 1.075,
-            "median" : 0.223,
-            "min" : 0.183,
-            "p90" : 0.33100000000000002
+            "max" : 0.28299999999999997,
+            "median" : 0.193,
+            "min" : 0.17199999999999999,
+            "p90" : 0.216
           },
           "rendersNotMatchingFirstRender" : 0
         }
@@ -568,39 +583,39 @@
     ],
     "summary" : {
       "new renderer@2x" : {
-        "readBackMsMedianOfRounds" : 0.45600000000000002,
-        "renderMsMedianOfRounds" : 0.90800000000000003,
+        "readBackMsMedianOfRounds" : 0.47799999999999998,
+        "renderMsMedianOfRounds" : 0.876,
         "renderMsRoundMedians" : [
-          1.0309999999999999,
-          0.89500000000000002,
-          0.90800000000000003
+          0.876,
+          0.85699999999999998,
+          0.93999999999999995
         ]
       },
       "new tree@2x" : {
-        "readBackMsMedianOfRounds" : 0.44500000000000001,
-        "renderMsMedianOfRounds" : 0.53000000000000003,
+        "readBackMsMedianOfRounds" : 0.439,
+        "renderMsMedianOfRounds" : 0.46300000000000002,
         "renderMsRoundMedians" : [
-          0.53000000000000003,
-          0.52000000000000002,
-          0.54300000000000004
+          0.52300000000000002,
+          0.441,
+          0.46300000000000002
         ]
       },
       "same tree@1x" : {
-        "readBackMsMedianOfRounds" : 0.114,
-        "renderMsMedianOfRounds" : 0.17199999999999999,
+        "readBackMsMedianOfRounds" : 0.115,
+        "renderMsMedianOfRounds" : 0.17699999999999999,
         "renderMsRoundMedians" : [
-          0.17199999999999999,
-          0.17199999999999999,
-          0.183
+          0.17299999999999999,
+          0.17699999999999999,
+          0.17999999999999999
         ]
       },
       "same tree@2x" : {
-        "readBackMsMedianOfRounds" : 0.44400000000000001,
-        "renderMsMedianOfRounds" : 0.223,
+        "readBackMsMedianOfRounds" : 0.44,
+        "renderMsMedianOfRounds" : 0.19400000000000001,
         "renderMsRoundMedians" : [
-          0.22900000000000001,
-          0.221,
-          0.223
+          0.245,
+          0.19400000000000001,
+          0.193
         ]
       }
     },
