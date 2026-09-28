@@ -124,8 +124,10 @@ extension AppSelfTest {
             t.equal(current()?.skin.meter(named: "MeterCPUFill")?.frame.width, f.width - 20)
             t.equal(current()?.skin.meter(named: "MeterCPUFill")?.frame.x, f.x, "left edge stays")
 
-            // Resize a right-aligned text: the anchor (X) is corrected so the left edge stays put.
-            guard let value = current()?.skin.meter(named: "MeterCPUValue") else { return t.check(false, "value") }
+            // Resize a right-aligned text: the anchor (X) is corrected so the left edge stays put. Its size is taken
+            // from the Studio's instance, which the canvas draws: it keeps running through the steps, so the CPU it
+            // shows (and the text's width) may differ from the desktop copy's, which a step loads again.
+            guard let value = editor.skin?.meter(named: "MeterCPUValue") else { return t.check(false, "value") }
             let v = value.frame
             drag("MeterCPUValue", .resize(.init(right: true)), from: (v.x + v.width, v.y + v.height / 2), by: (12, 0))
             let resized = current()?.skin.meter(named: "MeterCPUValue")?.frame
