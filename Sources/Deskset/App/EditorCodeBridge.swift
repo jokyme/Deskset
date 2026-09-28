@@ -4,6 +4,8 @@ import DesksetCore
 /// The skin editor's code pane (docs/editor-design.md §5) and where `CodeEditorRouter` meets the editor when the
 /// built-in editor is chosen.
 ///
+/// - Typed code shows on the canvas once typing pauses (`showTypedCode`: the Studio's instance only, nothing written,
+///   no step).
 /// - Commit model: the code pane's buffer is committed through `perform("Edit Code")` — one step of the widget's
 ///   editing session: the text in memory takes it (the whole file's text, in its encoding), the file is written, one
 ///   undo step on the widget's undo stack, the widget loaded again. Every visual edit commits a dirty buffer first
@@ -39,6 +41,8 @@ extension InspectorWindowController {
         // The files as the session holds them (its text is the truth; the disk follows it).
         codeView.readData = { [weak self] url in try self?.session?.data(of: url) ?? Data(contentsOf: url) }
         codeView.onCaretSection = { [weak self] url, section in self?.codeCaretRested(in: section, file: url) }
+        // Typed code shows on the canvas once typing pauses; it is written when the pane commits it.
+        codeView.onTypedText = { [weak self] url, text in self?.showTypedCode(text, in: url) }
         codeView.onFileChange = { [weak self] _ in self?.tintSelectionInCode() }
         NotificationCenter.default.addObserver(self, selector: #selector(codeScrolled(_:)),
                                                name: NSView.boundsDidChangeNotification,

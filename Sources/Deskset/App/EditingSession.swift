@@ -64,6 +64,8 @@ final class EditingSession {
     private(set) var config: String
     unowned let app: AppController
     let buffers = SourceBuffers()
+    /// What the Studio's instance reads: the text in memory, and typed code not written yet (`showTypedCode`).
+    lazy var studioSources = StudioSources(buffers: buffers)
     let diskSync: DiskSync
     /// The widget's undo stack (the Studio window uses it as its own: ⌘Z, the toolbar, the toasts).
     let undoStack = EditorUndoManager()
@@ -179,7 +181,7 @@ final class EditingSession {
         for url in studioSkin?.includedFiles ?? [] { _ = try? buffers.load(url) }
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: app.skinsDirectory, system: SystemMonitor.shared,
                         host: host)
-        skin.sourceProvider = buffers
+        skin.sourceProvider = studioSources
         skin.actionPolicy = host.policy
         // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
         host.policy.resetFiles()
