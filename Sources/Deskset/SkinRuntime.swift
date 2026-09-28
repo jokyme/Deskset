@@ -40,7 +40,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// replaces it with the environment store and the window model). nil: never asked.
     private var lastEnvironment: SkinEnvironment?
 
-    /// The message handled last is told here first (self-tests).
+    /// Told of every message right before it is handled, on the executor (self-tests).
     var messageObserver: ((SkinMessage) -> Void)?
 
     /// Most bangs one skin passes on to another inside a single chain (`[!Update B]` in A's OnUpdateAction, `[!Update

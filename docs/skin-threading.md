@@ -1419,6 +1419,10 @@ suite's `TestThreadExecutor`.
    - New suites "App: skin runtime: …": messages inline on the owner and in order on a test thread; requests likewise;
      exclusive access at once, parking a busy test thread between two pieces of work, timing out while it is stuck
      and the late park returning at once, re-entrant; after close the skin is released on its executor.
+   - **Done (2026-09-28):** `SkinRuntime.swift`, `SkinWindowController.swift` (with `SkinView.swift`),
+     `SkinMessages.swift` (also a `.group` request for the skin group bangs, `.forward` for bangs to other configs,
+     and `.start`, `.update(hops:)`, the Studio's previews and input mirror as messages), `HostBangs` in
+     `SkinBangs.swift`, `SkinExecutorPark` in DesksetCore; the skin is let go of on its executor when the runtime goes.
 2. **The snapshot and the hit map; the UI decides from them.**
    - `SkinHitMap` and `MouseShape` in DesksetCore, shared with `Meter.isHit`; `skinDidFinishWork` and
      `snapshotGeneration`; the runtime publishes the snapshot under a lock and posts `.snapshotChanged` only when
