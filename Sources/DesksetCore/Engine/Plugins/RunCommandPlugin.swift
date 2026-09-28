@@ -42,7 +42,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
 
     private var state = -1.0
     private var output = ""
-    private var job: RunCommandJob?
+    private var job: SkinProcess?
     private var runGeneration = 0
     private var closed = false
     private var lastStartFailure: TimeInterval?
@@ -51,7 +51,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private var finishing = false
     /// Programs the measure no longer waits for (stopped by Timeout or Close but still running); with State=Hide they
     /// are killed when the skin is unloaded, like the running one.
-    private var detached: [RunCommandJob] = []
+    private var detached: [SkinProcess] = []
     /// Timeouts and Close grace periods waiting on the skin's executor; cancelled when the skin is unloaded.
     private var waits: [SkinScheduledWork] = []
 
@@ -152,10 +152,11 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         var isDirectory: ObjCBool = false
         let directory = FileManager.default.fileExists(atPath: folder, isDirectory: &isDirectory) && isDirectory.boolValue
             ? folder : skin.directory.path
-        let newJob: RunCommandJob
+        let newJob: SkinProcess
         do {
-            newJob = try RunCommandJob.start(shellCommand: line, directory: directory,
-                                             maxOutput: RunCommandMeasure.maxOutput, locale: skin.locale)
+            // The program starts through the skin's side effects: for real, or only recorded.
+            newJob = try skin.sideEffects.startShellCommand(line, directory: directory,
+                                                            maxOutput: RunCommandMeasure.maxOutput, locale: skin.locale)
         } catch RunCommandJob.StartError.pipe {
             output = ""
             setState(106)
@@ -172,7 +173,8 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         output = ""
         setState(0)
         let jobID = ObjectIdentifier(newJob)
-        // No fake: the program runs (the seam for starting programs comes with the other side effects).
+        // No fake in virtual time: a real program runs. A recording's program (`RecordingSideEffects`) starts nothing
+        // and exits as soon as it is resumed, with the output the recording gives it.
         let exit = BackgroundJob<Void>(.runCommandProcess, subject: line, start: { deliver in
             newJob.onExit = { deliver(()) }
             newJob.resume()
@@ -195,7 +197,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     }
 
     /// The run finishes without waiting for `job` any longer; a hidden one is still killed on unload.
-    private func detach(_ job: RunCommandJob) {
+    private func detach(_ job: SkinProcess) {
         if hidden && !detached.contains(where: { $0 === job }) { detached.append(job) }
     }
 
@@ -229,16 +231,17 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         let data = job.outputSnapshot()
         let path = outputFile.isEmpty ? nil : PluginPaths.resolve(outputFile, skin: skin)
         let type = outputType
+        // Written through the skin's side effects: the file itself, or a recording's copy.
+        let effects = skin.sideEffects
+        let destination = path.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
         // A fixture: it decodes what the program wrote and saves OutputFile, a file of the skin's.
         let save = BackgroundJob(.runCommandOutput, subject: path ?? "", on: PluginIO.queue, fixture: true) {
             () -> (text: String, failure: String?) in
             let text = RunCommandMeasure.decode(data)
             var failure: String?
-            if let path {
+            if let path, let destination {
                 do {
-                    let directory = (path as NSString).deletingLastPathComponent
-                    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-                    try RunCommandMeasure.encode(text, type: type).write(to: URL(fileURLWithPath: path), options: .atomic)
+                    try effects.writeFile(RunCommandMeasure.encode(text, type: type), to: destination, makingFolder: true)
                 } catch {
                     failure = "cannot save \(path): \(error.localizedDescription)"
                 }
