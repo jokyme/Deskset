@@ -2030,7 +2030,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Mac:** macOS reports a refused System Audio Recording as a tap that carries only digital silence. When a tap
   carries nothing but digital silence at two looks 10 s apart while another app runs its audio output, and no
   system-audio tap has carried sound since Deskset started, `DeviceStatus` reads 2 and the skin gets a compatibility
-  note. It holds while the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s).
+  note. It holds while the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s);
+  meanwhile a new tap is taken every 10 s, so a permission given later takes effect while music plays on.
 - **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
 - **Skin impact:** none for skins that test for 1 or 0. It is a suspicion: an app that sends only digital silence to
   its output from the moment Deskset starts looks the same. Deskset's Spectrum and Studio VU show "Allow System Audio

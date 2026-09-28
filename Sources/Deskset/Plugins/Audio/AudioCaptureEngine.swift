@@ -640,8 +640,8 @@ final class AudioCaptureEngine {
     /// silenced by a refused permission has carried any sound yet. Two looks in a row with nothing heard while
     /// another process was playing audio are the verdict: `permissionNote` and `refusalSuspected` (`Type=DeviceStatus`
     /// 2). Not once a system-audio stream has carried sound since Deskset started (the permission was given then).
-    /// Sound clears the verdict (while it stands the looks do not count against `remaining`, so a permission granted
-    /// much later still clears it).
+    /// Sound clears the verdict. While it stands, a look that still finds silence while another app plays starts the
+    /// capture again, so a permission granted in System Settings reaches a new tap within a look or two.
     private func scheduleSilenceLook(_ source: Source, backend: AudioCaptureBackend, remaining: Int) {
         guard remaining > 0, silenceCheckInterval > 0 else { return }
         AudioHAL.queue.asyncAfter(deadline: .now() + silenceCheckInterval) { [weak self, weak source, weak backend] in
@@ -650,10 +650,16 @@ final class AudioCaptureEngine {
                 self.noteSound(source)
                 return
             }
+            let hadVerdict = source.refusalSuspected
             source.silentLooks = self.otherProcessPlaysAudio() ? source.silentLooks + 1 : 0
-            if source.silentLooks >= 2 && !source.refusalSuspected && !self.heardSystemAudio {
+            if source.silentLooks >= 2 && !hadVerdict && !self.heardSystemAudio {
                 source.refusalSuspected = true
                 self.setStatus(self.withVerdict(self.status(for: source.key), of: source), for: source.key)
+            } else if hadVerdict && source.silentLooks > 0 {
+                // Still silent while another app plays: a permission given since may only reach a new tap, so the
+                // capture starts again (the verdict stays until a tap carries sound, and the new tap looks again).
+                self.scheduleRestart(source.key)
+                return
             }
             // Keeps looking after the verdict, so it is cleared once sound arrives.
             let remainingNext = source.refusalSuspected ? remaining : remaining - 1

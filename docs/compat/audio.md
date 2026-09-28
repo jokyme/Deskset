@@ -322,7 +322,9 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   digital silence at two looks in a row, while another app runs its audio output each time, is its verdict.
   `DeviceStatus` then reads 2 (instead of 1) and the skin gets a compatibility note pointing to the permission. The
   verdict holds while the tap waits for sound and in the next taps, until a tap carries sound, which clears both
-  within 10 s. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
+  within 10 s. While it holds, every look that still finds silence while another app plays takes a new tap (a
+  permission given in System Settings may reach only a new one), so allowing it takes effect within about 20 s even
+  while the music never stops. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
   silence is only silence (a call app that keeps its output running between calls, a paused video): no verdict until
   Deskset restarts.
 - Why: Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.

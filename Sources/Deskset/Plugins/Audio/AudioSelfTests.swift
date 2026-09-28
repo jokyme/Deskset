@@ -884,12 +884,19 @@ enum AudioSelfTests {
             _ = parent.computeValue()
             t.check(skin.issues.contains(AudioCaptureEngine.silenceNote), "a compatibility note too")
 
+            // Still silent while another app plays: the capture starts again (a permission given since may only
+            // reach a new tap), and the verdict stands.
+            let before = starts()
+            t.check(wait { starts() > before && engine.status(for: key).running }, "a new tap while refused")
+            t.equal(status.computeValue(), 2)
+
             // The verdict outlasts the capture: waiting for sound, and in the next capture.
             activity.playing = false
             t.check(wait { engine.isWaitingForSound(key) }, "nothing plays: waits")
             t.equal(status.computeValue(), 2, "still refused while it waits")
+            let waiting = starts()
             activity.playing = true
-            t.check(wait { starts() == 2 && engine.status(for: key).running }, "captures again")
+            t.check(wait { starts() > waiting && engine.status(for: key).running }, "captures again")
             t.equal(status.computeValue(), 2, "and the verdict stands from the start")
 
             // Sound: the permission is there.
@@ -905,10 +912,12 @@ enum AudioSelfTests {
             // Once sound was heard, silence while other apps run their output is only silence.
             activity.playing = false
             t.check(wait { engine.isWaitingForSound(key) })
+            let heard = starts()
             activity.playing = true
-            t.check(wait { starts() == 3 && engine.status(for: key).running })
+            t.check(wait { starts() > heard && engine.status(for: key).running })
             Thread.sleep(forTimeInterval: 0.4)
             t.equal(engine.status(for: key).deviceStatus, 1, "no verdict after sound was heard")
+            t.equal(starts(), heard + 1, "and no new taps")
             withExtendedLifetime((parent, status)) {}
         }
 
