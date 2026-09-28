@@ -7,7 +7,7 @@
 #                                                     env q5 q1 q4 q6 q7 memtrace offmain glass swap cost wscpu
 #                                                     wsmem probes, and the second campaign (with Deskset's own
 #                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b cost-c wscpu-c
-#                                                     wsmem-c
+#                                                     wsmem-c cost-threads
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
 #   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
@@ -42,13 +42,13 @@ while [[ $# -gt 0 ]]; do
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
         -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c)
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads)
             STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
 done
 [[ ${#STEPS[@]} -gt 0 ]] || STEPS=(env probes q5 q1 q4 q6 q7 offmain glass swap memtrace cost wscpu wsmem cost-b wscpu-b
-                                  wsmem-b memtrace-b cost-c wscpu-c wsmem-c)
+                                  wsmem-b memtrace-b cost-c wscpu-c wsmem-c cost-threads)
 cd "$(dirname "$0")"
 
 BUILD="$(mktemp -d)"
@@ -191,6 +191,13 @@ COST_C=(
     "sixty CPxw --mode DP --cgimage --window-space-base --scratch --frames"
     "sixty Bkept --mode B --kept --frames"
 )
+# The skin threads' drawing cost when the 10 widgets update at the same moment on 10 threads (as in every run above)
+# vs one after another on one shared thread.
+COST_THREADS=(
+    "ten E1-onethread --mode E1 --one-thread"
+    "ten C1-onethread --mode D1 --cgimage --one-thread"
+    "ten EPw-onethread --mode EP --window-space-base --one-thread"
+)
 WSCPU_C=(
     "ten CPw --mode DP --cgimage --window-space-base"
     "sixty C1 --mode D1 --cgimage"
@@ -323,6 +330,16 @@ for step in "${STEPS[@]}"; do
         cost-c)
             for r in $(seq 1 "$ROUNDS"); do
                 for entry in "${COST_C[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "cost-b/$scenario-$name-r$r" cost --scenario "$scenario" "$@"
+                done
+            done ;;
+        cost-threads)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${COST_THREADS[@]}"; do
                     set -- $entry
                     scenario="$1" name="$2"
                     shift 2

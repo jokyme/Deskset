@@ -21,6 +21,7 @@
 //   --backdrop         an opaque, static window of ours under the whole grid, on screen in on and off phases alike:
 //                      without it, showing the widgets hides whatever animates under them (other apps), which
 //                      changes WindowServer's work by more than the widgets cost
+//   --one-thread       all widgets share one skin thread (default: one thread per widget, as Deskset plans)
 //   --off-shown        off phases keep the windows on screen and only stop their updates (instead of ordering them
 //                      out): the difference is then only what the updates cost, without the window server's work of
 //                      ordering windows out and in (which spills into the next phase)
@@ -77,7 +78,7 @@ func costRun() -> JSON {
         }
     }()
     var j: JSON = ["mode": mode.rawValue, "config": config.label, "scenario": scenario, "widgets": count,
-                   "phaseSeconds": seconds, "pairs": pairs, "settleSeconds": settle,
+                   "oneSkinThread": flag("--one-thread"), "phaseSeconds": seconds, "pairs": pairs, "settleSeconds": settle,
                    "updateIntervalMs": r(interval * 1000, 2),
                    "offPhases": offShown ? "windows on screen, updates stopped" : "windows ordered out, updates stopped"]
     let mb = 1024.0 * 1024.0
@@ -99,9 +100,11 @@ func costRun() -> JSON {
             var ws: [SkinWindow] = []
             for i in 0..<n {
                 let widget = make()
-                if threads.count <= i { threads.append(RunLoopThread.make("skin \(i)")) }
+                // --one-thread: every widget on one skin thread (their updates then run one after another).
+                let t = flag("--one-thread") ? 0 : i
+                if threads.count <= t { threads.append(RunLoopThread.make("skin \(t)")) }
                 let w = SkinWindow(widget, config, origin: gridOrigin(i, size: widget.size, columns: 5),
-                                   thread: threads[i])
+                                   thread: threads[t])
                 w.buildAndCommit(tick: 0)
                 w.show()
                 ws.append(w)
