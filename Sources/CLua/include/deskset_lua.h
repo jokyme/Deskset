@@ -106,16 +106,16 @@ void deskset_lua_start_clock(void);
 typedef struct deskset_lua_time_source {
     void *context;
     /* The wall clock: seconds since 1970-01-01 00:00 UTC. Set together with `zone`. */
-    double (*now)(void *context);
+    double (*wall)(void *context);
     /* The local time zone at `time` (seconds since 1970): returns its offset in seconds east of UTC, sets *is_dst,
        and writes its abbreviation (at most `size` bytes with the NUL) to `name`. */
     long (*zone)(void *context, double time, int *is_dst, char *name, size_t size);
     /* os.clock: seconds. */
-    double (*clock)(void *context);
-    /* math.random: a number in [0, 1). Set together with `seed`. */
-    double (*random)(void *context);
+    double (*monotonic)(void *context);
+    /* math.random: a number in [0, 1). Set together with `reseed`. */
+    double (*uniform)(void *context);
     /* math.randomseed(n). */
-    void (*seed)(void *context, int n);
+    void (*reseed)(void *context, int n);
 } deskset_lua_time_source;
 
 /* Sets the state's time source (copied; NULL clears it). Call on the state's thread, between calls. */

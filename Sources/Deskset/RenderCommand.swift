@@ -161,18 +161,16 @@ struct RenderOptions: Equatable {
     static func date(_ raw: String, zone: TimeZone) -> Date? {
         let text = raw.trimmingCharacters(in: .whitespaces)
         if let seconds = Double(text), seconds.isFinite, abs(seconds) < 1e11 { return Date(timeIntervalSince1970: seconds) }
-        let internet = ISO8601DateFormatter()
-        internet.formatOptions = [.withInternetDateTime]
-        if let d = internet.date(from: text) { return d }
-        internet.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = internet.date(from: text) { return d }
-        let local = DateFormatter()
-        local.locale = Locale(identifier: "en_US_POSIX")
-        local.calendar = Calendar(identifier: .gregorian)
-        local.timeZone = zone
-        for format in ["yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
-            local.dateFormat = format
-            if let d = local.date(from: text) { return d }
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = zone
+        let local: ISO8601DateFormatter.Options = [.withFullDate, .withTime, .withDashSeparatorInDate,
+                                                   .withColonSeparatorInTime]
+        for options: ISO8601DateFormatter.Options in [
+            [.withInternetDateTime], [.withInternetDateTime, .withFractionalSeconds],
+            local, local.union(.withFractionalSeconds), [.withFullDate, .withDashSeparatorInDate],
+        ] {
+            iso.formatOptions = options
+            if let d = iso.date(from: text) { return d }
         }
         return nil
     }
@@ -331,11 +329,10 @@ enum RenderCommand {
     /// firing meanwhile see time pass; the next update sets it exactly.
     static func wait(milliseconds: Double, stepping clock: SteppedSkinClock? = nil) {
         let seconds = max(milliseconds, 0) / 1000
-        let start = Date()
         let startElapsed = clock?.elapsed ?? 0
-        let until = start.addingTimeInterval(seconds)
+        let until = Date().addingTimeInterval(seconds)
         repeat {
-            if let clock { clock.elapsed = startElapsed + min(max(Date().timeIntervalSince(start), 0), seconds) }
+            if let clock { clock.elapsed = startElapsed + seconds - min(max(until.timeIntervalSinceNow, 0), seconds) }
             if !RunLoop.main.run(mode: .default, before: until) {
                 let left = until.timeIntervalSinceNow
                 if left > 0 { Thread.sleep(forTimeInterval: min(left, 0.01)) }

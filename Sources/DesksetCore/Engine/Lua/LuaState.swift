@@ -114,13 +114,13 @@ final class LuaState {
         var c = deskset_lua_time_source()
         c.context = UnsafeMutableRawPointer(Unmanaged.passUnretained(source).toOpaque())
         if wall {
-            c.now = luaTimeNow
+            c.wall = luaTimeNow
             c.zone = luaTimeZone
         }
-        if monotonic { c.clock = luaTimeClock }
+        if monotonic { c.monotonic = luaTimeClock }
         if seeded {
-            c.random = luaRandom
-            c.seed = luaRandomSeed
+            c.uniform = luaRandom
+            c.reseed = luaRandomSeed
         }
         deskset_lua_set_time_source(handle, &c)
     }

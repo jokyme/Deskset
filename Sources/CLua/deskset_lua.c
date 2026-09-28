@@ -278,8 +278,8 @@ void deskset_lua_start_clock(void) { pthread_once(&clock_once, start_clock_once)
 
 static int deskset_os_clock(lua_State *L) {
     deskset_lua *p = state_of(L);
-    if (p->time_source.clock) {
-        lua_pushnumber(L, p->time_source.clock(p->time_source.context));
+    if (p->time_source.monotonic) {
+        lua_pushnumber(L, p->time_source.monotonic(p->time_source.context));
     } else {
         lua_pushnumber(L, monotonic_seconds() - clock_origin);
     }
@@ -337,7 +337,7 @@ static int date_getfield(lua_State *L, const char *key, int d) {
 
 /* The source's wall clock as a time_t (whole seconds, like time()). */
 static time_t source_time(const deskset_lua_time_source *src) {
-    double now = src->now(src->context);
+    double now = src->wall(src->context);
     if (!(now == now)) return (time_t)0; /* NaN */
     return (time_t)floor(now);
 }
@@ -378,7 +378,7 @@ static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
 static int deskset_os_date(lua_State *L) {
     deskset_lua *p = state_of(L);
     const deskset_lua_time_source *src = &p->time_source;
-    int from_source = src->now != NULL && src->zone != NULL;
+    int from_source = src->wall != NULL && src->zone != NULL;
     const char *s = luaL_optstring(L, 1, "%c");
     time_t t = from_source ? luaL_opt(L, (time_t)luaL_checknumber, 2, source_time(src))
                            : luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
@@ -440,7 +440,7 @@ static int deskset_os_date(lua_State *L) {
 static int deskset_os_time(lua_State *L) {
     deskset_lua *p = state_of(L);
     const deskset_lua_time_source *src = &p->time_source;
-    int from_source = src->now != NULL && src->zone != NULL;
+    int from_source = src->wall != NULL && src->zone != NULL;
     time_t t;
     if (lua_isnoneornil(L, 1)) { /* called without args? */
         t = from_source ? source_time(src) : time(NULL); /* get current time */
@@ -470,7 +470,7 @@ static int deskset_math_random(lua_State *L) {
     const deskset_lua_time_source *src = &p->time_source;
     /* the `%' avoids the (rare) case of r==1, and is needed also because on some systems (SunOS!) `rand()' may
        return a value larger than RAND_MAX */
-    lua_Number r = src->random ? (lua_Number)src->random(src->context)
+    lua_Number r = src->uniform ? (lua_Number)src->uniform(src->context)
                                : (lua_Number)(rand() % RAND_MAX) / (lua_Number)RAND_MAX;
     switch (lua_gettop(L)) { /* check number of arguments */
     case 0: { /* no arguments */
@@ -499,8 +499,8 @@ static int deskset_math_random(lua_State *L) {
 static int deskset_math_randomseed(lua_State *L) {
     deskset_lua *p = state_of(L);
     const deskset_lua_time_source *src = &p->time_source;
-    if (src->seed) {
-        src->seed(src->context, luaL_checkint(L, 1));
+    if (src->reseed) {
+        src->reseed(src->context, luaL_checkint(L, 1));
     } else {
         srand(luaL_checkint(L, 1));
     }

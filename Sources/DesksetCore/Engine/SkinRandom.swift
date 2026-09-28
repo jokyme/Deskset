@@ -48,23 +48,23 @@ public final class SkinRandom: RandomNumberGenerator {
         return state!.next()
     }
 
-    /// An integer in `range` (Calc's `Random`, QuotePlugin): `Int.random(in:)` for the system's generator.
+    // With the system's generator these are exactly `Int.random(in:)` and `shuffled()`: those draw from
+    // `SystemRandomNumberGenerator` the same way, and `next()` hands its numbers on unchanged.
+
+    /// An integer in `range` (Calc's `Random`, QuotePlugin).
     public func int(in range: ClosedRange<Int>) -> Int {
-        guard !isLive else { return Int.random(in: range) }
         var generator = self
         return Int.random(in: range, using: &generator)
     }
 
     /// An integer in `range`, which must not be empty.
     public func int(in range: Range<Int>) -> Int {
-        guard !isLive else { return Int.random(in: range) }
         var generator = self
         return Int.random(in: range, using: &generator)
     }
 
-    /// `values` in random order (Calc's `UniqueRandom` pool): `shuffled()` for the system's generator.
+    /// `values` in random order (Calc's `UniqueRandom` pool).
     public func shuffled<T>(_ values: [T]) -> [T] {
-        guard !isLive else { return values.shuffled() }
         var generator = self
         return values.shuffled(using: &generator)
     }
