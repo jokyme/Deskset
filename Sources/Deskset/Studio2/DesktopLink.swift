@@ -39,6 +39,14 @@ final class DesktopLink {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
+    /// Stops following the desktop (the window let go of the widget): no notification reaches it any more, even one
+    /// from another app that took the address of this one's.
+    func detach() {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
+        onChange = nil
+    }
+
     /// Links the widget `c` on the desktop to the session (`EditingSession.bind`) and loads the Studio's instance
     /// when the session has none or the desktop runs another file. Returns true when it runs another file.
     @discardableResult

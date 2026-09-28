@@ -219,6 +219,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         undoObservers = []
         canvasController.stopRedrawing()
         self.session = nil
+        link?.detach()
         link = nil
     }
 
