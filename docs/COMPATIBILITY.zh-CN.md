@@ -107,7 +107,7 @@ Deskset 从不主动请求“辅助功能”权限（只在你已经授予时才
 | AudioLevel `Port=Output`，macOS 13 – 14.1 | 屏幕录制，授权后需重启 Deskset | 频谱类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志 |
 | AudioLevel `Port=Input` | 麦克风（采集时显示橙色指示点） | 输入电平类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志。每 10 秒重试一次，之后再授权无需重启 |
 | AppVolume `NumberType=Peak`、AppVolume 静音 | 系统录音 | 第一次使用峰值 / 静音时 | 峰值为 0；静音无效 |
-| NowPlaying、iTunes、WebNowPlaying 的数据与命令；未授予辅助功能时 MediaKey 的切歌键 | 自动化 → Music / Spotify | 第一次轮询*正在运行*的播放器，或第一次向它发送命令时 | 播放器显示为已关闭；命令不起作用。每 30 秒重新检查一次，之后再授权无需重启 |
+| NowPlaying、iTunes、WebNowPlaying 的数据与命令；未授予辅助功能时 MediaKey 的切歌键 | 自动化 → Music / Spotify | 第一次轮询*正在运行*的播放器，或第一次向它发送命令时 | 播放器显示为已关闭；命令不起作用；皮肤可通过 `PlayerType=MacPermission` 得知（Deskset 扩展）。每 30 秒重新检查一次，之后再授权无需重启 |
 | WiFiStatus `SSID`、`LIST` | 定位服务（macOS 只把 Wi-Fi 名称提供给这类 App） | 第一次加载含 SSID / LIST measure 的皮肤时 | SSID 和网络列表为空；信号质量、速率、加密方式仍可用 |
 | MacWeather / MacSun `Location=auto`（Deskset 扩展） | 定位服务（降低精度；取整到约 1 公里，只保存在内存中） | 含 `Location=auto` 的皮肤第一次在皮肤窗口中运行时 | `Status` 为 5 并显示一条提示；可改用地名 |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`、FileView `Properties` | 自动化 → 访达 | 第一次使用时 | 不清空废纸篓 / 不打开“显示简介”窗口 |
@@ -749,7 +749,8 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
 变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
-（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)）。
+（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)），
+NowPlaying 的 `PlayerType=MacPermission` 写在音乐播放器一节（[§10.4](#104-音乐播放器nowplayingituneswebnowplayingmediakey)）。
 Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
@@ -1089,7 +1090,7 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac
   自己的设置）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
-  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
+  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目，`=refused` 模拟正在运行但拒绝了自动化权限的 Music）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
@@ -1891,6 +1892,17 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **原因：** macOS 播放器提供的数据。
 - **对皮肤的影响：** Music.app 完全相同；Spotify 缺少流派 / 年份 / 歌词 / 评分（Windows 上也是如此）。
 - **状态：** 完全一致（Music）/ 部分支持（Spotify）
+
+#### NowPlaying：`PlayerType=MacPermission`（自动化权限被拒绝）
+- **Windows：** 没有对应功能；Windows 上的播放器不需要权限。
+- **Mac：** 正在运行的 Music 或 Spotify 拒绝了自动化权限时为 1；正在运行的播放器还没被询问过时为 2（macOS 的提示可能正显示在
+  屏幕上）；否则为 0。首选播放器优先，拒绝优先于未决定。measure 正在显示另一个播放器的曲目时保持 0；被拒绝的播放器已关闭时
+  也为 0。字符串是这个数值所指的播放器（`Music`、`Spotify`；为 0 时是 measure 正在显示的播放器）。读取它从不弹出提示；
+  拒绝后每 30 秒重新检查一次，之后在系统设置中允许，数值会回到 0。WebNowPlaying 也接受这个类型。
+- **原因：** Deskset 扩展：被拒绝的播放器对其他所有 PlayerType 来说都像是已关闭，皮肤只能显示“未在播放”。
+- **对皮肤的影响：** 对其他皮肤没有影响。Deskset 自带的媒体小组件会显示“允许访问”，并打开“隐私与安全性”›“自动化”
+  （`x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`）。
+- **状态：** 仅 Mac
 
 #### NowPlaying：歌词与封面
 - **Windows：** 歌词从歌词网站下载；Cover 是图片文件的路径。

@@ -555,7 +555,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track), Location and Automation are never used. Fonts in `@Resources/Fonts`, FileView icons and the
+  track; `DESKSET_NOWPLAYING_DEMO=refused` a running Music that refused Automation), Location and Automation are never
+  used. Fonts in `@Resources/Fonts`, FileView icons and the
   Registry `Wallpaper` value work as in the app.
 - Why: repeatable screenshots without prompts or a visible screen.
 - Skin impact: none (developer tool).

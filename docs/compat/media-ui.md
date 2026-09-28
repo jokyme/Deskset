@@ -36,7 +36,8 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   reads real window titles. `--render`, self-tests and skins checked by the Manage window never trigger a prompt.
 - Why: macOS privacy (TCC). Nothing may block: the permission prompts are waited for on background threads.
 - Skin impact: when a permission is denied the measures show "closed player" / empty values and one line is written to
-  the log with the System Settings path to change it; nothing crashes or hangs. The skin also gets a compatibility note
+  the log with the System Settings path to change it; nothing crashes or hangs. NowPlaying's `PlayerType=MacPermission`
+  (below) lets a skin tell a refused player from a closed one. The skin also gets a compatibility note
   (Automation refused for Music or Spotify, Location Services off for an SSID / LIST measure, a MediaKey track key sent
   without Accessibility), which is taken back once the permission is granted: Automation when the player answers again
   (re-checked every 30 s), Location Services at the measure's next update, Accessibility at the MediaKey measure's next
@@ -56,7 +57,9 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 - Why: if a "would require consent" answer were treated as a refusal, no Apple Event would ever be sent, so the prompt
   would never appear and NowPlaying could never work.
 - Skin impact: none. The prompt appears the first time a skin with NowPlaying data (or a MediaKey/NowPlaying command)
-  meets a running player.
+  meets a running player. Until a player has answered a poll, its permission is also read without asking
+  (`askUserIfNeeded` false) right before the poll, so `PlayerType=MacPermission` can tell "not asked yet" while the
+  prompt waits for the user.
 - Status: emulated
 
 ---
@@ -130,9 +133,32 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   - Automatic MaxValue: Progress/Volume 100, Rating 5, State 2, Position/Duration = the track length (1 without a
     track); others 1. Judgment: lets `Meter=Bar` + `PlayerType=Position` work without MaxValue.
   - Unknown PlayerType: logs a warning once and shows the title.
+  - `MacPermission` (Deskset extension): whether a refused Automation permission keeps the player from being read; see
+    below.
 - Why: macOS player data.
 - Skin impact: identical for Music.app; Spotify lacks genre/year/lyrics/rating like on Windows ("partially supported").
 - Status: identical (Music) / partial (Spotify)
+
+### `PlayerType=MacPermission` (refused Automation)
+- Windows (Rainmeter): no counterpart. Windows players need no permission, so a player that runs can always be read.
+- Mac (Deskset): `PlayerType=MacPermission` tells whether macOS keeps Deskset from reading a running player. Number:
+  **1** while a running Music or Spotify has refused Automation (in the prompt or in System Settings › Privacy &
+  Security › Automation), **2** while a running player has not been asked yet (macOS asks at its first poll, so its
+  prompt may be on screen), else **0**. The measure's preferred player comes first, and a refusal before an undecided
+  player. It is 0 while the measure shows a track of another player (the refusal hides nothing then), and 0 for a
+  refused player that is closed (not playing is what is true; its first poll after it opens tells again). String: the
+  player the number is about (`Music`, `Spotify`); with 0, the player the measure shows (the preferred one when none
+  runs), so it is never empty. Automatic MaxValue 2. `PlayerName=[MainMeasure]` works as for every PlayerType, and
+  WebNowPlaying accepts it too. Reading it never asks: it is the answer of the last poll, and before a player's first
+  answer the check Apple's API makes without a prompt (see "How the Automation permission is checked"). A refusal is
+  re-checked every 30 s without asking, so allowing it later in System Settings brings the value back to 0 within
+  30 s.
+- Why: Deskset extension. A refused player looks closed to every other PlayerType, so a skin could only say "not
+  playing" while the user's music plays.
+- Skin impact: none for skins that do not use it; Rainmeter logs an unknown PlayerType. A skin can show "Allow Access"
+  and open `x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`; Deskset's own media widgets
+  do. `Substitute="Music":"1","Spotify":"2"` turns the string into an index for nested variables.
+- Status: Deskset extension
 
 ### Lyrics
 - Windows (Rainmeter): downloaded from letras.mus.br using the ID3 Artist and Title.

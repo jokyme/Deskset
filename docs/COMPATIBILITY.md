@@ -114,7 +114,7 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 | AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, one log line |
 | AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, one log line. Tried again every 10 s, so allowing it later works without a restart |
 | AppVolume `NumberType=Peak`, AppVolume mute | System Audio Recording | First peak / mute use | Peak 0; mute has no effect |
-| NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing. Re-checked every 30 s, so granting it later works without a restart |
+| NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing; `PlayerType=MacPermission` tells a skin (Deskset extension). Re-checked every 30 s, so granting it later works without a restart |
 | WiFiStatus `SSID`, `LIST` | Location Services (macOS shares Wi-Fi names only with such apps) | First time a skin with an SSID / LIST measure loads | SSID is empty and the list is empty; quality, rates and security still work |
 | MacWeather / MacSun `Location=auto` (Deskset extension) | Location Services (reduced accuracy; rounded to about 1 km, kept in memory only) | First time a skin with `Location=auto` runs in a skin window | `Status` 5 and a note; use a place name instead |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`, FileView `Properties` | Automation → Finder | First use | Nothing is emptied / no Get Info window |
@@ -824,7 +824,8 @@ that uses them still loads there, only without the effect. The Mac look extensio
 belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables and the clock, week and
 temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
-with the measures ([§6.4](#64-measures)). Deskset's own plugins are with the plugins of their area:
+with the measures ([§6.4](#64-measures)), NowPlaying's `PlayerType=MacPermission` with the music players
+([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 
@@ -1198,7 +1199,7 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
+  track, `=refused` a running Music that refused Automation). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
   ([§6.8](#68-deskset-extensions)), and WebParser's `file://` limit to the Skins and settings
   folders ([§11.1](#111-webparser)) applies in the app only. `Deskset --help` (or `-h`) lists every command-line mode;
   an unknown `--` option prints that list and exits with status 2 instead of starting the menu bar app.
@@ -2080,6 +2081,19 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Why:** macOS player data.
 - **Skin impact:** identical for Music.app; Spotify lacks genre / year / lyrics / rating (as on Windows).
 - **Status:** identical (Music) / partial (Spotify)
+
+#### NowPlaying: `PlayerType=MacPermission` (refused Automation)
+- **Windows:** no counterpart; Windows players need no permission.
+- **Mac:** 1 while a running Music or Spotify has refused Automation, 2 while a running player has not been asked yet
+  (macOS's prompt may be on screen), else 0: the preferred player first, a refusal before an undecided one. It stays 0
+  while the measure shows another player's track, and for a refused player that is closed. The string is the player
+  the number is about (`Music`, `Spotify`; with 0, the player the measure shows). Reading it never asks; a refusal is
+  re-checked every 30 s, so allowing it later brings it back to 0. WebNowPlaying accepts it too.
+- **Why:** Deskset extension: a refused player looks closed to every other PlayerType, so a skin could only say "not
+  playing".
+- **Skin impact:** none for other skins. Deskset's media widgets show "Allow Access" and open Privacy & Security ›
+  Automation (`x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`).
+- **Status:** Mac-only
 
 #### NowPlaying: lyrics and cover art
 - **Windows:** lyrics are downloaded from a lyrics website; Cover is a path to an image file.
