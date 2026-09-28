@@ -528,6 +528,16 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   match.
 - **Status:** identical (common patterns) / partial (exotic PCRE)
 
+#### Running Windows programs
+- **Windows:** `["Program.exe"]` and `!Execute ["…"]` run a program, script or shortcut, often one that ships with the
+  skin.
+- **Mac:** URLs, files, folders and Mac apps open; a Windows program, script or shortcut (`.exe`, `.bat`, `.cmd`,
+  `.lnk`, `.vbs`, `.ps1`…) is not opened, even when the file exists, and the skin's log says so.
+- **Why:** macOS cannot run them; Finder would only show its "macOS doesn't support Microsoft Windows applications"
+  alert.
+- **Skin impact:** tools that come with a skin do nothing; the rest of the action runs.
+- **Status:** not supported
+
 #### Update interval and Counter
 - **Windows:** `Update` minimum 16 ms, -1 = once; Calc's `Counter` only resets when the skin is unloaded.
 - **Mac:** the same.
