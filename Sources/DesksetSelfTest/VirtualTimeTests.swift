@@ -628,6 +628,13 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         allowed.runUntilIdle()
         t.equal(allowed.background.unverifiable.count, 0, "\(allowed.background.unverifiable)")
         t.equal((again.measure(named: "Info") as? FolderInfoMeasure)?.latestResult.files, 2)
+        // Work that reads no file yet (Chameleon before its image has a path) is a fixture as before.
+        var nothing: String?
+        again.startBackground(BackgroundJob<String>(.desktopImage, subject: "", start: { _ in nothing = "real" },
+                                                    inline: { "fixture" }, reads: "")) { nothing = $0 }
+        allowed.runUntilIdle()
+        t.equal(nothing, "fixture")
+        t.equal(allowed.background.unverifiable.count, 0)
         again.close()
     }
 

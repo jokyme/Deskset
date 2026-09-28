@@ -412,7 +412,7 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         switch fake?.source {
         case .fixture?:
             if let inline = job.inline {
-                if let reads = job.reads, !fixtureMayRead(reads, tree: tree) {
+                if let reads = job.reads, !reads.isEmpty, !fixtureMayRead(reads, tree: tree) {
                     reason = "it reads files outside the skin's own (\(reads)), which differ from one Mac to the next"
                 } else {
                     produce = inline
