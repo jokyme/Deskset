@@ -382,8 +382,11 @@ enum Studio2PreviewSelfTests {
             t.equal(meter()?.string("FontColor"), "224,76,62", "the rule fired: red")
             t.equal((meter() as? StringMeter)?.text, "100%")
             c.skin.update()
-            t.check((c.skin.measure(named: "MeasureCPU")?.value ?? 100) < 100, "the desktop copy reads the Mac")
-            t.equal(c.skin.meter(named: "MeterValue")?.string("FontColor"), "34,34,38", "and stays dark")
+            // The desktop copy reads the Mac (which may itself be busy: its own reading decides its color).
+            t.check(c.skin.measureValues == nil, "the desktop copy reads the Mac")
+            let desktopBusy = (c.skin.measure(named: "MeasureCPU")?.value ?? 0) > 80
+            t.equal(c.skin.meter(named: "MeterValue")?.string("FontColor"), desktopBusy ? "224,76,62" : "34,34,38",
+                    "and follows its own reading")
             t.equal(Studio2SelfTests.read(url), fileBefore, "nothing written")
             // The bar says so.
             let bar = studio.canvasController.previewBar
@@ -416,7 +419,9 @@ enum Studio2PreviewSelfTests {
             t.equal(preview.state.data, .live)
             t.equal(preview.state.time, .live)
             t.check(!preview.sample.isActive, "live again")
-            t.equal(meter()?.string("FontColor"), "34,34,38", "the rule's other action")
+            let liveBusy = (studio.skin?.measure(named: "MeasureCPU")?.value ?? 0) > 80
+            t.equal(meter()?.string("FontColor"), liveBusy ? "224,76,62" : "34,34,38",
+                    "the rule follows the Mac's reading again")
             t.check(bar.backToLiveItem.isHidden && studio.canvasController.statusCapsule.isHidden, "nothing to say")
             // Paused, no data, through the menu's own items.
             guard let paused = preview.menus.dataMenu(preview.state).items.first(where: { $0.title == "Paused" }),
