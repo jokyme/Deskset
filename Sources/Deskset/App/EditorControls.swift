@@ -84,6 +84,8 @@ final class InspectorState {
         /// Its preview state, variables and text then (values the skin sets while it runs change what is in effect).
         var key: String
         var index: ValueUsageIndex
+        /// Its color groups (`widgetColorGroups`), by how they are split and whether internal ones are listed.
+        var colorGroups: [String: [ValueUsageIndex.ColorGroup]] = [:]
 
         init(skin: Skin, key: String, index: ValueUsageIndex) {
             self.skin = skin
@@ -1633,8 +1635,7 @@ extension InspectorWindowController {
         // The Mac's own colors (`#MACACCENTCOLOR#`…, built in: they follow the appearance) by what they are.
         if let variable, let name = Self.macColorNames[variable.lowercased()] { return name }
         guard let skin else { return variable.map(ValueUsageIndex.humanizedVariable) }
-        let groups = valueUsages(skin).colorGroups(separate: inspectorState.separateColors,
-                                                    includeInternal: app.state.editor.showIniNames)
+        let groups = widgetColorGroups(skin)
         // A color is named the same here as on the widget page (its row's name, §7.4 and §13 task 10): the user finds
         // the row by it. The variable's own name is for the tooltip and Rainmeter Details.
         if let variable {

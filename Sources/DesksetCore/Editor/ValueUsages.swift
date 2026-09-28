@@ -763,6 +763,14 @@ struct ValueUsageScanner {
 
         let background = skin.detectedBackgroundLayer()
         let followers = self.followers()
+        // Whether a file is the widget's own, once per file (each answer resolves paths on disk).
+        var ownFiles: [URL: Bool] = [:]
+        func isOwn(_ url: URL) -> Bool {
+            if let known = ownFiles[url] { return known }
+            let own = skin.isOwnFile(url)
+            ownFiles[url] = own
+            return own
+        }
         // What a variable an action sets is drawn as (`HoverOn=[!SetVariable PanelBorderNow "#PanelBorderHover#"]`
         // colors what `PanelBorderNow` colors).
         let drawn: (String) -> [ValueUsageIndex.Use] = { name in
@@ -776,7 +784,7 @@ struct ValueUsageScanner {
             let trimmed = d.raw.trimmingCharacters(in: .whitespaces)
             let calculated = trimmed.hasPrefix("(") || trimmed.contains("#") || trimmed.contains("[")
             let kind = Self.kind(raw: trimmed, current: d.current, name: d.name, keys: keys)
-            let origin: ValueUsageIndex.Value.Origin = d.file.map { skin.isOwnFile($0) ? .own : .shared($0) } ?? .none
+            let origin: ValueUsageIndex.Value.Origin = d.file.map { isOwn($0) ? .own : .shared($0) } ?? .none
             var value = ValueUsageIndex.Value(source: .variable(d.name), uses: found, kind: kind, raw: d.raw,
                                               current: d.current, origin: origin, file: d.file, isCalculated: calculated,
                                               isAtLeast: atLeast.contains(key),
@@ -787,7 +795,7 @@ struct ValueUsageScanner {
         for key in literalOrder {
             guard let entry = literals[key] else { continue }
             let files = entry.uses.compactMap { definingFile(of: $0) }
-            let shared = files.first { !skin.isOwnFile($0) }
+            let shared = files.first { !isOwn($0) }
             let ownOnly = shared == nil
             var value = ValueUsageIndex.Value(source: .literal(key), uses: entry.uses, kind: .color, raw: entry.raw,
                                               current: key, origin: ownOnly ? .own : .shared(shared ?? skin.fileURL))

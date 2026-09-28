@@ -228,6 +228,7 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
         }
         let catalog = LayerNaming.catalog(of: skin)
         sidebar.catalog = catalog
+        let previous = allItems
         allItems = skin.inspectedSections().map { name, kind in
             let item = Item(title: name, detail: kind == .meter ? (skin.meter(named: name)?.type ?? "")
                                                                 : kind == .measure ? (skin.measure(named: name)?.type ?? "") : "",
@@ -235,6 +236,8 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             present(item, in: skin)
             return item
         }
+        // The same rows: only the ones that changed follow (LayerListInPlace.swift).
+        if followListInPlace(previous: previous, skin: skin) { return }
         reloadList()
     }
 

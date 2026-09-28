@@ -75,6 +75,10 @@ extension InspectorWindowController {
             let name = Self.skinName(skin, config: c.config)
             self.window?.title = name.isEmpty ? c.config : name
         }))
-        for part in attachParts(c) where part.label != "widget" { phases.run(windowPart: part) }
+        // One naming of the layers for every part (the list's names, the identity strip, the live values): the skin does
+        // not change while they follow it.
+        LayerNaming.sharingWork(for: skin) {
+            for part in attachParts(c) where part.label != "widget" { phases.run(windowPart: part) }
+        }
     }
 }

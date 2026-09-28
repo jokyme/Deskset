@@ -94,6 +94,10 @@ final class InspectorInPlace {
     var built: InspectorInputs?
     /// The rows the slots show.
     var claims: Set<String> = []
+    /// The skin the layer list was last loaded or followed for (`followListInPlace`).
+    weak var listSkin: Skin?
+    /// How many times the layer list followed a step in place.
+    var listUpdates = 0
     /// Rows of other sections than the selected one, read once per update.
     var rowCache: [String: [InspectorWindowController.Row]] = [:]
 
@@ -520,9 +524,20 @@ extension InspectorWindowController {
     /// The widget page's color groups as the page lists them now.
     func inPlaceColorGroup(_ index: Int) -> ValueUsageIndex.ColorGroup? {
         guard let skin else { return nil }
-        let groups = valueUsages(skin).colorGroups(separate: inspectorState.separateColors,
-                                                   includeInternal: app.state.editor.showIniNames)
+        let groups = widgetColorGroups(skin)
         return index < groups.count ? groups[index] : nil
+    }
+
+    /// The widget's colors as its pages list them (`ValueUsageIndex.colorGroups`), made once for each state of the
+    /// skin: every color control names its color by them.
+    func widgetColorGroups(_ skin: Skin) -> [ValueUsageIndex.ColorGroup] {
+        let index = valueUsages(skin)
+        let separate = inspectorState.separateColors, expert = app.state.editor.showIniNames
+        let key = "\(separate.sorted())|\(expert)"
+        if let cache = inspectorState.usageCache, cache.skin === skin, let groups = cache.colorGroups[key] { return groups }
+        let groups = index.colorGroups(separate: separate, includeInternal: expert)
+        if let cache = inspectorState.usageCache, cache.skin === skin { cache.colorGroups[key] = groups }
+        return groups
     }
 
     /// A color row's tooltip (`colorRow`).
@@ -585,8 +600,7 @@ extension InspectorWindowController {
                 .joined(separator: "\u{1F}"))
             lines.append("panel\u{1F}\(widgetPanelColor().map { "\($0)" } ?? "")")
         case .widget:
-            let groups = valueUsages(skin).colorGroups(separate: inspectorState.separateColors,
-                                                       includeInternal: app.state.editor.showIniNames)
+            let groups = widgetColorGroups(skin)
             for g in groups {
                 lines.append(["color group", g.name, g.variables.joined(separator: ","), g.sections.joined(separator: ","),
                               g.usedRoles.map(\.name).joined(separator: ","), "\(g.unusedCount)", "\(g.isAtLeast)",
