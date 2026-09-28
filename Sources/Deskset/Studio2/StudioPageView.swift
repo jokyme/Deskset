@@ -22,6 +22,22 @@ enum StudioPageEvent: Equatable {
     /// A confirmation's Undo, and its suggestion.
     case undo(item: String)
     case suggestion(item: String)
+    /// A number field (`part`: which of a pair; 0 for one).
+    case number(item: String, part: Int, change: StudioNumberChange)
+    /// The way back: the crumb clicked (0: the widget).
+    case crumb(Int)
+    /// The scope sentence's link, and the pointer on it.
+    case scopeLink
+    case scopeHover(Bool)
+    /// A data token's chip.
+    case tokenData(item: String)
+    case example(item: String, index: Int)
+    /// The pointer on a row that stands for parts of the widget (a color row): the canvas outlines them.
+    case hoverItem(item: String, inside: Bool)
+    /// What is typed in Every Setting's filter.
+    case filter(String)
+    /// The Undo of the confirmation at the top of the page.
+    case topUndo
 }
 
 /// A view of one item that can take a new version of its item in place.
@@ -42,12 +58,17 @@ final class StudioPageView: NSView {
     let subtitleLabel = NSTextField(wrappingLabelWithString: "")
     private var headings: [String: NSTextField] = [:]
     private var trailing: [String: StudioTextSizeButtons] = [:]
+    private var trailingNotes: [String: NSTextField] = [:]
     private var dividers: [String: NSBox] = [:]
     private var itemViews: [String: StudioPageItemView] = [:]
     private var footerViews: [String: StudioLinkRowView] = [:]
     private var footerDivider = NSBox()
     /// How many item views were made (the self-tests check that an update keeps them).
     private(set) var viewsMade = 0
+    let crumbsView = StudioCrumbsView()
+    let scopeView = StudioScopeView()
+    private var topConfirmationView: StudioConfirmationView?
+    private let headerDivider = NSBox()
 
     override var isFlipped: Bool { true }
 
@@ -69,7 +90,20 @@ final class StudioPageView: NSView {
         subtitleLabel.maximumNumberOfLines = 2
         subtitleLabel.isSelectable = false
         addSubview(subtitleLabel)
-        for box in [footerDivider] { configureHairline(box); addSubview(box) }
+        for box in [footerDivider, headerDivider] { configureHairline(box); addSubview(box) }
+        crumbsView.onClick = { [weak self] i in self?.onEvent?(.crumb(i)) }
+        scopeView.onLink = { [weak self] in self?.onEvent?(.scopeLink) }
+        scopeView.onHover = { [weak self] inside in self?.onEvent?(.scopeHover(inside)) }
+        addSubview(crumbsView)
+        addSubview(scopeView)
+        searchField.target = self
+        searchField.action = #selector(searchChanged)
+        searchField.sendsSearchStringImmediately = true
+    }
+
+    @objc private func searchChanged() {
+        guard page?.filter != nil else { return }
+        onEvent?(.filter(searchField.stringValue))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -91,7 +125,33 @@ final class StudioPageView: NSView {
         titleLabel.font = StudioPageStyle.titleFont()
         subtitleLabel.stringValue = page.subtitle
         subtitleLabel.isHidden = page.subtitle.isEmpty
-        searchField.placeholderString = StudioText[.searchPlaceholder]
+        if let filter = page.filter {
+            searchField.placeholderString = filter.placeholder
+            if searchField.currentEditor() == nil, searchField.stringValue != filter.text {
+                searchField.stringValue = filter.text
+            }
+        } else {
+            searchField.placeholderString = StudioText[.searchPlaceholder]
+            if old?.filter != nil { searchField.stringValue = "" }
+        }
+        crumbsView.show(page.crumbs)
+        crumbsView.isHidden = page.crumbs.isEmpty
+        if let scope = page.scope { scopeView.show(scope) }
+        scopeView.isHidden = page.scope == nil
+        headerDivider.isHidden = page.scope == nil || !page.sections.isEmpty
+        if let c = page.topConfirmation {
+            if let v = topConfirmationView {
+                v.update(.confirmation(c))
+            } else {
+                let v = StudioConfirmationView(confirmation: c)
+                v.onUndo = { [weak self] in self?.onEvent?(.topUndo) }
+                topConfirmationView = v
+                addSubview(v)
+            }
+        } else {
+            topConfirmationView?.removeFromSuperview()
+            topConfirmationView = nil
+        }
         var keep: Set<String> = []
         for section in page.sections {
             let heading = headings[section.id] ?? {
@@ -102,6 +162,19 @@ final class StudioPageView: NSView {
                 return l
             }()
             heading.stringValue = section.title
+            heading.font = section.dense ? .systemFont(ofSize: 12.5, weight: .semibold) : StudioPageStyle.headingFont
+            if case .note(let text)? = section.trailing {
+                let note = trailingNotes[section.id] ?? {
+                    let l = StudioPageStyle.label("", font: StudioPageStyle.smallFont)
+                    l.alignment = .right
+                    trailingNotes[section.id] = l
+                    addSubview(l)
+                    return l
+                }()
+                note.stringValue = text
+            } else if let note = trailingNotes.removeValue(forKey: section.id) {
+                note.removeFromSuperview()
+            }
             if dividers[section.id] == nil {
                 let box = NSBox()
                 configureHairline(box)
@@ -139,6 +212,7 @@ final class StudioPageView: NSView {
         for (id, l) in headings where !sectionIDs.contains(id) { l.removeFromSuperview(); headings[id] = nil }
         for (id, b) in dividers where !sectionIDs.contains(id) { b.removeFromSuperview(); dividers[id] = nil }
         for (id, t) in trailing where !sectionIDs.contains(id) { t.removeFromSuperview(); trailing[id] = nil }
+        for (id, t) in trailingNotes where !sectionIDs.contains(id) { t.removeFromSuperview(); trailingNotes[id] = nil }
         var footerKeep: Set<String> = []
         for link in page.footer {
             footerKeep.insert(link.id)
@@ -161,8 +235,10 @@ final class StudioPageView: NSView {
     static func sameShape(_ view: StudioPageItemView, _ kind: StudioPage.Kind) -> Bool {
         switch (view, kind) {
         case (let v as StudioRowView, .row(let row)): return v.accepts(row.control)
+        case (let v as StudioDenseRowView, .dense(let d)): return v.accepts(d.control)
         case (is StudioSwatchBlockView, .swatches), (is StudioThumbnailsView, .thumbnails),
-             (is StudioLinkItemView, .link), (is StudioNoteView, .note), (is StudioConfirmationView, .confirmation):
+             (is StudioLinkItemView, .link), (is StudioNoteView, .note), (is StudioConfirmationView, .confirmation),
+             (is StudioTokenView, .token), (is StudioExamplesView, .examples), (is StudioBoxDiagramView, .box):
             return true
         default: return false
         }
@@ -173,16 +249,22 @@ final class StudioPageView: NSView {
         switch item.kind {
         case .row(let row):
             let v = StudioRowView(row: row)
-            v.onEvent = { [weak self] event in
-                switch event {
-                case .choose(let i): self?.onEvent?(.choose(item: id, index: i))
-                case .segment(let i): self?.onEvent?(.segment(item: id, index: i))
-                case .toggle(let on): self?.onEvent?(.toggle(item: id, on: on))
-                case .percent(let v, let done): self?.onEvent?(.percent(item: id, value: v, done: done))
-                case .swatch: self?.onEvent?(.swatch(item: id, swatch: id))
-                }
-            }
+            v.onEvent = { [weak self] event in self?.forward(event, item: id) }
             return v
+        case .dense(let d):
+            let v = StudioDenseRowView(dense: d)
+            v.onEvent = { [weak self] event in self?.forward(event, item: id) }
+            return v
+        case .token(let token):
+            let v = StudioTokenView(token: token)
+            v.onData = { [weak self] in self?.onEvent?(.tokenData(item: id)) }
+            return v
+        case .examples(let e):
+            let v = StudioExamplesView(examples: e)
+            v.onClick = { [weak self] i in self?.onEvent?(.example(item: id, index: i)) }
+            return v
+        case .box(let b):
+            return StudioBoxDiagramView(box: b)
         case .swatches(let s):
             let v = StudioSwatchBlockView(swatches: s)
             v.onClick = { [weak self] swatch in self?.onEvent?(.swatch(item: id, swatch: swatch)) }
@@ -208,14 +290,29 @@ final class StudioPageView: NSView {
         }
     }
 
+    private func forward(_ event: StudioRowView.Event, item id: String) {
+        switch event {
+        case .choose(let i): onEvent?(.choose(item: id, index: i))
+        case .segment(let i): onEvent?(.segment(item: id, index: i))
+        case .toggle(let on): onEvent?(.toggle(item: id, on: on))
+        case .percent(let v, let done): onEvent?(.percent(item: id, value: v, done: done))
+        case .swatch: onEvent?(.swatch(item: id, swatch: id))
+        case .number(let part, let change): onEvent?(.number(item: id, part: part, change: change))
+        case .hover(let inside): onEvent?(.hoverItem(item: id, inside: inside))
+        }
+    }
+
     // MARK: Lookup
 
     func itemView(_ id: String) -> NSView? { itemViews[id] }
 
+    var topConfirmation: StudioConfirmationView? { topConfirmationView }
+
     /// The view of a swatch (for the color popover's anchor).
     func swatchView(item: String, swatch: String) -> NSView? {
         if let block = itemViews[item] as? StudioSwatchBlockView { return block.swatchView(swatch) }
-        if let row = itemViews[item] as? StudioRowView { return row.controlView }
+        if let row = itemViews[item] as? StudioRowView { return row.swatchAnchor }
+        if let dense = itemViews[item] as? StudioDenseRowView { return dense.row.swatchAnchor }
         return nil
     }
 
@@ -246,6 +343,11 @@ final class StudioPageView: NSView {
         y += 28 + 16
         guard let page else { return y }
         let tight = page.tight
+        if !page.crumbs.isEmpty {
+            y -= 2
+            put(crumbsView, NSRect(x: m, y: y, width: inner, height: 16))
+            y += 16 + 3
+        }
         let titleHeight = ceil(titleLabel.intrinsicContentSize.height)
         put(titleLabel, NSRect(x: m, y: y, width: inner, height: titleHeight))
         y += titleHeight + 3
@@ -254,13 +356,38 @@ final class StudioPageView: NSView {
             put(subtitleLabel, NSRect(x: m, y: y, width: inner, height: h))
             y += h
         }
+        if page.scope != nil {
+            y += 5
+            put(scopeView, NSRect(x: m, y: y, width: inner, height: 18))
+            y += 18
+        }
+        if let v = topConfirmationView {
+            y += 10
+            let h = v.height(forWidth: inner)
+            put(v, NSRect(x: m, y: y, width: inner, height: h))
+            y += h
+        }
         y += 14
+        if !headerDivider.isHidden {
+            put(headerDivider, NSRect(x: m, y: y, width: inner, height: 1))
+            y += 1
+        }
         for section in page.sections {
-            put(dividers[section.id]!, NSRect(x: m, y: y, width: inner, height: 1))
-            y += 1 + (tight ? 10 : 13)
+            if section.dense {
+                dividers[section.id]?.isHidden = true
+                y += 9
+            } else {
+                dividers[section.id]?.isHidden = false
+                put(dividers[section.id]!, NSRect(x: m, y: y, width: inner, height: 1))
+                y += 1 + (tight ? 10 : 13)
+            }
             let heading = headings[section.id]!
             let hh = ceil(heading.intrinsicContentSize.height)
-            if let buttons = trailing[section.id] {
+            if let note = trailingNotes[section.id] {
+                let w = min(ceil(note.intrinsicContentSize.width) + 2, inner / 2)
+                put(note, NSRect(x: m + inner - w, y: y + (hh - 14) / 2 + 1, width: w, height: 14))
+                put(heading, NSRect(x: m, y: y, width: inner - w - 8, height: hh))
+            } else if let buttons = trailing[section.id] {
                 let size = buttons.intrinsicContentSize
                 put(buttons, NSRect(x: m + inner - size.width, y: y + (hh - size.height) / 2, width: size.width,
                                     height: size.height))
@@ -268,7 +395,7 @@ final class StudioPageView: NSView {
             } else {
                 put(heading, NSRect(x: m, y: y, width: inner, height: hh))
             }
-            y += hh + (tight ? 8 : 10)
+            y += hh + (section.dense ? 2 : tight ? 8 : 10)
             for (i, item) in section.items.enumerated() {
                 guard let v = itemViews[item.id] else { continue }
                 let h = v.height(forWidth: inner)
@@ -276,8 +403,9 @@ final class StudioPageView: NSView {
                 y += h
                 if i < section.items.count - 1 { y += Self.spacing(after: item.kind, section: section.id) }
             }
-            y += tight ? 11 : 15
+            y += section.dense ? 0 : tight ? 11 : 15
         }
+        if page.sections.last?.dense == true { y += 12 }
         if !page.footer.isEmpty {
             put(footerDivider, NSRect(x: m, y: y, width: inner, height: 1))
             y += 1 + 4
@@ -304,6 +432,8 @@ final class StudioPageView: NSView {
         case .row: return section == "shows" ? 8 : 9
         case .swatches, .thumbnails: return 10
         case .note: return 8
+        case .dense: return 0
+        case .token: return 9
         default: return 8
         }
     }
@@ -311,13 +441,20 @@ final class StudioPageView: NSView {
 
 // MARK: - Rows
 
-/// A row: a label in quiet ink in a fixed column, and a control that fills the rest.
+/// A row: a label in quiet ink in a fixed column, and a control that fills the rest. A number's label can be dragged
+/// to change it (`StudioScrubArea`).
 final class StudioRowView: NSView, StudioPageItemView {
-    enum Event { case choose(Int), segment(Int), toggle(Bool), percent(Double, Bool), swatch }
+    enum Event {
+        case choose(Int), segment(Int), toggle(Bool), percent(Double, Bool), swatch
+        case number(part: Int, StudioNumberChange)
+        case hover(Bool)
+    }
 
     var onEvent: ((Event) -> Void)?
     private(set) var row: StudioPage.Row
-    let label = StudioPageStyle.label("")
+    /// Every Setting's smaller rows.
+    let dense: Bool
+    let label: NSTextField
     private(set) var controlView: NSView
     private let invalidMark = NSImageView()
     private let detailLabel = StudioPageStyle.label("", font: StudioPageStyle.monospaced(10.5),
@@ -327,11 +464,23 @@ final class StudioRowView: NSView, StudioPageItemView {
     let sourceChip = StudioSourceChip()
     /// A value the control cannot show, as written.
     private let invalidText = StudioPageStyle.label("", font: StudioPageStyle.monospaced(11), color: StudioPageStyle.attentionText)
+    /// Over the label of a number: drag it to change the number, ⌥-click it for the default.
+    let scrubArea = StudioScrubArea()
+    /// ↔ beside the label while it is dragged.
+    private let scrubMark = NSImageView()
+    /// A− / A+ beside a text size.
+    private(set) var steppers: StudioTextSizeButtons?
+    /// Quiet words after a number ("after “23%”").
+    private let meaningLabel = StudioPageStyle.label("", font: StudioPageStyle.noteFont)
+    var scrubbing = false { didSet { if scrubbing != oldValue { refreshLabel() } } }
+    private var tracking: NSTrackingArea?
 
     override var isFlipped: Bool { true }
 
-    init(row: StudioPage.Row) {
+    init(row: StudioPage.Row, dense: Bool = false) {
         self.row = row
+        self.dense = dense
+        label = StudioPageStyle.label("", font: dense ? .systemFont(ofSize: 11.5) : StudioPageStyle.labelFont)
         controlView = NSView()
         super.init(frame: .zero)
         addSubview(label)
@@ -341,8 +490,14 @@ final class StudioRowView: NSView, StudioPageItemView {
         addSubview(percentLabel)
         addSubview(sourceChip)
         addSubview(invalidText)
+        addSubview(meaningLabel)
+        scrubMark.image = StudioPageStyle.symbol("arrow.left.and.right", size: 9.5, weight: .bold, color: .controlAccentColor)
+        addSubview(scrubMark)
         controlView = makeControl(row.control)
         addSubview(controlView)
+        scrubArea.onChange = { [weak self] change in self?.onEvent?(.number(part: 0, change)) }
+        scrubArea.onScrubbing = { [weak self] on in self?.scrubbing = on }
+        addSubview(scrubArea)
         update(.row(row))
     }
 
@@ -352,18 +507,30 @@ final class StudioRowView: NSView, StudioPageItemView {
     func accepts(_ control: StudioPage.Control) -> Bool {
         switch (row.control, control) {
         case (.popup, .popup), (.segmented, .segmented), (.toggle, .toggle), (.percent, .percent), (.color, .color),
-             (.text, .text):
+             (.text, .text), (.number, .number), (.colorLabel, .colorLabel):
             return true
+        case (.pair(let a), .pair(let b)):
+            guard a.count == b.count, let pair = controlView as? StudioPairView else { return false }
+            return zip(pair.halves, b).allSatisfy { $0.accepts($1) }
         default: return false
         }
     }
+
+    /// The view a popover points at for this row's color.
+    var swatchAnchor: NSView {
+        if let c = controlView as? StudioColorLabelView { return c.swatch }
+        return controlView
+    }
+
+    /// The number box of a number row (the self-tests type into it).
+    var numberBox: StudioNumberBox? { controlView as? StudioNumberBox }
 
     private func makeControl(_ control: StudioPage.Control) -> NSView {
         switch control {
         case .popup:
             let p = NSPopUpButton(frame: .zero, pullsDown: false)
-            p.controlSize = .regular
-            p.font = StudioPageStyle.valueFont
+            p.controlSize = dense ? .small : .regular
+            p.font = dense ? .systemFont(ofSize: 12) : StudioPageStyle.valueFont
             p.onAction { [weak self] c in
                 guard let p = c as? NSPopUpButton else { return }
                 self?.onEvent?(.choose(p.indexOfSelectedItem))
@@ -372,7 +539,8 @@ final class StudioRowView: NSView, StudioPageItemView {
         case .segmented:
             let s = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: nil, action: nil)
             s.segmentDistribution = .fillEqually
-            s.font = .systemFont(ofSize: 12)
+            s.font = .systemFont(ofSize: dense ? 11 : 12)
+            if dense { s.controlSize = .small }
             // The chosen segment in the accent color (design: the neutral white knob is 1.6–1.8 : 1 on its track).
             s.selectedSegmentBezelColor = .controlAccentColor
             s.onAction { [weak self] c in
@@ -402,7 +570,36 @@ final class StudioRowView: NSView, StudioPageItemView {
             return s
         case .text:
             return StudioPageStyle.label("", font: StudioPageStyle.valueFont, color: .labelColor)
+        case .number:
+            let box = StudioNumberBox()
+            if dense { box.field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular) }
+            box.onChange = { [weak self] change in self?.onEvent?(.number(part: 0, change)) }
+            return box
+        case .colorLabel:
+            let v = StudioColorLabelView()
+            v.onClick = { [weak self] in self?.onEvent?(.swatch) }
+            v.onHover = { [weak self] inside in self?.onEvent?(.hover(inside)) }
+            return v
+        case .pair(let items):
+            let pair = StudioPairView(items.map { StudioRowView(row: StudioPage.Row(label: "", control: $0, labelWidth: 0),
+                                                                dense: dense) })
+            for (i, half) in pair.halves.enumerated() {
+                half.onEvent = { [weak self] e in
+                    switch e {
+                    case .number(_, let change): self?.onEvent?(.number(part: i, change))
+                    case .choose(let index): self?.onEvent?(.number(part: i, .typed("#choose:\(index)")))
+                    default: self?.onEvent?(e)
+                    }
+                }
+            }
+            return pair
         }
+    }
+
+    private func refreshLabel() {
+        label.textColor = scrubbing ? .labelColor : StudioPageStyle.quietInk
+        scrubMark.isHidden = !scrubbing
+        needsLayout = true
     }
 
     func update(_ kind: StudioPage.Kind) {
@@ -410,6 +607,7 @@ final class StudioRowView: NSView, StudioPageItemView {
         self.row = row
         label.stringValue = row.label
         label.toolTip = row.tooltip
+        refreshLabel()
         invalidMark.isHidden = row.invalid == nil
         invalidMark.toolTip = row.invalid.map { StudioText.format(.invalidValue, $0) }
         invalidText.stringValue = row.invalid.map { "“\($0)”" } ?? ""
@@ -419,6 +617,8 @@ final class StudioRowView: NSView, StudioPageItemView {
         detailLabel.stringValue = row.detail ?? ""
         detailLabel.isHidden = row.detail == nil
         percentLabel.isHidden = true
+        meaningLabel.isHidden = true
+        scrubArea.isHidden = true
         switch row.control {
         case .popup(let popup):
             guard let p = controlView as? NSPopUpButton else { break }
@@ -450,8 +650,9 @@ final class StudioRowView: NSView, StudioPageItemView {
             // The chosen item in the button: its own face for the font menus, the data's symbol in its color.
             if let s = popup.selected, s < popup.items.count, let selected = p.selectedItem {
                 let item = popup.items[s]
-                let font = popup.fonts && item.face != nil ? StudioFontMenu.font(item.face!, size: 12.5, weight: .medium)
-                    : NSFont.systemFont(ofSize: 12.5)
+                let size: CGFloat = dense ? 12 : 12.5
+                let font = popup.fonts && item.face != nil ? StudioFontMenu.font(item.face!, size: size, weight: .medium)
+                    : NSFont.systemFont(ofSize: size)
                 selected.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: font])
                 if let symbol = popup.symbol {
                     selected.image = StudioPageStyle.symbol(symbol, size: 10.5, weight: .semibold,
@@ -462,7 +663,16 @@ final class StudioRowView: NSView, StudioPageItemView {
         case .segmented(let seg):
             guard let s = controlView as? NSSegmentedControl else { break }
             if s.segmentCount != seg.items.count { s.segmentCount = seg.items.count }
-            for (i, title) in seg.items.enumerated() { s.setLabel(title, forSegment: i) }
+            for (i, title) in seg.items.enumerated() {
+                if let symbols = seg.symbols, i < symbols.count,
+                   let image = NSImage(systemSymbolName: symbols[i], accessibilityDescription: title) {
+                    s.setImage(image, forSegment: i)
+                    s.setLabel("", forSegment: i)
+                    s.setToolTip(title, forSegment: i)
+                } else {
+                    s.setLabel(title, forSegment: i)
+                }
+            }
             s.selectedSegment = seg.selected
             s.isEnabled = seg.enabled
             s.toolTip = row.tooltip
@@ -476,6 +686,30 @@ final class StudioRowView: NSView, StudioPageItemView {
             (controlView as? StudioSwatchView)?.swatch = swatch
         case .text(let text):
             (controlView as? NSTextField)?.stringValue = text
+        case .number(let n):
+            (controlView as? StudioNumberBox)?.show(n)
+            scrubArea.isHidden = row.label.isEmpty
+            scrubArea.toolTip = StudioText[.scrubTip]
+            if n.steppers {
+                if steppers == nil {
+                    let b = StudioTextSizeButtons()
+                    b.onStep = { [weak self] step in self?.onEvent?(.number(part: 0, .step(Double(step)))) }
+                    steppers = b
+                    addSubview(b)
+                }
+            } else {
+                steppers?.removeFromSuperview()
+                steppers = nil
+            }
+            meaningLabel.stringValue = n.meaning ?? ""
+            meaningLabel.isHidden = n.meaning == nil
+        case .colorLabel(let c):
+            (controlView as? StudioColorLabelView)?.show(c)
+        case .pair(let items):
+            guard let pair = controlView as? StudioPairView else { break }
+            for (half, control) in zip(pair.halves, items) {
+                half.update(.row(StudioPage.Row(label: "", control: control, labelWidth: 0)))
+            }
         }
         if let invalid = row.invalid, case .text = row.control {
             (controlView as? NSTextField)?.stringValue = invalid
@@ -483,7 +717,7 @@ final class StudioRowView: NSView, StudioPageItemView {
         needsLayout = true
     }
 
-    func height(forWidth width: CGFloat) -> CGFloat { 24 }
+    func height(forWidth width: CGFloat) -> CGFloat { dense ? 23.5 : 24 }
 
     override func layout() {
         super.layout()
@@ -491,7 +725,13 @@ final class StudioRowView: NSView, StudioPageItemView {
         let lh = ceil(label.intrinsicContentSize.height)
         let labelWidth = row.labelWidth
         label.frame = NSRect(x: 0, y: (h - lh) / 2, width: labelWidth, height: lh)
-        var x = labelWidth + 8
+        if !scrubMark.isHidden {
+            let lw = min(ceil(label.intrinsicContentSize.width), labelWidth - 14)
+            label.frame.size.width = lw + 2
+            scrubMark.frame = NSRect(x: lw + 4, y: (h - 12) / 2, width: 12, height: 12)
+        }
+        scrubArea.frame = NSRect(x: 0, y: 0, width: labelWidth, height: h)
+        var x = labelWidth + (labelWidth > 0 ? 8 : 0)
         var right = bounds.width
         if !detailLabel.isHidden {
             let w = min(ceil(detailLabel.intrinsicContentSize.width), 110)
@@ -512,15 +752,18 @@ final class StudioRowView: NSView, StudioPageItemView {
                 x += w + 4
             }
         }
+        let controlHeight: CGFloat = dense ? 22 : 24
         switch row.control {
         case .segmented(let seg):
             let w = min(seg.width ?? (right - x), right - x)
-            controlView.frame = NSRect(x: right - w, y: (h - 24) / 2, width: w, height: 24)
+            // Icons and dense rows sit at the start; words fill to the end.
+            let start = seg.symbols != nil || dense ? x : right - w
+            controlView.frame = NSRect(x: start, y: (h - controlHeight) / 2, width: w, height: controlHeight)
         case .popup(let popup):
             let w = min(popup.width ?? (right - x), right - x)
-            controlView.frame = NSRect(x: x, y: (h - 24) / 2, width: w, height: 24)
+            controlView.frame = NSRect(x: x, y: (h - controlHeight) / 2, width: w, height: controlHeight)
         case .toggle:
-            controlView.frame = NSRect(x: right - 38, y: (h - 20) / 2, width: 38, height: 20)
+            controlView.frame = NSRect(x: dense ? x : right - 38, y: (h - 20) / 2, width: 38, height: 20)
         case .percent:
             let pw: CGFloat = 44
             percentLabel.frame = NSRect(x: right - pw, y: (h - 15) / 2, width: pw, height: 15)
@@ -530,6 +773,47 @@ final class StudioRowView: NSView, StudioPageItemView {
             controlView.frame = NSRect(x: x, y: (h - 24) / 2, width: 24, height: 24)
         case .text:
             controlView.frame = NSRect(x: x, y: (h - 16) / 2, width: right - x, height: 16)
+        case .number(let n):
+            let w = min(n.width ?? (right - x), right - x)
+            controlView.frame = NSRect(x: x, y: (h - controlHeight) / 2, width: w, height: controlHeight)
+            var after = x + w + 8
+            if let steppers {
+                let size = steppers.intrinsicContentSize
+                steppers.frame = NSRect(x: after, y: (h - size.height) / 2, width: size.width, height: size.height)
+                after += size.width + 8
+            }
+            if !meaningLabel.isHidden {
+                meaningLabel.frame = NSRect(x: after, y: (h - 15) / 2, width: max(right - after, 0), height: 15)
+            }
+        case .colorLabel:
+            controlView.frame = NSRect(x: x, y: 0, width: right - x, height: h)
+        case .pair:
+            controlView.frame = NSRect(x: x, y: 0, width: right - x, height: h)
+        }
+    }
+}
+
+/// Two controls side by side, each half of the room (Size: W · H).
+final class StudioPairView: NSView {
+    let halves: [StudioRowView]
+
+    override var isFlipped: Bool { true }
+
+    init(_ halves: [StudioRowView]) {
+        self.halves = halves
+        super.init(frame: .zero)
+        halves.forEach(addSubview)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layout() {
+        super.layout()
+        guard !halves.isEmpty else { return }
+        let gap: CGFloat = 6
+        let w = (bounds.width - gap * CGFloat(halves.count - 1)) / CGFloat(halves.count)
+        for (i, v) in halves.enumerated() {
+            v.frame = NSRect(x: CGFloat(i) * (w + gap), y: 0, width: w, height: bounds.height)
         }
     }
 }

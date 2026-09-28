@@ -411,8 +411,8 @@ final class StudioWidgetPage {
         case .link(let id): link(id)
         case .noteLink: break
         case .textSize(let step): scaleText(step)
-        case .undo: session?.undoStack.undo()
-        case .suggestion: break
+        case .undo, .topUndo: session?.undoStack.undo()
+        case .suggestion, .number, .crumb, .scopeLink, .scopeHover, .tokenData, .example, .hoverItem, .filter: break
         }
     }
 

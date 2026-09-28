@@ -36,6 +36,28 @@ struct StudioPage: Equatable {
     var footer: [Link] = []
     /// A long page (or one with a confirmation open) uses the tight rhythm between sections.
     var tight = false
+    /// The way back, above the title: "‹ System › CPU" (the first goes back to the widget page).
+    var crumbs: [String] = []
+    /// The scope sentence under the title, before any change: "This number only · Apply to All 4 Numbers".
+    var scope: Scope?
+    /// A confirmation at the top of the page (a change made on the canvas: a drag).
+    var topConfirmation: Confirmation?
+    /// What the search field says and does: "What do you want to change?", or "Filter these settings" on Every
+    /// Setting (with what is typed in it).
+    var filter: Filter?
+
+    struct Filter: Equatable {
+        var placeholder: String
+        var text: String
+    }
+
+    /// The scope sentence: what a change reaches now, and the one-click wider (or narrower) reach.
+    struct Scope: Equatable {
+        var text: String
+        var link: String?
+        /// The pointer is on the link (the canvas outlines what it would reach).
+        var linkHovered = false
+    }
 
     /// A section: a title with an optional command at its right (A− / A+), then its items.
     struct Section: Equatable {
@@ -43,11 +65,15 @@ struct StudioPage: Equatable {
         var title: String
         var trailing: Trailing?
         var items: [Item]
+        /// Every Setting's dense rhythm: a smaller heading, no hairline above it.
+        var dense = false
     }
 
     enum Trailing: Equatable {
         /// A− / A+: every text in the widget smaller or bigger.
         case textSize
+        /// Quiet words at the heading's right ("outside → inside").
+        case note(String)
     }
 
     struct Item: Equatable {
@@ -63,6 +89,49 @@ struct StudioPage: Equatable {
         /// A quiet sentence (a scope line), with a link at its end.
         case note(Note)
         case confirmation(Confirmation)
+        /// Data and words in one field ("CPU usage %"): the data chip opens what it can show.
+        case token(Token)
+        /// Examples rendered with the real value, one chosen ("21% · 21.4% · 0.21").
+        case examples(Examples)
+        /// A row of Every Setting: a small label (that can be dragged to change a number) and a small control.
+        case dense(Dense)
+        /// The box from outside in: margin, shadow, background, border, padding.
+        case box(Box)
+    }
+
+    struct Token: Equatable {
+        enum Part: Equatable {
+            case data(name: String, symbol: String)
+            case text(String)
+        }
+        var parts: [Part]
+        var small = false
+    }
+
+    struct Examples: Equatable {
+        var items: [String]
+        var selected: Int?
+        var small = false
+    }
+
+    struct Dense: Equatable {
+        var label: String
+        var control: Control
+        /// Under the label's row, quieter: which word the filter found it by ("Color · Rainmeter: FontColor").
+        var note: String?
+        /// The label is being dragged (its value changes): drawn with ↔.
+        var scrubbing = false
+        var tooltip: String?
+    }
+
+    struct Box: Equatable {
+        var margin: String
+        var shadow: String
+        var background: String
+        var border: String
+        var padding: String
+        /// What sits in the middle ("23%").
+        var content: String
     }
 
     /// A label and the control that changes the value.
@@ -88,6 +157,39 @@ struct StudioPage: Equatable {
         /// One color swatch in a row (an option).
         case color(Swatch)
         case text(String)
+        /// A number: its field (with its notation kept: `10R`, `(#Gap# + 4)`), its unit, and the shortcuts of every
+        /// number field (drag the label, arithmetic, ⌥-click the label for the default, arrows ±1, ⇧ ±10).
+        case number(Number)
+        /// A swatch with words beside it: "Text color · follows Light / Dark".
+        case colorLabel(ColorLabel)
+        /// Two controls side by side (Size: W · H; Font · weight).
+        case pair([Control])
+    }
+
+    struct Number: Equatable {
+        /// What the field shows: the value as written ("10R"), or empty with `placeholder` ("Fit").
+        var text: String
+        var value: Double?
+        var unit: String?
+        /// Before the number, inside the field ("W", "x").
+        var prefix: String?
+        var placeholder: String = ""
+        /// What ⌥-clicking the label puts back (nil: nothing to reset to).
+        var defaultText: String?
+        /// A− / A+ beside the field (text sizes).
+        var steppers = false
+        var width: CGFloat?
+        /// Words after the field, quieter ("after “23%”").
+        var meaning: String?
+        var step: Double = 1
+        var minimum: Double?
+        var maximum: Double?
+    }
+
+    struct ColorLabel: Equatable {
+        var swatch: Swatch
+        var title: String
+        var note: String?
     }
 
     struct Popup: Equatable {
@@ -119,6 +221,8 @@ struct StudioPage: Equatable {
         var selected: Int
         var enabled = true
         var width: CGFloat?
+        /// SF Symbols in place of the words (the words become their accessibility labels).
+        var symbols: [String]? = nil
     }
 
     /// A color swatch: a part's color, Text, Card (round, and square for the card), or More….
@@ -192,11 +296,18 @@ struct StudioPage: Equatable {
 
     static func controls(in kind: Kind) -> Int {
         switch kind {
-        case .row: return 1
+        case .row(let row): return controls(in: row.control)
         case .swatches(let s): return s.parts.count
-        case .thumbnails: return 1
-        case .link, .note, .confirmation: return 0
+        case .thumbnails, .token, .examples: return 1
+        case .dense(let d): return controls(in: d.control)
+        case .link, .note, .confirmation, .box: return 0
         }
+    }
+
+    /// A pair of controls (width and height) counts as two.
+    static func controls(in control: Control) -> Int {
+        if case .pair(let items) = control { return items.reduce(0) { $0 + controls(in: $1) } }
+        return 1
     }
 
     /// The design's limit: twelve controls, plus the Text · Card pair.

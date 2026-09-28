@@ -260,6 +260,127 @@ enum StudioText {
         // The status menu.
         case useNewStudio = "menu.useNewStudio"
         case studioWindow = "window.studio"
+        // The part page, Every Setting and the data page.
+        case backTo = "part.backTo"
+        case scrubTip = "part.scrubTip"
+        case scopeOnly = "scope.only"
+        case scopeApplyAll = "scope.applyAll"
+        case scopeAll = "scope.all"
+        case scopeOnlyThis = "scope.onlyThis"
+        case scopeShareStyle = "scope.shareStyle"
+        case scopeShareValue = "scope.shareValue"
+        case scopeWidgets = "scope.widgets"
+        case scopeWidgetsLink = "scope.widgetsLink"
+        case scopeDetailOnly = "scope.detail.only"
+        case scopeDetailStyle = "scope.detail.style"
+        case scopeDetailVariable = "scope.detail.variable"
+        case scopeDetailFile = "scope.detail.file"
+        case dragKeepsNotation = "part.dragKeepsNotation"
+        case kindNumber = "kind.number"
+        case kindNumbers = "kind.numbers"
+        case kindText = "kind.text"
+        case kindTexts = "kind.texts"
+        case kindSymbol = "kind.symbol"
+        case kindSymbols = "kind.symbols"
+        case kindPicture = "kind.picture"
+        case kindPictures = "kind.pictures"
+        case kindBar = "kind.bar"
+        case kindBars = "kind.bars"
+        case kindRing = "kind.ring"
+        case kindRings = "kind.rings"
+        case kindGraph = "kind.graph"
+        case kindGraphs = "kind.graphs"
+        case kindShape = "kind.shape"
+        case kindShapes = "kind.shapes"
+        case kindPart = "kind.part"
+        case kindParts = "kind.parts"
+        case nowValue = "part.now"
+        case subtitleOf = "part.subtitleOf"
+        case subtitleSays = "part.subtitleSays"
+        case subtitleKind = "part.subtitleKind"
+        case everySettingCount = "part.everySettingCount"
+        case sectionText = "section.text"
+        case sectionLayout = "section.layout"
+        case sectionClicked = "section.clicked"
+        case sectionLook = "section.look"
+        case sectionSymbol = "section.symbol"
+        case sectionPicture = "section.picture"
+        case sectionShape = "section.shape"
+        case sectionFillStroke = "section.fillStroke"
+        case rowStyle = "row.style"
+        case rowFont = "row.font"
+        case rowTextSize = "row.textSize"
+        case rowWeight = "row.weight"
+        case rowColor = "row.color"
+        case rowAlign = "row.align"
+        case rowX = "row.x"
+        case rowY = "row.y"
+        case rowSize = "row.size"
+        case rowFill = "row.fill"
+        case rowTrack = "row.track"
+        case rowThickness = "row.thickness"
+        case rowKind = "row.kind"
+        case rowCorners = "row.corners"
+        case rowStroke = "row.stroke"
+        case rowStrokeWidth = "row.strokeWidth"
+        case rowPicture = "row.picture"
+        case rowTint = "row.tint"
+        case rowSymbolColors = "row.symbolColors"
+        case textColor = "part.textColor"
+        case followsLightDark = "part.followsLightDark"
+        case fit = "part.fit"
+        case widthPrefix = "part.w"
+        case heightPrefix = "part.h"
+        case alignLeft = "align.left"
+        case alignCenter = "align.center"
+        case alignRight = "align.right"
+        case afterPart = "part.after"
+        case belowPart = "part.below"
+        case withPart = "part.with"
+        case clickNothing = "click.nothing"
+        case clickRemove = "click.remove"
+        case noStyle = "part.noStyle"
+        case showsTitle = "part.showsTitle"
+        case dataDetails = "part.dataDetails"
+        case everySetting = "part.everySetting"
+        case everySettingMore = "part.everySettingMore"
+        case showInCode = "part.showInCode"
+        case filterPlaceholder = "part.filter"
+        case filterViaRainmeter = "part.filter.rainmeter"
+        case filterViaAlias = "part.filter.alias"
+        case boxMargin = "box.margin"
+        case boxShadow = "box.shadow"
+        case boxBackground = "box.background"
+        case boxBorder = "box.border"
+        case boxPadding = "box.padding"
+        case boxNone = "box.none"
+        case boxRaised = "box.raised"
+        case boxSunken = "box.sunken"
+        case boxOrder = "box.order"
+        case voiceOver = "spoken.voiceOver"
+        case dataUsedBy = "data.usedBy"
+        case dataNotUsed = "data.notUsed"
+        case dataLive = "data.live"
+        case dataEvery = "data.every"
+        case undoWeight = "undo.weight"
+        case undoAlign = "undo.align"
+        case undoPosition = "undo.position"
+        case undoFormat = "undo.format"
+        case undoClick = "undo.click"
+        case undoStyle = "undo.style"
+        case undoMove = "undo.move"
+        case undoHide = "undo.hide"
+        case undoShape = "undo.shape"
+        case undoSetting = "undo.setting"
+        case undoPartSize = "undo.partSize"
+        case confirmMoved = "confirm.moved"
+        case confirmHidden = "confirm.hidden"
+        case confirmReset = "confirm.reset"
+        case confirmWide = "confirm.wide"
+        case optionDistances = "canvas.optionDistances"
+        case menuHide = "canvas.hide"
+        case menuShowPart = "canvas.show"
+        case partsCount = "part.partsCount"
     }
 
     /// English, then Simplified Chinese. `%@` and `%d` are filled by `format`.
@@ -477,6 +598,126 @@ enum StudioText {
         .colorBadValue: ("Not a color: try #40BA5C", "不是颜色：试试 #40BA5C"),
         .useNewStudio: ("Use New Studio", "使用新的 Studio"),
         .studioWindow: ("Studio", "Studio"),
+        .backTo: ("Back to %@", "返回%@"),
+        .scrubTip: ("Drag to change · ⌥-click for the default", "拖动改值 · 按住 ⌥ 点按恢复默认"),
+        .scopeOnly: ("This %@ only", "只改这个%@"),
+        .scopeApplyAll: ("Apply to All %d %@", "应用到全部 %d 个%@"),
+        .scopeAll: ("All %d %@", "全部 %d 个%@"),
+        .scopeOnlyThis: ("Only This %@", "只改这一个"),
+        .scopeShareStyle: ("%d %@ share one style", "%d 个%@共用一个样式"),
+        .scopeShareValue: ("%d parts use this value", "%d 个部件用这个值"),
+        .scopeWidgets: ("This widget · all %d", "这个小组件 · 全部 %d 个"),
+        .scopeWidgetsLink: ("All %d Widgets", "全部 %d 个小组件"),
+        .scopeDetailOnly: ("Only [%@]", "只改 [%@]"),
+        .scopeDetailStyle: ("shared style %@ (%d meters)", "改共用样式 %@（%d 个 meter）"),
+        .scopeDetailVariable: ("variable %@ (%d meters)", "改变量 %@（%d 个 meter）"),
+        .scopeDetailFile: ("shared file %@ (%d widgets)", "改共用文件 %@（%d 个小组件）"),
+        .dragKeepsNotation: ("Dragging keeps how it is written (10R → 30R)", "拖动保留写法（10R → 30R）"),
+        .kindNumber: ("number", "数字"),
+        .kindNumbers: ("numbers", "数字"),
+        .kindText: ("text", "文字"),
+        .kindTexts: ("texts", "文字"),
+        .kindSymbol: ("symbol", "符号"),
+        .kindSymbols: ("symbols", "符号"),
+        .kindPicture: ("picture", "图片"),
+        .kindPictures: ("pictures", "图片"),
+        .kindBar: ("bar", "进度条"),
+        .kindBars: ("bars", "进度条"),
+        .kindRing: ("ring", "圆环"),
+        .kindRings: ("rings", "圆环"),
+        .kindGraph: ("graph", "曲线"),
+        .kindGraphs: ("graphs", "曲线"),
+        .kindShape: ("shape", "形状"),
+        .kindShapes: ("shapes", "形状"),
+        .kindPart: ("part", "部件"),
+        .kindParts: ("parts", "部件"),
+        .nowValue: ("Now %@", "现在 %@"),
+        .subtitleOf: ("the %@ of %@", "%2$@ 的%1$@"),
+        .subtitleSays: ("says “%@”", "写着“%@”"),
+        .subtitleKind: ("a %@", "一个%@"),
+        .everySettingCount: ("every setting · %d", "所有设置 · %d 项"),
+        .sectionText: ("Text", "文字"),
+        .sectionLayout: ("Layout", "排版"),
+        .sectionClicked: ("When clicked", "点按时"),
+        .sectionLook: ("Look", "外观"),
+        .sectionSymbol: ("Symbol", "符号"),
+        .sectionPicture: ("Picture", "图片"),
+        .sectionShape: ("Shape", "形状"),
+        .sectionFillStroke: ("Fill and stroke", "填充和描边"),
+        .rowStyle: ("Style", "样式"),
+        .rowFont: ("Font", "字体"),
+        .rowTextSize: ("Text size", "字号"),
+        .rowWeight: ("Weight", "字重"),
+        .rowColor: ("Color", "颜色"),
+        .rowAlign: ("Align", "对齐"),
+        .rowX: ("X", "X"),
+        .rowY: ("Y", "Y"),
+        .rowSize: ("Size", "大小"),
+        .rowFill: ("Fill", "填充"),
+        .rowTrack: ("Track", "轨道"),
+        .rowThickness: ("Thickness", "粗细"),
+        .rowKind: ("Kind", "种类"),
+        .rowCorners: ("Corners", "圆角"),
+        .rowStroke: ("Stroke", "描边"),
+        .rowStrokeWidth: ("Stroke width", "描边粗细"),
+        .rowPicture: ("Picture", "图片"),
+        .rowTint: ("Tint", "着色"),
+        .rowSymbolColors: ("Colors", "颜色"),
+        .textColor: ("Text color", "文字颜色"),
+        .followsLightDark: ("follows Light / Dark", "跟随浅色 / 深色"),
+        .fit: ("Fit", "跟随内容"),
+        .widthPrefix: ("W", "宽"),
+        .heightPrefix: ("H", "高"),
+        .alignLeft: ("Left", "左对齐"),
+        .alignCenter: ("Center", "居中"),
+        .alignRight: ("Right", "右对齐"),
+        .afterPart: ("after “%@”", "在“%@”后面"),
+        .belowPart: ("below “%@”", "在“%@”下面"),
+        .withPart: ("level with “%@”", "和“%@”对齐"),
+        .clickNothing: ("Nothing happens", "什么都不做"),
+        .clickRemove: ("Do Nothing When Clicked", "点按时什么都不做"),
+        .noStyle: ("None", "无"),
+        .showsTitle: ("Show", "显示"),
+        .dataDetails: ("Data Details…", "数据详情…"),
+        .everySetting: ("Every Setting", "所有设置"),
+        .everySettingMore: ("%d more", "另有 %d 项"),
+        .showInCode: ("Show in Code", "在代码中显示"),
+        .filterPlaceholder: ("Filter these settings", "筛选这些设置"),
+        .filterViaRainmeter: ("%@ · Rainmeter: %@", "%@ · Rainmeter：%@"),
+        .filterViaAlias: ("%@ · “%@”", "%@ · “%@”"),
+        .boxMargin: ("Margin %@", "外边距 %@"),
+        .boxShadow: ("Shadow %@", "阴影 %@"),
+        .boxBackground: ("Background %@", "背景 %@"),
+        .boxBorder: ("Border %@", "边框 %@"),
+        .boxPadding: ("Padding %@", "内边距 %@"),
+        .boxNone: ("none", "无"),
+        .boxRaised: ("raised", "凸起"),
+        .boxSunken: ("sunken", "凹陷"),
+        .boxOrder: ("outside → inside", "由外到内"),
+        .voiceOver: ("VoiceOver", "VoiceOver"),
+        .dataUsedBy: ("Used by", "谁在用"),
+        .dataNotUsed: ("No part shows it", "没有部件显示它"),
+        .dataLive: ("Live data", "实时数据"),
+        .dataEvery: ("updates every %@", "每 %@ 更新"),
+        .undoWeight: ("Weight", "字重"),
+        .undoAlign: ("Alignment", "对齐"),
+        .undoPosition: ("Position", "位置"),
+        .undoFormat: ("Format", "格式"),
+        .undoClick: ("Click", "点按"),
+        .undoStyle: ("Style", "样式"),
+        .undoMove: ("Move", "移动"),
+        .undoHide: ("Hide", "隐藏"),
+        .undoShape: ("Shape", "形状"),
+        .undoSetting: ("%@", "%@"),
+        .undoPartSize: ("Size", "大小"),
+        .confirmMoved: ("Moved %@", "已移动%@"),
+        .confirmHidden: ("%@ is hidden", "%@已隐藏"),
+        .confirmReset: ("%@ is back to its default", "%@已恢复默认"),
+        .confirmWide: ("%@ · %d parts changed", "%@ · 改了 %d 个部件"),
+        .optionDistances: ("⌥ shows distances", "按住 ⌥ 显示距离"),
+        .menuHide: ("Hide %@", "隐藏%@"),
+        .menuShowPart: ("Show %@", "显示%@"),
+        .partsCount: ("%d parts", "%d 个部件"),
     ]
 
     static subscript(_ key: Key) -> String { string(key, in: language) }
