@@ -211,7 +211,7 @@ extension DeskSnapshot {
         let upper8 = index.utf8Offset(ofUTF16: min(upper, index.utf16Count))
         var tokens: [DeskSemanticToken] = []
         for (k, block) in semanticBlockRanges.enumerated() where block.upperBound >= lower8 && block.lowerBound <= upper8 {
-            tokens += semanticTokens(ofBlock: k).filter(overlaps)
+            tokens += semanticTokens(ofBlock: k, near: lower8...upper8).filter(overlaps)
         }
         return DeskSemanticTokens(tokens: tokens, index: index)
     }
@@ -219,15 +219,18 @@ extension DeskSnapshot {
     // MARK: Blocks
 
     /// The UTF-8 ranges of the top-level blocks, then the end of the file (the comments after the last block).
+    /// Worked out once per snapshot: measuring the file's last token walks all of its comment lines.
     var semanticBlockRanges: [Range<Int>] {
-        var out: [Range<Int>] = []
-        var at = 0
-        for child in tree.root.children {
-            let length = child.byteLength
-            out.append(at..<(at + length))
-            at += length
+        caches.blockRanges.value {
+            var out: [Range<Int>] = []
+            var at = 0
+            for child in tree.root.children {
+                let length = child.byteLength
+                out.append(at..<(at + length))
+                at += length
+            }
+            return out
         }
-        return out
     }
 
     /// The runs of the `k`-th top-level child of the file (the last is the end of the file), built once. A block
@@ -236,8 +239,7 @@ extension DeskSnapshot {
         caches.semanticBlocks.value(for: k) {
             let children = tree.root.children
             guard case .node(let node) = children[k] else { return DeskSemanticClassifier(snapshot: self).block(k) }
-            var offset = 0
-            for child in children.prefix(k) { offset += child.byteLength }
+            let offset = semanticBlockRanges[k].lowerBound
             let facts = semanticBlockFacts(offset..<(offset + node.byteLength))
             if let runs = memo.semantic(node, facts: facts) {
                 return DeskSemanticBlock(node: node, offset: offset, length: node.byteLength, runs: runs)
@@ -279,20 +281,34 @@ extension DeskSnapshot {
         return out
     }
 
-    private func semanticTokens(ofBlock k: Int) -> [DeskSemanticToken] {
+    /// The tokens of the `k`-th block; with `near` (UTF-8 offsets of the file), only the runs that end at or after
+    /// its start and start at or before its end (the runs are sorted and do not overlap, so their ends are sorted too).
+    private func semanticTokens(ofBlock k: Int, near: ClosedRange<Int>? = nil) -> [DeskSemanticToken] {
         let block = semanticBlock(k)
+        var runs = block.runs[...]
+        if let near {
+            var low = 0, high = block.runs.count
+            while low < high {
+                let mid = (low + high) / 2
+                if block.offset + block.runs[mid].end < near.lowerBound { low = mid + 1 } else { high = mid }
+            }
+            var last = low
+            while last < block.runs.count, block.offset + block.runs[last].start <= near.upperBound { last += 1 }
+            runs = block.runs[low..<last]
+        }
         var offsets: [Int] = []
-        offsets.reserveCapacity(block.runs.count * 2)
-        for run in block.runs {
+        offsets.reserveCapacity(runs.count * 2)
+        for run in runs {
             offsets.append(block.offset + run.start)
             offsets.append(block.offset + run.end)
         }
         let positions = index.positions(ofAscendingUTF8: offsets)
-        return block.runs.indices.map { r in
-            let (s, e) = (positions[2 * r], positions[2 * r + 1])
+        return runs.indices.map { r in
+            let i = r - runs.startIndex
+            let (s, e) = (positions[2 * i], positions[2 * i + 1])
             return DeskSemanticToken(range: DeskRange(start: DeskPosition(offset: s.utf16, line: s.line, column: s.column),
                                                       end: DeskPosition(offset: e.utf16, line: e.line, column: e.column)),
-                                     type: block.runs[r].type, modifiers: block.runs[r].modifiers)
+                                     type: runs[r].type, modifiers: runs[r].modifiers)
         }
     }
 
@@ -392,8 +408,7 @@ struct DeskSemanticClassifier {
 
     func block(_ k: Int) -> DeskSemanticBlock {
         let root = snapshot.tree.root
-        var offset = 0
-        for child in root.children.prefix(k) { offset += child.byteLength }
+        let offset = snapshot.semanticBlockRanges[k].lowerBound
         let child = root.children[k]
         var runs: [Run] = []
         switch child {

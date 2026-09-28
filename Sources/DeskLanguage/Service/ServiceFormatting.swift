@@ -62,23 +62,27 @@ extension DeskSnapshot {
     }
 
     /// The text range (UTF-8, trivia excluded) of the innermost statement or top-level block whose text holds the
-    /// byte at `offset`.
+    /// byte at `offset`. Walks the node table: a node's children are not made again for each request (the file's
+    /// last token may hold thousands of comment lines, which `PositionedNode.children` would measure each time).
     func innermostStatement(at offset: Int) -> Range<Int>? {
-        var current = tree.rootNode
+        let table = nodeTable
+        var current = 0
         var found: Range<Int>?
         while true {
-            var next: PositionedNode?
-            for child in current.children {
-                guard case .node(let node) = child, node.range.contains(offset) else { continue }
+            var next: Int?
+            for child in table.children(of: current) {
+                let entry = table.entries[child]
+                guard entry.offset <= offset, offset < entry.offset + entry.node.byteLength else { continue }
                 // Leading trivia belongs to the node's first token but not to its text.
-                if node.quickTextRange.contains(offset) { next = node }
+                if entry.textRange.contains(offset) { next = child }
                 break
             }
-            guard let node = next else { return found }
-            if node.kind.isStatement || node.kind.isTopLevelBlock || node.kind == .strayStatement {
-                found = node.quickTextRange
+            guard let chosen = next else { return found }
+            let kind = table.entries[chosen].kind
+            if kind.isStatement || kind.isTopLevelBlock || kind == .strayStatement {
+                found = table.entries[chosen].textRange
             }
-            current = node
+            current = chosen
         }
     }
 }

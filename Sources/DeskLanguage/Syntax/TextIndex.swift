@@ -184,17 +184,36 @@ public struct DeskTextIndex: Sendable {
 
     /// The UTF-16 offset, 0-based line and UTF-16 column of each UTF-8 offset, in one pass: the offsets must not
     /// decrease. Each is clamped as `utf16Offset(ofUTF8:)` clamps it; the results equal `lineAndColumn(ofUTF8:)`'s.
+    ///
+    /// Columns are counted on from the previous offset of the same line, so many offsets on one long line that is not
+    /// ASCII cost one walk of the line, not one each.
     public func positions(ofAscendingUTF8 offsets: [Int]) -> [(utf16: Int, line: Int, column: Int)] {
         guard let first = offsets.first else { return [] }
         var out: [(utf16: Int, line: Int, column: Int)] = []
         out.reserveCapacity(offsets.count)
         var line = self.line(ofUTF8: clampedUTF8(first))
+        // The column of `counted`, a scalar start on `line`.
+        var counted = starts8[line]
+        var column = 0
         let lines = lineCount
         for offset in offsets {
             let o = clampedUTF8(offset)
-            if o < starts8[line] { line = self.line(ofUTF8: o) }
-            while line + 1 < lines, starts8[line + 1] <= o { line += 1 }
-            let column = utf16Length(from: starts8[line], to: o, ascii: asciiLines[line])
+            if o < starts8[line] {
+                line = self.line(ofUTF8: o)
+                counted = starts8[line]
+                column = 0
+            }
+            if line + 1 < lines, starts8[line + 1] <= o {
+                while line + 1 < lines, starts8[line + 1] <= o { line += 1 }
+                counted = starts8[line]
+                column = 0
+            }
+            if o < counted {
+                counted = starts8[line]
+                column = 0
+            }
+            column += utf16Length(from: counted, to: o, ascii: asciiLines[line])
+            counted = o
             out.append((starts16[line] + column, line, column))
         }
         return out

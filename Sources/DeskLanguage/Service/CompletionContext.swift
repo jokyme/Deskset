@@ -151,10 +151,19 @@ struct DeskTokenTable: Sendable {
         let offset: Int
         /// The index of the node it is a child of in the node table.
         let parent: Int
+        /// Where its text starts and ends, measured once (the last token's trivia may hold thousands of comment lines).
+        let textStart: Int
+        let textEnd: Int
+
+        init(token: Token, offset: Int, parent: Int) {
+            self.token = token
+            self.offset = offset
+            self.parent = parent
+            textStart = offset + token.leadingTrivia.utf8Length
+            textEnd = textStart + token.text.utf8.count
+        }
 
         var kind: TokenKind { token.kind }
-        var textStart: Int { offset + token.leadingTrivia.utf8Length }
-        var textEnd: Int { textStart + token.text.utf8.count }
         var isPresent: Bool { !token.isMissing && token.kind != .eof }
     }
 
@@ -174,8 +183,9 @@ struct DeskTokenTable: Sendable {
             top.k += 1
             switch child {
             case .token(let token):
-                out.append(Entry(token: token, offset: top.offset, parent: top.e))
-                top.offset += token.utf8Length
+                let entry = Entry(token: token, offset: top.offset, parent: top.e)
+                out.append(entry)
+                top.offset = entry.textEnd + token.trailingTrivia.utf8Length
                 stack.append(top)
             case .node(let n):
                 let childEntry = top.nextChild

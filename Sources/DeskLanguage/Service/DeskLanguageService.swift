@@ -469,6 +469,8 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let semanticBlocks = DeskLazyMap<Int, DeskSemanticBlock>()
     let semanticTokens = DeskLazy<DeskSemanticTokens>()
     let tokenTable = DeskLazy<DeskTokenTable>()
+    /// The UTF-8 ranges of the file's top-level children.
+    let blockRanges = DeskLazy<[Range<Int>]>()
 }
 
 /// A value built once, on first use, under a lock (a second reader waits for the first).
