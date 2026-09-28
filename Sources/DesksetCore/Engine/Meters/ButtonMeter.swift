@@ -21,8 +21,12 @@ import Foundation
 public final class ButtonMeter: Meter {
     public enum State: Int { case normal = 0, pressed = 1, hover = 2 }
 
-    public private(set) var buttonImagePath: String?
-    public private(set) var imageOptions = ImageOptions()
+    public private(set) var buttonImagePath: String? {
+        didSet { if buttonImagePath != oldValue { noteMouseChange() } }
+    }
+    public private(set) var imageOptions = ImageOptions() {
+        didSet { if imageOptions != oldValue { noteMouseChange() } }
+    }
     public private(set) var buttonCommand = ""
     public private(set) var state = State.normal
     private var pressed = false
@@ -70,30 +74,27 @@ public final class ButtonMeter: Meter {
         return SkinRect(x: c.x, y: c.y, width: f.width, height: f.height)
     }
 
-    /// True when (x, y) is on a non-transparent pixel of the normal frame or of the frame currently shown.
+    /// The non-transparent pixels of the normal frame and of the frame currently shown (`ButtonMouseShape`); `hitTest`
+    /// is true there.
     ///
     /// Judgment call: testing only the frame currently shown makes the state depend on itself — where the hover
     /// frame is transparent but the normal frame is not (a smaller or shifted hover image), every mouse move
     /// flipped normal ↔ hover, and a pressed frame drawn a few pixels lower (the Button Images tip suggests that
     /// for a button that "moves" when clicked) swallowed releases on its edge. The normal frame is the button's
     /// shape; the frame on screen adds the pixels the user sees. Transparent pixels of both are never the button.
-    public override func hitTest(x: Double, y: Double) -> Bool {
-        guard let path = buttonImagePath, let f = frameLayout, f.width > 0, f.height > 0 else { return false }
-        let dest = destinationRect
-        guard dest.contains(x: x, y: y) else { return false }
-        var lx = (x - dest.x).rounded(.down), ly = (y - dest.y).rounded(.down)
-        if imageOptions.flip.horizontal { lx = f.width - 1 - lx }
-        if imageOptions.flip.vertical { ly = f.height - 1 - ly }
-        func opaque(_ s: State) -> Bool {
-            let source = ImageGeometry.stripFrameRect(index: frameIndex(s), frameWidth: f.width, frameHeight: f.height,
-                                                      horizontal: f.horizontal)
-            let px = Int((source.x + lx).clamped(0, ImageOptions.maxSide))
-            let py = Int((source.y + ly).clamped(0, ImageOptions.maxSide))
-            guard let alpha = imagePixelAlpha(path, x: px, y: py, exifOriented: imageOptions.useExifOrientation)
-            else { return true }
-            return alpha > 0
+    public override var mouseShape: MouseShape {
+        guard let path = buttonImagePath, let f = frameLayout, f.width > 0, f.height > 0 else { return .nowhere }
+        let c = contentFrame
+        func source(_ s: State) -> SkinRect {
+            ImageGeometry.stripFrameRect(index: frameIndex(s), frameWidth: f.width, frameHeight: f.height,
+                                         horizontal: f.horizontal)
         }
-        return opaque(.normal) || (state != .normal && opaque(state))
+        return .button(ButtonMouseShape(path: path, destination: SkinRect(x: c.x, y: c.y, width: f.width, height: f.height),
+                                        frameWidth: f.width, frameHeight: f.height,
+                                        flipHorizontal: imageOptions.flip.horizontal,
+                                        flipVertical: imageOptions.flip.vertical, normalSource: source(.normal),
+                                        shownSource: state == .normal ? nil : source(state),
+                                        exifOriented: imageOptions.useExifOrientation))
     }
 
     // MARK: Mouse
@@ -129,6 +130,7 @@ public final class ButtonMeter: Meter {
         guard new != state else { return }
         state = new
         noteDrawChange()
+        noteMouseChange()
         skin.redraw()
     }
 }

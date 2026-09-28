@@ -329,7 +329,8 @@ public struct SkinHop: @unchecked Sendable {
                 dropped?()
                 return
             }
-            withExtendedLifetime(skin) { work() }
+            // A piece of work of the skin's own: its snapshot follows what it did.
+            withExtendedLifetime(skin) { skin.work(work) }
         }
     }
 }
@@ -346,7 +347,7 @@ extension Skin {
     /// that neither a day-long `!Delay` nor the animation of a skin that is dropped without being closed (the Manage
     /// window's dry runs, component thumbnails) keeps a skin alive.
     public func async(_ work: @escaping () -> Void) {
-        executor.async { withExtendedLifetime(self) { work() } }
+        executor.async { withExtendedLifetime(self) { self.work(work) } }
     }
 
     /// The way back to this skin's executor for background work (see `SkinHop`). Take it on the skin's own thread,

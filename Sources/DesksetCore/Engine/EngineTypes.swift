@@ -305,6 +305,12 @@ public protocol SkinHost: AnyObject {
     /// new layout (`skinNeedsDisplay`), and only when the list changed. Hosts that draw skins off screen (the default)
     /// show a stand-in instead (the renderer draws one for each region).
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion])
+    /// A piece of the skin's work has ended (docs/skin-threading.md §5.5): an update, an action or bang from outside, a
+    /// mouse entry, a preview, work that came back to the skin (`Skin.async`, `SkinHop`, `!Delay`), the load or the
+    /// close. Called on the skin's owner once the outermost of them returns, not after the ones nested inside it. A
+    /// host that keeps a snapshot of the skin builds it again here when `skin.snapshotGeneration` moved. Default:
+    /// nothing.
+    func skinDidFinishWork(_ skin: Skin)
 }
 
 /// Input a skin took (`Skin.inputMirror`), which another instance of the same widget can take too (`Skin.replay`): the
@@ -349,4 +355,5 @@ extension SkinHost {
     public func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
     public func skinWindowTakesPointer(_ skin: Skin) -> Bool { true }
     public func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {}
+    public func skinDidFinishWork(_ skin: Skin) {}
 }

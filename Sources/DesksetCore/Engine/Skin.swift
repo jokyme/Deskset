@@ -80,7 +80,9 @@ public struct SkinSettings {
 
 /// The `[Rainmeter]` section, read like any other section (for skin-level mouse actions and options).
 public final class RainmeterSection: SkinSection {
-    public internal(set) var mouseActions: [MouseEventKind: String] = [:]
+    public internal(set) var mouseActions: [MouseEventKind: String] = [:] {
+        didSet { if mouseActions != oldValue { skin.noteSnapshotChange() } }
+    }
 
     public override func readOptions() {
         super.readOptions()
@@ -167,13 +169,19 @@ public final class Skin {
     /// Where every section and option of `document` was written (for the inspector).
     public private(set) var sources = IniSourceMap()
     /// Number of `!WriteKeyValue` bangs this skin has run: the inspector does not treat such writes as edits.
-    public private(set) var keyValueWrites = 0
+    public private(set) var keyValueWrites = 0 {
+        didSet { noteSnapshotChange() }
+    }
     /// Editor previews: the `!SetOption` values (nil: none) and variable values replaced by `preview…`.
     var previewSaved: [String: [String: String?]] = [:]
     var previewSavedVariables: [String: String?] = [:]
     /// Skin size in points (window content size).
-    public private(set) var width = 0.0
-    public private(set) var height = 0.0
+    public private(set) var width = 0.0 {
+        didSet { if width != oldValue { noteSnapshotChange() } }
+    }
+    public private(set) var height = 0.0 {
+        didSet { if height != oldValue { noteSnapshotChange() } }
+    }
     /// Number of completed skin updates since this skin object was loaded.
     public private(set) var updateCount = 0
     /// Updates counted by the skin objects this one replaced on refresh (see `continueCounter(from:)`).
@@ -223,12 +231,15 @@ public final class Skin {
     /// What the measures want from the mouse outside the skin window now; the host watches the mouse elsewhere while it
     /// is not empty. Recomputed after every update, every top-level action and when the skin closes; the host hears
     /// of every change (`SkinHost.skinOutsidePointerNeedsChanged`).
-    public private(set) var outsidePointerNeeds = OutsidePointerNeeds()
+    public private(set) var outsidePointerNeeds = OutsidePointerNeeds() {
+        didSet { if outsidePointerNeeds != oldValue { noteSnapshotChange() } }
+    }
     /// Where the host puts glass (`MacGlass`, see Glass.swift), as of the last redraw request; the host hears of every
     /// change (`SkinHost.skinGlassRegionsChanged`).
     public private(set) var glassRegions: [GlassRegion] = [] {
         didSet {
             shownGlass = Dictionary(glassRegions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            noteSnapshotChange()
         }
     }
     /// `glassRegions` by id (a meter's name): the mouse lookups ask it for every meter (`Meter.isOnGlass`).
@@ -238,6 +249,45 @@ public final class Skin {
     public func shownGlassRegion(of meter: Meter) -> GlassRegion? {
         shownGlass.isEmpty ? nil : shownGlass[meter.name]
     }
+    /// Counts the changes to what the skin's window reads of it between two pieces of work (docs/skin-threading.md
+    /// §5.5): where the meters are and whether they are shown, their mouse actions and the state bangs set on them,
+    /// tooltips (and the measure values they show), cursors, a Shape's shapes, a Button's image and state, the glass,
+    /// the size, the compatibility notes, the mouse wanted outside the window, `!WriteKeyValue` writes and what loading
+    /// read. The host builds the skin's snapshot again only when it moved (`SkinHost.skinDidFinishWork`). Never
+    /// decreases.
+    public private(set) var snapshotGeneration = 0
+
+    /// What the window reads of the skin may have changed (see `snapshotGeneration`).
+    func noteSnapshotChange() { snapshotGeneration &+= 1 }
+
+    /// The last hit map built (`makeHitMap`) shows measure values in tooltips: they may change with any piece of work.
+    var hitMapReadsMeasures = false
+
+    /// Nesting of the entry points that do work (`beginWork` / `endWork`): an update, an action or bang from outside,
+    /// a mouse entry, a preview, work that comes back to the skin (`async`, `SkinHop`, `!Delay`)…
+    private var workDepth = 0
+
+    /// Called when an entry point starts; pair it with `endWork` (in a `defer`).
+    @inline(__always)
+    func beginWork() { workDepth += 1 }
+
+    /// Called when an entry point ends: when it was the outermost one, the piece of work is over and the host hears of
+    /// it (`SkinHost.skinDidFinishWork`), whatever it did.
+    func endWork() {
+        workDepth -= 1
+        guard workDepth == 0 else { return }
+        // Tooltips that show measure values are as current as the snapshot built now.
+        if hitMapReadsMeasures { noteSnapshotChange() }
+        host?.skinDidFinishWork(self)
+    }
+
+    /// Runs `body` as a piece of work (see `beginWork`).
+    func work<T>(_ body: () throws -> T) rethrows -> T {
+        beginWork()
+        defer { endWork() }
+        return try body()
+    }
+
     private var sizeComputed = false
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []
@@ -319,6 +369,12 @@ public final class Skin {
 
     public func load() throws {
         assertOwned()
+        beginWork()
+        defer {
+            // What loading read (settings, metadata, files, the sections' options) is new to the snapshot.
+            noteSnapshotChange()
+            endWork()
+        }
         environmentValid = false
         let builtins = builtInVariables()
         var includesAppearance = false
@@ -669,6 +725,8 @@ public final class Skin {
     /// then asks the host to redraw.
     public func update() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed else { return }
         guard updateDepth < Skin.maxUpdateDepth else {
             logOnce("!Update inside an update was ignored (would loop)", level: .warning)
@@ -747,6 +805,8 @@ public final class Skin {
     /// Recomputes meter frames (relative positioning) and, when allowed, the skin size.
     public func layout() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         layoutPending = false
         resolveContainers()
         layoutMeters()
@@ -928,6 +988,8 @@ public final class Skin {
 
     public func redraw() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         layout()
         needsDisplay()
     }
@@ -954,6 +1016,8 @@ public final class Skin {
     /// measures anything. Nothing happens before the first update (that update measures everything anyway).
     public func fontsDidChange() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed, updateCount > 0 else { return }
         layout()
         updateSize(force: true)
@@ -964,6 +1028,8 @@ public final class Skin {
     /// `!Delay` actions are dropped.
     public func close() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed else { return }
         if !settings.onCloseAction.isEmpty { execute(settings.onCloseAction, from: rainmeterSection) }
         // Stop plugin timers, pings, samplers, child processes and web requests now, not when the measures are
@@ -983,6 +1049,8 @@ public final class Skin {
     /// changes happen between updates (and `Update=-1` skins never update again), they run right away.
     public func focusChanged(_ focused: Bool) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         let action = focused ? settings.onFocusAction : settings.onUnfocusAction
         if !action.isEmpty { execute(action, from: rainmeterSection) }
     }
@@ -993,6 +1061,8 @@ public final class Skin {
     /// update, so that update runs it. Nothing happens once the skin is closed.
     public func systemDidWake() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed, !settings.onWakeAction.isEmpty else { return }
         if settings.update < 0 {
             execute(settings.onWakeAction, from: rainmeterSection)
@@ -1012,6 +1082,8 @@ public final class Skin {
     /// once the skin is closed.
     public func appearanceDidChange() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed, usesMacAppearance else { return }
         environmentValid = false
         refreshAppearanceVariables()
@@ -1039,7 +1111,11 @@ public final class Skin {
     /// Whether dragging may start at the point (skin coordinates): outside the `DragMargins` (a negative margin is
     /// measured from the opposite side, e.g. `DragMargins=0,-100,0,0` leaves only the bottom 100 points draggable).
     public func isInDragArea(x: Double, y: Double) -> Bool {
-        let m = settings.dragMargins
+        Skin.isInDragArea(x: x, y: y, margins: settings.dragMargins, width: width, height: height)
+    }
+
+    /// `isInDragArea` for a skin of that size and those `DragMargins`.
+    static func isInDragArea(x: Double, y: Double, margins m: SkinInsets, width: Double, height: Double) -> Bool {
         func edge(_ v: Double, _ size: Double) -> Double { v >= 0 ? v : size + v }
         let left = edge(m.left, width), top = edge(m.top, height)
         let right = width - edge(m.right, width), bottom = height - edge(m.bottom, height)
@@ -1401,6 +1477,8 @@ public final class Skin {
     /// Arguments written in `"""magic quotes"""` are passed literally.
     public func execute(_ actionText: String, from section: SkinSection?) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         if actionDepth == 0 && updateDepth == 0 { environmentValid = false }
         let actions = ActionParser.parseDetailed(actionText)
         run(actions[...], from: section)
@@ -1457,6 +1535,8 @@ public final class Skin {
                     // Weak: a delay of up to a day must not keep a skin alive that is dropped without being closed.
                     pendingDelays[id] = executor.async(after: delay) { [weak self] in
                         guard let self else { return }
+                        self.beginWork()
+                        defer { self.endWork() }
                         self.pendingDelays[id] = nil
                         guard !self.closed, self.generation == scheduled else { return }
                         self.environmentValid = false
@@ -1505,6 +1585,8 @@ public final class Skin {
     /// their Config itself); unsupported ones are listed in `issues`.
     public func perform(_ bang: Bang, from section: SkinSection? = nil) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         if let actionPolicy, !actionPolicy.skin(self, allows: bang) { return }
         if actionDepth == 0 && updateDepth == 0 {
             // Called by the host (e.g. a bang forwarded from another skin): a burst of its own.
@@ -1842,6 +1924,8 @@ public final class Skin {
     /// follows what that one shows. What it may do of the actions that run is up to its `actionPolicy`.
     public func replay(_ input: SkinInput) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed else { return }
         switch input {
         case .mouse(let kind, let x, let y): mouseEvent(kind, x: x, y: y)
@@ -1878,6 +1962,8 @@ public final class Skin {
     @discardableResult
     public func mouseEvent(_ kind: MouseEventKind, x: Double, y: Double) -> Bool {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         defer { mirror(.mouse(kind, x: x, y: y)) }
         environmentValid = false
         var alreadyNotified: Meter?
@@ -1923,6 +2009,8 @@ public final class Skin {
     /// hover state again).
     public func cancelMousePress() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         defer { mirror(.pressCancelled) }
         pressedMeter = nil
         for m in meters where m.handlesMouseItself {
@@ -1940,6 +2028,8 @@ public final class Skin {
     /// Tracks MouseOverAction / MouseLeaveAction for meters and the skin.
     public func mouseMoved(x: Double, y: Double) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         defer { mirror(.moved(x: x, y: y)) }
         environmentValid = false
         if !mouseInside {
@@ -1985,6 +2075,8 @@ public final class Skin {
     /// border into enter / leave. Nothing happens when the skin has no such measure.
     public func pointerEvent(_ event: PointerEvent, x: Double, y: Double) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed, !pointerObservers.isEmpty else { return }
         defer { mirror(.pointer(event, x: x, y: y)) }
         environmentValid = false
@@ -2049,6 +2141,8 @@ public final class Skin {
     /// counts. No wheel, no enter / leave, no double clicks: version 2 of the plugin has none.
     public func outsidePointerEvent(_ event: PointerEvent, x: Double, y: Double) {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         guard !closed, !outsidePointerNeeds.isEmpty else { return }
         let needs = outsidePointerNeeds
         switch event {
@@ -2113,6 +2207,8 @@ public final class Skin {
 
     public func mouseExited() {
         assertOwned()
+        beginWork()
+        defer { endWork() }
         defer { mirror(.exited) }
         environmentValid = false
         for m in meters where m.handlesMouseItself { m.mouseHover(inside: false, x: -1, y: -1) }
@@ -2151,27 +2247,42 @@ public final class Skin {
     /// Judgment: hover actions (MouseOver/MouseLeave) do not count.
     public func mouseCursorName(at x: Double, _ y: Double) -> String? {
         assertOwned()
-        enum Target { case pointer, blocked, none }
-        func target(_ action: (MouseEventKind) -> String?) -> Target {
-            var blocked = false
-            for kind in MouseEventKind.allCases where kind != .over && kind != .leave {
-                guard let a = action(kind) else { continue }
-                if Skin.isEmptyAction(a) { blocked = true } else { return .pointer }
-            }
-            return blocked ? .blocked : .none
-        }
         for m in meters.reversed() where m.isHit(x: x, y: y) {
             if !m.mouseActionCursor { return nil }
-            switch target(m.effectiveMouseAction) {
+            switch Skin.cursorTarget({ SkinHitMap.Action(m.effectiveMouseAction($0)) }) {
             case .pointer: return m.mouseActionCursorName.isEmpty ? "HAND" : m.mouseActionCursorName
             case .blocked: return nil
-            case .none: continue
+            case .nothing: continue
             }
         }
-        if let root = rainmeterSection, settings.mouseActionCursor, target(root.effectiveMouseAction) == .pointer {
+        if let root = rainmeterSection, settings.mouseActionCursor,
+           Skin.cursorTarget({ SkinHitMap.Action(root.effectiveMouseAction($0)) }) == .pointer {
             return settings.mouseActionCursorName.isEmpty ? "HAND" : settings.mouseActionCursorName
         }
         return nil
+    }
+
+    /// What a meter's (or the skin's) click actions do to the cursor (`mouseCursorName`).
+    enum CursorTarget {
+        /// An action runs: the pointer.
+        case pointer
+        /// Only caught actions (disabled, or `[]`): the arrow, and the meters behind do not count.
+        case blocked
+        /// No click action: the meters behind decide.
+        case nothing
+    }
+
+    /// The cursor target of a section's click actions (hover actions do not count), given what each one does.
+    static func cursorTarget(_ action: (MouseEventKind) -> SkinHitMap.Action) -> CursorTarget {
+        var blocked = false
+        for kind in MouseEventKind.allCases where kind != .over && kind != .leave {
+            switch action(kind) {
+            case .absent: continue
+            case .caught: blocked = true
+            case .runs: return .pointer
+            }
+        }
+        return blocked ? .blocked : .nothing
     }
 
     /// `""` (a disabled action) or only brackets and blanks, like `[]` or `[ ][]`: detected but does nothing.
@@ -2194,7 +2305,10 @@ public final class Skin {
 
     public func addIssue(_ issue: String) {
         guard issueSet.count < Skin.maxDistinctMessages else { return }
-        if issueSet.insert(issue).inserted { issues.append(issue) }
+        if issueSet.insert(issue).inserted {
+            issues.append(issue)
+            noteSnapshotChange()
+        }
     }
 
     /// Takes back a compatibility note that no longer applies — a transient one, such as a macOS permission the user
@@ -2203,6 +2317,7 @@ public final class Skin {
     public func removeIssue(_ issue: String) {
         guard issueSet.remove(issue) != nil else { return }
         issues.removeAll { $0 == issue }
+        noteSnapshotChange()
     }
 }
 

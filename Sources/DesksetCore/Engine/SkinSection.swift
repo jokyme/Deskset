@@ -36,7 +36,9 @@ open class SkinSection {
     var updateTick = 0
 
     /// Mouse action state bangs (meters and `[Rainmeter]` only). Missing entries are `.enabled`.
-    var mouseActionStates: [MouseEventKind: MouseActionState] = [:]
+    var mouseActionStates: [MouseEventKind: MouseActionState] = [:] {
+        didSet { if mouseActionStates != oldValue { skin.noteSnapshotChange() } }
+    }
     /// The last non-enabled state per action, used by `!ToggleMouseAction` ("remembers the last non-enabled
     /// state"; disabled by default).
     var lastNonEnabledMouseState: [MouseEventKind: MouseActionState] = [:]

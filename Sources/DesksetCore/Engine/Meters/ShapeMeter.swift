@@ -38,6 +38,7 @@ public final class ShapeMeter: Meter {
         if parsed != shapes {
             shapes = parsed
             revision &+= 1
+            noteMouseChange()
         }
     }
 
@@ -51,23 +52,25 @@ public final class ShapeMeter: Meter {
         return (pixels(w), pixels(h))
     }
 
-    /// Mouse detection (skin coordinates): true over any solid part of the shapes — even outside the meter's
-    /// frame — or over the meter's own SolidColor background. The meter's TransformationMatrix is taken into
-    /// account. Overrides `Meter.hitTest`, so every mouse lookup of the skin (`Meter.isHit`) uses it.
-    public override func hitTest(x: Double, y: Double) -> Bool {
-        guard !hidden else { return false }
-        var p = ShapePoint(x, y)
+    /// Mouse detection (skin coordinates): any solid part of the shapes — even outside the meter's frame — or the
+    /// meter's own SolidColor background, both moved by the meter's TransformationMatrix (`ShapeMouseShape`). Every
+    /// mouse lookup of the skin (`Meter.isHit`) and the skin's hit map use it; a hidden meter, or one turned by a matrix
+    /// that cannot be undone, is found nowhere.
+    public override var mouseShape: MouseShape {
+        guard !hidden else { return .nowhere }
+        var inverse: ShapeTransform?
         if let m = transformationMatrix {
-            guard let inverse = ShapeTransform(a: m[0], b: m[1], c: m[2], d: m[3], tx: m[4], ty: m[5]).inverted else { return false }
-            p = inverse.apply(p)
+            guard let inverted = ShapeTransform(a: m[0], b: m[1], c: m[2], d: m[3], tx: m[4], ty: m[5]).inverted
+            else { return .nowhere }
+            inverse = inverted
         }
-        if (solidColor.a > 0 || (solidColor2?.a ?? 0) > 0) && frame.contains(x: p.x, y: p.y) { return true }
-        let origin = contentFrame
-        let local = ShapePoint(p.x - origin.x, p.y - origin.y)
         if hitRegionsRevision != revision {
             hitRegions = shapes.map { ShapeHitTester.FlatRegion($0.geometry) }
             hitRegionsRevision = revision
         }
-        return zip(shapes, hitRegions).contains { ShapeHitTester.hit($0.0, local, region: $0.1) }
+        let origin = contentFrame
+        return .shapes(ShapeMouseShape(frame: frame, originX: origin.x, originY: origin.y, inverse: inverse,
+                                       solidBackground: solidColor.a > 0 || (solidColor2?.a ?? 0) > 0,
+                                       items: shapes, regions: hitRegions))
     }
 }

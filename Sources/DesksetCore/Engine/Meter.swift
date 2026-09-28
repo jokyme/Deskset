@@ -41,7 +41,11 @@ open class Meter: SkinSection {
     /// Final rectangle (padding included) in skin coordinates, computed by `layout(after:)`. This is the "real"
     /// box that `[Meter:X]`, `[Meter:W]`… report.
     public internal(set) var frame = SkinRect() {
-        didSet { if frame != oldValue { noteDrawChange() } }
+        didSet {
+            guard frame != oldValue else { return }
+            noteDrawChange()
+            noteMouseChange()
+        }
     }
     /// The resolved X / Y position before alignment (skin coordinates): the anchor of an aligned String
     /// (`StringAlign`) or Bitmap (`BitmapAlign`) meter, otherwise the frame's top-left corner. The next meter's
@@ -49,7 +53,11 @@ open class Meter: SkinSection {
     public internal(set) var anchorX = 0.0
     public internal(set) var anchorY = 0.0
     public internal(set) var hidden = false {
-        didSet { if hidden != oldValue { noteDrawChange() } }
+        didSet {
+            guard hidden != oldValue else { return }
+            noteDrawChange()
+            noteMouseChange()
+        }
     }
     /// Counts the changes that may alter how the meter is drawn: an update, a read of its options, a new frame,
     /// hidden or shown, and a redraw it asks for itself (a Button's state, a Bitmap's transition). A picture of the
@@ -60,44 +68,81 @@ open class Meter: SkinSection {
     /// Something the meter draws may have changed (see `drawGeneration`).
     public func noteDrawChange() { drawGeneration &+= 1 }
 
+    /// Something the mouse finds, or what it does there, may have changed: the skin's snapshot is built again
+    /// (`Skin.snapshotGeneration`). The properties the hit map reads call it when they change (`SkinHitMap`).
+    func noteMouseChange() { skin.noteSnapshotChange() }
+
     /// Adds what the meter's drawing reads when it is drawn, besides the meter's own state that `drawGeneration`
     /// counts: nothing for most meters; a Histogram's bound measures' value range. A kept picture of the meter stays
     /// right while the generation and these inputs stay.
     open func hashDrawInputs(into hasher: inout Hasher) {}
-    public internal(set) var solidColor = RGBA.clear
-    public internal(set) var solidColor2: RGBA?
+    /// A Shape meter's background is part of its mouse area while it is not fully transparent.
+    public internal(set) var solidColor = RGBA.clear {
+        didSet { if (solidColor.a > 0) != (oldValue.a > 0) { noteMouseChange() } }
+    }
+    public internal(set) var solidColor2: RGBA? {
+        didSet { if ((solidColor2?.a ?? 0) > 0) != ((oldValue?.a ?? 0) > 0) { noteMouseChange() } }
+    }
     public internal(set) var gradientAngle = 0.0
     public internal(set) var bevelType = 0
     /// `BevelColor` / `BevelColor2` (nil = the default light / dark bevel colors).
     public internal(set) var bevelColor: RGBA?
     public internal(set) var bevelColor2: RGBA?
-    public internal(set) var padding = SkinInsets.zero
+    public internal(set) var padding = SkinInsets.zero {
+        didSet { if padding != oldValue { noteMouseChange() } }
+    }
     public internal(set) var antiAlias = false
     /// The measures found for `MeasureName`, `MeasureName2`… in order, without gaps (kept for compatibility; a name
     /// that names no measure is left out, so positions shift — use `measureSlots` for `%N`).
     public internal(set) var measures: [Measure] = []
     /// `MeasureNameN` → slot N−1: the bound measure, or nil when that option is missing, empty or names no measure.
     /// Index-aligned with the option numbers, so `%2` always means `MeasureName2`.
-    public internal(set) var measureSlots: [Measure?] = []
-    public internal(set) var mouseActions: [MouseEventKind: String] = [:]
-    public internal(set) var toolTipText = ""
-    public internal(set) var toolTipTitle = ""
-    public internal(set) var toolTipIcon = ""
+    public internal(set) var measureSlots: [Measure?] = [] {
+        didSet { if !measureSlots.elementsEqual(oldValue, by: ===) { noteMouseChange() } }
+    }
+    public internal(set) var mouseActions: [MouseEventKind: String] = [:] {
+        didSet { if mouseActions != oldValue { noteMouseChange() } }
+    }
+    public internal(set) var toolTipText = "" {
+        didSet { if toolTipText != oldValue { noteMouseChange() } }
+    }
+    public internal(set) var toolTipTitle = "" {
+        didSet { if toolTipTitle != oldValue { noteMouseChange() } }
+    }
+    public internal(set) var toolTipIcon = "" {
+        didSet { if toolTipIcon != oldValue { noteMouseChange() } }
+    }
     /// `ToolTipType=1`: balloon tooltip.
-    public internal(set) var toolTipBalloon = false
-    public internal(set) var toolTipWidth = 1000.0
-    public internal(set) var toolTipHidden = false
+    public internal(set) var toolTipBalloon = false {
+        didSet { if toolTipBalloon != oldValue { noteMouseChange() } }
+    }
+    public internal(set) var toolTipWidth = 1000.0 {
+        didSet { if toolTipWidth != oldValue { noteMouseChange() } }
+    }
+    public internal(set) var toolTipHidden = false {
+        didSet { if toolTipHidden != oldValue { noteMouseChange() } }
+    }
     /// `MouseActionCursor` (default from `[Rainmeter]`, itself default 1): show a pointer over mouse actions.
-    public internal(set) var mouseActionCursor = true
+    public internal(set) var mouseActionCursor = true {
+        didSet { if mouseActionCursor != oldValue { noteMouseChange() } }
+    }
     /// `MouseActionCursorName`: a cursor file in `@Resources/Cursors` or a built-in name (`HAND`, `TEXT`…).
-    public internal(set) var mouseActionCursorName = ""
+    public internal(set) var mouseActionCursorName = "" {
+        didSet { if mouseActionCursorName != oldValue { noteMouseChange() } }
+    }
     /// `TransformationMatrix=a;b;c;d;tx;ty`.
-    public internal(set) var transformationMatrix: [Double]?
+    public internal(set) var transformationMatrix: [Double]? {
+        didSet { if transformationMatrix != oldValue { noteMouseChange() } }
+    }
     /// The meter this meter is content of (`Container=`), after validation.
-    public internal(set) weak var container: Meter?
+    public internal(set) weak var container: Meter? {
+        didSet { if container !== oldValue { noteMouseChange() } }
+    }
     /// True when some other meter uses this meter as its container: the host must not draw it, only use it to
     /// clip / mask its content.
-    public internal(set) var isContainer = false
+    public internal(set) var isContainer = false {
+        didSet { if isContainer != oldValue { noteMouseChange() } }
+    }
     /// `MacGlass`, `MacGlassCornerRadius`, `MacGlassTint` (a Deskset extension; see Glass.swift): nil for no glass.
     /// Read like any option, so DynamicVariables and `!SetOption` turn the glass on, off or change it.
     public internal(set) var glass: GlassOptions?
@@ -147,11 +192,16 @@ open class Meter: SkinSection {
         }
     }
 
+    /// Where the mouse finds this meter, ignoring Hidden and Container (see `isHit`), as a value (`MouseShape`): the
+    /// frame rectangle. Shape meters detect the mouse on the solid parts of their shapes, Button meters react
+    /// themselves (ButtonCommand, button states) on the non-transparent pixels of their image. A skin's hit map keeps
+    /// the same values (`Skin.makeHitMap`), so the window's answers and the engine's never differ. On the owner.
+    open var mouseShape: MouseShape { .rect(frame) }
+
     /// Whether the mouse is over this meter at the point (skin coordinates), ignoring Hidden and Container (see
-    /// `isHit`): the frame rectangle. Shape meters detect the mouse on the solid parts of their shapes, Button meters
-    /// react themselves (ButtonCommand, button states) on the non-transparent pixels of their image.
-    open func hitTest(x: Double, y: Double) -> Bool {
-        frame.contains(x: x, y: y)
+    /// `isHit`): whether `mouseShape` contains the point.
+    public func hitTest(x: Double, y: Double) -> Bool {
+        mouseShape.contains(x: x, y: y, images: skin.host as? SkinImageQueries)
     }
 
     /// Visible, not hidden by its container, and hit at the point (skin coordinates): where the meter's mouse actions,
@@ -173,12 +223,10 @@ open class Meter: SkinSection {
     /// `isHit` with the meter's own area: `hitTest` when `precise`, otherwise the frame rectangle.
     public func isHit(x: Double, y: Double, precise: Bool) -> Bool {
         guard !hidden else { return false }
-        if !(precise && handlesMouseItself), isOnGlass(x: x, y: y) { return true }
-        guard precise ? hitTest(x: x, y: y) : frame.contains(x: x, y: y) else { return false }
-        if let container {
-            return !container.hidden && container.hitTest(x: x, y: y)
-        }
-        return true
+        return MouseHit.isHit(x: x, y: y, precise: precise, handlesMouseItself: handlesMouseItself,
+                              glass: skin.shownGlassRegion(of: self), frame: frame, shape: { mouseShape },
+                              container: { container.map { $0.hidden ? .nowhere : $0.mouseShape } },
+                              images: skin.host as? SkinImageQueries)
     }
 
     // MARK: Subclass hooks
@@ -344,6 +392,12 @@ open class Meter: SkinSection {
         case "histogram": return min(measureSlots.count, 2)
         default: return min(measureSlots.count, 1)
         }
+    }
+
+    /// Whether the tooltip shows measure values (`%1`…), so it changes when they do.
+    var toolTipReadsMeasures: Bool {
+        toolTipMeasureLimit > 0
+            && (toolTipText.utf8.contains(UInt8(ascii: "%")) || toolTipTitle.utf8.contains(UInt8(ascii: "%")))
     }
 
     /// The `ToolTipText` (and `ToolTipTitle`) with `%1`, `%2`… replaced by the bound measures, or nil when there is
