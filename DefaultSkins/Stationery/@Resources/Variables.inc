@@ -80,8 +80,9 @@ SpectrumStripBars=Ink
 SpectrumMotion=Full
 ; 1 shows the playing track's name (Music or Spotify ask once for permission); 0 never reads a player
 ShowSpectrumTrack=1
-; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots
-HideSpectrumWhenIdle=1
+; 1: the Strip fades out after 3 s of quiet and comes back with the sound; 0: it stays, as a row of dots. Off by
+; default: a strip that vanishes while nothing plays looks lost right after it is loaded or moved
+HideSpectrumWhenIdle=0
 
 ; ---------------------------------------------------------------- System
 ; The medium and large sizes' fourth ring: GPU (the graphics processor's load) or Swap (memory swapped to disk)
