@@ -435,7 +435,8 @@ enum ThreadStressSelfTests {
         // The skin's thread only.
         private var skin: Skin?
         private var clock: SkinScheduledWork?
-        private var canvas: CGContext?
+        /// The skin's pictures, as its frame producer keeps them (`SkinFrameProducer`).
+        private var drawing: SkinBitmapDrawing?
         private var updatesThisLoad = 0
 
         init(file: SkinFile, number: Int, plan: Plan, environment: SkinEnvironment) {
@@ -522,7 +523,7 @@ enum ThreadStressSelfTests {
             let (issues, loadWarnings) = (skin.issues, skin.loadWarnings)
             skin.close()
             self.skin = nil
-            canvas = nil
+            drawing = nil
             report.access {
                 $0.values = values
                 $0.width = width
@@ -533,20 +534,19 @@ enum ThreadStressSelfTests {
             }
         }
 
-        /// Draws the skin into a bitmap of its size, top-left origin, as its window would show it. No AppKit graphics
-        /// context is set up: a skin thread draws a `CALayer` with a plain `CGContext` (§7.3).
+        /// Draws the skin as its frame producer does on the skin's executor (§7.3, phase 2): through `SkinBitmapDrawing`,
+        /// with its AppKit graphics context and the drawing appearance set on the skin's thread, keeping pictures of the
+        /// meters that did not change; at 1x in sRGB, as large as its window up to 1024 points.
         private func draw(_ skin: Skin) {
             if plan.drawnOnce.contains(file.config), report.current.draws > 0 { return }
-            let w = Int(min(max(skin.width.rounded(.up), 1), 1024))
-            let h = Int(min(max(skin.height.rounded(.up), 1), 1024))
-            if canvas?.width != w || canvas?.height != h { canvas = Images.bitmapContext(width: w, height: h) }
-            guard let ctx = canvas else { return }
-            ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.saveGState()
-            ctx.translateBy(x: 0, y: CGFloat(h))
-            ctx.scaleBy(x: 1, y: -1)
-            SkinRenderer.draw(skin, in: ctx)
-            ctx.restoreGState()
+            let size = CGSize(width: min(max(skin.width.rounded(.up), 1), 1024),
+                              height: min(max(skin.height.rounded(.up), 1), 1024))
+            let drawing = self.drawing ?? SkinBitmapDrawing()
+            self.drawing = drawing
+            let appearance = NSAppearance.Name.aqua.rawValue
+            SkinFrameProducer.withAppearance(appearance) {
+                _ = drawing.picture(of: skin, size: size, scale: 1, space: SkinFrameProducer.sRGB, appearance: appearance)
+            }
             report.access { $0.draws += 1 }
         }
     }
