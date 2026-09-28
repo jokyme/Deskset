@@ -53,8 +53,9 @@ enum SessionError: Error, CustomStringConvertible {
 ///   writers always read the file they change.
 /// - **The Studio edits its own instance** of the widget (`studioSkin`, hosted by `StudioHost`): loaded from the text in
 ///   memory, on the main thread, running what stays inside the widget of its actions (`StudioActionPolicy`). The widget
-///   on the desktop keeps running in its own window: it shows the previews of a gesture as they happen and reloads when
-///   a step is written (`refreshDesktop`), as it did when the Studio edited it directly.
+///   on the desktop keeps running in its own window: it shows the previews of a gesture as they happen and follows a
+///   step once it is written — as a patch when the Studio's instance took it as one (`followStep`), else by loading
+///   again (`refreshDesktop`).
 final class EditingSession {
     /// The widget's config, lowercased (the app's key for the session).
     let key: String
@@ -322,7 +323,7 @@ final class EditingSession {
             throw SessionError.notInEffect
         }
 
-        // The desktop copy loads the files on the next turn: the canvas shows the step first.
+        // The desktop copy follows on the next turn (a patch, or a load): the canvas shows the step first.
         var place: WidgetPosition?
         for case .moveWidget(_, let to) in commands { place = to }
         followStep(changes, thenMoveTo: place)
@@ -390,7 +391,7 @@ final class EditingSession {
         if studioSkin != nil { applyToStudio(t.changes) }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
-        // The window moves with the files once the desktop copy loaded them (next turn).
+        // The window moves with the files once the desktop copy took them (next turn).
         followStep(t.changes, thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))
     }
