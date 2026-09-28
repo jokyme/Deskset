@@ -112,6 +112,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// first load seeds, its fonts and notes), then what it needs to place and show the window (`.started`), or that
     /// the skin could not be loaded (`.failed`: the skin counts as closed). On the executor.
     private func start(_ order: SkinLoadOrder) {
+        // From here on messages sent on the executor run at once again (the load is the one running now).
+        queueLock.lock()
+        loadQueued = false
+        queueLock.unlock()
         let loaded: LoadResult
         do {
             loaded = try load()
@@ -150,9 +154,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// a mouse action was handled; true for other messages that were taken, false when the skin is closed), otherwise
     /// queued there, first in, first out (nil). A hover or window facts queued right behind the same kind, not run yet,
     /// replace it.
+    ///
+    /// Not at once while `.load` waits in the queue: a skin on the same thread (a bang from another skin, a timer) that
+    /// finds this runtime in the directory before its load ran would otherwise reach a skin that has not loaded (its
+    /// first update would not be the first, so OnRefreshAction would never run). Such a message goes behind the load, as
+    /// a message from another thread does.
     @discardableResult
     func send(_ message: SkinMessage) -> Bool? {
-        if executor.isCurrent { return handle(message) }
+        if executor.isCurrent && !isLoadQueued { return handle(message) }
         enqueue(message)
         return nil
     }
@@ -160,6 +169,16 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// The messages queued and not run yet: the last one, when a later hover or window facts may replace it.
     private let queueLock = NSLock()
     private var coalescingTail: MessageBox?
+    /// `.load` was queued and has not run yet (under `queueLock`).
+    private var loadQueued = false
+
+    /// Whether `.load` waits in the queue: set when it is queued (before the app lists the runtime in the directory),
+    /// cleared when it runs. Any thread.
+    var isLoadQueued: Bool {
+        queueLock.lock()
+        defer { queueLock.unlock() }
+        return loadQueued
+    }
 
     private final class MessageBox {
         var message: SkinMessage
@@ -190,6 +209,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         }
         let box = MessageBox(message)
         coalescingTail = box.coalesces ? box : nil
+        if case .load = message { loadQueued = true }
         // The work holds the runtime (and so the skin) until it ran, as `Skin.async` does. Queued under the lock, so
         // the tail is always the last message queued.
         executor.async {

@@ -23,8 +23,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Running skins keyed by lowercased config name. The skins' directory follows every change.
     private(set) var controllers: [String: SkinWindowController] = [:] {
-        didSet { publishDirectory() }
+        didSet { if directoryHeld == 0 { publishDirectory() } }
     }
+    /// While positive, a change of `controllers` is not published yet (`activate` publishes once, when it is done).
+    private var directoryHeld = 0
     /// What the skins know of each other: the running ones and the configs a bang is loading (`SkinDirectory`).
     let skinDirectory = SkinDirectoryStore()
     /// Where the desktop skins run (the `SkinThreading` default, read once at launch; `.main` for the self-tests and
@@ -624,6 +626,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let replacing = controllers[key] != nil
         // First load of this config: the skin's Default… window settings apply (its runtime reads them).
         let firstLoad = state.skin(entry.name) == nil
+        let executor = skinExecutor(entry.name)
+        // A skin on another thread is listed in the skins' directory once its load is queued, in one change with the
+        // copy it replaces: a skin on that thread that finds it there sends behind the load (`SkinRuntime.send`), and
+        // never finds the config missing in between. On the main executor the skin loads inside `load`, listed as
+        // before, so that its own bangs for its group or `*` find it.
+        let inline = executor.isCurrent
+        if !inline { directoryHeld += 1 }
         if let running = controllers[key] {
             controllers[key] = nil
             running.stop(ticket: ticket)
@@ -632,7 +641,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.file = chosen
             $0.active = true
         }
-        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: skinExecutor(entry.name))
+        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: executor)
         controllers[key] = c
         c.restacksWhenStarted = restack
         c.moveWhenStarted = place
@@ -640,6 +649,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                   presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket)
         if let ticket { studioReload(ticket, .loading, c) }
         c.load(order, fadeIn: fade && !replacing)
+        if !inline {
+            directoryHeld -= 1
+            if directoryHeld == 0 { publishDirectory() }
+        }
         return c.loadFailed ? nil : c
     }
 
