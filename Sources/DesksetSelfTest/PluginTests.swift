@@ -19,6 +19,7 @@ func runPluginTests(_ t: TestRunner) {
     runPluginSensorTests(t)
     runPluginPerfCounterTests(t)
     runPluginUsageTests(t)
+    runPluginSamplingCostTests(t)
     runPluginPingTests(t)
     runPluginRunCommandTests(t)
     runPluginQuoteTests(t)
@@ -779,6 +780,174 @@ private func runPluginUsageTests(_ t: TestRunner) {
             (m as? PluginLifecycle)?.skinWillClose()
         }
         t.check(!ProcessSampler.shared.isRunning, "sampling stops when no measure needs it")
+    }
+}
+
+// MARK: - What a process sample costs
+
+/// Processes whose CPU time grows by a fixed step at every sample, and two cores (tests of the shared sampler).
+private final class SteppingProcessData: ProcessDataProvider {
+    private let lock = NSLock()
+    private var step = 0.0
+    private(set) var detailsAsked: [Bool] = []
+
+    func readProcesses() -> (visible: [ProcessRecord], total: Int) { readProcesses(details: true) }
+
+    func readProcesses(details: Bool) -> (visible: [ProcessRecord], total: Int) {
+        lock.lock(); defer { lock.unlock() }
+        detailsAsked.append(details)
+        step += 1
+        let rows: [(Int32, String, Double)] = [(10, "Alpha", 3), (11, "Beta", 2), (12, "Gamma", 1), (13, "Delta", 0.5)]
+        let list = rows.map { ProcessRecord(pid: $0.0, name: $0.1, start: 1, userTime: $0.2 * 1_000_000 * step,
+                                            threads: details ? 4 : 0) }
+        return (list, list.count + 3)
+    }
+
+    func readCores() -> [CoreTicks] {
+        lock.lock(); defer { lock.unlock() }
+        // 8 M busy and 12 M idle per sample: the four processes use 6.5 M, other users' ("System") 1.5 M.
+        let n = step + 1
+        return [CoreTicks(user: 3_000_000 * n, system: 1_000_000 * n, idle: 6_000_000 * n, nice: 0),
+                CoreTicks(user: 4_000_000 * n, system: 0, idle: 6_000_000 * n, nice: 0)]
+    }
+}
+
+private func runPluginSamplingCostTests(_ t: TestRunner) {
+    t.suite("Plugin: a process sample reads only this user's processes") {
+        let all = ProcessNames.allPids()
+        let readable = ProcessNames.readablePids()
+        if geteuid() == 0 {
+            t.check(readable == nil, "root reads every process")
+            return
+        }
+        guard let readable else {
+            t.check(false, "the user's processes are listed")
+            return
+        }
+        t.check(readable.contains(getpid()), "this process is one of them")
+        t.check(readable.count <= all.count + 20, "\(readable.count) of \(all.count)")
+        // Listed after all of them, so a process of another user that the kernel lets this one read would show here.
+        let mine = Set(readable)
+        func readsUsage(_ pid: pid_t) -> Bool {
+            var usage = rusage_info_v2()
+            return withUnsafeMutablePointer(to: &usage) {
+                $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V2, $0) == 0 }
+            }
+        }
+        let others = all.filter { $0 > 0 && !mine.contains($0) }
+        let readOthers = others.filter(readsUsage)
+        t.check(readOthers.count <= 2, "no other user's process can be read: \(readOthers.prefix(5))")
+
+        let data = DarwinProcessData()
+        let plain = data.readProcesses(details: false)
+        let own = plain.visible.first { $0.pid == getpid() }
+        t.check(own != nil, "this process is read")
+        t.equal(own?.name, ProcessInfo.processInfo.processName)
+        t.check((own?.cpuTime ?? 0) > 0 && (own?.footprintBytes ?? 0) > 0 && (own?.start ?? 0) > 0)
+        t.equal(own?.threads, 0, "no proc_taskinfo without details")
+        t.check(plain.total >= plain.visible.count && plain.total >= all.count - 50, "every process is counted")
+        t.check(plain.visible.map(\.pid) == plain.visible.map(\.pid).sorted(), "sorted by pid")
+        let detailed = data.readProcesses(details: true)
+        let ownDetailed = detailed.visible.first { $0.pid == getpid() }
+        t.check((ownDetailed?.threads ?? 0) >= 1 && (ownDetailed?.virtualBytes ?? 0) > 0, "details: proc_taskinfo")
+        t.equal(ownDetailed?.name, own?.name, "the same name, from the cache")
+
+        t.equal(ProcessNames.lastPathComponent("/Applications/Safari.app/Contents/MacOS/Safari"), "Safari")
+        t.equal(ProcessNames.lastPathComponent("/usr/bin/Google Chrome Helper (Renderer)"),
+                "Google Chrome Helper (Renderer)")
+        t.equal(ProcessNames.lastPathComponent("/a/b/"), "b")
+        t.equal(ProcessNames.lastPathComponent("plain"), "plain")
+        t.equal(ProcessNames.lastPathComponent("/"), "/")
+        t.equal(ProcessNames.lastPathComponent(""), "")
+        for path in ["/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent",
+                     "/a/b/", "/x", "名字/进程"] {
+            t.equal(ProcessNames.lastPathComponent(path), (path as NSString).lastPathComponent, path)
+        }
+    }
+
+    t.suite("Plugin: the sampler reads proc_taskinfo only while a measure needs it") {
+        let savedProvider = ProcessSampler.provider
+        let fake = SteppingProcessData()
+        ProcessSampler.provider = fake
+        defer { ProcessSampler.provider = savedProvider }
+        let savedInterval = ProcessSampler.interval
+        // The timer's sample at the start, then only the test's.
+        ProcessSampler.interval = 3600
+        defer { ProcessSampler.interval = savedInterval }
+        let sampler = ProcessSampler()
+        let cpu = NSObject(), threads = NSObject()
+        sampler.subscribe(cpu, details: false)
+        defer { sampler.unsubscribe(cpu); sampler.unsubscribe(threads) }
+        t.check(!sampler.readsDetails)
+        let end = Date().addingTimeInterval(30)
+        while sampler.samples().latest == nil && Date() < end { usleep(1000) }
+        sampler.sampleNow()
+        t.equal(fake.detailsAsked.last, false)
+        t.equal(sampler.samples().latest?.details, false)
+        t.check(sampler.samples(details: true).latest == nil, "a sample without them is no sample for a reader of them")
+        sampler.subscribe(threads, details: true)
+        t.check(sampler.readsDetails)
+        sampler.sampleNow()
+        t.equal(fake.detailsAsked.last, true)
+        let first = sampler.samples(details: true)
+        t.equal(first.latest?.details, true)
+        t.check(first.previous == nil, "the sample before has none: no interval yet for a rate of them")
+        t.check(sampler.samples().previous != nil, "a reader of CPU times keeps its interval")
+        sampler.sampleNow()
+        t.check(sampler.samples(details: true).previous != nil)
+        sampler.unsubscribe(threads)
+        t.check(!sampler.readsDetails, "the last reader of them left")
+        sampler.subscribe(cpu, details: true)
+        t.check(sampler.readsDetails, "subscribing again changes what a subscriber needs")
+
+        func spec(_ category: String, _ counter: String) -> PerfCounterSpec { PerfCounters.spec(category: category, counter: counter)! }
+        t.check(spec("Process", "Thread Count").needsDetails)
+        t.check(spec("Process", "Virtual Bytes").needsDetails)
+        t.check(spec("Process", "Page Faults/sec").needsDetails)
+        t.check(spec("System", "Context Switches/sec").needsDetails)
+        t.check(spec("Memory", "Page Faults/sec").needsDetails)
+        t.check(!spec("Process", "% Processor Time").needsDetails)
+        t.check(!spec("Process", "Working Set - Private").needsDetails)
+        t.check(!spec("Process", "IO Data Bytes/sec").needsDetails)
+        t.check(!spec("Process", "Elapsed Time").needsDetails)
+    }
+
+    t.suite("Plugin: UsageMonitor ranks once per sample for the measures that differ only in Index") {
+        let savedProvider = ProcessSampler.provider, savedInterval = ProcessSampler.interval
+        ProcessSampler.provider = SteppingProcessData()
+        // One timer sample at the start; the test takes the others.
+        ProcessSampler.interval = 3600
+        defer { ProcessSampler.provider = savedProvider; ProcessSampler.interval = savedInterval }
+        t.check(!ProcessSampler.shared.isRunning, "no other test left it running")
+        var ini = ""
+        for i in 1...4 { ini += "[Top\(i)]\nMeasure=Plugin\nPlugin=UsageMonitor\nAlias=CPU\nIndex=\(i)\n" }
+        ini += "[Mine]\nMeasure=Plugin\nPlugin=UsageMonitor\nAlias=CPU\nIndex=1\nBlacklist=_Total|Idle|System\n"
+        ini += "[Threads]\nMeasure=Plugin\nPlugin=UsageMonitor\nCategory=Process\nCounter=Thread Count\nName=Beta\n"
+        let (skin, _) = try makeSkin(t, ini)
+        let tops = (1...4).map { measure(skin, "Top\($0)", UsageMonitorMeasure.self) }
+        let mine = measure(skin, "Mine", UsageMonitorMeasure.self)
+        let threads = measure(skin, "Threads", UsageMonitorMeasure.self)
+        let all: [UsageMonitorMeasure] = tops + [mine, threads]
+        defer { for m in all { m.skinWillClose() } }
+        t.check(ProcessSampler.shared.readsDetails, "Thread Count needs proc_taskinfo")
+        let end = Date().addingTimeInterval(30)
+        while ProcessSampler.shared.samples().latest == nil && Date() < end { usleep(1000) }
+        ProcessSampler.shared.sampleNow()
+        ProcessSampler.shared.sampleNow()
+        let made = UsageMonitorMeasure.rankingsMade
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 3, "one for the four, one for the other lists, one by Name")
+        t.equal(tops.map(\.stringValue), ["Alpha", "Beta", "System", "Gamma"])
+        t.close(tops[0].value, 15, accuracy: 1e-6, "3 M of 20 M: the whole machine is 100 %")
+        t.close(tops[2].value, 7.5, accuracy: 1e-6)
+        t.equal(mine.stringValue, "Alpha")
+        t.equal(threads.value, 4)
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 3, "the same sample again: nothing ranked")
+        ProcessSampler.shared.sampleNow()
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 6, "a new sample: ranked again")
+        t.equal(tops.map(\.stringValue), ["Alpha", "Beta", "System", "Gamma"])
     }
 }
 
