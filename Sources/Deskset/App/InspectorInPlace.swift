@@ -1,7 +1,7 @@
 import AppKit
 import DesksetCore
 
-// The inspector following a step in place (design §9.5, "按行 id 就地更新"): after a value edit, an undo or a redo the
+// The inspector following a step in place, row by row (design §9.5): after a value edit, an undo or a redo the
 // page is not built again (hundreds of milliseconds: the views, their constraints and a layout of the whole column) —
 // only the rows whose values changed follow.
 //
