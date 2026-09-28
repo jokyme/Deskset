@@ -360,7 +360,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   Studio 和安装器。写回的文件（`!WriteKeyValue`、Skin Studio、重新安装时保留的变量）保持该代码页；
   该代码页无法表示的文字会让文件改为带 BOM 的 UTF-16 LE（Skin Studio 的代码视图会先询问）。无论语言如何，都先检测 BOM、
   UTF-16 和有效的 UTF-8；在该代码页中无效的文件按 Windows-1252 读取。命令行模式同样如此（`--render` 遵循
-  `-AppleLanguages`）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
+  `-AppleLanguages` 或 `--languages`；带 `--clock` 时按 1252 读取，除非 `--languages` 另行指定）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
 - **原因：** macOS 没有系统代码页，Mac 的语言最接近 Windows 的区域设置（取舍判断：只看第一个语言）。
 - **对皮肤的影响：** 与你的语言代码页相同的 ANSI 皮肤能正确显示文字和字体名（在设为简体中文的 Mac 上，
   `FontFace=微软雅黑` 的 GBK 皮肤用苹方 PingFang SC 绘制）。其他代码页的 ANSI 皮肤会显示错误的字符，就像在设为其他区域的
@@ -1103,17 +1103,25 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
   [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
-  [--state out.json] [--color-space device|srgb] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
+  [--state out.json] [--color-space device|srgb] [--locale ID|system] [--languages LIST|system]
+  [--accent-color R,G,B[,A]|system] [--screen WxH|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
   每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--clock`
   让皮肤从给定时刻起在虚拟时间里运行：第 i 次更新发生在给定时间加 i 个间隔，时区为 UTC，除非 `--time-zone` 指定别的时区
-  （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤读取的
-  本地文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取；需要网络、外部程序或实时系统状态
-  的工作照常执行，最多等一个间隔拿回结果，并在 stderr 中标为无法验证。`--seed` 让皮肤的随机数（Calc 的 `Random`、
-  QuotePlugin、Lua 的 `math.random`…）每次运行都相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
+  （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤自己目录树里的
+  文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取，渲染的设置文件夹和 `--data` 文件所在的
+  文件夹也一样；超出这些范围的工作（别的文件夹，比如“下载”，以及网络、外部程序、实时系统状态）照常执行，最多等一个间隔拿回
+  结果，并在 stderr 中标为无法验证；皮肤直接读取、又没有替身的服务（系统数据、电池、传感器、播放器、音频、Wi-Fi、前台窗口、
+  系统颜色、废纸篓）也会这样标出。带 `--clock` 时，皮肤看到的其余环境也固定下来：en_US_POSIX 区域（星期名、`%Z`、
+  `locale-date`、天气的 `Units=Auto`）、首选语言英语（旧的 ANSI 文件按代码页 1252 读取）、macOS 的蓝色强调色
+  （`#MACACCENTCOLOR#`）和一块 1920×1080 的屏幕（`#SCREENAREAWIDTH#`、`#WORKAREAHEIGHT#`…），除非用 `--locale`、
+  `--languages`、`--accent-color` 或 `--screen` 另行指定（`system` 表示用 Mac 自己的；不带 `--clock` 时这些都是 Mac 自己的）。
+  `--seed` 让皮肤的随机数（Calc 的 `Random`、QuotePlugin、Lua 的 `math.random`、`os.tmpname`…）每次运行都相同；渲染时
+  Swift 的哈希是确定的，集合和字典的顺序也每次相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
   预乘的 sRGB 位图（参考图比较用的色彩空间）。开发版还接受 `--legacy`：由一份冻结的渲染器副本来测量和绘制皮肤（渲染代码搬动期间，
   渲染器要和它逐字节比较）；发布版不接受这个选项。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
-  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
+  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目；它的封面和 `--data` 给出的封面一样放在渲染的设置文件夹的 `Caches`
+  里，从不写进 App 的缓存）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
@@ -1148,8 +1156,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   - `desktopImage`：桌面图片（Chameleon 的 `Type=Desktop`、注册表的 Wallpaper）；`null`：没有。
   - `programs`：`{"命令行的一部分": "它的输出" | ["行", …]}`：RunCommand 不启动任何程序；每个程序立即结束，输出为命令行
     包含的最长一项的内容（都不包含则没有输出）；皮肤自己的文件写入（`!WriteKeyValue` 等）写进其文件的副本。
+  - `trash`：`{"count": 3, "size": 2048}`（字节；`"size": null` 表示读不到大小）或一个数量：RecycleManager 的每次读数；
+    `null`：空的废纸篓。（Deskset 新增。）
 
-  再加上 `--clock` 和 `--seed`，每次渲染都相同。数据有误时指出是哪个键并停止渲染。`--state` 把皮肤最后的状态（尺寸；
+  再加上 `--clock` 和 `--seed`，每次渲染、在每台 Mac 上都相同，除了标为无法验证的部分和少数仍从 Mac 读取的内容
+  （SysColor 的颜色、FileView 的日期格式、已安装的字体）。数据有误时指出是哪个键并停止渲染。`--state` 把皮肤最后的状态（尺寸；
   每个 measure 的数值、字符串、是否禁用或暂停；每个 meter 的框、是否隐藏和文字；变量）写成 JSON。x86_64 版在 Rosetta 下
   画文字和形状边缘与 arm64 版略有不同（每个通道差几级，满级 255），三角函数的结果也可能在最后一位不同，两者请用
   `--state` 比较，而不是逐字节比较。

@@ -390,7 +390,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   installer. Files written back (`!WriteKeyValue`, the Skin Studio, variables kept on reinstall) stay in that code
   page; text it cannot hold switches the file to UTF-16 LE with BOM (the Studio's code view asks first). BOMs, UTF-16
   and valid UTF-8 are detected first; a file that is not valid in the code page is read as Windows-1252. The
-  command-line modes do the same (`--render` follows `-AppleLanguages`); `--self-test` keeps 1252. Deskset 0.1.0 read
+  command-line modes do the same (`--render` follows `-AppleLanguages`, or `--languages`; with `--clock` it reads in
+  1252 unless `--languages` says otherwise); `--self-test` keeps 1252. Deskset 0.1.0 read
   every ANSI file as Windows-1252.
 - **Why:** macOS has no system code page; the Mac's language is the closest equivalent of the Windows locale
   (judgment call: only the first language counts).
@@ -1216,23 +1217,33 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
   [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
-  [--state out.json] [--color-space device|srgb] [--skins-dir DIR]` loads the
+  [--state out.json] [--color-space device|srgb] [--locale ID|system] [--languages LIST|system]
+  [--accent-color R,G,B[,A]|system] [--screen WxH|system] [--skins-dir DIR]` loads the
   skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light
   appearance with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and
   prints compatibility notes and log lines. `--clock` runs the skin in virtual time from the given moment: update i
   is at the given time plus i intervals, in UTC unless `--time-zone` names another zone (`--time-zone` alone changes
   only the zone); `!Delay`, ActionTimer and other timers run at their own virtual times and nothing waits in real
-  time. Its local files (QuotePlugin, FolderInfo, FileView, WebParser `file://`) are read as fixtures; work that
-  reaches further (the network, programs, live system state) runs for real, gets up to one interval to come back, and
-  is listed on stderr as not verifiable. `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua
-  `math.random`…) the same in every run. The image is drawn in the device RGB space; `--color-space srgb` draws it
+  time. The files of its own tree (QuotePlugin, FolderInfo, FileView, WebParser `file://`) are read as fixtures, and
+  so are those of the render's settings folder and of the `--data` file's folder; work that reaches further (other
+  folders such as a Downloads folder, the network, programs, live system state) runs for real, gets up to one interval
+  to come back, and is listed on stderr as not verifiable, as is every service the skin reads that nothing stands in
+  for (the system data, battery, sensors, players, audio, Wi-Fi, the front window, system colors, the Trash). With
+  `--clock` the rest of the skin's world is fixed too: the en_US_POSIX locale (day names, `%Z`, `locale-date`, the
+  weather's `Units=Auto`), English as the preferred language (legacy ANSI files read in code page 1252), macOS's blue
+  accent (`#MACACCENTCOLOR#`) and one 1920×1080 screen (`#SCREENAREAWIDTH#`, `#WORKAREAHEIGHT#`…), unless `--locale`,
+  `--languages`, `--accent-color` or `--screen` give others (`system`: the Mac's; without `--clock` these are the
+  Mac's). `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua `math.random`, `os.tmpname`…) the same
+  in every run, and the render runs with Swift's deterministic hashing, so the order of sets and dictionaries is the
+  same too. The image is drawn in the device RGB space; `--color-space srgb` draws it
   into an 8-bit premultiplied sRGB bitmap instead (the space reference images are compared in). Development builds
   also take `--legacy`: a frozen copy of the renderer measures and draws the skin (the reference the renderer is
   compared with, byte for byte, while its code moves); release builds reject it. Window, config and
   app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
+  track; its covers, like the ones `--data` gives, are kept in `Caches` in the render's settings folder, never in the
+  app's cache). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
   ([§6.8](#68-deskset-extensions)), and WebParser's `file://` limit to the Skins and settings
   folders ([§11.1](#111-webparser)) applies in the app only. `Deskset --help` (or `-h`) lists every command-line mode;
   an unknown `--` option prints that list and exits with status 2 instead of starting the menu bar app.
@@ -1272,8 +1283,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   - `programs`: `{"part of a command line": "its output" | ["line", …]}`: RunCommand starts no program; each one
     ends at once with the output of the longest entry its command line contains (none: no output), and the skin's own
     file writes (`!WriteKeyValue`…) go to a copy of its files.
+  - `trash`: `{"count": 3, "size": 2048}` (bytes; `"size": null`: it cannot be read) or a count: every RecycleManager
+    reading; `null`: an empty Trash. (A Deskset addition.)
 
-  With `--clock` and `--seed` as well, the render is the same on every run. A mistake in the data names the key and
+  With `--clock` and `--seed` as well, the render is the same on every run and on every Mac, except what it lists as
+  not verifiable and the few things still read from the Mac (SysColor's colors, FileView's date format, the fonts
+  installed). A mistake in the data names the key and
   stops the render. `--state` writes what the skin ended up with (its size; each measure's value, string and whether
   it is disabled or paused; each meter's frame, visibility and text; its variables) as JSON. The x86_64 build under
   Rosetta draws the edges of text and shapes slightly differently from the arm64 one (a few levels of 255 per

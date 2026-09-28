@@ -355,7 +355,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   page cannot hold switches the file to UTF-16 LE with BOM (the Skin Studio's code view asks first). Byte-order marks,
   BOM-less UTF-16 and valid UTF-8 are detected first, whatever the language, and a file that is not valid in the code
   page is read as Windows-1252 (nothing is dropped). The command-line modes do the same (`--render` follows
-  `-AppleLanguages`); `--self-test` keeps 1252 on every Mac. RunCommand's `OutputType=ANSI` and Lua strings that are
+  `-AppleLanguages`, or `--languages`; with `--clock` it reads in 1252 unless `--languages` says otherwise);
+  `--self-test` keeps 1252 on every Mac. RunCommand's `OutputType=ANSI` and Lua strings that are
   not UTF-8 stay Windows-1252 (see their entries). Deskset 0.1.0 read every ANSI file as Windows-1252.
 - Why: the Mac's language is the closest equivalent of the Windows locale. Judgment call: only the first language
   counts, like the one system locale on Windows.
