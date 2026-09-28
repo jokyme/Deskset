@@ -131,6 +131,10 @@ public final class Skin {
     /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
     /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
     public var sourceProvider: SourceProvider?
+    /// Counts the patches that gave this skin object new source text (`patch(sources:)`): anything kept per skin object
+    /// that was read from its files (a layer's name, a thumbnail, where a value is used) is out of date once it moves.
+    /// Never decreases.
+    public internal(set) var sourceGeneration = 0
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
@@ -2250,4 +2254,58 @@ protocol SkinOutsidePointerObserver: SkinPointerObserver {
     /// What it wants from outside the skin window now: nothing while it is disabled, paused or closed, or has no
     /// action that such input could run.
     func outsidePointerNeeds() -> OutsidePointerNeeds
+}
+
+// MARK: - What a patch replaces (SkinPatch.swift)
+
+extension Skin {
+    /// Puts a patch's merged text in place of the loaded one (`patch(sources:)`): the document, its files, where each
+    /// section and option was written, the section and style lookups built from it and `[Metadata]`. The caller has
+    /// checked that the files and the sections are the same ones.
+    func installPatchedSource(_ loaded: LoadedIniFile, mentionsAppearance: Bool) {
+        document = loaded.document
+        includedFiles = loaded.includedFiles
+        sources = loaded.sources
+        sectionIndex = [:]
+        styleValueIndex = [:]
+        for section in document.sections {
+            let key = section.name.lowercased()
+            if sectionIndex[key] == nil { sectionIndex[key] = section }
+        }
+        metadata = [:]
+        for e in document.section(named: "Metadata")?.entries ?? [] { metadata[e.key] = e.value }
+        if mentionsAppearance { usesMacAppearance = true }
+    }
+
+    /// The `[Variables]` definitions as last resolved, and the built-in values they were resolved with (the appearance
+    /// variables as they are now).
+    var variableDefinitions: (values: [String: String], builtins: [String: String]) {
+        (definedVariables, definitionBuiltins.merging(currentEnvironment().appearance.variables) { _, new in new })
+    }
+
+    /// New definitions of the `[Variables]` in `changed` (nil: no longer defined). A variable keeps a value set while the
+    /// skin runs (`!SetVariable`, an editor preview) — the value a preview gives back when it ends follows the file.
+    func redefineVariables(_ changed: [String: String?]) {
+        for (key, value) in changed {
+            let old = definedVariables[key]
+            if variables[key] == old { variables[key] = value }
+            definedVariables[key] = value
+            if let saved = previewSavedVariables[key], saved == old { previewSavedVariables[key] = .some(value) }
+        }
+    }
+
+    /// Whether `close()` ran: the skin no longer updates.
+    var isClosed: Bool { closed }
+
+    /// Meter frames are computed again before the next read of a meter's position or size (a patch reads its sections
+    /// in file order, and a later one may use an earlier one's new place).
+    func markLayoutPending() { layoutPending = true }
+
+    /// Lays the skin out after a patch and sizes the window again (the new text may make it larger or smaller, as a
+    /// reload would), then asks the host to draw.
+    func finishPatch() {
+        layout()
+        updateSize(force: true)
+        needsDisplay()
+    }
 }

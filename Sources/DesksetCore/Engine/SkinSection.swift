@@ -17,7 +17,11 @@ import Foundation
 open class SkinSection {
     public let name: String
     public unowned let skin: Skin
-    let own: IniSection
+    /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
+    /// in its place; the lookup below follows.
+    var own: IniSection {
+        didSet { ownValues = SkinSection.index(own) }
+    }
     /// `own` keyed by lowercased option name (first definition wins, like `IniSection.value(forKey:)`). Option
     /// lookups are the hottest path of dynamic sections, which re-read every option on every update; a linear
     /// case-insensitive scan per lookup dominated the update time of large skins.
