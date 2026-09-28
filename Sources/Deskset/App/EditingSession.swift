@@ -82,9 +82,12 @@ final class EditingSession {
     private var awaitedReload: (key: String, deadline: Date)?
     static let ownReloadTimeout: TimeInterval = 5
     /// How long the phases of the last step, undo or redo took (milliseconds): `plan`, `apply`, `write`, `studio`
-    /// (loading the Studio's instance and the Studio following it), `total` — and, once it ran, `desktop` (the reload of
-    /// the desktop copy, on the next turn of the run loop).
+    /// (loading the Studio's instance and the Studio following it) with its parts (`reloadPhases`: `studio.load`,
+    /// `studio.update`, `window`, `window.<part>`), `total` — and, once it ran, `desktop` (the reload of the desktop
+    /// copy, on the next turn of the run loop).
     private(set) var lastTimings: [String: Double] = [:]
+    /// The phases of the Studio's last reload (`reloadStudioSkin`); the Studio window times its parts here.
+    let reloadPhases = StudioPhaseClock()
     /// The reload of the desktop copy waiting for the next turn of the run loop (`scheduleDesktopRefresh`), and where
     /// the widget's window goes once it ran (a step that moves it with the files).
     private var scheduledRefresh: Timer?
@@ -160,6 +163,7 @@ final class EditingSession {
     @discardableResult
     func reloadStudioSkin(notify: Bool = true) -> Skin? {
         guard let fileURL else { return studioSkin }
+        reloadPhases.reset()
         diskSync.adoptChanges()
         // In memory before it loads, so it reads them from there (files it includes that are new come in after).
         _ = try? buffers.load(fileURL)
@@ -172,7 +176,7 @@ final class EditingSession {
         host.policy.resetFiles()
         let stamps = diskSync.modificationDates()
         do {
-            try skin.load()
+            try reloadPhases.measure("studio.load") { try skin.load() }
         } catch {
             Log.write("Studio: cannot load \(fileURL.lastPathComponent): \(error)", level: .warning, source: config)
             return studioSkin
@@ -193,14 +197,14 @@ final class EditingSession {
         } else if let mirrored {
             skin.mirrorCounter(of: mirrored)
         }
-        skin.update()
+        reloadPhases.measure("studio.update") { skin.update() }
         takeOwnWrites(since: stamps)
         if let mirrored { skin.takeGraphs(from: mirrored) }
         studioSkin = skin
         startUpdates(skin)
         old?.close()
         watcher.watch(skin.sourceFiles)
-        if notify { client?.session(self, didChange: .reloaded) }
+        if notify { reloadPhases.measure("window") { client?.session(self, didChange: .reloaded) } }
         return skin
     }
 
@@ -307,6 +311,7 @@ final class EditingSession {
         let reloaded = studioSkin != nil ? reloadStudioSkin() : nil
         Self.signposter.endInterval("runtime.apply", runtime)
         lap("studio", t0)
+        timings.merge(reloadPhases.take()) { own, _ in own }
         if let verify, let reloaded, !verify(reloaded) {
             try? buffers.apply(changes, reverse: true)
             try? write()
@@ -380,6 +385,7 @@ final class EditingSession {
         let t0 = DispatchTime.now().uptimeNanoseconds
         if studioSkin != nil { reloadStudioSkin() }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+        timings.merge(reloadPhases.take()) { own, _ in own }
         // The window moves with the files once the desktop copy loaded them (next turn).
         scheduleDesktopRefresh(thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))

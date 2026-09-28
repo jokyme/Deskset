@@ -843,6 +843,8 @@ final class SkinCanvasView: NSView {
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        let paint = StudioSignposts.signposter.beginInterval("canvas.paint")
+        defer { StudioSignposts.signposter.endInterval("canvas.paint", paint) }
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let z = max(zoom, 0.01)
         drawSurface(dirtyRect, zoom: z, ctx)

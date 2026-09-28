@@ -9,7 +9,10 @@ import DesksetCore
 /// One sample is one step the way a user makes it: the edit (`commit`: the text in memory, the file, the Studio's
 /// instance loaded again, the inspector following) and then a frame of the canvas drawn off-screen, each in its own turn
 /// of the run loop (the undo manager groups what one event registers). The desktop copy reloads on the next turn, after
-/// the canvas drew the step: its time is printed as a phase of its own (`desktop`), not part of the sample. A sixth,
+/// the canvas drew the step: its time is printed as a phase of its own (`desktop`), not part of the sample. Every phase
+/// is printed as p50 / p95 (`EditingSession.lastTimings`: the Studio's reload split into loading, its first update and
+/// the window's parts; `frame`: the canvas drawn), and each widget runs three kinds of step (`Run`): a font size and a
+/// text color in design mode, and the font size again with the code pane open (split), which follows every step. A sixth,
 /// heavy widget — a Lua script that builds its text as it loads, WebParser measures, a large include — shows what the
 /// second load (the desktop copy's) costs. A gesture is measured too: each step of a drag of the layer (the previews
 /// and a frame of the canvas), about 60 a second, and how many of them reached the desktop copy (at most about 20 a
@@ -39,7 +42,7 @@ enum StudioLatencySelfTests {
                     try FriendlyFixtures.openEditor(t, config: reference.config, from: reference.folder)
                 }
             }
-            try measure(t, config: "Studio\\Heavy", samples: samples, budget: nil) {
+            try measure(t, config: "Studio\\Heavy", samples: samples, budget: nil, runs: [.fontSize]) {
                 try openHeavy(t)
             }
         }
@@ -135,62 +138,124 @@ enum StudioLatencySelfTests {
         return (app, editor)
     }
 
-    static func measure(_ t: AppTestRunner, config: String, samples: Int, budget: Double?,
+    /// One kind of step measured on a widget: the centre the Studio shows (`design`: the canvas only; `split`: the
+    /// code pane too, which follows every step) and the option each edit writes into the layer's own section.
+    struct Run {
+        var mode: InspectorWindowController.Mode
+        var key: String
+        var undoName: String
+        /// The value of the `i`-th edit, from the value written before the run: every edit changes the file.
+        var value: (_ written: String?, _ i: Int) -> String
+        var label: String { "\(mode.rawValue) · \(key)" }
+
+        static let fontSize = Run(mode: .design, key: "FontSize", undoName: "Change Font Size") { written, i in
+            let number = written.flatMap { OptionValue.number($0) } ?? 12
+            let base = Int(number.isFinite ? min(max(number, 1), 400) : 12)
+            // 13, 14, 13, 14…
+            return String(base + 1 + i % 2)
+        }
+        static let fontColor = Run(mode: .design, key: "FontColor", undoName: "Change Text Color") { _, i in
+            i % 2 == 0 ? "13,121,201,254" : "201,81,13,253"
+        }
+        static let splitFontSize = Run(mode: .split, key: fontSize.key, undoName: fontSize.undoName, value: fontSize.value)
+        /// What each reference widget runs, in this order (the first one also measures a gesture).
+        static let all: [Run] = [fontSize, fontColor, splitFontSize]
+    }
+
+    /// The phases printed, in the order a step runs them (`EditingSession.lastTimings`, and `frame`: the canvas drawn
+    /// after the step); phases not listed here follow in alphabetical order.
+    static let phaseOrder = ["plan", "apply", "write", "studio", "studio.load", "studio.update", "window", "window.widget",
+                             "window.canvas", "window.layers", "window.inspector", "window.live values", "window.code",
+                             "frame", "desktop"]
+
+    /// "plan 0.7/0.9, apply 0.2/0.3, …": p50 / p95 of each phase measured.
+    static func breakdown(_ phases: [String: [Double]]) -> String {
+        let known = phaseOrder.filter { phases[$0] != nil }
+        let others = phases.keys.filter { !phaseOrder.contains($0) && $0 != "total" }.sorted()
+        return (known + others).map { phase in
+            let stat = Stat(samples: phases[phase] ?? [])
+            return String(format: "%@ %.1f/%.1f", phase, stat.p50, stat.p95)
+        }.joined(separator: ", ")
+    }
+
+    static func measure(_ t: AppTestRunner, config: String, samples: Int, budget: Double?, runs: [Run] = Run.all,
                         open: () throws -> (app: AppController, editor: InspectorWindowController)?) throws {
         guard let (app, editor) = try open() else { return }
         defer { editor.window?.close() }
         app.defersDesktopUpdates = true
         defer { app.defersDesktopUpdates = false }
-        guard let skin = editor.skin, let session = editor.session else { return t.check(false, "\(config) opens") }
+        guard let skin = editor.skin, editor.session != nil else { return t.check(false, "\(config) opens") }
         guard let target = skin.meters.first(where: { $0 is StringMeter })?.name ?? skin.meters.first?.name else {
             return t.check(false, "\(config) has a layer")
         }
         editor.select(section: target)
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        var load = [0.0, 0.0, 0.0]
+        _ = getloadavg(&load, 3)
+        print(String(format: "    LATENCY %@ | layer %@ | load average %.2f", config, target, load[0]))
         let files = skin.sourceFiles
         let original = files.map { (try? Data(contentsOf: $0)) ?? Data() }
+        for (i, run) in runs.enumerated() {
+            if editor.mode != run.mode {
+                editor.setMode(run.mode)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            }
+            measure(t, config: config, run: run, target: target, samples: samples, budget: budget, gesture: i == 0,
+                    editor: editor, app: app, files: files, original: original)
+        }
+        if editor.mode != .design { editor.setMode(.design) }
+    }
+
+    static func measure(_ t: AppTestRunner, config: String, run: Run, target: String, samples: Int, budget: Double?,
+                        gesture: Bool, editor: InspectorWindowController, app: AppController, files: [URL],
+                        original: [Data]) {
+        guard let session = editor.session else { return t.check(false, "\(config) has a session") }
+        let name = "\(config) | \(run.label)"
         let canvas = editor.canvas
         canvas.updateSize()
         guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return t.check(false, "canvas") }
         func frame() { canvas.cacheDisplay(in: canvas.bounds, to: rep) }
         frame()
-        let written = editor.skin?.meter(named: target)?.rawOption("FontSize").flatMap { OptionValue.number($0) } ?? 12
-        let base = Int(written.isFinite ? min(max(written, 1), 400) : 12)
+        let written = editor.skin?.meter(named: target)?.rawOption(run.key)
 
         var edits: [Double] = [], undos: [Double] = []
         var phases: [String: [Double]] = [:]
+        var last = written
         for i in 0..<samples {
-            // 13, 14, 13, 14…: every edit changes the file.
-            let value = String(base + 1 + i % 2)
+            let value = run.value(written, i)
             let start = now()
-            editor.commit([.init(section: target, key: "FontSize", value: value, own: true)], name: "Change Font Size")
+            editor.commit([.init(section: target, key: run.key, value: value, own: true)], name: run.undoName)
+            let committed = now()
             frame()
             edits.append(ms(since: start))
+            phases["frame", default: []].append(ms(since: committed))
             // The desktop copy reloads on the next turn: its phase is taken once it ran.
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { phases[phase, default: []].append(time) }
+            last = value
         }
-        t.equal(editor.skin?.meter(named: target)?.rawOption("FontSize"), String(base + 1 + (samples - 1) % 2),
-                "\(config): the edits reached the Studio's instance")
+        t.equal(editor.skin?.meter(named: target)?.rawOption(run.key), last, "\(name): the edits reached the Studio's instance")
         var undoPhases: [String: [Double]] = [:]
         for _ in 0..<samples {
             let start = now()
             editor.window?.undoManager?.undo()
+            let undone = now()
             frame()
             undos.append(ms(since: start))
+            undoPhases["frame", default: []].append(ms(since: undone))
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { undoPhases[phase, default: []].append(time) }
         }
-        t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(config): every edit undone, byte for byte")
+        t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): every edit undone, byte for byte")
         t.check(app.controller(for: config) != nil, "\(config) still runs")
 
         // A drag of the layer: every mouse event previews it (in the Studio's instance at once, on the desktop at most
         // about 20 times a second) and the canvas draws a frame.
         var gestureFrames: [Double] = []
         let sentBefore = session.desktopPreviewsSent
-        if let meter = editor.skin?.meter(named: target) {
+        if gesture, let meter = editor.skin?.meter(named: target) {
             editor.canvasSelectionChanged([target])
             let start = NSPoint(x: canvas.origin.x + CGFloat(meter.frame.x + min(meter.frame.width, 4) / 2),
                                 y: canvas.origin.y + CGFloat(meter.frame.y + min(meter.frame.height, 4) / 2))
@@ -207,26 +272,32 @@ enum StudioLatencySelfTests {
         }
         let sent = session.desktopPreviewsSent - sentBefore
         t.check(gestureFrames.isEmpty || sent <= gestureFrames.count / 2 + 1,
-                "\(config): the desktop copy got \(sent) of \(gestureFrames.count) previews")
-        t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(config): a cancelled drag writes nothing")
+                "\(name): the desktop copy got \(sent) of \(gestureFrames.count) previews")
+        t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): a cancelled drag writes nothing")
 
         let edit = Stat(samples: edits), undo = Stat(samples: undos)
-        func breakdown(_ phases: [String: [Double]]) -> String {
-            ["plan", "apply", "write", "studio", "desktop"].compactMap { phase in
-                phases[phase].map { String(format: "%@ %.1f", phase, Stat(samples: $0).p50) }
-            }.joined(separator: ", ")
-        }
-        print("    LATENCY \(config) | edit → canvas | \(edit.text) | p50 by phase (ms): \(breakdown(phases))")
-        print("    LATENCY \(config) | undo → canvas | \(undo.text) | p50 by phase (ms): \(breakdown(undoPhases))")
+        print("    LATENCY \(name) | edit → canvas | \(edit.text)")
+        print("    LATENCY \(name) | edit phases, p50/p95 ms | \(breakdown(phases))")
+        print("    LATENCY \(name) | undo → canvas | \(undo.text)")
+        print("    LATENCY \(name) | undo phases, p50/p95 ms | \(breakdown(undoPhases))")
         if !gestureFrames.isEmpty {
-            print("    LATENCY \(config) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
+            print("    LATENCY \(name) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
                   + "\(sent) of \(gestureFrames.count)")
         }
+        // One line to compare runs with: the step's p50 / p95 and the p50 of the phases that matter most.
+        func p50(_ phase: String, in phases: [String: [Double]]) -> Double {
+            phases[phase].map { Stat(samples: $0).p50 } ?? 0
+        }
+        print(String(format: "    LATENCY SUMMARY %@ | edit p50 %.0f / p95 %.0f ms: inspector %.0f, layers %.0f, load %.0f, "
+                     + "update %.0f, code %.0f, frame %.0f | undo p50 %.0f / p95 %.0f ms",
+                     name, edit.p50, edit.p95, p50("window.inspector", in: phases), p50("window.layers", in: phases),
+                     p50("studio.load", in: phases), p50("studio.update", in: phases), p50("window.code", in: phases),
+                     p50("frame", in: phases), undo.p50, undo.p95))
         // A sanity bound only: a step that takes seconds is broken, whatever the machine.
-        t.check(edit.p95 < 5_000 && undo.p95 < 5_000, "\(config): \(edit.text); undo \(undo.text)")
+        t.check(edit.p95 < 5_000 && undo.p95 < 5_000, "\(name): \(edit.text); undo \(undo.text)")
         if let budget {
-            t.check(edit.p95 <= budget, "\(config): edit p95 \(edit.p95) ms over the budget of \(budget) ms")
-            t.check(undo.p95 <= budget, "\(config): undo p95 \(undo.p95) ms over the budget of \(budget) ms")
+            t.check(edit.p95 <= budget, "\(name): edit p95 \(edit.p95) ms over the budget of \(budget) ms")
+            t.check(undo.p95 <= budget, "\(name): undo p95 \(undo.p95) ms over the budget of \(budget) ms")
         }
     }
 }

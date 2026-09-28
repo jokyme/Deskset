@@ -1414,11 +1414,13 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         self.session = nil
     }
 
-    /// The Studio's instance was loaded again (a step, an undo, a change on disk): everything that shows it follows.
+    /// The Studio's instance was loaded again (a step, an undo, a change on disk): everything that shows it follows,
+    /// each part timed in the session's phases of the reload.
     func studioSkinReloaded() {
         guard let c = controller else { return }
         finishOpening()
-        for part in attachParts(c) { part.work() }
+        let phases = session?.reloadPhases ?? StudioPhaseClock()
+        for part in attachParts(c) { phases.run(windowPart: part) }
     }
 
     /// What binding to a skin controller takes, in order (`attach` runs the parts at once): the widget, the canvas, the
