@@ -49,4 +49,256 @@ func runInputDataTests(_ t: TestRunner) {
         t.equal(try JSONValue.parse(try JSONEncoder().encode(clash))["name"], .string("mine"),
                 "a kept key never overrides one the type writes")
     }
+
+    t.suite("Seams: --data: reading the data object") {
+        let dir = t.temporaryDirectory("input-data")
+        try Data([0x89, 0x50]).write(to: dir.appendingPathComponent("cover.png"))
+        try #"{"type":"Feature","geometry":{"type":"Point","coordinates":[10.75,59.91,3]},"properties":{}}"#
+            .write(to: dir.appendingPathComponent("oslo.json"), atomically: true, encoding: .utf8)
+        try #"{"frames": [{"cpu": [20, 10, 30], "uptime": 100}, {"cpu": 50}]}"#
+            .write(to: dir.appendingPathComponent("system.json"), atomically: true, encoding: .utf8)
+        let text = #"""
+        {"system": "system.json",
+         "battery": {"level": 42, "charging": false, "timeRemaining": 180},
+         "sensors": {"CPU": 51.5, "fan.1": {"value": 2300, "min": 1200, "max": 6000}, "thermal": 1, "gpu": null},
+         "nowPlaying": {"player": "spotify", "state": "paused", "artist": "A", "title": "T", "album": "B",
+                        "position": 83, "duration": 245, "cover": "cover.png", "repeat": "all"},
+         "audio": {"frames": [{"rms": [0.5, 0.25], "peak": 0.8, "bands": [0.1, 0.2, 0.3]}]},
+         "weather": "oslo.json",
+         "wifi": {"ssid": "Home", "rssi": -55, "transmitRate": 866, "networks": [{"ssid": "Cafe", "rssi": -70}]},
+         "desktopImage": "cover.png",
+         "later": 1}
+        """#
+        try text.write(to: dir.appendingPathComponent("data.json"), atomically: true, encoding: .utf8)
+        let d = try SkinInputData.load("data.json", directory: dir)
+        t.equal(d.givenKeys, SkinInputData.keys)
+        t.equal(d.unknownKeys, ["later"], "a key of a newer format is reported, not an error")
+        t.equal(d.system?.count, 2)
+        t.equal(d.system?[0].cpu, [20, 10, 30])
+        t.equal(d.system?[1].cpu, [50])
+        t.equal(d.system?[1].uptime, 100, "a frame keeps what it leaves out from the one before")
+        t.equal(d.battery, .value(BatteryStatus(percent: 42, isCharging: false, isPluggedIn: false, minutesRemaining: 180)))
+        t.equal(d.sensors?["cpu"]?.value, 51.5, "sensor keys are canonical")
+        t.equal(d.sensors?["fan.1"]?.maximum, 6000)
+        t.equal(d.sensors?["gpu"], nil, "null: the Mac has no such sensor")
+        t.equal(d.thermalState, 1)
+        let np = d.nowPlaying?.value
+        t.equal(np?.player, "spotify")
+        t.equal(np?.state, 2)
+        t.equal(np?.repeatMode, 2)
+        t.equal(np?.cover, dir.appendingPathComponent("cover.png").standardizedFileURL.path, "paths are the file's")
+        let audio = d.audio?.value
+        t.equal(audio?.frames.first?.rms, [0.5, 0.25])
+        t.equal(audio?.frames.first?.peak, [0.8, 0.8], "one value is every channel's")
+        t.equal(audio?.frames.first?.bands, [[0.1, 0.2, 0.3]])
+        let weather = d.weather?.value
+        t.equal(weather?.status, 200)
+        t.equal(weather?.location, .forecast)
+        t.equal(weather?.forecastPoint?.latitude, 59.91)
+        t.equal(d.wifi?.value?.current.ssid, "Home")
+        t.equal(d.wifi?.value?.networks.map(\.rssi), [-70])
+        t.equal(d.desktopImage?.value, np?.cover)
+
+        // null: there is none. A key left out: the service stays live.
+        let none = try SkinInputData.load(#"{"battery": null, "nowPlaying": null, "weather": null, "wifi": null, "desktopImage": null}"#,
+                                          directory: dir)
+        t.equal(none.battery, SkinInputData.Given<BatteryStatus>.none)
+        t.equal(none.nowPlaying, SkinInputData.Given<SkinInputData.NowPlaying>.none)
+        t.equal(none.weather, SkinInputData.Given<SkinInputData.Weather>.none)
+        t.equal(none.system, nil)
+        t.check(SkinInputData().isEmpty)
+        let noLocation = try SkinInputData.load(#"{"weather": {"forecast": "oslo.json", "location": null}}"#, directory: dir)
+        t.equal(noLocation.weather?.value?.location, SkinInputData.Weather.Location.none)
+        let offline = try SkinInputData.load(#"{"weather": {"location": [59.9, 10.7]}}"#, directory: dir)
+        t.equal(offline.weather?.value?.forecast, nil)
+        t.equal(offline.weather?.value?.location, .coordinate(latitude: 59.9, longitude: 10.7))
+
+        // An event script: its data object.
+        let script = try SkinInputData.load(#"{"update": 1000, "seed": 7, "data": {"battery": {"level": 5}}, "steps": []}"#,
+                                            directory: dir)
+        t.equal(script.battery?.value?.percent, 5)
+
+        // Mistakes name the key.
+        func failure(_ json: String) -> String {
+            switch Result(catching: { try SkinInputData.load(json, directory: dir) }) {
+            case .success: return "no error"
+            case .failure(let e): return "\(e)"
+            }
+        }
+        t.equal(failure(#"{"system": {"cpu": "high"}}"#), "system.cpu: is not a number or a list of numbers")
+        t.equal(failure(#"{"system": {"frames": [{"cpu": 1}, {"gpu": 2}]}}"#).hasPrefix("system.frames[1].gpu: is not a system reading"), true)
+        t.equal(failure(#"{"sensors": {"cpu.teapot": 3}}"#), "sensors.cpu.teapot: is not a sensor key")
+        t.equal(failure(#"{"nowPlaying": {"state": "dancing"}}"#), "nowPlaying.state: is not playing, paused or stopped")
+        t.equal(failure(#"{"weather": "missing.json"}"#).hasPrefix("weather: cannot read"), true)
+        t.equal(failure(#"{"system": "missing.json"}"#).hasPrefix("system: cannot read"), true)
+        try "[1]".write(to: dir.appendingPathComponent("list.json"), atomically: true, encoding: .utf8)
+        t.equal(failure("list.json"), "the data is not a JSON object")
+        t.check(failure("{nope").hasPrefix("not JSON"), failure("{nope"))
+        t.check(failure("nothing-here.json").hasPrefix("cannot read"), "a path that does not exist")
+    }
+
+    t.suite("Seams: --data: the scripted system readings") {
+        let live = FakeSystem()
+        let frames = try SkinInputData.load(#"""
+        {"system": {"frames": [
+            {"cpu": [25, 10, 40], "memory": {"physicalTotal": 1000, "physicalUsed": 400},
+             "network": {"en0": {"received": 100, "sent": 10}, "en1": {"received": 5, "sent": 1}},
+             "disks": {"/": {"total": 500, "free": 100, "label": "Macintosh HD"},
+                       "/Volumes/Backup": {"total": 50, "free": 40, "available": 45, "kind": "removable"}},
+             "uptime": 3600, "sysInfo": {"COMPUTER_NAME": "Studio", "IP_ADDRESS:1": "10.0.0.2"},
+             "processes": [{"name": "Safari", "pid": 10, "cpu": 20, "memory": 900}]},
+            {"cpu": [75, 70, 80], "uptime": 3601}]}}
+        """#, directory: t.temporaryDirectory("frames"))
+        let s = ScriptedSystemData(base: live, data: frames)
+        t.equal(s.processorCount, 2)
+        t.equal(s.cpuUsage(processor: 0), 25)
+        t.equal(s.cpuUsage(processor: 2), 40)
+        t.equal(s.cpuUsage(processor: 5), 0)
+        t.equal(s.memoryStatus().physicalUsed, 400)
+        t.equal(s.networkInterfaces(), ["en0", "en1"])
+        t.equal(s.networkCounters(interface: nil), NetworkCounters(received: 105, sent: 11))
+        t.equal(s.networkCounters(interface: "en1").received, 5)
+        t.equal(s.bestNetworkInterface(), "en0")
+        t.equal(s.diskSpace(path: "/Users/me")?.free, 100)
+        t.equal(s.diskSpace(path: "/Volumes/Backup/Photos")?.total, 50, "the longest mount point holding the path")
+        t.equal(s.availableDiskSpace(path: "/Volumes/Backup"), 45)
+        t.equal(s.availableDiskSpace(path: "/"), 100, "available defaults to free")
+        t.equal(s.volumeInfo(path: "/Volumes/Backup")?.kind, .removable)
+        t.equal(s.uptime(), 3600)
+        t.equal(s.sysInfo(type: "computer_name", data: "")?.string, "Studio")
+        t.equal(s.sysInfo(type: "IP_ADDRESS", data: "1")?.string, "10.0.0.2")
+        t.check(s.sysInfo(type: "USER_NAME", data: "") == nil, "with system given, nothing comes from the Mac")
+        t.check(s.isProcessRunning("safari"))
+        t.check(!s.isProcessRunning("Finder"))
+        t.equal(s.battery()?.percent, 80, "battery not given: the live one")
+        t.equal(s.frameIndex, 0)
+        s.advance()
+        t.equal(s.cpuUsage(processor: 0), 75)
+        t.equal(s.memoryStatus().physicalUsed, 400, "the second frame keeps the first one's memory")
+        t.equal(s.uptime(), 3601)
+        s.advance()
+        t.equal(s.frameIndex, 1, "the last frame stays")
+
+        // Nothing given: the live source answers everything.
+        let passthrough = ScriptedSystemData(base: live, data: SkinInputData())
+        t.equal(passthrough.cpuUsage(processor: 0), 42)
+        t.equal(passthrough.uptime(), 90061)
+        t.equal(passthrough.processorCount, 8)
+        t.equal(passthrough.sysInfo(type: "USER_NAME", data: "")?.string, "tester")
+        t.check(passthrough.processSamples() == nil)
+
+        // Battery, sensors, the desktop picture.
+        let other = try SkinInputData.load(#"""
+        {"battery": null, "sensors": {"cpu": 60, "fan.1": {"value": 2000, "min": 1000, "max": 5000}, "thermal": 2},
+         "desktopImage": null}
+        """#, directory: t.temporaryDirectory("frames"))
+        let o = ScriptedSystemData(base: live, data: other)
+        t.check(o.battery() == nil, "null: a Mac without a battery")
+        t.equal(o.sensorValue("CPU"), 60)
+        t.equal(o.sensorValue("fan.1.max"), 5000)
+        t.equal(o.sensorInfo("fan.1")?.minimum, 1000)
+        t.equal(o.sensorValue("gpu"), nil)
+        t.check(!o.sensorPending("gpu"), "a sensor left out is missing, not pending")
+        t.equal(o.cpuPackageTemperature(), 60)
+        t.equal(o.fanSpeeds(), [2000])
+        t.equal(o.thermalState(), 2)
+        t.equal(o.desktopPicturePath(), "")
+        t.equal(o.cpuUsage(processor: 0), 42, "system not given: live")
+        var listed: [SensorInfo] = []
+        o.discoverSensors { listed = $0 }
+        t.equal(listed.map(\.key), ["cpu", "fan.1"])
+        o.apply(try SkinInputData.load(#"{"battery": {"level": 9, "charging": true}}"#, directory: t.temporaryDirectory("frames")))
+        t.equal(o.battery()?.isPluggedIn, true, "charging means on AC unless it says otherwise")
+        t.equal(o.sensorValue("cpu"), 60, "applying data changes only what it gives")
+    }
+
+    t.suite("Seams: --data: a skin reads the scripted Mac") {
+        let dir = t.temporaryDirectory("data-skin").appendingPathComponent("Skins/Root/Sub")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try """
+        [Rainmeter]
+        Update=1000
+        [CPU]
+        Measure=CPU
+        [Core2]
+        Measure=CPU
+        Processor=2
+        [Mem]
+        Measure=PhysicalMemory
+        [Disk]
+        Measure=FreeDiskSpace
+        Drive=/
+        [Up]
+        Measure=Uptime
+        [Top]
+        Measure=Plugin
+        Plugin=UsageMonitor
+        Alias=CPU
+        Index=1
+        [TopRAM]
+        Measure=Plugin
+        Plugin=UsageMonitor
+        Alias=RAM
+        Index=1
+        [Temp]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=cpu
+        [Thermal]
+        Measure=Plugin
+        Plugin=MacSensors
+        Sensor=thermal
+        [Power]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=Percent
+        [Name]
+        Measure=SysInfo
+        SysInfoType=COMPUTER_NAME
+        [Meter]
+        Meter=String
+        MeasureName=Top
+        """.write(to: dir.appendingPathComponent("Skin.ini"), atomically: true, encoding: .utf8)
+        let data = try SkinInputData.load(#"""
+        {"system": {"frames": [
+            {"cpu": [30, 20, 40], "memory": {"physicalTotal": 1000, "physicalUsed": 250},
+             "disks": {"/": {"total": 500, "free": 125}}, "uptime": 7200, "sysInfo": {"COMPUTER_NAME": "Test Mac"},
+             "processes": [{"name": "Music", "pid": 20, "cpu": 12, "memory": 300},
+                           {"name": "Safari", "pid": 10, "cpu": 8, "memory": 900}]},
+            {"cpu": [60, 50, 70],
+             "processes": [{"name": "Music", "pid": 20, "cpu": 4, "memory": 300},
+                           {"name": "Safari", "pid": 10, "cpu": 40, "memory": 900}]}]},
+         "battery": {"level": 64}, "sensors": {"cpu": 48.5, "thermal": 1}}
+        """#, directory: dir)
+        let system = ScriptedSystemData(base: FakeSystem(), data: data)
+        let host = FakeHost()
+        let skin = Skin(config: "Root\\Sub", fileURL: dir.appendingPathComponent("Skin.ini"),
+                        skinsDirectory: dir.deletingLastPathComponent().deletingLastPathComponent(), system: system,
+                        host: host)
+        try skin.load()
+        skin.update()
+        func v(_ m: String) -> Double { skin.measure(named: m)?.value ?? .nan }
+        func s(_ m: String) -> String { skin.measure(named: m)?.stringValue ?? "<none>" }
+        t.equal(v("CPU"), 30)
+        t.equal(v("Core2"), 40)
+        t.equal(v("Mem"), 250)
+        t.equal(v("Disk"), 125)
+        t.equal(v("Up"), 7200)
+        t.equal(s("Top"), "Music", "the busiest process of the frame")
+        t.close(v("Top"), 12, accuracy: 1e-6)
+        t.equal(s("TopRAM"), "Safari")
+        t.equal(v("TopRAM"), 900)
+        t.equal(v("Temp"), 48.5)
+        t.equal(v("Thermal"), 1)
+        t.equal(s("Thermal"), "Fair")
+        t.equal(v("Power"), 64)
+        t.equal(s("Name"), "Test Mac")
+        system.advance()
+        skin.update()
+        t.equal(v("CPU"), 60)
+        t.equal(s("Top"), "Safari", "the next frame's processes")
+        t.close(v("Top"), 40, accuracy: 1e-6)
+        t.equal(v("Up"), 7200, "kept from the frame before")
+        _ = host
+    }
 }

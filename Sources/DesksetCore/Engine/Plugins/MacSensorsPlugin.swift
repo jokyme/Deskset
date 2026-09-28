@@ -92,7 +92,8 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
         rawString = ""
         noReading = true
         if readsThermalState {
-            let state = min(max(MacSensorsMeasure.thermalState(), 0), 3)
+            let given = HardwareSensors.source(for: skin)?.thermalState()
+            let state = min(max(given ?? MacSensorsMeasure.thermalState(), 0), 3)
             noReading = false
             rawString = MacSensorsMeasure.thermalStateNames[state]
             return Double(state)

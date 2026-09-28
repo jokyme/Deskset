@@ -344,6 +344,9 @@ public protocol HardwareSensorSource: AnyObject {
     func voltages() -> [Double]
     /// GPU utilisation 0…100.
     func gpuUtilization() -> Double?
+    /// macOS's thermal state 0–3 (MacSensors `Sensor=thermal`) when this source gives it; nil: the Mac's own
+    /// (`MacSensorsMeasure.thermalState`).
+    func thermalState() -> Int?
 }
 
 extension HardwareSensorSource {
@@ -375,6 +378,7 @@ extension HardwareSensorSource {
         return fixed.contains { $0 != nil } ? fixed.map { $0 ?? 0 } : []
     }
     public func gpuUtilization() -> Double? { sensorValue(SensorKeys.gpuUsage) }
+    public func thermalState() -> Int? { nil }
 
     /// The values of `key(1)`, `key(2)`… up to the first one without a value; nil when even the first has none.
     func numbered(_ key: (Int) -> String) -> [Double]? {

@@ -89,6 +89,13 @@ struct ProcessSnapshot {
     var totalTicks: CoreTicks { cores.reduce(.zero, +) }
 }
 
+/// A skin's own process samples, read instead of the shared sampler's: the scripted system data of a render or a
+/// verification run (`ScriptedSystemData`), as its `system`.
+protocol ProcessSampleSource: AnyObject {
+    /// The last two samples; nil: the shared sampler's.
+    func processSamples() -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?)?
+}
+
 /// Reads processes and CPU ticks. Replaceable for tests (`ProcessSampler.provider`).
 protocol ProcessDataProvider: AnyObject {
     func readProcesses() -> (visible: [ProcessRecord], total: Int)
@@ -281,6 +288,12 @@ final class ProcessSampler: @unchecked Sendable {
     func samples() -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?) {
         lock.lock(); defer { lock.unlock() }
         return snapshots
+    }
+
+    /// The samples `skin`'s measures read: its system's own (`ProcessSampleSource`), else the shared sampler's.
+    static func samples(for skin: Skin) -> (previous: ProcessSnapshot?, latest: ProcessSnapshot?) {
+        if let own = (skin.system as? ProcessSampleSource)?.processSamples() { return own }
+        return shared.samples()
     }
 
     var isRunning: Bool {

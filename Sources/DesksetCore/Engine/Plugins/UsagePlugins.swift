@@ -127,7 +127,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
         }
         let values: [PerfValue]
         if spec.needsProcesses || spec.usesCores {
-            let samples = ProcessSampler.shared.samples()
+            let samples = ProcessSampler.samples(for: skin)
             guard let latest = samples.latest else {
                 rawString = cachedResult.1
                 return cachedResult.0
@@ -297,7 +297,7 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         let mode: PerfCounters.Mode = difference ? .rawDelta : .raw
         let values: [PerfValue]
         if spec.needsProcesses {
-            guard let latest = ProcessSampler.shared.samples().latest else { return lastValue }
+            guard let latest = ProcessSampler.samples(for: skin).latest else { return lastValue }
             if let lastSnapshot, lastSnapshot.serial == latest.serial { return lastValue }
             if spec.isProcessField {
                 values = PerfCounters.processValues(spec, old: lastSnapshot, new: latest, mode: mode, rollup: false)
@@ -390,7 +390,7 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         let now = clock()
         let elapsed = lastUpdate.map { min(max(now - $0, 0), 3600) }
         lastUpdate = now
-        let samples = ProcessSampler.shared.samples()
+        let samples = ProcessSampler.samples(for: skin)
         if let latest = samples.latest, lastSnapshot?.serial != latest.serial {
             // The first value uses the sampler's own previous sample, so it does not wait for a second update.
             if let base = lastSnapshot ?? samples.previous {
