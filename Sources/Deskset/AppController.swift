@@ -159,6 +159,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isDuplicateInstance else { return .terminateNow }
         if let inspector, !inspector.canTerminate() { return .terminateCancel }
+        if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return .terminateCancel }
         for window in codeFileWindows where !window.canTerminate() { return .terminateCancel }
         return .terminateNow
     }

@@ -596,6 +596,13 @@ enum StudioText {
         case alignWidgetsHint = "align.widgetsHint"
         case arrangeWidgetsLater = "align.arrangeLater"
         case menuTextBigger = "menu.textBigger"
+        case announceDone = "announce.done"
+        case codeNotSavedTitle = "code.notSaved.title"
+        case codeNotSavedTheCode = "code.notSaved.theCode"
+        case codeNotSavedInfo = "code.notSaved.info"
+        case codeNotSavedSave = "code.notSaved.save"
+        case codeNotSavedCancel = "code.notSaved.cancel"
+        case codeNotSavedDiscard = "code.notSaved.discard"
         case menuTextSmaller = "menu.textSmaller"
         case menuRevertCount = "menu.revertCount"
         case zoomToSelection = "zoom.selection"
@@ -1173,6 +1180,14 @@ enum StudioText {
         .arrangeWidgetsLater: ("Arrange Widgets comes in a later version: for now, drag the widgets on your desktop",
                                "“整理小组件”会在以后的版本里加入：现在请在桌面上拖动小组件"),
         .menuTextBigger: ("Make Text Bigger", "放大文字"),
+        .announceDone: ("Saved. Closing the Studio.", "已存储。正在关闭 Studio。"),
+        .codeNotSavedTitle: ("Your changes to %@ couldn’t be saved", "你对%@的修改无法存储"),
+        .codeNotSavedTheCode: ("the code", "代码"),
+        .codeNotSavedInfo: ("Save tries again. If you discard them, the files stay as they are on disk.",
+                            "“存储”会再试一次。如果舍弃修改，文件保持磁盘上的样子。"),
+        .codeNotSavedSave: ("Save", "存储"),
+        .codeNotSavedCancel: ("Cancel", "取消"),
+        .codeNotSavedDiscard: ("Discard Changes", "舍弃更改"),
         .menuTextSmaller: ("Make Text Smaller", "缩小文字"),
         .menuRevertCount: ("Revert to Original (%@)", "恢复为原件（%@）"),
         .zoomToSelection: ("Zoom to Selection", "缩放到所选内容"),

@@ -14,6 +14,63 @@ enum Studio2CodeSelfTests {
         logTests(t)
         menuTests(t)
         duplicateDeleteTests(t)
+        closingTests(t)
+    }
+
+    /// Edits waiting for their pause are made before an undo (the undo takes them back, and Redo stays), and before
+    /// the window closes; typed code that can't be saved is asked about when closing or quitting.
+    static func closingTests(_ t: AppTestRunner) {
+        t.suite("Studio2: code: waiting edits before an undo, and closing with code that can't be saved") {
+            guard let (_, studio, url, _) = open(t, "CodeClosing"), let session = studio.session else { return }
+            func x() -> String? { studio.skin?.meter(named: "MeterTitle")?.fileOption("X") }
+            studio.select(part: "MeterTitle")
+            studio.geometry.nudge(dx: 10, dy: 0)
+            studio.geometry.commitNudge()
+            t.equal(x(), "20", "moved: one step")
+            AppSelfTest.spin(timeout: 0.05) { false }
+            // A nudge waiting for its pause, then ⌘Z: it is the nudge that goes, and Redo brings it back.
+            studio.geometry.nudge(dx: 1, dy: 0)
+            t.check(studio.hasPendingEdits, "the nudge waits")
+            t.check(session.undoStack.canUndo)
+            session.undoStack.undo()
+            t.equal(x(), "20", "the undo took the nudge back, not the move before it")
+            t.check(session.undoStack.canRedo, "and it can be redone")
+            session.undoStack.redo()
+            t.equal(x(), "21")
+            AppSelfTest.spin(timeout: 0.05) { false }
+
+            // Typed code whose commit is refused (a conversion declined, a conflict put off): closing asks.
+            t.check(type(studio, replacing: "Text=Hello", with: "Text=Hola"))
+            let commit = studio.codeView.onCommit
+            studio.codeView.onCommit = { _, _ in false }
+            var asked = 0
+            studio.closeChoice = {
+                asked += 1
+                return .cancel
+            }
+            guard let window = studio.window else { return t.check(false, "the window") }
+            t.equal(studio.windowShouldClose(window), false, "Cancel: the window stays")
+            t.equal(asked, 1, "asked once")
+            t.equal(studio.canTerminate(), false, "quitting asks too")
+            studio.doneAction(nil)
+            t.check(StudioWindowController.window(for: studio.app) === studio, "Done asks as well: still open")
+            studio.closeChoice = { .discard }
+            t.equal(studio.windowShouldClose(window), true, "Discard Changes: it may close")
+            t.check(!studio.codeView.hasUncommittedChanges, "the typing is gone")
+            t.check(!((try? String(contentsOf: url, encoding: .utf8)) ?? "").contains("Hola"), "never written")
+            studio.codeView.onCommit = commit
+            studio.closeChoice = nil
+
+            // Done with a color being picked: the pick is written before the window lets go of the widget.
+            studio.select(part: "MeterTitle")
+            studio.partPage.handle(.swatch(item: "text.color", swatch: ""))
+            guard let popover = studio.partPage.colorPopover else { return t.check(false, "the color popover") }
+            popover.takeFieldText("#FF0000")
+            studio.doneAction(nil)
+            t.check(((try? String(contentsOf: url, encoding: .utf8)) ?? "").contains("FontColor=255,0,0"),
+                    "the pick is written")
+            t.check(StudioWindowController.window(for: studio.app) == nil, "closed")
+        }
     }
 
     /// ⌘D as the old Studio makes it (10 points right and down, at the end of the file, one step); Delete of several

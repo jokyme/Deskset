@@ -193,9 +193,17 @@ final class StudioColorPopover: NSViewController, NSPopoverDelegate, NSTextField
         popover.show(relativeTo: rect, of: view, preferredEdge: .minX)
     }
 
-    /// Closes it (the pick is handed over).
+    /// Closes it (the pick is handed over): after the close animation on screen.
     func close() {
         if popover.isShown { popover.performClose(nil) } else { finish() }
+    }
+
+    /// Closes it now and hands the pick over in this turn — Done, the window closing, another widget, an undo — with no
+    /// animation to wait for (the session may be gone when it would end).
+    func commitNow() {
+        popover.animates = false
+        if popover.isShown { popover.close() }
+        finish()
     }
 
     func popoverDidClose(_ notification: Notification) { finish() }

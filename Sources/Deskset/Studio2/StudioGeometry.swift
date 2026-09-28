@@ -160,6 +160,9 @@ final class StudioGeometry {
     }
 
     /// Writes a run of arrow keys now.
+    /// Arrow-key nudges wait for their pause.
+    var hasPendingNudge: Bool { nudgeTimer != nil }
+
     func commitNudge() {
         guard nudgeTimer != nil else { return }
         nudgeTimer?.invalidate()

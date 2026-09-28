@@ -893,7 +893,7 @@ final class StudioWidgetPage {
 
     /// The window closes or shows another widget: the popover closes (what it picked is kept).
     func close() {
-        colorPopover?.close()
+        colorPopover?.commitNow()
         colorPopover = nil
         activeSwatch = nil
         confirmation = nil

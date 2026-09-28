@@ -540,8 +540,9 @@ final class StudioPartPage {
               item: item, section: section)
     }
 
+    /// Closes the color popover now, its pick handed over in this turn (never after the page moved on).
     func closePopover() {
-        colorPopover?.close()
+        colorPopover?.commitNow()
         colorPopover = nil
         activeSwatch = nil
     }

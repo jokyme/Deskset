@@ -82,6 +82,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     private(set) var canvasAccess: StudioCanvasAccessibility!
     /// What VoiceOver says when the step being made is done (else the step's name).
     var pendingAnnouncement: String?
+    /// Answers the question about typed code that can't be saved (self-tests); nil: an alert asks.
+    var closeChoice: (() -> InspectorWindowController.CloseChoice)?
 
     init(app: AppController) {
         self.app = app
@@ -177,9 +179,15 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     func attach(_ c: SkinController) {
         let session = app.editingSession(for: c.config)
         if self.session !== session {
+            // What the widget shown so far still waits for is made for it, before it goes.
+            commitPendingEdits()
+            flushCode()
             unbindSession()
             self.session = session
             session.client = self
+            // Before an undo or redo, what waits for its pause is made, so the undo takes it back.
+            session.undoStack.commitPendingEdits = { [weak self] in self?.commitPendingEditsBeforeUndo() }
+            session.undoStack.hasPendingEdits = { [weak self] in self?.hasPendingEdits ?? false }
             let link = DesktopLink(app: app, session: session)
             link.onChange = { [weak self] change in self?.desktopChanged(change) }
             self.link = link
@@ -215,6 +223,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         session.undoStack.removeAllActions(withTarget: self)
         session.closeStudioSkin()
         if session.client === self { session.client = nil }
+        session.undoStack.commitPendingEdits = nil
+        session.undoStack.hasPendingEdits = nil
         for o in undoObservers { NotificationCenter.default.removeObserver(o) }
         undoObservers = []
         canvasController.stopRedrawing()
@@ -393,13 +403,31 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         setCodeMode(isCodeShown ? .hidden : .alongside)
     }
 
-    /// Done: an open color popover hands its pick over, whatever is still waiting is written, then the window closes.
+    /// Done: an open color popover hands its pick over, whatever is still waiting is written, then the window closes
+    /// (after asking about typed code that can't be saved, as closing does).
     @objc func doneAction(_ sender: Any?) {
-        widgetPage.colorPopover?.close()
+        guard let window, windowShouldClose(window) else { return }
+        flush()
+        announce(StudioText[.announceDone])
+        window.close()
+    }
+
+    /// Edits still waiting for their pause — a color being picked, arrow-key nudges — made now, in this turn.
+    func commitPendingEdits() {
+        widgetPage.colorPopover?.commitNow()
         partPage.closePopover()
         geometry.commitNudge()
-        flush()
-        window?.close()
+    }
+
+    /// Before an undo or redo of the widget's stack: not while typing in a field or the code (⌘Z undoes the typing).
+    func commitPendingEditsBeforeUndo() {
+        guard !(window?.firstResponder is NSTextView) else { return }
+        commitPendingEdits()
+    }
+
+    /// Whether an edit waits for its pause (Undo is there for it).
+    var hasPendingEdits: Bool {
+        geometry.hasPendingNudge || widgetPage.colorPopover?.picked != nil || partPage.colorPopover?.picked != nil
     }
 
     // MARK: The canvas's view (View menu items and keys)
@@ -554,6 +582,52 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         codeWindowResized()
     }
 
+    /// Closing (⌘W, the close button, Done) with typed code that can't be saved asks first: Save (try again), Discard
+    /// Changes, or Cancel. Everything else still waiting is written first: a color being picked, a nudge, a value typed
+    /// in a field. Quitting runs this too (`canTerminate`).
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if let editor = sender.firstResponder as? NSTextView, editor.isFieldEditor { sender.makeFirstResponder(nil) }
+        commitPendingEdits()
+        guard codeController.isViewLoaded else { return true }
+        if codeView.commitNow(explicit: true) || !codeView.hasUncommittedChanges { return true }
+        switch askAboutUncommittedCode() {
+        case .save:
+            return codeView.commitNow(explicit: true)
+        case .discard:
+            codeView.discardUncommittedChanges()
+            return true
+        case .cancel:
+            return false
+        }
+    }
+
+    /// Quitting the app (⌘Q, logging out): the same check as closing, the window staying open on Cancel.
+    func canTerminate() -> Bool {
+        guard let window else { return true }
+        return windowShouldClose(window)
+    }
+
+    func askAboutUncommittedCode() -> InspectorWindowController.CloseChoice {
+        if let closeChoice { return closeChoice() }
+        // Without windows (self-tests, snapshots) nobody can be asked: the typing is kept.
+        guard app.presentsWindows, let window else { return .cancel }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        let dirty = codeView.files.filter { codeView.isDirty($0) }.map(\.lastPathComponent)
+        let alert = NSAlert()
+        alert.messageText = StudioText.format(.codeNotSavedTitle, dirty.isEmpty ? StudioText[.codeNotSavedTheCode]
+                                                                             : StudioWords.list(dirty))
+        alert.informativeText = StudioText[.codeNotSavedInfo]
+        alert.addButton(withTitle: StudioText[.codeNotSavedSave])
+        alert.addButton(withTitle: StudioText[.codeNotSavedCancel])
+        alert.addButton(withTitle: StudioText[.codeNotSavedDiscard])
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .save
+        case .alertThirdButtonReturn: return .discard
+        default: return .cancel
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
         StudioMenus.restore(for: self)
         codeState.logWindow?.close()
@@ -563,9 +637,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         sidebarState.liveTimer = nil
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         flagsMonitor = nil
-        geometry.commitNudge()
-        widgetPage.colorPopover?.close()
-        partPage.closePopover()
+        commitPendingEdits()
         runningPopover?.close()
         pendingDiskCheck?.invalidate()
         pendingDiskCheck = nil
