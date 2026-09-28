@@ -7,6 +7,10 @@ enum SessionChange {
     /// The Studio's instance of the widget was loaded again: after a step, an undo or redo, a change on disk, a refresh
     /// of the widget. Whatever showed the old one follows the new one.
     case reloaded
+    /// The Studio's instance took a step, an undo or a redo without loading again (`applyToStudio`): the same object
+    /// shows the new text and keeps what it has shown (graphs, the counter, values set by clicks). Whatever showed it
+    /// follows it as after `reloaded`.
+    case patched(SkinPatchSummary)
     /// A step was made: in memory, on disk, on the desktop, on the undo stack.
     case applied(Transaction)
     /// A step was undone (`undo`) or redone.
@@ -253,7 +257,7 @@ final class EditingSession {
     /// shows it: `reloaded`) and no live reload follows, which would load the instance again, and it would write again.
     /// Not for its later updates: a save in another app landing in one of them (every 16 ms for a visualizer) would be
     /// taken for the instance's and not reload the widget.
-    private func takeOwnWrites(since stamps: [SourceFileID: Date]) {
+    func takeOwnWrites(since stamps: [SourceFileID: Date]) {
         let now = diskSync.modificationDates(stamps.keys.map(\.url))
         let written = stamps.filter { now[$0.key] != $0.value }.map(\.key.url)
         guard !written.isEmpty else { return }
@@ -266,13 +270,13 @@ final class EditingSession {
     // MARK: Steps
 
     /// Makes a step: plans `ops` on the text in memory (buffers without edits of their own take what changed on disk
-    /// first), makes the changes, writes them (for now every step is written: each ends a gesture), loads the Studio's
-    /// instance again and — when `verify` finds the change in effect there —
+    /// first), makes the changes, writes them (for now every step is written: each ends a gesture), gives them to the
+    /// Studio's instance (`applyToStudio`: a patch, else a reload) and — when `verify` finds the change in effect there —
     /// reloads the widget on the desktop and puts the step on the undo stack (unless `registersUndo` is false: the
     /// caller folds it into a step of its own). Returns nil when nothing changes.
     ///
     /// Throws when the step cannot be planned or written — nothing changed then — or when `verify` says the widget does
-    /// not show it (`SessionError.notInEffect`): the files are put back and the Studio's instance loaded again.
+    /// not show it (`SessionError.notInEffect`): the files are put back, and so is the Studio's instance.
     @discardableResult
     func apply(_ name: String, _ ops: [EditOp], commands: [TransactionCommand] = [], selectionBefore: [String] = [],
                selectionAfter: [String] = [], registersUndo: Bool = true, verify: ((Skin) -> Bool)? = nil) throws
@@ -308,14 +312,14 @@ final class EditingSession {
 
         t0 = DispatchTime.now().uptimeNanoseconds
         let runtime = Self.signposter.beginInterval("runtime.apply")
-        let reloaded = studioSkin != nil ? reloadStudioSkin() : nil
+        let reloaded = studioSkin != nil ? applyToStudio(changes) : nil
         Self.signposter.endInterval("runtime.apply", runtime)
         lap("studio", t0)
         if reloaded != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         if let verify, let reloaded, !verify(reloaded) {
             try? buffers.apply(changes, reverse: true)
             try? write()
-            if studioSkin != nil { reloadStudioSkin() }
+            if studioSkin != nil { applyToStudio(changes) }
             throw SessionError.notInEffect
         }
 
@@ -355,7 +359,8 @@ final class EditingSession {
 
     /// Undoes (`undo`) or redoes a step: the files must hold what the step left in them (else nothing changes and the
     /// Studio hears why), the other side of the step goes on the stack, the widget's window moves with the files
-    /// (`TransactionCommand`), the Studio's instance and the desktop copy load the files again.
+    /// (`TransactionCommand`), the Studio's instance takes the text (`applyToStudio`) and the desktop copy loads the
+    /// files again.
     func revert(_ t: Transaction, undo: Bool) {
         client?.sessionWillRevert(self)
         let start = DispatchTime.now().uptimeNanoseconds
@@ -383,7 +388,7 @@ final class EditingSession {
         var place: WidgetPosition?
         for case .moveWidget(let from, let to) in t.commands { place = undo ? from : to }
         let t0 = DispatchTime.now().uptimeNanoseconds
-        if studioSkin != nil { reloadStudioSkin() }
+        if studioSkin != nil { applyToStudio(t.changes) }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         // The window moves with the files once the desktop copy loaded them (next turn).

@@ -69,7 +69,8 @@ enum StudioSessionSelfTests {
             t.check(read(url).contains("FontSize=20\n"), "written")
             t.equal(session.buffers.buffer(url)?.text, read(url), "the memory and the disk agree")
             t.check(!session.diskSync.hasUnwrittenChanges, "nothing left to write")
-            t.check(editor.skin !== studio, "the Studio's instance loaded again")
+            t.check(editor.skin === studio, "the Studio's instance took the step without loading again")
+            t.equal(studio.sourceGeneration, 1, "as a patch")
             t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
             guard let reloaded = app.controller(for: "Studio\\Session") else { return t.check(false, "still loaded") }
             t.check(reloaded !== c, "the desktop copy reloaded")

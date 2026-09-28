@@ -138,7 +138,7 @@ public enum LayerNaming {
     /// not change, such as building one part of an inspector page. A nested call for the same skin shares the outer
     /// namer. Off the main thread, `body` simply runs.
     public static func sharingWork<T>(for skin: Skin, _ body: () throws -> T) rethrows -> T {
-        guard Thread.isMainThread, shared?.skin !== skin else { return try body() }
+        guard Thread.isMainThread, shared?.isCurrent(for: skin) != true else { return try body() }
         let saved = shared
         shared = LayerNamer(skin: skin)
         defer { shared = saved }
@@ -147,7 +147,7 @@ public enum LayerNaming {
 
     /// The shared namer for `skin` inside `sharingWork`, else a new one.
     static func namer(for skin: Skin) -> LayerNamer {
-        if Thread.isMainThread, let shared, shared.skin === skin { return shared }
+        if Thread.isMainThread, let shared, shared.isCurrent(for: skin) { return shared }
         return LayerNamer(skin: skin)
     }
 
@@ -755,9 +755,16 @@ final class LayerNamer {
     /// Layers being named (the same loop, seen from the layer).
     private var namingLayers: Set<String> = []
 
+    /// The skin's `sourceGeneration` when the namer was made: a patch gives the same skin new text, and the names.
+    let sourceGeneration: Int
+
     init(skin: Skin) {
         self.skin = skin
+        sourceGeneration = skin.sourceGeneration
     }
+
+    /// Whether the namer names `skin` as its files are now.
+    func isCurrent(for skin: Skin) -> Bool { self.skin === skin && sourceGeneration == skin.sourceGeneration }
 
     // MARK: Layers
 

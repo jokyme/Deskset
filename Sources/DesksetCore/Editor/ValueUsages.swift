@@ -518,8 +518,8 @@ extension Skin {
     }
 
     /// A number that changes whenever a variable's value does (`!SetVariable`, previews): with the skin object and
-    /// its previews, what the editor's cache of `valueUsages()` is keyed on (the files of one skin object never
-    /// change: a refresh loads a new one).
+    /// its previews and `sourceGeneration` (a patch gives the same skin object new text), what the editor's cache of
+    /// `valueUsages()` is keyed on.
     public var variableStamp: Int {
         var hasher = Hasher()
         for e in document.section(named: "Variables")?.entries ?? [] {

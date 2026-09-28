@@ -833,6 +833,8 @@ extension InspectorWindowController: EditingSessionClient {
         switch change {
         case .reloaded:
             studioSkinReloaded()
+        case .patched(let summary):
+            studioSkinPatched(summary)
         case .applied:
             break
         case .reverted(let t, let undo):

@@ -79,9 +79,9 @@ final class InspectorState {
     var openCalculations: Set<String> = []
     /// `Skin.valueUsages()` of the skin as it is now, so one rebuild of the inspector scans the skin once.
     final class UsageCache {
-        /// The skin it was made for (a refresh makes a new one).
+        /// The skin it was made for (a refresh makes a new one; a patch keeps it, and moves its `sourceGeneration`).
         weak var skin: Skin?
-        /// Its update count and preview state then (values the skin sets while it runs change what is in effect).
+        /// Its preview state, variables and text then (values the skin sets while it runs change what is in effect).
         var key: String
         var index: ValueUsageIndex
 

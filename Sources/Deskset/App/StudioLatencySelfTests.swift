@@ -7,7 +7,7 @@ import DesksetCore
 /// stall for a whole second, so it is not one by default).
 ///
 /// One sample is one step the way a user makes it: the edit (`commit`: the text in memory, the file, the Studio's
-/// instance loaded again, the inspector following) and then a frame of the canvas drawn off-screen, each in its own turn
+/// instance patched (`studio.patch`) or loaded again (`studio.reload`), the inspector following) and then a frame of the canvas drawn off-screen, each in its own turn
 /// of the run loop (the undo manager groups what one event registers). The desktop copy reloads on the next turn, after
 /// the canvas drew the step: its time is printed as a phase of its own (`desktop`), not part of the sample. Every phase
 /// is printed as p50 / p95 (`EditingSession.lastTimings`: the Studio's reload split into loading, its first update and
@@ -164,7 +164,8 @@ enum StudioLatencySelfTests {
 
     /// The phases printed, in the order a step runs them (`EditingSession.lastTimings`, and `frame`: the canvas drawn
     /// after the step); phases not listed here follow in alphabetical order.
-    static let phaseOrder = ["plan", "apply", "write", "studio", "studio.load", "studio.update", "window", "window.widget",
+    static let phaseOrder = ["plan", "apply", "write", "studio", "studio.patch", "studio.reload", "studio.load",
+                             "studio.update", "window", "window.widget",
                              "window.canvas", "window.layers", "window.inspector", "window.live values", "window.code",
                              "frame", "desktop"]
 
@@ -288,11 +289,14 @@ enum StudioLatencySelfTests {
         func p50(_ phase: String, in phases: [String: [Double]]) -> Double {
             phases[phase].map { Stat(samples: $0).p50 } ?? 0
         }
-        print(String(format: "    LATENCY SUMMARY %@ | edit p50 %.0f / p95 %.0f ms: inspector %.0f, layers %.0f, load %.0f, "
-                     + "update %.0f, code %.0f, frame %.0f | undo p50 %.0f / p95 %.0f ms",
+        print(String(format: "    LATENCY SUMMARY %@ | edit p50 %.0f / p95 %.0f ms: inspector %.0f, layers %.0f, patch %.1f, "
+                     + "load %.0f, update %.0f, code %.0f, frame %.0f | undo p50 %.0f / p95 %.0f ms",
                      name, edit.p50, edit.p95, p50("window.inspector", in: phases), p50("window.layers", in: phases),
-                     p50("studio.load", in: phases), p50("studio.update", in: phases), p50("window.code", in: phases),
-                     p50("frame", in: phases), undo.p50, undo.p95))
+                     p50("studio.patch", in: phases), p50("studio.load", in: phases), p50("studio.update", in: phases),
+                     p50("window.code", in: phases), p50("frame", in: phases), undo.p50, undo.p95))
+        // A value edit and its undo reach the Studio's instance as a patch: it never loads again.
+        t.check(phases["studio.reload"] == nil && undoPhases["studio.reload"] == nil,
+                "\(name): the Studio's instance took the edits and the undos without loading again")
         // A sanity bound only: a step that takes seconds is broken, whatever the machine.
         t.check(edit.p95 < 5_000 && undo.p95 < 5_000, "\(name): \(edit.text); undo \(undo.text)")
         if let budget {

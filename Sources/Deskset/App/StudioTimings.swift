@@ -4,9 +4,11 @@ import os
 /// Where the time of a Studio step goes (design §9.5): the phases of the Studio's last reload, measured as it runs, for
 /// `EditingSession.lastTimings` and the "App: studio latency" suite.
 ///
-/// Phases (milliseconds): `studio.load` (reading the Studio's instance from the text in memory), `studio.update` (its
-/// first update), `window` (the Studio window following the new instance), and `window.<part>` for each part of that
-/// (`InspectorWindowController.attachParts`: widget, canvas, layers, inspector, live values, code).
+/// Phases (milliseconds): `studio.patch` (the step given to the running instance, `Skin.patch(sources:)`; also timed
+/// when it had to load again instead), `studio.reload` (loading the Studio's instance again instead, with its parts
+/// `studio.load` — reading it from the text in memory — and `studio.update`, its first update), `window` (the Studio
+/// window following the instance), and `window.<part>` for each part of that (`InspectorWindowController.attachParts`:
+/// widget, canvas, layers, inspector, live values, code).
 final class StudioPhaseClock {
     private(set) var phases: [String: Double] = [:]
 
@@ -19,6 +21,11 @@ final class StudioPhaseClock {
 
     /// A new reload starts: what the last one took is forgotten.
     func reset() { phases = [:] }
+
+    /// Adds times measured elsewhere (or before a `reset`).
+    func add(_ times: [String: Double]) {
+        for (phase, time) in times { phases[phase, default: 0] += time }
+    }
 
     /// What was measured since the last reset, which it now is.
     func take() -> [String: Double] {
