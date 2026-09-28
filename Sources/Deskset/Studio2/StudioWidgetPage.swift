@@ -25,6 +25,8 @@ final class StudioWidgetPage {
     let thumbnails: StudioLookThumbnails
     /// The widget's differences from its shipped original, and the texts they were worked out from.
     var originalCache: (key: String, changes: [OriginalCopy.Change])?
+    /// The look's scope: all the suite's widgets (one explicit click) rather than this widget alone.
+    private(set) var lookForAll = false
 
     struct Confirmation {
         /// The item it follows, and its section.
@@ -374,10 +376,25 @@ final class StudioWidgetPage {
                   selected: value.caseInsensitiveCompare(look.current) == .orderedSame)
         }
         items.append(.init(id: "look", kind: .thumbnails(.init(tiles: tiles))))
-        // The look is the suite's: choosing one changes every widget that reads it (package scope).
+        // The one value the suite shares, so the one place that asks first (§3.5, P5): this widget alone by default,
+        // all the suite's widgets as one explicit click; a widget whose files can't hold a look of its own says whose
+        // look it is.
         if look.widgets > 1 {
-            items.append(.init(id: "look.scope", kind: .note(.init(
-                text: StudioText.format(.lookShared, look.widgets, skin?.rootConfig ?? ""), symbol: "square.stack"))))
+            let builtIn = window.link?.provenance == .builtIn
+            let root = skin?.rootConfig ?? ""
+            let all = builtIn ? StudioText.format(.lookScopeAllBuiltIn, look.widgets)
+                : StudioText.format(.lookScopeAll, look.widgets, root)
+            let note: StudioPage.Note
+            if look.ownInclude == nil {
+                note = .init(text: builtIn ? StudioText.format(.lookSharedBuiltIn, look.widgets)
+                                 : StudioText.format(.lookShared, look.widgets, root), symbol: "square.stack")
+            } else if lookForAll {
+                note = .init(text: all, link: StudioText[.lookScopeOnlyThis], symbol: "square.stack")
+            } else {
+                note = .init(text: StudioText[.lookScopeThis],
+                             link: StudioText.format(.scopeWidgetsLink, look.widgets), symbol: "square.stack")
+            }
+            items.append(.init(id: "look.scope", kind: .note(note)))
         }
         if !plan.sizeInFonts { items.append(.init(id: "size", kind: .row(sizeRow(facts)))) }
         return StudioPage.Section(id: "look", title: StudioText[.sectionLookAndSize], items: items)
@@ -434,7 +451,11 @@ final class StudioWidgetPage {
             refresh()
         case .thumbnail(_, let index): chooseLook(index)
         case .link(let id): link(id)
-        case .noteLink: break
+        case .noteLink(let item):
+            // The look's scope: this widget, or all the suite's widgets.
+            guard item == "look.scope" else { return }
+            lookForAll.toggle()
+            refresh()
         case .textSize(let step): scaleText(step)
         case .undo, .topUndo: session?.undoStack.undo()
         case .suggestion, .number, .crumb, .scopeLink, .scopeHover, .tokenData, .example, .hoverItem, .filter: break
@@ -616,16 +637,33 @@ final class StudioWidgetPage {
         return max(v, 1)
     }
 
-    /// A look (a thumbnail): the suite's look variable, in the file the suite shares (a look for one widget alone is
-    /// not something the suite's files can say: the look is read before the widget's own values). The other widgets
-    /// that read the file load again (the window does that for any step on a shared file).
+    /// A look (a thumbnail). This widget alone (the default): its own value of the look variable, in its own
+    /// `[Variables]` right before the include that loads the look's file (back to the suite's look: its own value
+    /// goes). All the suite's widgets (one click on the scope sentence, or a widget whose files can't hold its own):
+    /// the file the suite shares, and this widget's own value goes so that all is all; the other widgets that read
+    /// the file load again (the window does that for any step on a shared file).
     private func chooseLook(_ index: Int) {
-        guard let look = facts?.look, look.values.indices.contains(index), let file = look.file,
+        guard let look = facts?.look, let skin, look.values.indices.contains(index),
               look.values[index].caseInsensitiveCompare(look.current) != .orderedSame else { return }
         let value = look.values[index]
-        apply(StudioText[.undoLook], [.setValue(file: file, section: "Variables", key: look.variable, value: value,
-                                                afterIncludes: false)],
-              confirm: StudioText.format(.confirmLook, Self.lookTitle(value)), item: "look", section: "look")
+        let own = skin.fileURL
+        let ownValue = skin.sourceText(of: own).flatMap {
+            IniDocument.parse($0).section(named: "Variables")?.value(forKey: look.variable)
+        }
+        var ops: [EditOp] = []
+        if lookForAll || look.ownInclude == nil {
+            guard let file = look.file else { return }
+            ops = [.setValue(file: file, section: "Variables", key: look.variable, value: value, afterIncludes: false)]
+            if ownValue != nil { ops.append(.removeKey(file: own, section: "Variables", key: look.variable)) }
+        } else if let include = look.ownInclude {
+            if let shared = look.shared, shared.caseInsensitiveCompare(value) == .orderedSame {
+                ops = [.removeKey(file: own, section: "Variables", key: look.variable)]
+            } else {
+                ops = [.setValueBefore(file: own, section: "Variables", key: look.variable, value: value, before: include)]
+            }
+        }
+        apply(StudioText[.undoLook], ops, confirm: StudioText.format(.confirmLook, Self.lookTitle(value)),
+              item: "look", section: "look")
     }
 
     /// Small, Medium or Large: the desktop runs that variant file instead (undoable).
@@ -856,5 +894,6 @@ final class StudioWidgetPage {
         colorPopover = nil
         activeSwatch = nil
         confirmation = nil
+        lookForAll = false
     }
 }

@@ -207,6 +207,11 @@ enum StudioText {
         case lookDark = "widget.look.dark"
         case lookClear = "widget.look.clear"
         case lookShared = "widget.look.shared"
+        case lookSharedBuiltIn = "widget.look.sharedBuiltIn"
+        case lookScopeThis = "widget.look.scopeThis"
+        case lookScopeAll = "widget.look.scopeAll"
+        case lookScopeAllBuiltIn = "widget.look.scopeAllBuiltIn"
+        case lookScopeOnlyThis = "widget.look.scopeOnlyThis"
         case swatchText = "widget.swatch.text"
         case swatchCard = "widget.swatch.card"
         case swatchMore = "widget.swatch.more"
@@ -772,6 +777,11 @@ enum StudioText {
         .lookDark: ("Dark", "深色"),
         .lookClear: ("Clear", "透明"),
         .lookShared: ("Shared by all %d %@ widgets", "全部 %d 个 %@ 小组件共用这个外观"),
+        .lookSharedBuiltIn: ("Shared by all %d built-in widgets", "全部 %d 个内置小组件共用这个外观"),
+        .lookScopeThis: ("This widget only", "只改这个小组件"),
+        .lookScopeAll: ("All %d %@ widgets", "全部 %d 个 %@ 小组件"),
+        .lookScopeAllBuiltIn: ("All %d built-in widgets", "全部 %d 个内置小组件"),
+        .lookScopeOnlyThis: ("Only This Widget", "只改这一个小组件"),
         .swatchText: ("Text", "文字"),
         .swatchCard: ("Card", "卡片"),
         .swatchMore: ("More…", "更多…"),

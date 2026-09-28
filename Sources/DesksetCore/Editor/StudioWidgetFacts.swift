@@ -183,6 +183,22 @@ public struct StudioWidgetFacts {
         public var file: URL?
         /// The widgets of the suite that read it (this one included).
         public var widgets: Int
+        /// The value the shared file gives (`current` differs when this widget has a look of its own).
+        public var shared: String?
+        /// The `@Include` of the widget's own `[Variables]` that reads the look as it loads: a look of this widget
+        /// alone is written right before it (nil: the widget's files can't hold one).
+        public var ownInclude: String?
+
+        public init(variable: String, values: [String], current: String, file: URL?, widgets: Int,
+                    shared: String? = nil, ownInclude: String? = nil) {
+            self.variable = variable
+            self.values = values
+            self.current = current
+            self.file = file
+            self.widgets = widgets
+            self.shared = shared
+            self.ownInclude = ownInclude
+        }
     }
 
     /// The sizes a widget comes in: the variant files of its folder named Small, Medium and Large.
@@ -1085,8 +1101,43 @@ private final class Builder {
             let values = known.filter { k in siblings.contains { $0.caseInsensitiveCompare(k) == .orderedSame } }
                 + siblings.filter { s in !known.contains { $0.caseInsensitiveCompare(s) == .orderedSame } }.sorted()
             guard values.count >= 2, let definition = index.variable(variable) else { continue }
-            return .init(variable: variable, values: values, current: definition.current, file: definition.file,
-                         widgets: max(Builder.widgetCount(in: skin.rootConfigDirectory), 1))
+            // The shared definition, whether or not this widget has its own.
+            let sharedFile = skin.sharedDefinition(ofVariable: variable) ?? definition.file
+            let shared = sharedFile.flatMap { skin.sourceText(of: $0) }
+                .flatMap { IniDocument.parse($0).section(named: "Variables")?.value(forKey: variable) }
+            return .init(variable: variable, values: values, current: definition.current, file: sharedFile,
+                         widgets: max(Builder.widgetCount(in: skin.rootConfigDirectory), 1), shared: shared,
+                         ownInclude: includeReading(variable))
+        }
+        return nil
+    }
+
+    /// The `@Include` key of the widget's own `[Variables]` whose file — itself, or a file it includes — reads
+    /// `#variable#` in an include path as it loads (`@IncludeLook=#@#Looks/#Look#.inc`): a value of the variable
+    /// written before it is the one that chooses the file. nil when there is none.
+    func includeReading(_ variable: String) -> String? {
+        guard let text = skin.sourceText(of: skin.fileURL),
+              let entries = IniDocument.parse(text).section(named: "Variables")?.entries else { return nil }
+        let token = "#\(variable.lowercased())#"
+        func path(_ raw: String) -> URL? {
+            let resolved = skin.resolve(raw, in: nil, sectionVariables: false).replacingOccurrences(of: "\\", with: "/")
+            guard !resolved.isEmpty else { return nil }
+            return resolved.hasPrefix("/") ? URL(fileURLWithPath: resolved)
+                : skin.directory.appendingPathComponent(resolved)
+        }
+        func reads(_ url: URL, depth: Int) -> Bool {
+            guard depth < 4, let text = skin.sourceText(of: url) else { return false }
+            for section in IniDocument.parse(text).sections {
+                for e in section.entries where IniSyntax.isIncludeKey(e.key) {
+                    if e.value.lowercased().contains(token) { return true }
+                    if let next = path(e.value), reads(next, depth: depth + 1) { return true }
+                }
+            }
+            return false
+        }
+        for e in entries where IniSyntax.isIncludeKey(e.key) {
+            if e.value.lowercased().contains(token) { return e.key }
+            if let url = path(e.value), reads(url, depth: 0) { return e.key }
         }
         return nil
     }

@@ -66,6 +66,36 @@ public enum OriginalCopy {
         return result
     }
 
+    /// A design value of the widget that a file the suite shares holds (its look, chosen for all the suite's widgets):
+    /// a change when `file` gives any of `keys` another value than the shipped copy of it does. Its places are the keys
+    /// that differ; putting it back sets those keys as shipped and leaves the rest of the file (the suite's settings)
+    /// as it is. nil when nothing differs or the app does not ship the file.
+    public static func sharedChange(file: URL, keys: [Setting], skinsDirectory: URL, originals: URL,
+                                    text: (URL) -> String?) -> Change? {
+        let path = file.standardizedFileURL.resolvingSymlinksInPath().path
+        let skins = skinsDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        guard path.hasPrefix(skins + "/"), !keys.isEmpty else { return nil }
+        let original = originals.appendingPathComponent(String(path.dropFirst(skins.count + 1)))
+        guard let originalText = read(original), let current = text(file) else { return nil }
+        let was = IniDocument.parse(originalText), now = IniDocument.parse(current)
+        var restored = current
+        var places = 0
+        for k in keys {
+            let shipped = was.section(named: k.section)?.value(forKey: k.key)
+            guard now.section(named: k.section)?.value(forKey: k.key) != shipped else { continue }
+            places += 1
+            let section = now.section(named: k.section)?.name ?? was.section(named: k.section)?.name ?? k.section
+            let key = was.section(named: k.section)?.entries.first { $0.key.lowercased() == k.key }?.key ?? k.key
+            if let shipped, let written = try? IniWriter.updating(restored, value: shipped, key: key, section: section) {
+                restored = written
+            } else if shipped == nil {
+                restored = IniWriter.removingKey(restored, key: key, section: section)
+            }
+        }
+        guard places > 0 else { return nil }
+        return Change(file: file, original: original, originalText: originalText, places: places, restoredText: restored)
+    }
+
     /// The text without the lines that write one of `settings` (in their section), so a setting changed or added is
     /// not a change of the design.
     static func without(_ settings: Set<Setting>, _ text: String) -> String {

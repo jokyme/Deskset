@@ -220,6 +220,48 @@ func runStudioCatalogTests(_ t: TestRunner) {
         t.equal(f.variants, nil)
     }
 
+    t.suite("Studio facts: a look of this widget alone") {
+        // A suite's look: Variables.inc says Look=Auto, Tokens.inc includes Looks/#Look#.inc.
+        let files = [
+            "Root/@Resources/Variables.inc": "[Variables]\nLook=Auto\n",
+            "Root/@Resources/Tokens.inc": "[Variables]\n@IncludeLook=#@#Looks/#Look#.inc\n",
+            "Root/@Resources/Looks/Auto.inc": "[Variables]\nInk=10,10,10\n",
+            "Root/@Resources/Looks/Light.inc": "[Variables]\nInk=20,20,20\n",
+            "Root/@Resources/Looks/Dark.inc": "[Variables]\nInk=240,240,240\n",
+        ]
+        let ini = "[Variables]\n@Include=#@#Variables.inc\n@Include2=#@#Tokens.inc\n\n[MeterText]\nMeter=String\nFontColor=#Ink#\nText=Hi\n"
+        let (skin, _) = try makeSkin(t, ini, files: files)
+        let facts = StudioWidgetFacts(skin: skin)
+        guard let look = facts.look else { return t.check(false, "a look") }
+        t.equal(look.values, ["Auto", "Light", "Dark"])
+        t.equal(look.shared, "Auto")
+        t.equal(look.ownInclude, "@Include2", "the include whose file reads #Look#")
+        t.equal(look.file?.lastPathComponent, "Variables.inc")
+        // Written before that include, this widget's look is the one its tokens load.
+        let buffers = SourceBuffers()
+        let changes = try IniBackend.plan([.setValueBefore(file: skin.fileURL, section: "Variables", key: "Look",
+                                                           value: "Dark", before: "@Include2")], in: buffers)
+        try buffers.apply(changes)
+        let written = String(decoding: buffers.buffer(skin.fileURL)?.data ?? Data(), as: UTF8.self)
+        t.check(written.contains("@Include=#@#Variables.inc\nLook=Dark\n@Include2=#@#Tokens.inc"), written)
+        try written.write(to: skin.fileURL, atomically: true, encoding: .utf8)
+        let dark = Skin(config: skin.config, fileURL: skin.fileURL, skinsDirectory: skin.skinsDirectory,
+                        system: FakeSystem(), host: FakeHost())
+        try dark.load()
+        t.equal(dark.variable("Ink"), "240,240,240", "the dark look's colors, for this widget")
+        t.equal(dark.variable("Look"), "Dark")
+        let darkFacts = StudioWidgetFacts(skin: dark)
+        t.equal(darkFacts.look?.current, "Dark")
+        t.equal(darkFacts.look?.shared, "Auto", "the suite's stays")
+        t.equal(darkFacts.look?.file?.lastPathComponent, "Variables.inc")
+        // A value there already moves before the include; without the include, after the includes.
+        let twice = try IniWriter.writingBefore("[Variables]\n@Include=a\n@Include2=b\nLook=Light\n", value: "Clear",
+                                                key: "Look", section: "Variables", before: "@Include2")
+        t.equal(twice, "[Variables]\n@Include=a\nLook=Clear\n@Include2=b\n")
+        t.equal(try IniWriter.writingBefore("[Variables]\n@Include=a\n", value: "Dark", key: "Look",
+                                            section: "Variables", before: "@Include9"), nil)
+    }
+
     t.suite("Studio facts: writing a color") {
         let ini = """
             [Rainmeter]

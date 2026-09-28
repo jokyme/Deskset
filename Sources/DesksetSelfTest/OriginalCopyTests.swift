@@ -53,6 +53,22 @@ func runOriginalCopyTests(_ t: TestRunner) {
                 : try? String(contentsOf: url, encoding: .utf8)
         }
         t.equal(buffered, [], "the buffer says it is back as shipped")
+        // The suite's look, chosen for all its widgets in the shared file: a change of the design (one place), put
+        // back alone — the file's other values (the suite's settings) stay.
+        write(skins, "Suite/@Resources/Look.inc", "[Variables]\nLook=Dark\nTempUnit=F\n")
+        write(shipped, "Suite/@Resources/Look.inc", "[Variables]\nLook=Auto\nTempUnit=Auto\n")
+        let look = skins.appendingPathComponent("Suite/@Resources/Look.inc")
+        let shared = OriginalCopy.sharedChange(file: look, keys: [.init(section: "Variables", key: "Look")],
+                                               skinsDirectory: skins, originals: shipped) {
+            try? String(contentsOf: $0, encoding: .utf8)
+        }
+        t.equal(shared?.places, 1)
+        t.equal(shared?.restoredText, "[Variables]\nLook=Auto\nTempUnit=F\n", "only the look goes back")
+        write(skins, "Suite/@Resources/Look.inc", "[Variables]\nLook=Auto\nTempUnit=F\n")
+        t.equal(OriginalCopy.sharedChange(file: look, keys: [.init(section: "Variables", key: "Look")],
+                                          skinsDirectory: skins, originals: shipped) {
+            try? String(contentsOf: $0, encoding: .utf8)
+        }, nil, "the look as shipped: nothing")
         // No shipped copy: nothing to put back.
         t.equal(OriginalCopy.changes(files: files, widgetFolder: skins.appendingPathComponent("Suite/Clock"),
                                      skinsDirectory: skins, originals: root.appendingPathComponent("None")) { _ in "x" }, [])

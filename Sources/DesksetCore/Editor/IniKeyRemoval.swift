@@ -83,3 +83,44 @@ extension Skin {
         return sources.location(section: sectionName, key: key)?.file
     }
 }
+
+// MARK: - Writing a value before a line of its block
+
+extension IniWriter {
+    /// `key=value` in the first `[section]` block, on its own line right before the entry `before` (an `@Include`
+    /// line): read ahead of that include, so what the include reads while it loads (a file name with `#Look#` in it)
+    /// sees this value. Every other definition of `key` in the block goes (the first one would win). Nil when the block
+    /// has no `before` entry.
+    public static func writingBefore(_ text: String, value: String, key: String, section: String,
+                                     before: String) throws -> String? {
+        let keyName = IniSyntax.trim(key)
+        let placeholder = try updating("", value: value, key: keyName, section: section)
+        guard let line = placeholder.split(whereSeparator: \.isNewline).last.map(String.init) else { return nil }
+        let removed = removingKey(text, key: keyName, section: section)
+        var lines: [(content: Substring, terminator: Substring)] = []
+        IniSyntax.forEachLineWithTerminator(in: removed) { lines.append(($0, $1)) }
+        let newline: Substring = lines.first(where: { !$0.terminator.isEmpty })?.terminator ?? "\r\n"
+        var inside = false
+        var at: Int?
+        scan: for (i, l) in lines.enumerated() {
+            switch IniSyntax.classify(l.content) {
+            case .section(let name):
+                if inside { break scan }
+                if let name, IniSyntax.namesEqual(name, IniSyntax.trim(section)) { inside = true }
+            case .entry(let k, _):
+                if inside, IniSyntax.namesEqual(k, IniSyntax.trim(before)) { at = i; break scan }
+            default:
+                break
+            }
+        }
+        guard let at else { return nil }
+        var out = ""
+        for (i, l) in lines.enumerated() {
+            if i == at { out += line + newline }
+            out += l.content
+            out += l.terminator
+        }
+        return out
+    }
+}
+

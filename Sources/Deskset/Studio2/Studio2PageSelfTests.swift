@@ -364,13 +364,38 @@ enum Studio2PageSelfTests {
             studio.setSidebarOpen(false)
             t.equal(data(medium), original)
 
-            // The look: the suite's file, and every Stationery widget follows (and follows its undo).
+            // The look: this widget alone by default — its own value, read before the include that loads the look —
+            // and nothing else changes; the scope sentence offers all the suite's widgets.
             let variables = file(opened, "Stationery/@Resources/Variables.inc")
             let suite = data(variables)
             let clock = opened.app.activate(config: "Stationery\\Clock", file: "Medium.ini")
             t.check(clock != nil, "another widget of the suite")
+            guard case .note(let scope)? = page.page?.item("look.scope")?.kind else {
+                return t.check(false, "the look's scope sentence")
+            }
+            t.equal(scope.text, "This widget only")
+            t.equal(scope.link, "All 23 Widgets")
+            t.check(!scope.text.contains("Stationery"), "no suite name people don't know")
+            page.handle(.thumbnail(item: "look", index: 2))
+            t.check(text(medium).contains("@Include2=#@#Variables.inc\nLook=Dark\n@Include3=#@#Suite/Tokens.inc"),
+                    "this widget's own look, before the include that reads it")
+            t.equal(data(variables), suite, "the suite's file is left alone")
+            t.equal(studio.skin?.variable("Look"), "Dark")
+            t.check(opened.app.controller(for: "Stationery\\Clock") === clock, "the other widget did not load again")
+            t.equal(studio.copySentence, StudioText[.copyEdited], "a look is a change of the design")
+            t.check(page.revertLink() != nil, "and Revert to Original puts it back")
+            session.undoStack.undo()
+            t.equal(data(medium), original, "undone byte for byte")
+            // All 23: one explicit click, then the suite's file, and every Stationery widget follows (and its undo).
+            page.handle(.noteLink(item: "look.scope"))
+            guard case .note(let all)? = page.page?.item("look.scope")?.kind else { return t.check(false, "all") }
+            t.equal(all.text, "All 23 built-in widgets")
+            t.equal(all.link, "Only This Widget")
             page.handle(.thumbnail(item: "look", index: 2))
             t.check(text(variables).contains("\nLook=Dark"), "the suite's look")
+            t.equal(data(medium), original, "this widget's file is left alone")
+            t.check(page.revertLink() != nil, "Revert to Original counts the suite's look too")
+            t.equal(studio.copySentence, StudioText[.copyEdited])
             t.check(AppSelfTest.spin { opened.app.controller(for: "Stationery\\Clock") !== clock },
                     "the other widget loaded again")
             let clockDark = opened.app.controller(for: "Stationery\\Clock")
@@ -383,6 +408,7 @@ enum Studio2PageSelfTests {
             t.equal(data(variables), suite, "the look undone byte for byte")
             t.check(AppSelfTest.spin { opened.app.controller(for: "Stationery\\Clock") !== clockDark },
                     "and loaded again for the undo")
+            page.handle(.noteLink(item: "look.scope"))
 
             // The size: another variant runs on the desktop; undone, the first one again.
             page.handle(.segment(item: "size", index: 2))
