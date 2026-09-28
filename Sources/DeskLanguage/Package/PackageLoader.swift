@@ -228,13 +228,15 @@ public enum PackageLoader {
     // MARK: - Archives
 
     /// Checks an archive's entry list before anything is unpacked (§8.3): paths that leave the folder (zip-slip,
-    /// DK4030), links (DK8606), more than 2,000 files (DK8607) or more than 100 MiB unpacked (DK8608). Hidden
-    /// entries, `.DS_Store` and `__MACOSX` are left out of the counts, as unpacking skips them.
+    /// DK4030), names a Mac would unpack onto one another (DK8602), links (DK8606), more than 2,000 files (DK8607)
+    /// or more than 100 MiB unpacked (DK8608). Hidden entries, `.DS_Store` and `__MACOSX` are left out, as
+    /// unpacking skips them.
     public static func checkArchive(_ entries: [DeskArchiveEntry], limits: CatalogLimits = DeskCatalog.current.limits,
                                     catalog: DeskCatalog = .current) -> [Diagnostic] {
         var out: [Diagnostic] = []
         var count = 0
         var total = 0
+        var firstByKey: [String: String] = [:]
         for entry in entries {
             // Folders are often listed with a final `/`.
             let path = entry.isDirectory && entry.path.hasSuffix("/") ? String(entry.path.dropLast()) : entry.path
@@ -248,6 +250,18 @@ public enum PackageLoader {
                 continue
             }
             if entry.isDirectory { continue }
+            let key = DeskPackagePath.foldedKey(path)
+            if let first = firstByKey[key] {
+                let differsInCase = !path.precomposedStringWithCanonicalMapping.utf8
+                    .elementsEqual(first.precomposedStringWithCanonicalMapping.utf8)
+                out.append(Diagnostic(id: .fileNameClash, severity: .error, file: DeskFileID(path: path), range: 0..<0,
+                                      arguments: ["path": .code(path), "other": .code(first),
+                                                  "difference": hintText(.fileNameClash, differsInCase ? "case" : "normalization",
+                                                                         catalog: catalog)],
+                                      notes: [Note(file: DeskFileID(path: first), range: 0..<0, messageKey: "otherFile")]))
+            } else {
+                firstByKey[key] = path
+            }
             count += 1
             total += max(0, entry.size)
         }

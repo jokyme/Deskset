@@ -252,6 +252,7 @@ func runDeskPackageTests(_ t: TestRunner) {
                      DeskArchiveEntry(path: "ok/./x", size: 1)]),
                 ["DK4030 ../evil.sh", "DK4030 /etc/x", "DK4030 C:\\x.desk", "DK4030 a\\..\\..\\x", "DK4030 ok/./x"])
         t.equal(ids([DeskArchiveEntry(path: "bg.png", size: 1, linkDestination: "/Users/x/bg.png")]), ["DK8606 bg.png"])
+        t.equal(ids([DeskArchiveEntry(path: "Tide.desk", size: 1), DeskArchiveEntry(path: "tide.desk", size: 1)]), ["DK8602 tide.desk"])
         t.equal(ids((1...2_001).map { DeskArchiveEntry(path: "n\($0).txt", size: 1) }), ["DK8607 "])
         t.equal(ids([DeskArchiveEntry(path: "a.mov", size: 60 * 1_048_576), DeskArchiveEntry(path: "b.mov", size: 41 * 1_048_576)]),
                 ["DK8608 "])
