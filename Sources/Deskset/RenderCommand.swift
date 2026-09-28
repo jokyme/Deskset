@@ -23,8 +23,9 @@ struct RenderOptions: Equatable {
     var clockHours: Int? = MacRegionalSettings.standard.clockHours
     var firstWeekday: Int? = MacRegionalSettings.standard.firstWeekday
     var temperatureUnit: TemperatureUnit? = MacRegionalSettings.standard.temperatureUnit
-    /// `--clock`: the time the skin sees at its first update (nil: the Mac's clock). Update i sees this time plus i
-    /// intervals, whatever the machine's speed; the monotonic clock steps the same way.
+    /// `--clock`: the time the skin sees at its first update (nil: the Mac's clock). The skin then runs in virtual
+    /// time: update i is at this time plus i intervals, and what falls due between two updates (`!Delay`, ActionTimer,
+    /// transitions) runs at its own virtual time, without real waits.
     var clock: Date?
     /// `--time-zone`: the skin's local time zone (nil: UTC with `--clock`, else the Mac's).
     var timeZone: TimeZone?
@@ -175,11 +176,12 @@ struct RenderOptions: Equatable {
         return nil
     }
 
-    /// The clock the skin reads (`--clock`, `--time-zone`): a stepped one with `--clock`, else the Mac's with the
-    /// given zone, else nil (the Mac's own).
-    func skinClock() -> SteppedSkinClock? {
+    /// The virtual time the skin runs in with `--clock` (its time zone UTC unless `--time-zone` says otherwise); nil
+    /// without `--clock` (the main executor and the Mac's clock, with `--time-zone`'s zone if given). Made on the
+    /// thread that renders, which owns the skin.
+    func virtualTime() -> VirtualTimeExecutor? {
         guard let clock else { return nil }
-        return SteppedSkinClock(start: clock, timeZone: timeZone ?? TimeZone(identifier: "UTC")!)
+        return VirtualTimeExecutor(start: clock, timeZone: timeZone ?? TimeZone(identifier: "UTC")!)
     }
 
     /// The settings the skin sees, with `system` ones taken from `mac`.
@@ -209,9 +211,13 @@ struct RenderOptions: Equatable {
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
 /// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise, and a 24-hour clock,
 /// weeks from Sunday and °C unless `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise.
-/// `--clock` gives the skin a clock of its own (update i sees the given time plus i intervals; its time zone is UTC
-/// unless `--time-zone` says otherwise), `--time-zone` alone only changes the zone, and `--seed` makes its random
-/// numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
+/// `--clock` runs the skin in virtual time from the given moment (a `VirtualTimeExecutor`; its time zone is UTC unless
+/// `--time-zone` says otherwise): update i is at the given time plus i intervals, `!Delay`, ActionTimer and the other
+/// timers run at their own virtual times, and nothing waits in real time. Its background work comes back as ordinary
+/// work at the next step: a local file is read as a fixture and the weather service is the preview; work without a
+/// fake (the network, programs, live system state) runs for real, gets up to one interval of real time to come back
+/// before each update, and is listed on stderr as not verifiable. `--time-zone` alone only changes the zone, and
+/// `--seed` makes its random numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -241,9 +247,13 @@ enum RenderCommand {
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir, system: SystemMonitor.shared,
                         host: host)
         // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
-        let stepped = o.skinClock()
-        if let stepped {
-            skin.skinClock = stepped.clock
+        let virtual = o.virtualTime()
+        if let virtual {
+            skin.runInVirtualTime(virtual)
+            // The weather service installed above is the preview (no network, place lookups at once): a fake service.
+            virtual.background.setFake(.service, for: .weather)
+            virtual.background.setFake(.service, for: .sun)
+            virtual.background.addSettleHook { WeatherService.shared.drain() }
         } else if let zone = o.timeZone {
             skin.skinClock.timeZone = { zone }
         }
@@ -256,9 +266,15 @@ enum RenderCommand {
         }
         Fonts.registerFonts(for: skin)
         for i in 0..<o.updates {
-            if i > 0 { wait(milliseconds: o.interval, stepping: stepped) }
-            // Update i sees the start plus i intervals, however long the waits really took.
-            stepped?.elapsed = Double(i) * o.interval / 1000
+            if i > 0 {
+                if let virtual {
+                    // Update i is at exactly the start plus i intervals.
+                    step(virtual, until: Double(i) * o.interval / 1000,
+                         deadline: Date().addingTimeInterval(o.interval / 1000))
+                } else {
+                    wait(milliseconds: o.interval)
+                }
+            }
             skin.update()
         }
 
@@ -308,6 +324,9 @@ enum RenderCommand {
         print("rendered \(config) \(Int(min(skinW, 1e9)))x\(Int(min(skinH, 1e9))) pt -> \(output.path)")
         for issue in skin.issues { fputs("issue: \(issue)\n", stderr) }
         for line in host.logs { fputs("log: \(line)\n", stderr) }
+        for work in virtual?.background.unverifiable ?? [] {
+            fputs("note: not verifiable in virtual time: \(work)\n", stderr)
+        }
         return 0
     }
 
@@ -325,19 +344,42 @@ enum RenderCommand {
 
     /// Waits between updates while letting queued main-thread work run (!Delay, asynchronous results). The run
     /// loop returns at once when nothing is scheduled, so the rest of the time is slept rather than spun.
-    /// `stepping` (`--clock`): the skin's clock moves on with the real time waited, up to the interval, so that timers
-    /// firing meanwhile see time pass; the next update sets it exactly.
-    static func wait(milliseconds: Double, stepping clock: SteppedSkinClock? = nil) {
-        let seconds = max(milliseconds, 0) / 1000
-        let startElapsed = clock?.elapsed ?? 0
-        let until = Date().addingTimeInterval(seconds)
+    static func wait(milliseconds: Double) {
+        let until = Date().addingTimeInterval(max(milliseconds, 0) / 1000)
         repeat {
-            if let clock { clock.elapsed = startElapsed + seconds - min(max(until.timeIntervalSinceNow, 0), seconds) }
             if !RunLoop.main.run(mode: .default, before: until) {
                 let left = until.timeIntervalSinceNow
                 if left > 0 { Thread.sleep(forTimeInterval: min(left, 0.01)) }
             }
         } while Date() < until
+    }
+
+    /// Virtual time, between two updates: moves the skin's executor on to `time`, running what falls due. Real work —
+    /// the skin's background work without a fake, and the services' own threads — gets until `deadline` (one interval
+    /// of real time, as long as the wait without `--clock`) to hand its results over first, and so does real work that
+    /// the step itself started: it then comes back as work due now, before the update.
+    static func step(_ virtual: VirtualTimeExecutor, until time: TimeInterval, deadline: Date) {
+        virtual.background.settle(timeout: deadline.timeIntervalSinceNow)
+        settleServices(before: deadline)
+        virtual.advance(until: time)
+        while virtual.background.outstanding > 0, Date() < deadline {
+            virtual.background.settle(timeout: deadline.timeIntervalSinceNow)
+            settleServices(before: deadline)
+            virtual.runUntilIdle()
+        }
+    }
+
+    /// Virtual time, before each update: the services outside the skin that work on threads of their own (NowPlaying,
+    /// Wi-Fi, the focused window) finish what they have under way, and what they and other services queued for the
+    /// main thread is delivered, so that it reaches the skin as it did during a real wait. Waits for conditions, never
+    /// for a fixed time, and not past `deadline`.
+    static func settleServices(before deadline: Date) {
+        for _ in 0..<8 {
+            MediaUIWorker.waitForAll(before: deadline)
+            var delivered = false
+            while Date() < deadline, CFRunLoopRunInMode(.defaultMode, 0, true) == .handledSource { delivered = true }
+            if !delivered { return }
+        }
     }
 
     /// Finds the Skins folder (an ancestor named "Skins", else the file's grandparent) and the config name.
