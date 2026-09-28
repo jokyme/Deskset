@@ -1840,10 +1840,13 @@ suite's `TestThreadExecutor`.
    launch) keeps every skin on the main thread, for debugging, and says so in the log at launch. The headless modes,
    the Manage window's dry runs, thumbnails, the Studio's own instance and the self-tests' apps keep the main executor
    (§8.7); only the menu bar app reads the key. `--help` says which is the default.
-   - Checks after the change: Core 61,162 checks; the app suite 10,724 checks in each scroller style (default,
-     `WhenScrolling`, `Always`), with 6,461–6,582 debug comparisons and no difference (it has 46 checks more than at
-     step 7: the stress suite, the load order suite, the key suite's new checks). Main Thread Checker reports nothing
-     for the full runs of both programs. Two checks of other suites failed once each on a machine with a load average
-     of 20 or more, and pass on their own: a Rmskin check of leftover temporary folders (other processes' `Deskset-…`
-     folders in the shared temporary folder) and the stall monitor suite's busy step (now timed on the monitor's own
-     clock).
+   - Checks after the change: Core 61,166 checks; the app suite 10,728 checks in each scroller style (default,
+     `WhenScrolling`, `Always`), with 6,465–6,600 debug comparisons and no difference (50 more than at step 7: the
+     stress suite, the load order suite, the key suite's and the first-run suites' new checks). Main Thread Checker
+     reports nothing for the full runs of both programs.
+   - Three checks of other suites failed once each on a machine with a load average of 20 or more from other work,
+     and passed on their own; they were made sturdier: the Studio latency suite's bound on previews (above); the stall
+     monitor suite's busy step, now timed on the monitor's own clock; and the Rmskin checks that nothing is left in
+     the temporary folder, which counted other processes' `Deskset-Sandbox-…` and `Deskset-settings-…` folders there
+     (Foundation's temporary folder is the user's, whatever `TMPDIR` says) and now count only the installer's own
+     work folders.
