@@ -40,6 +40,10 @@ E layers in B's color space.
   requested). Only the spike's own windows are read back (`CGWindowListCreateImage` for one window,
   `CGWindowListCreateImageFromArray` for several). Since 2026-09-28 the windows open a few at a time at the bottom right
   of the screen.
+- Dates: questions 1, 2 and 4 (`q1.json`, `q4-*.json`, `env.json`), the second cost campaign (`cost-b/`, `wscpu-b/`,
+  `wsmem-b/`, `memtrace-b/`) are from 2026-09-28; questions 5–7, the first campaign (`cost/`, `wscpu/`, `wsmem/`,
+  `memtrace/`), `probes.json` and the side checks are from 2026-09-27, run with the same code except where windows
+  were placed on screen.
 
 ## What the spike does
 
