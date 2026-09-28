@@ -2808,6 +2808,16 @@ HMNmeter2 skins, one of them also `Current Bandwidth`), the Winamp player of Nel
 Windows registry video-memory values of FluentDash11 GPU. The MSI Afterburner note is gone. Where Deskset has no Full
 Disk Access, PogPack's Garbage skin also notes that its Trash size needs it (§4).
 
+**Re-tested on 2026-09-28** after the new drawing path (skin windows keep pictures of the meters that did not change),
+reading legacy ANSI files in the code page of the user's language, and logging Windows programs instead of opening
+them: every pass (plain, demo audio, English and Chinese language, installed copies, and a slower one with 5 updates
+a second apart) rendered 390 of 390 with no crash and no hang (60-second limit); 11 notes in 9 skins — the 10 of
+2026-09-27 and the Trash note. The drawing check (`Deskset --verify-drawing-cache`) found no frame that differs from a
+full drawing in any of the 390 skins. On a Chinese-language Mac none of the corpus's 162 legacy ANSI files decodes as
+GBK, so they read as before. Two bugs found by the run were fixed: the drawing check skipped skins that sit directly
+in their root config folder, and a RecycleManager Size measure placed after a Count measure never read the Trash size
+at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09-28.md`](compat/retest-2026-09-28.md).
+
 ---
 
 ## 13. Known gaps and what is planned
