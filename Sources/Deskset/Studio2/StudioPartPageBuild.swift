@@ -152,6 +152,11 @@ extension StudioPartPage {
             text = StudioText.format(.scopeWidgets, current!.widgets.count)
         default:
             text = StudioText.format(.scopeOnly, kind.noun())
+            // A part only a shared file defines: this widget alone is not a scope it has; the file's is the next one.
+            if let skin, !WriteScopes.isLocal(meter: m.name, key: kind.mainKey, in: skin),
+               let shared = choices.first(where: { if case .package = $0.scope { return true }; return false }) {
+                text = StudioText.format(.scopeSharedPart, kind.noun(), shared.widgets.count)
+            }
         }
         var link: String?
         if let next {

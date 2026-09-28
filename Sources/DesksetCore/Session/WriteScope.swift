@@ -5,8 +5,8 @@ import Foundation
 /// explicit click.
 ///
 /// In an INI widget:
-/// - `.element`: the meter's own section (`writeOwnOption`), so a value inherited from a style or a variable is
-///   overridden for this part alone;
+/// - `.element`: the meter's own section in one of the widget's own files, so a value inherited from a style or a
+///   variable is overridden for this part alone (nothing for a part only a shared file defines: `isLocal`);
 /// - `.style`: the MeterStyle section the option comes from, for this widget (a style a shared file defines gets an
 ///   override block in the widget's own file, which wins because it is read after the include);
 /// - `.sharedValue`: the variable the option is written as (`FontColor=#TextColor#`), for this widget;
@@ -112,7 +112,26 @@ public enum WriteScopes {
                                                section: shared.section, key: shared.key))
             }
         }
+        // A part only a shared file defines can't change for this widget alone (`isLocal`): its own section in that
+        // file is where a change goes, for every widget that reads it.
+        if !isLocal(meter: name, key: key, in: skin), !result.contains(where: { if case .package = $0.scope { return true }
+                                                                                   return false }) {
+            let file = skin.ownTarget(section: name, key: key).file
+            let widgets = skin.configsIncluding(file)
+            result.append(WriteScopeChoice(scope: .package(file: file, section: name, key: key), parts: [name],
+                                           visibleParts: visible([name]), widgets: widgets.isEmpty ? [skin.config] : widgets,
+                                           section: name, key: key))
+        }
         return result
+    }
+
+    /// Whether `.element` can write `key` of the part `meter` for this widget alone: the part is defined in one of
+    /// the widget's own files (`Skin.localTarget`). A part only a shared file (`@Resources`) defines is not — a
+    /// block of its own here would move it in the drawing order — so `.element` writes nothing for it and the page
+    /// offers the shared file's scope instead (the old Studio's rule: "comes from a shared file").
+    public static func isLocal(meter: String, key: String, in skin: Skin) -> Bool {
+        guard let m = skin.meter(named: meter) else { return false }
+        return skin.localTarget(section: m.name, key: key) != nil
     }
 
     /// The meters that take `key` from the style `style` (their own files do not set it), in file order.
@@ -132,12 +151,11 @@ public enum WriteScopes {
     public static func ops(_ scope: WriteScope, meter: String, key: String, value: String, in skin: Skin) -> [EditOp] {
         switch scope {
         case .element:
-            guard let m = skin.meter(named: meter) else { return [] }
-            if let t = skin.localTarget(section: m.name, key: key) {
-                return [.setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: false)]
-            }
-            let t = skin.ownTarget(section: m.name, key: key)
-            return [.setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: false)]
+            // Never a shared file: a part only one defines has no scope of its own here (`isLocal`).
+            guard let m = skin.meter(named: meter), let t = skin.localTarget(section: m.name, key: key) else { return [] }
+            // Overriding a value an included file gives the section: after the block's @Include lines, so it wins.
+            let overrides = !skin.isOwnFile(skin.ownTarget(section: m.name, key: key).file)
+            return [.setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: overrides)]
         case .style(let style):
             let name = skin.styleSection(named: style)?.name ?? style
             guard let t = skin.localTarget(section: name, key: key) else { return [] }

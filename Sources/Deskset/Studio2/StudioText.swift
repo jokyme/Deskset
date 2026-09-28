@@ -279,6 +279,8 @@ enum StudioText {
         case scopeShareValue = "scope.shareValue"
         case scopeWidgets = "scope.widgets"
         case scopeWidgetsLink = "scope.widgetsLink"
+        case scopeSharedPart = "scope.sharedPart"
+        case sharedPartsKept = "widget.sharedPartsKept"
         case scopeDetailOnly = "scope.detail.only"
         case scopeDetailStyle = "scope.detail.style"
         case scopeDetailVariable = "scope.detail.variable"
@@ -839,6 +841,9 @@ enum StudioText {
         .scopeShareValue: ("%d parts use this value", "%d 个部件用这个值"),
         .scopeWidgets: ("This widget · all %d", "这个小组件 · 全部 %d 个"),
         .scopeWidgetsLink: ("All %d Widgets", "全部 %d 个小组件"),
+        .scopeSharedPart: ("This %@ comes from a file all %d widgets share", "这个%@来自全部 %d 个小组件共用的文件"),
+        .sharedPartsKept: ("%@ comes from a file other widgets share and stays as it is",
+                           "%@来自其他小组件共用的文件，保持不变"),
         .scopeDetailOnly: ("Only [%@]", "只改 [%@]"),
         .scopeDetailStyle: ("shared style %@ (%d meters)", "改共用样式 %@（%d 个 meter）"),
         .scopeDetailVariable: ("variable %@ (%d meters)", "改变量 %@（%d 个 meter）"),

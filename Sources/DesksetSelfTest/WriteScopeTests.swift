@@ -176,4 +176,49 @@ func runWriteScopeTests(_ t: TestRunner) {
         t.equal(buffers.buffer(f.main)?.data, Data(overridden.utf8), "undone: back byte for byte")
         t.equal(buffers.buffer(f.theme)?.data, f.themeBytes, "undone: the shared file too")
     }
+
+    t.suite("Write scope: a part only a shared file defines") {
+        // Both widgets include Parts.inc, which defines [MeterBackground]; this widget's own [MeterZ] takes its size
+        // from an include inside its block.
+        let skins = t.temporaryDirectory("writescope-shared").appendingPathComponent("Skins")
+        let fm = FileManager.default
+        for dir in ["Root/Sub", "Root/Other", "Root/@Resources"] {
+            try fm.createDirectory(at: skins.appendingPathComponent(dir), withIntermediateDirectories: true)
+        }
+        let main = skins.appendingPathComponent("Root/Sub/Skin.ini")
+        let parts = skins.appendingPathComponent("Root/@Resources/Parts.inc")
+        let mainText = "[Variables]\n@Include=#@#Parts.inc\n\n[MeterZ]\nMeter=String\n@Include=#@#Z.inc\nText=z\n"
+        try Data(mainText.utf8).write(to: main)
+        try Data("[MeterBackground]\nMeter=Image\nW=100\nH=50\nSolidColor=0,0,0\n".utf8).write(to: parts)
+        try Data("[MeterZ]\nFontSize=20\n".utf8).write(to: skins.appendingPathComponent("Root/@Resources/Z.inc"))
+        try Data("[Variables]\n@Include=#@#Parts.inc\n".utf8).write(to: skins.appendingPathComponent("Root/Other/Other.ini"))
+        let skin = Skin(config: "Root\\Sub", fileURL: main, skinsDirectory: skins, system: FakeSystem(), host: FakeHost())
+        try skin.load()
+        t.check(skin.meter(named: "MeterBackground") != nil, "the shared part loads")
+        t.check(!WriteScopes.isLocal(meter: "MeterBackground", key: "SolidColor", in: skin), "not this widget's own")
+        t.equal(WriteScopes.ops(.element, meter: "MeterBackground", key: "SolidColor", value: "1,2,3", in: skin), [],
+                "this part only: nothing is written into the file both widgets read")
+        t.equal(WriteScopes.ops(.element, meter: "MeterBackground", key: "Hidden", value: "1", in: skin), [],
+                "nor is it hidden there")
+        let choices = WriteScopes.choices(meter: "MeterBackground", key: "SolidColor", in: skin)
+        t.equal(choices.map(\.scope), [.element, .package(file: parts, section: "MeterBackground", key: "SolidColor")],
+                "the shared file is offered, as one explicit choice")
+        t.equal(Set(choices.last?.widgets.map { $0.lowercased() } ?? []), ["root\\sub", "root\\other"])
+        let package = WriteScopes.ops(choices[1].scope, meter: "MeterBackground", key: "SolidColor", value: "1,2,3",
+                                      in: skin)
+        t.equal(package, [.setValue(file: parts, section: "MeterBackground", key: "SolidColor", value: "1,2,3",
+                                    afterIncludes: false)])
+        // The header is this widget's, the value an include's: written after the block's @Include, so it wins.
+        t.check(WriteScopes.isLocal(meter: "MeterZ", key: "FontSize", in: skin))
+        let z = WriteScopes.ops(.element, meter: "MeterZ", key: "FontSize", value: "24", in: skin)
+        t.equal(z, [.setValue(file: main, section: "MeterZ", key: "FontSize", value: "24", afterIncludes: true)])
+        let buffers = SourceBuffers()
+        try buffers.apply(try IniBackend.plan(z, in: buffers))
+        let written = String(decoding: buffers.buffer(main)?.data ?? Data(), as: UTF8.self)
+        try written.write(to: main, atomically: true, encoding: .utf8)
+        let reloaded = Skin(config: "Root\\Sub", fileURL: main, skinsDirectory: skins, system: FakeSystem(),
+                            host: FakeHost())
+        try reloaded.load()
+        t.equal(reloaded.meter(named: "MeterZ")?.option("FontSize"), "24", "the step takes effect: \(written)")
+    }
 }

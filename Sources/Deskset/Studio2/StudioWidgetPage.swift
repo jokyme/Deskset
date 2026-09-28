@@ -529,7 +529,7 @@ final class StudioWidgetPage {
         case .variable(let variable, let value):
             writeVariable(variable, value: value, name: StudioText[.undoShows], confirm: confirm, item: item, section: "shows")
         case .rebind(let meters):
-            let ops: [EditOp] = meters.map { meter in
+            let ops: [EditOp] = meters.compactMap { meter in
                 Self.own(meter, key: "MeasureName", value: choice.measure, skin: skin)
             }
             apply(StudioText[.undoShows], ops, confirm: confirm, item: item, section: "shows")
@@ -572,7 +572,7 @@ final class StudioWidgetPage {
             guard let t = skin.localTarget(section: look, key: "FontFace") else { return [] }
             return [.setValue(file: t.file, section: t.section, key: "FontFace", value: face, afterIncludes: false)]
         case .meters(let meters):
-            return meters.map { Self.own($0, key: "FontFace", value: face, skin: skin) }
+            return meters.compactMap { Self.own($0, key: "FontFace", value: face, skin: skin) }
         }
     }
 
@@ -592,21 +592,20 @@ final class StudioWidgetPage {
                 guard let t = skin.localTarget(section: look, key: "FontSize") else { continue }
                 ops.append(.setValue(file: t.file, section: t.section, key: "FontSize", value: text, afterIncludes: false))
             case .meter(let m):
-                ops.append(Self.own(m, key: "FontSize", value: text, skin: skin))
+                if let op = Self.own(m, key: "FontSize", value: text, skin: skin) { ops.append(op) }
             }
         }
         apply(StudioText[.undoTextSize], ops, confirm: StudioText[step > 0 ? .confirmBigger : .confirmSmaller],
               item: "fonts.top", section: "fonts")
     }
 
-    /// An option of one part, written for this widget: where `Skin.localTarget` says when the part is the widget's
-    /// own, else where `ScopeResolver` puts the part's own value.
-    static func own(_ section: String, key: String, value: String, skin: Skin) -> EditOp {
-        if let t = skin.localTarget(section: section, key: key) {
-            return .setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: false)
-        }
-        let t = ScopeResolver(skin: skin).target(section: section, key: key, selection: [section])
-        return .setValue(file: t.file, section: t.section, key: t.key, value: value, afterIncludes: false)
+    /// An option of one part, written for this widget alone: where `Skin.localTarget` says (after the block's
+    /// includes when it overrides an included value). nil for a part only a shared file defines: the widget page never
+    /// changes the other widgets that read that file (`WriteScopes.isLocal`).
+    static func own(_ section: String, key: String, value: String, skin: Skin) -> EditOp? {
+        guard let t = skin.localTarget(section: section, key: key) else { return nil }
+        let overrides = !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
+        return .setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: overrides)
     }
 
     /// A size one step on: to a quarter point, at least a quarter point further, never below 1.
@@ -808,14 +807,24 @@ final class StudioWidgetPage {
         let words = name.map(StudioWords.color) ?? StudioWords.color(LayerNaming.colorName(color))
         let what = Self.title(role)
         let section = swatch.hasPrefix("option:") ? "options" : "colors"
+        // Parts only a shared file defines keep their color (it would change in every widget reading the file).
+        let kept = role.variable == nil ? StudioColorWriting.sharedParts(role, skin: skin).compactMap {
+            skin.meter(named: $0).map { window.partPage.partTitle($0, skin: skin) }
+        } : []
+        let note = kept.isEmpty ? nil : StudioText.format(.sharedPartsKept, StudioWords.list(kept))
+        if ops.isEmpty, let note {
+            if app.presentsWindows { NSSound.beep() }
+            window.announce(note)
+            return refresh()
+        }
         apply(StudioText[.undoColor], ops, confirm: StudioText.format(.confirmColor, what, words),
-              item: swatch.hasPrefix("option:") ? swatch : "colors", section: section)
+              item: swatch.hasPrefix("option:") ? swatch : "colors", section: section, note: note)
     }
 
     // MARK: Steps
 
     /// Makes a step through the session and confirms it under the control that made it (at the Customize depth).
-    func apply(_ name: String, _ ops: [EditOp], confirm: String, item: String, section: String) {
+    func apply(_ name: String, _ ops: [EditOp], confirm: String, item: String, section: String, note: String? = nil) {
         guard let session, !ops.isEmpty else { return }
         do {
             guard try session.apply(name, ops) != nil else { return }
@@ -825,7 +834,7 @@ final class StudioWidgetPage {
             return
         }
         setConfirmation(.init(after: item, section: section,
-                              value: .init(text: confirm, undo: StudioText[.confirmUndo]), step: name))
+                              value: .init(text: confirm, undo: StudioText[.confirmUndo], suggestion: note), step: name))
     }
 
     private func setConfirmation(_ c: Confirmation) {

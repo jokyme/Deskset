@@ -116,6 +116,12 @@ final class StudioGeometry {
                 ops += WriteScopes.ops(.element, meter: base.meter, key: key, value: value, in: skin)
             }
         }
+        // A part only a shared file defines stays where it was (it would move in every widget reading the file).
+        if let shared = bases.lazy.compactMap({ skin.meter(named: $0.meter) })
+            .first(where: { !WriteScopes.isLocal(meter: $0.name, key: "X", in: skin) }) {
+            window.partPage.sharedPartRefused(shared)
+            window.canvasController.canvas.needsDisplay = true
+        }
         guard !ops.isEmpty else { return }
         let names = bases.map(\.meter)
         let label = names.count == 1 ? window.partPage.partTitle(skin.meter(named: names[0])!, skin: skin)

@@ -122,6 +122,14 @@ enum StudioWords {
         return sentence
     }
 
+    /// Names in a list, as the language writes one (“Card and Rim”, “卡片和边框”, “A、B 和 C”).
+    static func list(_ names: [String]) -> String {
+        guard names.count > 1 else { return names.first ?? "" }
+        let formatter = ListFormatter()
+        formatter.locale = Locale(identifier: StudioText.language == .chinese ? "zh_CN" : "en_US")
+        return formatter.string(from: names) ?? names.joined(separator: ", ")
+    }
+
     /// "1 part", "4 parts".
     static func parts(_ n: Int) -> String {
         n == 1 ? StudioText[.partsOne] : StudioText.format(.partsMany, n)

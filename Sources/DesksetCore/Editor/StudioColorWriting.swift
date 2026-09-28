@@ -44,11 +44,24 @@ public enum StudioColorWriting {
         for (section, key, raw) in literalPlaces(role, skin: skin) {
             guard done.insert("\(section.lowercased())|\(key.lowercased())").inserted,
                   let replaced = ValueUsageIndex.replacingColor(role.color, with: color, in: raw, key: key) else { continue }
-            let target = skin.localTarget(section: section, key: key) ?? skin.editTarget(section: section, key: key)
+            // A part only a shared file defines can't change for this widget alone: never written from here.
+            guard let target = skin.localTarget(section: section, key: key) else { continue }
+            // Overriding what an included file gives the section: after the block's @Include lines, so it wins.
+            let overrides = !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
             ops.append(.setValue(file: target.file, section: target.section, key: key, value: replaced,
-                                 afterIncludes: false))
+                                 afterIncludes: overrides))
         }
         return ops
+    }
+
+    /// The parts that paint the role with a color written in themselves but that only a shared file defines: `ops`
+    /// leaves them as they are (the page says so).
+    public static func sharedParts(_ role: StudioWidgetFacts.ColorRole, skin: Skin) -> [String] {
+        var result: [String] = []
+        for (section, key, _) in literalPlaces(role, skin: skin) where skin.localTarget(section: section, key: key) == nil {
+            if !result.contains(where: { $0.caseInsensitiveCompare(section) == .orderedSame }) { result.append(section) }
+        }
+        return result
     }
 
     /// What shows `color` before it is written: `[Variables]` values, or options of the sections that use the color.

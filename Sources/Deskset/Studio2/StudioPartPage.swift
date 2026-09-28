@@ -385,10 +385,24 @@ final class StudioPartPage {
         } else if let op = skin.op(removingOwnOption: key, of: m.name) {
             ops = [op]
         }
+        if ops.isEmpty, !WriteScopes.isLocal(meter: m.name, key: key, in: skin) {
+            // Only a shared file defines the part: nothing changes for this widget alone (the scope sentence says so
+            // and offers the file's scope).
+            sharedPartRefused(m)
+            return false
+        }
         guard apply(name, ops) else { return false }
         let kind: StudioConfirmRule.Change = change == .value && wide ? .beyondSelection : change
         self.confirm(confirm, step: name, item: item, section: section, change: kind, fromCanvas: fromCanvas)
         return true
+    }
+
+    /// A change this widget can't make on its own (the part comes from a file other widgets share): said, not made.
+    func sharedPartRefused(_ m: Meter) {
+        if window.app.presentsWindows { NSSound.beep() }
+        let text = scopeChoices(m).first(where: { if case .package = $0.scope { return true }; return false })
+            .map { StudioText.format(.scopeSharedPart, StudioPartKind(m).noun(), $0.widgets.count) }
+        window.announce(text ?? StudioText.format(.sharedPartsKept, skin.map { partTitle(m, skin: $0) } ?? m.name))
     }
 
     /// One step through the session.

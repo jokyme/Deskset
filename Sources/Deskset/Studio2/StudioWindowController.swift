@@ -810,6 +810,7 @@ extension StudioWindowController {
         guard let skin, let m = skin.meter(named: name) else { return }
         let title = partPage.partTitle(m, skin: skin)
         let ops = WriteScopes.ops(.element, meter: m.name, key: "Hidden", value: "1", in: skin)
+        guard !ops.isEmpty else { return partPage.sharedPartRefused(m) }
         let step = StudioText[.undoHide]
         guard partPage.apply(step, ops) else { return }
         canvasController.canvas.setSelection(nil)

@@ -231,6 +231,10 @@ extension StudioWindowController {
         let value = role.variable.map { "#\($0)#" }
             ?? StudioColorWriting.text(role.color, like: m.fileOption(key) ?? "", acceptsAlpha: true)
         let ops = WriteScopes.ops(.element, meter: m.name, key: key, value: value, in: skin)
+        guard !ops.isEmpty else {
+            partPage.sharedPartRefused(m)
+            return false
+        }
         return partPage.apply(StudioText[.rowColor], ops)
     }
 
@@ -246,10 +250,17 @@ extension StudioWindowController {
         let font = facts.fonts[i]
         let value: String
         switch font.source {
-        case .variable(let v), .look(let v): value = "#\(v)#"
-        case .meters: value = font.face
+        // The widget's variable for it: the part follows it from now on.
+        case .variable(let v): value = "#\(v)#"
+        // A look (MeterStyle) names a section, not a variable: the face it gives (taking the look itself would bring
+        // its sizes and colors along).
+        case .look, .meters: value = font.face
         }
         let ops = WriteScopes.ops(.element, meter: m.name, key: "FontFace", value: value, in: skin)
+        guard !ops.isEmpty else {
+            partPage.sharedPartRefused(m)
+            return false
+        }
         return partPage.apply(StudioText[.rowFont], ops)
     }
 }

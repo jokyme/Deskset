@@ -74,6 +74,10 @@ extension StudioWindowController {
         } else {
             ops = WriteScopes.ops(.element, meter: m.name, key: "Hidden", value: "0", in: skin)
         }
+        guard !ops.isEmpty else {
+            partPage.sharedPartRefused(m)
+            return false
+        }
         let step = StudioText[.stepShow]
         pendingAnnouncement = StudioText.format(.confirmShown, title)
         guard partPage.apply(step, ops) else { return false }
