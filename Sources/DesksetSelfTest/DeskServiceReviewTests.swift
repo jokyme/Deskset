@@ -573,4 +573,23 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let pictures = snapshot.completions(at: snapshot.index.position(utf16: at)).labels
         t.check(pictures.contains("images/waves.png"), "\(pictures)")
     }
+
+    t.suite("Desk: service — a choice written with its type: completion, hover and the name") {
+        let options = "options { look = Picker(\"Look\", [.calm, .storm]) }\n"
+        func labels(_ marked: String) -> [String] { deskCompletions(marked).1.labels }
+        t.equal(labels(options + "widget {\n    Text(\"a\").hidden(if: options.look == Look.|)\n}\n"), ["calm", "storm"])
+        t.equal(labels(options + "widget {\n    Text(\"a\").hidden(if: options.look == Look.st|)\n}\n"), ["storm"])
+        t.check(labels(options + "widget {\n    Text(\"a\").hidden(if: options.look == Lo|)\n}\n").contains("Look"))
+        t.check(labels("widget {\n    Text(\"a\").align(HAlign.|)\n}\n").contains("left"))
+        t.check(labels("widget {\n    variable side = HAlign.|\n}\n").contains("right"))
+        t.check(labels("widget {\n    Text(\"a\").color(Color.|)\n}\n").contains("red"))
+        let text = options + "widget {\n    Text(\"a\").align(HAlign.left).hidden(if: options.look == Look.calm)\n}\n"
+        let snapshot = deskNavService(text).snapshot
+        for (needle, into) in [("HAlign.left", 1), ("Look.calm", 1)] {
+            let position = deskNavPosition(snapshot, needle, into: into)
+            t.check(snapshot.hover(at: position) != nil, "a hover on the type of \(needle)")
+            t.equal(snapshot.symbol(at: position)?.kind, .type, needle)
+        }
+        t.check(snapshot.hover(at: deskNavPosition(snapshot, "Look.calm", into: 1))?.paragraphs.first?.en.contains("`.storm`") == true)
+    }
 }

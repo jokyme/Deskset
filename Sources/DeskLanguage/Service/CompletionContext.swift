@@ -72,6 +72,9 @@ public enum DeskMemberBase: Sendable, Hashable {
     case value(DeskType)
     /// A named element: its geometry in a Freeform.
     case element(String)
+    /// A choice's type written before its case (`HAlign.left`, `Look.calm`): a built-in enumeration, `Color` or
+    /// `Paint`, or a Picker option's own choices (§4.13).
+    case type(String)
 }
 
 /// The completion context at a position.
@@ -131,6 +134,7 @@ public struct DeskCompletionContext: Sendable, Hashable, CustomStringConvertible
             case .namespace(let n): out += "(\(n))"
             case .value(let t): out += "(\(t))"
             case .element(let n): out += "(element \(n))"
+            case .type(let n): out += "(type \(n))"
             }
         }
         if let expectedType { out += " expected \(expectedType)" }
@@ -1078,6 +1082,8 @@ extension DeskSnapshot {
             base = .value(.record(eventRecord(at: offset)))
         } else if let own = visibleOwnNames(at: offset).first(where: { $0.name == first }) {
             if own.kind == .element { base = .element(first) } else if let type = own.type { base = .value(type) } else { return nil }
+        } else if rest.isEmpty, isChoiceType(first) {
+            return .type(first)
         } else {
             return nil
         }
@@ -1086,6 +1092,26 @@ extension DeskSnapshot {
             base = .value(member.type)
         }
         return base
+    }
+
+    /// A type whose choices may be written after it: a built-in enumeration, `Color`, `Paint`, or a Picker option's
+    /// own enum.
+    func isChoiceType(_ name: String) -> Bool {
+        guard let first = name.unicodeScalars.first, ("A"..."Z").contains(first) else { return false }
+        if name == "Color" || name == "Paint" || options.catalog.enumeration(name) != nil { return true }
+        return localEnumCases(name) != nil
+    }
+
+    /// The choices of a Picker option's own enum (`Look`), the widget's option first.
+    func localEnumCases(_ name: String) -> [String]? {
+        if let own = checked.options.values.first(where: { $0.localEnum == name }) { return own.choices }
+        if !isPackage, let shared = package?.options.values.first(where: { $0.localEnum == name }) { return shared.choices }
+        return nil
+    }
+
+    /// The option whose Picker makes a local enum.
+    func localEnumOption(_ name: String) -> OptionFacts? {
+        checked.options.values.first { $0.localEnum == name } ?? (isPackage ? nil : package?.options.values.first { $0.localEnum == name })
     }
 
     /// An option of the widget or the package.

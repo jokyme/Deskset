@@ -170,6 +170,15 @@ extension DeskSnapshot {
         case .unit:
             if let n = table.innermost(at: o.range.lowerBound, where: { $0.kind == .numberLiteral }) { return numberHover(entry: n) }
             return nil
+        case .type where o.path == nil:
+            // A Picker option's own choices (§4.13).
+            guard let option = localEnumOption(o.name) else { return nil }
+            let choices = option.choices.map { "`.\($0)`" }.joined(separator: ", ")
+            var hover = DeskHover(range: range, title: LocalizedText("`\(o.name)`", "`\(o.name)`"),
+                                  paragraphs: [LocalizedText("The choices of the option `\(option.name)`: \(choices).",
+                                                             "选项 `\(option.name)` 的可选值：\(choices)。")])
+            hover.facts.append(DeskHoverFact(DeskServiceWords.type, LocalizedText("A Picker's own choices", "单选自己的可选值")))
+            return hover
         case .event:
             var hover = DeskHover(range: range, title: LocalizedText("`event`", "`event`"),
                                   paragraphs: [LocalizedText("What happened: the event this block runs for, with its details.",

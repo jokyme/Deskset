@@ -280,6 +280,16 @@ final class DeskSymbolIndex: Sendable {
             let role: DeskOccurrenceRole = site.isTarget ? .write : .read
             add(DeskOccurrence(range: site.range, name: site.name, kind: kind, role: role, key: key, path: path),
                 replacing: false)
+            // The type a choice is written with (`HAlign` in `HAlign.left`, `Look` in `Look.calm`).
+            if case .enumCase(let type, _) = symbol, table.entries[chosen].kind == .memberExpr,
+               let base = table.children(of: chosen).first, table.entries[base].kind == .identifierExpr {
+                let token = IdentifierExprSyntax(unchecked: table.entries[base].positioned).token
+                if !token.token.isMissing, token.token.name == type {
+                    let typePath: CatalogPath? = catalog.enumeration(type) != nil ? .enumeration(type) : nil
+                    add(DeskOccurrence(range: token.textRange, name: type, kind: .type, role: .read,
+                                       key: typePath.map { .builtIn($0) }, path: typePath), replacing: false)
+                }
+            }
         }
 
         // 2b. Own names the checker left unresolved because the code around them is wrong (a variable read in a

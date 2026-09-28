@@ -34,6 +34,8 @@ public enum DeskCompletionItemKind: String, Sendable, Hashable, CaseIterable {
     case style
     /// A named element.
     case element
+    /// A choice's type (`Look`), to write a choice in full.
+    case type
     /// An argument label.
     case label
     case unit
@@ -1134,6 +1136,12 @@ struct DeskCompletionBuilder {
             }
         case .value(let type):
             addValueMembers(of: type)
+        case .type(let name):
+            switch name {
+            case "Color": addChoices(for: .color, withDot: false, tier: 1)
+            case "Paint": addChoices(for: .paint, withDot: false, tier: 1)
+            default: addChoices(for: .enumeration(name), withDot: false, tier: 1)
+            }
         case .element(let name):
             for (k, (member, en, zh)) in DeskCompletionBuilder.geometry.enumerated() {
                 add(DeskCompletionTemplate(label: member, kind: .data, detail: L(en, zh),
@@ -1279,7 +1287,14 @@ struct DeskCompletionBuilder {
         let offset = scan.utf8Range.lowerBound
         if expected == .styleRef { addStyles(); return }
         if expected == .elementName { addElementNames(tier: 1); return }
-        if let expected { addChoices(for: expected, withDot: true, tier: 1) }
+        if let expected {
+            addChoices(for: expected, withDot: true, tier: 1)
+            // A Picker option's own enum, to write a choice in full (`Look.calm`).
+            for case .enumeration(let id) in expected.components where localEnumChoices(id) != nil {
+                add(DeskCompletionTemplate(label: id, kind: .type, detail: L("The choices of an option", "一个选项的可选值"),
+                                           commit: ["."]), tier: 2)
+            }
+        }
         if !scan.geometrySiblings.isEmpty {
             for name in scan.geometrySiblings {
                 add(DeskCompletionTemplate(label: name, kind: .element, detail: L("A sibling in the Freeform", "同一个自由摆放里的元素"),
