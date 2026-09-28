@@ -79,8 +79,8 @@ public final class CalcMeasure: Measure {
     private func nextRandom() -> Double {
         let lo = min(lowBound, highBound)
         let hi = max(lowBound, highBound)
-        guard uniqueRandom, hi - lo <= 65_535 else { return Double(Int.random(in: Int(lo)...Int(hi))) }
-        if uniquePool.isEmpty { uniquePool = stride(from: lo, through: hi, by: 1).shuffled() }
+        guard uniqueRandom, hi - lo <= 65_535 else { return Double(skin.random.int(in: Int(lo)...Int(hi))) }
+        if uniquePool.isEmpty { uniquePool = skin.random.shuffled(Array(stride(from: lo, through: hi, by: 1))) }
         return uniquePool.popLast() ?? lo
     }
 }
@@ -90,7 +90,8 @@ public final class CalcMeasure: Measure {
 public final class TimeMeasure: Measure {
     private var format = TimeFormatting.defaultFormat
     private var hasFormatOption = false
-    private var timeZone = TimeZone.current
+    /// The skin's time zone until the options are read (`TimeZone=` or local, see `readMeasureOptions`).
+    private lazy var timeZone = skin.skinClock.timeZone()
     private var locale = TimeFormatting.defaultLocale
     private var timeStampText = ""
     private var timeStampFormat: String?
@@ -106,18 +107,26 @@ public final class TimeMeasure: Measure {
         let tz = option("TimeZone").map { raw -> String in
             OptionValue.number(raw).map { NumberFormatting.plain($0) } ?? raw
         }
-        timeZone = TimeFormatting.timeZone(forOption: tz, daylightSavingTime: bool("DaylightSavingTime", true))
-        locale = TimeFormatting.locale(fromOption: option("FormatLocale")) ?? TimeFormatting.defaultLocale
+        let clock = skin.skinClock
+        let systemLocale = skin.locale
+        timeZone = TimeFormatting.timeZone(forOption: tz, daylightSavingTime: bool("DaylightSavingTime", true),
+                                           at: clock.now(), localTimeZone: clock.timeZone())
+        locale = TimeFormatting.locale(fromOption: option("FormatLocale"), local: systemLocale)
+            ?? TimeFormatting.defaultLocale
         timeStampText = string("TimeStamp").trimmingCharacters(in: .whitespaces)
         timeStampFormat = option("TimeStampFormat")
-        timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"))
+        timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"), local: systemLocale)
     }
 
     public override func computeValue() -> Double {
+        let clock = skin.skinClock
+        let systemLocale = skin.locale
         if timeStampText.isEmpty {
-            timestamp = TimeFormatting.measureValue(for: Date(), timeZone: timeZone)
+            timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
         } else if let parsed = TimeFormatting.parseTimeStamp(timeStampText, format: timeStampFormat,
-                                                              locale: timeStampLocale) {
+                                                              locale: timeStampLocale, now: clock.now(),
+                                                              localTimeZone: clock.timeZone(),
+                                                              systemLocale: systemLocale) {
             timestamp = parsed
         } else {
             if !loggedTimeStampError {
@@ -127,7 +136,7 @@ public final class TimeMeasure: Measure {
             timestamp = 0
         }
         let text = TimeFormatting.format(windowsTimestamp: timestamp, format: format, locale: locale,
-                                         nameTimeZone: timeZone)
+                                         nameTimeZone: timeZone, systemLocale: systemLocale)
         rawString = text
         return hasFormatOption ? TimeFormatting.numberValue(ofFormatted: text) : timestamp
     }
@@ -623,7 +632,8 @@ public final class SysInfoMeasure: Measure {
             return monitorValue(skin.currentEnvironment().screens)
         case "TIMEZONE_ISDST", "TIMEZONE_BIAS", "TIMEZONE_STANDARD_BIAS", "TIMEZONE_DAYLIGHT_BIAS",
              "TIMEZONE_STANDARD_NAME", "TIMEZONE_DAYLIGHT_NAME":
-            return SysInfoMeasure.timeZoneValue(infoType, zone: TimeZone.current, at: Date())
+            return SysInfoMeasure.timeZoneValue(infoType, zone: skin.skinClock.timeZone(), at: skin.skinClock.now(),
+                                                locale: skin.locale)
         default:
             return nil
         }
@@ -659,8 +669,9 @@ public final class SysInfoMeasure: Measure {
 
     /// Windows semantics: "UTC = standard local time + bias" (minutes); daylight bias is the extra offset while
     /// daylight saving time is in effect (usually -60).
-    static func timeZoneValue(_ infoType: String, zone: TimeZone,
-                              at date: Date) -> (number: Double, string: String?)? {
+    /// `locale`: the language of the names (the system locale).
+    static func timeZoneValue(_ infoType: String, zone: TimeZone, at date: Date,
+                              locale: Locale) -> (number: Double, string: String?)? {
         func number(_ v: Double) -> (number: Double, string: String?) { (v, nil) }
         func text(_ s: String) -> (number: Double, string: String?) { (0, s) }
         let isDST = zone.isDaylightSavingTime(for: date)
@@ -678,9 +689,9 @@ public final class SysInfoMeasure: Measure {
             }
             return number(-dstOffset / 60)
         case "TIMEZONE_STANDARD_NAME":
-            return text(zone.localizedName(for: .standard, locale: .current) ?? zone.identifier)
+            return text(zone.localizedName(for: .standard, locale: locale) ?? zone.identifier)
         case "TIMEZONE_DAYLIGHT_NAME":
-            return text(zone.localizedName(for: .daylightSaving, locale: .current) ?? zone.identifier)
+            return text(zone.localizedName(for: .daylightSaving, locale: locale) ?? zone.identifier)
         default: return nil
         }
     }
@@ -761,7 +772,8 @@ public final class PowerPluginMeasure: Measure {
             }
             let seconds = min(minutes, 1e7) * 60
             let date = Date(timeIntervalSince1970: seconds)
-            rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current)
+            rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current,
+                                              systemLocale: skin.locale)
             return seconds
         case "HZ":
             return cpuHertz()

@@ -2210,7 +2210,7 @@ private func runBuiltinMeasureTests(_ t: TestRunner) {
         func tz(_ type: String, _ zone: String, _ date: String) -> Double? {
             let parser = ISO8601DateFormatter()
             guard let z = TimeZone(identifier: zone), let d = parser.date(from: date) else { return nil }
-            return SysInfoMeasure.timeZoneValue(type, zone: z, at: d)?.number
+            return SysInfoMeasure.timeZoneValue(type, zone: z, at: d, locale: Locale(identifier: "en_US"))?.number
         }
         t.equal(tz("TIMEZONE_ISDST", "America/New_York", "2025-01-15T12:00:00Z"), 0)
         t.equal(tz("TIMEZONE_ISDST", "America/New_York", "2025-07-15T12:00:00Z"), 1)

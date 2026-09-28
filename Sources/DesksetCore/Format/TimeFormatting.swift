@@ -62,14 +62,18 @@ public enum TimeFormatting {
     /// locale's stand-alone names (ru `%B` = "февраль", not the genitive "февраля"); unknown codes (e.g. `%Q`) and
     /// a lone trailing `%` are copied literally instead of failing the whole measure; an empty `format` means the
     /// default `%H:%M:%S`.
+    ///
+    /// `systemLocale` is the "system locale" the manual speaks of (`%Z`, `locale-date`, `locale-time`): the Mac's own
+    /// unless the caller passes one (the engine passes the skin's `SkinEnvironment.locale`).
     public static func format(_ date: Date, format: String, timeZone: TimeZone = .current,
-                              locale: Locale = Locale(identifier: "en_US_POSIX")) -> String {
+                              locale: Locale = Locale(identifier: "en_US_POSIX"),
+                              systemLocale: Locale = .autoupdatingCurrent) -> String {
         let t = date.timeIntervalSince1970
         guard t.isFinite else { return "" }
         let offset = timeZone.secondsFromGMT(for: date)
         let wall = CivilTime.safeSeconds(t + Double(offset))
         let zone = ZoneContext(offsetSeconds: offset, timeZone: timeZone,
-                               isDaylight: timeZone.isDaylightSavingTime(for: date))
+                               isDaylight: timeZone.isDaylightSavingTime(for: date), systemLocale: systemLocale)
         return render(wallSeconds: wall, format: format, zone: zone, locale: locale)
     }
 
@@ -78,14 +82,15 @@ public enum TimeFormatting {
     /// time zone"); `nameTimeZone` only supplies `%z` / `%Z` (Judgment: the local zone, like the system would).
     public static func format(windowsTimestamp: Double, format: String,
                               locale: Locale = Locale(identifier: "en_US_POSIX"),
-                              nameTimeZone: TimeZone = .current) -> String {
+                              nameTimeZone: TimeZone = .current,
+                              systemLocale: Locale = .autoupdatingCurrent) -> String {
         guard windowsTimestamp.isFinite else { return "" }
         let wall = CivilTime.safeSeconds(windowsTimestamp - windowsEpochOffset)
         // The instant this wall-clock time corresponds to in `nameTimeZone` (approximate around transitions).
         let guess = Date(timeIntervalSince1970: TimeInterval(wall))
         let instant = Date(timeIntervalSince1970: TimeInterval(wall - nameTimeZone.secondsFromGMT(for: guess)))
         let zone = ZoneContext(offsetSeconds: nameTimeZone.secondsFromGMT(for: instant), timeZone: nameTimeZone,
-                               isDaylight: nameTimeZone.isDaylightSavingTime(for: instant))
+                               isDaylight: nameTimeZone.isDaylightSavingTime(for: instant), systemLocale: systemLocale)
         return render(wallSeconds: wall, format: format, zone: zone, locale: locale)
     }
 
@@ -181,10 +186,11 @@ public enum TimeFormatting {
 
     /// Parses a `FormatLocale=` / `TimeStampLocale=` value: culture names (`de-DE`), language name
     /// abbreviations (`FRA`), `Language_Country.codepage` (`Russian_Russia.1251`), plain ISO codes, and `Local`
-    /// (the system locale). nil when empty or not recognised — the caller then uses `defaultLocale`.
-    public static func locale(fromOption option: String?) -> Locale? {
+    /// (the system locale: `local`, the Mac's own unless the caller passes one — the engine passes the skin's
+    /// `SkinEnvironment.locale`). nil when empty or not recognised — the caller then uses `defaultLocale`.
+    public static func locale(fromOption option: String?, local: Locale = .autoupdatingCurrent) -> Locale? {
         guard let option else { return nil }
-        return WindowsLocaleNames.locale(from: option)
+        return WindowsLocaleNames.locale(from: option, local: local)
     }
 
     // MARK: - Rendering
@@ -193,6 +199,8 @@ public enum TimeFormatting {
         var offsetSeconds: Int
         var timeZone: TimeZone
         var isDaylight: Bool
+        /// The system locale: the language of `%Z`, and `locale-date` / `locale-time`.
+        var systemLocale: Locale
     }
 
     static func render(wallSeconds: Int, format: String, zone: ZoneContext, locale: Locale) -> String {
@@ -203,10 +211,10 @@ public enum TimeFormatting {
         if fmt.utf8.count == 11 {
             switch fmt.lowercased() {
             case "locale-date":
-                return LocaleTimeInfo.info(for: .current).string(.shortDate, wallSeconds: wallSeconds)
+                return LocaleTimeInfo.info(for: zone.systemLocale).string(.shortDate, wallSeconds: wallSeconds)
                     ?? render(t, wallSeconds: wallSeconds, format: "%x", zone: zone, info: .english)
             case "locale-time":
-                return LocaleTimeInfo.info(for: .current).string(.mediumTime, wallSeconds: wallSeconds)
+                return LocaleTimeInfo.info(for: zone.systemLocale).string(.mediumTime, wallSeconds: wallSeconds)
                     ?? render(t, wallSeconds: wallSeconds, format: "%X", zone: zone, info: .english)
             default: break
             }
@@ -333,7 +341,8 @@ public enum TimeFormatting {
                 let a = abs(off) / 60
                 num(a / 60, 2, false)
                 num(a % 60, 2, false)
-            case UInt8(ascii: "Z"): text(TimeZoneNames.name(of: zone.timeZone, daylight: zone.isDaylight))
+            case UInt8(ascii: "Z"): text(TimeZoneNames.name(of: zone.timeZone, daylight: zone.isDaylight,
+                                                            locale: zone.systemLocale))
             case percent: out.append(percent)
             default:
                 out.append(contentsOf: fmt[start..<i])   // unknown code → literal

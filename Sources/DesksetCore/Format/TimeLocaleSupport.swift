@@ -247,7 +247,7 @@ enum TimeZoneNames {
     private static let lock = NSLock()
     private static var cache: [String: String] = [:]
 
-    static func name(of zone: TimeZone, daylight: Bool, locale: Locale = .autoupdatingCurrent) -> String {
+    static func name(of zone: TimeZone, daylight: Bool, locale: Locale) -> String {
         let key = zone.identifier + (daylight ? "|d|" : "|s|") + locale.identifier
         lock.lock()
         if let hit = cache[key] { lock.unlock(); return hit }
@@ -335,10 +335,11 @@ enum WindowsLocaleNames {
         return (languages, regions, codes)
     }
 
-    static func locale(from raw: String) -> Locale? {
+    /// `local`: what `Local` means (the system locale).
+    static func locale(from raw: String, local: Locale) -> Locale? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 100 else { return nil }
-        if trimmed.lowercased() == "local" { return Locale.autoupdatingCurrent }
+        if trimmed.lowercased() == "local" { return local }
         if let id = abbreviations[trimmed.uppercased()] { return Locale(identifier: id) }
         // Drop a trailing ".codepage" ("Russian_Russia.1251").
         var body = trimmed
