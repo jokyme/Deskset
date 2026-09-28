@@ -21,7 +21,7 @@ private func winTS(_ y: Int, _ mo: Int, _ d: Int, _ h: Int = 0, _ mi: Int = 0, _
 
 private func fmt(_ date: Date, _ format: String, _ zone: TimeZone = gmt,
                  locale: Locale = TimeFormatting.defaultLocale) -> String {
-    TimeFormatting.format(date, format: format, timeZone: zone, locale: locale)
+    TimeFormatting.format(date, format: format, timeZone: zone, locale: locale, systemLocale: .autoupdatingCurrent)
 }
 
 private let english = Locale(identifier: "en_US")
@@ -414,13 +414,13 @@ private func runTimeCodeTests(_ t: TestRunner) {
 
 private func runTimeLocaleTests(_ t: TestRunner) {
     t.suite("Format: FormatLocale parsing") {
-        t.check(TimeFormatting.locale(fromOption: nil) == nil)
-        t.check(TimeFormatting.locale(fromOption: "") == nil)
-        t.check(TimeFormatting.locale(fromOption: "   ") == nil)
-        t.equal(TimeFormatting.locale(fromOption: "Local")?.identifier, Locale.current.identifier)
-        t.equal(TimeFormatting.locale(fromOption: "local")?.identifier, Locale.current.identifier)
+        t.check(TimeFormatting.locale(fromOption: nil, local: .autoupdatingCurrent) == nil)
+        t.check(TimeFormatting.locale(fromOption: "", local: .autoupdatingCurrent) == nil)
+        t.check(TimeFormatting.locale(fromOption: "   ", local: .autoupdatingCurrent) == nil)
+        t.equal(TimeFormatting.locale(fromOption: "Local", local: .autoupdatingCurrent)?.identifier, Locale.current.identifier)
+        t.equal(TimeFormatting.locale(fromOption: "local", local: .autoupdatingCurrent)?.identifier, Locale.current.identifier)
         func parts(_ raw: String) -> String {
-            TimeFormatting.locale(fromOption: raw)?.identifier ?? "nil"
+            TimeFormatting.locale(fromOption: raw, local: .autoupdatingCurrent)?.identifier ?? "nil"
         }
         // Manual examples.
         t.equal(parts("de-DE"), "de_DE")
@@ -438,7 +438,7 @@ private func runTimeLocaleTests(_ t: TestRunner) {
         t.equal(parts("French_France.1252"), "fr_FR")
         for (raw, lang, script, region) in [("zh-Hans-CN", "zh", "Hans", "CN"), ("sr-Latn-RS", "sr", "Latn", "RS"),
                                             ("CHT", "zh", "Hant", "TW")] {
-            let l = TimeFormatting.locale(fromOption: raw)
+            let l = TimeFormatting.locale(fromOption: raw, local: .autoupdatingCurrent)
             t.equal(l?.language.languageCode?.identifier, lang, raw)
             t.equal(l?.language.script?.identifier, script, raw)
             t.equal(l?.region?.identifier, region, raw)
@@ -460,22 +460,22 @@ private func runTimeLocaleTests(_ t: TestRunner) {
         // TimeStampLocale=en-US / FormatLocale=de-DE / Format=%#c → "Mittwoch, 18. Februar 2015 01:07:40".
         let ts = TimeFormatting.parseTimeStamp("Wednesday, February 18, 2015 at 01:07:40",
                                                format: "%A, %B %#d, %Y at %H:%M:%S",
-                                               locale: TimeFormatting.locale(fromOption: "en-US"))
+                                               locale: TimeFormatting.locale(fromOption: "en-US", local: .autoupdatingCurrent), now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent)
         t.equal(ts, winTS(2015, 2, 18, 1, 7, 40))
-        let de = TimeFormatting.locale(fromOption: "de-DE")!
-        t.equal(TimeFormatting.format(windowsTimestamp: ts ?? 0, format: "%#c", locale: de),
+        let de = TimeFormatting.locale(fromOption: "de-DE", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.format(windowsTimestamp: ts ?? 0, format: "%#c", locale: de, nameTimeZone: .current, systemLocale: .autoupdatingCurrent),
                 "Mittwoch, 18. Februar 2015 01:07:40")
         let date = utc(2015, 2, 18, 1, 7, 40)
         t.equal(fmt(date, "%A|%B|%#x|%x|%X", locale: de), "Mittwoch|Februar|Mittwoch, 18. Februar 2015|18.02.15|01:07:40")
         t.equal(fmt(date, "%c", locale: de), "18.02.15 01:07:40")
         // Numeric codes are unaffected by the locale.
         t.equal(fmt(date, "%d.%m.%Y %H:%M:%S", locale: de), "18.02.2015 01:07:40")
-        let fr = TimeFormatting.locale(fromOption: "FRA")!
+        let fr = TimeFormatting.locale(fromOption: "FRA", local: .autoupdatingCurrent)!
         t.equal(fmt(date, "%A %#d %B %Y", locale: fr), "mercredi 18 février 2015")
-        let ru = TimeFormatting.locale(fromOption: "Russian_Russia.1251")!
+        let ru = TimeFormatting.locale(fromOption: "Russian_Russia.1251", local: .autoupdatingCurrent)!
         t.equal(fmt(date, "%A", locale: ru), "среда")
         // An explicit English locale uses that locale's patterns (not the fixed default ones).
-        let enUS = TimeFormatting.locale(fromOption: "en-US")!
+        let enUS = TimeFormatting.locale(fromOption: "en-US", local: .autoupdatingCurrent)!
         t.equal(fmt(date, "%A, %B %#d, %Y", locale: enUS), "Wednesday, February 18, 2015")
         t.equal(fmt(date, "%x", locale: enUS), "2/18/15")
         t.check(fmt(date, "%X", locale: enUS).hasSuffix("AM"))
@@ -521,23 +521,23 @@ private func runTimeZoneTests(_ t: TestRunner) {
         t.equal(TimeFormatting.timeZone(forOption: "-5", at: winter, localTimeZone: ny).secondsFromGMT(for: winter), -18_000)
         t.equal(TimeFormatting.timeZone(forOption: "9", at: summer, localTimeZone: gmt).secondsFromGMT(for: summer), 32_400)
         // Numeric form, clamping, rounding, non-finite.
-        t.equal(TimeFormatting.timeZone(offsetHours: 100, daylightSavingTime: false, localTimeZone: ny)
+        t.equal(TimeFormatting.timeZone(offsetHours: 100, daylightSavingTime: false, at: Date(), localTimeZone: ny)
             .secondsFromGMT(for: summer), 64_800)
-        t.equal(TimeFormatting.timeZone(offsetHours: -100, daylightSavingTime: false, localTimeZone: ny)
+        t.equal(TimeFormatting.timeZone(offsetHours: -100, daylightSavingTime: false, at: Date(), localTimeZone: ny)
             .secondsFromGMT(for: summer), -64_800)
-        t.equal(TimeFormatting.timeZone(offsetHours: 1.0001, daylightSavingTime: false, localTimeZone: ny)
+        t.equal(TimeFormatting.timeZone(offsetHours: 1.0001, daylightSavingTime: false, at: Date(), localTimeZone: ny)
             .secondsFromGMT(for: summer), 3_600)
-        t.equal(TimeFormatting.timeZone(offsetHours: .nan, localTimeZone: ny).identifier, ny.identifier)
-        t.equal(TimeFormatting.timeZone(offsetHours: .infinity, localTimeZone: ny).identifier, ny.identifier)
+        t.equal(TimeFormatting.timeZone(offsetHours: .nan, at: Date(), localTimeZone: ny).identifier, ny.identifier)
+        t.equal(TimeFormatting.timeZone(offsetHours: .infinity, at: Date(), localTimeZone: ny).identifier, ny.identifier)
     }
 
     t.suite("Format: Time with time zones") {
         let noon = utc(2016, 7, 1, 12, 0, 0)
-        let minus5 = TimeFormatting.timeZone(forOption: "-5", daylightSavingTime: false)
+        let minus5 = TimeFormatting.timeZone(forOption: "-5", daylightSavingTime: false, at: Date(), localTimeZone: .current)
         t.equal(fmt(noon, "%H:%M %z", minus5), "07:00 -0500")
         t.equal(fmt(noon, "%Z", minus5), sysZoneName(minus5, daylight: false))
         t.equal(TimeZoneNames.name(of: minus5, daylight: false, locale: english), "GMT-05:00")
-        let india = TimeFormatting.timeZone(forOption: "5.5", daylightSavingTime: false)
+        let india = TimeFormatting.timeZone(forOption: "5.5", daylightSavingTime: false, at: Date(), localTimeZone: .current)
         t.equal(fmt(noon, "%H:%M %z", india), "17:30 +0530")
         t.equal(fmt(utc(2016, 7, 1, 20), "%Y-%m-%d %H", india), "2016-07-02 01")   // date rolls over
         t.equal(fmt(summer, "%H %z %Z", ny), "08 -0400 " + sysZoneName(ny, daylight: true))
@@ -569,14 +569,14 @@ private func runTimeValueTests(_ t: TestRunner) {
         t.equal(TimeFormatting.date(fromWindowsTimestamp: winTS(2016, 7, 1, 8), timeZone: ny), d)
         t.equal(TimeFormatting.date(fromWindowsTimestamp: 13_066_845_750, timeZone: gmt), utc(2015, 1, 27, 15, 22, 30))
         t.equal(TimeFormatting.measureValue(for: Date(timeIntervalSince1970: .nan), timeZone: gmt), 0)
-        t.equal(TimeFormatting.date(fromWindowsTimestamp: .infinity), Date(timeIntervalSince1970: 0))
+        t.equal(TimeFormatting.date(fromWindowsTimestamp: .infinity, timeZone: .current), Date(timeIntervalSince1970: 0))
         // Formatting a timestamp shows its wall clock unchanged.
-        t.equal(TimeFormatting.format(windowsTimestamp: 13_066_845_750, format: "%Y-%m-%d %H:%M:%S", nameTimeZone: ny),
+        t.equal(TimeFormatting.format(windowsTimestamp: 13_066_845_750, format: "%Y-%m-%d %H:%M:%S", nameTimeZone: ny, systemLocale: .autoupdatingCurrent),
                 "2015-01-27 15:22:30")
-        t.equal(TimeFormatting.format(windowsTimestamp: 13_066_845_750, format: "%z %Z", nameTimeZone: ny),
+        t.equal(TimeFormatting.format(windowsTimestamp: 13_066_845_750, format: "%z %Z", nameTimeZone: ny, systemLocale: .autoupdatingCurrent),
                 "-0500 " + sysZoneName(ny, daylight: false))
-        t.equal(TimeFormatting.format(windowsTimestamp: 0, format: "%F %T %A"), "1601-01-01 00:00:00 Monday")
-        t.equal(TimeFormatting.format(windowsTimestamp: .nan, format: "%F"), "")
+        t.equal(TimeFormatting.format(windowsTimestamp: 0, format: "%F %T %A", nameTimeZone: .current, systemLocale: .autoupdatingCurrent), "1601-01-01 00:00:00 Monday")
+        t.equal(TimeFormatting.format(windowsTimestamp: .nan, format: "%F", nameTimeZone: .current, systemLocale: .autoupdatingCurrent), "")
         t.equal(fmt(Date(timeIntervalSince1970: .infinity), "%F"), "")
     }
 
@@ -613,122 +613,122 @@ private func runTimeStampTests(_ t: TestRunner) {
     let tue = winTS(2015, 1, 27, 15, 22, 30)
 
     t.suite("Format: TimeStamp manual examples") {
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27T15:22:30Z", mask: "%Y-%m-%dT%H:%M:%SZ"), tue)
-        t.equal(TimeFormatting.parseTimeStamp("Tue, 27 Jan 2015 15:22:30", mask: "%a, %#d %b %Y %H:%M:%S"), tue)
-        t.equal(TimeFormatting.parseTimeStamp("1/27/2015 15:22:30", mask: "%#m/%#d/%Y %H:%M:%S"), tue)
-        t.equal(TimeFormatting.parseTimeStamp("1/27/2105 15:22:30", mask: "%#m/%#d/%Y %H:%M:%S"), winTS(2105, 1, 27, 15, 22, 30))
-        t.equal(TimeFormatting.parseTimeStamp("Tuesday, January 27, 2015 at 15:22:30", mask: "%A, %B %#d, %Y at %H:%M:%S"), tue)
-        let de = TimeFormatting.locale(fromOption: "de-DE")!
-        t.equal(TimeFormatting.parseTimeStamp("Montag, 16. Februar 2015 13:10:45", mask: "%A, %d. %b %Y %H:%M:%S", locale: de),
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27T15:22:30Z", mask: "%Y-%m-%dT%H:%M:%SZ", systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp("Tue, 27 Jan 2015 15:22:30", mask: "%a, %#d %b %Y %H:%M:%S", systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp("1/27/2015 15:22:30", mask: "%#m/%#d/%Y %H:%M:%S", systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp("1/27/2105 15:22:30", mask: "%#m/%#d/%Y %H:%M:%S", systemLocale: .autoupdatingCurrent), winTS(2105, 1, 27, 15, 22, 30))
+        t.equal(TimeFormatting.parseTimeStamp("Tuesday, January 27, 2015 at 15:22:30", mask: "%A, %B %#d, %Y at %H:%M:%S", systemLocale: .autoupdatingCurrent), tue)
+        let de = TimeFormatting.locale(fromOption: "de-DE", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("Montag, 16. Februar 2015 13:10:45", mask: "%A, %d. %b %Y %H:%M:%S", locale: de, systemLocale: .autoupdatingCurrent),
                 winTS(2015, 2, 16, 13, 10, 45))
         // Through the option-level API.
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27T15:22:30Z", format: "%Y-%m-%dT%H:%M:%SZ"), tue)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27T15:22:30Z", format: "%Y-%m-%dT%H:%M:%SZ", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), tue)
         t.equal(TimeFormatting.parseTimeStamp("Montag, 16. Februar 2015 13:10:45", format: "%A, %d. %b %Y %H:%M:%S",
-                                              locale: de), winTS(2015, 2, 16, 13, 10, 45))
+                                              locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 16, 13, 10, 45))
         // "If the year is not defined in the TimeStamp option, then 1900 will be used as the default year."
-        t.equal(TimeFormatting.parseTimeStamp("15:22:30", mask: "%H:%M:%S"), winTS(1900, 1, 1, 15, 22, 30))
-        t.equal(TimeFormatting.parseTimeStamp("27 Jan", mask: "%d %b"), winTS(1900, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("15:22:30", mask: "%H:%M:%S", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 15, 22, 30))
+        t.equal(TimeFormatting.parseTimeStamp("27 Jan", mask: "%d %b", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 27))
         // "%z and %Z cannot be used in the TimeStampFormat option."
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 +0000", mask: "%Y-%m-%d %z"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 UTC", mask: "%Y-%m-%d %Z"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 +0000", mask: "%Y-%m-%d %z", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 UTC", mask: "%Y-%m-%d %Z", systemLocale: .autoupdatingCurrent), nil)
         // A mask that does not match → error (nil).
-        t.equal(TimeFormatting.parseTimeStamp("2015/01/27", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015/01/27", format: "%Y-%m-%d"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015/01/27", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015/01/27", format: "%Y-%m-%d", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
     }
 
     t.suite("Format: TimeStamp numeric") {
         // "A numeric Windows timestamp … in one-second increments since January 1, 1601".
-        t.equal(TimeFormatting.parseTimeStamp("13066845750", format: nil), tue)
-        t.equal(TimeFormatting.parseTimeStamp(" 13066845750.5 ", format: ""), 13_066_845_750.5)
-        t.equal(TimeFormatting.parseTimeStamp("0", format: nil), 0)
+        t.equal(TimeFormatting.parseTimeStamp("13066845750", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), tue)
+        t.equal(TimeFormatting.parseTimeStamp(" 13066845750.5 ", format: "", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), 13_066_845_750.5)
+        t.equal(TimeFormatting.parseTimeStamp("0", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), 0)
         // "if the TimeStampFormat mask does not match the format of the TimeStamp option, an error will be produced":
         // with a TimeStampFormat the mask decides, a number is not a fallback.
-        t.equal(TimeFormatting.parseTimeStamp("13066845750", format: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015", format: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("", format: nil), nil)
-        t.equal(TimeFormatting.parseTimeStamp("abc", format: nil), nil)
-        t.equal(TimeFormatting.parseTimeStamp("inf", format: nil), nil)
-        t.equal(TimeFormatting.parseTimeStamp("nan", format: nil), nil)
+        t.equal(TimeFormatting.parseTimeStamp("13066845750", format: "%Y-%m-%d", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015", format: "%Y-%m-%d", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("abc", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("inf", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("nan", format: nil, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
     }
 
     t.suite("Format: TimeStamp mask details") {
         // 12-hour clock.
-        t.equal(TimeFormatting.parseTimeStamp("3:22:30 PM", mask: "%I:%M:%S %p"), winTS(1900, 1, 1, 15, 22, 30))
-        t.equal(TimeFormatting.parseTimeStamp("3:22:30 pm", mask: "%#I:%M:%S %p"), winTS(1900, 1, 1, 15, 22, 30))
-        t.equal(TimeFormatting.parseTimeStamp("12:05 AM", mask: "%I:%M %p"), winTS(1900, 1, 1, 0, 5))
-        t.equal(TimeFormatting.parseTimeStamp("12:05 PM", mask: "%I:%M %p"), winTS(1900, 1, 1, 12, 5))
-        t.equal(TimeFormatting.parseTimeStamp("9:05", mask: "%I:%M"), winTS(1900, 1, 1, 9, 5))
-        t.equal(TimeFormatting.parseTimeStamp("13:05 PM", mask: "%I:%M %p"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("3:22:30 PM", mask: "%I:%M:%S %p", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 15, 22, 30))
+        t.equal(TimeFormatting.parseTimeStamp("3:22:30 pm", mask: "%#I:%M:%S %p", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 15, 22, 30))
+        t.equal(TimeFormatting.parseTimeStamp("12:05 AM", mask: "%I:%M %p", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 0, 5))
+        t.equal(TimeFormatting.parseTimeStamp("12:05 PM", mask: "%I:%M %p", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 12, 5))
+        t.equal(TimeFormatting.parseTimeStamp("9:05", mask: "%I:%M", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 9, 5))
+        t.equal(TimeFormatting.parseTimeStamp("13:05 PM", mask: "%I:%M %p", systemLocale: .autoupdatingCurrent), nil)
         // Two-digit years (POSIX pivot) and %C.
-        t.equal(TimeFormatting.parseTimeStamp("01/27/15", mask: "%m/%d/%y"), winTS(2015, 1, 27))
-        t.equal(TimeFormatting.parseTimeStamp("99", mask: "%y"), winTS(1999, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("68", mask: "%y"), winTS(2068, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("69", mask: "%y"), winTS(1969, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("19 05", mask: "%C %y"), winTS(1905, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("21", mask: "%C"), winTS(2100, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("01/27/15", mask: "%m/%d/%y", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("99", mask: "%y", systemLocale: .autoupdatingCurrent), winTS(1999, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("68", mask: "%y", systemLocale: .autoupdatingCurrent), winTS(2068, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("69", mask: "%y", systemLocale: .autoupdatingCurrent), winTS(1969, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("19 05", mask: "%C %y", systemLocale: .autoupdatingCurrent), winTS(1905, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("21", mask: "%C", systemLocale: .autoupdatingCurrent), winTS(2100, 1, 1))
         // Day of year.
-        t.equal(TimeFormatting.parseTimeStamp("2015 032", mask: "%Y %j"), winTS(2015, 2, 1))
-        t.equal(TimeFormatting.parseTimeStamp("2016 366", mask: "%Y %j"), winTS(2016, 12, 31))
-        t.equal(TimeFormatting.parseTimeStamp("2015 366", mask: "%Y %j"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015 032", mask: "%Y %j", systemLocale: .autoupdatingCurrent), winTS(2015, 2, 1))
+        t.equal(TimeFormatting.parseTimeStamp("2016 366", mask: "%Y %j", systemLocale: .autoupdatingCurrent), winTS(2016, 12, 31))
+        t.equal(TimeFormatting.parseTimeStamp("2015 366", mask: "%Y %j", systemLocale: .autoupdatingCurrent), nil)
         // Names: case-insensitive, abbreviated or full for either code.
-        t.equal(TimeFormatting.parseTimeStamp("tuesday, JANUARY 27, 2015", mask: "%a, %b %d, %Y"), winTS(2015, 1, 27))
-        t.equal(TimeFormatting.parseTimeStamp("Sept 3 2015", mask: "%b %d %Y"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("June 3 2015", mask: "%b %d %Y"), winTS(2015, 6, 3))
-        t.equal(TimeFormatting.parseTimeStamp("Jun 3 2015", mask: "%B %d %Y"), winTS(2015, 6, 3))
-        let de = TimeFormatting.locale(fromOption: "de-DE")!
-        t.equal(TimeFormatting.parseTimeStamp("3. März 2015", mask: "%d. %B %Y", locale: de), winTS(2015, 3, 3))
-        t.equal(TimeFormatting.parseTimeStamp("3. Mär 2015", mask: "%d. %b %Y", locale: de), winTS(2015, 3, 3))
-        t.equal(TimeFormatting.parseTimeStamp("3. Okt. 2015", mask: "%d. %b %Y", locale: de), winTS(2015, 10, 3))
-        t.equal(TimeFormatting.parseTimeStamp("3. October 2015", mask: "%d. %B %Y", locale: de), winTS(2015, 10, 3))
+        t.equal(TimeFormatting.parseTimeStamp("tuesday, JANUARY 27, 2015", mask: "%a, %b %d, %Y", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("Sept 3 2015", mask: "%b %d %Y", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("June 3 2015", mask: "%b %d %Y", systemLocale: .autoupdatingCurrent), winTS(2015, 6, 3))
+        t.equal(TimeFormatting.parseTimeStamp("Jun 3 2015", mask: "%B %d %Y", systemLocale: .autoupdatingCurrent), winTS(2015, 6, 3))
+        let de = TimeFormatting.locale(fromOption: "de-DE", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("3. März 2015", mask: "%d. %B %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 3, 3))
+        t.equal(TimeFormatting.parseTimeStamp("3. Mär 2015", mask: "%d. %b %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 3, 3))
+        t.equal(TimeFormatting.parseTimeStamp("3. Okt. 2015", mask: "%d. %b %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 10, 3))
+        t.equal(TimeFormatting.parseTimeStamp("3. October 2015", mask: "%d. %B %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 10, 3))
         // Composite codes.
-        t.equal(TimeFormatting.parseTimeStamp("12/26/15 22:55:03", mask: "%D %T"), winTS(2015, 12, 26, 22, 55, 3))
-        t.equal(TimeFormatting.parseTimeStamp("2015-12-26 22:55", mask: "%F %R"), winTS(2015, 12, 26, 22, 55))
-        t.equal(TimeFormatting.parseTimeStamp("Sat Dec 26 22:55:03 2015", mask: "%c"), winTS(2015, 12, 26, 22, 55, 3))
-        t.equal(TimeFormatting.parseTimeStamp("Saturday, December 26, 2015, 22:55:03", mask: "%#c"), winTS(2015, 12, 26, 22, 55, 3))
-        t.equal(TimeFormatting.parseTimeStamp("12/26/15", mask: "%x"), winTS(2015, 12, 26))
-        t.equal(TimeFormatting.parseTimeStamp("Saturday, December 26, 2015", mask: "%#x"), winTS(2015, 12, 26))
-        t.equal(TimeFormatting.parseTimeStamp("10:55:03 PM", mask: "%r"), winTS(1900, 1, 1, 22, 55, 3))
-        t.equal(TimeFormatting.parseTimeStamp("22:55:03", mask: "%X"), winTS(1900, 1, 1, 22, 55, 3))
+        t.equal(TimeFormatting.parseTimeStamp("12/26/15 22:55:03", mask: "%D %T", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26, 22, 55, 3))
+        t.equal(TimeFormatting.parseTimeStamp("2015-12-26 22:55", mask: "%F %R", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26, 22, 55))
+        t.equal(TimeFormatting.parseTimeStamp("Sat Dec 26 22:55:03 2015", mask: "%c", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26, 22, 55, 3))
+        t.equal(TimeFormatting.parseTimeStamp("Saturday, December 26, 2015, 22:55:03", mask: "%#c", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26, 22, 55, 3))
+        t.equal(TimeFormatting.parseTimeStamp("12/26/15", mask: "%x", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26))
+        t.equal(TimeFormatting.parseTimeStamp("Saturday, December 26, 2015", mask: "%#x", systemLocale: .autoupdatingCurrent), winTS(2015, 12, 26))
+        t.equal(TimeFormatting.parseTimeStamp("10:55:03 PM", mask: "%r", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 22, 55, 3))
+        t.equal(TimeFormatting.parseTimeStamp("22:55:03", mask: "%X", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 22, 55, 3))
         // Round trip: format then parse with the same mask.
         let d = utc(2031, 8, 9, 7, 6, 5)
         for mask in ["%c", "%#c", "%A, %B %#d, %Y %#I:%M:%S %p", "%Y%m%d%H%M%S", "%d.%m.%Y %T", "%a %e %b %Y %R:%S"] {
             let text = fmt(d, mask)
-            t.equal(TimeFormatting.parseTimeStamp(text, mask: mask), winTS(2031, 8, 9, 7, 6, 5), "mask=\(mask) text=\(text)")
+            t.equal(TimeFormatting.parseTimeStamp(text, mask: mask, systemLocale: .autoupdatingCurrent), winTS(2031, 8, 9, 7, 6, 5), "mask=\(mask) text=\(text)")
         }
         // Whitespace, %n / %t, literal %.
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27   15:22", mask: "%Y-%m-%d %H:%M"), winTS(2015, 1, 27, 15, 22))
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-2715:22", mask: "%Y-%m-%d %H:%M"), winTS(2015, 1, 27, 15, 22))
-        t.equal(TimeFormatting.parseTimeStamp("2015\t01", mask: "%Y%t%m"), winTS(2015, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("2015\n01", mask: "%Y%n%m"), winTS(2015, 1, 1))
-        t.equal(TimeFormatting.parseTimeStamp("7% 10", mask: "%d%% %H"), winTS(1900, 1, 7, 10))
-        t.equal(TimeFormatting.parseTimeStamp("7 10", mask: "%d%% %H"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27   15:22", mask: "%Y-%m-%d %H:%M", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27, 15, 22))
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-2715:22", mask: "%Y-%m-%d %H:%M", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27, 15, 22))
+        t.equal(TimeFormatting.parseTimeStamp("2015\t01", mask: "%Y%t%m", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("2015\n01", mask: "%Y%n%m", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("7% 10", mask: "%d%% %H", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 7, 10))
+        t.equal(TimeFormatting.parseTimeStamp("7 10", mask: "%d%% %H", systemLocale: .autoupdatingCurrent), nil)
         // Ignored fields.
-        t.equal(TimeFormatting.parseTimeStamp("2015 W05 2", mask: "%Y W%V %u"), winTS(2015, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("2015 W05 2", mask: "%Y W%V %u", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 1))
         // Trailing text is ignored; a missing part fails.
-        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 and more", mask: "%Y-%m-%d"), winTS(2015, 1, 27))
-        t.equal(TimeFormatting.parseTimeStamp("2015-01", mask: "%Y-%m-%d"), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-01-27 and more", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2015, 1, 27))
+        t.equal(TimeFormatting.parseTimeStamp("2015-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
         // Validation.
-        t.equal(TimeFormatting.parseTimeStamp("2015-02-30", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2016-02-29", mask: "%Y-%m-%d"), winTS(2016, 2, 29))
-        t.equal(TimeFormatting.parseTimeStamp("2015-02-29", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-13-01", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-00-01", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("24:00", mask: "%H:%M"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("23:60", mask: "%H:%M"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("23:59:60", mask: "%H:%M:%S"), winTS(1900, 1, 1, 23, 59, 59) + 1)
-        t.equal(TimeFormatting.parseTimeStamp("x", mask: "%Q"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015", mask: "%Y%"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("", mask: "%Y"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("anything", mask: ""), winTS(1900, 1, 1))
+        t.equal(TimeFormatting.parseTimeStamp("2015-02-30", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2016-02-29", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2016, 2, 29))
+        t.equal(TimeFormatting.parseTimeStamp("2015-02-29", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-13-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-00-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("24:00", mask: "%H:%M", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("23:60", mask: "%H:%M", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("23:59:60", mask: "%H:%M:%S", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 23, 59, 59) + 1)
+        t.equal(TimeFormatting.parseTimeStamp("x", mask: "%Q", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015", mask: "%Y%", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("", mask: "%Y", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("anything", mask: "", systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1))
         // Proleptic Gregorian (Foundation's Calendar switches to Julian before 1582, so use the known constant).
-        t.equal(TimeFormatting.parseTimeStamp("0001-01-01", mask: "%Y-%m-%d"), -62_135_596_800 + 11_644_473_600)
+        t.equal(TimeFormatting.parseTimeStamp("0001-01-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), -62_135_596_800 + 11_644_473_600)
     }
 
     t.suite("Format: TimeStamp DST codes") {
         let ny = TimeZone(identifier: "America/New_York")!
         let now = utc(2016, 1, 15, 12)
         func dst(_ code: String, _ zone: TimeZone = ny, now: Date = now) -> Double? {
-            TimeFormatting.parseTimeStamp(code, format: nil, now: now, localTimeZone: zone)
+            TimeFormatting.parseTimeStamp(code, format: nil, now: now, localTimeZone: zone, systemLocale: .autoupdatingCurrent)
         }
         // "the local date and time of the start / end of Daylight Saving Time".
         t.equal(dst("DSTStart2016"), winTS(2016, 3, 13, 2))
@@ -741,7 +741,7 @@ private func runTimeStampTests(_ t: TestRunner) {
         t.equal(dst("DSTNextStart", now: utc(2016, 6, 1)), winTS(2017, 3, 12, 2))
         t.equal(dst("DSTNextEnd", now: utc(2016, 12, 1)), winTS(2017, 11, 5, 2))
         // TimeStampFormat is irrelevant for the codes.
-        t.equal(TimeFormatting.parseTimeStamp("DSTStart2016", format: "%Y", now: now, localTimeZone: ny), winTS(2016, 3, 13, 2))
+        t.equal(TimeFormatting.parseTimeStamp("DSTStart2016", format: "%Y", now: now, localTimeZone: ny, systemLocale: .autoupdatingCurrent), winTS(2016, 3, 13, 2))
         // Southern hemisphere: start in October, end in April.
         let sydney = TimeZone(identifier: "Australia/Sydney")!
         t.equal(dst("DSTStart2016", sydney), winTS(2016, 10, 2, 2))
@@ -837,24 +837,24 @@ private func runFormatRobustnessTests(_ t: TestRunner) {
             for _ in 0..<Int(rng.next() % 12) { f += rng.pick(pieces) }
             let seconds = Double(Int64(rng.next() % 20_000_000_000)) - 5_000_000_000
             let date = Date(timeIntervalSince1970: seconds)
-            _ = TimeFormatting.format(date, format: f, timeZone: rng.pick(zones), locale: rng.pick(locales))
-            _ = TimeFormatting.format(windowsTimestamp: seconds * 7, format: f)
-            _ = TimeFormatting.parseTimeStamp(f, mask: rng.pick(["%Y-%m-%d", "%c", "%A %B", f, "%p%I"]))
-            _ = TimeFormatting.parseTimeStamp(TimeFormatting.format(date, format: f), mask: f)
+            _ = TimeFormatting.format(date, format: f, timeZone: rng.pick(zones), locale: rng.pick(locales), systemLocale: .autoupdatingCurrent)
+            _ = TimeFormatting.format(windowsTimestamp: seconds * 7, format: f, nameTimeZone: .current, systemLocale: .autoupdatingCurrent)
+            _ = TimeFormatting.parseTimeStamp(f, mask: rng.pick(["%Y-%m-%d", "%c", "%A %B", f, "%p%I"]), systemLocale: .autoupdatingCurrent)
+            _ = TimeFormatting.parseTimeStamp(TimeFormatting.format(date, format: f, timeZone: .current, systemLocale: .autoupdatingCurrent), mask: f, systemLocale: .autoupdatingCurrent)
             _ = UptimeFormatting.format(seconds: seconds, format: f)
             _ = NumberFormatting.format(seconds / 3, minValue: -1, maxValue: 1,
                                         options: .init(autoScale: rng.pick([.off, .binary(minimumPower: 1), .decimal(minimumPower: 2)]),
                                                        scale: rng.pick([1, 0, 7.5]), numOfDecimals: rng.pick([nil, 0, 3]),
                                                        percentual: rng.pick([true, false])))
             _ = AutoScale.parse(f)
-            _ = TimeFormatting.locale(fromOption: f)
+            _ = TimeFormatting.locale(fromOption: f, local: .autoupdatingCurrent)
             ran += 1
         }
         t.equal(ran, 1_500)
         // Extreme instants are clamped, never crash.
         for v in [Double.greatestFiniteMagnitude, -Double.greatestFiniteMagnitude, 1e300, -1e300] {
-            _ = TimeFormatting.format(Date(timeIntervalSince1970: v), format: "%c %j %U %V %G", timeZone: gmt)
-            _ = TimeFormatting.format(windowsTimestamp: v, format: "%#c")
+            _ = TimeFormatting.format(Date(timeIntervalSince1970: v), format: "%c %j %U %V %G", timeZone: gmt, systemLocale: .autoupdatingCurrent)
+            _ = TimeFormatting.format(windowsTimestamp: v, format: "%#c", nameTimeZone: .current, systemLocale: .autoupdatingCurrent)
             _ = TimeFormatting.measureValue(for: Date(timeIntervalSince1970: v), timeZone: gmt)
         }
         t.check(true)
@@ -870,10 +870,10 @@ private func runFormatRobustnessTests(_ t: TestRunner) {
         DispatchQueue.concurrentPerform(iterations: 64) { i in
             let fr = Locale(identifier: i % 2 == 0 ? "fr_FR" : "it_IT")
             for _ in 0..<50 {
-                let a = TimeFormatting.format(date, format: "%#c %A", timeZone: gmt, locale: de)
-                let b = TimeFormatting.format(date, format: "%#c %A", timeZone: gmt)
-                _ = TimeFormatting.format(date, format: "%x %Z", timeZone: gmt, locale: fr)
-                _ = TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015", mask: "%A, %d. %B %Y", locale: de)
+                let a = TimeFormatting.format(date, format: "%#c %A", timeZone: gmt, locale: de, systemLocale: .autoupdatingCurrent)
+                let b = TimeFormatting.format(date, format: "%#c %A", timeZone: gmt, systemLocale: .autoupdatingCurrent)
+                _ = TimeFormatting.format(date, format: "%x %Z", timeZone: gmt, locale: fr, systemLocale: .autoupdatingCurrent)
+                _ = TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015", mask: "%A, %d. %B %Y", locale: de, systemLocale: .autoupdatingCurrent)
                 if a != expectedDE || b != expectedEN {
                     lock.lock(); bad += 1; lock.unlock()
                 }
@@ -890,7 +890,7 @@ private func runFormatRobustnessTests(_ t: TestRunner) {
         var total = 0
         for i in 0..<20_000 {
             total += TimeFormatting.format(date.addingTimeInterval(Double(i)), format: "%A, %B %#d, %Y %#I:%M:%S %p",
-                                           timeZone: ny).utf8.count
+                                           timeZone: ny, systemLocale: .autoupdatingCurrent).utf8.count
             total += NumberFormatting.format(Double(i) * 1234.5, minValue: 0, maxValue: 1,
                                              options: .init(autoScale: .binary(minimumPower: 0))).utf8.count
             total += UptimeFormatting.format(seconds: Double(i) * 17).utf8.count
@@ -934,7 +934,7 @@ private func runFormatReviewTests(_ t: TestRunner) {
             if k == 2 { secs = -11_644_473_600 }   // 1601-01-01, Windows timestamp 0
             let date = Date(timeIntervalSince1970: TimeInterval(secs))
             for c in codes {
-                let ours = TimeFormatting.format(date, format: "%" + c, timeZone: gmt)
+                let ours = TimeFormatting.format(date, format: "%" + c, timeZone: gmt, systemLocale: .autoupdatingCurrent)
                 let theirs = cstrftime(secs, "%" + c)
                 if ours != theirs, mismatches.count < 5 { mismatches.append("%\(c) @\(secs): \(ours) vs \(theirs)") }
             }
@@ -944,13 +944,13 @@ private func runFormatReviewTests(_ t: TestRunner) {
 
     t.suite("Format: review %Y zero padding") {
         // "# modifier: Removes leading zeros in … %#Y" → %Y has leading zeros for years below 1000 (as in C).
-        let y915 = TimeFormatting.parseTimeStamp("0915-03-01", mask: "%Y-%m-%d")
+        let y915 = TimeFormatting.parseTimeStamp("0915-03-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent)
         t.check(y915 != nil)
         let ts = y915 ?? 0
-        t.equal(TimeFormatting.format(windowsTimestamp: ts, format: "%Y|%#Y|%F|%G|%C|%y|%#y"), "0915|915|0915-03-01|0915|09|15|15")
-        let y5 = TimeFormatting.parseTimeStamp("5", mask: "%Y") ?? 0
-        t.equal(TimeFormatting.format(windowsTimestamp: y5, format: "%Y %#Y %c"), "0005 5 Sat Jan  1 00:00:00 0005")   // proleptic Gregorian: a Saturday
-        t.equal(TimeFormatting.format(windowsTimestamp: 0, format: "%Y %#Y"), "1601 1601")
+        t.equal(TimeFormatting.format(windowsTimestamp: ts, format: "%Y|%#Y|%F|%G|%C|%y|%#y", nameTimeZone: .current, systemLocale: .autoupdatingCurrent), "0915|915|0915-03-01|0915|09|15|15")
+        let y5 = TimeFormatting.parseTimeStamp("5", mask: "%Y", systemLocale: .autoupdatingCurrent) ?? 0
+        t.equal(TimeFormatting.format(windowsTimestamp: y5, format: "%Y %#Y %c", nameTimeZone: .current, systemLocale: .autoupdatingCurrent), "0005 5 Sat Jan  1 00:00:00 0005")   // proleptic Gregorian: a Saturday
+        t.equal(TimeFormatting.format(windowsTimestamp: 0, format: "%Y %#Y", nameTimeZone: .current, systemLocale: .autoupdatingCurrent), "1601 1601")
     }
 
     t.suite("Format: review TimeStampLocale composites") {
@@ -958,14 +958,14 @@ private func runFormatReviewTests(_ t: TestRunner) {
         // or the locale defined by TimeStampLocale or FormatLocale" and are "particularly useful for easily changing
         // between locale values from the input to the output" → what Format produces for a locale must parse back
         // with the same code in TimeStampFormat and the same TimeStampLocale.
-        let de = TimeFormatting.locale(fromOption: "de-DE")!
-        t.equal(TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015 01:07:40", format: "%#c", locale: de),
+        let de = TimeFormatting.locale(fromOption: "de-DE", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015 01:07:40", format: "%#c", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent),
                 winTS(2015, 2, 18, 1, 7, 40))
-        t.equal(TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015", format: "%#x", locale: de), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("Mittwoch, 18. Februar 2015", format: "%#x", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
         // en-US %X is 12-hour: "1:07:40 PM" is 13:07:40 (it used to be misread as 01:07:40 through "%H:%M:%S").
-        let enUS = TimeFormatting.locale(fromOption: "en-US")!
-        t.equal(TimeFormatting.parseTimeStamp("1:07:40 PM", format: "%X", locale: enUS), winTS(1900, 1, 1, 13, 7, 40))
-        t.equal(TimeFormatting.parseTimeStamp("2/18/15 1:07:40 PM", format: "%c", locale: enUS), winTS(2015, 2, 18, 13, 7, 40))
+        let enUS = TimeFormatting.locale(fromOption: "en-US", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("1:07:40 PM", format: "%X", locale: enUS, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 13, 7, 40))
+        t.equal(TimeFormatting.parseTimeStamp("2/18/15 1:07:40 PM", format: "%c", locale: enUS, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18, 13, 7, 40))
         // Round trip for many locales and all five locale codes.
         let d = utc(2015, 2, 18, 13, 7, 40)
         let expected: [String: Double] = ["%#c": winTS(2015, 2, 18, 13, 7, 40), "%c": winTS(2015, 2, 18, 13, 7, 40),
@@ -973,34 +973,34 @@ private func runFormatReviewTests(_ t: TestRunner) {
                                           "%X": winTS(1900, 1, 1, 13, 7, 40)]
         var names = ["de-DE", "fr-FR", "ru-RU", "zh-CN", "ja-JP", "ko-KR", "en-US", "en-GB", "pt-BR", "es-ES", "it-IT",
                      "pl-PL", "tr-TR", "ar-SA", "he-IL", "th-TH", "hi-IN", "FRA", "CHT", "Russian_Russia.1251"]
-        if let local = TimeFormatting.locale(fromOption: "Local"), let info = Optional(LocaleTimeInfo.info(for: local)),
+        if let local = TimeFormatting.locale(fromOption: "Local", local: .autoupdatingCurrent), let info = Optional(LocaleTimeInfo.info(for: local)),
            info.isEnglishDefault || (info.shortDateMask != nil && info.fullDateMask != nil && info.mediumTimeMask != nil) {
             names.append("Local")
         }
         var failures: [String] = []
         for name in names {
-            guard let loc = TimeFormatting.locale(fromOption: name) else { failures.append("no locale \(name)"); continue }
+            guard let loc = TimeFormatting.locale(fromOption: name, local: .autoupdatingCurrent) else { failures.append("no locale \(name)"); continue }
             for (code, value) in expected {
                 let text = fmt(d, code, locale: loc)
-                let back = TimeFormatting.parseTimeStamp(text, format: code, locale: loc)
+                let back = TimeFormatting.parseTimeStamp(text, format: code, locale: loc, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent)
                 if back != value { failures.append("\(name) \(code) \(text.debugDescription) → \(String(describing: back))") }
             }
         }
         t.equal(failures, [])
         // The English patterns stay accepted as a fallback for a locale mask.
-        t.equal(TimeFormatting.parseTimeStamp("Wed Feb 18 01:07:40 2015", format: "%c", locale: de), winTS(2015, 2, 18, 1, 7, 40))
+        t.equal(TimeFormatting.parseTimeStamp("Wed Feb 18 01:07:40 2015", format: "%c", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18, 1, 7, 40))
         // %T is ISO (never locale), %X is the locale's time.
-        t.equal(TimeFormatting.parseTimeStamp("13:07:40", format: "%T", locale: enUS), winTS(1900, 1, 1, 13, 7, 40))
+        t.equal(TimeFormatting.parseTimeStamp("13:07:40", format: "%T", locale: enUS, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 13, 7, 40))
         // Composite codes inside a larger mask, and a mismatch.
-        t.equal(TimeFormatting.parseTimeStamp("Datum: 18.02.15 um 13:07:40 Uhr", format: "Datum: %x um %X Uhr", locale: de),
+        t.equal(TimeFormatting.parseTimeStamp("Datum: 18.02.15 um 13:07:40 Uhr", format: "Datum: %x um %X Uhr", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent),
                 winTS(2015, 2, 18, 13, 7, 40))
-        t.equal(TimeFormatting.parseTimeStamp("18-02-15", format: "%x", locale: de), nil)
+        t.equal(TimeFormatting.parseTimeStamp("18-02-15", format: "%x", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), nil)
         // locale-date / locale-time in TimeStampFormat: the system locale, whatever TimeStampLocale says.
         let ldText = fmt(d, "locale-date", locale: de)
         let ltText = fmt(d, "locale-time", locale: de)
-        t.equal(TimeFormatting.parseTimeStamp(ldText, format: "locale-date", locale: de), winTS(2015, 2, 18), ldText)
-        t.equal(TimeFormatting.parseTimeStamp(ltText, format: "LOCALE-TIME"), winTS(1900, 1, 1, 13, 7, 40), ltText)
-        t.equal(TimeFormatting.parseTimeStamp("locale-date", mask: "locale-date x"), nil)   // only a whole mask is special
+        t.equal(TimeFormatting.parseTimeStamp(ldText, format: "locale-date", locale: de, now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18), ldText)
+        t.equal(TimeFormatting.parseTimeStamp(ltText, format: "LOCALE-TIME", now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent), winTS(1900, 1, 1, 13, 7, 40), ltText)
+        t.equal(TimeFormatting.parseTimeStamp("locale-date", mask: "locale-date x", systemLocale: .autoupdatingCurrent), nil)   // only a whole mask is special
     }
 
     t.suite("Format: review ICU pattern to mask") {
@@ -1036,7 +1036,7 @@ private func runFormatReviewTests(_ t: TestRunner) {
         // %A / %B are "the day of week name" / "month name": the dictionary (stand-alone) form, not the form
         // inflected for use inside a date.
         let d = utc(2015, 2, 18, 13, 7, 40)
-        func f(_ l: String, _ code: String) -> String { fmt(d, code, locale: TimeFormatting.locale(fromOption: l)!) }
+        func f(_ l: String, _ code: String) -> String { fmt(d, code, locale: TimeFormatting.locale(fromOption: l, local: .autoupdatingCurrent)!) }
         t.equal(f("ru-RU", "%B"), "февраль")
         t.equal(f("pl-PL", "%B"), "luty")
         t.equal(f("ca-ES", "%B"), "febrer")
@@ -1046,25 +1046,25 @@ private func runFormatReviewTests(_ t: TestRunner) {
         // Full dates keep the locale's inflection.
         t.check(f("ru-RU", "%#x").hasPrefix("среда, 18 февраля 2015"), f("ru-RU", "%#x"))
         // Parsing accepts both forms.
-        let ru = TimeFormatting.locale(fromOption: "ru-RU")!
-        t.equal(TimeFormatting.parseTimeStamp("18 февраля 2015", mask: "%d %B %Y", locale: ru), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("Февраль 2015", mask: "%B %Y", locale: ru), winTS(2015, 2, 1))
-        let ca = TimeFormatting.locale(fromOption: "ca-ES")!
-        t.equal(TimeFormatting.parseTimeStamp("18 de febrer 2015", mask: "%d %B %Y", locale: ca), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("18 febrer 2015", mask: "%d %B %Y", locale: ca), winTS(2015, 2, 18))
-        let de = TimeFormatting.locale(fromOption: "de-DE")!
-        t.equal(TimeFormatting.parseTimeStamp("Mi., 18. Feb. 2015", mask: "%a, %d. %b %Y", locale: de), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("Mi, 18. Feb 2015", mask: "%a, %d. %b %Y", locale: de), winTS(2015, 2, 18))
+        let ru = TimeFormatting.locale(fromOption: "ru-RU", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("18 февраля 2015", mask: "%d %B %Y", locale: ru, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("Февраль 2015", mask: "%B %Y", locale: ru, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 1))
+        let ca = TimeFormatting.locale(fromOption: "ca-ES", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("18 de febrer 2015", mask: "%d %B %Y", locale: ca, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("18 febrer 2015", mask: "%d %B %Y", locale: ca, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        let de = TimeFormatting.locale(fromOption: "de-DE", local: .autoupdatingCurrent)!
+        t.equal(TimeFormatting.parseTimeStamp("Mi., 18. Feb. 2015", mask: "%a, %d. %b %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("Mi, 18. Feb 2015", mask: "%a, %d. %b %Y", locale: de, systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
         // Legacy MS-LCID culture names.
-        t.equal(TimeFormatting.locale(fromOption: "zh-CHS")?.language.script?.identifier, "Hans")
-        t.equal(TimeFormatting.locale(fromOption: "zh-CHT")?.language.script?.identifier, "Hant")
-        t.equal(fmt(d, "%A", locale: TimeFormatting.locale(fromOption: "zh-CHS")!), "星期三")
+        t.equal(TimeFormatting.locale(fromOption: "zh-CHS", local: .autoupdatingCurrent)?.language.script?.identifier, "Hans")
+        t.equal(TimeFormatting.locale(fromOption: "zh-CHT", local: .autoupdatingCurrent)?.language.script?.identifier, "Hant")
+        t.equal(fmt(d, "%A", locale: TimeFormatting.locale(fromOption: "zh-CHS", local: .autoupdatingCurrent)!), "星期三")
     }
 
     t.suite("Format: review locale parse fuzz") {
         // Hostile TimeStamp strings against locale composite masks: never crash, never hang.
         var rng = LCG(state: 77)
-        let locales = ["ar-SA", "ko-KR", "de-DE", "th-TH", "zh-TW", "fi-FI", "Local"].compactMap { TimeFormatting.locale(fromOption: $0) }
+        let locales = ["ar-SA", "ko-KR", "de-DE", "th-TH", "zh-TW", "fi-FI", "Local"].compactMap { TimeFormatting.locale(fromOption: $0, local: .autoupdatingCurrent) }
         let masks = ["%c", "%#c", "%x", "%#x", "%X", "%X %x", "%#c%#c%#c", "%a%A%b%B%p", "%Ec %Ox"]
         let pieces = ["١", "٢", "0", "9", "12", "/", ".", ":", " ", "\u{200F}", "م", "오후", "下午", "Mi.", "Februar",
                       "г.", "ค.ศ.", "'", "%", "\u{0}", "😀", "年", "\t", "PM"]
@@ -1073,23 +1073,23 @@ private func runFormatReviewTests(_ t: TestRunner) {
         for _ in 0..<3_000 {
             var text = ""
             for _ in 0..<Int(rng.next() % 16) { text += rng.pick(pieces) }
-            _ = TimeFormatting.parseTimeStamp(text, format: rng.pick(masks), locale: rng.pick(locales))
+            _ = TimeFormatting.parseTimeStamp(text, format: rng.pick(masks), locale: rng.pick(locales), now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent)
             ran += 1
         }
         let long = String(repeating: "١٢/", count: 2_000)
-        _ = TimeFormatting.parseTimeStamp(long, format: String(repeating: "%x", count: 400), locale: locales[0])
+        _ = TimeFormatting.parseTimeStamp(long, format: String(repeating: "%x", count: 400), locale: locales[0], now: Date(), localTimeZone: .current, systemLocale: .autoupdatingCurrent)
         t.equal(ran, 3_000)
         t.check(Date().timeIntervalSince(start) < 10)
     }
 
     t.suite("Format: review TimeStamp digits") {
         // Locale digits (Arabic-Indic, Devanagari, full-width) are read as numbers; other numeric characters are not.
-        t.equal(TimeFormatting.parseTimeStamp("٢٠١٥-٠٢-١٨", mask: "%Y-%m-%d"), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("२०१५-०२-१८", mask: "%Y-%m-%d"), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("２０１５-０２-１８", mask: "%Y-%m-%d"), winTS(2015, 2, 18))
-        t.equal(TimeFormatting.parseTimeStamp("2015-Ⅻ-01", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-万-01", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-½-01", mask: "%Y-%m-%d"), nil)
-        t.equal(TimeFormatting.parseTimeStamp("2015-1\u{301}2-01", mask: "%Y-%m-%d"), nil)   // digit + combining mark
+        t.equal(TimeFormatting.parseTimeStamp("٢٠١٥-٠٢-١٨", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("२०१५-०२-१८", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("２０１５-０２-１８", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), winTS(2015, 2, 18))
+        t.equal(TimeFormatting.parseTimeStamp("2015-Ⅻ-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-万-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-½-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)
+        t.equal(TimeFormatting.parseTimeStamp("2015-1\u{301}2-01", mask: "%Y-%m-%d", systemLocale: .autoupdatingCurrent), nil)   // digit + combining mark
     }
 }

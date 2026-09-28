@@ -955,7 +955,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         let dates = roots.compactMap { $0.binding.status.showsData ? $0.binding.snapshot?.validatedAt : nil }
         let updated = dates.max().map {
             TimeFormatting.format($0, format: WeatherLocationResolver.defaultTimeFormat(env),
-                                  timeZone: skin.skinClock.timeZone(), locale: TimeFormatting.defaultLocale)
+                                  timeZone: skin.skinClock.timeZone(), locale: TimeFormatting.defaultLocale,
+                                  systemLocale: skin.locale)
         }
         return (true, updated)
     }

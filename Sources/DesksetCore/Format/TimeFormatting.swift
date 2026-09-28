@@ -65,9 +65,9 @@ public enum TimeFormatting {
     ///
     /// `systemLocale` is the "system locale" the manual speaks of (`%Z`, `locale-date`, `locale-time`): the Mac's own
     /// unless the caller passes one (the engine passes the skin's `SkinEnvironment.locale`).
-    public static func format(_ date: Date, format: String, timeZone: TimeZone = .current,
+    public static func format(_ date: Date, format: String, timeZone: TimeZone,
                               locale: Locale = Locale(identifier: "en_US_POSIX"),
-                              systemLocale: Locale = .autoupdatingCurrent) -> String {
+                              systemLocale: Locale) -> String {
         let t = date.timeIntervalSince1970
         guard t.isFinite else { return "" }
         let offset = timeZone.secondsFromGMT(for: date)
@@ -82,8 +82,8 @@ public enum TimeFormatting {
     /// time zone"); `nameTimeZone` only supplies `%z` / `%Z` (Judgment: the local zone, like the system would).
     public static func format(windowsTimestamp: Double, format: String,
                               locale: Locale = Locale(identifier: "en_US_POSIX"),
-                              nameTimeZone: TimeZone = .current,
-                              systemLocale: Locale = .autoupdatingCurrent) -> String {
+                              nameTimeZone: TimeZone,
+                              systemLocale: Locale) -> String {
         guard windowsTimestamp.isFinite else { return "" }
         let wall = CivilTime.safeSeconds(windowsTimestamp - windowsEpochOffset)
         // The instant this wall-clock time corresponds to in `nameTimeZone` (approximate around transitions).
@@ -103,7 +103,7 @@ public enum TimeFormatting {
     /// `TimeZone=` "GMT time is used, modified with the offset", otherwise local time — so the value counts
     /// wall-clock seconds of the measure's zone (local time by default). Judgment: whole seconds (floored).
     /// Only the number value when `Format=` is NOT set; see `numberValue(ofFormatted:)`.
-    public static func measureValue(for date: Date, timeZone: TimeZone = .current) -> Double {
+    public static func measureValue(for date: Date, timeZone: TimeZone) -> Double {
         let t = date.timeIntervalSince1970
         guard t.isFinite else { return 0 }
         let wall = CivilTime.safeSeconds(t + Double(timeZone.secondsFromGMT(for: date)))
@@ -112,7 +112,7 @@ public enum TimeFormatting {
 
     /// The instant whose wall-clock time in `timeZone` is the Windows timestamp `windowsTimestamp`
     /// (inverse of `measureValue`, approximate inside DST transitions).
-    public static func date(fromWindowsTimestamp windowsTimestamp: Double, timeZone: TimeZone = .current) -> Date {
+    public static func date(fromWindowsTimestamp windowsTimestamp: Double, timeZone: TimeZone) -> Date {
         guard windowsTimestamp.isFinite else { return Date(timeIntervalSince1970: 0) }
         let wall = Double(CivilTime.safeSeconds(windowsTimestamp - windowsEpochOffset))
         let guess = Date(timeIntervalSince1970: wall)
@@ -164,16 +164,16 @@ public enum TimeFormatting {
     /// effect (at `date`) is added to the numeric offset. Fractional hours are allowed (`5.5` → GMT+05:30).
     /// `option` must already be a number (evaluate formulas first); nil / empty / `local` / unparsable → local.
     /// Judgment: offsets are rounded to whole minutes and clamped to ±18 h (Foundation's limit).
-    public static func timeZone(forOption option: String?, daylightSavingTime: Bool = true, at date: Date = Date(),
-                                localTimeZone: TimeZone = .current) -> TimeZone {
+    public static func timeZone(forOption option: String?, daylightSavingTime: Bool = true, at date: Date,
+                                localTimeZone: TimeZone) -> TimeZone {
         guard let raw = option?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
               raw.lowercased() != "local", let hours = Double(raw) else { return localTimeZone }
         return timeZone(offsetHours: hours, daylightSavingTime: daylightSavingTime, at: date, localTimeZone: localTimeZone)
     }
 
     /// Numeric form of `timeZone(forOption:)` (TimeZone= as an already evaluated formula).
-    public static func timeZone(offsetHours hours: Double, daylightSavingTime: Bool = true, at date: Date = Date(),
-                                localTimeZone: TimeZone = .current) -> TimeZone {
+    public static func timeZone(offsetHours hours: Double, daylightSavingTime: Bool = true, at date: Date,
+                                localTimeZone: TimeZone) -> TimeZone {
         guard hours.isFinite else { return localTimeZone }
         let limit = 18.0 * 3600
         var seconds = min(max(hours * 3600, -limit), limit)
@@ -188,7 +188,7 @@ public enum TimeFormatting {
     /// abbreviations (`FRA`), `Language_Country.codepage` (`Russian_Russia.1251`), plain ISO codes, and `Local`
     /// (the system locale: `local`, the Mac's own unless the caller passes one — the engine passes the skin's
     /// `SkinEnvironment.locale`). nil when empty or not recognised — the caller then uses `defaultLocale`.
-    public static func locale(fromOption option: String?, local: Locale = .autoupdatingCurrent) -> Locale? {
+    public static func locale(fromOption option: String?, local: Locale) -> Locale? {
         guard let option else { return nil }
         return WindowsLocaleNames.locale(from: option, local: local)
     }

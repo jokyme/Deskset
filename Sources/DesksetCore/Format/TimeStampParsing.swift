@@ -19,8 +19,8 @@ extension TimeFormatting {
     /// `now`, `localTimeZone` and `systemLocale` (a whole `locale-date` / `locale-time` mask) are the Mac's own
     /// unless the caller passes them (the engine passes the skin's clock, time zone and locale).
     public static func parseTimeStamp(_ timeStamp: String, format: String?, locale: Locale? = nil,
-                                      now: Date = Date(), localTimeZone: TimeZone = .current,
-                                      systemLocale: Locale = .autoupdatingCurrent) -> Double? {
+                                      now: Date, localTimeZone: TimeZone,
+                                      systemLocale: Locale) -> Double? {
         let raw = timeStamp.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
         if let dst = daylightSavingTimeStamp(raw, now: now, timeZone: localTimeZone) {
@@ -54,7 +54,7 @@ extension TimeFormatting {
     /// `%I` uses `%p` (default AM); `%u %U %V %w %W %g %G` are read but ignored. Missing month / day → 1,
     /// missing time → 0. Out-of-range values (month 13, February 30, hour 24 …) → nil.
     public static func parseTimeStamp(_ string: String, mask: String, locale: Locale = Locale(identifier: "en_US_POSIX"),
-                                      systemLocale: Locale = .autoupdatingCurrent) -> Double? {
+                                      systemLocale: Locale) -> Double? {
         guard string.count <= 4096, mask.count <= 1024 else { return nil }
         // `locale-date` / `locale-time` are listed among the codes "used in the Format and TimeStampFormat
         // options" and "cannot be modified by using TimeStampLocale": a whole mask of either reads the system
