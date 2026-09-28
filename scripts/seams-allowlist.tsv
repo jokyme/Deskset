@@ -136,10 +136,10 @@ zone.implicitFormatter	Sources/Deskset/App/SettingsWindowController.swift	*	Skin
 
 event.notification	Sources/Deskset/App/ShapeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
-effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): SideEffects
-effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): SideEffects
-effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): SideEffects
-effect.workspace	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): SideEffects
+effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+effect.workspace	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 
 event.pointerState	Sources/Deskset/App/SkinCanvasView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
@@ -219,8 +219,9 @@ timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	4	audio 
 timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
 
 background.queue	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	audio service (AudioLevel, AppVolume): faked in verification
-effect.audioHardware	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	Win7Audio and AppVolume set volume and devices: SideEffects.audio
 event.coreAudio	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+
+effect.audioHardware	Sources/Deskset/Plugins/Audio/AudioSideEffects.swift	1	SideEffects, live half (app): Win7Audio and AppVolume change a device; a recording never gets here
 
 mono.DispatchTime.now	Sources/Deskset/Plugins/Audio/AudioSystem.swift	2	audio service (AudioLevel, AppVolume): faked in verification
 mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioSystem.swift	3	audio service (AudioLevel, AppVolume): faked in verification
@@ -230,13 +231,17 @@ wait.deadline	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	audio service (A
 
 effect.fileWrite	Sources/Deskset/Plugins/FileViewIconWriter.swift	2	FileView icon files
 
+background.queue	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): the volume keys' own HAL queue; a recording never gets here
+effect.audioHardware	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	2	SideEffects, live half (app): MediaKey's volume keys; a recording never gets here
+effect.postEvent	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): MediaKey posts key events; a recording never gets here
+effect.workspace	Sources/Deskset/Plugins/Media/MediaSideEffects.swift	1	SideEffects, live half (app): NowPlaying opens a player; a recording never gets here
+
 background.mainHop	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	2	NowPlaying service and cover art: faked in verification
 wait.deadline	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	media workers: waitUntilIdle, for --render in virtual time (a condition, with a real-time limit)
 
 background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
-effect.appleScript	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	2	controlling Music and Spotify: SideEffects (fake player)
+effect.appleScript	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	2	the AppleScript runner reads the players and sends their commands; the commands pass SideEffects.perform in the measures
 effect.fileWrite	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	3	NowPlaying service and cover art: faked in verification
-effect.workspace	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	controlling Music and Spotify: SideEffects (fake player)
 mono.systemUptime	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
 timer.Timer	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
 timer.asyncAfter	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
@@ -246,10 +251,6 @@ background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	
 mono.systemUptime	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	3	NowPlaying service and cover art: faked in verification
 wait.deadline	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	1	NowPlaying service and cover art: faked in verification
 zone.Locale.current	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	2	NowPlaying service and cover art: faked in verification
-
-background.queue	Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift	1	NowPlaying service and cover art: faked in verification
-effect.audioHardware	Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift	2	MediaKey and volume keys: SideEffects
-effect.postEvent	Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift	1	MediaKey and volume keys: SideEffects
 
 background.global	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
 mono.systemUptime	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	front app and desktop info plugins: service, faked in verification
@@ -282,7 +283,7 @@ timer.asyncAfter	Sources/Deskset/Sensors/SensorService.swift	1	sensor service (M
 background.mainHop	Sources/Deskset/SharedState.swift	1	shared service snapshots expire by age
 mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots expire by age
 
-effect.workspace	Sources/Deskset/SkinController.swift	2	a skin opens a URL or file: SideEffects
+effect.workspace	Sources/Deskset/SkinController.swift	2	a skin opens a URL or file: a host request, recorded by RecordingSkinHost in sandboxed runs
 event.pointerState	Sources/Deskset/SkinController.swift	3	window dragging and hover polling read the pointer
 timer.Timer	Sources/Deskset/SkinController.swift	1	hover polling (0.1 s Foundation timer): move to MainSkinExecutor.shared.timer
 timer.animation	Sources/Deskset/SkinController.swift	2	FadeDuration window fades
@@ -356,8 +357,6 @@ background.URLSession	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNet
 background.operationQueue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
 background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
 
-effect.fileWrite	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	7	WebParser Download=1 and Debug=2 files: SideEffects
-
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
@@ -365,9 +364,6 @@ timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1
 background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	plugin file I/O queue; results come back through Skin.hop (fake completions)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
-background.global	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
-background.process	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	opening a file with its app (PluginProcess.launcher seam): SideEffects.launch
-effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	FileView reveal and trash: SideEffects.launch (PluginProcess.launcher)
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
 zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
 
@@ -382,15 +378,8 @@ mono.machTime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	process 
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's sample times (a service shared by every skin): faked with the service
 timer.dispatchSource	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
 
-effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	3	RecycleManager OpenBin and EmptyBin: SideEffects.launch (PluginProcess.launcher)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
 
-background.fileEvents	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	3	RunCommand child process and its pipes: SideEffects.launch
-background.process	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand child process and its pipes: SideEffects.launch
-background.queue	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand child process and its pipes: SideEffects.launch
-effect.fileWrite	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCommand OutputFile: SideEffects
-effect.signal	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCommand Close/Kill: SideEffects.launch
-timer.asyncAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand drains the pipes on its own queue
 timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
@@ -399,7 +388,15 @@ timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	alre
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
-effect.iniWrite	Sources/DesksetCore/Engine/Skin.swift	1	!WriteKeyValue: SideEffects (writes go to a copy in sandboxed runs)
+background.fileEvents	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and its pipes (a recording starts none)
+background.global	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: plugin helper programs start off the skin's thread (PluginProcess.launcher)
+background.process	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: RunCommand's program and plugin helper programs (a recording starts none)
+background.queue	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand's pipe queue
+effect.fileWrite	Sources/DesksetCore/Engine/SideEffects.swift	3	SideEffects live implementation: every file a skin's plugins write (a recording writes only into its copy, through here)
+effect.iniWrite	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: !WriteKeyValue (a recording writes its copy, through here)
+effect.signal	Sources/DesksetCore/Engine/SideEffects.swift	2	SideEffects live implementation: RunCommand Close, Kill, Timeout and unload (a recording records the signal)
+timer.asyncAfter	Sources/DesksetCore/Engine/SideEffects.swift	1	SideEffects live implementation: RunCommand drains the pipes on its own queue
+
 timer.executorAfter	Sources/DesksetCore/Engine/Skin.swift	1	!Delay on the executor (VirtualTimeExecutor)
 
 mono.systemUptime	Sources/DesksetCore/Engine/SkinClock.swift	1	SkinClock.live: the seam's live implementation
@@ -411,7 +408,7 @@ timer.Timer	Sources/DesksetCore/Engine/SkinExecutor.swift	1	MainSkinExecutor its
 timer.asyncAfter	Sources/DesksetCore/Engine/SkinExecutor.swift	1	MainSkinExecutor itself
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinExecutor.swift	2	MainSkinExecutor itself
 
-effect.fileWrite	Sources/DesksetCore/Engine/SkinFileSandbox.swift	8	the Lua io sandbox: temporary copies of files a script writes
+effect.fileWrite	Sources/DesksetCore/Engine/SkinFileSandbox.swift	9	the recording's copy of the skin tree (SideEffects): only its own scratch folder is written
 random.UUID	Sources/DesksetCore/Engine/SkinFileSandbox.swift	1	the Lua io sandbox: temporary copies of files a script writes
 
 effect.iniWrite	Sources/DesksetCore/Engine/SkinInspection.swift	2	Skin Studio writes through the inspection API
