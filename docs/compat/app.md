@@ -552,9 +552,15 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
   24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
   plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`
-  (the Mac's own). `--clock` gives the skin a clock of its own: update i sees the given time (ISO 8601, or seconds
-  since 1970) plus i intervals, however long the render takes, and the monotonic clock steps with it; its time zone
-  is UTC unless `--time-zone` names another (`--time-zone` alone changes only the zone). `--seed N` makes the skin's
+  (the Mac's own). `--clock` runs the skin in virtual time from the given moment (ISO 8601, or seconds since 1970):
+  update i is at that time plus i intervals and the monotonic clock steps with it; `!Delay`, ActionTimer steps,
+  Bitmap transitions and plugin timers run at their own virtual times, and nothing waits in real time. Its time zone
+  is UTC unless `--time-zone` names another (`--time-zone` alone changes only the zone). Background work comes back as
+  ordinary work before the next update: local files (QuotePlugin, FolderInfo, FileView's listing, WebParser `file://`,
+  RunCommand's OutputFile) are read or written as fixtures, the weather service is the preview and NowPlaying's
+  position follows the virtual clock; work that reaches further (the network, programs, file icons, live system
+  state) runs for real, gets up to one interval of real time to come back, and is listed on stderr as "not
+  verifiable in virtual time". `--seed N` makes the skin's
   random numbers (Calc `Random` / `UniqueRandom`, QuotePlugin, WebParser's temporary file names, Lua `math.random`)
   the same in every run. There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`

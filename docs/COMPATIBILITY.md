@@ -1218,9 +1218,13 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--skins-dir DIR]` loads the
   skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light
   appearance with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and
-  prints compatibility notes and log lines. `--clock` gives the skin a clock of its own: update i sees the given time
-  plus i intervals, in UTC unless `--time-zone` names another zone (`--time-zone` alone changes only the zone), and
-  `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua `math.random`…) the same in every run. Window, config and app bangs are ignored, mouse actions
+  prints compatibility notes and log lines. `--clock` runs the skin in virtual time from the given moment: update i
+  is at the given time plus i intervals, in UTC unless `--time-zone` names another zone (`--time-zone` alone changes
+  only the zone); `!Delay`, ActionTimer and other timers run at their own virtual times and nothing waits in real
+  time. Its local files (QuotePlugin, FolderInfo, FileView, WebParser `file://`) are read as fixtures; work that
+  reaches further (the network, programs, live system state) runs for real, gets up to one interval to come back, and
+  is listed on stderr as not verifiable. `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua
+  `math.random`…) the same in every run. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
