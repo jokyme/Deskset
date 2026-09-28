@@ -20,7 +20,7 @@ Group=Weather
 [MeterHeroSymbol]
 ; 20 pt, left-aligned at x 16 and centred on y 102. The symbol changes with the weather and symbols differ in size, so
 ; it is fitted to the largest one's box (30 × 31); once Deskset can draw a symbol at its natural size in a box, it will.
-; Its layers in their colours (the cloud in the secondary ink, a yellow sun, rain in the rain colour, §8); faded while
+; Its layers in their colours (the cloud in the secondary ink, a yellow sun, rain in the rain colour); faded while
 ; the forecast is not up to date
 Meter=Image
 ImageName=sf:[MeasureWxSymbol]
