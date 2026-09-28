@@ -689,9 +689,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   Options: `MacSymbolSize` (points, default 16) sets its natural size, used when the meter has no W / H;
   `MacSymbolWeight` = Ultralight, Thin, Light, Regular (default), Medium, Semibold, Bold, Heavy, Black;
   `MacSymbolRendering` = Monochrome (default: the whole symbol white, the parts it knocks out transparent),
-  Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths) or
+  Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths),
   Multicolor (the symbol's own colors as drawn in Dark Mode, its plain layers white; ImageTint multiplies every color,
-  so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
+  so leave it white to keep them) or Palette (colors of the skin's choosing, see the next entry). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
   per point: a 16-point symbol stays sharp drawn 512 points wide on a Retina display). With both W and H an Image
   meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0 stretches it), unless ScaleMargins is set: it
   then defaults to 0, where ScaleMargins nine-slices the symbol (a capsule stretched to any width). A Button uses the
@@ -702,6 +702,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   nothing is drawn): they need a strip of frames or a picture at its pixel size.
 - Why: Deskset extension — SF Symbols are the Mac's icon set; skins can use them without shipping image files.
 - Skin impact: none for Windows skins. On Windows such a skin shows missing images.
+- Status: Deskset extension
+
+### Palette symbols (`MacSymbolRendering=Palette`, `MacSymbolColors`)
+- Windows (Rainmeter): no SF Symbols (see the entry above).
+- Mac (Deskset): `MacSymbolRendering=Palette` draws each layer of an SF Symbol in a color of the skin's choosing:
+  `MacSymbolColors=c1|c2|c3` gives the colors of its primary, secondary and tertiary layers (any color option value,
+  with its alpha; `#Variables#`, formulas and a measure's value work, as in any option). Which part of a symbol is in
+  which layer is Apple's design: `cloud.sun.fill` has the cloud first and the sun second, `sunrise.fill` the arrow and
+  horizon first and the sun second. A layer past the last color takes the last color, as macOS draws it; an entry that
+  is not a color is white, so the layers after it keep theirs; empty entries at the end are dropped and colors after
+  the third ignored. Without any color, Palette draws as Monochrome (white). `MacSymbolColors` is ignored with the
+  other renderings. The general image options work on the colored symbol as on a colored picture: ImageTint multiplies
+  the colors (leave it white), ImageAlpha fades them. MacWeather's `Type=SymbolPalette` gives the colors for the
+  current weather symbol (`weather.md`).
+- Why: Deskset extension. Multicolor draws some symbols in white on any look (Apple's weather symbols paint their
+  clouds white in Light as in Dark Mode), and a skin cannot choose its colors; a palette gives, for example, a yellow
+  sun on a cloud in the text's color in both looks.
+- Skin impact: none for Windows skins.
 - Status: Deskset extension
 
 ### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)

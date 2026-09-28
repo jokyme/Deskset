@@ -680,14 +680,27 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `ButtonImage`, `BarImage` and the skin's `Background`. It is white, so ImageTint colors it and ImageAlpha,
   Greyscale, ColorMatrix, flip, rotate, crop, Tile and ScaleMargins work; it is rendered at the pixels it covers and
   stays sharp. `MacSymbolSize` (default 16) sets its size without W / H, `MacSymbolWeight` its weight (Ultralight …
-  Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths) or Multicolor (the
-  symbol's own colors, plain parts white). With W and H it keeps its shape (PreserveAspectRatio defaults to 1, or to
+  Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths), Multicolor (the
+  symbol's own colors, plain parts white) or Palette (colors of the skin's choosing, next entry). With W and H it keeps its shape (PreserveAspectRatio defaults to 1, or to
   0 with ScaleMargins, which then nine-slices it). A Button shows it in every state, at half opacity while pressed.
   Unknown names give a compatibility note (taken back when a measure's value names a known one); `sf:` alone
   (`sf:%1` or `sf:[Measure]` before the measure has a value) is no image and no note. Bitmap, Rotator and Histogram
   cannot use symbols (note, nothing drawn).
 - **Why:** Deskset extension: the Mac's icon set, without image files.
 - **Skin impact:** none for Windows skins; on Windows such images are missing.
+- **Status:** Mac-only
+
+#### Palette symbols (`MacSymbolRendering=Palette`, `MacSymbolColors`)
+- **Windows:** no SF Symbols.
+- **Mac:** `MacSymbolRendering=Palette` with `MacSymbolColors=c1|c2|c3` draws a symbol's primary, secondary and
+  tertiary layers in those colors (alpha included; variables, formulas and measure values work). Which part is in
+  which layer is Apple's design (`cloud.sun.fill`: cloud, then sun). Layers past the last color take the last color;
+  an entry that is not a color is white; no colors at all draws as Monochrome; other renderings ignore the option.
+  ImageTint multiplies the colors (leave it white); ImageAlpha fades them. MacWeather's `Type=SymbolPalette` gives the
+  colors for the current weather symbol.
+- **Why:** Deskset extension: Multicolor paints weather clouds white in any look; a palette gives a yellow sun on a
+  cloud in the text's color on light and dark backgrounds.
+- **Skin impact:** none for Windows skins.
 - **Status:** Mac-only
 
 #### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
@@ -2311,11 +2324,12 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Windows:** no counterpart; skins read weather web sites with WebParser (most of those services have shut down).
 - **Mac:** forecasts from MET Norway's Locationforecast 2.0 for any place: one measure with `Location=` (a town such as
   `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, `auto`, or `timezone`), others with `Parent=` and `Type=` (Temperature,
-  FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
-  Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
-  UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
+  FeelsLike, High, Low, Condition, Symbol, SymbolPalette, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal,
+  Beaufort, Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise,
+  Sunset, Place, UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
   region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone` (hours from UTC
-  without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`; FinishAction,
+  without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`, `ScaleColor` (one
+  color for every TemperatureColor instead of the scale); FinishAction,
   OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable functions
   `[&M:Now(Humidity)]`, `[&M:Hour(3, Temperature)]`, `[&M:Day(1, High)]`. Days run midnight to midnight in the
   place's time zone.
@@ -2371,7 +2385,11 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Mac:** `Type=Symbol` gives an SF Symbol name for each of MET's 83 weather codes (day and night forms, all on
   macOS 13): `ImageName=sf:%1` draws it (see [SF Symbols as images](#sf-symbols-as-images-imagenamesfcpufill)),
   `MacSymbolRendering=Multicolor` in color. `Type=SymbolCode` gives MET's own code for skins with their own images.
-- **Why:** no image files to ship.
+  `Type=SymbolPalette` (and `Hour(n, SymbolPalette)`, `Day(n, SymbolPalette)`) gives the colors for
+  `MacSymbolRendering=Palette`, one per layer of the current symbol by what it shows: clouds, moons, snow and lightning
+  `PaletteInk`, the sun `PaletteSun`, rain and sleet drops `PaletteRain` (defaults: Multicolor's Dark Mode white,
+  yellow and cyan), set once on the measure with the place.
+- **Why:** no image files to ship; palettes because Multicolor clouds are white on any background.
 - **Skin impact:** none.
 - **Status:** Mac-only
 

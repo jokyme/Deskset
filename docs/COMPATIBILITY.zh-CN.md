@@ -620,12 +620,22 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `BarImage` 和皮肤的 `Background`。符号是白色的，因此 ImageTint 为它上色，ImageAlpha、Greyscale、ColorMatrix、翻转、旋转、
   裁剪、Tile 和 ScaleMargins 都有效；它按实际覆盖的像素渲染，始终清晰。`MacSymbolSize`（默认 16）决定没有 W / H 时的尺寸，
   `MacSymbolWeight` 决定字重（Ultralight … Black），`MacSymbolRendering` 为 Monochrome（默认）、Hierarchical（同一种颜色的
-  不同深浅）或 Multicolor（符号自带的颜色，无色部分为白色）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1；
+  不同深浅）、Multicolor（符号自带的颜色，无色部分为白色）或 Palette（皮肤自选的颜色，见下一条）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1；
   设置了 ScaleMargins 时默认为 0，此时按 ScaleMargins 九宫格拉伸）。Button 在所有状态下都显示该符号，按下时为半透明。未知的
   名称会给出兼容性提示（measure 的值改为已知名称后提示随之撤回）；只写 `sf:`（measure 还没有值时的 `sf:%1` 或
   `sf:[Measure]`）表示没有图片，不绘制，也不提示。Bitmap、Rotator 和 Histogram 不能使用符号（给出提示，不绘制任何内容）。
 - **原因：** Deskset 扩展：Mac 自带的图标集，无需图片文件。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
+- **状态：** 仅 Mac
+
+#### 调色板符号（`MacSymbolRendering=Palette`、`MacSymbolColors`）
+- **Windows：** 没有 SF Symbols。
+- **Mac：** `MacSymbolRendering=Palette` 配合 `MacSymbolColors=c1|c2|c3`，把符号的第一、第二、第三层分别画成这些颜色（含透明度；
+  可以用变量、公式和 measure 的值）。哪一部分在哪一层由 Apple 的设计决定（`cloud.sun.fill`：先是云，再是太阳）。层数多于颜色时，
+  多出的层用最后一种颜色；不是颜色的项为白色；一种颜色都没有时按 Monochrome 绘制；其他绘制方式忽略这个选项。ImageTint 与颜色相乘
+  （保持白色即可），ImageAlpha 让它变淡。MacWeather 的 `Type=SymbolPalette` 给出当前天气符号的颜色。
+- **原因：** Deskset 扩展：Multicolor 在任何外观下都把天气符号的云画成白色；调色板可以在浅色和深色背景上都画出黄色太阳加文字颜色的云。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响。
 - **状态：** 仅 Mac
 
 #### 按绘制尺寸解码图片（`MacDecodeSize=Drawn`）
@@ -2095,12 +2105,13 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **Windows：** 没有对应物；皮肤用 WebParser 读取天气网站（其中大多数服务已停止）。
 - **Mac：** 来自 MET Norway Locationforecast 2.0 的任意地点天气预报：一个 measure 写 `Location=`（城镇名，如 `Oslo, NO`、
   `Springfield, IL`；`纬度,经度`；`auto`；或 `timezone`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
-  Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
+  Symbol、SymbolPalette、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
   ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution、
   LocationSource……），
   配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
   单位。另有 `Decimals`、`UnavailableText`、`TimeZone`（按小时写时就是相对 UTC 的小时数，与 Time measure 不同，不加本机的夏令时，
-  除非 `DaylightSavingTime=1`）、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
+  除非 `DaylightSavingTime=1`）、`Format`、`ScaleColor`（让 TemperatureColor 对所有温度都给出这一种颜色，而不是色阶）；
+  FinishAction、OnConnectErrorAction、OnLocationErrorAction；
   `!CommandMeasure … Refresh` / `Locate`；节变量函数 `[&M:Now(Humidity)]`、`[&M:Hour(3, Temperature)]`、`[&M:Day(1, High)]`。
   “一天”按该地点时区从午夜到午夜计算。
 - **原因：** Deskset 扩展：被抓取的服务都已消失；MET Norway 的数据可用于任何用途，无需密钥。
@@ -2145,8 +2156,11 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **Windows：** 皮肤自带图标图片，按所用服务的代码命名。
 - **Mac：** `Type=Symbol` 为 MET 的 83 个天气代码各给出一个 SF Symbol 名称（分白天和夜晚，macOS 13 上都有）：用 `ImageName=sf:%1`
   绘制（见[把 SF Symbols 用作图片](#把-sf-symbols-用作图片imagenamesfcpufill)），`MacSymbolRendering=Multicolor` 为彩色。
-  `Type=SymbolCode` 给出 MET 自己的代码，供自带图片的皮肤使用。
-- **原因：** 不需要附带图片文件。
+  `Type=SymbolCode` 给出 MET 自己的代码，供自带图片的皮肤使用。`Type=SymbolPalette`（以及 `Hour(n, SymbolPalette)`、
+  `Day(n, SymbolPalette)`）给出 `MacSymbolRendering=Palette` 用的颜色，当前符号每层一种，按这一层画的是什么来定：云、月亮、雪和
+  闪电用 `PaletteInk`，太阳用 `PaletteSun`，雨滴和雨夹雪用 `PaletteRain`（默认是 Multicolor 在深色模式下的白、黄、青），只需在
+  写了地点的 measure 上设一次。
+- **原因：** 不需要附带图片文件；用调色板是因为 Multicolor 的云在任何背景上都是白的。
 - **对皮肤的影响：** 无。
 - **状态：** 仅 Mac
 

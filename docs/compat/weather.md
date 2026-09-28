@@ -36,7 +36,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Option | Values (default first) | What it does |
   |---|---|---|
   | `Location` | empty · `City[, Region][, Country]` · `lat,lon` · `auto` · `timezone` | The place (see "Places"). Ignored with `Parent`. |
-  | `Parent` | a MacWeather measure | Uses its place and its `Units`, unit overrides, `TimeZone`, `DaylightSavingTime`, `FormatLocale`, `Decimals`, `UnavailableText`, `NoEventText`, `SymbolStyle` (followed up to 8 levels). |
+  | `Parent` | a MacWeather measure | Uses its place and its `Units`, unit overrides, `TimeZone`, `DaylightSavingTime`, `FormatLocale`, `Decimals`, `UnavailableText`, `NoEventText`, `SymbolStyle`, `PaletteInk`, `PaletteSun`, `PaletteRain`, `ScaleColor` (followed up to 8 levels). |
   | `Type` | `Temperature` … (table below) | What the measure shows. |
   | `Hour` | empty · 0–47 | The forecast N hours after the current hour. |
   | `Day` | empty · 0–9 | Today (0), tomorrow (1)…; wins over `Hour`. |
@@ -48,7 +48,9 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | `Decimals` | empty · 0–3 | Rounds the number itself, half away from zero, never `-0`. |
   | `UnavailableText` | empty | The string while there is no value (e.g. `--`). |
   | `NoEventText` | `--:--` | Sunrise and Sunset when the sun does not rise or set that day (midnight sun, polar night), as MacSun; the number is 0. |
-  | `SymbolStyle` | `Fill` · `Outline` | For `Type=Symbol`. |
+  | `SymbolStyle` | `Fill` · `Outline` | For `Type=Symbol` and `Type=SymbolPalette`. |
+  | `PaletteInk`, `PaletteSun`, `PaletteRain` | `255,255,255`, `255,214,0`, `60,211,254` (Multicolor's Dark Mode colors) | For `Type=SymbolPalette`: the color of clouds (and moons, stars, fog, snow and lightning), of the sun, and of rain, drizzle and sleet drops. A value that is not a color is the default. |
+  | `ScaleColor` | empty · a color | `Type=TemperatureColor` gives this color (as "R,G,B", its alpha dropped: skins add their own) instead of the scale's, for a look where every temperature has one color. Empty or not a color: the scale. |
   | `Hours`, `CurveWidth`, `CurveHeight`, `Smooth` | 24, 200, 40, 1 | For `Type=TemperatureCurve`. |
   | `ColorOf` | `High` · `Low` | For `Type=TemperatureColor` with `Day`. |
   | `FinishAction`, `OnConnectErrorAction`, `OnLocationErrorAction` | bangs | New data (or the place found); a failed request (once per run of failures: a skin that loads or refreshes during one gets it once, failures already over never run it); a place that cannot be found, Location Services off or no fix. On a measure with `Parent` they run when those of the measure with the place do, after them. |
@@ -61,6 +63,7 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   | Temperature, FeelsLike, DewPoint | N H | temperature | — |
   | High, Low | D | temperature | — |
   | Condition, Symbol, SymbolCode | N H D | MET's legacy number (1 clear … 50 heavy snow) | "Partly cloudy" / SF Symbol name / MET's code |
+  | SymbolPalette | N H D | as Symbol | the colors of the symbol's layers for `MacSymbolColors`: "0,0,0,153\|255,204,0" (see "Weather icons"); empty without data |
   | IsDaylight | N H | 1 day (the sun is up), 2 polar twilight (on a day the sun does not rise, while it is less than 6° below the horizon), 0 night; from the sun: now at this moment, H in the middle of the hour | — |
   | Humidity, CloudCover, Fog | N H | % | — |
   | Pressure | N H | pressure | — |
@@ -251,7 +254,14 @@ Rainmeter manual's WebParser, Time, Shape and Image pages for the conventions th
   `engine.md`; `MacSymbolRendering=Multicolor` gives the colored forms). `SymbolStyle=Outline` drops `.fill`.
   `Type=SymbolCode` gives MET's code (`partlycloudy_day`) for skins with their own images. Sleet and snow showers
   share one symbol (there is no sun-and-snow symbol on macOS 13).
-- Why: no icon files to ship; the symbols match the system.
+  `Type=SymbolPalette` (also `[&Measure:Hour(3, SymbolPalette)]` and `Day(n, SymbolPalette)`) gives the colors for
+  `MacSymbolRendering=Palette` (`MacSymbolColors=[MeasurePalette]`): one per layer of the current symbol, in Apple's
+  layer order, each layer's color by what it shows. Clouds, moons, stars, fog, snow and lightning (which macOS draws in
+  the cloud's layer) take `PaletteInk`, the sun `PaletteSun`, rain, drizzle and sleet drops `PaletteRain`: a sun and
+  cloud is "ink|sun", a rain shower by day "ink|sun|rain", rain "ink|rain", clear sky "sun". So a skin sets three
+  colors once, on the measure with the place, and every symbol comes out right, whatever the layer order.
+- Why: no icon files to ship; the symbols match the system. Palettes: Multicolor paints the clouds white on any look,
+  which cannot work on a light background.
 - Skin impact: none.
 - Status: Deskset extension
 
