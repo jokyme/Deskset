@@ -353,6 +353,41 @@ func runClockRandomSeamTests(_ t: TestRunner) {
         t.check(try run(seed: 8) != first, "another seed, other numbers")
     }
 
+    t.suite("Seams: clock and random: Lua os.tmpname takes its name from the skin's random numbers") {
+        LuaSupport.register()
+        let script = """
+        function Update()
+          local name = os.tmpname()
+          local f = io.open(name, 'r')
+          local made = f ~= nil
+          if f then f:close() end
+          os.remove(name)
+          return name .. '|' .. tostring(made)
+        end
+        """
+        func run(seed: UInt64) throws -> String {
+            let s = try seamSkin(t, """
+            [Rainmeter]
+            [Lua]
+            Measure=Script
+            ScriptFile=tmp.lua
+            """, files: ["Root/Sub/tmp.lua": script], clock: SkinClock.fixed(newYearsEve, timeZone: zone("UTC")),
+                                 random: SkinRandom(seed: seed))
+            s.update()
+            defer { s.close() }
+            return string(s, "Lua")
+        }
+        let first = try run(seed: 7)
+        let parts = first.split(separator: "|").map(String.init)
+        t.equal(parts.count, 2)
+        let name = parts.first ?? ""
+        t.check(name.hasPrefix("/tmp/lua_") && name.count == 15, "a name like the C library's: \(name)")
+        t.equal(parts.last, "true", "the file was made")
+        t.check(!FileManager.default.fileExists(atPath: name), "and removed by the script")
+        t.equal(try run(seed: 7), first, "the same seed, the same name")
+        t.check(try run(seed: 8) != first, "another seed, another name")
+    }
+
     t.suite("Seams: clock and random: Lua keeps the C library when the skin's clock is the system's") {
         LuaSupport.register()
         let s = try seamSkin(t, """

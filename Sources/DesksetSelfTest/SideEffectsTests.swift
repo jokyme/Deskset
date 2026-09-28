@@ -227,6 +227,8 @@ private func everyExit(_ t: TestRunner) throws {
     }, "the icons were written")
 
     let dir = folder.path
+    let tmp = skin.variable("TmpName") ?? ""
+    t.check(tmp.hasPrefix("/tmp/lua_") && tmp.count == 15, "os.tmpname's name: \(tmp)")
     let expected: [SideEffect] = [
         .launch(executable: "/bin/sh", arguments: ["-c", "echo hello"], directory: dir),
         .signal(SIGKILL, command: "echo hello"),
@@ -246,6 +248,9 @@ private func everyExit(_ t: TestRunner) throws {
         .writeFile(path: dir + "/new.txt"),
         .renameFile(from: dir + "/new.txt", to: dir + "/moved.txt"),
         .removeFile(path: dir + "/moved.txt"),
+        // os.tmpname made the file, the script wrote it and removed it: all in the copy.
+        .writeFile(path: tmp),
+        .removeFile(path: tmp),
         .open(target: dir + "/", arguments: []),
         .hostBang("!Move 10 20"),
         .forwardBang("!SetVariable Shared 1", config: "Engine\\Other"),
@@ -257,6 +262,7 @@ private func everyExit(_ t: TestRunner) throws {
         t.check(false, "record \(index): \(effect)")
     }
     t.equal(launched, 0, "no helper program started")
+    t.check(!FileManager.default.fileExists(atPath: tmp), "no temporary file on the Mac")
     t.equal(snapshot(skins), before, "the skin's folder is as it was")
 
     // The skin went on as it would, on the copies.

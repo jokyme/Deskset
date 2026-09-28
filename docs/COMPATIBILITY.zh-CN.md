@@ -1355,7 +1355,8 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 
 #### `os.date`、`os.clock` 及其他 `os` 函数
 - **Windows：** 微软 C 库（`%#d` 去掉前导零；`clock()` 是挂钟时间）。
-- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同。
+- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同；
+  `os.tmpname` 创建 `/tmp/lua_XXXXXX`，名字取自皮肤的随机数。
 - **原因：** 脚本用 `os.clock` 为动画计时。
 - **对皮肤的影响：** 预计无。
 - **状态：** 模拟实现

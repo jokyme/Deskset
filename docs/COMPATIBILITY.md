@@ -1501,7 +1501,7 @@ paths and a few functions that have no Mac meaning. Details: [`compat/lua.md`](c
 #### `os.date`, `os.clock` and other `os` functions
 - **Windows:** Microsoft C library (`%#d` removes leading zeros; `clock()` is wall-clock time).
 - **Mac:** `%#x` flags are emulated; `os.clock` returns wall-clock seconds (the Mac C library would return CPU time);
-  `math.random` sequences differ.
+  `math.random` sequences differ; `os.tmpname` makes `/tmp/lua_XXXXXX` with a name from the skin's random numbers.
 - **Why:** scripts time animations with `os.clock`.
 - **Skin impact:** none expected.
 - **Status:** emulated

@@ -1,5 +1,5 @@
--- Writes a file of the skin's own, renames it and removes it again: on the Mac nothing is left, in a recording three
--- changes are recorded.
+-- Writes a file of the skin's own, renames it and removes it again, then does the same with a temporary file
+-- (os.tmpname): on the Mac nothing is left, in a recording five changes are recorded.
 local state = 'waiting'
 
 function Update()
@@ -16,5 +16,13 @@ function Touch()
     end
     os.rename(path, moved)
     os.remove(moved)
+    local tmp = os.tmpname()
+    local t = io.open(tmp, 'w')
+    if t then
+        t:write('scratch')
+        t:close()
+    end
+    os.remove(tmp)
+    SKIN:Bang('!SetVariable', 'TmpName', tmp)
     state = 'touched'
 end
