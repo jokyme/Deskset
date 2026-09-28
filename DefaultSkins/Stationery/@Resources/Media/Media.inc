@@ -36,3 +36,5 @@ MenuOpenPlayerTitle=[#MediaOpen[#PlayerIndex[#Player]]]
 ; ---------------------------------------------------------------- access refused (Media/Permission.inc)
 ; where the Notice's "Open Privacy Settings" leads: Privacy & Security › Automation
 AutomationPane=x-apple.systempreferences:com.apple.preference.security?Privacy_Automation
+; and for System Audio Recording refused (AudioLevel DeviceStatus 2): Privacy & Security › Screen & System Audio Recording
+AudioPane=x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture

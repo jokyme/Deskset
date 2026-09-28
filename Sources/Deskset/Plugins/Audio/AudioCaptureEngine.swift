@@ -278,8 +278,11 @@ final class AudioCaptureEngine {
 
     /// `DESKSET_AUDIO_DEMO=1`: every stream is a generated demo signal (SyntheticAudioBackend), also in
     /// command-line modes — no permission involved. `=silent`: the demo stream carries only digital silence.
-    static let demoSignal = ["1", "silent"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
-    static let demoSilence = ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] == "silent"
+    /// `=refused`: silence, with the silence watchdog's verdict already given (`DeviceStatus` 2), as a refused System
+    /// Audio Recording shows it (renders of a visualizer's refused state).
+    static let demoSignal = ["1", "silent", "refused"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
+    static let demoSilence = ["silent", "refused"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
+    static let demoRefused = ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] == "refused"
 
     /// Seconds a source keeps running after its last subscriber left (skin refresh).
     var stopDelay: TimeInterval = 3

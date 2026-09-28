@@ -360,6 +360,8 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Mac (Deskset): environment variables for development: `DESKSET_AUDIO_DEMO=1` replaces every audio stream by a generated
   demo signal (pink noise, kick, hi-hat, melody) — no permission, works with `--render`, useful for screenshots and demo
   videos; `DESKSET_AUDIO_DEMO=silent` gives the same streams carrying only digital silence (a visualizer at rest);
+  `DESKSET_AUDIO_DEMO=refused` gives that silence with the silence watchdog's verdict already given (`DeviceStatus` 2,
+  a visualizer's refused state);
   `DESKSET_AUDIO_CAPTURE=0` turns capture off in the app and `=1` on in command-line modes (for skin windows
   only: `--render` never captures real audio); `DESKSET_AUDIO_FORCE_SCK=1` uses ScreenCaptureKit instead of a process
   tap.

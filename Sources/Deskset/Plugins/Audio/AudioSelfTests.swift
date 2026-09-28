@@ -22,6 +22,7 @@ enum AudioSelfTests {
         registrationTests(t)
         deviceTests(t)
         testSkinTests(t)
+        stationeryTests(t)
     }
 
     // MARK: Signals
@@ -974,6 +975,72 @@ enum AudioSelfTests {
             t.equal(backends().count, 2)
             t.check(engine.status(for: key).running)
             skin.close()
+            engine.drain()
+            engine.drain()
+        }
+    }
+
+    /// A system-audio capture that runs, carries silence and says what the silence watchdog says of a refused
+    /// permission (as `DESKSET_AUDIO_DEMO=refused` does).
+    final class RefusedBackend: AudioCaptureBackend {
+        let deviceID: AudioObjectID? = 7
+        func start(ring: AudioRingBuffer, events: AudioBackendEvents) -> AudioSourceStatus {
+            var s = AudioSourceStatus(running: true, deviceName: "Fake", deviceUID: "Fake", format: "", sampleRate: 48000,
+                                      channels: 2)
+            s.refusalSuspected = true
+            s.permissionNote = AudioCaptureEngine.silenceNote
+            return s
+        }
+        func stop() {}
+    }
+
+    static func stationeryTests(_ t: AppTestRunner) {
+        t.suite("App: Audio Stationery visualizers say System Audio Recording is refused") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            // A copy: the widgets write their own files.
+            let root = t.temporaryDirectory("stationery-audio")
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.makeBackend = { _ in RefusedBackend() }
+            func load(_ config: String) throws -> Skin {
+                let file = root.appendingPathComponent("Stationery/\(config)/Medium.ini")
+                let skin = Skin(config: "Stationery\\\(config)", fileURL: file, skinsDirectory: root,
+                                system: SystemMonitor.shared, host: host)
+                try skin.load()
+                for case let m as AudioLevelMeasure in skin.measures {
+                    m.engine = engine
+                    m.mayCapture = { _ in true }
+                    m.system = { fakeSnapshot() }
+                    m.prepareSystem = {}
+                }
+                skin.update()   // the parent subscribes
+                engine.drain()
+                // DeviceStatus is read every 15 updates while the widgets move (every 30 for Studio VU's row).
+                for _ in 0..<40 { skin.update() }
+                return skin
+            }
+
+            let spectrum = try load("Spectrum")
+            t.equal(spectrum.meter(named: "MeterNoticeTitle")?.hidden, false, "Spectrum shows its Notice")
+            t.equal((spectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow System Audio Recording")
+            t.equal(spectrum.meter(named: "MeterBar0")?.hidden, true, "the bars rest")
+            t.check(spectrum.issues.contains(AudioCaptureEngine.silenceNote), "and a compatibility note")
+            spectrum.close()
+
+            let studio = try load("StudioVU")
+            t.equal((studio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow System Audio Recording",
+                    "Studio VU says so in its row")
+            t.equal((studio.meter(named: "MeterArtist") as? StringMeter)?.text, "Open Privacy Settings")
+            t.equal(studio.meter(named: "MeterTime")?.hidden, true)
+            t.check(studio.meter(named: "MeterTitle")?.toolTipText.contains("System Audio Recording") == true,
+                    "its tooltip says where: \(studio.meter(named: "MeterTitle")?.toolTipText ?? "")")
+            studio.close()
             engine.drain()
             engine.drain()
         }

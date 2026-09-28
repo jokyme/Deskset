@@ -531,9 +531,12 @@ final class CoreAudioOutputActivity: AudioOutputActivity {
 /// every half second, a hi-hat and a four-note melody (right channel a little quieter). No permission is needed, so
 /// visualizer skins can be checked with `--render`, screenshotted or demoed without playing anything.
 /// `DESKSET_AUDIO_DEMO=silent`: the same stream, all digital silence (a visualizer at rest, and its cost).
+/// `DESKSET_AUDIO_DEMO=refused`: silence that the watchdog has taken for a refused permission (`DeviceStatus` 2).
 final class SyntheticAudioBackend: AudioCaptureBackend {
-    /// Every sample 0 (`DESKSET_AUDIO_DEMO=silent`).
+    /// Every sample 0 (`DESKSET_AUDIO_DEMO=silent` or `refused`).
     var silent = AudioCaptureEngine.demoSilence
+    /// The status says what the watchdog says of a refused permission (`DESKSET_AUDIO_DEMO=refused`).
+    var refused = AudioCaptureEngine.demoRefused
     let deviceID: AudioObjectID? = nil
     static let sampleRate = 48000.0
     private let queue = DispatchQueue(label: "net.deskset.audio.demo", qos: .userInteractive)
@@ -554,10 +557,15 @@ final class SyntheticAudioBackend: AudioCaptureBackend {
         }
         timer.resume()
         self.timer = timer
-        return AudioSourceStatus(running: true, deviceName: "Deskset Demo Signal", deviceUID: "DesksetDemoSignal",
-                                 format: AudioHAL.describe(sampleRate: SyntheticAudioBackend.sampleRate,
-                                                           bitsPerChannel: 32, isFloat: true, channels: 2),
-                                 sampleRate: SyntheticAudioBackend.sampleRate, channels: 2)
+        var status = AudioSourceStatus(running: true, deviceName: "Deskset Demo Signal", deviceUID: "DesksetDemoSignal",
+                                       format: AudioHAL.describe(sampleRate: SyntheticAudioBackend.sampleRate,
+                                                                 bitsPerChannel: 32, isFloat: true, channels: 2),
+                                       sampleRate: SyntheticAudioBackend.sampleRate, channels: 2)
+        if refused {
+            status.refusalSuspected = true
+            status.permissionNote = AudioCaptureEngine.silenceNote
+        }
+        return status
     }
 
     func stop() {
