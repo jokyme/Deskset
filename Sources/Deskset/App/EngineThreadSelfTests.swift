@@ -224,7 +224,11 @@ enum EngineThreadSelfTests {
             try FileManager.default.createDirectory(at: app.skinsDirectory, withIntermediateDirectories: true)
             app.installDefaultSkinsIfNeeded()
             var loadedAll = 0
-            app.loadActiveSkins { loadedAll += 1 }
+            var selectedThen: String?
+            app.loadActiveSkins {
+                loadedAll += 1
+                selectedThen = app.firstRunSelection
+            }
             let clock = app.controller(for: "Stationery\\Clock")
             t.check(clock != nil && app.controller(for: "Stationery\\Weather") == nil,
                     "the first window is made at once, the next once it started (activateInOrder)")
@@ -233,6 +237,7 @@ enum EngineThreadSelfTests {
             }, "both start on the engine thread")
             let weather = app.controller(for: "Stationery\\Weather")
             t.check(AppSelfTest.spin(timeout: 30) { loadedAll == 1 }, "then the launch goes on, once")
+            t.equal(selectedThen, "Stationery\\Clock", "with the Manage window's selection known")
             let screens = WindowGeometry.currentScreens()
             let visible = screens.first?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 875)
             let height = WindowGeometry.primaryHeight(screens)

@@ -206,27 +206,36 @@ extension AppController {
         }
     }
 
-    /// Loads the skins of the first-run layout (`DefaultSkins/FirstRun.ini`) at their places: the configs loaded, in
-    /// order; none without the file or when none of its configs exists (the caller then loads the Clock alone).
-    func loadFirstRunLayout(then: (() -> Void)? = nil) -> [String] {
+    /// The skins of the first-run layout (`DefaultSkins/FirstRun.ini`) that can load, in order, with their configs'
+    /// names as the library has them: none without the file or when none of its configs exists (the caller then loads
+    /// the Clock alone).
+    func firstRunLayout() -> [(config: String, entry: FirstRunLayout.Entry)] {
         guard let source = defaultSkinsSource,
               let layout = FirstRunLayout.load(from: source.appendingPathComponent(DefaultSkins.firstRunFileName))
         else { return [] }
+        return layout.entries.compactMap { entry in
+            guard canActivate(config: entry.config, file: entry.file), let name = config(named: entry.config)?.name
+            else { return nil }
+            return (name, entry)
+        }
+    }
+
+    /// Loads `layout` (`firstRunLayout`) one after another (`activateInOrder`), each at its place. `then`: once the
+    /// last one started (at once with the main executor).
+    func loadFirstRunLayout(_ layout: [(config: String, entry: FirstRunLayout.Entry)], then: (() -> Void)? = nil) {
+        guard !layout.isEmpty else { return }
         let screens = WindowGeometry.currentScreens()
         let visible = screens.first?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 875)
         let primaryHeight = WindowGeometry.primaryHeight(screens)
-        // One after another (`activateInOrder`); which ones load is known now.
-        let entries = layout.entries.filter { canActivate(config: $0.config, file: $0.file) }
-        let loaded = entries.compactMap { config(named: $0.config)?.name }
-        activateInOrder(entries.map { ($0.config, $0.file) }, each: { c, index in
-            if let p = entries[index].position(visibleFrame: visible, primaryHeight: primaryHeight) { c.moveTo(x: p.x, y: p.y) }
+        Log.write("First launch: loading \(layout.map(\.config).joined(separator: ", ")) from "
+                  + DefaultSkins.firstRunFileName)
+        activateInOrder(layout.map { ($0.config, $0.entry.file) }, each: { c, index in
+            if let p = layout[index].entry.position(visibleFrame: visible, primaryHeight: primaryHeight) {
+                c.moveTo(x: p.x, y: p.y)
+            }
         }, done: { [weak self] in
             self?.restack()
             then?()
         })
-        if !loaded.isEmpty {
-            Log.write("First launch: loaded \(loaded.joined(separator: ", ")) from \(DefaultSkins.firstRunFileName)")
-        }
-        return loaded
     }
 }

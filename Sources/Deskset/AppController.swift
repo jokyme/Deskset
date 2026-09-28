@@ -295,9 +295,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func loadActiveSkins(then: (() -> Void)? = nil) {
         var active = state.activeConfigs
         if active.isEmpty && state.data.skins.isEmpty {
-            let loaded = loadFirstRunLayout(then: then)
-            if let first = loaded.first {
-                firstRunSelection = first
+            let layout = firstRunLayout()
+            if let first = layout.first {
+                // Known before the first one loads: `then` shows the Manage window on it.
+                firstRunSelection = first.config
+                loadFirstRunLayout(layout, then: then)
                 restack()
                 return
             }

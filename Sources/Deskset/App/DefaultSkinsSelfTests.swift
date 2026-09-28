@@ -126,7 +126,10 @@ enum DefaultSkinsSelfTests {
             t.equal(app.state.data.shippedVariables["Stationery"], ["clockhours": "Auto", "location": "timezone"],
                     "what this version ships is recorded")
 
-            app.loadActiveSkins()
+            // What the launch does once the layout is loaded (the Manage window) runs once, and knows the first one.
+            var selectedThen: [String] = []
+            app.loadActiveSkins { selectedThen.append(app.firstRunSelection) }
+            t.equal(selectedThen, ["Stationery\\Clock"], "once the layout loaded (at once on the main thread)")
             let clock = app.controller(for: "Stationery\\Clock"), weather = app.controller(for: "Stationery\\Weather")
             t.equal(clock?.file, "Small.ini")
             t.equal(weather?.file, "Medium.ini")
@@ -177,7 +180,9 @@ enum DefaultSkinsSelfTests {
                 let root = try source(t, files)
                 let app = try app(t, source: root)
                 app.installDefaultSkinsIfNeeded()
-                app.loadActiveSkins()
+                var then = 0
+                app.loadActiveSkins { then += 1 }
+                t.equal(then, 1, "what follows the load runs once")
                 t.equal(app.controller(for: "Stationery\\Clock")?.file, "Small.ini", layout ?? "no layout file")
                 t.equal(app.state.activeConfigs.map(\.config), ["Stationery\\Clock"])
                 t.equal(app.firstRunSelection, "Stationery\\Clock")
