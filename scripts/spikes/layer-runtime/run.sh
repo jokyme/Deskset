@@ -5,7 +5,8 @@
 #   scripts/spikes/layer-runtime/run.sh               every step except the interactive click check (about 3 hours)
 #   scripts/spikes/layer-runtime/run.sh q1 q5 cost    only these steps:
 #                                                     env q5 q1 q4 q6 q7 memtrace offmain glass swap cost wscpu
-#                                                     wsmem probes
+#                                                     wsmem probes, and the second campaign (with Deskset's own
+#                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
 #   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
@@ -17,9 +18,8 @@
 #   python3 scripts/spikes/layer-runtime/summarize.py medians and spreads of the cost rounds -> results/summary.json
 #
 # Small borderless windows float at the bottom right of the main screen while it runs (the top left is left alone);
-# they let clicks through. The
-# pixel steps need screen capture to be allowed for the app running the script: the spike only checks
-# (CGPreflightScreenCaptureAccess), it never asks. CPU and timing numbers depend on what else runs: every phase
+# they let clicks through. The pixel steps need screen capture to be allowed for the app running the script: the
+# spike only checks (CGPreflightScreenCaptureAccess), it never asks. CPU and timing numbers depend on what else runs: every phase
 # records the load average, and numbers taken with a 1-minute load above 8 are marked provisional.
 set -euo pipefail
 
@@ -41,11 +41,13 @@ while [[ $# -gt 0 ]]; do
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
         -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click) STEPS+=("$1"); shift ;;
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b)
+            STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
 done
-[[ ${#STEPS[@]} -gt 0 ]] || STEPS=(env probes q5 q1 q4 q6 q7 offmain glass swap memtrace cost wscpu wsmem)
+[[ ${#STEPS[@]} -gt 0 ]] || STEPS=(env probes q5 q1 q4 q6 q7 offmain glass swap memtrace cost wscpu wsmem cost-b wscpu-b
+                                  wsmem-b memtrace-b)
 cd "$(dirname "$0")"
 
 BUILD="$(mktemp -d)"
@@ -112,6 +114,65 @@ COST=(
     "sixty EP --mode EP --window-cs srgb --frames"
     "sixty D1 --mode D1 --window-cs srgb --frames"
     "sixty DP --mode DP --window-cs srgb --frames"
+)
+
+# The second campaign (2026-09-28), after Deskset moved from A to its own bitmap (B): B drawn in full, B with kept
+# pictures as Deskset does (Bkept), and the E layers in Deskset's window color space (the screen's, like B): one E
+# layer (E1, pixel for pixel B on screen), the partition with its base bitmap in that space (EPw) and drawn through a
+# scratch bitmap in that space (EPxw, also pixel for pixel B). A again as the bridge to the first campaign.
+COST_B=(
+    "ten A --mode A"
+    "ten B --mode B"
+    "ten Bkept --mode B --kept"
+    "ten E1 --mode E1"
+    "ten EPw --mode EP --window-space-base"
+    "ten EPxw --mode EP --scratch --window-space-base"
+    "design A --mode A"
+    "design B --mode B"
+    "design Bkept --mode B --kept"
+    "design E1 --mode E1"
+    "design EPw --mode EP --window-space-base"
+    "design EPxw --mode EP --scratch --window-space-base"
+    "sixty A --mode A --frames"
+    "sixty B --mode B --frames"
+    "sixty Bkept --mode B --kept --frames"
+    "sixty E1 --mode E1 --frames"
+    "sixty EPw --mode EP --window-space-base --frames"
+    "sixty EPxw --mode EP --scratch --window-space-base --frames"
+)
+WSCPU_B=(
+    "ten A --mode A"
+    "ten B --mode B"
+    "ten Bkept --mode B --kept"
+    "ten E1 --mode E1"
+    "ten EPw --mode EP --window-space-base"
+    "sixty A --mode A"
+    "sixty B --mode B"
+    "sixty Bkept --mode B --kept"
+    "sixty E1 --mode E1"
+    "sixty EPw --mode EP --window-space-base"
+)
+# WindowServer memory, second campaign: 10 System widgets (two rows at the bottom right), 5 design skins, 5 visualizers.
+WSMEM_B=(
+    "ten A --mode A --count 10"
+    "ten B --mode B --count 10"
+    "ten Bkept --mode B --kept --count 10"
+    "ten E1 --mode E1 --count 10"
+    "ten EPw --mode EP --window-space-base --count 10"
+    "ten EPxw --mode EP --scratch --window-space-base --count 10"
+    "ten E1srgb --mode E1 --window-cs srgb --count 10"
+    "ten EPsrgb --mode EP --window-cs srgb --count 10"
+    "ten D1srgb --mode D1 --window-cs srgb --count 10"
+    "design A --mode A"
+    "design B --mode B"
+    "design Bkept --mode B --kept"
+    "design E1 --mode E1"
+    "design EPw --mode EP --window-space-base"
+    "sixty A --mode A"
+    "sixty B --mode B"
+    "sixty Bkept --mode B --kept"
+    "sixty E1 --mode E1"
+    "sixty EPw --mode EP --window-space-base"
 )
 
 WSCPU=(
@@ -197,6 +258,48 @@ for step in "${STEPS[@]}"; do
                         run "wsmem/$scenario-$1-r$r" wsmem --scenario "$scenario" --mode "$1" --window-cs "$2"
                     done
                 done
+            done ;;
+        cost-b)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${COST_B[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "cost-b/$scenario-$name-r$r" cost --scenario "$scenario" "$@"
+                done
+            done ;;
+        wscpu-b)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${WSCPU_B[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "wscpu-b/$scenario-$name-r$r" cost --scenario "$scenario" --seconds 2 --pairs 10 --settle 5 \
+                        --ws-cycles 0 --no-top --off-shown --backdrop "$@"
+                done
+            done ;;
+        wsmem-b)
+            for r in $(seq 1 "$WSMEM_ROUNDS"); do
+                for entry in "${WSMEM_B[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "wsmem-b/$scenario-$name-r$r" wsmem --scenario "$scenario" "$@"
+                done
+            done ;;
+        memtrace-b)
+            for spec in "ten B" "ten Bkept --kept" "ten E1" "ten EPw --window-space-base" "design B" "design Bkept --kept"; do
+                set -- $spec
+                scenario="$1" name="$2"
+                shift 2
+                mode="${name%kept}"
+                mode="${mode%w}"
+                [[ -z "$PICK_COMBOS" || "$PICK_COMBOS" == *" $scenario-$name "* ]] || continue
+                run "memtrace-b/$scenario-$name" memtrace --mode "$mode" --scenario "$scenario" --seconds 40 \
+                    --hide-at 25 "$@"
             done ;;
         click) "$BUILD/spike" click ;;
     esac

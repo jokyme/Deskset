@@ -4,7 +4,8 @@
 //        (a display-list context; Core Animation rasterizes it in this process on its accelerated path).
 //   B    Deskset's drawing since then: the view draws the whole skin on the main thread into a bitmap of its own
 //        (8-bit, premultiplied BGRA, in the window's color space, two bitmaps used in turn) and sets it as its
-//        layer's contents in updateLayer. (Deskset also keeps pictures of unchanged meters; B draws in full.)
+//        layer's contents in updateLayer. Plain B draws in full; B+kept (--kept) also keeps pictures of runs of
+//        unchanged elements and copies them, as Deskset does (SkinBitmapDrawing).
 //   E1   one layer the skin thread redraws (setNeedsDisplay + displayIfNeeded, draw(in:) paints the whole skin).
 //   EP   the partition (Partition.swift): base tiles showing one shared base bitmap through contentsRect, plus one layer
 //        per group that the skin thread redraws with draw(in:) (base pixels copied in, then the group's elements).
@@ -54,6 +55,8 @@ struct Config {
     var displayBeforeAttach = false
     /// EP / DP: draw groups in a window-sized scratch bitmap and copy their boxes out (see the header).
     var scratch = false
+    /// B: keep pictures of unchanged runs of elements, like Deskset's SkinBitmapDrawing.
+    var keptPictures = false
 
     var label: String {
         var s = mode.rawValue
@@ -62,6 +65,7 @@ struct Config {
         if (mode == .EP || mode == .DP) && baseSurface { s += "+surfaceBase" }
         if (mode == .EP || mode == .DP) && scratch { s += "+scratch" }
         if mode == .EP && baseInWindowSpace { s += "+windowSpaceBase" }
+        if mode == .B && keptPictures { s += "+kept" }
         if displayBeforeAttach { s += "+displayBeforeAttach" }
         if windowSpace != .default { s += "@\(windowSpace.rawValue)" }
         return s
@@ -97,13 +101,28 @@ final class ContentHostView: NSView {
 /// updateLayer into a bitmap of its own and sets that as the layer's contents.
 final class SkinDrawView: NSView {
     var paint: ((CGContext) -> Void)?
+    /// B with kept pictures: draws elements `range` (file order), and each element's state now (what it draws).
+    var paintItems: ((CGContext, Range<Int>) -> Void)?
+    var itemStates: (() -> [Int])?
     /// How long each drawing took (A: recording the display list, rasterized later; B: drawing the bitmap).
     var onDrawn: ((Double) -> Void)?
     var label = "A"
     /// B: draw into our own bitmaps (updateLayer) instead of draw(_:).
     var ownBitmap = false
+    /// B: keep pictures of runs of elements that did not change since the previous frame and copy them, like
+    /// Deskset's SkinBitmapDrawing (at most 4 whole-window pictures; changed elements are drawn directly).
+    var keptPictures = false
     private var bitmaps: [CGContext] = []
     private var nextBitmap = 0
+    private struct Run {
+        let range: Range<Int>
+        let states: [Int]
+        let image: CGImage
+    }
+    private var runs: [Run] = []
+    private var previousStates: [Int]?
+    /// What the last frame did: pictures copied, pictures made, elements drawn directly.
+    private(set) var keptStats = (copied: 0, made: 0, drawn: 0)
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override var wantsUpdateLayer: Bool { ownBitmap }
@@ -117,9 +136,14 @@ final class SkinDrawView: NSView {
         onDrawn?(now() - start)
     }
 
-    /// Like Deskset's SkinBitmapDrawing without its kept pictures: the window's color space (sRGB when it has
-    /// none), 8-bit premultiplied BGRA, two bitmaps used in turn so drawing never writes into the image the layer
-    /// still shows.
+    private static func makeContext(_ w: Int, _ h: Int, _ space: CGColorSpace) -> CGContext? {
+        CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+    }
+
+    /// Like Deskset's SkinBitmapDrawing: the window's color space (sRGB when it has none), 8-bit premultiplied
+    /// BGRA, two bitmaps used in turn so drawing never writes into the image the layer still shows; with
+    /// `keptPictures`, its kept pictures of unchanged runs of elements.
     override func updateLayer() {
         guard let layer, let paint else { return }
         let scale = window?.backingScaleFactor ?? 2
@@ -127,31 +151,106 @@ final class SkinDrawView: NSView {
         let w = Int((bounds.width * scale).rounded(.up)), h = Int((bounds.height * scale).rounded(.up))
         if bitmaps.count != 2 || bitmaps[0].width != w || bitmaps[0].height != h
             || !CFEqual(bitmaps[0].colorSpace, space) {
-            bitmaps = (0..<2).compactMap { _ in
-                CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
-                          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                            | CGBitmapInfo.byteOrder32Little.rawValue)
-            }
+            bitmaps = (0..<2).compactMap { _ in SkinDrawView.makeContext(w, h, space) }
             nextBitmap = 0
+            runs = []
+            previousStates = nil
         }
         guard bitmaps.count == 2 else { return }
         let start = now()
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
-        ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: CGFloat(h))
-        ctx.scaleBy(x: scale, y: -scale)
+        func inSkinSpace(_ c: CGContext, _ body: () -> Void) {
+            c.saveGState()
+            c.translateBy(x: 0, y: CGFloat(h))
+            c.scaleBy(x: scale, y: -scale)
+            body()
+            c.restoreGState()
+        }
         noteContext(ctx, label)
-        paint(ctx)
-        ctx.restoreGState()
+        if keptPictures, let paintItems, let itemStates {
+            let states = itemStates()
+            let stable = states.indices.map { i in previousStates.map { $0[i] == states[i] } ?? false }
+            previousStates = states
+            var kept: [Run] = []
+            var stats = (copied: 0, made: 0, drawn: 0)
+            var started = false
+            func drawDirectly(_ range: Range<Int>) {
+                if !started { ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)) }
+                started = true
+                inSkinSpace(ctx) { paintItems(ctx, range) }
+                stats.drawn += range.count
+            }
+            func place(_ image: CGImage) {
+                ctx.saveGState()
+                ctx.interpolationQuality = .none
+                if !started { ctx.setBlendMode(.copy) }
+                ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+                ctx.restoreGState()
+                started = true
+            }
+            var index = 0
+            while index < states.count {
+                guard stable[index] else {
+                    drawDirectly(index..<index + 1)
+                    index += 1
+                    continue
+                }
+                var end = index + 1
+                while end < states.count && stable[end] { end += 1 }
+                let range = index..<end, runStates = Array(states[range])
+                if let run = runs.first(where: { $0.range == range && $0.states == runStates }) {
+                    place(run.image)
+                    kept.append(run)
+                    stats.copied += 1
+                } else if kept.count < 4, let picture = SkinDrawView.makeContext(w, h, space) {
+                    inSkinSpace(picture) { paintItems(picture, range) }
+                    if let image = picture.makeImage() {
+                        place(image)
+                        kept.append(Run(range: range, states: runStates, image: image))
+                        stats.made += 1
+                    } else {
+                        drawDirectly(range)
+                    }
+                } else {
+                    drawDirectly(range)
+                }
+                index = end
+            }
+            if !started { ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)) }
+            runs = kept
+            keptStats = stats
+        } else {
+            ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+            inSkinSpace(ctx) { paint(ctx) }
+        }
         layer.contentsScale = scale
-        layer.contents = ctx.makeImage()
+        let image = ctx.makeImage()
+        layer.contents = image
+        lastImage = image
         onDrawn?(now() - start)
     }
 
-    /// B: bytes of the two bitmaps.
-    var ownedBitmapBytes: Int { bitmaps.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
+    /// B: the picture it showed last.
+    private(set) var lastImage: CGImage?
+
+    /// B+kept: the last picture against the skin drawn in full at `tick` into a new bitmap in the same color space.
+    func keptCheck(tick: Int) -> JSON? {
+        guard keptPictures, let image = lastImage, let space = image.colorSpace, let paint,
+              let full = SkinDrawView.makeContext(image.width, image.height, space) else { return nil }
+        let scale = window?.backingScaleFactor ?? 2
+        full.clear(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        full.translateBy(x: 0, y: CGFloat(image.height))
+        full.scaleBy(x: scale, y: -scale)
+        paint(full)
+        guard let fullImage = full.makeImage() else { return nil }
+        return compare(Pixels.drawn(image, in: space), Pixels.drawn(fullImage, in: space)).json
+    }
+
+    /// B: bytes of the two bitmaps and the kept pictures.
+    var ownedBitmapBytes: Int {
+        bitmaps.reduce(0) { $0 + $1.bytesPerRow * $1.height } + runs.reduce(0) { $0 + $1.image.bytesPerRow * $1.image.height }
+    }
 }
 
 // MARK: Context introspection
@@ -375,7 +474,10 @@ final class SkinWindow {
             let v = SkinDrawView(frame: container.bounds)
             v.label = config.label
             v.ownBitmap = config.mode == .B
+            v.keptPictures = config.mode == .B && config.keptPictures
             v.paint = { [unowned self] ctx in widget.draw(ctx, tick: tick) }
+            v.paintItems = { [unowned self] ctx, range in widget.draw(ctx, tick: tick, Array(widget.elements[range])) }
+            v.itemStates = { [unowned self] in widget.elements.map { $0.state(at: tick) } }
             v.onDrawn = { [unowned self] d in recordDraw(d) }
             container.addSubview(v)
             drawView = v

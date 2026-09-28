@@ -4,7 +4,8 @@
 //   --scenario ten     10 System-like widgets (about 20 groups each), Update=1000
 //              design  one 360 pt design skin, Update=1000
 //              sixty   one audio visualizer at 60 Hz (33 groups change every frame)
-//   --mode A|E1|EP|D1|DP  --format rgba8|auto|rgba16f  --window-cs default|srgb  [--window-space-base] [--scratch]
+//   --mode A|B|E1|EP|D1|DP  --format rgba8|auto|rgba16f  --window-cs default|srgb  [--window-space-base] [--scratch]
+//                      [--kept] (B: kept pictures of unchanged elements, as Deskset does)
 //   --seconds N        length of each on / off phase (default 5)
 //   --pairs N          on / off phase pairs (default 3)
 //   --settle N         seconds the windows run before this process's memory is read (default 20: `memtrace` shows
@@ -65,6 +66,7 @@ func costRun() -> JSON {
     config.baseSurface = mode == .DP
     config.baseInWindowSpace = flag("--window-space-base")
     config.scratch = flag("--scratch")
+    config.keptPictures = flag("--kept")
 
     let (make, count, interval): (() -> Widget, Int, Double) = {
         switch scenario {
@@ -269,6 +271,14 @@ func costRun() -> JSON {
         }
         j["frameCost"] = f
     }
+    // B+kept: what the last frame copied and drew, and its picture against a full drawing (Deskset allows 8 levels:
+    // copied pictures composite like direct drawing, but each 8-bit step rounds).
+    if let w = windows.first, let v = w.drawView, v.keptPictures {
+        let k = v.keptStats
+        j["keptPicturesLastFrame"] = ["picturesCopied": k.copied, "picturesMade": k.made, "elementsDrawn": k.drawn,
+                                      "elements": w.widget.elements.count]
+        if let c = v.keptCheck(tick: w.tick) { j["keptPicturesVsFullDrawing"] = c }
+    }
 
     // 3. The end of the scenario: memory after all phases, 60 Hz pacing, close.
     let footprintEnd = footprintMedian()
@@ -384,6 +394,9 @@ func memTrace() -> JSON {
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
     config.baseSurface = mode == .DP
+    config.baseInWindowSpace = flag("--window-space-base")
+    config.scratch = flag("--scratch")
+    config.keptPictures = flag("--kept")
     let (make, count, scenarioInterval): (() -> Widget, Int, Double) = {
         switch scenario {
         case "design": return ({ Widgets.design() }, 1, 1.0)
@@ -464,6 +477,9 @@ func windowServerMemoryRun() -> JSON {
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
     config.baseSurface = mode == .DP
+    config.baseInWindowSpace = flag("--window-space-base")
+    config.scratch = flag("--scratch")
+    config.keptPictures = flag("--kept")
     let mb = 1024.0 * 1024.0
     /// Medians of 5 samples: WindowServer's footprint (`top`) and resident size (`ps`), the GPU's memory in use.
     func sample() -> (mem: Double?, rss: Double?, gpu: Double?) {
