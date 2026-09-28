@@ -15,6 +15,39 @@ public protocol WeatherTransport: AnyObject {
     func get(_ request: WeatherHTTPRequest, completion: @escaping (Result<WeatherHTTPResponse, WeatherTransportError>) -> Void)
 }
 
+/// A transport that never reaches the network (`--render --data`, verification runs): every request gets the same
+/// answer — a saved MET Norway response with its status — or, without one, fails as if the Mac were offline. The
+/// answer comes back on the calling thread, before `get` returns. Counts the requests.
+public final class FixtureWeatherTransport: WeatherTransport {
+    /// nil: offline.
+    public let response: WeatherHTTPResponse?
+    private let lock = NSLock()
+    private var count = 0
+
+    /// `body`: the response's bytes (nil: offline); `status`: its HTTP status.
+    public init(body: Data?, status: Int = 200, headers: [String: String] = [:]) {
+        response = body.map { WeatherHTTPResponse(status: status, headers: headers, body: $0) }
+    }
+
+    public var requests: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    public func get(_ request: WeatherHTTPRequest,
+                    completion: @escaping (Result<WeatherHTTPResponse, WeatherTransportError>) -> Void) {
+        lock.lock()
+        count += 1
+        lock.unlock()
+        if let response {
+            completion(.success(response))
+        } else {
+            completion(.failure(.network("offline (no forecast in the data)")))
+        }
+    }
+}
+
 /// The real transport: its own ephemeral `URLSession` without a URL cache (so 304 responses reach the service),
 /// without cookies, 20 s per request and 60 s in all, no waiting for connectivity. HTTPS only (plain HTTP only to
 /// the loopback address, for tests); a redirect must stay on HTTPS and on `*.met.no`; bodies over `maxBytes` are

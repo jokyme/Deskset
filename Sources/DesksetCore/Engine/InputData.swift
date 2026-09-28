@@ -80,6 +80,14 @@ public struct SkinInputData: Equatable, Sendable {
         public var available: Double?
         public var label: String
         public var kind: VolumeInfo.Kind
+
+        public init(total: Double, free: Double, available: Double? = nil, label: String = "", kind: VolumeInfo.Kind = .fixed) {
+            self.total = total
+            self.free = free
+            self.available = available
+            self.label = label
+            self.kind = kind
+        }
     }
 
     public struct Process: Equatable, Sendable {
@@ -89,11 +97,23 @@ public struct SkinInputData: Equatable, Sendable {
         public var cpu: Double
         /// Bytes of memory.
         public var memory: Double
+
+        public init(name: String, pid: Int32, cpu: Double, memory: Double = 0) {
+            self.name = name
+            self.pid = pid
+            self.cpu = cpu
+            self.memory = memory
+        }
     }
 
     public struct SysInfoAnswer: Equatable, Sendable {
         public var number: Double
         public var string: String?
+
+        public init(number: Double, string: String? = nil) {
+            self.number = number
+            self.string = string
+        }
     }
 
     public struct Sensor: Equatable, Sendable {
@@ -103,6 +123,13 @@ public struct SkinInputData: Equatable, Sendable {
         public var minimum: Double?
         public var maximum: Double?
         public var label: String?
+
+        public init(value: Double?, minimum: Double? = nil, maximum: Double? = nil, label: String? = nil) {
+            self.value = value
+            self.minimum = minimum
+            self.maximum = maximum
+            self.label = label
+        }
     }
 
     public struct NowPlaying: Equatable, Sendable {
@@ -125,6 +152,21 @@ public struct SkinInputData: Equatable, Sendable {
         public var repeatMode: Int
         /// 0–100.
         public var rating: Double
+
+        public init(player: String = "music", state: Int = 1, artist: String = "", title: String = "", album: String = "", position: Double = 0, duration: Double = 0, cover: String? = nil, volume: Double = 70, shuffle: Bool = false, repeatMode: Int = 0, rating: Double = 0) {
+            self.player = player
+            self.state = state
+            self.artist = artist
+            self.title = title
+            self.album = album
+            self.position = position
+            self.duration = duration
+            self.cover = cover
+            self.volume = volume
+            self.shuffle = shuffle
+            self.repeatMode = repeatMode
+            self.rating = rating
+        }
     }
 
     /// One frame of audio analysis: the levels a parent AudioLevel measure reports, 0–1, per channel (left, right…;
@@ -136,6 +178,13 @@ public struct SkinInputData: Equatable, Sendable {
         public var bands: [[Double]]
         /// Per channel, `FFTSize / 2 + 1` values each (a single list is used for every channel).
         public var fft: [[Double]]
+
+        public init(rms: [Double], peak: [Double], bands: [[Double]] = [], fft: [[Double]] = []) {
+            self.rms = rms
+            self.peak = peak
+            self.bands = bands
+            self.fft = fft
+        }
     }
 
     public struct Audio: Equatable, Sendable {
@@ -144,6 +193,13 @@ public struct SkinInputData: Equatable, Sendable {
         public var deviceName: String
         public var sampleRate: Double
         public var channels: Int
+
+        public init(frames: [AudioFrame], deviceName: String = "Deskset Test Signal", sampleRate: Double = 48000, channels: Int = 2) {
+            self.frames = frames
+            self.deviceName = deviceName
+            self.sampleRate = sampleRate
+            self.channels = channels
+        }
     }
 
     public struct Weather: Equatable, Sendable {
@@ -162,17 +218,20 @@ public struct SkinInputData: Equatable, Sendable {
         /// The HTTP status of the answer (200).
         public var status: Int
         public var location: Location
+
+        public init(forecast: Data?, forecastPath: String? = nil, status: Int = 200, location: Location = .forecast) {
+            self.forecast = forecast
+            self.forecastPath = forecastPath
+            self.status = status
+            self.location = location
+        }
+
         /// The forecast's own point (from its `geometry`), when it has one.
         public var forecastPoint: (latitude: Double, longitude: Double)? {
             guard let forecast, let json = try? JSONValue.parse(forecast),
                   let c = json["geometry"]?["coordinates"]?.array, c.count >= 2,
                   let lon = c[0].number, let lat = c[1].number else { return nil }
             return (lat, lon)
-        }
-
-        public static func == (a: Weather, b: Weather) -> Bool {
-            a.forecast == b.forecast && a.forecastPath == b.forecastPath && a.status == b.status
-                && a.location == b.location
         }
     }
 
@@ -185,12 +244,26 @@ public struct SkinInputData: Equatable, Sendable {
         public var encryption: String
         public var auth: String
         public var phy: String
+
+        public init(ssid: String, rssi: Int = 0, transmitRate: Double = 0, encryption: String = "AES", auth: String = "WPA2-Personal", phy: String = "802.11ax") {
+            self.ssid = ssid
+            self.rssi = rssi
+            self.transmitRate = transmitRate
+            self.encryption = encryption
+            self.auth = auth
+            self.phy = phy
+        }
     }
 
     public struct WiFi: Equatable, Sendable {
         public var current: WiFiNetwork
         /// Visible networks (`WiFiInfoType=LIST`).
         public var networks: [WiFiNetwork]
+
+        public init(current: WiFiNetwork, networks: [WiFiNetwork] = []) {
+            self.current = current
+            self.networks = networks
+        }
     }
 
     // MARK: Keys

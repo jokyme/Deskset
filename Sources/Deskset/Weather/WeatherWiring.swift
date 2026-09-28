@@ -75,6 +75,31 @@ enum WeatherWiring {
         return env
     }
 
+    /// `--render --data`'s `weather`: the render's skin is live, and its requests get the given MET Norway response
+    /// (or fail as offline) through `FixtureWeatherTransport`; `Location=auto` is the forecast's own point, a given
+    /// point, or none; `Location=timezone` is the city of `timeZone` (the skin's). Place names resolve from the
+    /// bundled table before the update goes on; nothing is cached on disk, nothing reaches the network or asks for
+    /// Location Services. `clock`: the service's clock (the virtual one of a render with `--clock`).
+    static func fixtureEnvironment(_ weather: SkinInputData.Given<SkinInputData.Weather>,
+                                   timeZone: @escaping () -> TimeZone,
+                                   clock: WeatherClock? = nil) -> WeatherEnvironment {
+        var env = previewEnvironment(demo: false, demoNow: nil)
+        env.isLive = { _ in true }
+        let w = weather.value
+        env.transport = FixtureWeatherTransport(body: w?.forecast, status: w?.status ?? 200)
+        let point: RoundedCoordinate?
+        switch w?.location ?? .none {
+        case .forecast: point = w?.forecastPoint.map { RoundedCoordinate(latitude: $0.latitude, longitude: $0.longitude) }
+        case .coordinate(let lat, let lon): point = RoundedCoordinate(latitude: lat, longitude: lon)
+        case .none: point = nil
+        }
+        env.deviceLocation = FixedDeviceLocation(point)
+        env.localTimeZone = timeZone
+        env.random = { 0 }
+        if let clock { env.clock = clock }
+        return env
+    }
+
     static var demoRequested: Bool { ProcessInfo.processInfo.environment["DESKSET_WEATHER_DEMO"] == "1" }
 
     static var demoClock: Date? {

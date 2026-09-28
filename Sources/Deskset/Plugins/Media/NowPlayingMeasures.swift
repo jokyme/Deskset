@@ -38,7 +38,7 @@ class NowPlayingClientMeasure: MediaUIMeasure {
         apps.filter(center.isDenied).map(automationNote)
     }
 
-    var center: NowPlayingCenter = .shared
+    var center: NowPlayingCenter = .current
     private var subscription: NowPlayingSubscription?
     private weak var subscribedCenter: NowPlayingCenter?
     /// Whether this measure shows the cover (cover art is only fetched while someone shows it).
@@ -337,7 +337,7 @@ final class WebNowPlayingMeasure: NowPlayingClientMeasure {
 /// the track keys go to Music / Spotify through the NowPlaying backend and the volume keys change the default
 /// output device's volume directly (Judgment: 2 % per step, like the Windows volume keys; mute toggles).
 final class MediaKeyMeasure: MediaUIMeasure {
-    var center: NowPlayingCenter = .shared
+    var center: NowPlayingCenter = .current
     /// Tests capture what would be sent instead of touching the system.
     static var sink: ((MediaKeyCommand, _ viaHID: Bool) -> Void)?
     /// Whether Deskset may post key events (Accessibility); replaced in tests.

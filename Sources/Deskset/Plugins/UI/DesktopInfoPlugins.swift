@@ -312,8 +312,9 @@ final class ChameleonMeasure: MediaUIMeasure {
         lastCheck = now
         var aspect: CGFloat?
         var path = ""
+        let source = ChameleonMeasure.desktopSource
         if isDesktop {
-            if let desktop = ChameleonMeasure.desktop(of: liveHost) {
+            if let desktop = source.desktop(of: liveHost) {
                 path = desktop.picture
                 if cropDesktop, crop == nil, desktop.frame.height > 0 { aspect = desktop.frame.width / desktop.frame.height }
             }
@@ -330,9 +331,10 @@ final class ChameleonMeasure: MediaUIMeasure {
         let analyzed = paletteKey
         let desktop = isDesktop
         pendingKey = path
-        // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake).
+        // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake) unless
+        // the data gives it.
         let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: DispatchQueue.global(qos: .utility),
-                                fixture: !desktop) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
+                                fixture: !desktop || source.isFixture) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
             let file = desktop ? ChameleonMeasure.wallpaperFile(path) : path
             let modified = file.isEmpty ? 0 : ((try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate]
                 as? Date)?.map { $0.timeIntervalSince1970 } ?? 0)
@@ -358,6 +360,9 @@ final class ChameleonMeasure: MediaUIMeasure {
         }
     }
 
+    /// Where Chameleon measures find the desktop picture: the screens, or a `--render --data`'s `FixedDesktopPicture`.
+    static var desktopSource: DesktopPictureSource = ScreenDesktopPicture()
+
     /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
     /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
     /// main thread only: a skin on another thread gets the main screen's, as the main thread last saw it
@@ -374,6 +379,44 @@ final class ChameleonMeasure: MediaUIMeasure {
     static func wallpaperFile(_ path: String) -> String {
         DesktopPicture.firstPicture(inFolder: path) ?? path
     }
+}
+
+/// Where Chameleon finds the desktop picture (`Type=Desktop`).
+protocol DesktopPictureSource: AnyObject {
+    /// The desktop picture setting and the frame of the screen the skin's window is on; nil without one.
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop?
+    /// True when the picture is a given file (reading it is a fixture in virtual time), not the Mac's live setting.
+    var isFixture: Bool { get }
+}
+
+/// The Mac's screens (`ChameleonMeasure.desktop(of:)`).
+final class ScreenDesktopPicture: DesktopPictureSource {
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? { ChameleonMeasure.desktop(of: host) }
+    var isFixture: Bool { false }
+}
+
+/// `--render --data`'s `desktopImage`: a given picture on a screen of its own shape (so nothing is cropped away), or
+/// none.
+final class FixedDesktopPicture: DesktopPictureSource {
+    let picture: DesktopInputs.ScreenDesktop?
+
+    init(_ path: String?) {
+        guard let path else {
+            picture = nil
+            return
+        }
+        var size = CGSize(width: 1600, height: 1000)
+        if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+           w > 0, h > 0 {
+            size = CGSize(width: w, height: h)
+        }
+        picture = DesktopInputs.ScreenDesktop(picture: path, frame: CGRect(origin: .zero, size: size))
+    }
+
+    func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? { picture }
+    var isFixture: Bool { true }
 }
 
 // MARK: - Inputs from AppKit

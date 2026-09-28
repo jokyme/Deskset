@@ -126,7 +126,10 @@ final class AudioLevelMeasure: Measure {
     private(set) var pluginString: String?
 
     /// Replaced in tests.
-    var engine = AudioCaptureEngine.shared
+    var engine: AudioLevelEngine = AudioLevelMeasure.sharedEngine()
+    /// Where AudioLevel measures made from now on take their levels: the capture engine, or the levels of a
+    /// `--render --data` (`ScriptedAudioLevels`).
+    static var sharedEngine: () -> AudioLevelEngine = { AudioCaptureEngine.shared }
     /// The audio devices (tests replace it): `sharedSystem`, looked up at every read.
     var system: () -> AudioSystemSnapshot = { AudioLevelMeasure.sharedSystem() }
     /// Where every AudioLevel measure reads the audio devices unless its own `system` is replaced. The app never
@@ -185,7 +188,7 @@ final class AudioLevelMeasure: Measure {
     /// A skin outside a skin window never captures (`mayCapture`).
     private func subscribeIfNeeded() {
         guard !subscribed, let options = parentOptions, let analyzer else { return }
-        guard mayCapture(skin) else {
+        guard engine.capturesNothing || mayCapture(skin) else {
             logOnce("[\(name)] AudioLevel: no capture outside a skin window "
                     + "(DESKSET_AUDIO_DEMO=1 plays a demo signal)", level: .notice)
             return

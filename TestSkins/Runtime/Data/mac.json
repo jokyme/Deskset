@@ -1,0 +1,83 @@
+{
+  "system": "system.json",
+  "battery": {
+    "level": 76,
+    "charging": false,
+    "onAC": false,
+    "timeRemaining": 312
+  },
+  "sensors": {
+    "cpu": 52.4,
+    "cpu.performance": 52.4,
+    "cpu.efficiency": 41.7,
+    "gpu": 44.1,
+    "soc": 47.9,
+    "ssd": 38.0,
+    "battery": 31.2,
+    "fan.1": {
+      "value": 2150,
+      "min": 1200,
+      "max": 5800
+    },
+    "fan.2": {
+      "value": 2230,
+      "min": 1200,
+      "max": 6300
+    },
+    "power.system": 18.6,
+    "power.cpu": 6.4,
+    "power.gpu": 2.1,
+    "power.adapter": 0,
+    "gpu.usage": 23,
+    "battery.health": 91,
+    "battery.cycles": 212,
+    "battery.voltage": 12.41,
+    "battery.current": -1.32,
+    "frequency.cpu": 3228,
+    "frequency.cpu.performance": 3504,
+    "frequency.cpu.efficiency": 2064,
+    "frequency.gpu": 1398,
+    "thermal": 0
+  },
+  "nowPlaying": {
+    "player": "music",
+    "state": "playing",
+    "artist": "Deskset Ensemble",
+    "title": "Rain on Glass",
+    "album": "Desktop Weather",
+    "position": 83,
+    "duration": 245,
+    "cover": "cover.png",
+    "volume": 70,
+    "shuffle": true,
+    "repeat": "all",
+    "rating": 80
+  },
+  "audio": "audio.json",
+  "weather": "../../Plugins/@Resources/Weather/metno-complete-oslo.json",
+  "wifi": {
+    "ssid": "Deskset Test",
+    "rssi": -52,
+    "transmitRate": 866.7,
+    "encryption": "AES",
+    "auth": "WPA2-Personal",
+    "phy": "802.11ac",
+    "networks": [
+      {
+        "ssid": "Deskset Test",
+        "rssi": -52
+      },
+      {
+        "ssid": "Cafe Guest",
+        "rssi": -71,
+        "encryption": "NONE",
+        "auth": "Open"
+      },
+      {
+        "ssid": "Library",
+        "rssi": -80
+      }
+    ]
+  },
+  "desktopImage": "desktop.png"
+}

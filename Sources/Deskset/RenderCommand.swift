@@ -31,6 +31,9 @@ struct RenderOptions: Equatable {
     var timeZone: TimeZone?
     /// `--seed`: the skin's random numbers come from a generator with this seed (nil: the system's).
     var seed: UInt64?
+    /// `--data`: what the skin reads about the Mac, as JSON text or the path of a JSON file (`SkinInputData`; read
+    /// when the render starts).
+    var data: String?
     /// `--color-space`: the bitmap the skin is drawn into. `device` (the default, what `--render` always drew) is the
     /// device RGB space; `srgb` is 8-bit premultiplied sRGB, the space reference images are compared in.
     var colorSpace = ColorSpace.device
@@ -53,7 +56,7 @@ struct RenderOptions: Equatable {
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
         + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
-        + "[--seed N] [--color-space device|srgb] [--skins-dir DIR]"
+        + "[--seed N] [--data FILE|JSON] [--color-space device|srgb] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -153,6 +156,11 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--seed") {
             o.warnings.append("--seed needs a value; using the system's random numbers")
         }
+        if let raw = value("--data") {
+            o.data = raw
+        } else if arguments.contains("--data") {
+            o.warnings.append("--data needs a file or JSON text; the skin reads this Mac")
+        }
         if let raw = value("--color-space") {
             let word = raw.trimmingCharacters(in: .whitespaces).lowercased()
             if let space = ColorSpace(rawValue: word) {
@@ -222,7 +230,7 @@ struct RenderOptions: Equatable {
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
 ///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
-///            [--color-space srgb] [--skins-dir path/to/Skins]
+///            [--data data.json] [--color-space srgb] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
@@ -235,6 +243,9 @@ struct RenderOptions: Equatable {
 /// fake (the network, programs, live system state) runs for real, gets up to one interval of real time to come back
 /// before each update, and is listed on stderr as not verifiable. `--time-zone` alone only changes the zone, and
 /// `--seed` makes its random numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
+/// `--data` gives what the skin reads about the Mac (system readings, battery, sensors, NowPlaying, audio levels, the
+/// weather, Wi-Fi, the desktop picture; `RenderData`): with `--clock` and `--seed`, the same image on every run and
+/// every Mac.
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -260,9 +271,22 @@ enum RenderCommand {
         let output = URL(fileURLWithPath: o.output ?? fileURL.deletingPathExtension().lastPathComponent + ".png")
 
         let (skinsDir, config) = locate(fileURL, skinsDir: o.skinsDirectory)
+        // --data: what the skin reads about the Mac.
+        var inputs: RenderData?
+        if let argument = o.data {
+            do {
+                let data = try SkinInputData.load(argument, directory: URL(fileURLWithPath:
+                    FileManager.default.currentDirectoryPath))
+                for key in data.unknownKeys { fputs("warning: --data: \(key) is not a data key; ignored\n", stderr) }
+                inputs = RenderData(data)
+            } catch {
+                fputs("error: --data: \(error)\n", stderr)
+                return 1
+            }
+        }
         let host = RenderHost()
-        let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir, system: SystemMonitor.shared,
-                        host: host)
+        let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir,
+                        system: inputs?.systemSource(base: SystemMonitor.shared) ?? SystemMonitor.shared, host: host)
         // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
         let virtual = o.virtualTime()
         var restoreServices: () -> Void = {}
@@ -282,6 +306,8 @@ enum RenderCommand {
             skin.skinClock.timeZone = { zone }
         }
         if let seed = o.seed { skin.random = SkinRandom(seed: seed) }
+        inputs?.install(clock: skin.skinClock, virtual: virtual)
+        defer { inputs?.restore() }
         do {
             try skin.load()
         } catch {
@@ -291,6 +317,7 @@ enum RenderCommand {
         Fonts.registerFonts(for: skin)
         for i in 0..<o.updates {
             if i > 0 {
+                inputs?.advance()
                 if let virtual {
                     // Update i is at exactly the start plus i intervals.
                     step(virtual, until: Double(i) * o.interval / 1000,
