@@ -122,8 +122,11 @@ final class Win7AudioMeasure: Measure {
             skin.log("[\(name)] Win7Audio: unknown command \"\(command)\"", level: .warning)
             return
         }
-        if let problem = parsed.apply(to: system) {
-            skin.log("[\(name)] Win7Audio: \(problem)", level: .notice)
+        // Through the skin's side effects: done, or only recorded.
+        skin.sideEffects.perform(.audio(parsed.effect)) {
+            if let problem = parsed.apply(to: system) {
+                skin.log("[\(name)] Win7Audio: \(problem)", level: .notice)
+            }
         }
     }
 }
