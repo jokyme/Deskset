@@ -28,6 +28,10 @@ final class StudioHost: LiveSkinHost {
     let policy = StudioActionPolicy()
     /// The editing session pauses its instance with the widgets on the desktop (`EditingSession.setUpdatesPaused`).
     var updatesPaused = false
+    /// The canvas passes the pointer to the instance (the Studio's Interact).
+    var takesPointer = false
+    /// The Mac's look the instance sees (the Studio's preview; nil: the desktop copy's).
+    var appearance: SkinAppearance?
 
     var areUpdatesPaused: Bool { updatesPaused }
 
@@ -72,10 +76,11 @@ final class StudioHost: LiveSkinHost {
             env = SkinController.environment(windowFrame: nil)
         }
         env.windowFrame.width = skin.width
+        if let appearance { env.appearance = appearance }
         env.windowFrame.height = skin.height
         return env
     }
 
-    /// The canvas takes no pointer input while the Studio designs.
-    func skinWindowTakesPointer(_ skin: Skin) -> Bool { false }
+    /// The canvas takes no pointer input while the Studio designs; it does while it interacts.
+    func skinWindowTakesPointer(_ skin: Skin) -> Bool { takesPointer }
 }

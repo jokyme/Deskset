@@ -70,6 +70,10 @@ final class EditingSession {
     /// The widget's undo stack (the Studio window uses it as its own: ⌘Z, the toolbar, the toasts).
     let undoStack = EditorUndoManager()
     let host = StudioHost()
+    /// Sample data the Studio's instance shows in place of what its measures read (the preview bar; nil: live).
+    var measureValues: MeasureValueOverride? { didSet { studioSkin?.measureValues = measureValues } }
+    /// The clock the Studio's instance reads (nil: the Mac's): frozen time in the preview. Taken at the next load.
+    var studioClock: SkinClock?
     /// The Studio's own instance of the widget (nil while no Studio window shows the widget).
     private(set) var studioSkin: Skin?
     /// The widget's main file, as the desktop runs it.
@@ -183,6 +187,8 @@ final class EditingSession {
                         host: host)
         skin.sourceProvider = studioSources
         skin.actionPolicy = host.policy
+        skin.measureValues = measureValues
+        if let studioClock { skin.skinClock = studioClock }
         // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
         host.policy.resetFiles()
         let stamps = diskSync.modificationDates()
@@ -286,6 +292,7 @@ final class EditingSession {
     func apply(_ name: String, _ ops: [EditOp], commands: [TransactionCommand] = [], selectionBefore: [String] = [],
                selectionAfter: [String] = [], registersUndo: Bool = true, verify: ((Skin) -> Bool)? = nil) throws
         -> Transaction? {
+        willApply?()
         var timings: [String: Double] = [:]
         let start = DispatchTime.now().uptimeNanoseconds
         func lap(_ phase: String, _ since: UInt64) { timings[phase] = Double(DispatchTime.now().uptimeNanoseconds - since) / 1e6 }
@@ -550,6 +557,11 @@ final class EditingSession {
     /// instance, loaded from memory — so a step reaches the canvas without waiting for the second load.
     func scheduleDesktopRefresh(thenMoveTo place: WidgetPosition? = nil) {
         if let place { placeAfterRefresh = place }
+        if let holds = holdsDesktop, let skin = studioSkin, holds(skin) {
+            isHoldingDesktop = true
+            return
+        }
+        isHoldingDesktop = false
         guard app.defersDesktopUpdates else { return refreshDesktop() }
         guard scheduledRefresh == nil else { return }
         // A timer, not the main queue: the run loop draws the windows before it waits for the timer, while it runs
@@ -560,6 +572,29 @@ final class EditingSession {
         }
         RunLoop.main.add(timer, forMode: .common)
         scheduledRefresh = timer
+    }
+
+    /// Called before a step is planned (the Studio window commits code typed and not saved yet, so the step starts
+    /// from what the user sees). nil by default.
+    var willApply: (() -> Void)?
+    /// While it says so for the Studio's instance, the desktop copy keeps the version it runs — the last working one:
+    /// the files have a problem that stops a part from drawing (the code pane's red diagnostics). Steps are still
+    /// written; the reload waits, and happens once, at the first step or undo after which it no longer holds. nil (the
+    /// default): never held.
+    var holdsDesktop: ((Skin) -> Bool)?
+    /// A reload of the desktop copy waits because `holdsDesktop` held it.
+    private(set) var isHoldingDesktop = false
+
+    /// The window that held the desktop copy lets go (it closes, or shows another widget): the desktop keeps the last
+    /// working version it runs (the files still have the problem), nothing waits for a reload any more, and a move
+    /// that waited for it is made now.
+    func endHold() {
+        guard isHoldingDesktop || placeAfterRefresh != nil else { return }
+        isHoldingDesktop = false
+        if scheduledRefresh == nil, let place = placeAfterRefresh {
+            placeAfterRefresh = nil
+            runningDesktop?.moveTo(x: place.x, y: place.y)
+        }
     }
 
     /// Whether a reload of the desktop copy waits for its turn.

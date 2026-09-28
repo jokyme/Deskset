@@ -572,6 +572,13 @@ extension Skin {
                 "currentconfig": config, "rootconfig": rootConfig, "rootconfigpath": dir(rootConfigDirectory),
                 "skinspath": dir(skinsDirectory),
             ]
+            // Loaded before, and neither it nor any file it read changed since (on disk or in the editor's text):
+            // what it read then (a suite of hundreds of skins is walked in a few milliseconds on every step).
+            let key = IncludeMapCache.key(url)
+            if let cached = IncludeMapCache.shared.entry(key), cached.isCurrent(sourceProvider) {
+                for file in cached.included { map.readers[file, default: []].insert(config.lowercased()) }
+                continue
+            }
             var usesAppearance = false
             func load(_ appearance: SkinAppearance) -> LoadedIniFile? {
                 let mac = appearance.variables
@@ -593,8 +600,58 @@ extension Skin {
             for file in included {
                 map.readers[IncludeMap.key(file), default: []].insert(config.lowercased())
             }
+            IncludeMapCache.shared.store(key, .init(included: included.map(IncludeMap.key),
+                                                    stamps: ([url] + included).map { IncludeMapCache.stamp($0, sourceProvider) }))
         }
         return map
+    }
+
+    /// What `includeMap()` found for each .ini file, kept for the next walk: the files it read, and a stamp of each
+    /// (its size and modification date, and the editor's text of it when an editing session holds one), so a skin is
+    /// loaded again only when it or a file it read changed — a file added or removed shows in the walk itself.
+    final class IncludeMapCache: @unchecked Sendable {
+        static let shared = IncludeMapCache()
+
+        struct Stamp: Equatable {
+            var path: String
+            var modified: Date?
+            var size: Int?
+            var text: Int?
+        }
+
+        struct Entry {
+            var included: [String]
+            var stamps: [Stamp]
+
+            func isCurrent(_ sources: SourceProvider?) -> Bool {
+                stamps.allSatisfy { IncludeMapCache.stamp(URL(fileURLWithPath: $0.path), sources) == $0 }
+            }
+        }
+
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+
+        static func key(_ url: URL) -> String { url.standardizedFileURL.resolvingSymlinksInPath().path }
+
+        static func stamp(_ url: URL, _ sources: SourceProvider?) -> Stamp {
+            let path = key(url)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+            return Stamp(path: path, modified: attributes?[.modificationDate] as? Date,
+                         size: (attributes?[.size] as? NSNumber)?.intValue,
+                         text: sources?.sourceText(for: URL(fileURLWithPath: path))?.hashValue)
+        }
+
+        func entry(_ key: String) -> Entry? {
+            lock.lock()
+            defer { lock.unlock() }
+            return entries[key]
+        }
+
+        func store(_ key: String, _ entry: Entry) {
+            lock.lock()
+            defer { lock.unlock() }
+            entries[key] = entry
+        }
     }
 
     /// The files each config reads through `@Include` (`Skin.includeMap()`).

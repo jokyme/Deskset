@@ -20,6 +20,8 @@ import DesksetCore
 ///   `--inspector-width N` (default its minimum). States that need the pointer or a gesture: see `SnapshotOptions`
 ///   (`--hover`, `--drag`, `--expert`, `--tip`, `--expand`, `--edit-text`, `--scroll`). The toolbar is drawn as
 ///   stand-ins of its items (`drawToolbarStandIn`).
+/// - `studio2`: the new Studio window on a designed screen, `--screen NAME` (`StudioScreen`), `--language en|zh`,
+///   `--size WxH` (default 1400x860), at 2x (`StudioSnapshot`).
 /// - `settings`: the Settings window on its Editor pane (or `--pane general`), listing the editors installed here.
 /// - `codeeditor`: the built-in code editor on a copy of Deskset\System (System.ini and its @Include files), with a
 ///   section revealed and tinted (`--size WxH`, default 760x560).
@@ -65,6 +67,14 @@ enum UISnapshot {
                                         .map { CGFloat($0) },
                                     skinsDir: value(after: "--skins-dir"), config: value(after: "--config"),
                                     options: options)
+        case "studio2":
+            // The new Studio window on a designed screen (`StudioSnapshot`).
+            switch StudioSnapshot.run(arguments) {
+            case .success(let rendered): data = rendered
+            case .failure(let problem):
+                fputs("error: \(problem.message)\n", stderr)
+                return 2
+            }
         case "settings":
             data = settingsPreview(pane: value(after: "--pane").flatMap(SettingsWindowController.Pane.init) ?? .editor)
         case "codeeditor":
@@ -85,7 +95,7 @@ enum UISnapshot {
                                  hidden: arguments.contains("--hidden"),
                                  coordinates: typed.count == 2 ? (typed[0], typed[1]) : nil)
         default:
-            fputs("unknown snapshot \"\(what)\" (manage, inspector, settings, codeeditor, library, install, install-zip, icon, menubar)\n", stderr)
+            fputs("unknown snapshot \"\(what)\" (manage, inspector, studio2, settings, codeeditor, library, install, install-zip, icon, menubar)\n", stderr)
             return 2
         }
         guard let data else {

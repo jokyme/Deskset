@@ -12,6 +12,10 @@ public enum EditOp: Equatable {
     case setValue(file: URL, section: String, key: String, value: String, afterIncludes: Bool)
     /// Every definition of `key` in the first `[section]` block of `file`.
     case removeKey(file: URL, section: String, key: String)
+    /// `key=value` in the first `[section]` block of `file`, right before the entry `before` (an `@Include` line whose
+    /// file reads the value as it loads: a widget's own look), its other definitions in the block gone
+    /// (`IniWriter.writingBefore`). Without that entry, after the block's includes.
+    case setValueBefore(file: URL, section: String, key: String, value: String, before: String)
     /// New sections at the end of `file`, each option set in turn (`Skin.appendSections`).
     case appendSections([EditorComponents.Section], file: URL)
     /// Every block of `section` in each of `files` that has one (`Skin.removeSection`).
@@ -27,6 +31,7 @@ public enum EditOp: Equatable {
     public var files: [URL] {
         switch self {
         case .setValue(let file, _, _, _, _), .removeKey(let file, _, _), .appendSections(_, let file),
+             .setValueBefore(let file, _, _, _, _),
              .moveSection(_, _, let file), .editSource(let file, _, _):
             return [file]
         case .removeSection(_, let files):
@@ -104,6 +109,10 @@ public enum IniBackend {
             case .removeKey(let file, let section, let key):
                 let (id, text) = try self.text(file)
                 set(id, IniWriter.removingKey(text, key: key, section: section))
+            case .setValueBefore(let file, let section, let key, let value, let before):
+                let (id, text) = try self.text(file)
+                set(id, try IniWriter.writingBefore(text, value: value, key: key, section: section, before: before)
+                    ?? IniWriter.writingAfterIncludes(text, value: value, key: key, section: section))
             case .appendSections(let sections, let file):
                 let loaded = try self.text(file)
                 var text = loaded.text

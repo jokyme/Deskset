@@ -159,6 +159,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !isDuplicateInstance else { return .terminateNow }
         if let inspector, !inspector.canTerminate() { return .terminateCancel }
+        if let studio = StudioWindowController.window(for: self), !studio.canTerminate() { return .terminateCancel }
         for window in codeFileWindows where !window.canTerminate() { return .terminateCancel }
         return .terminateNow
     }
@@ -668,6 +669,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// to the front once it is ready to be shown (its panes, toolbar and the widget on the canvas: `whenReadyToShow`);
     /// the rest of it is built while it shows.
     func showInspector(for c: SkinController) {
+        // The new Studio window, while the StudioV2 switch is on (`StudioSwitch`).
+        if StudioSwitch.isOn(for: self) { return StudioWindowController.show(for: c, app: self) }
         if let inspector {
             inspector.attach(c)
             return bringToFront(inspector)
@@ -804,7 +807,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu === statusMenu { buildMainMenu(menu) }
+        guard menu === statusMenu else { return }
+        buildMainMenu(menu)
+        StudioSwitch.addMenuItem(to: menu, for: self)
     }
 
     func buildMainMenu(_ menu: NSMenu) {

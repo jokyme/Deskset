@@ -80,9 +80,13 @@ enum AppSelfTest {
         #if DEBUG
         LegacyRenderSelfTests.run(t)
         #endif
+        // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
+        // busier, and the renders' checks of what services deliver within one interval are timed in real time.
+        Studio2SelfTests.run(t)
         // Last: they stop the widgets of every earlier suite, so the numbers are not theirs.
         StudioMemorySelfTests.run(t)
         StudioLatencySelfTests.run(t)
+        Studio2LatencySelfTests.run(t)
         return t.finish()
     }
 
