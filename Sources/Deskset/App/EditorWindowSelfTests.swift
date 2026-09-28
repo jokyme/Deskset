@@ -361,7 +361,11 @@ enum EditorWindowSelfTests {
             t.equal(edit(of: again), target, "the same field")
             t.equal(editor.skin?.meter(named: "MeterCPULabel")?.rawOption("Text"), "CPU!", "the inspector shows the new skin")
 
-            // A field committed while it keeps the focus (Return): the rebuilt inspector gives it back.
+            // A field committed while it keeps the focus (Return): the rebuilt inspector gives it back. (A value step now
+            // follows in place, which keeps the field itself: the page is built again here, as when the step changes
+            // what the page is made of.)
+            InspectorInPlace.isOffForTests = true
+            defer { InspectorInPlace.isOffForTests = false }
             if let again, let fieldEditor = again.currentEditor() {
                 fieldEditor.string = "50"
                 if let value = again as? ValueField { value.finishEditing(deferred: false) } else { editor.fieldCommitted(again) }
