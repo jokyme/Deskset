@@ -974,7 +974,8 @@ struct DeskCompletionBuilder {
                 }
                 switch member.kind {
                 case .action:
-                    guard context.inActions else { continue }
+                    // An action is a statement of an action block, never a value.
+                    guard context.inActions, scan.memberStatement else { continue }
                     if member.userInitiatedOnly && !context.userInitiated { continue }
                     add(t, tier: 1)
                 case .function, .field:
@@ -1006,7 +1007,7 @@ struct DeskCompletionBuilder {
     private mutating func addValueMembers(of type: DeskType) {
         var seenNames = Set<String>()
         for m in catalog.members(of: type) {
-            guard m.kind != .action || scan.context.inActions else { continue }
+            guard m.kind != .action || scan.context.inActions && scan.memberStatement else { continue }
             let key = m.name + (m.kind == .field ? "" : "()")
             guard seenNames.insert(key).inserted else { continue }
             let signature = m.signatures.min { $0.since < $1.since }

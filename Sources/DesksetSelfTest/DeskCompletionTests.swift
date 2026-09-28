@@ -76,6 +76,53 @@ func runDeskCompletionTests(_ t: TestRunner) {
     runDeskCompletionPropertyTests(t)
     runDeskCompletionSnippetTests(t)
     runDeskCompletionSweep(t)
+    runDeskCompletionLatency(t)
+}
+
+func runDeskCompletionLatency(_ t: TestRunner) {
+    t.suite("Desk: service — completion latency") {
+        #if DEBUG
+        let build = "debug"
+        let factor = 10.0
+        #else
+        let build = "release"
+        let factor = 1.0
+        #endif
+        func best(_ runs: Int, _ body: () -> Void) -> Double {
+            var fastest = Double.infinity
+            for _ in 0..<runs {
+                let start = ProcessInfo.processInfo.systemUptime
+                body()
+                fastest = min(fastest, ProcessInfo.processInfo.systemUptime - start)
+            }
+            return fastest * 1000
+        }
+        for lines in [300, 2_000] {
+            let service = deskNavService(deskLargeWidget(lines: lines), file: "Large.desk")
+            let snapshot = service.snapshot
+            let places: [(String, DeskPosition)] = [
+                ("modifier", deskNavPosition(snapshot, ".padding(", into: 3)),
+                ("member", deskNavPosition(snapshot, "cpu.usage", into: 5)),
+                ("value", deskNavPosition(snapshot, "page + 1", into: 7)),
+                ("element", deskNavPosition(snapshot, "Text(", into: 2)),
+            ]
+            // The first request of a snapshot builds the node table, the tokens and the symbol index.
+            let first = best(3) { _ = service.setMessageLanguage(.english).completions(at: places[0].1) }
+            let warm = service.setMessageLanguage(.english)
+            _ = warm.completions(at: places[0].1)
+            var parts: [String] = []
+            var worst = 0.0
+            for (name, position) in places {
+                let ms = best(3) { _ = warm.completions(at: position) }
+                worst = max(worst, ms)
+                parts.append(String(format: "%@ %.2f", name as NSString, ms))
+            }
+            print(String(format: "    Desk completion, %@ build, %d lines: first request %.1f ms, then ", build as NSString, lines, first)
+                  + parts.joined(separator: ", ") + " ms")
+            let bound = (lines == 300 ? 50.0 : 200.0) * factor
+            t.check(first < bound && worst < bound / 5, "completion in \(lines) lines is quick enough to show while typing")
+        }
+    }
 }
 
 // MARK: - Snippets
