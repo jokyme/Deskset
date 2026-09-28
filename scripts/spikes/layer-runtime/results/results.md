@@ -501,12 +501,58 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
 - Wakeups (interrupt wakeups of this process per second, all widgets together): 1.4–4.6 for 10 widgets updating at the
   same moment or on one thread (EP16: 6.5), 12.5–13.3 when their updates are spread over the second (each widget wakes
   its own thread), 1.6–1.8 for B, 5.7–6.8 for A; 60–80 at 60 Hz (A: 230–340).
-- **WindowServer's CPU** does not change measurably with 10 widgets updating every second: the mean increase per
-  on / off pair is between −1.0 and +0.23 % of a core in every mode, none further from 0 than two standard errors
-  (0.2–0.6 %; single pairs move by ±5 %). At 60 Hz the means range from −5.5 to +2.1 % with no consistent sign between
-  modes or campaigns (the partition: +1.7 ± 0.3 % in the first campaign, −1.0 ± 0.2 % in the second; the views drawn
-  on the main thread show large negative outliers): this screen's WindowServer (45–56 % of a core with nothing of
-  ours on screen) hides anything below about 2 % of a core at 60 Hz.
+- **WindowServer's CPU from the on / off rounds (`wscpu/`, `wscpu-b/`) cannot be resolved below about 2 % of a core**
+  (corrected after review; it said "no measurable change, target met"). The per-run means are consistent within a
+  campaign, so the spread is not only noise: the main-thread ways read −4.1 to −5.5 % at 60 Hz (WindowServer cannot
+  get cheaper when we update), so the off-phase baseline itself is biased by 1–10 % depending on the way. With the
+  three runs as the independent units (the 30 pairs are not independent), 10 EPw widgets read −0.15 ± 0.50 % (95 %
+  interval about ±2.2 % with 2 degrees of freedom) and 10 E1 widgets have a run at −2.65 %; "< 1 %" cannot be shown.
+  The first campaign's partitions in sRGB windows read +2.39 / +0.80 / +2.03 (EP) and +2.10 / +1.84 / +2.44 (DP) per
+  run at 60 Hz against −0.66 / +0.13 / −0.52 (E1) and −0.43 / +0.33 / +0.39 (D1) in the same batch.
+- **Paired instead (`wspair/`, added after review)**: every way has its own visualizer window on screen the whole time
+  over one opaque backdrop, one updates at 60 Hz at a time, and an idle phase (nothing updates) is in every cycle; 10
+  shuffled cycles per process, 3 processes, 4 s phases. The cycles are the units (30), all under the same background.
+  The load was high (1-minute load up to 24, 211 of 300 phases above 8), which the pairing cancels only in part:
+
+  | 60 Hz, one visualizer | WindowServer over idle | this process over idle | sum |
+  |---|---|---|---|
+  | B+kept (today) | −2.02 ± 0.72 | 4.02 ± 0.04 | 2.01 ± 0.72 |
+  | B drawn in full | −2.81 ± 0.96 | 7.79 ± 0.05 | 4.97 ± 0.95 |
+  | A | −2.99 ± 0.87 | 7.95 ± 0.10 | 4.96 ± 0.86 |
+  | E1 (default window) | +0.07 ± 0.29 | 6.79 ± 0.06 | 6.85 ± 0.28 |
+  | EPw | +0.65 ± 0.33 | 5.66 ± 0.07 | 6.31 ± 0.33 |
+  | C1 | −0.07 ± 0.32 | 7.38 ± 0.09 | 7.31 ± 0.31 |
+  | CPw | +0.78 ± 0.37 | 4.26 ± 0.04 | 5.04 ± 0.36 |
+  | E1, sRGB window | +0.39 ± 0.64 | 6.46 ± 0.04 | 6.85 ± 0.64 |
+  | EP, sRGB window | +1.06 ± 0.32 | 5.43 ± 0.07 | 6.49 ± 0.33 |
+
+  | difference (same cycle) | WindowServer | this process | sum | per process round (sum) |
+  |---|---|---|---|---|
+  | **CPw − EPw** (C vs E) | +0.13 ± 0.25 | −1.40 ± 0.07 | **−1.27 ± 0.26** | −0.91, −1.22, −1.69 |
+  | **EPw − B+kept** (E vs today) | +2.67 ± 0.64 | **+1.64 ± 0.07** | **+4.30 ± 0.65** | 4.25, 3.81, 4.86 |
+  | **CPw − B+kept** (C vs today) | +2.80 ± 0.66 | **+0.23 ± 0.05** | +3.03 ± 0.67 | 3.34, 2.59, 3.16 |
+  | EPw − E1 | +0.59 ± 0.33 | −1.13 ± 0.07 | −0.54 ± 0.33 | |
+  | E1 − B (same pixels, skin thread vs main thread) | +2.88 ± 0.91 | −1.00 ± 0.06 | +1.88 ± 0.90 | |
+  | EP − E1, both in sRGB windows | +0.67 ± 0.64 | −1.03 ± 0.07 | −0.36 ± 0.66 | |
+  | EP in an sRGB window − EPw | +0.40 ± 0.31 | −0.23 ± 0.08 | +0.18 ± 0.33 | |
+
+  (mean ± standard error over the 30 cycles, % of one core.) What this shows:
+  - **C does not move work to WindowServer**: CPw and EPw cost WindowServer the same (+0.13 ± 0.25), and C costs this
+    process 1.4 points less, so C is cheaper than E at 60 Hz in total by about 1.3 points.
+  - **Against today's B+kept both partitions cost more at 60 Hz**: E +1.6 points in this process alone (over the
+    plan's 1-point rule) and C +0.2; with WindowServer, E +4.3 and C +3.0. Part of that WindowServer difference is the
+    way the main-thread modes read: A, B and B+kept all read 2–3 points *below* the idle phase (B and E1 draw the same
+    pixels into one layer, yet WindowServer reads 2.9 points more when a skin thread commits them). That is either
+    real (main-thread commits reach the window server in a cheaper way) or CPU time the window server spends for this
+    process billed elsewhere; the spike records billed and serviced system time since then (`ProcCounters`), but
+    this batch did not. Until that is settled, **the sums against B+kept are an upper bound and the process-only
+    differences a lower bound.**
+  - The first campaign's "+2 % for partitions in sRGB windows" does not reproduce when paired: EP in an sRGB window
+    costs WindowServer 0.40 ± 0.31 more than EPw, 0.67 ± 0.64 more than E1 in an sRGB window.
+  - The GPU's utilization (whole system) rose by 1–2 points for every way, with no difference between ways that
+    stands out of its noise (± 0.6–0.9).
+  - With 10 widgets updating every second the differences are below what this screen's WindowServer resolves; the
+    paired step was run at 60 Hz only.
 - 60 Hz frames: every mode delivered 298–300 of 300 committed frames to the screen in 5 s (the lowest single rounds:
   EPw 291, CPxw 294), commit intervals p50 16.67 ms, p99 17.1–21.6 ms.
 - Opening (all widgets built and their first frame committed): 10 System widgets in 46–86 ms in every layered mode

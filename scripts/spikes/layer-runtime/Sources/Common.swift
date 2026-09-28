@@ -365,6 +365,9 @@ func nominalBitmapBytes(_ root: CALayer) -> Int {
 /// performance cores, energy, and time spent runnable but waiting for a core.
 struct ProcCounters {
     var cpu = 0.0, pCoreCPU = 0.0, runnable = 0.0          // seconds
+    /// System time other processes (the window server) spent on this process's behalf and billed to it, and time
+    /// this process spent serving others (seconds).
+    var billedSystem = 0.0, servicedSystem = 0.0
     var instructions = 0.0, pInstructions = 0.0, cycles = 0.0, pCycles = 0.0
     var energyJ = 0.0, pEnergyJ = 0.0
     var interruptWakeups = 0.0, idleWakeups = 0.0
@@ -380,7 +383,9 @@ struct ProcCounters {
                        "pCoreShareOfInstructions": instructions > 0 ? r(d(\.pInstructions) / instructions, 3) : 0,
                        "pCoreShareOfCycles": cycles > 0 ? r(d(\.pCycles) / cycles, 3) : 0,
                        "energyMilliwatts": r(d(\.energyJ) / seconds * 1000, 2),
-                       "runnableMsPerSecond": r(d(\.runnable) / seconds * 1000, 2)]
+                       "runnableMsPerSecond": r(d(\.runnable) / seconds * 1000, 2),
+                       "billedSystemMsPerSecond": r(d(\.billedSystem) / seconds * 1000, 3),
+                       "servicedSystemMsPerSecond": r(d(\.servicedSystem) / seconds * 1000, 3)]
         if instructions > 0 { j["cyclesPerInstruction"] = r(cycles / instructions, 3) }
         if cpu > 0 { j["averageGHz"] = r(cycles / cpu / 1e9, 3) }
         return j
@@ -404,6 +409,7 @@ func procCounters() -> ProcCounters {
         cpu: Double(info.ri_user_time + info.ri_system_time) * t,
         pCoreCPU: Double(info.ri_user_ptime + info.ri_system_ptime) * t,
         runnable: Double(info.ri_runnable_time) * t,
+        billedSystem: Double(info.ri_billed_system_time) * t, servicedSystem: Double(info.ri_serviced_system_time) * t,
         instructions: Double(info.ri_instructions), pInstructions: Double(info.ri_pinstructions),
         cycles: Double(info.ri_cycles), pCycles: Double(info.ri_pcycles),
         energyJ: Double(info.ri_energy_nj) / 1e9, pEnergyJ: Double(info.ri_penergy_nj) / 1e9,
