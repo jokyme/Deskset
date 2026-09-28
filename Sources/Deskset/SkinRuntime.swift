@@ -853,14 +853,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     // MARK: SkinImageQueries
 
+    // Not audited (`HostCallAudit`): they read only `Images`, which any thread may, and nothing of the runtime. The
+    // snapshot's hit map asks them from the main thread (a Button's pixels under the pointer).
+
     func imageExifOrientation(atPath path: String) -> Int {
-        HostCallAudit.note(self, "imageExifOrientation")
-        return Images.exifOrientation(atPath: path)
+        Images.exifOrientation(atPath: path)
     }
 
     func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
-        HostCallAudit.note(self, "imagePixelAlpha")
-        return Images.pixelAlpha(atPath: path, x: x, y: y, oriented: exifOriented)
+        Images.pixelAlpha(atPath: path, x: x, y: y, oriented: exifOriented)
     }
 }
 
@@ -901,11 +902,12 @@ extension SkinRuntime: SkinCompanionChannel {
     }
 }
 
-/// Calls the engine makes to a runtime (its `SkinHost`, `SkinImageQueries` and companion channel) must come from the
-/// skin's executor, as the engine promises its host: a plugin's background work that logs, redraws or runs an action
-/// without handing it to the skin's executor first would reach the runtime from another thread, where it races the
-/// skin's own work once the skin leaves the main thread. Debug builds note such calls; the self-tests fail the suite in
-/// which one was made (`drain`). Exclusive access counts as the owner's (`executor.isCurrent`).
+/// Calls the engine makes to a runtime (its `SkinHost` and companion channel) must come from the skin's executor, as
+/// the engine promises its host: a plugin's background work that logs, redraws or runs an action without handing it to
+/// the skin's executor first would reach the runtime from another thread, where it races the skin's own work once the
+/// skin leaves the main thread. Debug builds note such calls; the self-tests fail the suite in which one was made
+/// (`drain`). Exclusive access counts as the owner's (`executor.isCurrent`). The image queries are not audited: any
+/// thread may ask them.
 enum HostCallAudit {
     private static let stray = Guarded<[String]>([])
 

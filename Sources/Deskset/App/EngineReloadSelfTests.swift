@@ -13,6 +13,7 @@ enum EngineReloadSelfTests {
         orderTests(t)
         installTests(t)
         keptWindowTests(t)
+        buttonTests(t)
     }
 
     typealias E = EngineThreadSelfTests
@@ -438,6 +439,40 @@ enum EngineReloadSelfTests {
                 t.check(AppSelfTest.spin(timeout: 60) { c2.loadFailed }, "the new copy failed")
                 t.check(!c.isKeptForReplacement && c.content.state.tornDown, "and the old window went with it")
                 t.check(app.controller(for: "Engine\\Kept") == nil, "the config is unloaded")
+            }
+            E.finish(t, app, tracked)
+        }
+    }
+
+    // MARK: A Button's pixels from the main thread
+
+    static func buttonTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: hovering and clicking a Button image reads its pixels from the main thread, which is fine") {
+            // The app's Skins folder has the TestSkins/App fixtures.
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "App\\Buttons", file: nil) else { return t.check(false, "load") }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted }, "started on the engine thread")
+                c.window.setFrameOrigin(.zero)
+                // The snapshot's hit map asks the image for its pixels (thread-safe `Images`), not the runtime.
+                t.check(SkinView.isOnButton(c, x: 10, y: 10), "on the button's disc")
+                t.check(!SkinView.isOnButton(c, x: 1, y: 1), "not on its transparent corner")
+                _ = SkinView.cursorName(c, x: 10, y: 10)
+                let view = c.view
+                if let moved = AppSelfTest.mouseEvent(.mouseMoved, c, x: 10, y: 10) { view.mouseMoved(with: moved) }
+                if let down = AppSelfTest.mouseEvent(.leftMouseDown, c, x: 10, y: 10),
+                   let up = AppSelfTest.mouseEvent(.leftMouseUp, c, x: 10, y: 10) {
+                    view.mouseDown(with: down)
+                    t.equal(view.dragAllowed, false, "no drag from a Button")
+                    view.mouseUp(with: up)
+                }
+                t.check(AppSelfTest.spin(timeout: 30) {
+                    c.runtime.exclusive(timeout: 30) { $0.variable("Command") } == "1"
+                }, "ButtonCommand ran on the thread")
+                // (The suite fails by itself if the runtime was called off its thread: `HostCallAudit`.)
+                app.deactivate(config: "App\\Buttons")
             }
             E.finish(t, app, tracked)
         }
