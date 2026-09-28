@@ -98,6 +98,11 @@ final class DeskSymbolIndex: Sendable {
     let declaringNodes: [DeskSymbolKey: NodeID]
     /// Picker options whose choices form a local enum, and its type name (`look` → `Look`).
     let localEnums: [String: String]
+    /// The type of each expression along a member chain, by node index (worked out from the catalog where nested
+    /// members share the checker's key); completion reads the base of `x.`.
+    let valueTypes: [Int: DeskType]
+    /// The namespace each name or member chain stands for (`cpu`, `audio.microphone`, `options`), by node index.
+    let namespaceOf: [Int: String]
 
     /// - Parameters:
     ///   - packageFile: the folder's `package.desk`.
@@ -563,6 +568,8 @@ final class DeskSymbolIndex: Sendable {
         self.spans = sortedSpans
         self.byKey = byKey
         self.declaringNodes = declaring
+        self.valueTypes = valueTypes
+        self.namespaceOf = namespaceOf
     }
 
     // MARK: Lookups
