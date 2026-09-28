@@ -23,20 +23,28 @@ extension Desk {
     /// (unused package styles, options and translations), reported once in the package's result.
     public static func checkFolder(package: SyntaxTree?, widgets: [SyntaxTree],
                                    context: CheckContext = CheckContext()) -> [DeskFileID: CheckedFile] {
+        checkFolder(package: package, checkedPackage: nil, widgets: widgets.map { ($0, nil) }, context: context)
+    }
+
+    /// `checkFolder` reusing results already known: the package checked on its own (with no package in its
+    /// context), and widgets already checked with that package.
+    static func checkFolder(package: SyntaxTree?, checkedPackage: CheckedFile?,
+                            widgets: [(tree: SyntaxTree, checked: CheckedFile?)],
+                            context: CheckContext) -> [DeskFileID: CheckedFile] {
         var results: [DeskFileID: CheckedFile] = [:]
         var widgetContext = context
         var packageFile: CheckedFile?
         if let package {
             var packageContext = context
             packageContext.package = nil
-            let checked = check(package, context: packageContext)
+            let checked = checkedPackage ?? check(package, context: packageContext)
             packageFile = checked
             widgetContext.package = CheckedPackage(file: checked)
         }
         var usedStyles = Set<String>(), usedOptions = Set<String>(), usedKeys = Set<String>()
         for entry in packageFile?.stringTable ?? [] { usedKeys.insert(entry.key) }
-        for widget in widgets {
-            let checked = check(widget, context: widgetContext)
+        for (widget, known) in widgets {
+            let checked = known ?? check(widget, context: widgetContext)
             results[widget.file] = checked
             for (_, symbol) in checked.symbols {
                 switch symbol {
@@ -281,6 +289,7 @@ final class Checker {
     var stringTable: [StringEntry] = []
     var requirements = Requirements()
     var translationTable = TranslationTable()
+    var assetUses = AssetUses()
 
     /// Diagnostics are not recorded while this is above zero (speculative typing of overloads).
     var mute = 0
@@ -397,7 +406,7 @@ final class Checker {
         self.catalog = context.catalog
         self.index = context.catalog.index
         self.context = context
-        self.isPackage = (tree.file.path as NSString).lastPathComponent == "package.desk"
+        self.isPackage = DeskPackagePath.foldedKey((tree.file.path as NSString).lastPathComponent) == DeskPackage.packageFileName
         self.lines = tree.lines
     }
 
@@ -470,7 +479,12 @@ final class Checker {
                                   freeformOrders: freeformOrders, stringTable: stringTable, requirements: requirements,
                                   options: optionFacts, styles: styleIDs, translations: translationTable, root: root)
         checked.loopIdentities = loopIdentities
+        checked.assets = assetUses
         checked.folderPending = folderPending
+        for decl in declOrder where !decl.poisoned {
+            guard let val = decl.val, !val.error, val.type != .any else { continue }
+            checked.declarationTypes[decl.id] = SemType(type: val.type, displayBase: val.base, range: val.range)
+        }
         return checked
     }
 
@@ -673,11 +687,15 @@ enum FolderChecks {
         }
         guard !extra.isEmpty else { return checked }
         let all = (checked.diagnostics + extra).sorted { $0.range.lowerBound < $1.range.lowerBound }
-        return CheckedFile(tree: checked.tree, diagnostics: all, symbols: checked.symbols, types: checked.types,
-                           elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
-                           reactions: checked.reactions, freeformOrders: checked.freeformOrders,
-                           stringTable: checked.stringTable, requirements: checked.requirements,
-                           options: checked.options, styles: checked.styles, translations: checked.translations,
-                           root: checked.root)
+        var result = CheckedFile(tree: checked.tree, diagnostics: all, symbols: checked.symbols, types: checked.types,
+                                 elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
+                                 reactions: checked.reactions, freeformOrders: checked.freeformOrders,
+                                 stringTable: checked.stringTable, requirements: checked.requirements,
+                                 options: checked.options, styles: checked.styles, translations: checked.translations,
+                                 root: checked.root)
+        result.loopIdentities = checked.loopIdentities
+        result.assets = checked.assets
+        result.declarationTypes = checked.declarationTypes
+        return result
     }
 }

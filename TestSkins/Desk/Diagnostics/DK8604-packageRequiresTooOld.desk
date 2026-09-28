@@ -1,0 +1,16 @@
+// DK8604 packageRequiresTooOld
+//== expect: DK8604
+//== context: future
+//== file: package.desk
+package {
+    name: "Sparks"
+    requires: "1.0"
+}
+//== folder-file: Spark.desk
+info { name: "Spark" }
+widget { Text("Hi").sparkle(2) }
+//== negative
+package {
+    name: "Sparks"
+    requires: "1.2"
+}

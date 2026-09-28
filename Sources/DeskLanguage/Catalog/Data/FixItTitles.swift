@@ -75,6 +75,8 @@ extension CatalogData {
         note("openedHere", "Opened here.", "在这里开始。"),
         note("previousElement", "The element before it.", "它前面的元素。"),
         note("inWidget", "Found while checking {name}.", "在检查 {name} 时发现。"),
+        note("otherFile", "The other file.", "另一个文件。"),
+        note("needsVersion", "This widget needs Deskset {version}.", "这个组件需要 Deskset {version}。"),
     ]
 
     private static func title(_ key: String, _ en: String, _ zh: String) -> FixItTitleSpec {

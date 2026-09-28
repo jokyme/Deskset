@@ -121,7 +121,9 @@ public struct DeskCatalog: Sendable {
 
     /// The newest release any item of the catalog comes from: the Deskset this catalog belongs to, and the default
     /// target a file is checked against (§8.5).
-    public var newestSince: AppVersion {
+    public var newestSince: AppVersion { index.newestSince }
+
+    func computeNewestSince() -> AppVersion {
         var newest = AppVersion.deskFirstRelease
         for item in documentedItems() { newest = max(newest, item.doc.since) }
         for s in allSignatures() { newest = max(newest, s.value.since) }

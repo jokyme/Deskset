@@ -1,0 +1,9 @@
+// DK8607 tooManyFiles
+//== expect: DK8607
+//== file: Notes.desk
+//== folder-generate: manyFiles
+info { name: "Notes" }
+widget { Text("Ready") }
+//== negative
+info { name: "Notes" }
+widget { Text("Ready") }
