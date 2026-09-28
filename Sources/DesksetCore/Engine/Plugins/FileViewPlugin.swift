@@ -3,12 +3,14 @@ import Foundation
 
 // Clean-room implementation from the public manual only: https://docs.rainmeter.net/manual/plugins/fileview/
 
-/// Icon files for `Type=Icon` child measures. Extracting a file's icon needs AppKit, so the app installs `writer`:
-/// it gets the file (or folder) path, the icon size in pixels (16 / 32 / 48 / 256) and the destination path, writes an
-/// image file there (PNG data is fine whatever the extension; write atomically) and returns true on success. It is
-/// called on a background queue. Without a writer, Icon measures are empty.
+/// Icon files for `Type=Icon` child measures. Extracting a file's icon needs AppKit, so the app installs `renderer`:
+/// it gets the file (or folder) path, the icon size in pixels (16 / 32 / 48 / 256) and the extension of the file the
+/// icon goes to (`ico`, `png`…), and returns the bytes of an image file (PNG data is fine whatever the extension), or
+/// nil when there is none. It is called on a background queue. The measure writes the bytes through the skin's side
+/// effects (`SideEffects.writeFile`), so a sandboxed instance keeps the file in its copy and records the write.
+/// Without a renderer, Icon measures are empty.
 public enum FileViewIcons {
-    public static var writer: ((_ source: String, _ pixelSize: Int, _ destination: String) -> Bool)?
+    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)?
 }
 
 /// `Plugin=FileView`: a "parent" measure lists a folder; "child" measures (`Path=[Parent]`) read one entry each.
@@ -110,7 +112,9 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
     private var dateType = DateType.modified
     private var iconPath = ""
     private var iconSize = 32
-    private var lastIcon: (source: String, size: Int, destination: String)?
+    /// The last icon written: what it shows, where the skin asked for it, and where it went (`destination`, or a
+    /// recording's copy of it).
+    private var lastIcon: (source: String, size: Int, destination: String, written: String)?
     private var iconGeneration = 0
 
     private var closed = false
@@ -312,32 +316,44 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     /// The icon file path once it is written (written on a background queue; the value updates when done).
     private func icon(for item: Item) -> String {
-        guard let writer = FileViewIcons.writer else {
+        guard let renderer = FileViewIcons.renderer else {
             report("icon", "FileView [\(name)]: file icons are not available")
             return ""
         }
         let destination = iconDestination()
         let source = item.isDotDot ? (parentFolder(of: parent?.listing.folder ?? "") ?? item.path) : item.path
         if let last = lastIcon, last.source == source, last.size == iconSize, last.destination == destination {
-            return destination
+            return last.written
         }
         iconGeneration += 1
         let generation = iconGeneration
         let size = iconSize
+        // The file goes where the skin's side effects say, taken here on the skin's thread: the destination itself, or
+        // a recording's copy of it (the write recorded), which is then the path the skin sees.
+        let effects = skin.sideEffects
+        let target = effects.destination(forWriting: URL(fileURLWithPath: destination))
+        let pathExtension = (destination as NSString).pathExtension
         // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
         // saved.
         let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.queue, fixture: false,
-                                scripted: { $0.failureMessage == nil }) {
-            writer(source, size, destination)
+                                scripted: { $0.failureMessage == nil }) { () -> Bool in
+            guard let data = renderer(source, size, pathExtension) else { return false }
+            do {
+                try effects.writeFile(data, to: target, makingFolder: true)
+                return true
+            } catch {
+                return false
+            }
         }
         skin.startBackground(job) { [weak self] ok in
             guard let self, !self.closed, self.iconGeneration == generation else { return }
             if ok {
-                self.lastIcon = (source, size, destination)
-                if self.childType == .icon { self.publishAsyncResult(number: 0, string: destination) }
+                self.lastIcon = (source, size, destination, target.path)
+                if self.childType == .icon { self.publishAsyncResult(number: 0, string: target.path) }
             }
         }
-        return lastIcon?.destination == destination ? destination : ""
+        if let last = lastIcon, last.destination == destination { return last.written }
+        return ""
     }
 
     // MARK: Reading

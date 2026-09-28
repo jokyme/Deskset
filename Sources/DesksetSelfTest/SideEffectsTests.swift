@@ -191,6 +191,10 @@ private func everyExit(_ t: TestRunner) throws {
     var launched = 0
     PluginProcess.launcher = { _, _, _ in launched += 1 }
     defer { PluginProcess.launcher = savedLauncher }
+    // FileView's icons: made by the app's renderer (here the test's), written through the skin's side effects.
+    let savedRenderer = FileViewIcons.renderer
+    FileViewIcons.renderer = { _, _, pathExtension in Data("icon-\(pathExtension)".utf8) }
+    defer { FileViewIcons.renderer = savedRenderer }
     let trash = t.temporaryDirectory("side-effects-trash")
     let savedFolders = TrashMonitor.folders
     TrashMonitor.folders = { [trash.path] }
@@ -217,6 +221,10 @@ private func everyExit(_ t: TestRunner) throws {
         (skin.measure(named: "MeasureDownload") as? WebParserMeasure)?.isDownloading == false
             && (skin.measure(named: "MeasurePage") as? WebParserMeasure)?.isFetching == false
     }, "WebParser finished")
+    t.check(spinUntil {
+        skin.measure(named: "MeasureIcon")?.stringValue.isEmpty == false
+            && skin.measure(named: "MeasureIconPath")?.stringValue.isEmpty == false
+    }, "the icons were written")
 
     let dir = folder.path
     let expected: [SideEffect] = [
@@ -227,6 +235,9 @@ private func everyExit(_ t: TestRunner) throws {
                 arguments: ["-e", "tell application \"Finder\"", "-e", "activate",
                             "-e", "open information window of (POSIX file \"\(dir)/\" as alias)", "-e", "end tell"],
                 directory: nil),
+        // FileView's icon files: icon1.ico in the skin's folder (no IconPath) and the IconPath.
+        .writeFile(path: dir + "/icon1.ico"),
+        .writeFile(path: dir + "/Icons/Folder.png"),
         .launch(executable: "/usr/bin/open", arguments: [TrashMonitor.homeTrash], directory: nil),
         .writeFile(path: dir + "/DownloadFile/copy.html"),
         .writeFile(path: dir + "/WebParserDump.txt"),
@@ -258,6 +269,13 @@ private func everyExit(_ t: TestRunner) throws {
     t.equal(try? Data(contentsOf: URL(fileURLWithPath: downloaded)),
             try? Data(contentsOf: folder.appendingPathComponent("page.html")))
     t.equal(skin.measure(named: "MeasurePage")?.stringValue, "Side effects")
+    // The icons are in the copy, where the skin's Image meters find them by the measures' paths.
+    for (measure, bytes) in [("MeasureIcon", "icon-ico"), ("MeasureIconPath", "icon-png")] {
+        let path = skin.measure(named: measure)?.stringValue ?? ""
+        t.check(recording.files.contains(path), "\(measure) is in the copy: \(path)")
+        t.equal(try? String(contentsOfFile: path, encoding: .utf8), bytes)
+    }
+    t.equal(recording.files.copy(of: dir + "/icon1.ico"), skin.measure(named: "MeasureIcon")?.stringValue)
     t.check(recording.files.copy(of: dir + "/WebParserDump.txt").map { FileManager.default.fileExists(atPath: $0) }
                 == true, "the dump is in the copy")
     skin.update()

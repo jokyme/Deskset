@@ -545,11 +545,9 @@ private func runSeamTests(_ t: TestRunner) {
 private func runSeamPluginTests(_ t: TestRunner) {
     t.suite("Executor: plugin results come back through the skin's executor") {
         let executor = ManualExecutor()
-        let savedWriter = FileViewIcons.writer
-        FileViewIcons.writer = { _, _, destination in
-            FileManager.default.createFile(atPath: destination, contents: Data("icon".utf8))
-        }
-        defer { FileViewIcons.writer = savedWriter }
+        let savedRenderer = FileViewIcons.renderer
+        FileViewIcons.renderer = { _, _, _ in Data("icon".utf8) }
+        defer { FileViewIcons.renderer = savedRenderer }
         let (skin, _) = try executorSkin(t, """
         [Rainmeter]
         Update=-1

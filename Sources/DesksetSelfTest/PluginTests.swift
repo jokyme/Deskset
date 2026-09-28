@@ -1456,7 +1456,7 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.check(!tree.isReading, "PreviousFolder is disabled with Recursive=2")
     }
 
-    t.suite("Plugin: FileView icons through the app's writer") {
+    t.suite("Plugin: FileView icons through the app's renderer") {
         let (skin, host) = try makeSkin(t, """
         [P]
         Measure=Plugin
@@ -1480,17 +1480,19 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.equal(i.stringValue, "")
         t.check(host.logs.contains { $0.contains("icons are not available") })
         var requests: [(String, Int, String)] = []
-        FileViewIcons.writer = { source, size, destination in
-            requests.append((source, size, destination))
-            return (try? "png".write(toFile: destination, atomically: true, encoding: .utf8)) != nil
+        FileViewIcons.renderer = { source, size, pathExtension in
+            requests.append((source, size, pathExtension))
+            return Data("png".utf8)
         }
-        defer { FileViewIcons.writer = nil }
+        defer { FileViewIcons.renderer = nil }
         update(i)
         t.check(spin { !i.stringValue.isEmpty })
         t.equal(requests.count, 1)
         t.check(requests.first?.0.hasSuffix("/file.txt") == true)
         t.equal(requests.first?.1, 48)
+        t.equal(requests.first?.2, "ico", "the extension of the file it goes to")
         t.equal(i.stringValue, skin.directory.appendingPathComponent("icon1.ico").path)
+        t.equal(try? String(contentsOfFile: i.stringValue, encoding: .utf8), "png", "written there")
         update(i)
         t.equal(requests.count, 1, "an icon is written once")
     }

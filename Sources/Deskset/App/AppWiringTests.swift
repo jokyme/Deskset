@@ -382,7 +382,7 @@ extension AppSelfTest {
             // Real icons from the system's icon service: allowed here, asked for off the main thread with a time-out.
             IconServiceGuard.beginAllowing()
             defer { IconServiceGuard.endAllowing() }
-            t.check(FileViewIcons.writer != nil, "installed at startup")
+            t.check(FileViewIcons.renderer != nil, "installed at startup")
             let dir = t.temporaryDirectory("icons")
             let file = dir.appendingPathComponent("document.txt")
             try Data("hello".utf8).write(to: file)

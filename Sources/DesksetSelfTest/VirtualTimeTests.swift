@@ -495,13 +495,13 @@ private func runVirtualEngineTests(_ t: TestRunner) {
 private func runBackgroundWorkTests(_ t: TestRunner) {
     t.suite("Executor: virtual time — background work: fixtures, scripted results, work without a fake") {
         let v = virtualExecutor()
-        let savedWriter = FileViewIcons.writer
+        let savedRenderer = FileViewIcons.renderer
         var iconWrites = 0
-        FileViewIcons.writer = { _, _, _ in
+        FileViewIcons.renderer = { _, _, _ in
             iconWrites += 1
-            return true
+            return Data("icon".utf8)
         }
-        defer { FileViewIcons.writer = savedWriter }
+        defer { FileViewIcons.renderer = savedRenderer }
         v.background.setFake(.value(.number(42)), for: .ping)
         v.background.setFake(.value(.text("saved")), for: .fileViewIcon)
         let skin = try virtualSkin(t, """
