@@ -408,6 +408,31 @@ public struct TranslationTable: Sendable, Hashable {
     public init(languages: [String: [String: String]] = [:]) { self.languages = languages }
 }
 
+/// The pictures a file names where a picture is expected (§8.3): every literal path with where it is written, and
+/// whether some picture comes from anything else (data, an option, a template), so that the file's pictures cannot
+/// all be known.
+public struct AssetUses: Sendable, Hashable {
+    public struct Site: Sendable, Hashable {
+        public var path: String
+        public var file: DeskFileID
+        public var range: Range<Int>
+
+        public init(path: String, file: DeskFileID, range: Range<Int>) {
+            self.path = path
+            self.file = file
+            self.range = range
+        }
+    }
+
+    public var images: [Site]
+    public var computedImages: Bool
+
+    public init(images: [Site] = [], computedImages: Bool = false) {
+        self.images = images
+        self.computedImages = computedImages
+    }
+}
+
 /// A checked file (§4.20).
 public struct CheckedFile: Sendable {
     public let tree: SyntaxTree
@@ -432,6 +457,8 @@ public struct CheckedFile: Sendable {
     /// How each `for` identifies its instances (§4.15): the identity field of the list's records (`"date"`), or
     /// `"position"`.
     public var loopIdentities: [NodeID: String] = [:]
+    /// The pictures the file names.
+    public var assets = AssetUses()
 
     public init(tree: SyntaxTree, diagnostics: [Diagnostic], symbols: [NodeID: Symbol], types: [NodeID: SemType],
                 elements: [NodeID: ElementFacts], dataUses: [DataUse], dependencies: [NodeID: Set<DepKey>],

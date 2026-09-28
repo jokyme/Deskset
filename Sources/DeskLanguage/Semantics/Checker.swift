@@ -289,6 +289,7 @@ final class Checker {
     var stringTable: [StringEntry] = []
     var requirements = Requirements()
     var translationTable = TranslationTable()
+    var assetUses = AssetUses()
 
     /// Diagnostics are not recorded while this is above zero (speculative typing of overloads).
     var mute = 0
@@ -478,6 +479,7 @@ final class Checker {
                                   freeformOrders: freeformOrders, stringTable: stringTable, requirements: requirements,
                                   options: optionFacts, styles: styleIDs, translations: translationTable, root: root)
         checked.loopIdentities = loopIdentities
+        checked.assets = assetUses
         checked.folderPending = folderPending
         return checked
     }

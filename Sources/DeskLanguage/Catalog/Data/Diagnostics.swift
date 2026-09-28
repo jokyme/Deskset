@@ -7,7 +7,7 @@ extension CatalogData {
     /// Every diagnostic, in id order.
     static let diagnostics: [DiagnosticSpec] =
         lexicalDiagnostics + structureDiagnostics + namesDiagnostics + valuesDiagnostics + modifiersDiagnostics
-        + layoutDiagnostics + actionsDiagnostics + infoAndSecurityDiagnostics + foreignDiagnostics
+        + layoutDiagnostics + actionsDiagnostics + infoAndSecurityDiagnostics + packageDiagnostics + foreignDiagnostics
 
     /// DK1xxx — lexical.
     static let lexicalDiagnostics: [DiagnosticSpec] = [
