@@ -32,7 +32,7 @@ public final class DeskLanguageService {
     /// What sharing subtrees kept at the last update, and over all updates (tests and the latency report read them).
     public private(set) var lastReuse: SubtreeReuseStats?
     public private(set) var totalReuse = SubtreeReuseStats()
-    /// The other widgets' checks, shared by the snapshots: reused while a widget's text and `package.desk`'s text
+    /// The other widgets' checks, shared by the snapshots: reused while a widget's text and `package.desk`'s tree
     /// are unchanged, so editing `package.desk` checks every widget again and editing a widget checks no other.
     private var siblings = DeskSiblingChecks()
 
@@ -391,21 +391,23 @@ public final class DeskSnapshot: Sendable {
         guard hasStackRoom else { return onLargeStack { folderResults() } }
         return caches.folder.value {
             let context = options.checkContext(package: nil, resources: resources)
-            let packageText = folder[packageFile]
+            // A widget's check names the package's styles and options by nodes of the package's tree: it is reused
+            // only with that very tree, not with another parse of the same text.
+            let packageTree = package?.tree
+            let packageVersion = packageTree?.version
             var widgets: [(tree: SyntaxTree, checked: CheckedFile?)] = []
             if !isPackage { widgets.append((tree, checked)) }
             for (file, text) in folder.sorted(by: { $0.key.path < $1.key.path })
                 where file != self.file && file != packageFile && file.path.hasSuffix(".desk") {
-                if let known = siblings?.checked(file, text: text, packageText: packageText) {
+                if let known = siblings?.checked(file, text: text, packageVersion: packageVersion) {
                     widgets.append((known.tree, known))
                 } else {
                     widgets.append((Desk.parse(text, file: file), nil))
                 }
             }
-            let packageTree = package?.tree
             let results = Desk.checkFolder(package: packageTree, checkedPackage: package, widgets: widgets, context: context)
             for (file, text) in folder where file != self.file && file != packageFile {
-                if let result = results[file] { siblings?.store(file, text: text, packageText: packageText, checked: result) }
+                if let result = results[file] { siblings?.store(file, text: text, packageVersion: packageVersion, checked: result) }
             }
             return results
         }
@@ -432,20 +434,22 @@ public final class DeskSnapshot: Sendable {
 /// The other widgets' checks, shared by a service's snapshots (each snapshot may be read on any thread).
 final class DeskSiblingChecks: @unchecked Sendable {
     private let lock = NSLock()
-    private var stored: [DeskFileID: (text: String, packageText: String?, checked: CheckedFile)] = [:]
+    private var stored: [DeskFileID: (text: String, packageVersion: Int?, checked: CheckedFile)] = [:]
 
-    /// The check of a widget with this text against this `package.desk` text, if it was made.
-    func checked(_ file: DeskFileID, text: String, packageText: String?) -> CheckedFile? {
+    /// The check of a widget with this text against this tree of `package.desk` (by its version; nil: no package),
+    /// if it was made. A check made with another parse of the same package text is not reused: it names the
+    /// package's styles and options by nodes of that other tree.
+    func checked(_ file: DeskFileID, text: String, packageVersion: Int?) -> CheckedFile? {
         lock.lock()
         defer { lock.unlock() }
-        guard let entry = stored[file], entry.text == text, entry.packageText == packageText else { return nil }
+        guard let entry = stored[file], entry.text == text, entry.packageVersion == packageVersion else { return nil }
         return entry.checked
     }
 
-    func store(_ file: DeskFileID, text: String, packageText: String?, checked: CheckedFile) {
+    func store(_ file: DeskFileID, text: String, packageVersion: Int?, checked: CheckedFile) {
         lock.lock()
         defer { lock.unlock() }
-        stored[file] = (text, packageText, checked)
+        stored[file] = (text, packageVersion, checked)
     }
 
     /// How many widgets have a stored check (tests read it).
