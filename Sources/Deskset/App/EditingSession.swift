@@ -92,6 +92,8 @@ final class EditingSession {
     private(set) var lastTimings: [String: Double] = [:]
     /// The phases of the Studio's last reload (`reloadStudioSkin`); the Studio window times its parts here.
     let reloadPhases = StudioPhaseClock()
+    /// The desktop copy's patch waiting for its turn, and how the Studio's instance took the last step (DesktopFollowing).
+    let follow = SessionFollowing()
     /// The reload of the desktop copy waiting for the next turn of the run loop (`scheduleDesktopRefresh`), and where
     /// the widget's window goes once it ran (a step that moves it with the files).
     private var scheduledRefresh: Timer?
@@ -162,8 +164,8 @@ final class EditingSession {
     /// Loads the Studio's own instance again from the text in memory — after buffers without edits of their own took
     /// what changed on disk — and tells the Studio window. The Calc `Counter` goes on from the old instance, which is
     /// closed once the new one had its first update (nothing in between shows nothing); the first instance takes the
-    /// counter and the graphs of the widget on the desktop (`Skin.mirrorCounter`, `Skin.takeGraphs`). Keeps the old one
-    /// when the widget's file cannot be read.
+    /// counter, the graphs and what else the widget on the desktop has shown (`runtimeSeed`). Keeps the old one when the
+    /// widget's file cannot be read.
     @discardableResult
     func reloadStudioSkin(notify: Bool = true) -> Skin? {
         guard let fileURL else { return studioSkin }
@@ -196,14 +198,11 @@ final class EditingSession {
            SourceFileID(running.fileURL) == SourceFileID(fileURL) {
             mirrored = running
         }
-        if let old {
-            skin.continueCounter(from: old)
-        } else if let mirrored {
-            skin.mirrorCounter(of: mirrored)
-        }
+        let seed = runtimeSeed(old: old, mirrored: mirrored)
+        if let seed { skin.seed(from: seed) }
         reloadPhases.measure("studio.update") { skin.update() }
         takeOwnWrites(since: stamps)
-        if let mirrored { skin.takeGraphs(from: mirrored) }
+        if let seed { skin.seedGraphs(from: seed) }
         studioSkin = skin
         startUpdates(skin)
         old?.close()
@@ -326,7 +325,7 @@ final class EditingSession {
         // The desktop copy loads the files on the next turn: the canvas shows the step first.
         var place: WidgetPosition?
         for case .moveWidget(_, let to) in commands { place = to }
-        scheduleDesktopRefresh(thenMoveTo: place)
+        followStep(changes, thenMoveTo: place)
         let t = Transaction(name: name, changes: changes, selectionBefore: selectionBefore, selectionAfter: selectionAfter,
                             commands: commands)
         if registersUndo { registerUndo(t) }
@@ -392,7 +391,7 @@ final class EditingSession {
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         // The window moves with the files once the desktop copy loaded them (next turn).
-        scheduleDesktopRefresh(thenMoveTo: place)
+        followStep(t.changes, thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))
     }
 
@@ -644,4 +643,14 @@ final class GrowingStep {
         transaction = combined
         return true
     }
+}
+
+// MARK: - What DesktopFollowing.swift uses of the session
+
+extension EditingSession {
+    /// Runs `work` on the desktop copy where it is owned (`desktopSkin`).
+    func runOnDesktopSkin(_ work: @escaping (Skin) -> Void) { desktopSkin(work) }
+
+    /// How long the desktop copy took to follow the last step (milliseconds; `lastTimings["desktop"]`).
+    func noteDesktopTiming(_ milliseconds: Double) { lastTimings["desktop"] = milliseconds }
 }

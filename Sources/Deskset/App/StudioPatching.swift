@@ -17,6 +17,7 @@ extension EditingSession {
     /// window's parts. Returns the instance that shows the text now (the old one when the widget's file cannot be read).
     @discardableResult
     func applyToStudio(_ changes: [SourceChange]) -> Skin? {
+        follow.studioPatched = nil
         guard let skin = studioSkin else { return nil }
         reloadPhases.reset()
         // A file the instance reads another way (a script, a data file) is read again only by a load.
@@ -32,6 +33,7 @@ extension EditingSession {
         case .needsReload(let reason):
             return reloadStudioSkinKeepingGraphs(because: reason.description)
         case .applied(let summary):
+            follow.studioPatched = changes
             // What a changed measure's actions wrote while it updated (they write to a private copy: nothing should).
             takeOwnWrites(since: stamps)
             reloadPhases.measure("window") { client?.session(self, didChange: .patched(summary)) }
@@ -39,22 +41,35 @@ extension EditingSession {
         }
     }
 
-    /// Loads the Studio's instance again from memory (`reloadStudioSkin`, which continues the Calc counter) with the
-    /// Line and Histogram graphs of the old instance, before the Studio window follows it. Timed as `studio.reload`,
-    /// next to what was measured before it (the patch that could not be applied).
+    /// Loads the Studio's instance again from memory (`reloadStudioSkin`), going on from everything the old instance
+    /// showed (`runtimeSeed`: the counter, variables set by clicks, the measures' state, the graphs), before the Studio
+    /// window follows it. Timed as `studio.reload`, next to what was measured before it (the patch that could not be
+    /// applied).
     private func reloadStudioSkinKeepingGraphs(because reason: String) -> Skin? {
         let tried = reloadPhases.take()
         let old = studioSkin
         let start = DispatchTime.now().uptimeNanoseconds
+        follow.carriesState = true
+        defer { follow.carriesState = false }
         let skin = StudioSignposts.interval("studio.reload") { reloadStudioSkin(notify: false) }
         reloadPhases.add(tried)
         // Not loaded (the file cannot be read now): the old instance stays, and nothing changed to tell.
         guard let skin, skin !== old else { return skin }
-        if let old { skin.takeGraphs(from: old) }
         reloadPhases.add(["studio.reload": Double(DispatchTime.now().uptimeNanoseconds &- start) / 1e6])
         Log.write("Studio: loaded the widget's instance again: \(reason)", level: .debug, source: config)
         reloadPhases.measure("window") { client?.session(self, didChange: .reloaded) }
         return skin
+    }
+}
+
+extension EditingSession {
+    /// What a new Studio instance of the widget goes on from (`reloadStudioSkin`): the old instance's counter — and,
+    /// when it replaces one that could not take a step as a patch (`carriesState`), everything the old one showed —
+    /// or, for the first instance, what the widget on the desktop shows (`mirrored`: a copy on this thread running the
+    /// same file). nil when there is neither.
+    func runtimeSeed(old: Skin?, mirrored: Skin?) -> SkinRuntimeState? {
+        if let old { return old.runtimeState(as: .successor, including: follow.carriesState ? .all : .counter) }
+        return mirrored?.runtimeState(as: .mirror)
     }
 }
 

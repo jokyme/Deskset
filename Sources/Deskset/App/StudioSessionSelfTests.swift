@@ -73,10 +73,11 @@ enum StudioSessionSelfTests {
             t.check(editor.skin === studio, "the Studio's instance took the step without loading again")
             t.equal(studio.sourceGeneration, 1, "as a patch")
             t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
-            guard let reloaded = app.controller(for: "Studio\\Session") else { return t.check(false, "still loaded") }
-            t.check(reloaded !== c, "the desktop copy reloaded")
-            t.equal(reloaded.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
-            t.check(session.desktop === reloaded, "and the session follows it")
+            // On purpose: a value step reaches the desktop copy as a patch too — the same copy, not loaded again.
+            t.check(app.controller(for: "Studio\\Session") === c, "the desktop copy took the step without loading again")
+            t.equal(c.skin.sourceGeneration, 1, "as a patch")
+            t.equal(c.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
+            t.check(session.desktop === c, "and the session still follows it")
             t.equal(session.undoStack.undoActionName, "Change Font Size")
             t.check((session.lastTimings["total"] ?? 0) > 0, "timed: \(session.lastTimings)")
             settle()
@@ -504,8 +505,11 @@ enum StudioSessionSelfTests {
                 """).replacingOccurrences(of: "[Variables]\n", with: "[Variables]\nSeed=0\n")
             guard let (app, editor, url) = try StudioReviewSelfTests.openSkin(t, "Seeded", seeded) else { return }
             guard let session = editor.session else { return t.check(false, "session") }
+            // A step the desktop copy loads again for (a value step is a patch: nothing closes).
             editor.select(section: "MeterTitle")
-            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
+                           .init(section: "Rainmeter", key: "ContextTitle", value: "Seeded", own: true)],
+                          name: "Change Font Size")
             t.check(read(url).contains("FontSize=20\n"), "written")
             t.check(!read(url).contains("Seed=0\n"), "and the old copy wrote its seed as it closed")
             t.equal(session.buffers.buffer(url)?.text, read(url), "the memory took the widget's own write")
@@ -668,27 +672,52 @@ enum StudioSessionSelfTests {
             app.defersDesktopUpdates = true
             defer { app.defersDesktopUpdates = false }
             editor.select(section: "MeterTitle")
+            func fontSize() -> String? { c.skin.meter(named: "MeterTitle")?.rawOption("FontSize") }
             editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
             t.check(read(url).contains("FontSize=20\n"), "written")
             t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20", "the canvas shows the step at once")
+            // On purpose: a value step reaches the desktop copy as a patch, on the next turn.
+            t.check(session.hasPendingDesktopPatch, "the desktop copy takes it on the next turn, as a patch")
+            t.check(!session.hasScheduledDesktopRefresh, "not a reload")
+            t.equal(fontSize(), "12", "not yet")
+            // A burst of steps: one patch.
+            let patched = session.desktopPatchCounts.applied
+            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+            t.equal(reloads(app, "Studio\\Later", during: 0.3), 0, "no reload")
+            t.check(!session.hasPendingDesktopPatch)
+            t.equal(session.desktopPatchCounts.applied - patched, 1, "one patch for both steps")
+            t.check(app.controller(for: "Studio\\Later") === c, "the same desktop copy")
+            t.equal(fontSize(), "21")
+            t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
+            // Undo the same way (both steps came in one event: one undo step).
+            editor.window?.undoManager?.undo()
+            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
+            t.equal(fontSize(), "21", "the desktop copy on the next turn")
+            // (After what else waits on the main thread: the inspector follows the undo first.)
+            t.check(AppSelfTest.spin(timeout: 5) { !session.hasPendingDesktopPatch }, "patched")
+            t.check(app.controller(for: "Studio\\Later") === c, "still the same desktop copy")
+            t.equal(fontSize(), "12")
+            settle()
+
+            // A step the desktop copy must load again for (a `[Rainmeter]` option) reloads it on the next turn.
+            func title() -> String? { app.controller(for: "Studio\\Later")?.skin.rainmeterSection?.rawOption("ContextTitle") }
+            editor.commit([.init(section: "Rainmeter", key: "ContextTitle", value: "One", own: true)], name: "Change Title")
+            t.check(read(url).contains("ContextTitle=One\n"), "written")
             t.check(app.controller(for: "Studio\\Later") === c, "the desktop copy loads it on the next turn")
             t.check(session.hasScheduledDesktopRefresh)
             editor.checkFilesOnDisk()
             t.check(editor.pendingDiskCheck, "changes on disk wait for it")
             // A burst of steps: one reload.
-            editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+            editor.commit([.init(section: "Rainmeter", key: "ContextTitle", value: "Two", own: true)], name: "Change Title")
             t.equal(reloads(app, "Studio\\Later", during: 0.3), 1, "one reload for both steps")
             t.check(!session.hasScheduledDesktopRefresh)
-            t.equal(app.controller(for: "Studio\\Later")?.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "21")
-            t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
-            // Undo the same way (both steps came in one event: one undo step).
+            t.equal(title(), "Two")
             let before = app.controller(for: "Studio\\Later")
             editor.window?.undoManager?.undo()
-            t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
             t.check(app.controller(for: "Studio\\Later") === before, "the desktop copy on the next turn")
-            // (After what else waits on the main thread: the inspector follows the undo first.)
             t.check(AppSelfTest.spin(timeout: 5) { !session.hasScheduledDesktopRefresh }, "reloaded")
-            t.equal(app.controller(for: "Studio\\Later")?.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "12")
+            t.check(app.controller(for: "Studio\\Later") !== before)
+            t.equal(title(), nil, "undone")
             settle()
 
             // A gesture: the first preview reaches the desktop at once, later ones at most 20 times a second — always
