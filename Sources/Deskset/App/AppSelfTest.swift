@@ -80,6 +80,7 @@ enum AppSelfTest {
         #endif
         // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
         StudioLatencySelfTests.run(t)
+        Studio2LatencySelfTests.run(t)
         return t.finish()
     }
 
