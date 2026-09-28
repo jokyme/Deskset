@@ -512,8 +512,10 @@ extension InspectorWindowController {
             guard let self, let group = self.inPlaceColorGroup(index) else { return nil }
             let opacity = group.color.a < 254.5 ? "\(Int((group.color.a / 255 * 100).rounded()))%" : ""
             // Its name and what else it changes (the roles of its uses, which name texts by their words now).
+            // (Its users are named by their words now: "Used by “Hello”".)
             let shape = [group.name, group.variables.joined(separator: ","), opacity, group.usedRoles.map(\.name).joined(separator: ","),
-                         "\(group.unusedCount)", group.sections.joined(separator: ","), "\(group.isAtLeast)"]
+                         "\(group.unusedCount)", self.usersPhrase(group.sections, atLeast: group.isAtLeast),
+                         self.usersPhrase(group.sections)]
             return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "\(group.color)\u{1F}\(self.colorGroupTip(group))")
         }
         slot.part = row
@@ -667,7 +669,6 @@ extension InspectorWindowController {
         }
         enum Action { case set, row, part, refresh }
         var plan: [(InspectorSlot, InspectorSlot.Shown, Action)] = []
-        let changed = now.values != built.values
         let described: Bool = namingShared {
             for slot in state.slots {
                 guard let shown = slot.describe() else {
@@ -678,7 +679,8 @@ extension InspectorWindowController {
                     FileHandle.standardError.write(Data("Studio in place: trace \(slot.claims) \(slot.shown) → \(shown) control \(slot.control.map { "\(type(of: $0)) in grid \($0.superview is NSGridView) window \($0.window != nil)" } ?? "nil")\n".utf8))
                 }
                 if shown == slot.shown {
-                    if changed, slot.refresh != nil { plan.append((slot, shown, .refresh)) }
+                    // A picture of the running widget follows every update (a page built again draws it anew).
+                    if slot.refresh != nil { plan.append((slot, shown, .refresh)) }
                     continue
                 }
                 if shown.shape == slot.shown.shape, slot.set != nil {
@@ -841,6 +843,10 @@ extension InspectorWindowController {
     struct InspectorPicture: Equatable {
         var pixels: Data
         var views: [String]
+        /// The column as a PNG (checks that write what differs).
+        var png: Data? = nil
+
+        static func == (a: InspectorPicture, b: InspectorPicture) -> Bool { a.pixels == b.pixels && a.views == b.views }
     }
 
     func inspectorPicture() -> InspectorPicture {
@@ -853,6 +859,10 @@ extension InspectorWindowController {
             rep.size = document.bounds.size
             document.cacheDisplay(in: document.bounds, to: rep)
             if let data = rep.bitmapData { pixels = Data(bytes: data, count: rep.bytesPerRow * rep.pixelsHigh) }
+            if ProcessInfo.processInfo.environment["DESKSET_VERIFY_IN_PLACE_DIR"] != nil {
+                return InspectorPicture(pixels: pixels, views: Self.describeViews(inspectorStack),
+                                        png: rep.representation(using: .png, properties: [:]))
+            }
         }
         return InspectorPicture(pixels: pixels, views: Self.describeViews(inspectorStack))
     }
@@ -924,6 +934,8 @@ extension InspectorWindowController {
             let base = URL(fileURLWithPath: folder).appendingPathComponent("mismatch-\(n)")
             try? inPlaceShown.views.joined(separator: "\n").write(to: base.appendingPathExtension("in-place.txt"), atomically: true, encoding: .utf8)
             try? rebuilt.views.joined(separator: "\n").write(to: base.appendingPathExtension("rebuilt.txt"), atomically: true, encoding: .utf8)
+            try? inPlaceShown.png?.write(to: base.appendingPathExtension("in-place.png"))
+            try? rebuilt.png?.write(to: base.appendingPathExtension("rebuilt.png"))
         }
         InspectorInPlace.mismatches.append(what)
         FileHandle.standardError.write(Data("IN-PLACE MISMATCH \(what)\n".utf8))
