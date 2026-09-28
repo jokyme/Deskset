@@ -808,6 +808,25 @@ enum Studio2AuditSelfTests {
         return cut
     }
 
+    /// The rows of Layers under `view` (drawn by hand) whose name is cut or whose chip leaves the row or crowds the
+    /// name. (A data item's long name beside its value ends in "…", as a list's does: the Data group is left out.)
+    static func cutLayerRows(in view: NSView) -> [String] {
+        var cut: [String] = []
+        func walk(_ v: NSView) {
+            guard !v.isHiddenOrHasHiddenAncestor else { return }
+            if let cell = v as? StudioLayerCell, let item = cell.item, item.kind != .data, cell.bounds.width > 1,
+               let layout = cell.rowLayout() {
+                if cell.titleIsCut { cut.append("“\(item.title)” (\(Int(layout.title.width)) pt)") }
+                if let chip = layout.chip, chip.minX < layout.title.minX + StudioLayerCell.minimumTitle || chip.minX < 0 {
+                    cut.append("the chip of “\(item.title)” at \(Int(chip.minX))")
+                }
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(view)
+        return cut
+    }
+
     static func layoutTests(_ t: AppTestRunner) {
         t.suite("Studio2: audit: Chinese in Apple's style") {
             // The table: full-width punctuation next to Chinese, a space between Chinese and Latin or digits.
@@ -850,6 +869,10 @@ enum Studio2AuditSelfTests {
                         studio.window?.contentView?.layoutSubtreeIfNeeded()
                         studio.inspectorController.pageView.layoutSubtreeIfNeeded()
                         var cut = cutLabels(in: studio.inspectorController.pageView)
+                        if studio.sidebarController.isViewLoaded {
+                            studio.sidebarController.view.layoutSubtreeIfNeeded()
+                            cut += cutLayerRows(in: studio.sidebarController.view)
+                        }
                         if let p = studio.preview.previewPopoverContent {
                             p.view.layoutSubtreeIfNeeded()
                             cut += cutLabels(in: p.view)

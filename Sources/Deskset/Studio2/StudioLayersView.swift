@@ -616,10 +616,55 @@ final class StudioLayerCell: NSTableCellView {
         return x
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let item else { return }
+    /// Where the row's words go: the name (and the line under it) from 24 points, and at the right the widget's word,
+    /// a data value, the chip and the dot. The chip takes at most 45% of the row and its text ends with "…" beyond
+    /// that; the name keeps at least `minimumTitle` points (a chip that would leave it less gets narrower).
+    struct Layout {
+        var title: NSRect
+        var chip: NSRect?
+        /// The chip's text does not fit its capsule (drawn ending in "…").
+        var chipTruncated = false
+        var dot: NSRect?
+        var values: [(text: String, font: NSFont, origin: CGFloat)] = []
+    }
+
+    static let titleX: CGFloat = 24
+    static let minimumTitle: CGFloat = 72
+
+    func rowLayout() -> Layout? {
+        guard let item else { return nil }
         let h = bounds.height
         var right = trailingEdge
+        var layout = Layout(title: .zero)
+        func take(_ text: String, font: NSFont) {
+            let width = NSAttributedString(string: text, attributes: [.font: font]).size().width
+            layout.values.append((text, font, right - width))
+            right -= width + 6
+        }
+        if let word = item.word { take(word, font: Self.subtitleFont) }
+        if let value = item.value { take(value, font: Self.valueFont) }
+        if let chip = item.chip {
+            let icon = StudioPageStyle.symbol(chip.symbol, size: 9, weight: .semibold, color: .controlAccentColor)
+            let textWidth = ceil(NSAttributedString(string: chip.text, attributes: [.font: Self.chipFont]).size().width)
+            let wanted = textWidth + 10 + (icon.map { $0.size.width + 3 } ?? 0)
+            let room = right - Self.titleX
+            let most = max(min(room * 0.45, room - Self.minimumTitle - 6), 28)
+            let width = min(wanted, most)
+            layout.chip = NSRect(x: right - width, y: (h - 17) / 2, width: width, height: 17)
+            layout.chipTruncated = width < wanted
+            right -= width + 6
+        }
+        if item.issue != nil {
+            layout.dot = NSRect(x: right - 7, y: (h - 7) / 2, width: 7, height: 7)
+            right -= 13
+        }
+        layout.title = NSRect(x: Self.titleX, y: 0, width: max(right - Self.titleX, 10), height: h)
+        return layout
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let item, let layout = rowLayout() else { return }
+        let h = bounds.height
         // The glyph.
         let glyphColor: NSColor = item.kind == .data ? (selected ? .white : .controlAccentColor)
             : (selected ? .white : NSColor.labelColor.withAlphaComponent(item.hidden ? 0.35 : 0.65))
@@ -631,22 +676,20 @@ final class StudioLayerCell: NSTableCellView {
                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
         // At the right: the widget's word, a data value, the chip, the dot.
-        func drawRight(_ text: String, font: NSFont, color: NSColor) {
-            let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
-            let size = a.size()
-            a.draw(at: NSPoint(x: right - size.width, y: (h - size.height) / 2))
-            right -= size.width + 6
+        for v in layout.values {
+            let color = quiet
+            let a = NSAttributedString(string: v.text, attributes: [.font: v.font, .foregroundColor: color])
+            a.draw(at: NSPoint(x: v.origin, y: (h - a.size().height) / 2))
         }
-        if let word = item.word { drawRight(word, font: Self.subtitleFont, color: quiet) }
-        if let value = item.value { drawRight(value, font: Self.valueFont, color: quiet) }
-        if let chip = item.chip {
+        if let chip = item.chip, let capsule = layout.chip {
+            let para = NSMutableParagraphStyle()
+            para.lineBreakMode = .byTruncatingTail
             let text = NSAttributedString(string: chip.text, attributes: [
-                .font: Self.chipFont, .foregroundColor: selected ? NSColor.white : NSColor.controlAccentColor])
+                .font: Self.chipFont, .foregroundColor: selected ? NSColor.white : NSColor.controlAccentColor,
+                .paragraphStyle: para])
             let icon = StudioPageStyle.symbol(chip.symbol, size: 9, weight: .semibold,
                                               color: selected ? .white : .controlAccentColor)
             let ts = text.size()
-            let width = ceil(ts.width) + 10 + (icon.map { $0.size.width + 3 } ?? 0)
-            let capsule = NSRect(x: right - width, y: (h - 17) / 2, width: width, height: 17)
             (selected ? NSColor.white.withAlphaComponent(0.2) : NSColor.controlAccentColor.withAlphaComponent(0.11)).setFill()
             NSBezierPath(roundedRect: capsule, xRadius: 8.5, yRadius: 8.5).fill()
             var cx = capsule.minX + 5
@@ -656,17 +699,18 @@ final class StudioLayerCell: NSTableCellView {
                           respectFlipped: true, hints: nil)
                 cx += icon.size.width + 3
             }
-            text.draw(at: NSPoint(x: cx, y: capsule.midY - ts.height / 2))
-            right = capsule.minX - 6
+            let textHeight = ceil(ts.height)
+            text.draw(with: NSRect(x: cx, y: capsule.midY - textHeight / 2, width: max(capsule.maxX - 5 - cx, 1),
+                                   height: textHeight),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
-        if item.issue != nil {
+        if let dot = layout.dot {
             StudioPageStyle.attention.setFill()
-            NSBezierPath(ovalIn: NSRect(x: right - 7, y: (h - 7) / 2, width: 7, height: 7)).fill()
-            right -= 13
+            NSBezierPath(ovalIn: dot).fill()
         }
         // The name and the line under it.
-        let x: CGFloat = 24
-        let width = max(right - x, 10)
+        let x = layout.title.minX
+        let width = layout.title.width
         let titleFont = item.kind == .widget ? Self.widgetFont : Self.titleFont
         let alpha: CGFloat = item.hidden && !selected ? 0.45 : 1
         let para = NSMutableParagraphStyle()
@@ -687,6 +731,13 @@ final class StudioLayerCell: NSTableCellView {
             title.draw(with: NSRect(x: x, y: ((h - titleHeight) / 2).rounded(), width: width, height: titleHeight),
                        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
+    }
+
+    /// The name is cut (it needs more room than the row leaves it): the audit's check.
+    var titleIsCut: Bool {
+        guard let item, let layout = rowLayout() else { return false }
+        let font = item.kind == .widget ? Self.widgetFont : Self.titleFont
+        return NSAttributedString(string: item.title, attributes: [.font: font]).size().width > layout.title.width + 1
     }
 
     override func prepareForReuse() {
