@@ -1102,8 +1102,8 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--color-space device|srgb]
-  [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+  [--state out.json] [--color-space device|srgb] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
   每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--clock`
   让皮肤从给定时刻起在虚拟时间里运行：第 i 次更新发生在给定时间加 i 个间隔，时区为 UTC，除非 `--time-zone` 指定别的时区
   （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤读取的
@@ -1117,6 +1117,41 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
 - **原因：** 无需权限提示或可见屏幕即可得到可重复的截图。
+- **对皮肤的影响：** 无（开发者工具）。
+- **状态：** 仅 Mac
+
+#### 用给定的数据渲染（`--data`、`--state`）
+- **Windows：** 没有对应功能。
+- **Mac：** `--data` 给出皮肤读到的 Mac 数据：一个 JSON 对象（或存放它的文件路径；其中的路径相对于该文件所在的文件夹；
+  事件脚本则读取其中的 `data` 对象）。没有给出的键保持实时；`null` 表示没有这一项：
+  - `system`：帧列表（或 `{"frames": […]}`、单个帧、存放它们的文件路径），每次更新一帧——第一次更新用第 1 帧，之后每次更新
+    前换到下一帧，最后一帧保持不变。帧可给出 `cpu`（`[整体, 核 1, 核 2…]`，0–100）、`memory`（`physicalTotal`、
+    `physicalUsed`、`swapTotal`、`swapUsed`，字节）、`network`（`{"en0": {"received": …, "sent": …}}`，累计字节）、
+    `bestInterface`、`disks`（按挂载点：`{"/": {"total", "free", "available", "label", "kind"}}`）、`uptime`（秒）、
+    `processes`（`[{"name", "pid", "cpu": 占整台 Mac 的比例 0–100, "memory": 字节}]`：Process、UsageMonitor、AdvancedCPU、
+    PerfMon）、`sysInfo`（`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`）、`cpuFrequency`（Hz）和 `graphicsAdapter`；帧里
+    没写的沿用上一帧。给出 `system` 时这些读数一概不取自 Mac：没有任何帧给出的读数为 0、空或未知。
+  - `battery`：`{"level", "charging", "onAC", "timeRemaining"}`（分钟）；`null`：没有电池的 Mac。
+  - `sensors`：按 MacSensors 键给出，如 `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}`；
+    没写的传感器即这台 Mac 没有。
+  - `nowPlaying`：`{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",
+    "position", "duration", "cover": 图片文件, "volume", "shuffle", "repeat": "off"|"one"|"all", "rating"}`；
+    `null`：所有播放器都关着。
+  - `audio`：`{"frames": [{"rms": [左, 右], "peak": [左, 右], "bands": [[…], […]], "fft": …}], "deviceName",
+    "sampleRate", "channels"}`（或文件路径）：每个 AudioLevel 父 measure 报告的电平，0–1，乘增益之前，每次更新一帧；
+    单个值或单个列表表示所有声道。`null`：没有音频设备。
+  - `weather`：MET Norway locationforecast 2.0 响应（服务收到的原样）的文件路径，或
+    `{"forecast": 路径, "location": [纬度, 经度] | null, "status": 200}`；`null`：断网。渲染的皮肤算作实时；
+    `Location=auto` 是预报自己的地点（除非 `location` 另有指定），`Location=timezone` 是皮肤时区（`--time-zone`）的城市。
+  - `wifi`：`{"ssid", "rssi", "transmitRate", "encryption", "auth", "phy", "networks": [...]}`；`null`：没有 Wi-Fi。
+  - `desktopImage`：桌面图片（Chameleon 的 `Type=Desktop`、注册表的 Wallpaper）；`null`：没有。
+  - `programs`：`{"命令行的一部分": "它的输出" | ["行", …]}`：RunCommand 不启动任何程序；每个程序立即结束，输出为命令行
+    包含的最长一项的内容（都不包含则没有输出）；皮肤自己的文件写入（`!WriteKeyValue` 等）写进其文件的副本。
+
+  再加上 `--clock` 和 `--seed`，每次渲染都相同。数据有误时指出是哪个键并停止渲染。`--state` 把皮肤最后的状态（尺寸；
+  每个 measure 的数值、字符串、是否禁用或暂停；每个 meter 的框、是否隐藏和文字；变量）写成 JSON。x86_64 版在 Rosetta 下
+  画文字和形状边缘与 arm64 版略有不同（每个通道最多差 4/255），两者请用 `--state` 比较，而不是逐字节比较。
+- **原因：** 可重复的渲染，用于让绘制代码和自身对照，在任何 Mac 上都一样，不联网、不碰播放器、不请求权限。
 - **对皮肤的影响：** 无（开发者工具）。
 - **状态：** 仅 Mac
 

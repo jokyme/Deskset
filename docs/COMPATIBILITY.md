@@ -1215,8 +1215,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--color-space device|srgb]
-  [--skins-dir DIR]` loads the
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+  [--state out.json] [--color-space device|srgb] [--skins-dir DIR]` loads the
   skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light
   appearance with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and
   prints compatibility notes and log lines. `--clock` runs the skin in virtual time from the given moment: update i
@@ -1235,6 +1235,49 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   folders ([§11.1](#111-webparser)) applies in the app only. `Deskset --help` (or `-h`) lists every command-line mode;
   an unknown `--` option prints that list and exits with status 2 instead of starting the menu bar app.
 - **Why:** repeatable screenshots without prompts or a visible screen.
+- **Skin impact:** none (developer tool).
+- **Status:** Mac-only
+
+#### Rendering with given data (`--data`, `--state`)
+- **Windows:** no counterpart.
+- **Mac:** `--data` gives what the skin reads about the Mac, as a JSON object (or the path of a file holding one;
+  paths inside are relative to that file's folder; an event script is read for its `data` object). A key that is not
+  given leaves that part live; `null` means there is none:
+  - `system`: a list of frames (or `{"frames": […]}`, or one frame, or the path of a file with them), one per update
+    — frame 1 for the first update, then the next before each update, the last one staying. A frame gives any of
+    `cpu` (`[whole, core 1, core 2…]`, 0–100), `memory` (`physicalTotal`, `physicalUsed`, `swapTotal`, `swapUsed`,
+    bytes), `network` (`{"en0": {"received": …, "sent": …}}`, cumulative bytes), `bestInterface`, `disks`
+    (`{"/": {"total", "free", "available", "label", "kind"}}` by mount point), `uptime` (seconds), `processes`
+    (`[{"name", "pid", "cpu": share of the whole Mac 0–100, "memory": bytes}]`: Process, UsageMonitor, AdvancedCPU,
+    PerfMon), `sysInfo` (`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`), `cpuFrequency` (Hz) and `graphicsAdapter`; a
+    frame keeps what it leaves out from the one before. With `system` given, nothing of these comes from the Mac: a
+    reading no frame gives is 0, empty or unknown.
+  - `battery`: `{"level", "charging", "onAC", "timeRemaining"}` (minutes); `null`: a Mac without a battery.
+  - `sensors`: `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}` by MacSensors key; a
+    sensor left out is one this Mac does not have.
+  - `nowPlaying`: `{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",
+    "position", "duration", "cover": image file, "volume", "shuffle", "repeat": "off"|"one"|"all", "rating"}`;
+    `null`: every player closed.
+  - `audio`: `{"frames": [{"rms": [l, r], "peak": [l, r], "bands": [[…], […]], "fft": …}], "deviceName",
+    "sampleRate", "channels"}` (or the path of a file): the levels every AudioLevel parent reports, 0–1 before its
+    gains, one frame per update; a single value or list stands for every channel. `null`: no audio device.
+  - `weather`: the path of a MET Norway locationforecast 2.0 response (as the service receives it), or
+    `{"forecast": path, "location": [lat, lon] | null, "status": 200}`; `null`: offline. The render's skin counts as
+    live; `Location=auto` is the forecast's own point unless `location` says otherwise, and `Location=timezone` the city
+    of the skin's time zone (`--time-zone`).
+  - `wifi`: `{"ssid", "rssi", "transmitRate", "encryption", "auth", "phy", "networks": [...]}`; `null`: no Wi-Fi.
+  - `desktopImage`: the desktop picture (Chameleon `Type=Desktop`, the Registry's Wallpaper); `null`: none.
+  - `programs`: `{"part of a command line": "its output" | ["line", …]}`: RunCommand starts no program; each one
+    ends at once with the output of the longest entry its command line contains (none: no output), and the skin's own
+    file writes (`!WriteKeyValue`…) go to a copy of its files.
+
+  With `--clock` and `--seed` as well, the render is the same on every run. A mistake in the data names the key and
+  stops the render. `--state` writes what the skin ended up with (its size; each measure's value, string and whether
+  it is disabled or paused; each meter's frame, visibility and text; its variables) as JSON. The x86_64 build under
+  Rosetta draws the edges of text and shapes slightly differently from the arm64 one (at most 4 of 255 per channel),
+  so compare the two with `--state` rather than byte for byte.
+- **Why:** repeatable renders for comparing the drawing code with itself, on any Mac and without reaching the network,
+  a player or a permission.
 - **Skin impact:** none (developer tool).
 - **Status:** Mac-only
 
