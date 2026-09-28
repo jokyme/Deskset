@@ -378,16 +378,23 @@ final class StudioColorLabelView: NSView {
         needsLayout = true
     }
 
+    // Laid out again at each new size (the row sets the frame after the first layout).
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         let h = bounds.height
         swatch.frame = NSRect(x: 0, y: (h - 18) / 2, width: 18, height: 18)
-        let tw = ceil(title.intrinsicContentSize.width)
+        // A label's fitting width (its intrinsic width is a few points short of what it draws uncut).
+        let tw = ceil(title.fittingSize.width) + 1
         title.frame = NSRect(x: 23, y: (h - 16) / 2, width: min(tw, bounds.width - 23), height: 16)
-        let nx = 23 + tw + 3
+        let nx = 23 + tw + 2
         // The note in the smaller size when the usual one would be cut ("follows Light / Dark" in full).
         note.font = StudioPageStyle.noteFont
-        if ceil(note.intrinsicContentSize.width) > bounds.width - nx { note.font = StudioPageStyle.smallFont }
+        if ceil(note.fittingSize.width) > bounds.width - nx { note.font = StudioPageStyle.smallFont }
         note.frame = NSRect(x: nx, y: (h - 15) / 2, width: max(bounds.width - nx, 0), height: 15)
     }
 

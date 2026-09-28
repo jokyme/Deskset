@@ -141,7 +141,7 @@ struct StudioScreen {
                      later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
                              "Shows examples (the number is written by the widget's data, not the part)",
                              "the pointer drawn on the link"]),
-        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.9, updates: 4,
+        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.9, selection: "MeterCPURing", updates: 4,
                      pinned: systemReadings,
                      later: ["INI layers are flat: no columns or rows, no shared styles or calculated values",
                              "the ring's page (Show as, Center) and the connect menu"]),
