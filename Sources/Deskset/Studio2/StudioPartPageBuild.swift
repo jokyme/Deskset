@@ -575,6 +575,19 @@ extension StudioPartPage {
         return StudioText.format(.withPart, name)
     }
 
+    /// The part under `m` (drawn before it, covering its middle) whose click a click on `m` reaches, and that click.
+    static func clickUnder(_ m: Meter, skin: Skin) -> (meter: Meter, action: String)? {
+        guard let i = skin.meters.firstIndex(where: { $0 === m }) else { return nil }
+        let center = (x: m.frame.x + m.frame.width / 2, y: m.frame.y + m.frame.height / 2)
+        for other in skin.meters[..<i].reversed() where !other.hidden {
+            let f = other.frame
+            guard center.x >= f.x, center.x <= f.x + f.width, center.y >= f.y, center.y <= f.y + f.height else { continue }
+            let action = (other.fileOption("LeftMouseUpAction") ?? "").trimmingCharacters(in: .whitespaces)
+            if !action.isEmpty { return (other, action) }
+        }
+        return nil
+    }
+
     /// An action written as one variable (`#OpenAction#`) is summed up as what the variable says.
     static func resolvedAction(_ action: String, skin: Skin) -> String {
         guard let name = WriteScopes.soleVariable(action), let value = skin.variable(name), !value.isEmpty else {
@@ -585,15 +598,25 @@ extension StudioPartPage {
 
     func clickSection(_ m: Meter, skin: Skin) -> StudioPage.Section {
         let action = (m.fileOption("LeftMouseUpAction") ?? "").trimmingCharacters(in: .whitespaces)
-        let sentence = action.isEmpty ? StudioText[.clickNothing]
+        var sentence = action.isEmpty ? StudioText[.clickNothing]
             : ActionSummary.sentence(for: Self.resolvedAction(action, skin: skin), section: m.name, in: skin)
                 .map(StudioWords.action) ?? StudioText[.clickNothing]
+        // A part without a click of its own passes the click to what is under it (the card that opens an app): the
+        // row says what happens, its tip whose click it is.
+        var tip: String?
+        if action.isEmpty, let under = Self.clickUnder(m, skin: skin),
+           let words = ActionSummary.sentence(for: Self.resolvedAction(under.action, skin: skin), section: under.meter.name,
+                                              in: skin).map(StudioWords.action) {
+            sentence = words
+            tip = StudioText.format(.clickThrough, words, partTitle(under.meter, skin: skin))
+        }
         var menu = [StudioPage.MenuItem(title: sentence)]
         if !action.isEmpty { menu.append(.init(title: StudioText[.clickRemove])) }
         var row = StudioPage.Row(label: "", control: .popup(.init(items: menu, selected: 0,
                                                                   symbol: "arrow.up.forward.app")))
         row.labelWidth = 0
         row.detail = showsIniNames ? "LeftMouseUpAction" : nil
+        row.tooltip = tip
         rows["clicks.action"] = StudioPartRow(key: "LeftMouseUpAction", kind: .action, name: StudioText[.undoClick],
                                              title: StudioText[.sectionClicked], section: "clicks")
         return StudioPage.Section(id: "clicks", title: StudioText[.sectionClicked],

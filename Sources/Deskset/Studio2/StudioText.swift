@@ -90,6 +90,7 @@ enum StudioText {
         case runningRainmeter = "running.rainmeter"
         case runningMadeByYou = "running.madeByYou"
         case symbolOf = "part.symbolOf"
+        case clickThrough = "part.clickThrough"
         case showInFinder = "running.showInFinder"
         // The panes.
         case searchPlaceholder = "inspector.search"
@@ -651,6 +652,7 @@ enum StudioText {
         .runningRainmeter: ("The skin’s own file: changes are written into it.", "皮肤自己的文件：改动写进这个文件。"),
         .runningMadeByYou: ("Your widget’s own file: changes are written into it.", "你的小组件自己的文件：改动写进这个文件。"),
         .symbolOf: ("%@ symbol", "%@符号"),
+        .clickThrough: ("%@ · %@’s click", "%@ · %@的点按"),
         .showInFinder: ("Show in Finder", "在访达中显示"),
         .searchPlaceholder: ("What do you want to change?", "想改什么？"),
         .tabAdd: ("Add", "添加"),
