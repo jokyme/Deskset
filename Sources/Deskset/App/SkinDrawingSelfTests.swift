@@ -9,6 +9,7 @@ enum SkinDrawingSelfTests {
         invalidationTests(t)
         viewTests(t)
         memoryTests(t)
+        systemWidgetTests(t)
         repositorySkinTests(t)
         benchmarkTests(t)
     }
@@ -587,6 +588,91 @@ enum SkinDrawingSelfTests {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
         }
         return result == 0 ? Int(info.ri_phys_footprint) : 0
+    }
+
+    /// Stationery's System widget (design system §14): everything that changes is drawn at every update over one kept
+    /// picture of everything that does not, so a frame copies that picture and makes none.
+    static func systemWidgetTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: System copies one kept picture a frame in every size and view") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return }
+            let host = RenderHost()
+            // The suite's sample readings: the same numbers at every update, nothing read in the background.
+            let views = [("defaults", [String: String]()),
+                         ("Cores view, sorted by memory, Swap", ["SystemCPUView": "Cores", "SystemSortBy": "1",
+                                                                 "SystemFourthRing": "Swap"])]
+            for (label, settings) in views {
+                let root = t.temporaryDirectory("system-widget")
+                try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                                 to: root.appendingPathComponent("Stationery"))
+                let resources = root.appendingPathComponent("Stationery/@Resources")
+                for (file, pairs) in [("System/Settings.inc", ["SystemSource": "Demo"]), ("Variables.inc", settings)] {
+                    let url = resources.appendingPathComponent(file)
+                    var text = try String(contentsOf: url, encoding: .utf8)
+                    for (key, value) in pairs {
+                        text = text.replacingOccurrences(of: "(?m)^\(key)=.*$", with: "\(key)=\(value)",
+                                                         options: .regularExpression)
+                    }
+                    try text.write(to: url, atomically: true, encoding: .utf8)
+                }
+                for size in ["Small", "Medium", "Large"] {
+                    let url = root.appendingPathComponent("Stationery/System/\(size).ini")
+                    let skin = Skin(config: "Stationery\\System", fileURL: url, skinsDirectory: root,
+                                    system: SystemMonitor.shared, host: host)
+                    try skin.load()
+                    defer { skin.close() }
+                    let drawing = SkinBitmapDrawing()
+                    func frame() -> (copied: Int, made: Int, drawn: Int) {
+                        skin.update()
+                        _ = drawing.picture(of: skin, size: CGSize(width: skin.width, height: skin.height), scale: 2,
+                                            space: space, appearance: "test")
+                        return drawing.lastStats
+                    }
+                    // Loading: the first readings, the GPU's late one, the Disk ring's figure.
+                    for _ in 0..<9 { _ = frame() }
+                    let frames = (0..<12).map { _ in frame() }
+                    t.check(frames.allSatisfy { $0.copied == 1 && $0.made == 0 },
+                            "\(size), \(label): \(frames.map { "\($0.copied)/\($0.made)/\($0.drawn)" })")
+                    t.equal(drawing.keptRuns, 1, "\(size), \(label): one picture kept")
+
+                    // The card's sentence and a row's words are read when their tooltip opens.
+                    let sentence = skin.measure(named: "MeasureSentence")?.stringValue ?? "?"
+                    t.check(sentence.hasPrefix("CPU 21%"), sentence)
+                    let card = skin.toolTipInfo(at: skin.width / 2, skin.height - 8)
+                    t.equal(card?.title, "MacBook Pro", "\(size): the card's tooltip")
+                    t.equal(card?.text, sentence)
+                    if size == "Large" {
+                        let sort = label == "defaults" ? "CPU" : "Mem"
+                        let row = skin.toolTipInfo(at: 40, 270)
+                        t.equal(row?.title, skin.measure(named: "MeasureTop\(sort)1Name")?.stringValue,
+                                "\(label): the first row's tooltip")
+                        t.equal(row?.text, skin.measure(named: "MeasureTop\(sort)1Tip")?.stringValue)
+                        t.check(row?.text.isEmpty == false)
+                    }
+                    guard size != "Small" else { continue }
+
+                    // What rests in the picture is drawn again when it changes: the uptime and the Disk ring.
+                    skin.execute("[!SetOption MeasureUptimeText String \"3 d 4 h\"][!UpdateMeasure MeasureUptimeText]",
+                                 from: nil)
+                    t.equal((skin.meter(named: "MeterUptime") as? StringMeter)?.text, "Up 3 d 4 h", "\(size)")
+                    skin.execute("[!SetOption MeasureDiskText String 97][!UpdateMeasure MeasureDiskText]"
+                                 + "[!UpdateMeasure MeasureDiskShown]", from: nil)
+                    t.equal((skin.meter(named: "MeterDiskValue") as? StringMeter)?.text, "97%", "\(size)")
+                    // The changed meters are drawn around the rest of the picture, which is then made again whole
+                    // once and copied from then on.
+                    let changed = frame()
+                    t.check(changed.made >= 1 && changed.drawn > frames[0].drawn, "\(size): \(changed)")
+                    let whole = frame()
+                    t.check(whole.copied == 0 && whole.made == 1, "\(size): \(whole)")
+                    let after = frame()
+                    t.check(after.copied == 1 && after.made == 0, "\(size): \(after)")
+                }
+            }
+            withExtendedLifetime(host) {}
+        }
     }
 
     static func memoryTests(_ t: AppTestRunner) {
