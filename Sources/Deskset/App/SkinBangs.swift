@@ -90,17 +90,20 @@ extension SkinWindowController {
         // Config level. Loading, unloading and refreshing always happen on a later run loop turn, after the action
         // that asked for them has finished: a skin whose OnRefreshAction refreshes it (or another skin that
         // refreshes it back) must not recurse, and a skin must not be replaced while its own action runs.
+        // Refreshes go in turn with the other loads asked for together (`AppController.inTurn`): every skin that follows
+        // the appearance refreshes itself at once, and on another thread they would otherwise all be registered before
+        // any of them loaded.
         case "refresh":
             if arg(0) == "*" {
                 app.later { $0.refreshAll(rescan: false) }
             } else {
-                for t in others(targets(0)) { app.later { $0.refresh(t) } }
+                for t in others(targets(0)) { app.later { $0.refreshInTurn(t) } }
             }
         case "refreshapp":
             app.later { $0.refreshAll(rescan: true) }
         case "refreshgroup":
             let list = others(group(0))
-            app.later { app in list.forEach(app.refresh) }
+            app.later { app in list.forEach(app.refreshInTurn) }
         case "activateconfig":
             let config = arg(0)
             guard !config.isEmpty, !(host.whileClosing && isSelf) else { return }

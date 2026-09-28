@@ -324,23 +324,67 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// after the last one settled (at once with the main executor). Main thread.
     func activateInOrder(_ items: [(config: String, file: String?)],
                          each: ((SkinWindowController, Int) -> Void)? = nil, done: @escaping () -> Void) {
-        var next = 0
-        func goOn() {
-            while next < items.count {
-                let index = next
-                next += 1
-                guard !isTerminating else { break }
-                guard let c = activate(config: items[index].config, file: items[index].file, fade: true, restack: false)
-                else { continue }
-                each?(c, index)
-                if c.isStarting {
-                    c.whenSettled { goOn() }
-                    return
+        for (index, item) in items.enumerated() {
+            inTurn { app in
+                guard let c = app.activate(config: item.config, file: item.file, fade: true, restack: false) else {
+                    return nil
                 }
+                each?(c, index)
+                return c
             }
-            done()
         }
-        goOn()
+        inTurn { _ in
+            done()
+            return nil
+        }
+    }
+
+    // MARK: Loads one after another
+
+    /// Loads (and reloads) waiting for their turn (`inTurn`), and whether one is under way.
+    private var turns: [(AppController) -> SkinWindowController?] = []
+    private var isTakingTurns = false
+    /// What `later` was asked for while loads were taken in turn: run once the last of them settled, in order.
+    private var afterTurns: [(AppController) -> Void] = []
+
+    /// Runs `load` — an `activate` or a `refresh`, which returns the window it made — once every load asked for this
+    /// way before it has settled: its skin started, its load failed, or it was unloaded (`whenSettled`). Main thread.
+    ///
+    /// On the main thread each load is over before the next begins, and a skin's OnRefreshAction sees only the skins
+    /// loaded before it. A skin on the engine thread starts after `activate` returned, so loads asked for together
+    /// (the session's skins at launch, Refresh All, `!RefreshGroup`, the `[!Refresh]` of every skin that follows the
+    /// appearance, an installer loading a suite again) would otherwise all be registered before any of them loaded:
+    /// Enigma's Dock unloads its Menu when it loads, and would then unload the Menu's new copy. With the main executor
+    /// `load` runs at once, as before, unless an earlier load is still settling.
+    func inTurn(_ load: @escaping (AppController) -> SkinWindowController?) {
+        turns.append(load)
+        takeTurns()
+    }
+
+    private func takeTurns() {
+        guard !isTakingTurns else { return }
+        isTakingTurns = true
+        while !turns.isEmpty {
+            let load = turns.removeFirst()
+            if let c = load(self), c.isStarting {
+                c.whenSettled { [weak self] in
+                    guard let self else { return }
+                    self.isTakingTurns = false
+                    self.takeTurns()
+                }
+                return
+            }
+        }
+        isTakingTurns = false
+        let waiting = afterTurns
+        afterTurns = []
+        for body in waiting { later(body) }
+    }
+
+    /// `refresh`, in turn with the other loads asked for together (`inTurn`): the bangs' `!Refresh` and
+    /// `!RefreshGroup`, and the appearance's `[!Refresh]`.
+    func refreshInTurn(_ c: SkinWindowController) {
+        inTurn { $0.refresh(c) }
     }
 
     /// Whether `activate` would make a window for `config` and `file`: the config exists and has an .ini file to load.
@@ -557,7 +601,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Runs `body` on the next run loop turn. Bangs load, unload and refresh skins this way: loading a skin runs its
     /// OnRefreshAction, which may refresh the skin itself or another skin whose OnRefreshAction refreshes it back —
     /// done synchronously, that recursed until the stack overflowed.
+    ///
+    /// While loads are taken in turn (`inTurn`), what is asked meanwhile waits until the last of them has settled, as
+    /// on the main thread, where a batch of loads (Refresh All, the session's skins) ran in one turn and what their
+    /// OnRefreshActions asked for ran after all of them: Enigma's Dock, refreshed before its Menu, unloads the Menu it
+    /// found, which is gone by then, not the Menu's new copy.
     func later(_ body: @escaping (AppController) -> Void) {
+        if isTakingTurns {
+            afterTurns.append(body)
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             if let self { body(self) }
         }
@@ -633,9 +686,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // before, so that its own bangs for its group or `*` find it.
         let inline = executor.isCurrent
         if !inline { directoryHeld += 1 }
+        // The copy it replaces: on another thread its window stays, showing its last frame, until the new copy has
+        // started (or failed), so the widget does not vanish for the time the load takes. On the main executor both
+        // happen in this turn, as before.
+        var replaced: SkinWindowController?
         if let running = controllers[key] {
             controllers[key] = nil
-            running.stop(ticket: ticket)
+            // A copy that has not started shows nothing yet: the window it was to replace waits for this one instead.
+            let handedOver = running.isStarting ? running.takeReplacedWindow() : nil
+            let keepsWindow = !inline && !running.isStarting
+            running.stop(ticket: ticket, keepsWindow: keepsWindow)
+            replaced = handedOver ?? (keepsWindow ? running : nil)
         }
         state.update(entry.name) {
             $0.file = chosen
@@ -645,6 +706,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         controllers[key] = c
         c.restacksWhenStarted = restack
         c.moveWhenStarted = place
+        c.replacedWindow = replaced
         let order = SkinLoadOrder(state: c.state, firstLoad: firstLoad, continuing: previous,
                                   presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket)
         if let ticket { studioReload(ticket, .loading, c) }
@@ -777,16 +839,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return entry.files[(index + 1) % entry.files.count]
     }
 
-    /// Loads `c`'s skin again (a new window controller and runtime), when it is the one running for its config.
-    func refresh(_ c: SkinWindowController) {
+    /// Loads `c`'s skin again (a new window controller and runtime), when it is the one running for its config: the
+    /// new window (nil when `c` is not running any more or the load failed on the main executor).
+    @discardableResult
+    func refresh(_ c: SkinWindowController) -> SkinWindowController? {
         refresh(c, ticket: nil, thenMoveTo: nil)
     }
 
     /// `refresh` for a reload the Studio asked for (`ticket`), and where the window goes once the new copy started
     /// (`place`; see `activate`).
-    func refresh(_ c: SkinWindowController, ticket: SkinReloadTicket?, thenMoveTo place: WidgetPosition?) {
-        guard controller(for: c.config) === c else { return }
-        activate(config: c.config, file: c.file, continuing: c.runtime, ticket: ticket, thenMoveTo: place)
+    @discardableResult
+    func refresh(_ c: SkinWindowController, ticket: SkinReloadTicket?, thenMoveTo place: WidgetPosition?)
+        -> SkinWindowController? {
+        guard controller(for: c.config) === c else { return nil }
+        return activate(config: c.config, file: c.file, continuing: c.runtime, ticket: ticket, thenMoveTo: place)
     }
 
     /// A copy of a widget went through a step of a reload the Studio asked for (`SkinReloadEvent`): the widget's
@@ -803,11 +869,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Fonts.rescanAllFolders()
         let fonts = Fonts.generation
         if rescan { cachedLibrary = nil }
-        for c in sortedControllers { refresh(c) }
-        // Every skin was just loaded again with these fonts.
+        // One after another (`inTurn`): each skin's OnRefreshAction sees the others as the main thread showed them.
+        for c in sortedControllers { refreshInTurn(c) }
+        // Every skin is loaded again with these fonts.
         fontsGenerationSeen = max(fontsGenerationSeen, fonts)
-        restack()
-        notifyChanged()
+        inTurn { app in
+            app.restack()
+            app.notifyChanged()
+            return nil
+        }
     }
 
     /// `activate` calls under way (a skin of the main executor starts inside them).

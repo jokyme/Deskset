@@ -93,11 +93,16 @@ final class SkinWindowCompanions {
         backdrop?.animateAlpha(to: alpha)
     }
 
-    /// The window closed: the boxes close without an answer (the skin has closed) and the backdrop goes.
-    func tearDown() {
+    /// The skin closed while its window stays a moment (a reload on another thread): the boxes close without an answer.
+    func closeInputTexts() {
         let open = prompts
         prompts = [:]
         for prompt in open.values { prompt.cancel() }
+    }
+
+    /// The window closed: the boxes close without an answer (the skin has closed) and the backdrop goes.
+    func tearDown() {
+        closeInputTexts()
         backdrop?.remove()
         backdrop = nil
         backdropOwner = nil

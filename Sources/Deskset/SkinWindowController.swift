@@ -69,6 +69,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Where the window goes once the skin started (top-left, as `moveTo` takes it): a step of the Studio that moves the
     /// widget with its files. Applied right after the window is placed, before it is shown.
     var moveWhenStarted: WidgetPosition?
+    /// The window of the copy this one replaces, kept on screen with its last frame (`stop(keepsWindow:)`) until this
+    /// one has started, failed or been stopped (`settled`): a reload on another thread does not make the widget vanish
+    /// meanwhile.
+    var replacedWindow: SkinWindowController?
+    /// The window was stopped but kept (`stop(keepsWindow:)`) until the copy replacing it settles.
+    private(set) var isKeptForReplacement = false
     /// The skin's updates are paused (as the runtime's: `pauseUpdates` / `resumeUpdates`): no hover tracking meanwhile.
     private var updatesPaused = false
     /// Updates stopped by `pauseUpdates()` (sleep, locked screens) until `resumeUpdates`.
@@ -235,9 +241,33 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     private func settled() {
+        if let old = replacedWindow {
+            replacedWindow = nil
+            old.closeReplacedWindow(by: self)
+        }
         let waiters = settleWaiters
         settleWaiters = []
         for body in waiters { body() }
+    }
+
+    /// The window kept for this copy, which has not started: it is handed on to the copy replacing this one.
+    func takeReplacedWindow() -> SkinWindowController? {
+        defer { replacedWindow = nil }
+        return replacedWindow
+    }
+
+    /// The copy replacing this one settled (`replacedWindow`): the new window, when it shows, goes where this one was in
+    /// the stacking, and this one closes.
+    func closeReplacedWindow(by new: SkinWindowController) {
+        guard isKeptForReplacement else { return }
+        isKeptForReplacement = false
+        if app.presentsWindows && window.isVisible && new.window.isVisible {
+            new.window.order(.above, relativeTo: window.windowNumber)
+        }
+        window.orderOut(nil)
+        window.close()
+        companions.tearDown()
+        content.teardown()
     }
 
     /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config, and the
@@ -323,7 +353,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Stops updating, runs OnCloseAction (the runtime reports `.closed` when it has: `runtime.whenClosed`) and
     /// closes the window (fading out when `fadeOut`), with its companions. `ticket`: the reload the Studio asked for
     /// that this close is part of (the Studio hears of the close, then of `.closed`).
-    func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil) {
+    ///
+    /// `keepsWindow`: the copy replacing this one loads on another thread; the window stays as it is, showing its last
+    /// frame, until that copy settles (`closeReplacedWindow`). Its InputText boxes close now.
+    func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil, keepsWindow: Bool = false) {
         guard !isStopped, !isClosing else { return }
         startWaiters = []
         hoverTimer?.invalidate()
@@ -349,6 +382,11 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
         let content = self.content, companions = self.companions!
         defer { settled() }
+        if keepsWindow {
+            isKeptForReplacement = true
+            companions.closeInputTexts()
+            return
+        }
         guard duration > 0 else {
             window.orderOut(nil)
             window.close()

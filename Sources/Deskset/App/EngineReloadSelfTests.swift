@@ -10,6 +10,8 @@ enum EngineReloadSelfTests {
     static func run(_ t: AppTestRunner) {
         loadQueueTests(t)
         closeTests(t)
+        orderTests(t)
+        installTests(t)
     }
 
     typealias E = EngineThreadSelfTests
@@ -139,6 +141,218 @@ enum EngineReloadSelfTests {
                     }
                 }
                 outcomes[threading] = outcome
+                if threading == .engine {
+                    E.finish(t, app, tracked)
+                } else {
+                    app.stopAllForTermination()
+                }
+            }
+            t.equal(outcomes[.engine], outcomes[.main], "the engine thread does what the main thread does")
+        }
+    }
+
+    // MARK: Reloads together, one after another
+
+    /// Enigma's Dock unloads its Menu when it loads; A updates B from its OnRefreshAction. Both use the appearance, so
+    /// both refresh when it changes (`MacOnAppearanceChangeAction`'s default `[!Refresh]`).
+    static func suite(_ app: AppController) throws {
+        let dock = """
+            [Rainmeter]
+            Update=-1
+            OnRefreshAction=[!DeactivateConfig "Engine\\Menu"]
+
+            [Variables]
+            Look=#MACAPPEARANCE#
+
+            """ + E.box
+        let menu = "[Rainmeter]\nUpdate=-1\n\n[Variables]\nLook=#MACAPPEARANCE#\n\n" + E.box
+        let a = """
+            [Rainmeter]
+            Update=-1
+            OnRefreshAction=[!Update "Engine\\B"]
+
+            """ + E.box
+        try E.write(app, ["Dock": dock, "Menu": menu, "A": a, "B": marked])
+        for (order, name) in ["Dock", "Menu", "A", "B"].enumerated() {
+            app.state.update("Engine\\\(name)") {
+                $0.file = "\(name).ini"
+                $0.loadOrder = order + 1
+            }
+        }
+    }
+
+    static func orderTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: Refresh All, !Refresh * and an appearance change reload the skins one after another, as on the main thread") {
+            let saved = NSApp.appearance
+            t.atSuiteEnd {
+                NSApp.appearance = saved
+                MacAppearance.current.refresh()
+                DesktopInputs.appearance.refresh()
+            }
+            var outcomes: [SkinThreading: [String]] = [:]
+            for threading in [SkinThreading.main, .engine] {
+                NSApp.appearance = NSAppearance(named: .aqua)
+                guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                try suite(app)
+                app.observeAppearance()
+                var tracked: [() -> Skin?] = []
+                var outcome: [String] = []
+                autoreleasepool {
+                    var finished = 0
+                    app.loadActiveSkins { finished += 1 }
+                    t.check(AppSelfTest.spin(timeout: 60) { finished == 1 }, "\(threading): loaded")
+                    func state() -> String {
+                        let running = app.sortedControllers.filter(\.isStarted).map(\.config)
+                        let b = app.controller(for: "Engine\\B")
+                        let seen = b?.runtime.exclusive(timeout: 30) { skin in
+                            "Mark=\(skin.variable("Mark") ?? "?") \(Int(skin.width))x\(Int(skin.height))"
+                        } ?? "no B"
+                        return "\(running) \(seen)"
+                    }
+                    func settled(_ before: [String: SkinWindowController]) -> Bool {
+                        app.sortedControllers.allSatisfy { c in c.isStarted && before[c.config] !== c }
+                            && !app.sortedControllers.isEmpty
+                    }
+                    func controllers() -> [String: SkinWindowController] {
+                        Dictionary(app.sortedControllers.map { ($0.config, $0) }, uniquingKeysWith: { a, _ in a })
+                    }
+                    outcome.append("launch: \(state())")
+                    for step in ["Refresh All", "!Refresh *", "Dark Mode"] {
+                        let before = controllers()
+                        tracked += before.values.map(E.track)
+                        switch step {
+                        case "Refresh All":
+                            app.refreshAll(rescan: false)
+                        case "!Refresh *":
+                            before["Engine\\A"]?.runtime.send(.execute("[!Refresh *]", section: nil))
+                        default:
+                            NSApp.appearance = NSAppearance(named: .darkAqua)
+                        }
+                        // Every skin reloads, or with the appearance the ones that use it (the Dock and the Menu).
+                        let reloading = step == "Dark Mode" ? ["Engine\\Dock"] : ["Engine\\Dock", "Engine\\A", "Engine\\B"]
+                        let done = AppSelfTest.spin(timeout: 60) {
+                            let now = controllers()
+                            return reloading.allSatisfy {
+                                now[$0].map { $0.isStarted && before[$0.config] !== $0 } == true
+                            } && (now["Engine\\Menu"].map { $0.isStarted && before["Engine\\Menu"] !== $0 } ?? true)
+                        }
+                        t.check(done, "\(threading) \(step): reloaded: \(state())")
+                        let queued = Guarded(false)
+                        app.later { _ in queued.access { $0 = true } }
+                        t.check(AppSelfTest.spin(timeout: 60) { queued.current }, "and what they asked for ran")
+                        t.check(app.controller(for: "Engine\\Menu")?.isStarted == true,
+                                "\(threading) \(step): the Menu stays, as on the main thread: \(state())")
+                        t.equal(app.state.skin("Engine\\Menu")?.active, true, "\(threading) \(step): and stays active")
+                        outcome.append("\(step): \(state())")
+                    }
+                    tracked += app.sortedControllers.map(E.track)
+                }
+                t.equal(outcome.last?.contains("Mark=1 120x60"), true, "\(threading): B's OnRefreshAction ran: \(outcome)")
+                outcomes[threading] = outcome
+                if threading == .engine {
+                    E.finish(t, app, tracked)
+                } else {
+                    app.stopAllForTermination()
+                }
+            }
+            t.equal(outcomes[.engine], outcomes[.main], "the engine thread does what the main thread does")
+        }
+    }
+
+    // MARK: The installer
+
+    static func installTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: an installer reloads a suite's skins one after another, as on the main thread") {
+            var outcomes: [SkinThreading: String] = [:]
+            for threading in [SkinThreading.main, .engine] {
+                guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                let dock = "[Rainmeter]\nUpdate=-1\nOnRefreshAction=[!DeactivateConfig \"Suite\\Menu\"]\n\n" + E.box
+                let menu = "[Rainmeter]\nUpdate=-1\n\n[Variables]\nVersion=1\n\n" + E.box
+                for (name, text) in ["Dock": dock, "Menu": menu] {
+                    let folder = app.skinsDirectory.appendingPathComponent("Suite/\(name)", isDirectory: true)
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    try text.write(to: folder.appendingPathComponent("\(name).ini"), atomically: true, encoding: .utf8)
+                }
+                app.rescanLibrary()
+                for (order, name) in ["Dock", "Menu"].enumerated() {
+                    app.state.update("Suite\\\(name)") {
+                        $0.file = "\(name).ini"
+                        $0.loadOrder = order + 1
+                    }
+                }
+                let package = try AppSelfTest.makePackage(t, name: "Suite.rmskin", files: [
+                    "RMSKIN.ini": Data("[rmskin]\nName=Suite\nAuthor=Deskset tests\nVersion=2\nLoadType=Skin\n".utf8),
+                    "Skins/Suite/Dock/Dock.ini": Data(dock.utf8),
+                    "Skins/Suite/Menu/Menu.ini": Data(menu.replacingOccurrences(of: "Version=1", with: "Version=2").utf8),
+                ])
+                var tracked: [() -> Skin?] = []
+                autoreleasepool {
+                    var finished = 0
+                    app.loadActiveSkins { finished += 1 }
+                    t.check(AppSelfTest.spin(timeout: 60) { finished == 1 }, "\(threading): loaded")
+                    t.equal(app.sortedControllers.filter(\.isStarted).map(\.config), ["Suite\\Dock", "Suite\\Menu"])
+                    tracked += app.sortedControllers.map(E.track)
+                    app.installer.open([package])
+                    t.check(AppSelfTest.spin(timeout: 60) {
+                        guard app.installer.isIdle, let menu = app.controller(for: "Suite\\Menu") else { return false }
+                        return menu.isStarted && menu.runtime.snapshot.updateCount > 0
+                    }, "\(threading): installed, and the Menu loaded again after the Dock")
+                    let queued = Guarded(false)
+                    app.later { _ in queued.access { $0 = true } }
+                    t.check(AppSelfTest.spin(timeout: 60) { queued.current }, "and what they asked for ran")
+                    let menu = app.controller(for: "Suite\\Menu")
+                    t.equal(menu?.runtime.exclusive(timeout: 30) { $0.variable("Version") }, "2", "\(threading): the new Menu")
+                    t.equal(app.state.skin("Suite\\Menu")?.active, true, "\(threading): still active")
+                    outcomes[threading] = app.sortedControllers.filter(\.isStarted).map(\.config).joined(separator: ", ")
+                    tracked += app.sortedControllers.map(E.track)
+                }
+                if threading == .engine {
+                    E.finish(t, app, tracked)
+                } else {
+                    app.stopAllForTermination()
+                }
+            }
+            t.equal(outcomes[.engine], outcomes[.main], "the engine thread does what the main thread does")
+            t.equal(outcomes[.engine], "Suite\\Dock, Suite\\Menu")
+        }
+
+        t.suite("App: engine thread: an installer whose package skin cannot be loaded brings back what was running") {
+            defer { SkinInstallFlow.beforeLoadingPackageSkin = nil }
+            var outcomes: [SkinThreading: String] = [:]
+            for threading in [SkinThreading.main, .engine] {
+                guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                let folder = app.skinsDirectory.appendingPathComponent("Pkg/Widget", isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try E.plain.write(to: folder.appendingPathComponent("Old.ini"), atomically: true, encoding: .utf8)
+                app.rescanLibrary()
+                let package = try AppSelfTest.makePackage(t, name: "Pkg.rmskin", files: [
+                    "RMSKIN.ini": Data("[rmskin]\nName=Pkg\nAuthor=Deskset tests\nVersion=2\nLoadType=Skin\nLoad=Pkg\\Widget\\New.ini\n".utf8),
+                    "Skins/Pkg/Widget/New.ini": Data(E.plain.utf8),
+                    "Skins/Pkg/Widget/Old.ini": Data(E.plain.utf8),
+                ])
+                // The package's skin is listed, then its file goes: its load fails, on whichever thread it runs.
+                let newFile = folder.appendingPathComponent("New.ini")
+                SkinInstallFlow.beforeLoadingPackageSkin = { app in
+                    _ = app.library
+                    try? FileManager.default.removeItem(at: newFile)
+                }
+                var tracked: [() -> Skin?] = []
+                autoreleasepool {
+                    guard let old = app.activate(config: "Pkg\\Widget", file: "Old.ini") else {
+                        return t.check(false, "loads")
+                    }
+                    tracked.append(E.track(old))
+                    t.check(AppSelfTest.spin(timeout: 60) { old.isStarted }, "\(threading): started")
+                    app.installer.open([package])
+                    t.check(AppSelfTest.spin(timeout: 60) {
+                        app.installer.isIdle && app.controller(for: "Pkg\\Widget").map { $0 !== old && $0.isStarted } == true
+                    }, "\(threading): installed, and a skin of the config runs")
+                    let now = app.controller(for: "Pkg\\Widget")
+                    if let now { tracked.append(E.track(now)) }
+                    t.equal(now?.file, "Old.ini", "\(threading): the one that was running came back")
+                    t.equal(app.state.skin("Pkg\\Widget")?.active, true, "\(threading): still active")
+                    outcomes[threading] = "\(now?.file ?? "none") \(app.state.skin("Pkg\\Widget")?.active == true)"
+                }
                 if threading == .engine {
                     E.finish(t, app, tracked)
                 } else {
