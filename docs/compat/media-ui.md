@@ -57,8 +57,8 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 - Why: if a "would require consent" answer were treated as a refusal, no Apple Event would ever be sent, so the prompt
   would never appear and NowPlaying could never work.
 - Skin impact: none. The prompt appears the first time a skin with NowPlaying data (or a MediaKey/NowPlaying command)
-  meets a running player. Until a player has answered a poll, its permission is also read without asking
-  (`askUserIfNeeded` false) right before the poll, so `PlayerType=MacPermission` can tell "not asked yet" while the
+  meets a running player. Until a player is known to allow it, its permission is also read without asking
+  (`askUserIfNeeded` false) right before each poll, so `PlayerType=MacPermission` can tell "not asked yet" while the
   prompt waits for the user.
 - Status: emulated
 
@@ -149,8 +149,8 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   refused player that is closed (not playing is what is true; its first poll after it opens tells again). String: the
   player the number is about (`Music`, `Spotify`); with 0, the player the measure shows (the preferred one when none
   runs), so it is never empty. Automatic MaxValue 2. `PlayerName=[MainMeasure]` works as for every PlayerType, and
-  WebNowPlaying accepts it too. Reading it never asks: it is the answer of the last poll, and before a player's first
-  answer the check Apple's API makes without a prompt (see "How the Automation permission is checked"). A refusal is
+  WebNowPlaying accepts it too. Reading it never asks: it is the answer of the last poll, or of the check Apple's API
+  makes without a prompt before it (see "How the Automation permission is checked"). A refusal is
   re-checked every 30 s without asking, so allowing it later in System Settings brings the value back to 0 within
   30 s.
 - Why: Deskset extension. A refused player looks closed to every other PlayerType, so a skin could only say "not
