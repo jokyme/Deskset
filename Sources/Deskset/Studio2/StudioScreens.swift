@@ -61,6 +61,9 @@ struct StudioScreen {
     var pinned: [String: (value: Double, text: String?)] = [:]
     /// The swatch the color popover is open on ("part:1": the second part color).
     var colorPopover: String?
+    /// A color already picked on a swatch and the popover closed (one step made): the swatch and the Mac color's index
+    /// in the popover (4: Mint). The confirmation shows under the colors.
+    var colorPicked: (swatch: String, macColor: Int)?
     /// The swatch the pointer is on (the canvas frames what it paints).
     var hoverSwatch: String?
     /// The recent colors the popover lists.
@@ -118,6 +121,12 @@ struct StudioScreen {
                      recentColors: [RGBA(r: 250, g: 115, b: 89), RGBA(r: 92, g: 107, b: 242)],
                      later: ["Different in Dark Mode in the color popover", "the color field shows the file's R,G,B",
                              "Disk reads as free space on Macintosh HD", "look thumbnails over a sample backdrop"]),
+        // The same after the Memory ring's color became Mint: the confirmation, Revert to Original in the footer, "Edited
+        // by you" (the design shows this state in Chinese).
+        StudioScreen(name: "03-customize-changed", fixture: .system, zoom: 1.65, updates: 4, pinned: systemReadings,
+                     colorPicked: ("part:1", 4),
+                     later: ["the offer to change the suite's other widgets that use the same green",
+                             "the widget's own words stay English (an INI widget has no translations)"]),
         // A city picked (the design's), and the sample forecast of `DESKSET_WEATHER_DEMO`.
         StudioScreen(name: "03b-weather", fixture: .weather,
                      edits: [FileEdit(path: "@Resources/Variables.inc", find: "Location=timezone",

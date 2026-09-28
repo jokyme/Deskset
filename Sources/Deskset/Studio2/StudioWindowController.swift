@@ -268,7 +268,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         guard let link else { return "" }
         guard link.isOnDesktop else { return StudioText[.copyNotLoaded] }
         switch link.provenance {
-        case .builtIn: return StudioText[.copyBuiltIn]
+        case .builtIn: return widgetPage.revertLink() != nil ? StudioText[.copyEdited] : StudioText[.copyBuiltIn]
         case .madeByYou: return StudioText[.copyMadeByYou]
         case .rainmeter: return StudioText[.copyRainmeter]
         }

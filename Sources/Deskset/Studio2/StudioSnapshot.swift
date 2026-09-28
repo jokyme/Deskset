@@ -149,6 +149,15 @@ enum StudioSnapshot {
             StudioColorPopover.recentInMemory = screen.recentColors
             controller.widgetPage.openColor(role, swatch: swatch)
         }
+        if let picked = screen.colorPicked, let facts = controller.widgetPage.facts,
+           let role = controller.widgetPage.colorRoles(facts)[picked.swatch] {
+            controller.widgetPage.openColor(role, swatch: picked.swatch)
+            if let popover = controller.widgetPage.colorPopover, popover.macSwatches.indices.contains(picked.macColor) {
+                _ = popover.macSwatches[picked.macColor].accessibilityPerformPress()
+                popover.close()
+            }
+            controller.updateToolbar()
+        }
         if let swatch = screen.hoverSwatch { controller.widgetPage.handle(.hoverSwatch(item: "colors", swatch: swatch)) }
         // The sidebar's page, and the data row the pointer is on.
         if screen.depth == .build {

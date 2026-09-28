@@ -77,6 +77,11 @@ enum StudioText {
         case copyRainmeter = "copy.rainmeter"
         case copyConverted = "copy.converted"
         case copyNotLoaded = "copy.notLoaded"
+        // Revert to Original.
+        case revertToOriginal = "revert.title"
+        case revertOne = "revert.one"
+        case revertMany = "revert.many"
+        case confirmReverted = "revert.confirm"
         // The popover the name opens.
         case runningTitle = "running.title"
         case runningFile = "running.file"
@@ -633,6 +638,10 @@ enum StudioText {
         .copyRainmeter: ("Rainmeter skin · compatibility mode", "Rainmeter 皮肤 · 兼容模式"),
         .copyConverted: ("Converted from %@’s Rainmeter skin", "由 %@ 的 Rainmeter 皮肤转换"),
         .copyNotLoaded: ("Not on your desktop right now", "现在不在桌面上"),
+        .revertToOriginal: ("Revert to Original", "恢复为原件"),
+        .revertOne: ("1 change", "1 处修改"),
+        .revertMany: ("%d changes", "%d 处修改"),
+        .confirmReverted: ("Back to the original", "已恢复为原件"),
         .runningTitle: ("Running on your desktop", "桌面上运行的"),
         .runningFile: ("%@", "%@"),
         .runningNothing: ("Nothing: the widget is not on your desktop right now.", "没有：这个小组件现在不在桌面上。"),

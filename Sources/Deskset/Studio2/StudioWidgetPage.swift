@@ -23,6 +23,8 @@ final class StudioWidgetPage {
     /// A confirmation at the top of the page (a part hidden from the canvas).
     private(set) var topConfirmation: StudioPage.Confirmation?
     let thumbnails: StudioLookThumbnails
+    /// The widget's differences from its shipped original, and the texts they were worked out from.
+    var originalCache: (key: String, changes: [OriginalCopy.Change])?
 
     struct Confirmation {
         /// The item it follows, and its section.
@@ -136,6 +138,7 @@ final class StudioWidgetPage {
         if let s = lookSection(facts) { page.sections.append(s) }
         page.footer = [StudioPage.Link(id: "more-settings", title: StudioText[.moreSettings],
                                        detail: StudioText[.moreSettingsDetail])]
+        if let revert = revertLink() { page.footer.append(revert) }
         // A confirmation goes right under the control that made the change.
         if let c = confirmation, let si = page.sections.firstIndex(where: { $0.id == c.section }) {
             let items = page.sections[si].items
@@ -651,6 +654,7 @@ final class StudioWidgetPage {
     }
 
     private func link(_ id: String) {
+        if id == "revert" { return revertToOriginal() }
         guard let facts, let skin else { return }
         let menu = NSMenu()
         menu.autoenablesItems = false
