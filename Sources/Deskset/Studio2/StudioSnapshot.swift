@@ -64,6 +64,10 @@ enum StudioSnapshot {
         // The weather widgets show a sample forecast: nothing is fetched and no place is asked for.
         setenv("DESKSET_WEATHER_DEMO", "1", 1)
         WeatherWiring.installPreview()
+        if arguments.contains("--on-screen") {
+            let explicit = arguments.contains("--size")
+            return .success(onScreen(screen, size: explicit ? size : NSSize(width: 1050, height: 700)))
+        }
         guard let opened = open(screen, size: size) else { return .success(nil) }
         defer { opened.close() }
         return .success(render(opened.controller)?.representation(using: .png, properties: [:]))
@@ -71,7 +75,7 @@ enum StudioSnapshot {
 
     /// Opens the new Studio on `screen`'s widget, headless, in the screen's state. nil when the fixture is not found
     /// or its widget does not load (the reason is printed).
-    static func open(_ screen: StudioScreen, size: NSSize = defaultSize) -> Opened? {
+    static func open(_ screen: StudioScreen, size: NSSize = defaultSize, onScreen: Bool = false) -> Opened? {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DesksetStudio2-\(screen.name)-\(UUID().uuidString)", isDirectory: true)
         let skins = root.appendingPathComponent("Skins", isDirectory: true)
@@ -90,16 +94,21 @@ enum StudioSnapshot {
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
                                 backupsDirectory: root.appendingPathComponent("Backups"),
-                                defaultSkinsSource: Paths.repositoryFolder("DefaultSkins"), presentsWindows: false)
+                                defaultSkinsSource: Paths.repositoryFolder("DefaultSkins"), presentsWindows: onScreen)
         guard let c = app.activate(config: screen.fixture.config, file: screen.fixture.file) else {
             fputs("error: \(screen.fixture.config) does not load\n", stderr)
             try? FileManager.default.removeItem(at: root)
             return nil
         }
-        let switchWas = StudioSwitch.headlessValue
-        StudioSwitch.headlessValue = true
-        app.showInspector(for: c)
-        StudioSwitch.headlessValue = switchWas
+        if onScreen {
+            // On screen the switch would read the user's defaults: the window is asked for directly.
+            StudioWindowController.show(for: c, app: app)
+        } else {
+            let switchWas = StudioSwitch.headlessValue
+            StudioSwitch.headlessValue = true
+            app.showInspector(for: c)
+            StudioSwitch.headlessValue = switchWas
+        }
         guard let controller = StudioWindowController.window(for: app) else {
             app.stopAllForTermination()
             try? FileManager.default.removeItem(at: root)
@@ -130,6 +139,70 @@ enum StudioSnapshot {
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         controller.canvasController.geometryChanged()
         controller.canvasController.layoutFloating()
+    }
+
+    // MARK: On screen
+
+    /// `--on-screen`: the window as the window server draws it — real glass, the system toolbar, the popover's own
+    /// window — read back from this process's own windows only. Runs only when the process may already read them
+    /// (`CGPreflightScreenCaptureAccess`): it never asks for permission. The window and the widget are put at the
+    /// bottom right of the main screen (the top left is left alone), and closed afterwards.
+    static func onScreen(_ screen: StudioScreen, size: NSSize) -> Data? {
+        guard CGPreflightScreenCaptureAccess() else {
+            fputs("error: --on-screen reads the window back, which this process may not do (it does not ask)\n", stderr)
+            return nil
+        }
+        NSApp.setActivationPolicy(.accessory)
+        guard let opened = open(screen, size: size, onScreen: true), let window = opened.controller.window else {
+            return nil
+        }
+        defer { opened.close() }
+        let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1512, height: 949)
+        // The widget where the canvas can line up with it: bottom right, left of the window.
+        if let widget = opened.controller.link?.desktopWindow {
+            widget.setFrameOrigin(NSPoint(x: visible.maxX - size.width - widget.frame.width - 16,
+                                          y: visible.minY + 16))
+        }
+        window.setFrameOrigin(NSPoint(x: visible.maxX - window.frame.width, y: visible.minY))
+        window.orderFrontRegardless()
+        opened.controller.canvasController.geometryChanged()
+        opened.controller.preview.refreshBackdrop()
+        if screen.previewPopover { opened.controller.preview.showPreviewPopover() }
+        // Let the window server draw it (and the glass settle).
+        let until = Date().addingTimeInterval(1.5)
+        while Date() < until { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05)) }
+        guard let base = windowImage(window) else {
+            fputs("error: the window could not be read back\n", stderr)
+            return nil
+        }
+        // The popover is a window of its own: laid over the window's picture where it is on screen.
+        let scale = CGFloat(base.width) / window.frame.width
+        let popovers = NSApp.windows.filter { $0 !== window && $0.isVisible && $0.className.contains("Popover") }
+        guard !popovers.isEmpty,
+              let ctx = CGContext(data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return NSBitmapImageRep(cgImage: base).representation(using: .png, properties: [:])
+        }
+        ctx.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
+        for popover in popovers {
+            guard let image = windowImage(popover) else { continue }
+            let f = popover.frame
+            ctx.draw(image, in: CGRect(x: (f.minX - window.frame.minX) * scale, y: (f.minY - window.frame.minY) * scale,
+                                       width: f.width * scale, height: f.height * scale))
+        }
+        guard let composed = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: composed).representation(using: .png, properties: [:])
+    }
+
+    /// A picture of one of this process's windows as it is on screen (`CGWindowListCreateImage`, looked up at run
+    /// time: the SDK marks it unavailable to new code).
+    private static func windowImage(_ window: NSWindow) -> CGImage? {
+        typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
+        let create = unsafeBitCast(symbol, to: Create.self)
+        // kCGWindowListOptionIncludingWindow; kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
+        return create(.null, 1 << 3, UInt32(window.windowNumber), (1 << 0) | (1 << 3))?.takeRetainedValue()
     }
 
     // MARK: Rendering

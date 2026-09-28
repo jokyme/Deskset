@@ -38,7 +38,7 @@ enum CommandLineTools {
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
                                            // The new Studio window's screens.
-                                           "--screen", "--language",
+                                           "--screen", "--language", "--on-screen",
                                            // --weather-report.
                                            "--location", "--units", "--offline", "--now",
                                            // --benchmark.
@@ -75,6 +75,7 @@ enum CommandLineTools {
                       [--config NAME] [--category NAME] [--search TEXT] [--pane general|editor]
                       [--hover NAME] [--drag NAME:DX,DY] [--expert] [--tip N] [--expand NAME] [--edit-text NAME]
                       [--scroll "CARD TITLE"] [--hidden] [--coordinates X,Y] [--screen NAME] [--language en|zh]
+                      [--on-screen]
                                         draw app UI off-screen into a PNG (studio2: the new Studio window on a
                                         designed screen, --screen 03-customize and so on)
                Deskset --system-report   print every system reading skins can get

@@ -356,13 +356,48 @@ final class StudioBackdropView: NSView {
                                                                bounds.height / screen.height))
         let target = mapping.viewRect(forScreenRect: global)
         let screenRect = mapping.viewRect(forScreenRect: screen)
+        func draw(_ picture: CGImage, in rect: CGRect) {
+            ctx.saveGState()
+            ctx.translateBy(x: rect.minX, y: rect.maxY)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.draw(picture, in: CGRect(origin: .zero, size: rect.size))
+            ctx.restoreGState()
+        }
         ctx.saveGState()
         ctx.clip(to: screenRect)
         ctx.interpolationQuality = .high
-        ctx.translateBy(x: target.minX, y: target.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(image, in: CGRect(origin: .zero, size: target.size))
+        draw(image, in: target)
         ctx.restoreGState()
+        // Past the screen's edges (a widget near one) the picture goes on as its mirror image, rather than a blank —
+        // when it covers the screen; around a picture that does not, the fill color is what macOS shows.
+        guard target.minX <= screenRect.minX + 0.5, target.maxX >= screenRect.maxX - 0.5,
+              target.minY <= screenRect.minY + 0.5, target.maxY >= screenRect.maxY - 0.5 else { return }
+        let b = bounds
+        let xs = [(b.minX, screenRect.minX), (screenRect.minX, screenRect.maxX), (screenRect.maxX, b.maxX)]
+        let ys = [(b.minY, screenRect.minY), (screenRect.minY, screenRect.maxY), (screenRect.maxY, b.maxY)]
+        for (i, x) in xs.enumerated() {
+            for (j, y) in ys.enumerated() where !(i == 1 && j == 1) {
+                let region = CGRect(x: x.0, y: y.0, width: x.1 - x.0, height: y.1 - y.0)
+                guard region.width > 0, region.height > 0 else { continue }
+                ctx.saveGState()
+                ctx.clip(to: region)
+                ctx.interpolationQuality = .medium
+                // Reflected across the screen edge the region lies beyond.
+                if i != 1 {
+                    let edge = i == 0 ? screenRect.minX : screenRect.maxX
+                    ctx.translateBy(x: 2 * edge, y: 0)
+                    ctx.scaleBy(x: -1, y: 1)
+                }
+                if j != 1 {
+                    let edge = j == 0 ? screenRect.minY : screenRect.maxY
+                    ctx.translateBy(x: 0, y: 2 * edge)
+                    ctx.scaleBy(x: 1, y: -1)
+                }
+                ctx.clip(to: screenRect)
+                draw(image, in: target)
+                ctx.restoreGState()
+            }
+        }
     }
 
     /// A quiet surface with a faint dot grid (16 pt apart).

@@ -235,7 +235,10 @@ final class StudioCanvasViewController: NSViewController {
         let size = captionTag.intrinsicContentSize
         let y = card.minY - 9 - size.height
         captionTag.frame = NSRect(x: card.minX + 2, y: y, width: size.width, height: size.height)
-        captionTag.isHidden = card.isEmpty || y < Self.toolbarHeight + 4 || captionTag.text.isEmpty
+        // Hidden under the toolbar, and where the capsule over the canvas already speaks.
+        let underCapsule = !statusCapsule.isHidden
+            && captionTag.frame.intersects(statusCapsule.frame.insetBy(dx: -4, dy: -4))
+        captionTag.isHidden = card.isEmpty || y < Self.toolbarHeight + 4 || captionTag.text.isEmpty || underCapsule
     }
 
     /// The preview bar and the zoom capsule at the bottom, the status capsule at the top. On a narrow canvas the zoom
