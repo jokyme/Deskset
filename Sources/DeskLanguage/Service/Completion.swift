@@ -1545,12 +1545,10 @@ struct DeskCompletionBuilder {
         guard !snapshot.isPackage, !declaredPermissions.contains(permission) else { return [] }
         let table = snapshot.nodeTable
         let bytes = snapshot.index.bytes
-        var edit: (Range<Int>, String)?
+        var edits: [(range: Range<Int>, text: String)] = []
         if let list = permissionsList {
-            let tokens = table.entries[list].positioned.childTokens
-            guard let close = tokens.last, close.kind == .rBracket, !close.token.isMissing else { return [] }
-            let empty = !table.children(of: list).contains { table.entries[$0].kind.isExpression }
-            edit = (close.textStart..<close.textStart, empty ? ".\(permission)" : ", .\(permission)")
+            guard let added = Checker.listAppend(".\(permission)", to: table.entries[list].positioned, bytes: bytes) else { return [] }
+            edits = added
         } else if let block = infoBody {
             let tokens = table.entries[block].positioned.childTokens
             guard let open = tokens.first, let close = tokens.last, close.kind == .rBrace, !close.token.isMissing else { return [] }
@@ -1564,19 +1562,25 @@ struct DeskCompletionBuilder {
                     var indentEnd = start
                     while indentEnd < bytes.count, bytes[indentEnd] == 0x20 || bytes[indentEnd] == 0x09 { indentEnd += 1 }
                     let indent = String(decoding: bytes[start..<indentEnd], as: UTF8.self)
-                    edit = (end..<end, "\n" + indent + "permissions: [.\(permission)]")
+                    // After a comment that ends the last field's line (`name: "A" // the name`), not before it.
+                    var lineEnd = end
+                    while lineEnd < bytes.count, bytes[lineEnd] != 0x0A, bytes[lineEnd] != 0x0D { lineEnd += 1 }
+                    let rest = String(decoding: bytes[end..<lineEnd], as: UTF8.self).trimmingCharacters(in: .whitespaces)
+                    let at = rest.hasPrefix("//") ? lineEnd : end
+                    edits = [(at..<at, "\n" + indent + "permissions: [.\(permission)]")]
                 } else {
-                    edit = (end..<end, ", permissions: [.\(permission)]")
+                    edits = [(end..<end, ", permissions: [.\(permission)]")]
                 }
             } else {
-                edit = (open.textRange.upperBound..<close.textStart, " permissions: [.\(permission)] ")
+                edits = [(open.textRange.upperBound..<close.textStart, " permissions: [.\(permission)] ")]
             }
         } else {
             let start = table.topLevel.first { table.entries[$0].kind.isTopLevelBlock }.map { table.entries[$0].textStart } ?? 0
-            edit = (start..<start, "info { permissions: [.\(permission)] }\n\n")
+            edits = [(start..<start, "info { permissions: [.\(permission)] }\n\n")]
         }
-        guard let (r, text) = edit, r.upperBound <= scan.utf8Range.lowerBound || r.lowerBound >= scan.utf8Range.upperBound else { return [] }
-        return [DeskTextEditU16(range: snapshot.index.range(utf8: r), newText: text)]
+        guard !edits.isEmpty, edits.allSatisfy({ $0.range.upperBound <= scan.utf8Range.lowerBound || $0.range.lowerBound >= scan.utf8Range.upperBound })
+        else { return [] }
+        return edits.map { DeskTextEditU16(range: snapshot.index.range(utf8: $0.range), newText: $0.text) }
     }
 
     /// The widget's options and the package's, the widget's first.

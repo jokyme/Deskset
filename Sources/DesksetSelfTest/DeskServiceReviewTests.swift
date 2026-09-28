@@ -221,4 +221,50 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
             }
         }
     }
+
+    t.suite("Desk: service — a permission added to a list with a trailing comma, or after a field's comment") {
+        let music = "\n\nwidget {\n    Text(\"{music.title}\")\n    Text(\"{weather.now.temperature}\")\n}\n"
+        let lists: [(String, String)] = [
+            ("info {\n    name: \"T\"\n    permissions: [\n        .notifications,\n    ]\n}", "on lines, trailing comma"),
+            ("info {\n    name: \"T\"\n    permissions: [\n        .notifications, // tell\n    ]\n}", "on lines, trailing comma and comment"),
+            ("info {\n    name: \"T\"\n    permissions: [\n        .notifications\n    ]\n}", "on lines, no trailing comma"),
+            ("info {\n    name: \"T\"\n    permissions: [\n        .notifications // tell\n    ]\n}", "on lines, a comment"),
+            ("info { name: \"T\", permissions: [.notifications,] }", "one line, trailing comma"),
+            ("info { name: \"T\", permissions: [.notifications] }", "one line"),
+            ("info {\n    name: \"T\" // the name\n}", "a field's comment"),
+        ]
+        func errors(_ text: String) -> [String] {
+            let snapshot = deskNavService(text).snapshot
+            return snapshot.diagnostics.filter { $0.severity == .error || $0.id == .missingPermission }.map { "\($0.id.rawValue) \($0.message)" }
+        }
+        for (info, label) in lists {
+            // Completion of `music.title` adds `.music`.
+            let marked = info + "\n\nwidget {\n    Text(\"{music.|}\")\n}\n"
+            let (snapshot, list) = deskCompletions(marked)
+            if let item = list.items.first(where: { $0.label == "title" }) {
+                let edits = ([DeskTextEditU16(range: item.range, newText: item.plainText)] + item.additionalEdits)
+                    .sorted { $0.range.start.offset < $1.range.start.offset }
+                let result = DeskTextEditU16.apply(edits, to: snapshot.text)
+                t.equal(errors(result), [], "\(label): \(result)")
+                t.check(result.contains(".music"), "\(label): \(result)")
+                if label.contains("comment") { t.check(result.contains("// tell\n") || result.contains("// the name\n"), "\(label): the comment stays on its line: \(result)") }
+            } else {
+                t.check(false, "\(label): music.title offered")
+            }
+            // The source action adds both.
+            let both = info + music
+            let actionSnapshot = deskNavService(both).snapshot
+            guard let add = actionSnapshot.sourceActions().first(where: { $0.kind == .addMissingPermissions }) else {
+                t.check(false, "\(label): the action is offered")
+                continue
+            }
+            let added = DeskTextEditU16.apply(add.edit.edits(for: actionSnapshot.file), to: both)
+            t.equal(errors(added), [], "\(label): \(added)")
+            // The DK8101 fix-it on its own.
+            if let d = actionSnapshot.diagnostics.first(where: { $0.id == .missingPermission }), let fix = d.fixIts.first {
+                let fixed = DeskTextEditU16.apply(fix.edit.edits(for: actionSnapshot.file), to: both)
+                t.equal(errors(fixed).filter { !$0.hasPrefix("DK8101") }, [], "\(label): the fix-it: \(fixed)")
+            }
+        }
+    }
 }

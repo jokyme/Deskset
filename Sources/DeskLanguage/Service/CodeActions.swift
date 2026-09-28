@@ -204,19 +204,19 @@ extension DeskSnapshot {
     /// fix-it adds its own.
     private func addMissingPermissionsAction() -> DeskCodeAction? {
         let missing = checked.diagnostics.enumerated().filter { $0.element.id == .missingPermission && $0.element.file == file }
-        guard let first = missing.first, let fix = first.element.fixIts.first, fix.edits.count == 1,
+        guard let first = missing.first, let fix = first.element.fixIts.first, !fix.edits.isEmpty,
               case .code(let lead)? = first.element.arguments["permission"] else { return nil }
         var names: [String] = []
         for (_, d) in missing {
             if case .code(let name)? = d.arguments["permission"], !names.contains(name) { names.append(name) }
         }
         let written = "." + lead
-        var replacement = fix.edits[0].replacement
-        guard let at = DeskActionWords.wordRange(of: written, in: replacement) else { return nil }
-        replacement.replaceSubrange(at, with: names.map { "." + $0 }.joined(separator: ", "))
-        var edit = fix.edits[0]
-        edit.replacement = replacement
-        guard let workspace = workspaceEdit([edit]) else { return nil }
+        // The one edit that writes the first permission gets the others after it.
+        var edits = fix.edits
+        guard let k = edits.firstIndex(where: { DeskActionWords.wordRange(of: written, in: $0.replacement) != nil }),
+              let at = DeskActionWords.wordRange(of: written, in: edits[k].replacement) else { return nil }
+        edits[k].replacement.replaceSubrange(at, with: names.map { "." + $0 }.joined(separator: ", "))
+        guard let workspace = workspaceEdit(edits) else { return nil }
         let all = diagnostics
         return DeskCodeAction(title: DeskActionWords.addPermissions(names.count, language: options.messageLanguage),
                               kind: .addMissingPermissions, edit: workspace, diagnostics: missing.map { all[$0.offset] })
