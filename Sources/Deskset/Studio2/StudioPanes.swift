@@ -44,6 +44,10 @@ final class StudioCanvasViewController: NSViewController {
     /// What pointed-at things draw, a wider scope's reach, the distances with ⌥ held.
     let overlay = StudioCanvasOverlay()
     let interactionView = StudioInteractionView()
+    /// The code's problems on the parts: amber frames, red ghosts.
+    let problemMarks = StudioProblemMarks()
+    /// "The bars can’t draw · your desktop keeps the last working version", while red problems are open.
+    let problemCapsule: StudioStatusCapsule
     let captionTag: StudioCaptionTag
     let statusCapsule: StudioStatusCapsule
     let previewBar: StudioPreviewBar
@@ -60,6 +64,7 @@ final class StudioCanvasViewController: NSViewController {
             canvas.skinProvider = skinProvider
             interactionView.skinProvider = skinProvider
             overlay.skinProvider = skinProvider
+            problemMarks.skinProvider = skinProvider
         }
     }
     /// Where the widget is on the desktop (its window's frame, global coordinates; nil: not on the desktop).
@@ -74,6 +79,16 @@ final class StudioCanvasViewController: NSViewController {
     var autoFit = true
     /// The zoom the canvas keeps when set (a screen of `--snapshot-ui studio2`); nil: fit.
     var fixedZoom: CGFloat?
+    /// The code is open beside the canvas: the preview bar keeps only icons (and "Interact"), the zoom capsule leaves
+    /// Actual Size out.
+    var besideCode = false {
+        didSet {
+            guard besideCode != oldValue, isViewLoaded else { return }
+            previewBar.iconsOnly = besideCode
+            zoomCapsule.hidesActualSize = besideCode
+            layoutFloating()
+        }
+    }
     /// The toolbar's height over the canvas (its content stays below it).
     static let toolbarHeight: CGFloat = 52
     /// The room the preview bar takes at the bottom of the canvas (its height and margins).
@@ -91,6 +106,8 @@ final class StudioCanvasViewController: NSViewController {
         glassPlane = StudioGlassPlane(standIns: standIns)
         captionTag = StudioCaptionTag(standIn: standIns)
         statusCapsule = StudioStatusCapsule(standIn: standIns)
+        problemCapsule = StudioStatusCapsule(standIn: standIns)
+        problemCapsule.messageItem.iconColor = StudioCodeColors.problem
         previewBar = StudioPreviewBar(standIn: standIns)
         zoomCapsule = StudioZoomCapsule(standIn: standIns)
         compatCapsule = StudioCompatCapsule(standIn: standIns)
@@ -140,14 +157,19 @@ final class StudioCanvasViewController: NSViewController {
         interactionView.canvas = canvas
         interactionView.skinProvider = skinProvider
         interactionView.onEvent = { [weak self] in self?.canvas.needsDisplay = true }
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, interactionView] as [NSView] {
+        problemMarks.canvas = canvas
+        problemMarks.skinProvider = skinProvider
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, problemMarks, interactionView]
+            as [NSView] {
             plane.autoresizingMask = [.width, .height]
             container.addSubview(plane)
         }
-        for floating in [captionTag, statusCapsule, compatCapsule, hintPill, previewBar, zoomCapsule] as [NSView] {
+        for floating in [captionTag, problemCapsule, statusCapsule, compatCapsule, hintPill, previewBar, zoomCapsule]
+            as [NSView] {
             container.addSubview(floating)
         }
         statusCapsule.isHidden = true
+        problemCapsule.isHidden = true
         compatCapsule.isHidden = true
         hintPill.isHidden = true
         container.widthAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
@@ -164,7 +186,8 @@ final class StudioCanvasViewController: NSViewController {
 
     override func viewDidLayout() {
         super.viewDidLayout()
-        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, interactionView] as [NSView] {
+        for plane in [backdropView, neighboursView, glassPlane, scrollView, overlay, problemMarks, interactionView]
+            as [NSView] {
             plane.frame = view.bounds
         }
         fitIfAutomatic()
@@ -241,6 +264,7 @@ final class StudioCanvasViewController: NSViewController {
         updateGlass()
         placeCaption()
         overlay.needsDisplay = true
+        problemMarks.needsDisplay = true
         if abs(m.zoom - lastZoom) > 0.0001 {
             lastZoom = m.zoom
             onZoomChange?()
@@ -263,9 +287,12 @@ final class StudioCanvasViewController: NSViewController {
         let y = card.minY - 9 - size.height
         captionTag.frame = NSRect(x: card.minX + 2, y: y, width: size.width, height: size.height)
         // Hidden under the toolbar, and where the capsule over the canvas already speaks.
-        let underCapsule = !statusCapsule.isHidden
-            && captionTag.frame.intersects(statusCapsule.frame.insetBy(dx: -4, dy: -4))
+        let underCapsule = [statusCapsule, problemCapsule].contains { capsule in
+            !capsule.isHidden && captionTag.frame.intersects(capsule.frame.insetBy(dx: -4, dy: -4))
+        }
+        // Beside the code the canvas is narrow and the code says what the widget is: no caption.
         captionTag.isHidden = card.isEmpty || y < Self.toolbarHeight + 4 || captionTag.text.isEmpty || underCapsule
+            || besideCode
     }
 
     /// The preview bar and the zoom capsule at the bottom, the status capsule at the top. On a narrow canvas the zoom
@@ -290,7 +317,14 @@ final class StudioCanvasViewController: NSViewController {
         let cx = centred ? w / 2 : 16 + max(bar, room) / 2
         previewBar.frame = NSRect(x: (cx - bar / 2).rounded(), y: h - 34 - barHeight / 2, width: bar, height: barHeight)
         var statusY = Self.statusCapsuleY
-        if !compatCapsule.isHidden {
+        // Red problems speak first: their capsule takes the compatibility capsule's place.
+        if !problemCapsule.isHidden {
+            let width = min(problemCapsule.fittingWidth, w - 32)
+            problemCapsule.frame = NSRect(x: ((w - width) / 2).rounded(), y: statusY - StudioStatusCapsule.height / 2,
+                                          width: width, height: StudioStatusCapsule.height)
+            compatCapsule.isHidden = true
+            statusY = problemCapsule.frame.maxY + 10 + StudioStatusCapsule.height / 2
+        } else if !compatCapsule.isHidden {
             let size = compatCapsule.fittingSize2
             let width = min(size.width, w - 32)
             compatCapsule.frame = NSRect(x: ((w - width) / 2).rounded(), y: Self.compatCapsuleY - size.height / 2,
@@ -307,11 +341,19 @@ final class StudioCanvasViewController: NSViewController {
         placeCaption()
     }
 
+    /// The capsule of the code's red problems (nil: none).
+    func showProblem(_ text: String?) {
+        _ = view
+        if let text { problemCapsule.show(text, symbol: "xmark.octagon.fill") }
+        problemCapsule.isHidden = text == nil
+        updateCompatCapsule()
+    }
+
     /// Shows or hides the compatibility capsule and its offer, as the window says.
     func updateCompatCapsule() {
         _ = view
         let state = compatState()
-        compatCapsule.isHidden = !state.shown
+        compatCapsule.isHidden = !state.shown || !problemCapsule.isHidden
         compatCapsule.showsOffer = state.offer
         layoutFloating()
     }

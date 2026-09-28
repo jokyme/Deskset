@@ -160,8 +160,10 @@ final class StudioBarItem: NSView {
     }
 
     private func symbolImage(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
+        // A filled symbol in a color of its own (the problem capsule's ✕ octagon) keeps its mark white.
+        let colors: [NSColor] = name.hasSuffix(".fill") && iconColor != nil ? [.white, color] : [color]
         let config = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
-            .applying(.init(paletteColors: [color]))
+            .applying(.init(paletteColors: colors))
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
     }
 
@@ -397,7 +399,16 @@ final class StudioPreviewBar: StudioCapsuleView {
     /// The backdrop's words go first on a narrow canvas (its icon stays); "Preview:" and "Interact" keep theirs.
     var compact = false {
         didSet {
-            backdropItem.showsTitle = !compact
+            backdropItem.showsTitle = !compact && !iconsOnly
+            needsLayout = true
+        }
+    }
+
+    /// Next to the code the bar is compact: the look and the backdrop keep only their icons; "Interact" keeps its word.
+    var iconsOnly = false {
+        didSet {
+            appearanceItem.showsTitle = !iconsOnly
+            backdropItem.showsTitle = !compact && !iconsOnly
             needsLayout = true
         }
     }
@@ -470,7 +481,17 @@ final class StudioZoomCapsule: StudioCapsuleView {
         desktopItem.isEnabled = canShowDesktop
     }
 
-    private var groups: [[StudioBarItem]] { [[zoomOutItem, percentItem, zoomInItem], [actualSizeItem], [desktopItem]] }
+    /// Next to the code the capsule leaves Actual Size out (⌘0 still does it).
+    var hidesActualSize = false {
+        didSet {
+            actualSizeItem.isHidden = hidesActualSize
+            needsLayout = true
+        }
+    }
+
+    private var groups: [[StudioBarItem]] {
+        [[zoomOutItem, percentItem, zoomInItem], [actualSizeItem], [desktopItem]].filter { $0.contains { !$0.isHidden } }
+    }
 
     var fittingWidth: CGFloat {
         let items = groups.flatMap { $0 }.filter { !$0.isHidden }
@@ -482,6 +503,7 @@ final class StudioZoomCapsule: StudioCapsuleView {
     override func layout() {
         super.layout()
         var x: CGFloat = 8
+        for (i, d) in dividers.enumerated() { d.isHidden = i >= groups.count - 1 }
         for (g, group) in groups.enumerated() {
             if g > 0 {
                 dividers[g - 1].frame = NSRect(x: x + 4, y: bounds.midY - 8, width: 1, height: 16)

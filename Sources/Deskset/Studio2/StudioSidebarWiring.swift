@@ -282,6 +282,7 @@ extension StudioWindowController {
         guard let responder = window?.firstResponder as? NSView else { return nil }
         if responder.isDescendant(of: canvasController.view) { return .canvas }
         if responder.isDescendant(of: inspectorController.view) { return .inspector }
+        if codeController.isViewLoaded, responder.isDescendant(of: codeController.view) { return .code }
         if !sidebarItem.isCollapsed, responder.isDescendant(of: sidebarController.view) { return .sidebar }
         // A field editor belongs to the field it edits.
         if let text = responder as? NSTextView, text.isFieldEditor, let field = text.delegate as? NSView {
@@ -298,7 +299,7 @@ extension StudioWindowController {
             switch area {
             case .canvas: return true
             case .inspector: return !inspectorItem.isCollapsed
-            case .code: return false
+            case .code: return isCodeShown
             case .sidebar: return !sidebarItem.isCollapsed
             }
         }
@@ -321,7 +322,7 @@ extension StudioWindowController {
         case .inspector:
             focusInspector()
         case .code:
-            break
+            window?.makeFirstResponder(codeView.textView)
         case .sidebar:
             if sidebarController.page == .layers {
                 window?.makeFirstResponder(sidebarController.layersView.partsOutline)

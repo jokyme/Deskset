@@ -276,6 +276,7 @@ final class EditingSession {
     func apply(_ name: String, _ ops: [EditOp], commands: [TransactionCommand] = [], selectionBefore: [String] = [],
                selectionAfter: [String] = [], registersUndo: Bool = true, verify: ((Skin) -> Bool)? = nil) throws
         -> Transaction? {
+        willApply?()
         var timings: [String: Double] = [:]
         let start = DispatchTime.now().uptimeNanoseconds
         func lap(_ phase: String, _ since: UInt64) { timings[phase] = Double(DispatchTime.now().uptimeNanoseconds - since) / 1e6 }
@@ -554,6 +555,9 @@ final class EditingSession {
         scheduledRefresh = timer
     }
 
+    /// Called before a step is planned (the Studio window commits code typed and not saved yet, so the step starts
+    /// from what the user sees). nil by default.
+    var willApply: (() -> Void)?
     /// While it says so for the Studio's instance, the desktop copy keeps the version it runs — the last working one:
     /// the files have a problem that stops a part from drawing (the code pane's red diagnostics). Steps are still
     /// written; the reload waits, and happens once, at the first step or undo after which it no longer holds. nil (the

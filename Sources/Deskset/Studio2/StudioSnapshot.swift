@@ -172,9 +172,36 @@ enum StudioSnapshot {
             if screen.scopeHover { controller.partPage.handle(.scopeHover(true)) }
             if screen.distances { controller.canvasController.overlay.setShowsDistances(true) }
         }
+        applyCode(screen, to: controller)
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         controller.canvasController.geometryChanged()
         controller.canvasController.layoutFloating()
+    }
+
+    /// The code pane as the screen has it: open, the edits typed and committed, the caret, the file menu.
+    static func applyCode(_ screen: StudioScreen, to controller: StudioWindowController) {
+        guard screen.code != .hidden else { return }
+        // "Open in …" names one editor on every Mac.
+        StudioCodeState.editorName = { _, _ in "Visual Studio Code" }
+        controller.setCodeMode(screen.code)
+        guard let session = controller.session, let skin = controller.skin else { return }
+        let root = skin.rootConfigDirectory
+        for edit in screen.codeEdits {
+            let url = root.appendingPathComponent(edit.path)
+            guard let text = try? session.buffers.text(of: url), text.contains(edit.find) else { continue }
+            _ = try? session.apply(StudioText[.stepTyping], [.editSource(
+                file: url, text: text.replacingOccurrences(of: edit.find, with: edit.replace), encoding: nil)])
+        }
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        controller.codeController.layOut()
+        if let caret = screen.caret {
+            let url = root.appendingPathComponent(caret.path)
+            controller.codeView.reveal(line: caret.line, in: url, select: false)
+            controller.codeCaretRested(controller.codeView.caretSection, file: url)
+        }
+        controller.refreshDiagnostics()
+        if screen.fileMenu { controller.isShowingFileMenu = true }
+        controller.codeController.layOut()
     }
 
     // MARK: On screen
@@ -274,6 +301,9 @@ enum StudioSnapshot {
                 drawPopover(popover.view, anchor: anchor.view, in: content, dark: dark, edge: .maxX,
                             anchorRect: anchor.rect)
             }
+            if controller.isShowingFileMenu, !controller.codeItem.isCollapsed {
+                drawFileMenu(controller, in: content, dark: dark)
+            }
             if let popover = controller.preview.previewPopoverContent {
                 drawPopover(popover.view, anchor: controller.canvasController.previewBar.appearanceItem, in: content,
                             dark: dark, minX: 62)
@@ -305,14 +335,16 @@ enum StudioSnapshot {
     /// materials.
     private static func drawPanes(_ controller: StudioWindowController, in content: NSView, dark: Bool) {
         let canvas = controller.canvasController
-        for plane in [canvas.backdropView, canvas.neighboursView, canvas.glassPlane, canvas.canvas, canvas.overlay]
-            as [NSView] {
+        for plane in [canvas.backdropView, canvas.neighboursView, canvas.glassPlane, canvas.canvas, canvas.overlay,
+                      canvas.problemMarks] as [NSView] {
             draw(plane, in: content)
         }
-        for floating in [canvas.captionTag, canvas.statusCapsule, canvas.compatCapsule, canvas.hintPill,
+        for floating in [canvas.captionTag, canvas.problemCapsule, canvas.statusCapsule, canvas.compatCapsule,
+                         canvas.hintPill,
                          canvas.previewBar, canvas.zoomCapsule] as [NSView] {
             draw(floating, in: content)
         }
+        if !controller.codeItem.isCollapsed { drawCode(controller, in: content, dark: dark) }
         if !controller.inspectorItem.isCollapsed {
             let pane = controller.inspectorController.view
             let r = pane.convert(pane.bounds, to: content)
@@ -339,6 +371,93 @@ enum StudioSnapshot {
                     draw(view, in: content)
                 }
             }
+        }
+    }
+
+    // MARK: The code pane
+
+    /// The code pane, piece by piece (a scroll view's own drawing is not what the window shows off screen): its
+    /// background, the header, the line numbers, the text with its cards, the marks over them, the status line.
+    static func drawCode(_ controller: StudioWindowController, in content: NSView, dark: Bool) {
+        let pane = controller.codeController
+        pane.layOut()
+        pane.codeView.layoutSubtreeIfNeeded()
+        let r = pane.view.convert(pane.view.bounds, to: content)
+        NSColor.textBackgroundColor.setFill()
+        r.fill()
+        let top = pane.view.convert(NSRect(x: 0, y: 0, width: pane.view.bounds.width,
+                                           height: StudioCanvasViewController.toolbarHeight), to: content)
+        StudioCodeHeader.fill.setFill()
+        top.fill()
+        // The text first: its clip view reaches under the line numbers (a left inset keeps the text clear of them).
+        for view in [pane.header, pane.codeView.textView, pane.codeView.ruler, pane.decorations.overlay,
+                     pane.statusLine] as [NSView] {
+            draw(view, in: content)
+        }
+        NSColor.separatorColor.setFill()
+        NSRect(x: r.minX, y: r.minY, width: 1, height: r.height).fill()
+    }
+
+    /// The file menu, open under the file's name: a menu's material, the widget's files with their counts (the one
+    /// shown checked), Show in Finder, Open in <editor>.
+    static func drawFileMenu(_ controller: StudioWindowController, in content: NSView, dark: Bool) {
+        let button = controller.codeController.header.fileButton
+        let anchor = button.convert(button.bounds, to: content)
+        let files = controller.codeFiles()
+        var plain = [StudioText[.showInFinder]]
+        if let name = controller.codeEditorName { plain.append(StudioText.format(.codeOpenIn, name)) }
+        let rowHeight: CGFloat = 25, width: CGFloat = 300
+        let height = CGFloat(files.count) * rowHeight + 11 + CGFloat(plain.count) * 24 + 12
+        let frame = NSRect(x: anchor.minX + 4, y: anchor.minY - 6 - height, width: width, height: height)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: dark ? 0.45 : 0.18)
+        shadow.shadowBlurRadius = 16
+        shadow.shadowOffset = NSSize(width: 0, height: -6)
+        shadow.set()
+        let path = NSBezierPath(roundedRect: frame, xRadius: 10, yRadius: 10)
+        (dark ? NSColor(white: 0.17, alpha: 0.98) : NSColor(white: 0.965, alpha: 0.98)).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.10)).setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
+        let font = NSFont.systemFont(ofSize: 13)
+        let small = NSFont.systemFont(ofSize: 11.5)
+        var y = frame.maxY - 6
+        for f in files {
+            y -= rowHeight
+            let mid = y + rowHeight / 2
+            if f.current, let check = symbol("checkmark", size: 11, color: .labelColor) {
+                check.draw(in: NSRect(x: frame.minX + 12, y: mid - check.size.height / 2, width: check.size.width,
+                                      height: check.size.height))
+            }
+            if let doc = symbol("doc.text", size: 11.5, color: .secondaryLabelColor) {
+                doc.draw(in: NSRect(x: frame.minX + 31, y: mid - doc.size.height / 2, width: doc.size.width,
+                                    height: doc.size.height))
+            }
+            let title = NSAttributedString(string: f.title, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+            title.draw(at: NSPoint(x: frame.minX + 50, y: mid - title.size().height / 2))
+            var x = frame.maxX - 14
+            for (count, color) in [(f.warnings, StudioCodeColors.warning), (f.problems, StudioCodeColors.problem)]
+                where count > 0 {
+                let n = NSAttributedString(string: "\(count)", attributes: [.font: small, .foregroundColor: NSColor.labelColor])
+                x -= n.size().width
+                n.draw(at: NSPoint(x: x, y: mid - n.size().height / 2))
+                x -= 10
+                color.setFill()
+                NSBezierPath(ovalIn: NSRect(x: x, y: mid - 3.5, width: 7, height: 7)).fill()
+                x -= 8
+            }
+        }
+        y -= 5
+        NSColor.separatorColor.setFill()
+        NSRect(x: frame.minX + 12, y: y, width: width - 24, height: 1).fill()
+        y -= 6
+        for text in plain {
+            y -= 24
+            let t = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+            t.draw(at: NSPoint(x: frame.minX + 16, y: y + 12 - t.size().height / 2))
         }
     }
 

@@ -455,6 +455,148 @@ enum StudioText {
         case addFontTip = "add.fontTip"
         case addColorTip = "add.colorTip"
         case addUnavailable = "add.unavailable"
+        // The code pane, its diagnostics, the log and the menus.
+        case codePane = "code.pane"
+        case codeFileTip = "code.file.tip"
+        case codeOpenIn = "code.openIn"
+        case codeLog = "code.log"
+        case codeLogTip = "code.log.tip"
+        case codeMore = "code.more"
+        case codeProblems = "code.problems"
+        case codeProblemsMany = "code.problems.many"
+        case codeWarnings = "code.warnings"
+        case codeWarningsMany = "code.warnings.many"
+        case codeProblemsTip = "code.problems.tip"
+        case codeWarningsTip = "code.warnings.tip"
+        case codeNoSection = "code.noSection"
+        case codeInspectorTip = "code.inspector.tip"
+        case statusSaved = "code.status.saved"
+        case statusHeld = "code.status.held"
+        case statusNotSaved = "code.status.notSaved"
+        case statusEditing = "code.status.editing"
+        case statusLine = "code.status.line"
+        case fix = "code.fix"
+        case stepTyping = "step.typing"
+        case stepFix = "step.fix"
+        case stepRefresh = "step.refresh"
+        case diagUnknownMeterKey = "diag.unknownKey.meter"
+        case diagUnknownMeasureKey = "diag.unknownKey.measure"
+        case diagMeanwhileColorMany = "diag.meanwhile.color.many"
+        case diagMeanwhileColorOne = "diag.meanwhile.color.one"
+        case diagMeanwhileDefault = "diag.meanwhile.default"
+        case diagBadColor = "diag.badColor"
+        case diagBadFormula = "diag.badFormula"
+        case diagMissingNumber = "diag.formula.missingNumber"
+        case diagMissingParen = "diag.formula.missingParen"
+        case diagUnknownFunction = "diag.formula.unknownFunction"
+        case diagEmptyFormula = "diag.formula.empty"
+        case diagCantDrawMany = "diag.cantDraw.many"
+        case diagCantDrawOne = "diag.cantDraw.one"
+        case diagMissingMeasure = "diag.missingMeasure"
+        case diagMissingStyle = "diag.missingStyle"
+        case diagMissingInclude = "diag.missingInclude"
+        case diagMissingImage = "diag.missingImage"
+        case diagUnknownBang = "diag.unknownBang"
+        case diagUnknownBangNoGuess = "diag.unknownBang.noGuess"
+        case diagBlack = "diag.black"
+        case diagWhite = "diag.white"
+        case diagColor = "diag.color"
+        case nounBar = "noun.bar"
+        case nounBars = "noun.bars"
+        case nounText = "noun.text"
+        case nounTexts = "noun.texts"
+        case nounNumber = "noun.number"
+        case nounNumbers = "noun.numbers"
+        case nounPicture = "noun.picture"
+        case nounPictures = "noun.pictures"
+        case nounGraph = "noun.graph"
+        case nounGraphs = "noun.graphs"
+        case nounRing = "noun.ring"
+        case nounRings = "noun.rings"
+        case nounHand = "noun.hand"
+        case nounHands = "noun.hands"
+        case nounButton = "noun.button"
+        case nounButtons = "noun.buttons"
+        case nounShape = "noun.shape"
+        case nounShapes = "noun.shapes"
+        case nounPart = "noun.part"
+        case nounParts = "noun.parts"
+        case capsuleCantDraw = "capsule.cantDraw"
+        case capsuleCantDrawNamed = "capsule.cantDraw.named"
+        case capsuleKeeps = "capsule.keeps"
+        case capsuleProblems = "capsule.problems"
+        case capsuleProblemsMany = "capsule.problems.many"
+        case logTitle = "log.title"
+        case logTitleWidget = "log.title.widget"
+        case logThisWidget = "log.thisWidget"
+        case logAllWidgets = "log.allWidgets"
+        case logAllLevels = "log.level.all"
+        case logErrors = "log.level.errors"
+        case logWarnings = "log.level.warnings"
+        case logInfo = "log.level.info"
+        case logEmpty = "log.empty"
+        case logShowLine = "log.showLine"
+        case logStudio = "log.studio"
+        case logDesktop = "log.desktop"
+        case logClear = "log.clear"
+        case menuFile = "menu.file"
+        case menuEdit = "menu.edit"
+        case menuInsert = "menu.insert"
+        case menuArrange = "menu.arrange"
+        case menuView = "menu.view"
+        case menuWidget = "menu.widget"
+        case menuWindow = "menu.window"
+        case menuHelp = "menu.help"
+        case menuClose = "menu.close"
+        case menuSave = "menu.save"
+        case menuShare = "menu.share"
+        case menuUndo = "menu.undo"
+        case menuRedo = "menu.redo"
+        case menuCut = "menu.cut"
+        case menuCopy = "menu.copy"
+        case menuPaste = "menu.paste"
+        case menuDuplicate = "menu.duplicate"
+        case menuDelete = "menu.delete"
+        case menuSelectAll = "menu.selectAll"
+        case menuFind = "menu.find"
+        case menuFindChange = "menu.find.change"
+        case menuFindNext = "menu.find.next"
+        case menuFindPrevious = "menu.find.previous"
+        case menuData = "menu.data"
+        case menuShape = "menu.shape"
+        case menuAlign = "menu.align"
+        case menuDistribute = "menu.distribute"
+        case alignLeftEdges = "align.leftEdges"
+        case alignCenterX = "align.centerX"
+        case alignRightEdges = "align.rightEdges"
+        case alignTop = "align.top"
+        case alignCenterY = "align.centerY"
+        case alignBottom = "align.bottom"
+        case distributeX = "distribute.x"
+        case distributeY = "distribute.y"
+        case alignWidgetsHint = "align.widgetsHint"
+        case arrangeWidgets = "menu.arrangeWidgets"
+        case stepAlign = "step.align"
+        case stepDistribute = "step.distribute"
+        case stepDuplicate = "step.duplicate"
+        case menuShowAdd = "menu.view.add"
+        case menuShowLayers = "menu.view.layers"
+        case menuDesignOnly = "menu.view.designOnly"
+        case menuCodeAlongside = "menu.view.codeAlongside"
+        case menuCodeOnly = "menu.view.codeOnly"
+        case menuEverySetting = "menu.view.everySetting"
+        case menuShowInCode = "menu.view.showInCode"
+        case menuRainmeterDetails = "menu.view.rainmeter"
+        case menuFullScreen = "menu.view.fullScreen"
+        case menuRefresh = "menu.widget.refresh"
+        case menuPreviewOptions = "menu.widget.previewOptions"
+        case menuMinimize = "menu.window.minimize"
+        case menuZoomWindow = "menu.window.zoom"
+        case menuLog = "menu.window.log"
+        case menuAbout = "menu.app.about"
+        case menuSettings = "menu.app.settings"
+        case appMenuHide = "menu.app.hide"
+        case menuQuit = "menu.app.quit"
     }
 
     /// English, then Simplified Chinese. `%@` and `%d` are filled by `format`.
@@ -865,6 +1007,147 @@ enum StudioText {
         .addFontTip: ("Drag onto a text to use this font", "拖到文字上就用这个字体"),
         .addColorTip: ("Drag onto a part to use this color", "拖到部件上就用这个颜色"),
         .addUnavailable: ("Not on this Mac", "这台 Mac 上没有"),
+        .codePane: ("Code", "代码"),
+        .codeFileTip: ("The widget’s files: the main one and every file it includes", "组件的文件：主文件和它包含的每个文件"),
+        .codeOpenIn: ("Open in %@", "在 %@ 中打开"),
+        .codeLog: ("Log %d", "日志 %d"),
+        .codeLogTip: ("What the widget logged (Window ▸ Log)", "组件记下的日志（窗口 ▸ 日志）"),
+        .codeMore: ("More", "更多"),
+        .codeProblems: ("%d problem", "%d 个问题"),
+        .codeProblemsMany: ("%d problems", "%d 个问题"),
+        .codeWarnings: ("%d warning", "%d 个提醒"),
+        .codeWarningsMany: ("%d warnings", "%d 个提醒"),
+        .codeProblemsTip: ("Can’t draw: the next one", "画不出来：下一个"),
+        .codeWarningsTip: ("Still draws, with a default: the next one", "还能画，用的是默认值：下一个"),
+        .codeNoSection: ("No section", "不在任何节里"),
+        .codeInspectorTip: ("Back to the inspector (the code goes)", "换回检查器（代码收起）"),
+        .statusSaved: ("Saved · your desktop is updated", "已存储 · 桌面上已更新"),
+        .statusHeld: ("Saved · your desktop keeps the last working version until the red problem is fixed", "已存储 · 红色问题修好之前，桌面上保留上一次能用的版本"),
+        .statusNotSaved: ("Not saved: %@", "没有存储：%@"),
+        .statusEditing: ("Editing · saved when you pause", "正在编辑 · 停下来就存储"),
+        .statusLine: ("Line %d", "第 %d 行"),
+        .fix: ("Fix", "改正"),
+        .stepTyping: ("Typing", "输入"),
+        .stepFix: ("Fix %@", "改正 %@"),
+        .stepRefresh: ("Refresh", "刷新"),
+        .diagUnknownMeterKey: ("%@ isn’t an option of a %@ meter. Did you mean %@?", "%@ 不是 %@ meter 的选项，是不是想写 %@？"),
+        .diagUnknownMeasureKey: ("%@ isn’t an option of a %@ measure. Did you mean %@?", "%@ 不是 %@ measure 的选项，是不是想写 %@？"),
+        .diagMeanwhileColorMany: ("The %@ draw in the default %@ until then.", "改正之前，%@按默认的%@画。"),
+        .diagMeanwhileColorOne: ("The %@ draws in the default %@ until then.", "改正之前，%@按默认的%@画。"),
+        .diagMeanwhileDefault: ("Until then the default %@ applies.", "改正之前用默认的 %@。"),
+        .diagBadColor: ("%@ isn’t a color: write R,G,B or RRGGBB.", "%@ 不是颜色：要写 R,G,B 或 RRGGBB。"),
+        .diagBadFormula: ("%@ can’t be worked out: %@.", "%@ 算不出来：%@。"),
+        .diagMissingNumber: ("a number is missing after “%@”", "“%@”后面少了一个数"),
+        .diagMissingParen: ("a “)” is missing", "少了一个“)”"),
+        .diagUnknownFunction: ("there’s no function %@", "没有 %@ 这个函数"),
+        .diagEmptyFormula: ("there’s nothing in it", "里面什么也没有"),
+        .diagCantDrawMany: ("The %d %@ don’t draw.", "%d 个%@画不出来。"),
+        .diagCantDrawOne: ("The %@ doesn’t draw.", "%@画不出来。"),
+        .diagMissingMeasure: ("There’s no measure called %@.", "没有叫 %@ 的 measure。"),
+        .diagMissingStyle: ("There’s no section called %@ to use as a style.", "没有叫 %@ 的节可以当样式。"),
+        .diagMissingInclude: ("%@ isn’t there, so nothing in it is read.", "找不到 %@，它里面的内容都读不到。"),
+        .diagMissingImage: ("There’s no picture at %@.", "%@ 这里没有图片。"),
+        .diagUnknownBang: ("%@ isn’t a bang. Did you mean %@?", "%@ 不是 bang，是不是想写 %@？"),
+        .diagUnknownBangNoGuess: ("%@ isn’t a bang Rainmeter knows.", "Rainmeter 不认识 %@ 这个 bang。"),
+        .diagBlack: ("black", "黑色"),
+        .diagWhite: ("white", "白色"),
+        .diagColor: ("color", "颜色"),
+        .nounBar: ("bar", "进度条"),
+        .nounBars: ("bars", "进度条"),
+        .nounText: ("text", "文字"),
+        .nounTexts: ("texts", "文字"),
+        .nounNumber: ("number", "数字"),
+        .nounNumbers: ("numbers", "数字"),
+        .nounPicture: ("picture", "图片"),
+        .nounPictures: ("pictures", "图片"),
+        .nounGraph: ("graph", "曲线"),
+        .nounGraphs: ("graphs", "曲线"),
+        .nounRing: ("ring", "圆环"),
+        .nounRings: ("rings", "圆环"),
+        .nounHand: ("hand", "指针"),
+        .nounHands: ("hands", "指针"),
+        .nounButton: ("button", "按钮"),
+        .nounButtons: ("buttons", "按钮"),
+        .nounShape: ("shape", "形状"),
+        .nounShapes: ("shapes", "形状"),
+        .nounPart: ("part", "部件"),
+        .nounParts: ("parts", "部件"),
+        .capsuleCantDraw: ("The %@ can’t draw", "%@画不出来"),
+        .capsuleCantDrawNamed: ("%@ can’t draw", "%@画不出来"),
+        .capsuleKeeps: ("your desktop keeps the last working version", "桌面上保留上一次能用的版本"),
+        .capsuleProblems: ("%d problem · the rest still draws", "%d 个问题 · 其余照常显示"),
+        .capsuleProblemsMany: ("%d problems · the rest still draws", "%d 个问题 · 其余照常显示"),
+        .logTitle: ("Log", "日志"),
+        .logTitleWidget: ("Log · %@", "日志 · %@"),
+        .logThisWidget: ("This Widget", "这个小组件"),
+        .logAllWidgets: ("All Widgets", "全部小组件"),
+        .logAllLevels: ("All", "全部"),
+        .logErrors: ("Errors", "错误"),
+        .logWarnings: ("Warnings", "警告"),
+        .logInfo: ("Information", "信息"),
+        .logEmpty: ("Nothing logged", "没有日志"),
+        .logShowLine: ("Show the Line", "跳到那一行"),
+        .logStudio: ("In the Studio", "在 Studio 里"),
+        .logDesktop: ("On the desktop", "在桌面上"),
+        .logClear: ("Clear", "清除"),
+        .menuFile: ("File", "文件"),
+        .menuEdit: ("Edit", "编辑"),
+        .menuInsert: ("Insert", "插入"),
+        .menuArrange: ("Arrange", "排列"),
+        .menuView: ("View", "显示"),
+        .menuWidget: ("Widget", "小组件"),
+        .menuWindow: ("Window", "窗口"),
+        .menuHelp: ("Help", "帮助"),
+        .menuClose: ("Close", "关闭"),
+        .menuSave: ("Save", "存储"),
+        .menuShare: ("Share…", "共享…"),
+        .menuUndo: ("Undo", "撤销"),
+        .menuRedo: ("Redo", "重做"),
+        .menuCut: ("Cut", "剪切"),
+        .menuCopy: ("Copy", "拷贝"),
+        .menuPaste: ("Paste", "粘贴"),
+        .menuDuplicate: ("Duplicate", "复制"),
+        .menuDelete: ("Delete", "删除"),
+        .menuSelectAll: ("Select All", "全选"),
+        .menuFind: ("Find", "查找"),
+        .menuFindChange: ("What Do You Want to Change?", "想改什么？"),
+        .menuFindNext: ("Find Next", "查找下一个"),
+        .menuFindPrevious: ("Find Previous", "查找上一个"),
+        .menuData: ("Data…", "数据…"),
+        .menuShape: ("Shape", "形状"),
+        .menuAlign: ("Align", "对齐"),
+        .menuDistribute: ("Distribute", "分布"),
+        .alignLeftEdges: ("Left Edges", "左边缘"),
+        .alignCenterX: ("Centers", "水平居中"),
+        .alignRightEdges: ("Right Edges", "右边缘"),
+        .alignTop: ("Top Edges", "顶边缘"),
+        .alignCenterY: ("Middles", "垂直居中"),
+        .alignBottom: ("Bottom Edges", "底边缘"),
+        .distributeX: ("Horizontally", "水平"),
+        .distributeY: ("Vertically", "垂直"),
+        .alignWidgetsHint: ("To line up widgets on your desktop, use Arrange Widgets", "要对齐桌面上的几个小组件，请用“整理小组件”"),
+        .arrangeWidgets: ("Arrange Widgets…", "整理小组件…"),
+        .stepAlign: ("Align", "对齐"),
+        .stepDistribute: ("Distribute", "分布"),
+        .stepDuplicate: ("Duplicate", "复制"),
+        .menuShowAdd: ("Add", "添加"),
+        .menuShowLayers: ("Layers", "图层"),
+        .menuDesignOnly: ("Design Only", "只看设计"),
+        .menuCodeAlongside: ("Code Alongside", "代码并排"),
+        .menuCodeOnly: ("Code Only", "只看代码"),
+        .menuEverySetting: ("Every Setting", "所有设置"),
+        .menuShowInCode: ("Show in Code", "在代码中显示"),
+        .menuRainmeterDetails: ("Show Rainmeter Details", "显示 Rainmeter 细节"),
+        .menuFullScreen: ("Enter Full Screen", "进入全屏幕"),
+        .menuRefresh: ("Refresh", "刷新"),
+        .menuPreviewOptions: ("Preview Options…", "预览选项…"),
+        .menuMinimize: ("Minimize", "最小化"),
+        .menuZoomWindow: ("Zoom", "缩放"),
+        .menuLog: ("Log", "日志"),
+        .menuAbout: ("About Deskset", "关于 Deskset"),
+        .menuSettings: ("Settings…", "设置…"),
+        .appMenuHide: ("Hide Deskset", "隐藏 Deskset"),
+        .menuQuit: ("Quit Deskset", "退出 Deskset"),
     ]
 
     static subscript(_ key: Key) -> String { string(key, in: language) }

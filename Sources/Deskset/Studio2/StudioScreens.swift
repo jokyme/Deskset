@@ -69,6 +69,15 @@ struct StudioScreen {
     var sidebarPage = StudioSidebarViewController.Page.layers
     /// The data row of Layers the pointer is on (the canvas outlines the parts that use it).
     var pointedData: String?
+    /// Texts replaced through the code pane once the window is open (typed and committed: the desktop copy keeps the
+    /// last working version when they break a part).
+    var codeEdits: [FileEdit] = []
+    /// The code pane.
+    var code = StudioCodeState.Mode.hidden
+    /// The caret in the code: a file (a path under the root folder) and a line.
+    var caret: (path: String, line: Int)?
+    /// The code header's file menu is open.
+    var fileMenu = false
     /// What the design shows that the window does not have yet: listed with the differences.
     var later: [String] = []
 
@@ -141,13 +150,15 @@ struct StudioScreen {
         StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5, backdrop: .bright, data: .level(1), frozen: true,
                      previewPopover: true,
                      later: ["part page with the contrast card", "selection of the caption", "Build's layers"]),
-        StudioScreen(name: "12b-code-ini", fixture: .nocturne,
-                     edits: [FileEdit(path: "@Resources/Styles.inc", find: "FontColor=#TextColor#",
-                                      replace: "FontColr=#TextColor#"),
-                             FileEdit(path: "@Resources/Styles.inc", find: "W=(#BarWidth#)",
-                                      replace: "W=(#BarWidth# *)")],
-                     zoom: 1.5, later: ["code pane in place of the inspector", "INI diagnostics", "log count",
-                                        "last working version capsule"]),
+        // The two typos are typed in the code (so the desktop keeps the last working version); the caret rests on the
+        // first, the file menu is open.
+        StudioScreen(name: "12b-code-ini", fixture: .nocturne, zoom: 1.5, pinned: nocturneReadings,
+                     codeEdits: [FileEdit(path: "@Resources/Styles.inc", find: "FontColor=#TextColor#",
+                                          replace: "FontColr=#TextColor#"),
+                                 FileEdit(path: "@Resources/Styles.inc", find: "W=(#BarWidth#)",
+                                          replace: "W=(#BarWidth# *)")],
+                     code: .alongside, caret: ("@Resources/Styles.inc", 13), fileMenu: true,
+                     later: ["the pointer resting on a token (hover help comes with the catalog's help texts)"]),
         StudioScreen(name: "13b-compat", fixture: .nocturne, depth: .build, zoom: 1.5,
                      pinned: nocturneReadings, pointedData: "MeasureCPU",
                      later: ["needs attention and its marks on the canvas", "Changed to fit the Mac",

@@ -48,9 +48,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     let sidebarController = StudioSidebarViewController()
     let canvasController: StudioCanvasViewController
     let inspectorController = StudioInspectorViewController()
+    /// The code: a column between the canvas and the inspector, or in the inspector's place (`setCodeMode`).
+    let codeController = StudioCodeViewController()
     let sidebarItem: NSSplitViewItem
     let canvasItem: NSSplitViewItem
+    let codeItem: NSSplitViewItem
     let inspectorItem: NSSplitViewItem
+    /// The code pane's mode, diagnostics and commits.
+    let codeState = StudioCodeState()
     private(set) var toolbar: StudioToolbar!
     /// The preview bar, the zoom capsule, Interact, Actual Size and Show on Desktop.
     private(set) var preview: StudioPreviewController!
@@ -83,6 +88,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         canvasController = StudioCanvasViewController(standIns: !app.presentsWindows)
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         canvasItem = NSSplitViewItem(viewController: canvasController)
+        codeItem = NSSplitViewItem(viewController: codeController)
         if #available(macOS 14.0, *) {
             inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorController)
         } else {
@@ -108,11 +114,16 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         sidebarItem.canCollapse = true
         sidebarItem.isCollapsed = true
         canvasItem.minimumThickness = 360
+        canvasItem.canCollapse = true
+        codeItem.minimumThickness = 300
+        codeItem.canCollapse = true
+        codeItem.isCollapsed = true
+        codeItem.holdingPriority = .init(255)
         inspectorItem.minimumThickness = Self.inspectorMinWidth
         inspectorItem.maximumThickness = Self.inspectorMaxWidth
         inspectorItem.canCollapse = true
         inspectorItem.holdingPriority = .init(260)
-        splitController.splitViewItems = [sidebarItem, canvasItem, inspectorItem]
+        splitController.splitViewItems = [sidebarItem, canvasItem, codeItem, inspectorItem]
         window.contentViewController = splitController
         canvasController.skinProvider = { [weak self] in self?.session?.studioSkin }
 
@@ -127,7 +138,10 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             DispatchQueue.main.async { self?.updateToolbar() }
         })
         observations.append(inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
-            DispatchQueue.main.async { self?.updateToolbar() }
+            DispatchQueue.main.async {
+                self?.inspectorVisibilityChanged()
+                self?.updateToolbar()
+            }
         })
         toolbar.titleView.onClick = { [weak self] in self?.showRunningPopover() }
         preview = StudioPreviewController(windowController: self, canvas: canvasController,
@@ -140,6 +154,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         canvasAccess = StudioCanvasAccessibility(window: self)
         wireCanvas()
         wireSidebar()
+        wireCode()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -166,6 +181,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             link.onChange = { [weak self] change in self?.desktopChanged(change) }
             self.link = link
             observeUndo(session.undoStack)
+            codeAttached(session)
         }
         link?.link(c)
         turnOnRainmeterDetailsTheFirstTime()
@@ -180,6 +196,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// fields left on the stack goes, and anything registered for the window itself.
     func unbindSession() {
         guard let session else { return }
+        codeDetached(session)
         geometry.cancel()
         partPage.reset()
         canvasController.canvas.setSelection(nil)
@@ -213,6 +230,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         if sidebarController.isViewLoaded, canvasAccess != nil { refreshLayers() }
         canvasController.updateCompatCapsule()
         scheduleThumbnails()
+        codeSessionChanged()
     }
 
     private var thumbnailTimer: Timer?
@@ -292,7 +310,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     var toolbarState: StudioToolbarState {
         var s = StudioToolbarState()
-        s.depth = depth
+        // With the code open the Studio builds: Undo is an icon.
+        s.depth = isCodeShown ? .build : depth
         s.name = widgetName
         s.sentence = copySentence
         let undo = session?.undoStack
@@ -302,6 +321,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         s.redoName = undo?.redoActionName ?? ""
         // Add shows as on while the sidebar is open on its Add page.
         s.addOn = !sidebarItem.isCollapsed && sidebarController.page == .add
+        s.codeOn = isCodeShown
         s.primary = StudioText[.done]
         return s
     }
@@ -323,6 +343,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     }
 
     @objc func undoAction(_ sender: Any?) {
+        flushCode()
         session?.undoStack.undo()
         updateToolbar()
     }
@@ -341,8 +362,10 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         }
     }
 
-    /// Code: the code next to the canvas (comes with the code pane).
-    @objc func codeAction(_ sender: Any?) {}
+    /// Code: the code next to the canvas; again: it goes.
+    @objc func codeAction(_ sender: Any?) {
+        setCodeMode(isCodeShown ? .hidden : .alongside)
+    }
 
     /// Done: an open color popover hands its pick over, whatever is still waiting is written, then the window closes.
     @objc func doneAction(_ sender: Any?) {
@@ -423,6 +446,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             widgetChanged()
         case .applied(let t):
             refreshOthers(t)
+            refreshDiagnostics()
             partPage.refresh()
             updateToolbar()
             refreshLayers()
@@ -431,6 +455,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             pendingAnnouncement = nil
         case .reverted(let t, let undo):
             refreshOthers(t)
+            refreshDiagnostics()
             refreshLayers()
             canvasController.updateCompatCapsule()
             announce(StudioText.format(undo ? .announceUndo : .announceRedo, t.name))
@@ -494,7 +519,12 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         preview.refreshNeighbours()
     }
 
+    func windowDidResize(_ notification: Notification) {
+        codeWindowResized()
+    }
+
     func windowWillClose(_ notification: Notification) {
+        if codeController.isViewLoaded { codeView.commitNow(explicit: true) }
         thumbnailTimer?.invalidate()
         sidebarState.liveTimer?.invalidate()
         sidebarState.liveTimer = nil
@@ -662,6 +692,7 @@ extension StudioWindowController {
             widgetPage.refresh()
         }
         canvasController.overlay.setShowsDistances(false)
+        codeSelectionChanged()
     }
 
     /// Selects a part (a data page's "Used by", the self-tests).
@@ -709,10 +740,11 @@ extension StudioWindowController {
         return false
     }
 
-    /// Show in Code: the code of what is selected (the code pane comes in a later step; until then, the widget's own
-    /// editor as Settings choose it).
+    /// Show in Code (⌥⌘↩): the code opens next to the canvas at what is selected, and takes the keyboard.
     @objc func showInCode(_ sender: Any?) {
-        codeAction(sender)
+        if !isCodeShown { setCodeMode(.alongside) }
+        revealSelectionInCode()
+        window?.makeFirstResponder(codeView.textView)
     }
 
     /// The canvas's menu on a part: hide it.
