@@ -57,6 +57,8 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private var downloadKey: String?
     /// Temporary file of the last `Download=1` without `DownloadFile` (deleted when replaced or when the measure goes).
     private var temporaryDownload: String?
+    /// The side effects that saved `temporaryDownload` (the measure's skin may be gone when the measure deletes it).
+    private var temporaryDownloadEffects: SideEffects?
     private lazy var instanceToken = String(skin.random.uuidString().prefix(8))
 
     private var finishAction = ""
@@ -92,7 +94,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     deinit {
         fetchHandle?.cancel()
         downloadHandle?.cancel()
-        if let temporaryDownload { try? FileManager.default.removeItem(atPath: temporaryDownload) }
+        if let temporaryDownload { temporaryDownloadEffects?.removeTemporaryFile(atPath: temporaryDownload) }
     }
 
     /// The skin is unloaded or refreshed: transfers in flight are cancelled, and results that still arrive are dropped.
@@ -345,7 +347,10 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
 
         let tree = snapshotTree()
         let codePage = options.codePage
+        // The dump is written through the skin's side effects: the file itself, or a recording's copy.
+        let effects = skin.sideEffects
         let dumpPath = options.debug == 2 ? debugDumpPath() : nil
+        let dumpDestination = dumpPath.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
         var request = requestSettings()
         request.target = target
         request.maxBytes = WebParserNetwork.maxPageBytes
@@ -362,9 +367,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             case .success(let response):
                 let text = WebParserText.decode(response.data, codePage: codePage, charset: response.charset)
                 var parsed = WebParserProcessor.process(tree, text: text)
-                if let dumpPath {
+                if let dumpPath, let dumpDestination {
                     do {
-                        try text.write(toFile: dumpPath, atomically: true, encoding: .utf8)
+                        try effects.writeFile(Data(text.utf8), to: dumpDestination, makingFolder: false)
                     } catch {
                         parsed.logs.append(WebParserLogLine(level: .warning,
                                                             message: "WebParser [\(tree.options.name)]: cannot write \(dumpPath)"))
@@ -520,8 +525,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             destination = WebParserURL.downloadFileDestination(skinDirectory: skin.directory,
                                                                relativePath: options.downloadFile)
         }
-        // An instance that must not change the widget's files (the Studio's) saves its DownloadFile in a copy of its own.
-        let sandbox = isTemporary ? nil : skin.sideEffects.fileSandbox
+        // Saved through the skin's side effects: an instance that must not change the widget's files (the Studio's, a
+        // verification run) saves its DownloadFile in a copy of its own, and a temporary file in a scratch folder.
+        let effects = skin.sideEffects
         // The same file is already on its way: let that transfer finish (it runs this measure's actions). Restarting
         // it would starve the download whenever the parent re-reads its resource faster than the file arrives
         // (e.g. UpdateRate=1 and a slow image) — the value would never be set.
@@ -534,9 +540,11 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         downloadKey = key
         let generation = downloadGeneration
         // DownloadFile must not be written through a symbolic link (see WebParserURL.hasSymbolicLink).
-        let linkGuardRoot = isTemporary || sandbox != nil
+        let linkGuardRoot = isTemporary || !effects.isLive
             ? nil : skin.directory.appendingPathComponent("DownloadFile", isDirectory: true)
-        if let sandbox, target.isValid, let real = destination { destination = sandbox.url(forWriting: real) }
+        if target.isValid, let real = destination {
+            destination = isTemporary ? effects.temporaryDestination(for: real) : effects.destination(forWriting: real)
+        }
         guard target.isValid, let destination else {
             // An unusable URL is a connection failure for the measure's own resource; a bad DownloadFile is a
             // download failure.
@@ -545,7 +553,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             // After the current action, like a transfer that fails.
             skin.async { [weak self] in
                 self?.finishDownload(.failure(.connect(reason)), generation: generation, isResource: isResource && badURL,
-                                     isTemporary: isTemporary)
+                                     isTemporary: isTemporary, effects: effects)
             }
             return
         }
@@ -569,9 +577,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
                     saveFailure = "cannot save \(destination.path): the DownloadFile folder contains a symbolic link"
                 } else {
                     do {
-                        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
-                                                                withIntermediateDirectories: true)
-                        try response.data.write(to: destination, options: .atomic)
+                        try effects.writeFile(response.data, to: destination, makingFolder: true)
                     } catch {
                         saveFailure = "cannot save \(destination.path): \(error.localizedDescription)"
                     }
@@ -583,7 +589,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         // A temporary file that nobody takes — the skin or the measure is gone by the time the result gets back — is
         // deleted: nothing else would ever delete it. (A DownloadFile stays, as the skin asked.)
         let discard = { (outcome: Result<String, WebParserFetchError>, _: Bool) in
-            if isTemporary, let saved = try? outcome.get() { try? FileManager.default.removeItem(atPath: saved) }
+            if isTemporary, let saved = try? outcome.get() { effects.removeTemporaryFile(atPath: saved) }
         }
         var handle: WebParserFetchHandle?
         // A local file is a fixture in virtual time; a web resource needs a scripted result.
@@ -595,13 +601,13 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         skin.startBackground(download, then: { [weak self] outcome, transportFailure in
             guard let self else { return discard(outcome, transportFailure) }
             self.finishDownload(outcome, generation: generation, isResource: isResource && transportFailure,
-                                isTemporary: isTemporary)
+                                isTemporary: isTemporary, effects: effects)
         }, orElse: discard)
         downloadHandle = handle
     }
 
     private func finishDownload(_ outcome: Result<String, WebParserFetchError>, generation: Int, isResource: Bool,
-                                isTemporary: Bool) {
+                                isTemporary: Bool, effects: SideEffects) {
         guard generation == downloadGeneration else { return }
         downloadHandle = nil
         downloadInFlight = false
@@ -609,7 +615,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             // Saved before the unload could cancel it: nothing is applied or run, and a temporary file goes now (the
             // measure would never delete it).
             if case .success(let path) = outcome, isTemporary, path != temporaryDownload {
-                try? FileManager.default.removeItem(atPath: path)
+                effects.removeTemporaryFile(atPath: path)
             }
             return
         }
@@ -623,9 +629,10 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             if !action.isEmpty { skin.execute(action, from: self) }
         case .success(let path):
             if let previous = temporaryDownload, previous != path {
-                try? FileManager.default.removeItem(atPath: previous)
+                temporaryDownloadEffects?.removeTemporaryFile(atPath: previous)
             }
             temporaryDownload = isTemporary ? path : nil
+            temporaryDownloadEffects = isTemporary ? effects : nil
             setResult(path)
             if !finishAction.isEmpty { skin.execute(finishAction, from: self) }
         }
