@@ -68,17 +68,20 @@ public enum SkinPatchResult: Equatable {
 
 extension Skin {
     /// Gives the running skin the text `sources` holds for its files, without loading it again when the change allows
-    /// it: the Studio's value edits show at once, and what the skin has shown so far stays — graph history, the Calc
-    /// counter, variables set while it runs, `!SetOption` values of other options, hover and bang states, editor
-    /// previews (a patch replaces only what the files say).
+    /// it: the Studio's value edits show at once, and what the skin has shown so far stays — graph history (of the
+    /// measures the graphs still read), the Calc counter, variables set while it runs (whose definition did not change),
+    /// `!SetOption` values of options the files did not change, hover and bang states, editor previews (a patch replaces
+    /// only what the files say).
     ///
     /// The change is applied when the same files are included, the sections are the same ones in the same order with
     /// the same `Meter=` / `Measure=`, and every option that changed is live for its section (`LiveOptions`) — also
     /// where a changed MeterStyle or variable reaches. Then each section takes its new text; changed `[Variables]` are
-    /// resolved again (a value set while the skin runs stays); the sections that changed are read again, and so are the
-    /// ones that follow others (DynamicVariables, section variables such as `[Meter:X]`, read in file order so each one
-    /// sees the frames before it); a changed measure updates (as `!UpdateMeasure` would), the meters take the new values
-    /// (graphs add no sample: their next update does), and the skin is laid out, sized again and redrawn.
+    /// resolved again (the new definition wins over a value set while the skin ran); an option that changed drops its
+    /// `!SetOption` value; the sections that changed are read, a changed measure updates (as `!UpdateMeasure` would,
+    /// without OnChangeAction), the meters take the new values, and the sections that changed or follow others
+    /// (DynamicVariables, section variables such as `[Meter:X]` or `[Measure]`) are read again in file order, so each
+    /// one sees the values and frames before it; graphs add no sample (their next update does), and a line that reads
+    /// another measure now starts afresh; the skin is laid out, sized again and redrawn.
     /// `sourceGeneration` moves on even when only comments changed (where things are written moved).
     ///
     /// Otherwise nothing changes and the result says why the skin must load again.
@@ -202,7 +205,8 @@ extension Skin {
                 // MeterStyle is read from the meter itself (or `!SetOption`), never from a style.
                 let styleChanged = keys.contains("meterstyle")
                     || (!changedNames.isEmpty && Skin.mentions(newOwn["meterstyle"] ?? "", changedNames))
-                if styleChanged, meter.overrides["meterstyle"] == nil {
+                // A `!SetOption` MeterStyle gives way to the file's new one (`apply` drops it, as a reload would).
+                if styleChanged {
                     let raw = newOwn["meterstyle"] ?? ""
                     if raw.contains("#") || raw.contains("[") { return .failure(.meterStyle(section: meter.name)) }
                     newStyles = OptionValue.list(raw)
@@ -342,29 +346,64 @@ extension Skin {
             sourceGeneration: sourceGeneration)
         guard !plan.changed.isEmpty else { return summary }
 
-        // The changed sections, in file order (measures first, as an update reads them); then the meters take the new
-        // values, so their text and size are right before anything reads a frame.
-        for section in ordered where plan.changed[ObjectIdentifier(section)] != nil {
-            section.needsOptionRead = true
-            section.readOptionsIfNeeded()
+        // A key the files changed drops its `!SetOption` value (a hover action's, `!MoveMeter`'s), as a reload drops it:
+        // the edit shows. An editor preview of the key goes on, and ends on the file's value.
+        for section in ordered {
+            guard let keys = plan.changed[ObjectIdentifier(section)] else { continue }
+            let sectionKey = section.name.lowercased()
+            for key in keys {
+                if previewSaved[sectionKey]?[key] != nil {
+                    previewSaved[sectionKey]?[key] = .some(nil)
+                } else {
+                    section.overrides.removeValue(forKey: key)
+                }
+            }
         }
+        // The measures the graphs read, to tell which lines read another one after the patch.
+        var graphMeasures: [ObjectIdentifier: [Measure?]] = [:]
+        for meter in meters {
+            if let line = meter as? LineMeter {
+                graphMeasures[ObjectIdentifier(meter)] = line.boundMeasures
+            } else if let histogram = meter as? HistogramMeter {
+                graphMeasures[ObjectIdentifier(meter)] = histogram.boundMeasures
+            }
+        }
+
+        // The changed sections, in file order (measures first, as an update reads them); whether they name measures or
+        // meters in brackets is found anew, as a reload's load-time read finds it.
+        for section in ordered where plan.changed[ObjectIdentifier(section)] != nil {
+            section.rereadTrackingSectionVariables()
+        }
+        // A changed measure shows its new options now, as `!UpdateMeasure` would (its IfConditions may run), before
+        // anything reads its value — a reload too updates the measures before it reads what follows them. Its new
+        // string is no change for OnChangeAction, as it is none after a reload. A change of how the string is written
+        // (Substitute) or of the groups shows without an update: a Calc that counts its updates or rolls a Random would
+        // count one more.
+        for measure in measures {
+            guard let keys = plan.changed[ObjectIdentifier(measure)],
+                  !keys.isSubset(of: LiveOptions.measureGeneral) else { continue }
+            measure.forgetChangeBaseline()
+            perform(Bang(name: "updatemeasure", args: [measure.name]))
+            if isClosed { return summary }
+        }
+        // The meters take the new values, so their text and size are right before anything reads a frame.
         for meter in meters where !Skin.addsSamples(meter) { meter.updateMeter() }
-        // Everything that may follow another section, again in file order; the frames are laid out anew before the next
-        // read of one, so a section sees the new places of the ones before it.
+        // Everything that may follow another section, again in file order, each meter taking its values as it is read
+        // (as an update does); the frames are laid out anew before the next read of one, so a section sees the new
+        // places and sizes of the ones before it.
         for section in ordered
         where plan.changed[ObjectIdentifier(section)] != nil || plan.readAgain.contains(ObjectIdentifier(section)) {
             markLayoutPending()
             section.needsOptionRead = true
             section.readOptionsIfNeeded()
+            if let meter = section as? Meter, !Skin.addsSamples(meter) { meter.updateMeter() }
             summary.readAgain.append(section.name)
         }
-        // A changed measure shows its new options now, as `!UpdateMeasure` would (its actions may run).
-        for measure in measures where plan.changed[ObjectIdentifier(measure)] != nil {
-            perform(Bang(name: "updatemeasure", args: [measure.name]))
-            if isClosed { return summary }
-        }
         for meter in meters {
-            if !Skin.addsSamples(meter) { meter.updateMeter() }
+            if let before = graphMeasures[ObjectIdentifier(meter)] {
+                (meter as? LineMeter)?.restartLines(readingOtherThan: before)
+                (meter as? HistogramMeter)?.restartSides(readingOtherThan: before)
+            }
             meter.noteDrawChange()
         }
         finishPatch()

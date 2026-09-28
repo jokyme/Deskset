@@ -152,6 +152,7 @@ func runLivePatchTests(_ t: TestRunner) {
     runLivePatchConsistencyTests(t)
     runLivePatchReferenceTests(t)
     runLivePatchStateTests(t)
+    runLivePatchFollowUpTests(t)
 }
 
 // MARK: - (a) Which changes are applied
@@ -757,6 +758,7 @@ private func runLivePatchStateTests(_ t: TestRunner) {
             Update=1000
             [Variables]
             Size=12
+            Page=1
             Color=255,0,0,255
             [MeasureCounter]
             Measure=Calc
@@ -792,7 +794,7 @@ private func runLivePatchStateTests(_ t: TestRunner) {
         let lineSamples = samples(line.lines[0].history), histoSamples = samples(histo.primaryHistory)
         t.equal(lineSamples, [4, 3, 2, 1, 0], "the counter of each update, newest first")
         t.equal(skin.counter, 5)
-        skin.execute("[!SetVariable Size 30][!SetOption Label StringAlign Right][!HideMeter Other]"
+        skin.execute("[!SetVariable Size 30][!SetVariable Page 3][!SetOption Label StringAlign Right][!HideMeter Other]"
                      + "[!SetOption Label FontSize 44]", from: nil)
         let edited = base.replacingOccurrences(of: "LineColor=255,255,255,255", with: "LineColor=0,255,0,255")
             .replacingOccurrences(of: "[Histo]\nMeter=Histogram", with: "[Histo]\nMeter=Histogram\nPrimaryColor=0,0,255,255")
@@ -809,11 +811,12 @@ private func runLivePatchStateTests(_ t: TestRunner) {
         t.equal(histo.primaryColor, RGBA(r: 0, g: 0, b: 255, a: 255))
         t.equal(skin.counter, 5, "the counter goes on")
         t.equal(counter.value, 4)
-        t.equal(skin.variable("Size"), "30", "a value !SetVariable set stays")
+        t.equal(skin.variable("Page"), "3", "a value !SetVariable set stays")
+        t.equal(skin.variable("Size"), "14", "unless the file defines the variable anew, as after a reload")
         t.equal(skin.variable("Color"), "0,0,255,255", "a variable the skin did not change follows the file")
         t.equal(label.rawOption("StringAlign"), "Right", "!SetOption values stay")
-        t.equal(label.rawOption("FontSize"), "44", "also over a key the file changed")
-        t.equal(label.fileOption("FontSize"), "18", "which the file layer has")
+        t.equal(label.rawOption("FontSize"), "18", "except over a key the file changed, as after a reload")
+        t.equal(label.fileOption("FontSize"), "18")
         t.equal((label as? StringMeter)?.style.color, RGBA(r: 0, g: 0, b: 255, a: 255))
         t.check(skin.meter(named: "Other")?.hidden == true, "a meter a bang hid stays hidden")
         skin.update()
@@ -860,5 +863,287 @@ private func runLivePatchStateTests(_ t: TestRunner) {
         skin.update()
         t.equal(patchState(skin, variables: ["Color"]), patchState(reloaded, variables: ["Color"]),
                 "as a reload of the new text with the same !SetOption")
+    }
+}
+
+// MARK: - (e) What a patch does as a reload would
+
+private func runLivePatchFollowUpTests(_ t: TestRunner) {
+    t.suite("Session: live patch — a key the file changed drops its !SetOption value") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [Variables]
+            Accent=255,255,255,255
+            [StyleA]
+            SolidColor=1,1,1,255
+            [StyleB]
+            SolidColor=2,2,2,255
+            [MeterTitle]
+            Meter=String
+            Text=Title
+            FontColor=255,255,255,255
+            MouseOverAction=[!SetOption MeterTitle FontColor 255,0,0,255][!UpdateMeter MeterTitle]
+            MouseLeaveAction=[!SetOption MeterTitle FontColor 200,200,200,255][!UpdateMeter MeterTitle]
+            [MeterSub]
+            Meter=String
+            Text=sub
+            FontColor=#Accent#
+            MeterStyle=StyleA
+            Y=0R
+            """
+        let (skin, _) = try folder.skin(base)
+        skin.update()
+        // The pointer crossed the widget: MouseLeaveAction left its value; the editor's own preview is another thing.
+        skin.execute("[!SetOption MeterTitle FontColor 200,200,200,255][!SetOption MeterTitle StringAlign Right]"
+                     + "[!SetOption MeterSub FontColor 9,9,9,255][!SetOption MeterSub MeterStyle StyleA]"
+                     + "[!SetOption MeterSub FontSize 20]", from: nil)
+        skin.update()
+        let edited = base.replacingOccurrences(of: "FontColor=255,255,255,255", with: "FontColor=0,0,255,255")
+            .replacingOccurrences(of: "Accent=255,255,255,255", with: "Accent=0,255,0,255")
+            .replacingOccurrences(of: "MeterStyle=StyleA", with: "MeterStyle=StyleB")
+        guard case .applied = skin.patch(sources: folder.texts(edited)),
+              let title = skin.meter(named: "MeterTitle") as? StringMeter,
+              let sub = skin.meter(named: "MeterSub") as? StringMeter else {
+            return t.check(false, "applied")
+        }
+        t.equal(title.rawOption("FontColor"), "0,0,255,255", "the edit shows over the hover's value, as after a reload")
+        t.equal(title.style.color, RGBA(r: 0, g: 0, b: 255, a: 255))
+        t.equal(title.rawOption("StringAlign"), "Right", "a value over a key the file did not change stays")
+        t.equal(sub.rawOption("FontColor"), "#Accent#", "a key whose variable changed takes the file's value")
+        t.equal(sub.style.color, RGBA(r: 0, g: 255, b: 0, a: 255))
+        t.equal(sub.styles, ["StyleB"], "a MeterStyle the file changed replaces the one !SetOption gave")
+        t.equal(sub.rawOption("SolidColor"), "2,2,2,255")
+        t.equal(sub.rawOption("FontSize"), "20", "!SetOption values of other keys stay")
+
+        // A key an editor preview shows: the preview goes on; when it ends, the file's value shows, as after a reload.
+        skin.execute("[!SetOption MeterTitle FontSize 30]", from: nil)
+        skin.preview(section: "MeterTitle", ["FontSize": "40"])
+        let resized = edited + "\n"
+        let sized = setting(resized, section: "MeterTitle", key: "FontSize", value: "12")
+        guard case .applied = skin.patch(sources: folder.texts(sized)) else { return t.check(false, "applied") }
+        t.equal(title.rawOption("FontSize"), "40", "the preview still shows")
+        skin.endPreview()
+        t.equal(title.rawOption("FontSize"), "12", "then the file's new value, not the !SetOption value before it")
+    }
+
+    t.suite("Session: live patch — readers of a changed measure read its new string") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [MeasureDate]
+            Measure=Time
+            TimeStamp=13390000000
+            Format=%A
+            [MeterDay]
+            Meter=String
+            Text=Today is [MeasureDate]
+            [MeterNext]
+            Meter=String
+            Text=next
+            X=[MeterDay:XW]
+            [MeterMeasure]
+            Meter=String
+            MeasureName=MeasureDate
+            Y=20
+            """
+        let (skin, _) = try folder.skin(base)
+        skin.update()
+        skin.update()
+        let edited = base.replacingOccurrences(of: "Format=%A", with: "Format=%a %Y-%m-%d, %H:%M")
+        guard case .applied = skin.patch(sources: folder.texts(edited)),
+              let day = skin.meter(named: "MeterDay") as? StringMeter, let next = skin.meter(named: "MeterNext"),
+              let shown = skin.meter(named: "MeterMeasure") as? StringMeter else {
+            return t.check(false, "applied")
+        }
+        let (reloaded, _) = try folder.skin(edited)
+        reloaded.update()
+        let fresh = reloaded.meter(named: "MeterDay") as? StringMeter
+        t.check(day.text.hasPrefix("Today is ") && day.text.contains("-"), "the new string, right after the patch: \(day.text)")
+        t.equal(day.text, fresh?.text, "as a reload shows it")
+        t.equal(shown.text, (reloaded.meter(named: "MeterMeasure") as? StringMeter)?.text)
+        t.equal(next.frame.x, day.frame.x + day.frame.width, "a meter placed after it follows its new width")
+        t.equal(next.frame, reloaded.meter(named: "MeterNext")?.frame)
+        t.check(patchState(skin, variables: []) == patchState(reloaded, variables: []),
+                "patched differs from reloaded:\n\(difference(patchState(skin, variables: []), patchState(reloaded, variables: [])))")
+    }
+
+    t.suite("Session: live patch — a graph bound to another measure starts afresh") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [MeasureNet]
+            Measure=Calc
+            Formula=5000
+            MaxValue=100
+            [MeasureCPU]
+            Measure=Calc
+            Formula=20
+            MaxValue=100
+            [Graph]
+            Meter=Line
+            MeasureName=MeasureNet
+            LineCount=2
+            MeasureName2=MeasureCPU
+            W=20
+            H=10
+            [Histo]
+            Meter=Histogram
+            MeasureName=MeasureNet
+            MeasureName2=MeasureCPU
+            W=20
+            H=10
+            """
+        let (skin, _) = try folder.skin(base)
+        for _ in 0..<4 { skin.update() }
+        guard let line = skin.meter(named: "Graph") as? LineMeter, let histo = skin.meter(named: "Histo") as? HistogramMeter else {
+            return t.check(false, "the meters")
+        }
+        let state = skin.runtimeState(as: .successor)
+        let edited = base.replacingOccurrences(of: "[Graph]\nMeter=Line\nMeasureName=MeasureNet",
+                                               with: "[Graph]\nMeter=Line\nMeasureName=MeasureCPU")
+            .replacingOccurrences(of: "[Histo]\nMeter=Histogram\nMeasureName=MeasureNet",
+                                  with: "[Histo]\nMeter=Histogram\nMeasureName=MeasureCPU")
+        guard case .applied = skin.patch(sources: folder.texts(edited)) else { return t.check(false, "applied") }
+        t.equal(line.lines[0].history.count, 0, "the line whose measure changed starts afresh")
+        t.equal(line.lines[1].history.count, 4, "the other line keeps its samples")
+        t.equal(histo.primaryHistory.count, 0, "so does the histogram's side")
+        t.equal(histo.secondaryHistory.count, 4)
+        skin.update()
+        t.equal(line.lines[0].history.samples, [20], "the next update adds the new measure's value")
+
+        // A new instance takes a graph's samples only where the lines read the same measures.
+        let (successor, _) = try folder.skin(edited)
+        successor.seed(from: state)
+        successor.update()
+        successor.seedGraphs(from: state)
+        guard let newLine = successor.meter(named: "Graph") as? LineMeter,
+              let newHisto = successor.meter(named: "Histo") as? HistogramMeter else { return t.check(false, "meters") }
+        t.equal(newLine.lines[0].history.count, 1, "a line bound to another measure is not seeded")
+        t.equal(newLine.lines[1].history.count, 4, "a line bound to the same one is")
+        t.equal(newHisto.primaryHistory.count, 1)
+        t.equal(newHisto.secondaryHistory.count, 4)
+    }
+
+    t.suite("Session: live patch — a variable's new definition wins over a value set while it ran") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [Variables]
+            Accent=255,255,255,255
+            Page=1
+            [Label]
+            Meter=String
+            Text=Page #Page#
+            FontColor=#Accent#
+            LeftMouseUpAction=[!SetVariable Accent 0,255,0,255][!SetVariable Page 3]
+            """
+        let (skin, _) = try folder.skin(base)
+        skin.update()
+        skin.execute("[!SetVariable Accent 0,255,0,255][!SetVariable Page 3]", from: nil)
+        skin.update()
+        let edited = base.replacingOccurrences(of: "Accent=255,255,255,255", with: "Accent=255,0,0,255")
+        guard case .applied = skin.patch(sources: folder.texts(edited)),
+              let label = skin.meter(named: "Label") as? StringMeter else { return t.check(false, "applied") }
+        t.equal(skin.variable("Accent"), "255,0,0,255", "the new definition, as a reload and a seeded instance show")
+        t.equal(label.style.color, RGBA(r: 255, g: 0, b: 0, a: 255))
+        t.equal(skin.variable("Page"), "3", "a variable whose definition did not change keeps its value")
+
+        // Previewed: the preview goes on, and gives back the new definition when it ends.
+        skin.previewVariables(["Accent": "1,1,1,255"])
+        let again = edited.replacingOccurrences(of: "Accent=255,0,0,255", with: "Accent=0,0,255,255")
+        guard case .applied = skin.patch(sources: folder.texts(again)) else { return t.check(false, "applied") }
+        t.equal(skin.variable("Accent"), "1,1,1,255")
+        skin.endPreview()
+        t.equal(skin.variable("Accent"), "0,0,255,255")
+    }
+
+    t.suite("Session: live patch — a section variable a patch adds is followed") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [MeasureX]
+            Measure=String
+            String=abc
+            [MeterTitle]
+            Meter=String
+            Text=Title
+            FontSize=10
+            [MeterSub]
+            Meter=String
+            Text=sub
+            X=0
+            [MeterValue]
+            Meter=String
+            Text=value
+            Y=20
+            """
+        let (skin, _) = try folder.skin(base)
+        skin.update()
+        let typed = base.replacingOccurrences(of: "X=0", with: "X=[MeterTitle:XW]")
+            .replacingOccurrences(of: "Text=value", with: "Text=[MeasureX]")
+        guard case .applied = skin.patch(sources: folder.texts(typed)),
+              let title = skin.meter(named: "MeterTitle"), let sub = skin.meter(named: "MeterSub"),
+              let value = skin.meter(named: "MeterValue") as? StringMeter else { return t.check(false, "applied") }
+        t.equal(sub.frame.x, title.frame.x + title.frame.width)
+        t.equal(value.text, "abc")
+        let bigger = typed.replacingOccurrences(of: "FontSize=10", with: "FontSize=30")
+            .replacingOccurrences(of: "String=abc", with: "String=def")
+        guard case .applied(let summary) = skin.patch(sources: folder.texts(bigger)) else {
+            return t.check(false, "applied")
+        }
+        t.check(summary.readAgain.contains("MeterSub"), "read again: \(summary.readAgain)")
+        t.equal(sub.frame.x, title.frame.x + title.frame.width, "it follows the title's new width")
+        t.equal(value.text, "def", "and the measure's new string")
+        let (reloaded, _) = try folder.skin(bigger)
+        reloaded.update()
+        t.equal(sub.frame, reloaded.meter(named: "MeterSub")?.frame)
+    }
+
+    t.suite("Session: live patch — a measure's update in a patch runs no OnChangeAction and counts nothing") {
+        let folder = try PatchFolder(t)
+        let base = """
+            [Rainmeter]
+            [Variables]
+            Changed=0
+            [MeasureHour]
+            Measure=Time
+            TimeStamp=13390000000
+            Format=%H
+            OnChangeAction=[!SetVariable Changed 1]
+            [MeasureCount]
+            Measure=Calc
+            Formula=MeasureCount + 1
+            [MeasureDice]
+            Measure=Calc
+            Formula=Random
+            UpdateRandom=1
+            LowBound=1
+            HighBound=1000000
+            [MeterHour]
+            Meter=String
+            MeasureName=MeasureHour
+            MeasureName2=MeasureCount
+            MeasureName3=MeasureDice
+            Text=%1 %2 %3
+            """
+        let (skin, _) = try folder.skin(base)
+        skin.update()
+        skin.update()
+        guard let count = skin.measure(named: "MeasureCount"), let dice = skin.measure(named: "MeasureDice"),
+              let meter = skin.meter(named: "MeterHour") as? StringMeter else { return t.check(false, "measures") }
+        t.equal(count.value, 2)
+        let rolled = dice.value
+        let edited = base.replacingOccurrences(of: "Format=%H", with: "Format=%A")
+            .replacingOccurrences(of: "Formula=MeasureCount + 1", with: "Formula=MeasureCount + 1\nSubstitute=\"2\":\"two\"")
+            .replacingOccurrences(of: "UpdateRandom=1", with: "UpdateRandom=1\nSubstitute=\"x\":\"y\"")
+        guard case .applied = skin.patch(sources: folder.texts(edited)) else { return t.check(false, "applied") }
+        t.equal(skin.variable("Changed"), "0", "no OnChangeAction: a reload runs none for its first value either")
+        t.equal(count.value, 2, "a Calc that counts its updates does not count the patch")
+        t.equal(dice.value, rolled, "and a random one does not roll again")
+        t.check(meter.text.contains(" two "), "the new Substitute shows: \(meter.text)")
+        skin.update()
+        t.equal(count.value, 3)
+        t.equal(skin.variable("Changed"), "0", "the next update compares with the patched string")
     }
 }

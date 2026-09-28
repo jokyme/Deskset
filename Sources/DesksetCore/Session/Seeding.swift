@@ -76,11 +76,13 @@ public struct SkinRuntimeState: Equatable {
         public var webParser: WebParser?
     }
 
-    /// The samples of a graph meter.
+    /// The samples of a graph meter, and the measures they are values of (lowercased names; nil: none): a meter that
+    /// reads another measure now takes no samples of the old one.
     public enum Graph: Equatable {
         /// A Line meter's lines, in order.
-        case line([GraphHistory])
-        case histogram(primary: GraphHistory, secondary: GraphHistory)
+        case line([GraphHistory], measures: [String?])
+        /// A Histogram's sides; `measures` are the primary's and the secondary's.
+        case histogram(primary: GraphHistory, secondary: GraphHistory, measures: [String?])
     }
 
     public var relation: Relation
@@ -137,10 +139,11 @@ extension Skin {
             for meter in meters {
                 let key = meter.name.lowercased()
                 if let line = meter as? LineMeter {
-                    state.graphs[key] = .line(line.lines.map(\.history))
+                    state.graphs[key] = .line(line.lines.map(\.history), measures: line.boundMeasureNames)
                 } else if let histogram = meter as? HistogramMeter {
                     state.graphs[key] = .histogram(primary: histogram.primaryHistory,
-                                                   secondary: histogram.secondaryHistory)
+                                                   secondary: histogram.secondaryHistory,
+                                                   measures: histogram.boundMeasureNames)
                 }
             }
         }
@@ -173,17 +176,18 @@ extension Skin {
     }
 
     /// Seeds the Line and Histogram meters with the samples of the meters of the same name and kind in `state`, after
-    /// this instance's first update (which already added a sample of its own): the graphs show what the source showed.
+    /// this instance's first update (which already added a sample of its own): the graphs show what the source showed —
+    /// each line or side only where it reads the measure the source's read.
     /// On the thread that owns the skin.
     public func seedGraphs(from state: SkinRuntimeState) {
         assertOwned()
         guard !state.graphs.isEmpty else { return }
         for meter in meters {
             switch state.graphs[meter.name.lowercased()] {
-            case .line(let histories)?:
-                (meter as? LineMeter)?.seedHistory(histories)
-            case .histogram(let primary, let secondary)?:
-                (meter as? HistogramMeter)?.seedHistory(primary: primary, secondary: secondary)
+            case .line(let histories, let measures)?:
+                (meter as? LineMeter)?.seedHistory(histories, measures: measures)
+            case .histogram(let primary, let secondary, let measures)?:
+                (meter as? HistogramMeter)?.seedHistory(primary: primary, secondary: secondary, measures: measures)
             case nil:
                 continue
             }

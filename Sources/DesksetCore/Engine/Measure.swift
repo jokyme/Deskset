@@ -407,6 +407,14 @@ open class Measure: SkinSection {
         return Int64(v.rounded().clamped(-9e18, 9e18))
     }
 
+    /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch
+    /// (`Skin.patch(sources:)`) updates a measure whose options changed this way — a reload would not report its new
+    /// string as a change either.
+    func forgetChangeBaseline() {
+        lastValue = nil
+        lastString = nil
+    }
+
     // MARK: Values for meters and section variables
 
     /// String value with Substitute applied; number-only measures print their number.
