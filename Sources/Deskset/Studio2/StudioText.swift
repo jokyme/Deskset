@@ -90,6 +90,79 @@ enum StudioText {
         case tabLayers = "sidebar.layers"
         case canvas = "canvas"
         case backdrop = "canvas.backdrop"
+        // The canvas: backdrop, preview bar, zoom capsule, caption, capsules.
+        case backdropDesktop = "backdrop.desktop"
+        case backdropBright = "backdrop.bright"
+        case backdropBusy = "backdrop.busy"
+        case backdropDark = "backdrop.dark"
+        case backdropWorkbench = "backdrop.workbench"
+        case backdropTransparent = "backdrop.transparent"
+        case backdropSolid = "backdrop.solid"
+        case backdropSimilar = "backdrop.similar"
+        case backdropClose = "backdrop.close"
+        case backdropSimilarTip = "backdrop.similar.tip"
+        case backdropCloseTip = "backdrop.close.tip"
+        case showOtherWidgets = "backdrop.neighbours"
+        case previewBar = "preview.bar"
+        case previewPrefix = "preview.prefix"
+        case previewTip = "preview.tip"
+        case lightMode = "preview.light"
+        case darkMode = "preview.dark"
+        case live = "preview.live"
+        case dataTip = "preview.data.tip"
+        case interact = "preview.interact"
+        case interactTip = "preview.interact.tip"
+        case backToLive = "preview.backToLive"
+        case previewOnly = "preview.popover.title"
+        case macAppearance = "preview.popover.appearance"
+        case followMac = "preview.popover.followMac"
+        case appearanceLight = "preview.popover.light"
+        case appearanceDark = "preview.popover.dark"
+        case glass = "preview.popover.glass"
+        case glassDefault = "preview.popover.glass.default"
+        case glassClear = "preview.popover.glass.clear"
+        case glassTinted = "preview.popover.glass.tinted"
+        case language = "preview.popover.language"
+        case previewFooter = "preview.popover.footer"
+        case dataHeader = "data.header"
+        case dataPaused = "data.paused"
+        case dataLongText = "data.longText"
+        case dataNone = "data.none"
+        case timeHeader = "data.time"
+        case timeFrozen = "data.time.frozen"
+        case timePick = "data.time.pick"
+        case timePickTitle = "data.time.pick.title"
+        case timePickUse = "data.time.pick.use"
+        case previewing = "capsule.previewing"
+        case previewingData = "capsule.previewing.data"
+        case previewingPaused = "capsule.previewing.paused"
+        case previewingLongText = "capsule.previewing.longText"
+        case previewingNoData = "capsule.previewing.noData"
+        case previewingTime = "capsule.previewing.time"
+        case wouldOpen = "capsule.wouldOpen"
+        case wouldRun = "capsule.wouldRun"
+        case wouldChange = "capsule.wouldChange"
+        case open = "capsule.open"
+        case run = "capsule.run"
+        case zoomCapsule = "zoom"
+        case zoomIn = "zoom.in"
+        case zoomOut = "zoom.out"
+        case zoomToFit = "zoom.fit"
+        case actualSize = "zoom.actualSize"
+        case actualSizeShort = "zoom.actualSize.short"
+        case showOnDesktop = "zoom.showOnDesktop"
+        case showOnDesktopShort = "zoom.showOnDesktop.short"
+        case showOnDesktopTip = "zoom.showOnDesktop.tip"
+        case captionOnDesktop = "caption.onDesktop"
+        case captionNotOnDesktop = "caption.notOnDesktop"
+        case captionActualSize = "caption.actualSize"
+        case sizeSmall = "size.small"
+        case sizeMedium = "size.medium"
+        case sizeLarge = "size.large"
+        case desktopAsItIs = "desktop.asItIs"
+        case backToStudio = "desktop.back"
+        case escapeKey = "desktop.esc"
+        case showingDesktop = "desktop.announce"
         // The status menu.
         case useNewStudio = "menu.useNewStudio"
         case studioWindow = "window.studio"
@@ -140,6 +213,82 @@ enum StudioText {
         .tabLayers: ("Layers", "图层"),
         .canvas: ("Widget canvas", "小组件画布"),
         .backdrop: ("Backdrop", "背板"),
+        .backdropDesktop: ("Your Desktop", "你的桌面"),
+        .backdropBright: ("Bright", "明亮"),
+        .backdropBusy: ("Busy", "繁杂"),
+        .backdropDark: ("Dark", "深色"),
+        .backdropWorkbench: ("Workbench", "工作台"),
+        .backdropTransparent: ("Transparent", "透明棋盘"),
+        .backdropSolid: ("Solid", "实色"),
+        .backdropSimilar: ("Similar", "相似"),
+        .backdropClose: ("Close to your wallpaper", "接近你的壁纸"),
+        .backdropSimilarTip: ("macOS does not say which picture shows now; this is one of them.",
+                              "macOS 不告诉我们现在显示的是哪一张，这是其中一张。"),
+        .backdropCloseTip: ("Your wallpaper is in a place macOS asks about before it can be read, so a sample close to it stands in.",
+                            "你的壁纸在需要 macOS 授权才能读取的地方，所以这里用一张接近的样例代替。"),
+        .showOtherWidgets: ("Show Other Widgets", "显示其他小组件"),
+        .previewBar: ("Preview", "预览"),
+        .previewPrefix: ("Preview:", "预览："),
+        .previewTip: ("How the widget looks in this window only", "只改这个窗口里的样子"),
+        .lightMode: ("Light Mode", "浅色模式"),
+        .darkMode: ("Dark Mode", "深色模式"),
+        .live: ("Live", "实时"),
+        .dataTip: ("Sample data and time, in this window only", "样例数据和时间，只在这个窗口里"),
+        .interact: ("Interact", "互动预览"),
+        .interactTip: ("Hover and click in the widget without leaving the Studio; clicks work as they do on the desktop",
+                       "不离开 Studio，在组件里悬停和点按；点按会像在桌面上一样生效"),
+        .backToLive: ("Back to Live", "回到实时"),
+        .previewOnly: ("Preview only", "只是预览"),
+        .macAppearance: ("Mac appearance", "Mac 的外观"),
+        .followMac: ("Follow Mac", "跟随 Mac"),
+        .appearanceLight: ("Light", "浅色"),
+        .appearanceDark: ("Dark", "深色"),
+        .glass: ("Glass", "玻璃"),
+        .glassDefault: ("Default", "默认"),
+        .glassClear: ("Clear", "更透"),
+        .glassTinted: ("Tinted (Mac setting)", "着色（Mac 设置）"),
+        .language: ("Language", "语言"),
+        .previewFooter: ("Preview only — your widget doesn’t change.", "只改这个窗口里的样子，你的小组件不变。"),
+        .dataHeader: ("Data", "数据"),
+        .dataPaused: ("Paused", "暂停"),
+        .dataLongText: ("Long Text", "很长的文字"),
+        .dataNone: ("No Data", "没有数据"),
+        .timeHeader: ("Time", "时间"),
+        .timeFrozen: ("Frozen at %@", "冻结在 %@"),
+        .timePick: ("Pick a Time…", "选一个时间…"),
+        .timePickTitle: ("Show the widget at", "让小组件显示"),
+        .timePickUse: ("Use This Time", "用这个时间"),
+        .previewing: ("Previewing %@ · your desktop doesn’t change", "预览中：%@ · 桌面不变"),
+        .previewingData: ("sample data %@", "样例数据 %@"),
+        .previewingPaused: ("paused data", "暂停的数据"),
+        .previewingLongText: ("long text", "很长的文字"),
+        .previewingNoData: ("no data", "没有数据"),
+        .previewingTime: ("the time %@", "时间 %@"),
+        .wouldOpen: ("Would open %@", "会打开 %@"),
+        .wouldRun: ("Would run %@", "会执行 %@"),
+        .wouldChange: ("Would change %@", "会改动 %@"),
+        .open: ("Open", "打开"),
+        .run: ("Run", "执行"),
+        .zoomCapsule: ("Zoom", "缩放"),
+        .zoomIn: ("Zoom In", "放大"),
+        .zoomOut: ("Zoom Out", "缩小"),
+        .zoomToFit: ("Zoom to Fit", "缩放到合适"),
+        .actualSize: ("Actual Size", "实际大小"),
+        .actualSizeShort: ("1:1", "1:1"),
+        .showOnDesktop: ("Show on Desktop", "看桌面"),
+        .showOnDesktopShort: ("Desktop", "看桌面"),
+        .showOnDesktopTip: ("The widget on your desktop, as it is now. Press to switch; hold ⇧⌘D to peek.",
+                            "桌面上真的那一份。按一下切换；按住 ⇧⌘D 偷看。"),
+        .captionOnDesktop: ("Preview %@ · %@ on your desktop", "预览 %@ · 桌面上是%@"),
+        .captionNotOnDesktop: ("Preview %@ · %@ · not on your desktop yet", "预览 %@ · %@，还没放到桌面上"),
+        .captionActualSize: ("Actual size · where it is on your desktop", "实际大小 · 它在你桌面上的位置"),
+        .sizeSmall: ("Small", "小号"),
+        .sizeMedium: ("Medium", "中号"),
+        .sizeLarge: ("Large", "大号"),
+        .desktopAsItIs: ("Your desktop, as it is now", "这就是你现在的桌面"),
+        .backToStudio: ("Back to Studio", "回到 Studio"),
+        .escapeKey: ("Esc", "Esc"),
+        .showingDesktop: ("Showing the desktop. Press Escape to go back.", "正在显示桌面，按 Esc 返回。"),
         .useNewStudio: ("Use New Studio", "使用新的 Studio"),
         .studioWindow: ("Studio", "Studio"),
     ]

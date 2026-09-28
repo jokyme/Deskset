@@ -121,6 +121,15 @@ enum StudioSnapshot {
         controller.canvasController.reload(fit: true)
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         controller.updateToolbar()
+        let preview = controller.preview!
+        preview.setBackdrop(screen.backdrop)
+        for _ in 1..<max(screen.updates, 1) { controller.skin?.update() }
+        if let data = screen.data { preview.setData(data) }
+        if screen.frozen { preview.setTime(.frozen(StudioScreen.frozenTime)) }
+        if screen.previewPopover { preview.showPreviewPopover() }
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        controller.canvasController.geometryChanged()
+        controller.canvasController.layoutFloating()
     }
 
     // MARK: Rendering
@@ -151,6 +160,10 @@ enum StudioSnapshot {
             if let popover = controller.runningPopoverContent {
                 drawPopover(popover.view, anchor: controller.toolbar.titleView, in: content, dark: dark)
             }
+            if let popover = controller.preview.previewPopoverContent {
+                drawPopover(popover.view, anchor: controller.canvasController.previewBar.appearanceItem, in: content,
+                            dark: dark, minX: 62)
+            }
             drawToolbar(controller, in: content, dark: dark)
         }
         NSGraphicsContext.restoreGraphicsState()
@@ -174,11 +187,16 @@ enum StudioSnapshot {
         part.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
 
-    /// The canvas (its backdrop, then the widget), the sidebar and the inspector, with stand-ins for their materials.
+    /// The canvas (its planes, the widget, what floats over it), the sidebar and the inspector, with stand-ins for their
+    /// materials.
     private static func drawPanes(_ controller: StudioWindowController, in content: NSView, dark: Bool) {
         let canvas = controller.canvasController
-        draw(canvas.backdropView, in: content)
-        draw(canvas.canvas, in: content)
+        for plane in [canvas.backdropView, canvas.neighboursView, canvas.glassPlane, canvas.canvas] as [NSView] {
+            draw(plane, in: content)
+        }
+        for floating in [canvas.captionTag, canvas.statusCapsule, canvas.previewBar, canvas.zoomCapsule] as [NSView] {
+            draw(floating, in: content)
+        }
         if !controller.inspectorItem.isCollapsed {
             let pane = controller.inspectorController.view
             let r = pane.convert(pane.bounds, to: content)
@@ -362,7 +380,7 @@ enum StudioSnapshot {
 
     /// A popover (`NSPopover` on screen) composed off-screen: its material, its arrow pointing at `anchor`, and its
     /// content, below the anchor (or above it when there is no room).
-    static func drawPopover(_ view: NSView, anchor: NSView, in content: NSView, dark: Bool) {
+    static func drawPopover(_ view: NSView, anchor: NSView, in content: NSView, dark: Bool, minX: CGFloat = 8) {
         view.layoutSubtreeIfNeeded()
         let size = view.fittingSize.width > 0 ? view.fittingSize : view.frame.size
         view.setFrameSize(size)
@@ -371,7 +389,7 @@ enum StudioSnapshot {
         let arrow: CGFloat = 9
         var frame = NSRect(x: a.midX - size.width / 2, y: a.minY - arrow - size.height, width: size.width,
                            height: size.height)
-        frame.origin.x = min(max(frame.minX, 8), content.bounds.width - size.width - 8)
+        frame.origin.x = min(max(frame.minX, minX), content.bounds.width - size.width - 8)
         let below = frame.minY >= 8
         if !below { frame.origin.y = a.maxY + arrow }
         NSGraphicsContext.saveGraphicsState()

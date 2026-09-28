@@ -39,14 +39,27 @@ struct StudioScreen {
     var zoom: CGFloat?
     /// The layer selected (later: the part's page).
     var selection: String?
+    /// The backdrop (a sample, or "Your Desktop": the procedural hills in snapshots).
+    var backdrop = StudioBackdropKind.desktop
+    /// Sample data shown as a preset (the preview bar says so), and the time frozen at 10:09.
+    var data: MeasureValueOverride.Data?
+    var frozen = false
+    /// The "Preview only" popover is open.
+    var previewPopover = false
+    /// How many updates the Studio's instance makes before the picture (sample readings settle over a few).
+    var updates = 1
     /// What the design shows that the window does not have yet: listed with the differences.
     var later: [String] = []
 
+    /// The System widget on the suite's own sample readings (the design's: CPU 21 %, memory 20.4 GB, up 14 d 5 h).
+    static let systemDemo = FileEdit(path: "@Resources/System/Settings.inc", find: "SystemSource=Live",
+                                     replace: "SystemSource=Demo")
+
     /// The designed screens, in the order of the design.
     static let all: [StudioScreen] = [
-        StudioScreen(name: "03-customize", fixture: .system, zoom: 1.65,
-                     later: ["wallpaper backdrop", "caption", "preview bar", "zoom capsule", "widget page",
-                             "color popover", "search field"]),
+        StudioScreen(name: "03-customize", fixture: .system, edits: [systemDemo], zoom: 1.65,
+                     updates: 4,
+                     later: ["widget page", "color popover", "search field"]),
         // A city picked (the design's), and the sample forecast of `DESKSET_WEATHER_DEMO`.
         StudioScreen(name: "03b-weather", fixture: .weather,
                      edits: [FileEdit(path: "@Resources/Variables.inc", find: "Location=timezone",
@@ -56,14 +69,17 @@ struct StudioScreen {
                      zoom: 1.65,
                      later: ["wallpaper backdrop", "widget page with options", "scope sentence",
                              "what-it-paints outline"]),
-        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
+        StudioScreen(name: "04-part", fixture: .system, edits: [systemDemo], zoom: 1.65, selection: "MeterCPUValue",
+                     updates: 4,
                      later: ["part page", "scope sentence", "breadcrumb"]),
-        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.9,
+        StudioScreen(name: "07-layers", fixture: .system, edits: [systemDemo], depth: .build, zoom: 1.9,
+                     updates: 4,
                      later: ["layers", "connect menu"]),
         StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3,
                      later: ["workbench backdrop", "every-setting page", "distances"]),
-        StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5,
-                     later: ["sample backdrop", "data preset", "preview popover", "contrast card"]),
+        StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5, backdrop: .bright, data: .level(1), frozen: true,
+                     previewPopover: true,
+                     later: ["part page with the contrast card", "selection of the caption", "Build's layers"]),
         StudioScreen(name: "12b-code-ini", fixture: .nocturne,
                      edits: [FileEdit(path: "@Resources/Styles.inc", find: "FontColor=#TextColor#",
                                       replace: "FontColr=#TextColor#"),
@@ -73,9 +89,21 @@ struct StudioScreen {
                                         "last working version capsule"]),
         StudioScreen(name: "13b-compat", fixture: .nocturne, depth: .build, zoom: 1.5,
                      later: ["compatibility capsule", "needs attention", "measures in the layers"]),
-        StudioScreen(name: "17-show-on-desktop", fixture: .system, zoom: 1,
+        StudioScreen(name: "17-show-on-desktop", fixture: .system, edits: [systemDemo], zoom: 1,
+                     updates: 4,
                      later: ["show on desktop: the window fades and the widget on the desktop comes up"]),
     ]
+
+    /// The time snapshots show: 27 September 2026, 10:09.
+    static let frozenTime: Date = {
+        var parts = DateComponents()
+        parts.year = 2026
+        parts.month = 9
+        parts.day = 27
+        parts.hour = 10
+        parts.minute = 9
+        return Calendar.current.date(from: parts) ?? Date(timeIntervalSince1970: 0)
+    }()
 
     static func named(_ name: String) -> StudioScreen? {
         all.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }

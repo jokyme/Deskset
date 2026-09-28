@@ -113,6 +113,42 @@ final class DesktopLink {
         return "Skins/" + path.dropFirst(skins.count + 1)
     }
 
+    // MARK: The desktop around the widget (the canvas's backdrop, Show on Desktop)
+
+    /// The widget's window on the desktop (nil: not on the desktop). Its level and order are the window's; its skin is
+    /// never read through it.
+    var desktopWindow: NSWindow? { session.runningDesktop?.window }
+
+    /// Where the widget is on the desktop (its window's frame, global coordinates).
+    var desktopFrame: CGRect? { desktopWindow?.frame }
+
+    /// The screen the widget is on: its window's, else the one its frame overlaps most, else the main one.
+    var desktopScreen: NSScreen? {
+        if let screen = desktopWindow?.screen { return screen }
+        guard let frame = desktopFrame else { return NSScreen.main }
+        return NSScreen.screens.max { a, b in
+            a.frame.intersection(frame).width * a.frame.intersection(frame).height
+                < b.frame.intersection(frame).width * b.frame.intersection(frame).height
+        } ?? NSScreen.main
+    }
+
+    /// The windows of the other widgets that show on the desktop now (for the neighbours around this one: their
+    /// pictures are taken from the windows, never from their skins).
+    func otherWidgetWindows() -> [NSWindow] {
+        let mine = session.runningDesktop
+        return app.controllers.values.filter { $0 !== mine && !$0.isStopped }.map(\.window)
+            .filter { $0.isVisible && $0.alphaValue > 0.01 }
+    }
+
+    /// Does for real what the Studio's instance held back (Interact's "Open"): the widget on the desktop runs it, in
+    /// its own place (its thread, its policy: none).
+    func perform(_ recorded: StudioActionPolicy.Recorded) {
+        guard recorded.kind != .file, let skin = session.runningDesktop?.skin else { return }
+        let action = recorded.kind == .execute ? "[\"\(recorded.name)\"]" : "[\(recorded.text)]"
+        let run = { skin.execute(action, from: nil) }
+        if skin.executor.isCurrent { run() } else { skin.async(run) }
+    }
+
     /// Where the widget comes from, for the copy sentence under its name.
     var provenance: StudioProvenance {
         let root = SkinLibrary.normalizedConfigName(config).split(separator: "\\").first.map(String.init) ?? config

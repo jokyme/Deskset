@@ -61,6 +61,8 @@ final class EditingSession {
     /// The widget's undo stack (the Studio window uses it as its own: ⌘Z, the toolbar, the toasts).
     let undoStack = EditorUndoManager()
     let host = StudioHost()
+    /// Sample data the Studio's instance shows in place of what its measures read (the preview bar; nil: live).
+    var measureValues: MeasureValueOverride? { didSet { studioSkin?.measureValues = measureValues } }
     /// The Studio's own instance of the widget (nil while no Studio window shows the widget).
     private(set) var studioSkin: Skin?
     /// The widget's main file, as the desktop runs it.
@@ -168,6 +170,7 @@ final class EditingSession {
                         host: host)
         skin.sourceProvider = buffers
         skin.actionPolicy = host.policy
+        skin.measureValues = measureValues
         // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
         host.policy.resetFiles()
         let stamps = diskSync.modificationDates()

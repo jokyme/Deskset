@@ -46,12 +46,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     unowned let app: AppController
     let splitController = NSSplitViewController()
     let sidebarController = StudioSidebarViewController()
-    let canvasController = StudioCanvasViewController()
+    let canvasController: StudioCanvasViewController
     let inspectorController = StudioInspectorViewController()
     let sidebarItem: NSSplitViewItem
     let canvasItem: NSSplitViewItem
     let inspectorItem: NSSplitViewItem
     private(set) var toolbar: StudioToolbar!
+    /// The preview bar, the zoom capsule, Interact, Actual Size and Show on Desktop.
+    private(set) var preview: StudioPreviewController!
     /// The editing session of the widget shown (nil before it shows one, and once closed).
     private(set) var session: EditingSession?
     /// The widget on the desktop (nil with no session).
@@ -65,6 +67,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     init(app: AppController) {
         self.app = app
+        canvasController = StudioCanvasViewController(standIns: !app.presentsWindows)
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         canvasItem = NSSplitViewItem(viewController: canvasController)
         if #available(macOS 14.0, *) {
@@ -111,6 +114,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             DispatchQueue.main.async { self?.updateToolbar() }
         })
         toolbar.titleView.onClick = { [weak self] in self?.showRunningPopover() }
+        preview = StudioPreviewController(windowController: self, canvas: canvasController,
+                                          presentsWindows: app.presentsWindows)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -140,6 +145,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         }
         link?.link(c)
         widgetChanged(fit: true)
+        preview.attach()
     }
 
     /// The window lets go of its widget's session (it closes, or shows another widget): the Studio's instance and the
@@ -147,6 +153,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// fields left on the stack goes, and anything registered for the window itself.
     func unbindSession() {
         guard let session else { return }
+        preview.detach()
         if let fieldEditor = window?.fieldEditor(false, for: nil) {
             session.undoStack.removeAllActions(withTarget: fieldEditor)
             if let storage = (fieldEditor as? NSTextView)?.textStorage {
@@ -168,6 +175,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         window?.title = widgetName
         canvasController.reload(fit: fit)
         updateToolbar()
+        preview?.refreshAll()
     }
 
     /// The name the window shows: the widget's `[Metadata] Name`, else its folder.
@@ -274,6 +282,19 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         window?.close()
     }
 
+    // MARK: The canvas's view (View menu items and keys)
+
+    @objc func zoomInClicked() { preview.zoomIn() }
+    @objc func zoomOutClicked() { preview.zoomOut() }
+    /// ⌘0: Actual Size.
+    @objc func actualSizeClicked() { preview.actualSize() }
+    /// ⌘9: Zoom to Fit.
+    @objc func fitClicked() { preview.zoomToFit() }
+    /// ⇧⌘D: Show on Desktop (on and off).
+    @objc func showOnDesktop(_ sender: Any?) { preview.desktopView.toggle() }
+    /// ⌥⌘P: Interact.
+    @objc func toggleInteract(_ sender: Any?) { preview.setInteracting(!preview.state.interacting) }
+
     /// The inspector button on macOS 13 (from 14 the split view controller's `toggleInspector:`).
     @objc func toggleInspectorPane(_ sender: Any?) {
         setInspectorShown(inspectorItem.isCollapsed)
@@ -312,6 +333,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         case .unloaded:
             updateToolbar()
         }
+        preview.refreshBackdrop()
+        preview.refreshAll()
     }
 
     func sessionWillRevert(_ session: EditingSession) {}

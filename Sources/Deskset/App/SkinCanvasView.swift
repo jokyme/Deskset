@@ -93,6 +93,8 @@ final class SkinCanvasView: NSView {
     /// Whether the canvas paints its dotted work surface and the widget card's fill. The new Studio window turns it off
     /// and puts a backdrop view (a wallpaper, a sample) below the canvas, which then shows through.
     var paintsSurface = true { didSet { needsDisplay = true } }
+    /// How the widget's glass is drawn (nil: stand-ins). The new Studio window puts real glass views below the canvas.
+    var glassDrawing: SkinRenderer.GlassDrawing? { didSet { needsDisplay = true } }
     /// Editing is off while no skin is loaded.
     var isEditable = true
 
@@ -859,7 +861,7 @@ final class SkinCanvasView: NSView {
         ctx.clip(to: rect)
         ctx.translateBy(x: origin.x, y: origin.y)
         // MacGlass cannot be shown off the desktop: a stand-in for the card's light or dark backdrop.
-        SkinRenderer.draw(skin, in: ctx, glass: .placeholder(dark: backdropIsDark))
+        SkinRenderer.draw(skin, in: ctx, glass: glassDrawing ?? .placeholder(dark: backdropIsDark))
         ctx.restoreGState()
         drawOutside(skin, card: rect, ctx)
         drawCutOffOutlines(skin, card: rect, zoom: z, ctx)

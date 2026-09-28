@@ -58,7 +58,8 @@ public final class MeasureValueOverride {
         if let frozenTime, let time = measure as? TimeMeasure {
             return show(frozenTime, in: time)
         }
-        guard data != .live, Self.readsData(measure) else { return false }
+        // A total (`Total=1`: the memory or the disk there is) is not data that moves: it stays as it is.
+        guard data != .live, Self.readsData(measure), !measure.bool("Total", false) else { return false }
         switch data {
         case .live:
             return false
