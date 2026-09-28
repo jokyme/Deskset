@@ -329,19 +329,28 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   Monitor groups them: a browser's audio helper is the browser), and only apps with a Dock icon, so daemons and agents
   that keep an output open while silent (system sounds, speech, call services, audio routers) do not. The verdict
   holds while the tap waits for sound and in the next taps, until a tap carries sound, which clears it within 10 s.
-  While it holds the tap is kept; as the silence goes on, a new tap is taken after 10 s, then 30 s, 60 s, 3 min and
-  5 min (a permission given in System Settings may reach only a new tap), then no more until another app starts
-  playing, which starts the delays again. Leaving or quitting System Settings takes a new tap at once. Once any
-  system-audio tap has carried sound since Deskset started, the permission was given, and later silence is only
-  silence (a call app that keeps its output running between calls, a paused video): no verdict until Deskset
-  restarts. `DeviceStatus` stays 1 meanwhile.
+  While it holds, a permission given in System Settings or in macOS's prompt may reach only a new tap, so as long as
+  the silence goes on while an app plays, every look (every 10 s) takes a new tap for the first 3 minutes after the
+  verdict; after that the tap is kept, with new ones about 4 min 40 s and 9 min 40 s after the verdict (where the
+  delays of 10 s, 30 s, 60 s, 3 min and 5 min, one after another, end), then no more until another app starts
+  playing, which starts the 3 minutes and the delays again. A new tap is also taken at once, and the 3 minutes start again, when System Settings is left or quits
+  (its Privacy & Security pane closes with it), when macOS's permission prompt goes away (its window belongs to the
+  system app UserNotificationCenter), and when Deskset becomes active or inactive — but never on a tap younger than
+  2 s: that one waits until it is 2 s old, so a prompt brought up by a new tap cannot start a round of taps and
+  prompts. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
+  silence is only silence (a call app that keeps its output running between calls, a paused video): no verdict until
+  Deskset restarts. `DeviceStatus` stays 1 meanwhile.
 - Why: Deskset extension: without it a skin can only say "nothing playing" when a permission is missing, and a
-  `DeviceStatus` other than 0 or 1 would mislead skins that test for them.
-- Skin impact: none for skins that do not use it (Rainmeter logs an unknown Type). Deskset's Spectrum and Studio VU
-  show "Allow System Audio Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security
-  (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). For System Audio Recording it
-  takes about 20 s of silence to appear, and it is a suspicion, not a certainty: an app that sends nothing but digital
-  silence to its output from the moment Deskset starts, before anything else was heard, looks the same.
+  `DeviceStatus` other than 0 or 1 would mislead skins that test for them. The quick new taps and the watched events
+  are a judgment call after a real case: an ad-hoc build lost its grant, macOS asked again, and after the user allowed
+  it the visualizer stayed still for minutes, until the next of the old delays.
+- Skin impact: none for skins that do not use it (Rainmeter logs an unknown Type). Deskset's Spectrum (the card and
+  the strip) and Studio VU show "Allow System Audio Recording" (before macOS 14.2 "Allow Screen Recording") and open
+  Privacy & Security (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). For System
+  Audio Recording it takes about 20 s of silence to appear, and it is a suspicion, not a certainty: an app that sends
+  nothing but digital silence to its output from the moment Deskset starts, before anything else was heard, looks the
+  same. A permission given within the first 20 s, before the verdict, reaches the capture at the first new tap after
+  it (about 30 s after the capture started).
 - Status: Deskset extension
 
 ### Type=DeviceName, Type=DeviceID
@@ -538,9 +547,11 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
   selection), the engine with fake backends (sharing, restart debounce, stop after the last subscriber, refusal paths),
   system audio with a fake "another app plays" (no tap while nothing plays, a tap at the first sound, the 5 s standby
   delay and a shorter gap that keeps the tap, sleep and wake while waiting), the watchdog's verdict as `MacPermission` 1
-  with `DeviceStatus` still 1 (only when the same app plays at both looks; kept while waiting and in the next tap; the
-  tap kept between new ones, which come further apart and stop, start again when another app plays and at once
-  after System Settings; cleared by sound, never again once sound was heard), `!DisableMeasure` and
+  with `DeviceStatus` still 1 (only when the same app plays at both looks; kept while waiting and in the next tap; a
+  new tap at every look in the first minutes, then kept between new ones, which come further apart and stop, start
+  again when another app plays and at once after System Settings, but not on a tap younger than the minimum age; the
+  watched events — Deskset becoming active or inactive, System Settings and the prompt's app going away, not other
+  apps — with stand-in notification centers; cleared by sound, never again once sound was heard), `!DisableMeasure` and
   `!EnableMeasure` on a parent, option parsing, all measure types, Win7Audio commands against fakes, AppVolume
   filtering and section variables, the permission notes (added, and taken back once the microphone is allowed or sound
   arrives), which skins capture (the Manage window's check of a skin that is not loaded and a render subscribe nothing;
@@ -573,8 +584,10 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
   with Bluetooth headphones (the headphones must stay in their high-quality profile and no microphone indicator may
   appear) and with a USB audio interface or BlackHole as the output. With nothing playing, the purple indicator must
   go out about 5 s after the music stops and come back with the next sound; refusing the permission and playing for
-  20 s must turn `MacPermission` to 1 (Spectrum's Notice), and allowing it in System Settings and leaving it while
-  the music plays must bring it back to 0 within about 10 s.
+  20 s must turn `MacPermission` to 1 (Spectrum's Notice, on the card and on the strip), and allowing it in System
+  Settings and leaving it while the music plays must bring it back to 0 within about 10 s. An ad-hoc build that lost
+  its grant: allowing it in macOS's prompt while the music plays must bring the sound back within about 10 s of the
+  verdict (not minutes later).
 
 ## Engine integration notes (for maintainers)
 
