@@ -1779,10 +1779,10 @@ suite's `TestThreadExecutor`.
      NowPlaying uses the demo player; weather never reaches the network.
    - It checks: nothing hangs; every load started on the engine thread, updated at least 6 times and drew (or was
      hidden by its own bang); no load failed; at least 80 % of the loads ran to the end (the others were refreshed or
-     unloaded by another skin first: 4–8 of 284); the default skins load without a note, a file warning or a warning or
-     error in the log, at their card's size; the deep nesting fixture reaches the engine's limit on the engine thread's
-     8 MB stack; the slideshows show a version of their photo; the font-heavy skin measures with its own font; the
-     writers' keys reach their file; no weather request.
+     unloaded by another skin first: 4–8 of 284); the default skins load without a note, a file warning or a warning
+     or error in the log, at their card's size; the deep nesting fixture reaches the engine's limit on the engine
+     thread's 8 MB stack; the slideshows show a version of their photo; the font-heavy skin measures with its own
+     font; the writers' keys reach their file; no weather request.
    - Debug builds also fail every suite, not only this one, in which the engine called a runtime from another thread
      than its skin's executor (`HostCallAudit`: the runtime's `SkinHost`, its image queries and its companion
      channel; exclusive access counts as the owner's). No suite made such a call.
@@ -1811,9 +1811,10 @@ suite's `TestThreadExecutor`.
      listing the batch, the demo audio and player, weather off, the main-thread stall log at 250 ms), for 2 minutes;
      then a probe skin quits the app with `!Quit`. The same batch ran with `SkinThreading=main` alongside.
    - Both modes: no crash, no ownership assertion, no hang; every batch's app quit by itself on the probe's `!Quit`,
-     closing every skin, with exit status 0; the same 95 errors and 188 warnings in the logs (the packs' own: styles they never
-     define, Windows programs, missing images), apart from one more "Unable to open image" of a player skin's button
-     on main, which depends on when the demo player changes state.
+     closing every skin, with exit status 0; the same 95 errors and 188 warnings in the logs (the packs' own: styles
+     they never define, Windows programs, missing images), apart from one more "Unable to open image" of a player
+     skin's button on main, which depends on when the demo player changes state.
+
    - The main thread: with `main`, each batch's launch kept it busy for 640–1,120 ms (13 steps over 250 ms in all);
      with `engine`, one step of 263 ms, the app's own launch before any skin loaded.
    - **Found and fixed: the order of the loads at launch.** With `engine`, `loadActiveSkins` asked for every load at
