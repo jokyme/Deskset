@@ -26,28 +26,30 @@ extension DeskSnapshot {
     }
 
     /// The range `formatRange` works on: from the start of the line of the first statement the selection touches to
-    /// the end (before the line break) of the line of the last. A statement is the innermost statement or top-level
-    /// block whose text holds the selection's first or last character; a selection that ends at the start of a line
-    /// does not touch that line.
+    /// the end (before the line break) of the line of the last. The statements are the innermost statements or
+    /// top-level blocks whose text holds the selection's first and last characters that are not blanks; a cursor
+    /// touches the rest of its line. A selection that ends at the start of a line does not take that line.
     public func formattingRange(for range: DeskRange) -> DeskRange {
         let span = index.utf8Range(of: range)
+        let bytes = index.bytes
+        var first = span.lowerBound
+        var last = span.isEmpty ? index.utf8ContentEnd(ofLine: index.line(ofUTF8: first)) : span.upperBound
+        func isBlank(_ b: UInt8) -> Bool { b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D }
+        while first < last, isBlank(bytes[first]) { first += 1 }
+        while last > first, isBlank(bytes[last - 1]) { last -= 1 }
         var lower = span.lowerBound
         var upper = span.upperBound
-        if let first = innermostStatement(at: span.lowerBound) {
-            lower = min(lower, first.lowerBound)
-            upper = max(upper, span.isEmpty ? first.upperBound : upper)
+        if first < last {
+            for probe in [first, index.clampedUTF8(last - 1)] {
+                guard let statement = innermostStatement(at: probe) else { continue }
+                lower = min(lower, statement.lowerBound)
+                upper = max(upper, statement.upperBound)
+            }
         }
-        let lastProbe = span.isEmpty ? span.lowerBound : index.clampedUTF8(span.upperBound - 1)
-        if let last = innermostStatement(at: lastProbe) {
-            upper = max(upper, last.upperBound)
-        }
-        // A selection that ends at the start of a line does not take that line.
-        var lastLine = index.line(ofUTF8: upper)
-        if upper > lower, lastLine > 0, index.utf8Range(ofLine: lastLine).lowerBound == upper,
-           upper > span.lowerBound { lastLine -= 1 }
-        let start = index.utf8Range(ofLine: index.line(ofUTF8: lower)).lowerBound
-        let end = max(start, index.utf8ContentEnd(ofLine: lastLine))
-        return index.range(utf8: start..<end)
+        let firstLine = index.line(ofUTF8: lower)
+        let lastLine = max(firstLine, index.line(ofUTF8: upper > lower ? upper - 1 : upper))
+        let start = index.utf8Range(ofLine: firstLine).lowerBound
+        return index.range(utf8: start..<max(start, index.utf8ContentEnd(ofLine: lastLine)))
     }
 
     /// `Desk.format`'s edits of the open file (UTF-8), computed once.

@@ -131,7 +131,8 @@ public struct DeskTextIndex: Sendable {
     }
 
     /// The UTF-16 offset of a 0-based line and UTF-16 column. A line past the last is the end of the text; a line
-    /// before the first is the start.
+    /// before the first is the start. (The offset between a CR and its LF has a column one past the line's content;
+    /// that column comes back as the end of the content.)
     public func utf16Offset(line: Int, column: Int) -> Int {
         guard line >= 0 else { return 0 }
         guard line < lineCount else { return utf16Count }
