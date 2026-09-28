@@ -294,6 +294,10 @@ enum AppSelfTest {
             let reloaded = AppState(fileURL: url)
             t.equal(reloaded.skin("Deskset\\Clock")?.loadOrder, 3)
             t.equal(reloaded.activeConfigs.map(\.config), ["Other\\Skin", "Deskset\\Clock"])
+            // Keys a newer version wrote survive a save by this one, at both levels.
+            t.equal(reloaded.skin("Other\\Skin")?.unknownKeys, ["extra": .number(1)])
+            t.equal(reloaded.data.unknownKeys, ["futureKey": .array([.number(1), .number(2)])])
+            t.equal(reloaded.skin("Deskset\\Clock")?.unknownKeys, [:])
 
             // Unreadable file: defaults, and the file is kept aside.
             let broken = dir.appendingPathComponent("broken.json")
