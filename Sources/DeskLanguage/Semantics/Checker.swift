@@ -23,20 +23,28 @@ extension Desk {
     /// (unused package styles, options and translations), reported once in the package's result.
     public static func checkFolder(package: SyntaxTree?, widgets: [SyntaxTree],
                                    context: CheckContext = CheckContext()) -> [DeskFileID: CheckedFile] {
+        checkFolder(package: package, checkedPackage: nil, widgets: widgets.map { ($0, nil) }, context: context)
+    }
+
+    /// `checkFolder` reusing results already known: the package checked on its own (with no package in its
+    /// context), and widgets already checked with that package.
+    static func checkFolder(package: SyntaxTree?, checkedPackage: CheckedFile?,
+                            widgets: [(tree: SyntaxTree, checked: CheckedFile?)],
+                            context: CheckContext) -> [DeskFileID: CheckedFile] {
         var results: [DeskFileID: CheckedFile] = [:]
         var widgetContext = context
         var packageFile: CheckedFile?
         if let package {
             var packageContext = context
             packageContext.package = nil
-            let checked = check(package, context: packageContext)
+            let checked = checkedPackage ?? check(package, context: packageContext)
             packageFile = checked
             widgetContext.package = CheckedPackage(file: checked)
         }
         var usedStyles = Set<String>(), usedOptions = Set<String>(), usedKeys = Set<String>()
         for entry in packageFile?.stringTable ?? [] { usedKeys.insert(entry.key) }
-        for widget in widgets {
-            let checked = check(widget, context: widgetContext)
+        for (widget, known) in widgets {
+            let checked = known ?? check(widget, context: widgetContext)
             results[widget.file] = checked
             for (_, symbol) in checked.symbols {
                 switch symbol {
