@@ -129,7 +129,9 @@ enum CommandLineTools {
         let fm = FileManager.default
         let temporary = folder == nil
         let url = folder.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }
-            ?? fm.temporaryDirectory.appendingPathComponent("Deskset-settings-\(UUID().uuidString)", isDirectory: true)
+            // Not "Deskset-…": the core self-tests count those in the shared temporary folder as their own leftovers, and a
+            // render running next to them would show up there.
+            ?? fm.temporaryDirectory.appendingPathComponent("DesksetSettings-\(UUID().uuidString)", isDirectory: true)
         try? fm.createDirectory(at: url, withIntermediateDirectories: true)
         let suiteFile = url.appendingPathComponent(DefaultSkins.stationeryFileName)
         if !fm.fileExists(atPath: suiteFile.path) {
