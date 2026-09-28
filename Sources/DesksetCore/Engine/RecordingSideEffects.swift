@@ -113,7 +113,7 @@ public final class RecordingSideEffects: SideEffects, SourceProvider {
 
     public func removeTemporaryFile(atPath path: String) {
         guard files.contains(path) else { return }
-        try? FileManager.default.removeItem(atPath: path)
+        LiveSideEffects.shared.removeTemporaryFile(atPath: path)
     }
 
     public func writeKeyValue(_ value: String, key: String, section: String, fileURL: URL) throws {
@@ -122,7 +122,7 @@ public final class RecordingSideEffects: SideEffects, SourceProvider {
             throw IniWriterError.fileNotFound(fileURL.path)
         }
         let copy = files.path(for: fileURL.path, access: .update, recording: false)
-        try IniWriter.writeValue(value, key: key, section: section, fileURL: URL(fileURLWithPath: copy))
+        try LiveSideEffects.shared.writeKeyValue(value, key: key, section: section, fileURL: URL(fileURLWithPath: copy))
         record(.writeKeyValue(file: fileURL.path, section: section, key: key, value: value))
     }
 
