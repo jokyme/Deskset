@@ -1692,9 +1692,9 @@ suite's `TestThreadExecutor`.
        place and display, kept through a reload whose new copy has not started; a step's move made once the new copy
        started; the counter and graphs when the Studio opens, and its own first update when the desktop copy is busy.
        Every wait is for a condition. The existing Studio session, review, opening and latency suites are unchanged in
-       what they assert. Core: 61,089 checks; the app suite: 10,483 checks by default and 10,476 with `WhenScrolling`
-       and `Always` (the same suites; some count their checks by what the scroller style shows), with 6,489–6,561 debug
-       comparisons (now also `keyValueWrites` and the Studio's environment) and no difference. Main Thread Checker
+       what they assert. Core: 61,089 checks; the app suite passes in each scroller style with 10,476–10,483 checks (the
+       new suites always count 115; the total of the others varies by a few checks from run to run), with 6,489–6,561
+       debug comparisons (now also `keyValueWrites` and the Studio's environment) and no difference. Main Thread Checker
        reports nothing for the Studio suites (session, review, latency), the opening suites and the lifecycle suite.
 7. **The engine thread, the `SkinThreading` key, and suites that run skins on it.**
    - `SkinThreadExecutor` in DesksetCore (`TestThreadExecutor` promoted: a dedicated thread with an 8 MB stack and a
