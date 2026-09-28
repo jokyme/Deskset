@@ -237,9 +237,18 @@ extension DeskSnapshot {
 
     private func semanticTokens(ofBlock k: Int) -> [DeskSemanticToken] {
         let block = semanticBlock(k)
-        return block.runs.map { run in
-            DeskSemanticToken(range: index.range(utf8: (block.offset + run.start)..<(block.offset + run.end)),
-                              type: run.type, modifiers: run.modifiers)
+        var offsets: [Int] = []
+        offsets.reserveCapacity(block.runs.count * 2)
+        for run in block.runs {
+            offsets.append(block.offset + run.start)
+            offsets.append(block.offset + run.end)
+        }
+        let positions = index.positions(ofAscendingUTF8: offsets)
+        return block.runs.indices.map { r in
+            let (s, e) = (positions[2 * r], positions[2 * r + 1])
+            return DeskSemanticToken(range: DeskRange(start: DeskPosition(offset: s.utf16, line: s.line, column: s.column),
+                                                      end: DeskPosition(offset: e.utf16, line: e.line, column: e.column)),
+                                     type: block.runs[r].type, modifiers: block.runs[r].modifiers)
         }
     }
 
@@ -290,11 +299,36 @@ struct DeskSemanticClassifier {
     let facts: DeskSemanticFacts
     let catalog: DeskCatalog
 
+    /// What the catalog says of each built-in name met so far.
+    final class Memo {
+        var flags: [CatalogPath: DeskSemanticTokenModifiers] = [:]
+        var kinds: [CatalogPath: MemberSpec.Kind?] = [:]
+    }
+    let memo = Memo()
+
     init(snapshot: DeskSnapshot) {
         self.snapshot = snapshot
         table = snapshot.nodeTable
         facts = snapshot.semanticFacts
         catalog = snapshot.options.catalog
+    }
+
+    /// `deprecated` and `macOnly` of a built-in name.
+    func flags(_ path: CatalogPath) -> DeskSemanticTokenModifiers {
+        if let known = memo.flags[path] { return known }
+        let docs = catalog.serviceDocs(for: path)
+        var modifiers: DeskSemanticTokenModifiers = []
+        if docs.first?.deprecated != nil { modifiers.insert(.deprecated) }
+        if docs.first?.macOnly == true { modifiers.insert(.macOnly) }
+        memo.flags[path] = modifiers
+        return modifiers
+    }
+
+    func memberKind(_ path: CatalogPath) -> MemberSpec.Kind? {
+        if let known = memo.kinds[path] { return known }
+        let kind = catalog.serviceMemberKind(for: path)
+        memo.kinds[path] = kind
+        return kind
     }
 
     typealias Run = DeskSemanticBlock.Run
@@ -370,6 +404,7 @@ struct DeskSemanticClassifier {
                 if case .token(let token) = child { tokens.append((token, at)) }
                 at += child.byteLength
             }
+            let siblings = tokens.map(\.token)
             for (token, offset) in tokens {
                 defer { k += 1 }
                 addComments(of: token, at: offset, into: &runs)
@@ -386,7 +421,7 @@ struct DeskSemanticClassifier {
                 case .plain:
                     break
                 }
-                classify(token, range: range, entry: e, position: k, siblings: tokens.map(\.token), into: &runs)
+                classify(token, range: range, entry: e, position: k, siblings: siblings, into: &runs)
             }
         }
     }
@@ -477,11 +512,7 @@ struct DeskSemanticClassifier {
         var modifiers: DeskSemanticTokenModifiers = []
         if o.role == .declaration { modifiers.insert(.declaration) }
         if o.role == .write { modifiers.insert(.write) }
-        if let path = o.path {
-            let docs = catalog.serviceDocs(for: path)
-            if docs.first?.deprecated != nil { modifiers.insert(.deprecated) }
-            if docs.first?.macOnly == true { modifiers.insert(.macOnly) }
-        }
+        if let path = o.path { modifiers.formUnion(flags(path)) }
         let type: DeskSemanticTokenType
         switch o.kind {
         case .variable: type = .variable
@@ -495,13 +526,13 @@ struct DeskSemanticClassifier {
         case .asset: type = .string
         case .namespace, .type: type = .namespace
         case .member:
-            switch o.path.flatMap({ catalog.serviceMemberKind(for: $0) }) {
+            switch o.path.flatMap({ memberKind($0) }) {
             case .function?: type = .function
             case .action?: type = .action
             default: type = .dataMember
             }
         case .function:
-            type = o.path.flatMap({ catalog.serviceMemberKind(for: $0) }) == .action ? .action : .function
+            type = o.path.flatMap({ memberKind($0) }) == .action ? .action : .function
         case .component: type = .component
         case .control: type = .control
         case .modifier: type = .modifier
@@ -525,11 +556,7 @@ struct DeskSemanticClassifier {
         // Which present word of the node this is.
         let words = siblings.prefix(k).filter { !$0.isMissing && ($0.kind == .identifier || $0.kind.isKeyword) }.count
         func builtIn(_ path: CatalogPath, _ type: DeskSemanticTokenType) -> (DeskSemanticTokenType, DeskSemanticTokenModifiers) {
-            let docs = catalog.serviceDocs(for: path)
-            var modifiers: DeskSemanticTokenModifiers = []
-            if docs.first?.deprecated != nil { modifiers.insert(.deprecated) }
-            if docs.first?.macOnly == true { modifiers.insert(.macOnly) }
-            return (type, modifiers)
+            (type, flags(path))
         }
         func member(_ parts: [String]) -> (DeskSemanticTokenType, DeskSemanticTokenModifiers) {
             if let found = catalog.serviceMember(dotted: parts) {

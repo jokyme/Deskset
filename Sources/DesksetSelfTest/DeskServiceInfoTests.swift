@@ -48,6 +48,7 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
     runDeskHoverTests(t)
     runDeskSignatureHelpTests(t)
     runDeskSignatureHelpGoldens(t)
+    runDeskServiceInfoLatency(t)
 }
 
 /// A service for one harness text (every catalog example is checked in one).
@@ -911,5 +912,88 @@ func runDeskSignatureHelpGoldens(_ t: TestRunner) {
             t.equal(snapshot.signatureHelp(at: deskNavPosition(snapshot, needle)), nil, needle)
         }
         t.check(snapshot.signatureHelp(at: deskNavPosition(snapshot, "\"A\"")) != nil, "inside Text(…)")
+    }
+}
+
+func runDeskServiceInfoLatency(_ t: TestRunner) {
+    t.suite("Desk: service — semantic tokens by block") {
+        // A range request classifies only the blocks it touches; the whole file then reuses them.
+        let text = deskNavFixture("Acceptance/MonthView.desk")
+        let snapshot = deskNavService(text).snapshot
+        let blocks = snapshot.semanticBlockRanges.count
+        let line = snapshot.index.range(utf16: snapshot.index.utf16Range(ofLine: 24))
+        _ = snapshot.semanticTokens(in: line)
+        t.equal(snapshot.caches.semanticBlocks.count, 1, "one block for one line")
+        _ = snapshot.semanticTokens()
+        t.equal(snapshot.caches.semanticBlocks.count, blocks, "every block once")
+        // Runs are relative to their block: the same block text elsewhere in a file gives the same runs.
+        let moved = deskNavService("// Moved down\n\n" + text).snapshot
+        let original = snapshot.semanticBlock(2)
+        let shifted = moved.semanticBlock(2)
+        t.equal(original.runs, shifted.runs.filter { _ in true }, "a block's runs do not depend on where it is")
+        t.equal(shifted.offset - original.offset, "// Moved down\n\n".utf8.count)
+    }
+
+    t.suite("Desk: service — semantic tokens, hover and signature help latency") {
+        #if DEBUG
+        let build = "debug"
+        let factor = 10.0
+        #else
+        let build = "release"
+        let factor = 1.0
+        #endif
+        func best(_ runs: Int, _ body: () -> Void) -> Double {
+            var fastest = Double.infinity
+            for _ in 0..<runs {
+                let start = ProcessInfo.processInfo.systemUptime
+                body()
+                fastest = min(fastest, ProcessInfo.processInfo.systemUptime - start)
+            }
+            return fastest * 1000
+        }
+        if ProcessInfo.processInfo.environment["DESK_TOKENS_PROFILE"] != nil {
+            let service = deskNavService(deskLargeWidget(lines: 2_000), file: "Large.desk")
+            let index = best(3) { _ = service.setMessageLanguage(.english).symbolIndex }
+            let facts = best(3) { _ = service.setMessageLanguage(.english).semanticFacts }
+            let blocks = best(3) {
+                let snapshot = service.setMessageLanguage(.english)
+                for k in snapshot.semanticBlockRanges.indices { _ = snapshot.semanticBlock(k) }
+            }
+            let snapshot = service.setMessageLanguage(.english)
+            for k in snapshot.semanticBlockRanges.indices { _ = snapshot.semanticBlock(k) }
+            let all = best(3) { _ = DeskSemanticTokens(tokens: snapshot.semanticTokens().tokens, index: snapshot.index) }
+            let convert = best(3) {
+                for k in snapshot.semanticBlockRanges.indices {
+                    let block = snapshot.semanticBlock(k)
+                    for run in block.runs { _ = snapshot.index.range(utf8: (block.offset + run.start)..<(block.offset + run.end)) }
+                }
+            }
+            print(String(format: "    index %.1f, facts (with index) %.1f, blocks (with facts) %.1f, encode %.1f, convert %.1f ms", index, facts, blocks, all, convert))
+        }
+        for lines in [300, 2_000] {
+            let text = deskLargeWidget(lines: lines)
+            let service = deskNavService(text, file: "Large.desk")
+            let page = deskNavPosition(service.snapshot, "page + 1")
+            let call = deskNavPosition(service.snapshot, "offset:", into: 3)
+            // Each measurement starts from a snapshot with empty caches (the check itself is not repeated).
+            let all = best(3) { _ = service.setMessageLanguage(.english).semanticTokens() }
+            let screen = best(3) {
+                let snapshot = service.setMessageLanguage(.english)
+                let middle = snapshot.index.lineCount / 2
+                let range = snapshot.index.range(utf16: snapshot.index.utf16Range(ofLine: middle).lowerBound
+                                                 ..< snapshot.index.utf16Range(ofLine: min(middle + 50, snapshot.index.lineCount - 1)).upperBound)
+                _ = snapshot.semanticTokens(in: range)
+            }
+            let hover = best(3) { _ = service.setMessageLanguage(.english).hover(at: page) }
+            let snapshot = service.setMessageLanguage(.english)
+            _ = snapshot.hover(at: page)
+            let warmHover = best(3) { _ = snapshot.hover(at: page) }
+            let help = best(3) { _ = snapshot.signatureHelp(at: call) }
+            print(String(format: "    Desk service, %@ build, %d lines: semantic tokens %.1f ms, 50 lines of them %.1f ms; "
+                         + "first hover (index) %.1f ms, then %.2f ms; signature help %.2f ms",
+                         build as NSString, lines, all, screen, hover, warmHover, help))
+            let bound = (lines == 300 ? 100.0 : 400.0) * factor
+            t.check(all < bound && screen < bound && hover < bound, "semantic tokens and hover of \(lines) lines are usable")
+        }
     }
 }

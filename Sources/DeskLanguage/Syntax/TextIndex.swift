@@ -182,6 +182,24 @@ public struct DeskTextIndex: Sendable {
         Self.search(starts16, max(0, min(offset, utf16Count)))
     }
 
+    /// The UTF-16 offset, 0-based line and UTF-16 column of each UTF-8 offset, in one pass: the offsets must not
+    /// decrease. Each is clamped as `utf16Offset(ofUTF8:)` clamps it; the results equal `lineAndColumn(ofUTF8:)`'s.
+    public func positions(ofAscendingUTF8 offsets: [Int]) -> [(utf16: Int, line: Int, column: Int)] {
+        guard let first = offsets.first else { return [] }
+        var out: [(utf16: Int, line: Int, column: Int)] = []
+        out.reserveCapacity(offsets.count)
+        var line = self.line(ofUTF8: clampedUTF8(first))
+        let lines = lineCount
+        for offset in offsets {
+            let o = clampedUTF8(offset)
+            if o < starts8[line] { line = self.line(ofUTF8: o) }
+            while line + 1 < lines, starts8[line + 1] <= o { line += 1 }
+            let column = utf16Length(from: starts8[line], to: o, ascii: asciiLines[line])
+            out.append((starts16[line] + column, line, column))
+        }
+        return out
+    }
+
     // MARK: Private
 
     private func contentEnd16(ofLine line: Int) -> Int {

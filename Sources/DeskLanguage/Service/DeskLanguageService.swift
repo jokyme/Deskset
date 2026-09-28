@@ -419,4 +419,11 @@ final class DeskLazyMap<Key: Hashable, Value>: @unchecked Sendable {
         defer { lock.unlock() }
         return stored[key]
     }
+
+    /// How many values were built (tests read it).
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored.count
+    }
 }
