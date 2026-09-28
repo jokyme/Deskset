@@ -177,12 +177,21 @@ extension DeskSnapshot {
         if let label = argument?.label {
             return signature.params.firstIndex { $0.label == label }
         }
+        let written = Set(site.arguments.compactMap(\.label))
+        func nextLabelled() -> Int? {
+            // The first labelled parameter not yet written after the last one written before the cursor, else the
+            // first one not yet written.
+            let lastWritten = site.arguments.prefix(k).compactMap { a in a.label.flatMap { l in signature.params.firstIndex { $0.label == l } } }.max() ?? -1
+            let open = signature.params.indices.filter { signature.params[$0].label != nil && !written.contains(signature.params[$0].label!) }
+            return open.first { $0 > lastWritten } ?? open.first
+        }
+        // After a labelled value, only labelled ones may follow.
+        if site.arguments.prefix(k).contains(where: { $0.label != nil }) { return nextLabelled() }
         let before = site.arguments.prefix(k).filter { $0.label == nil && $0.value != nil }.count
         let slots = signature.params.indices.filter { signature.params[$0].label == nil }
         if before < slots.count { return slots[before] }
         if let last = slots.last, signature.params[last].variadic { return last }
-        let written = Set(site.arguments.compactMap(\.label))
-        return signature.params.firstIndex { $0.label != nil && !written.contains($0.label!) }
+        return nextLabelled()
     }
 
     /// Whether a value of type `t` may be given for a parameter of type `p` (a quick check: the checker decides).

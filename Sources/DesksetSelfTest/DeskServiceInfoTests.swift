@@ -47,6 +47,7 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
     runDeskSemanticTokenTests(t)
     runDeskHoverTests(t)
     runDeskSignatureHelpTests(t)
+    runDeskSignatureHelpGoldens(t)
 }
 
 /// A service for one harness text (every catalog example is checked in one).
@@ -852,3 +853,63 @@ Rainmeter: `[!ShowMeter …]`
 [Reference](#function-show)
 """),
 ]
+
+/// Signature help at the `|` of a line put inside a widget: (line, name, active signature's label, active parameter).
+let deskSignatureGoldens: [(String, String, String, String?)] = [
+    ("Text(\"A\").font(13, .semi|bold)", ".font", ".font(size, weight, design, if: …)", "weight"),
+    ("Text(\"A\").font(.head|line)", ".font", ".font(preset, if: …)", "preset"),
+    ("Text(\"A\").font(|)", ".font", ".font(preset, if: …)", "preset"),
+    ("Text(\"A\").font(\"Menlo\", |)", ".font", "", "size"),
+    ("Text(\"A\").padding(horizontal: 4, |)", ".padding", "", "vertical"),
+    ("Text(\"A\").padding(|12)", ".padding", "", "all"),
+    ("Text(\"A\").padding(12, if: |)", ".padding", "", "if"),
+    ("Progress(cpu.usage, total: |)", "Progress", "Progress(value, total: …, fills: …)", "total"),
+    ("Progress(cpu.usage, |)", "Progress", "Progress(value, total: …, fills: …)", "total"),
+    ("Text(\"{cpu.usage, decimals: 1, |}\")", "{…}", "", "missing"),
+    ("Text(\"{cpu.usage, deci|mals: 1}\")", "{…}", "", "decimals"),
+    ("Text(\"{memory.used, unit: .g|b}\")", "{…}", "", "unit"),
+    ("Text(\"{round(|cpu.usage)}\")", "round", "round(x, decimals: …)", "x"),
+    ("Text(\"{round(cpu.usage, |)}\")", "round", "round(x, decimals: …)", "decimals"),
+    ("computed m = calendar.month(offset: 1, |)", "calendar.month", "calendar.month(offset: …, weekStart: …)", "weekStart"),
+    ("Text(\"A\").color(light: .black, dark: |)", ".color", ".color(light: …, dark: …, if: …)", "dark"),
+    ("Text(\"A\").onClick { open(|) }", "open", "", "target"),
+    ("Text(\"A\").onClick { after(2s|) { page = 1 } }", "after", "", "delay"),
+    ("Grid(columns: 7, spacing: 4, |) { Text(\"A\") }", "Grid", "Grid(columns: …, spacing: …, rowSpacing: …, columnSpacing: …, align: …)", "rowSpacing"),
+]
+
+func runDeskSignatureHelpGoldens(_ t: TestRunner) {
+    t.suite("Desk: service — signature help goldens") {
+        for (line, name, label, parameter) in deskSignatureGoldens {
+            let cursor = (line as NSString).range(of: "|").location
+            let code = line.replacingOccurrences(of: "|", with: "")
+            let prefix = "widget {\n    variable page = 0\n    "
+            let text = prefix + code + "\n}\n"
+            let snapshot = deskNavService(text).snapshot
+            let offset = (prefix as NSString).length + cursor
+            guard let help = snapshot.signatureHelp(at: snapshot.index.position(utf16: offset)) else {
+                t.check(false, "no signature help in \(line)")
+                continue
+            }
+            t.equal(help.name, name, line)
+            let active = help.signatures[help.activeSignature]
+            if !label.isEmpty { t.equal(active.label, label, line) }
+            let p = help.activeParameter.map { active.parameters[$0] }
+            t.equal(p.map { $0.label ?? $0.name }, parameter, line)
+            // Each parameter's range in the label is where its name is written.
+            for q in active.parameters {
+                let written = (active.label as NSString).substring(with: NSRange(location: q.labelRange.lowerBound, length: q.labelRange.count))
+                t.check(written.hasPrefix(q.label ?? q.name), "\(written) in \(active.label)")
+            }
+            let english = help.markdown(.english)
+            let chinese = help.markdown(.simplifiedChinese)
+            t.check(english.contains(active.label) && chinese.contains(active.label), line)
+            t.check(chinese.unicodeScalars.contains { $0.value >= 0x4E00 && $0.value <= 0x9FFF }, "Chinese: \(chinese)")
+        }
+        // Outside any call's parentheses there is none; nor in a block after a call.
+        let snapshot = deskNavService("widget {\n    Row(spacing: 4) { Text(\"A\") }\n}\n").snapshot
+        for needle in ["Row", "{ Text", "widget"] {
+            t.equal(snapshot.signatureHelp(at: deskNavPosition(snapshot, needle)), nil, needle)
+        }
+        t.check(snapshot.signatureHelp(at: deskNavPosition(snapshot, "\"A\"")) != nil, "inside Text(…)")
+    }
+}
