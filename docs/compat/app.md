@@ -563,6 +563,23 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none (developer tool).
 - Status: Deskset extension
 
+### `--benchmark` (what a skin costs)
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` runs each skin without a window, one after another, from a temporary copy of its Skins folder: it
+  updates at its own `Update` rate on the skin's clock, as in a skin window, and every update draws the window's
+  picture as a skin window does (kept pictures of the meters that did not change included). After `--warmup` seconds
+  (default 2) it measures for `--seconds` (default 10) and prints the updates, the time of an update and of a
+  drawing, the pictures copied, made and the meters drawn per drawing, and the CPU time of the main thread and of the
+  whole process per second, in percent of one core. What Core Animation and the window server do with the picture
+  afterwards is not included. As with `--render`, nothing asks for a permission and no audio is captured:
+  `DESKSET_AUDIO_DEMO=1` plays the demo signal into visualizers (its generator runs in the process, about 0.3 % of a
+  core), `DESKSET_NOWPLAYING_DEMO=1` fakes a playing track. Window, config and app bangs are ignored, so a skin that
+  switches its own tempo with `!Refresh` stays in the tempo it loads in.
+- Why: comparing a skin's cost before and after a change without opening windows on the screen.
+- Skin impact: none (developer tool).
+- Status: Deskset extension
+
 ### `--system-report` and `--weather-report` (weather)
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --system-report` ends with a Weather section when weather is set up on the Mac — an active
@@ -593,11 +610,12 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### Command-line flags
 - Windows (Rainmeter): n/a.
-- Mac (Deskset): the binary's development modes are `--render`, `--self-test [filter]`, `--snapshot-ui`,
-  `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`; `--help` / `-h` prints them (exit status
-  0). An argument starting with `--` that is none of these flags or their options (`--out`, `--updates`, `--interval`,
-  `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--clock-hours`, `--first-weekday`,
-  `--temperature-unit`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`), or such an
+- Mac (Deskset): the binary's development modes are `--render`, `--verify-drawing-cache`, `--benchmark`,
+  `--self-test [filter]`, `--snapshot-ui`, `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`;
+  `--help` / `-h` prints them (exit status 0). An argument starting with `--` that is none of these flags or their
+  options (`--out`, `--updates`, `--interval`, `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`,
+  `--clock-hours`, `--first-weekday`, `--temperature-unit`, `--select`, `--size`, `--zoom`, `--location`, `--units`,
+  `--offline`, `--now`, `--seconds`, `--warmup`), or such an
   option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to

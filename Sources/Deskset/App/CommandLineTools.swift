@@ -21,7 +21,7 @@ import DesksetCore
 enum CommandLineTools {
     /// Flags that select a mode (in none of them does audio capture start: `AudioCaptureEngine.captureAllowed`).
     static let modeFlags = ["--render", "--self-test", "--snapshot-ui", "--system-report", "--make-icon",
-                            "--cover-lookup", "--weather-report", "--verify-drawing-cache"]
+                            "--cover-lookup", "--weather-report", "--verify-drawing-cache", "--benchmark"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--settings-dir",
@@ -33,7 +33,9 @@ enum CommandLineTools {
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
                                            // --weather-report.
-                                           "--location", "--units", "--offline", "--now"]
+                                           "--location", "--units", "--offline", "--now",
+                                           // --benchmark.
+                                           "--seconds", "--warmup"]
 
     static let usage = """
         usage: Deskset                   start the menu bar app
@@ -44,6 +46,9 @@ enum CommandLineTools {
                                         draw a skin without a window into a PNG
                Deskset --verify-drawing-cache SkinsFolder|Skin.ini… [--updates N] [--scale S] [--skins-dir DIR]
                                         check that skin windows' kept pictures match full drawings
+               Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+                      [--skins-dir DIR]
+                                        run skins without a window and print what an update and a drawing cost
                Deskset --self-test [filter]
                                         run the app's self-tests
                Deskset --snapshot-ui manage|inspector|settings|codeeditor|library|install|install-zip|icon|menubar
@@ -89,7 +94,7 @@ enum CommandLineTools {
         }
         if args.contains(where: { modeFlags.contains($0) }) { return .mode }
         if let option = args.first(where: { optionFlags.contains($0) }) {
-            return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report")
+            return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report, --benchmark")
         }
         return .app
     }
@@ -140,6 +145,10 @@ enum CommandLineTools {
         if arguments.contains("--verify-drawing-cache") {
             prepareHeadless()
             return DrawingCacheCheck.run(arguments)
+        }
+        if arguments.contains("--benchmark") {
+            prepareHeadless()
+            return SkinBenchmark.run(arguments)
         }
         if arguments.contains("--make-icon") {
             guard let dir = value(after: "--make-icon") else {

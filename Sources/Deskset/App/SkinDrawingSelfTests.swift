@@ -10,6 +10,42 @@ enum SkinDrawingSelfTests {
         viewTests(t)
         memoryTests(t)
         repositorySkinTests(t)
+        benchmarkTests(t)
+    }
+
+    /// `Deskset --benchmark`: options, and a short run of a skin that keeps half of its meters.
+    static func benchmarkTests(_ t: AppTestRunner) {
+        t.suite("App: --benchmark runs a skin without a window and says what it costs") {
+            let o = SkinBenchmark.parse(["Deskset", "--benchmark", "A.ini", "B.ini", "--seconds", "3", "--warmup", "0",
+                                         "--scale", "1", "--appearance", "dark"])
+            t.equal(o?.paths, ["A.ini", "B.ini"])
+            t.equal(o?.seconds, 3)
+            t.equal(o?.warmup, 0)
+            t.equal(o?.scale, 1)
+            t.equal(o?.appearance, .dark)
+            t.check(SkinBenchmark.parse(["Deskset", "--benchmark"]) == nil, "a skin is needed")
+            t.equal(SkinBenchmark.parse(["Deskset", "--benchmark", "A.ini", "--seconds", "-5"])?.seconds, 0.5)
+
+            let root = t.temporaryDirectory("benchmark")
+            let dir = root.appendingPathComponent("Bench/Clock", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("Clock.ini")
+            try (keep.replacingOccurrences(of: "Update=50", with: "Update=40")).write(to: file, atomically: true,
+                                                                                      encoding: .utf8)
+            var options = SkinBenchmark.Options()
+            options.seconds = 0.5
+            options.warmup = 0.1
+            guard let r = SkinBenchmark.measure(file, skinsRoot: root, options: options) else {
+                return t.check(false, "the skin loads")
+            }
+            t.equal(r.config, "Bench\\Clock")
+            t.check(r.updates >= 5, "it updates at its own rate: \(r.updates) in \(r.seconds) s")
+            t.check(r.updateMs > 0 && r.drawMs > 0, "update \(r.updateMs) ms, drawing \(r.drawMs) ms")
+            t.check(r.copied > 0, "the meters that rest are copied: \(r.copied)")
+            t.check(r.mainThreadPercent > 0 && r.processPercent > 0,
+                    "CPU \(r.mainThreadPercent) % / \(r.processPercent) %")
+            t.check(SkinBenchmark.report(r).contains("drawing"))
+        }
     }
 
     static let keep = """

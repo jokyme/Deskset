@@ -432,7 +432,7 @@ enum AppSelfTest {
                     "--settings-dir DIR is used as it is and kept")
             try? FileManager.default.removeItem(at: named)
             SkinController.settingsPath = savedSettings
-            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
+            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report, --benchmark"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
             let long = "--" + String(repeating: "x", count: 500)

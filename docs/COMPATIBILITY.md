@@ -1208,6 +1208,17 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** none (developer tool).
 - **Status:** Mac-only
 
+#### Measuring what a skin costs (`--benchmark`)
+- **Windows:** no counterpart.
+- **Mac:** `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` runs each skin without a window at its own `Update` rate, drawing its picture after every update
+  as a skin window does, and prints the time of an update and of a drawing and the CPU time of the main thread and of
+  the process (in percent of one core). Nothing asks for a permission: `DESKSET_AUDIO_DEMO=1` gives visualizers the
+  demo signal. What Core Animation and the window server do afterwards is not included.
+- **Why:** comparing a skin's cost before and after a change without opening windows.
+- **Skin impact:** none (developer tool).
+- **Status:** Mac-only
+
 ---
 
 ## 8. Lua scripting

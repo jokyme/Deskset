@@ -444,7 +444,7 @@ enum WeatherSelfTests {
             t.equal(CommandLineTools.validate(["P", "--weather-report", "--location", "Bergen", "--units", "metric"]), V.mode)
             t.equal(CommandLineTools.validate(["P", "--weather-report", "--offline", "a.json", "--now", "x"]), V.mode)
             t.equal(CommandLineTools.validate(["P", "--location", "Oslo"]),
-                    V.invalid("--location needs one of --render, --snapshot-ui, --weather-report"))
+                    V.invalid("--location needs one of --render, --snapshot-ui, --weather-report, --benchmark"))
             guard let fixtures, let binary = Bundle.main.executableURL else { return }
             func run(_ args: [String], environment: [String: String] = [:]) -> (status: Int32, out: String, err: String) {
                 let p = Process()

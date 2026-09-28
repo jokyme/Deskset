@@ -1099,6 +1099,16 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 无（开发者工具）。
 - **状态：** 仅 Mac
 
+#### 测量皮肤的开销（`--benchmark`）
+- **Windows：** 没有对应功能。
+- **Mac：** `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` 在没有窗口的情况下按皮肤自己的 `Update` 频率运行每个皮肤，每次更新后像皮肤窗口一样绘制画面，
+  然后打印一次更新和一次绘制的耗时，以及主线程和整个进程的 CPU 时间（占单个核心的百分比）。不会请求任何权限：
+  `DESKSET_AUDIO_DEMO=1` 为频谱皮肤提供演示信号。Core Animation 和窗口服务器之后的工作不计入。
+- **原因：** 不打开窗口就能比较改动前后皮肤的开销。
+- **对皮肤的影响：** 无（开发者工具）。
+- **状态：** 仅 Mac
+
 ---
 
 ## 8. Lua 脚本
