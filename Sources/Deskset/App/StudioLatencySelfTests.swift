@@ -7,17 +7,19 @@ import DesksetCore
 /// stall for a whole second, so it is not one by default).
 ///
 /// One sample is one step the way a user makes it: the edit (`commit`: the text in memory, the file, the Studio's
-/// instance patched (`studio.patch`) or loaded again (`studio.reload`), the inspector following) and then a frame of the canvas drawn off-screen, each in its own turn
-/// of the run loop (the undo manager groups what one event registers). The desktop copy reloads on the next turn, after
-/// the canvas drew the step: its time is printed as a phase of its own (`desktop`), not part of the sample. Every phase
-/// is printed as p50 / p95 (`EditingSession.lastTimings`: the Studio's reload split into loading, its first update and
-/// the window's parts; `frame`: the canvas drawn), and each widget runs three kinds of step (`Run`): a font size and a
-/// text color in design mode, and the font size again with the code pane open (split), which follows every step. A sixth,
-/// heavy widget — a Lua script that builds its text as it loads, WebParser measures, a large include — shows what the
-/// second load (the desktop copy's) costs. A gesture is measured too: each step of a drag of the layer (the previews
-/// and a frame of the canvas), about 60 a second, and how many of them reached the desktop copy (at most about 20 a
-/// second). The app's own timing of the desktop copy is used (`AppController.defersDesktopUpdates`).
-/// `DESKSET_STUDIO_LATENCY_SAMPLES` sets the number of samples of each kind (default 12).
+/// instance patched (`studio.patch`) or loaded again (`studio.reload`), the inspector following) and then a frame of the
+/// canvas drawn off-screen, each in its own turn of the run loop (the undo manager groups what one event registers). The
+/// desktop copy takes the step as a patch on the next turn, after the canvas drew it: its time is printed as a phase of
+/// its own (`desktop`), not part of the sample, and a value step that loads it again fails the suite. Every phase is
+/// printed as p50 / p95 (`EditingSession.lastTimings`: the Studio's reload split into loading, its first update and the
+/// window's parts; `frame`: the canvas drawn), and each widget runs three kinds of step (`Run`): a font size and a text
+/// color in design mode, and the font size again with the code pane open (split), which follows every step. A sixth,
+/// heavy widget — a Lua script that builds its text as it loads, WebParser measures, a large include — shows that a step
+/// costs no load there either (neither the Studio's instance nor the desktop copy loads again). A gesture is measured
+/// too: each step of a drag of the layer (the previews and a frame of the canvas), about 60 a second, and how many of
+/// them reached the desktop copy (at most about 20 a second). The app's own timing of the desktop copy is used
+/// (`AppController.defersDesktopUpdates`). `DESKSET_STUDIO_LATENCY_SAMPLES` sets the number of samples of each kind
+/// (default 12).
 enum StudioLatencySelfTests {
     /// The reference widgets: config and the repository folder it comes from (0.1's example widgets, now test skins:
     /// the numbers stay comparable with earlier runs).
@@ -228,6 +230,8 @@ enum StudioLatencySelfTests {
         frame()
         let written = editor.skin?.meter(named: target)?.rawOption(run.key)
 
+        let desktop = app.controller(for: config)
+        let patchesBefore = session.desktopPatchCounts
         var edits: [Double] = [], undos: [Double] = []
         var phases: [String: [Double]] = [:]
         // How the inspector followed the steps: in place, or built again (and why, the last time).
@@ -245,8 +249,9 @@ enum StudioLatencySelfTests {
             let framed = now()
             editor.flushInPlaceFollowUp()
             phases["names", default: []].append(ms(since: framed))
-            // The desktop copy reloads on the next turn: its phase is taken once it ran.
+            // The desktop copy follows on the next turn: its phase is taken once it ran.
             EditorWindowSelfTests.settle()
+            session.flushDesktopPatch()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { phases[phase, default: []].append(time) }
             if let why = editor.inPlace.lastFallback { fallbacks[why, default: 0] += 1 }
@@ -265,6 +270,7 @@ enum StudioLatencySelfTests {
             editor.flushInPlaceFollowUp()
             undoPhases["names", default: []].append(ms(since: framed))
             EditorWindowSelfTests.settle()
+            session.flushDesktopPatch()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { undoPhases[phase, default: []].append(time) }
             if let why = editor.inPlace.lastFallback { fallbacks[why, default: 0] += 1 }
@@ -272,6 +278,11 @@ enum StudioLatencySelfTests {
         let inPlaceSteps = editor.inPlace.updates - inPlaceBefore, rebuilt = editor.inspectorRebuildCount - rebuildsBefore
         t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): every edit undone, byte for byte")
         t.check(app.controller(for: config) != nil, "\(config) still runs")
+        // The desktop copy took every edit and undo as a patch: the same copy, nothing loaded again.
+        let patches = session.desktopPatchCounts
+        t.check(app.controller(for: config) === desktop, "\(name): the desktop copy was not loaded again")
+        t.equal(patches.refused - patchesBefore.refused, 0, "\(name): the desktop copy took every step as a patch")
+        t.check(patches.applied - patchesBefore.applied >= 2, "\(name): \(patches.applied - patchesBefore.applied) patches")
 
         // A drag of the layer: every mouse event previews it (in the Studio's instance at once, on the desktop at most
         // about 20 times a second) and the canvas draws a frame.
@@ -317,10 +328,11 @@ enum StudioLatencySelfTests {
             phases[phase].map { Stat(samples: $0).p50 } ?? 0
         }
         print(String(format: "    LATENCY SUMMARY %@ | edit p50 %.0f / p95 %.0f ms: inspector %.0f, layers %.0f, patch %.1f, "
-                     + "load %.0f, update %.0f, code %.0f, frame %.0f | undo p50 %.0f / p95 %.0f ms",
+                     + "load %.0f, update %.0f, code %.0f, frame %.0f | undo p50 %.0f / p95 %.0f ms | desktop patch %.1f",
                      name, edit.p50, edit.p95, p50("window.inspector", in: phases), p50("window.layers", in: phases),
                      p50("studio.patch", in: phases), p50("studio.load", in: phases), p50("studio.update", in: phases),
-                     p50("window.code", in: phases), p50("frame", in: phases), undo.p50, undo.p95))
+                     p50("window.code", in: phases), p50("frame", in: phases), undo.p50, undo.p95,
+                     p50("desktop", in: phases)))
         // A value edit and its undo reach the Studio's instance as a patch: it never loads again.
         t.check(phases["studio.reload"] == nil && undoPhases["studio.reload"] == nil,
                 "\(name): the Studio's instance took the edits and the undos without loading again")
