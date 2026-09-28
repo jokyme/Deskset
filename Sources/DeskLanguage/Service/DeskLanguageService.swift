@@ -38,6 +38,10 @@ public final class DeskLanguageService {
 
     /// How many times `package.desk` was parsed and checked on its own (tests read it).
     private(set) var packageChecks = 0
+    /// The edit between the last two texts of the open file (UTF-8).
+    private var lastEdit = SyntaxTextEdit(start: 0, oldEnd: 0, newEnd: 0)
+    /// How long the last check of the open file took, in milliseconds (`update(…checkingOn:…)` decides by it).
+    public private(set) var lastCheckMilliseconds: Double = 0
 
     /// `package.desk` parsed and checked on its own, kept while its text and the options are unchanged.
     struct PackageState {
@@ -132,8 +136,9 @@ public final class DeskLanguageService {
         let fresh = Desk.parse(text, file: openFile)
         let old = snapshot.index.bytes
         let new = fresh.lines.bytes
-        let (tree, stats) = SubtreeReuse.share(fresh, previous: snapshot.tree, edit: SyntaxTextEdit.between(old, new),
-                                               newBytes: new, oldBytes: old)
+        let edit = SyntaxTextEdit.between(old, new)
+        lastEdit = edit
+        let (tree, stats) = SubtreeReuse.share(fresh, previous: snapshot.tree, edit: edit, newBytes: new, oldBytes: old)
         lastReuse = stats
         totalReuse.add(stats)
         return tree
@@ -152,9 +157,14 @@ public final class DeskLanguageService {
     /// `beginUpdate` with the whole new text.
     public func beginReplacing(_ text: String, version: Int) -> DeskPendingCheck {
         checkGeneration += 1
+        let previous = snapshot
         let tree = reparse(text)
         let state = isEditingPackage ? nil : currentPackageState()
-        let syntax = CheckedFile(syntaxOf: tree, context: options.checkContext(package: state?.wrapped, resources: resources))
+        let context = options.checkContext(package: state?.wrapped, resources: resources)
+        // What the last check found where the edit did not reach stays until this text's check replaces it.
+        let syntax = previous.isPlaceholder || forgetsBlocks
+            ? CheckedFile(syntaxOf: tree, context: context)
+            : CheckedFile(syntaxOf: tree, context: context, carrying: previous.checked, across: lastEdit)
         snapshot = publish(tree: tree, version: version, checked: syntax, isChecked: false, state: state)
         return DeskPendingCheck(generation: checkGeneration, snapshot: snapshot, options: options, resources: resources,
                                 package: state?.wrapped, isEditingPackage: isEditingPackage)
@@ -164,20 +174,23 @@ public final class DeskLanguageService {
     @discardableResult
     public func accept(_ result: DeskCheckedText) -> DeskSnapshot? {
         guard result.generation == checkGeneration, result.tree.version == snapshot.tree.version else { return nil }
+        lastCheckMilliseconds = result.milliseconds
         let state = isEditingPackage ? nil : currentPackageState()
         snapshot = publish(tree: result.tree, version: snapshot.version, checked: result.checked, isChecked: true, state: state)
         return snapshot
     }
 
-    /// Applies the changes; a text of at least `options.backgroundCheckBytes` is checked in the background: the
-    /// snapshot returned has only the syntax results, the check runs on `queue`, and its snapshot is published and
+    /// Applies the changes; a text of at least `options.backgroundCheckBytes`, or one whose last check took at least
+    /// `options.backgroundCheckMilliseconds`, is checked in the background: the snapshot returned has the syntax
+    /// results with what the last check found where the edit did not reach, the check runs on `queue`, and its snapshot is published and
     /// given to `completion` on `owner` (this service's queue), unless a later change came first. A smaller text is
     /// checked at once: the snapshot returned is checked and `completion` is not called.
     @discardableResult
     public func update(changes: [DeskTextChange], version: Int, checkingOn queue: DispatchQueue, deliverOn owner: DispatchQueue,
                        completion: @escaping (DeskSnapshot) -> Void) -> DeskSnapshot {
         let text = changes.isEmpty ? snapshot.text : applying(changes)
-        guard text.utf8.count >= options.backgroundCheckBytes else { return replaceText(text, version: version) }
+        guard text.utf8.count >= options.backgroundCheckBytes || lastCheckMilliseconds >= options.backgroundCheckMilliseconds
+        else { return replaceText(text, version: version) }
         let pending = beginReplacing(text, version: version)
         queue.async {
             let result = pending.run()
@@ -245,9 +258,12 @@ public final class DeskLanguageService {
     private func makeSnapshot(tree: SyntaxTree, version: Int, recheck: Bool = true) -> DeskSnapshot {
         let state = isEditingPackage ? nil : currentPackageState()
         let fresh = recheck || snapshot.isPlaceholder
-        let checked = fresh
-            ? Desk.check(tree, context: options.checkContext(package: state?.wrapped, resources: resources))
-            : snapshot.checked
+        var checked = snapshot.checked
+        if fresh {
+            let start = DispatchTime.now().uptimeNanoseconds
+            checked = Desk.check(tree, context: options.checkContext(package: state?.wrapped, resources: resources))
+            lastCheckMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+        }
         return publish(tree: tree, version: version, checked: checked, isChecked: fresh || snapshot.isChecked, state: state)
     }
 
@@ -569,7 +585,10 @@ public final class DeskPendingCheck: @unchecked Sendable {
         defer { lock.unlock() }
         if let result { return result }
         let context = options.checkContext(package: isEditingPackage ? nil : package, resources: resources)
-        let made = DeskCheckedText(generation: generation, tree: snapshot.tree, checked: Desk.check(snapshot.tree, context: context))
+        let start = DispatchTime.now().uptimeNanoseconds
+        let checked = Desk.check(snapshot.tree, context: context)
+        let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+        let made = DeskCheckedText(generation: generation, tree: snapshot.tree, checked: checked, milliseconds: milliseconds)
         result = made
         return made
     }
@@ -582,6 +601,8 @@ public struct DeskCheckedText: Sendable {
     let checked: CheckedFile
 }
 
+    /// How long the check took.
+    public let milliseconds: Double
 extension CheckedFile {
     /// A file with only what parsing found: the tree's diagnostics (or `diagnostics`), no names, types or elements.
     init(syntaxOf tree: SyntaxTree, diagnostics: [Diagnostic]? = nil) {
@@ -607,3 +628,52 @@ extension CheckedFile {
         self.init(syntaxOf: tree, diagnostics: all)
     }
 }
+
+    /// `init(syntaxOf:context:)`, with what the check of the text before an edit found where the edit did not reach:
+    /// its diagnostics (moved by the edit), the file's options, styles and named elements, and the declarations'
+    /// types. They stand, like any result of a snapshot that is not `isChecked`, until the check of the new text
+    /// replaces them: a squiggle does not blink off with each key, and completion keeps the file's own names.
+    init(syntaxOf tree: SyntaxTree, context: CheckContext, carrying previous: CheckedFile, across edit: SyntaxTextEdit) {
+        let syntax = CheckedFile(syntaxOf: tree, context: context)
+        func moved(_ r: Range<Int>) -> Range<Int>? {
+            if r.upperBound < edit.start { return r }
+            if r.lowerBound > edit.oldEnd { return (r.lowerBound + edit.delta)..<(r.upperBound + edit.delta) }
+            return nil
+        }
+        let file = previous.tree.file
+        // The parser's diagnostics of the previous text are the new text's to give.
+        let parsed = Set(previous.tree.diagnostics.map { "\($0.id.rawValue) \($0.range)" })
+        var carried: [Diagnostic] = []
+        for d in previous.diagnostics where d.file == file && d.id != .tooManyProblems && !parsed.contains("\(d.id.rawValue) \(d.range)") {
+            guard let range = moved(d.range) else { continue }
+            var copy = d
+            copy.range = range
+            copy.notes = d.notes.compactMap { note in
+                guard note.file == file else { return note }
+                guard let r = moved(note.range) else { return nil }
+                var n = note
+                n.range = r
+                return n
+            }
+            copy.fixIts = d.fixIts.compactMap { fix in
+                var f = fix
+                for k in f.edits.indices where f.edits[k].file == file {
+                    guard let r = moved(f.edits[k].range) else { return nil }
+                    f.edits[k].range = r
+                }
+                return f
+            }
+            carried.append(copy)
+        }
+        var all = syntax.diagnostics + carried
+        all.sort { ($0.range.lowerBound, $0.range.upperBound) < ($1.range.lowerBound, $1.range.upperBound) }
+        self.init(tree: tree, diagnostics: all, symbols: [:], types: [:], elements: previous.elements, dataUses: [],
+                  dependencies: [:], reactions: [], freeformOrders: [:], stringTable: [], requirements: Requirements(),
+                  options: previous.options, styles: previous.styles, translations: previous.translations)
+        var types: [NodeID: SemType] = [:]
+        for (id, type) in previous.declarationTypes {
+            guard let start = moved(id.utf8Start..<id.utf8Start)?.lowerBound else { continue }
+            types[NodeID(kind: id.kind, utf8Start: start, treeVersion: tree.version)] = type
+        }
+        declarationTypes = types
+    }

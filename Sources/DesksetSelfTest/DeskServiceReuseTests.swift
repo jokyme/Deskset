@@ -204,10 +204,24 @@ func runDeskServiceReuseTests(_ t: TestRunner) {
         let broken = DeskTextChange(range: at..<at, text: "Txt(\"x\") ")
 
         // Two phases: syntax results at once, the check later.
+        let before = service.snapshot
         let pending = service.beginUpdate(changes: [broken], version: 1)
         let syntax = service.snapshot
         t.check(!syntax.isChecked && syntax === pending.snapshot, "the syntax snapshot is published")
-        t.equal(syntax.checked.diagnostics, syntax.tree.diagnostics, "only the tree's diagnostics")
+        // The tree's diagnostics, and the last check's where the edit did not reach, moved by it (the text is ASCII).
+        let inserted = broken.text.utf8.count
+        let kept = before.checked.diagnostics.compactMap { d -> Diagnostic? in
+            if d.range.upperBound < at { return d }
+            guard d.range.lowerBound > at else { return nil }
+            var moved = d
+            moved.range = (d.range.lowerBound + inserted)..<(d.range.upperBound + inserted)
+            moved.notes = []
+            moved.fixIts = []
+            return moved
+        }
+        func bare(_ list: [Diagnostic]) -> Set<String> { Set(list.map { "\($0.id.rawValue) \($0.range)" }) }
+        t.equal(bare(syntax.checked.diagnostics), bare(syntax.tree.diagnostics + kept), "the tree's and the last check's")
+        t.check(!kept.isEmpty, "the widget has a warning before the edit")
         let fresh = DeskLanguageService(openFile: file, files: [file: syntax.text]).snapshot
         t.equal(syntax.foldingRanges(), fresh.foldingRanges(), "folding needs no check")
         t.check(!syntax.semanticTokens().isEmpty, "highlighting from the tree alone")
@@ -276,6 +290,7 @@ func runDeskServiceReuseTests(_ t: TestRunner) {
         // A small text is checked at once and nothing is delivered.
         var small = DeskServiceOptions()
         small.backgroundCheckBytes = 1 << 30
+        small.backgroundCheckMilliseconds = .infinity
         let quick = DeskLanguageService(openFile: file, files: [file: "widget { Text(\"A\") }\n"], options: small)
         var calls = 0
         let now = quick.update(changes: [DeskTextChange(range: 0..<0, text: " ")], version: 1, checkingOn: checking,

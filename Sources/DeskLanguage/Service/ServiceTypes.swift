@@ -221,8 +221,12 @@ public struct DeskServiceOptions: Sendable {
     public var usesFahrenheit: Bool
     public var format: FormatOptions
     /// From this many UTF-8 bytes of open text, `update(changes:version:checkingOn:deliverOn:completion:)` checks in
-    /// the background (about 800 lines of a widget; a check of that size takes about 15 ms in a release build).
-    public var backgroundCheckBytes = 32 * 1024
+    /// the background (about 200 lines of a widget; a check of that size takes about 6 ms in a release build on
+    /// Apple silicon, three times as long on Intel).
+    public var backgroundCheckBytes = 8 * 1024
+    /// A text whose last check took at least this long is checked in the background too, whatever its size (a
+    /// frame at 120 Hz).
+    public var backgroundCheckMilliseconds: Double = 8
 
     public init(messageLanguage: DiagnosticLanguage = .english, catalog: DeskCatalog = .current,
                 fonts: FontCataloging? = nil, symbols: SymbolValidating? = nil, layout: LayoutMeasuring? = nil,
