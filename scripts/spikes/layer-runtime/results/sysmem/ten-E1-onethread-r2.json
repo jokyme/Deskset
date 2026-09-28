@@ -1,0 +1,195 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--cycles",
+  "1",
+  "--mode",
+  "E1",
+  "--one-thread",
+  "--out",
+  "results/sysmem/ten-E1-onethread-r2.json"
+ ],
+ "bitmapsAtLastClose": {
+  "layerBitmapsPerWidgetMB": 1.555,
+  "ownedBitmapsPerWidgetMB": 0
+ },
+ "command": "sysmem",
+ "config": "E1",
+ "cycles": [
+  {
+   "before": {
+    "attempts": 1,
+    "footprintMB": 11.2,
+    "gpuInUseMB": 997.3,
+    "gpuSpreadMB": 19.7,
+    "load": 4.72,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 15384.8,
+    "systemWiredMB": 3707.2,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_SMALL": 6.14,
+     "totalMB": 11.13,
+     "untagged (VM_ALLOCATE)": 0.84
+    },
+    "vmObjectDirtyMB": 11.13,
+    "windowServerMB": 1965
+   },
+   "closed": {
+    "attempts": 1,
+    "footprintMB": 29.77,
+    "gpuInUseMB": 1008.4,
+    "gpuSpreadMB": 14.1,
+    "load": 4.91,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 15357,
+    "systemWiredMB": 3709.5,
+    "vmObjectDirtyCategoriesMB": {
+     "CoreAnimation": 15.94,
+     "IOAccelerator": 0.08,
+     "MALLOC_SMALL": 8.33,
+     "totalMB": 29.69,
+     "untagged (VM_ALLOCATE)": 1.16
+    },
+    "vmObjectDirtyMB": 29.69,
+    "windowServerMB": 1966
+   },
+   "open": {
+    "attempts": 1,
+    "footprintMB": 45.5,
+    "gpuInUseMB": 1369,
+    "gpuSpreadMB": 361.3,
+    "load": 4.64,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 16629.1,
+    "systemWiredMB": 4069.6,
+    "vmObjectDirtyCategoriesMB": {
+     "CoreAnimation": 31.88,
+     "IOAccelerator": 0.08,
+     "MALLOC_SMALL": 8.13,
+     "totalMB": 45.42,
+     "untagged (VM_ALLOCATE)": 1.16
+    },
+    "vmObjectDirtyMB": 45.42,
+    "windowServerMB": 1971
+   },
+   "steps": {
+    "footprintMBClose": -15.7,
+    "footprintMBOpen": 34.3,
+    "gpuInUseMBClose": -360.6,
+    "gpuInUseMBOpen": 371.7,
+    "systemAnonymousWiredCompressedMBClose": -1272.1,
+    "systemAnonymousWiredCompressedMBOpen": 1244.3,
+    "systemWiredMBClose": -360.1,
+    "systemWiredMBOpen": 362.4,
+    "vmObjectDirtyMBClose": -15.7,
+    "vmObjectDirtyMBOpen": 34.3,
+    "windowServerMBClose": -5,
+    "windowServerMBOpen": 6
+   }
+  }
+ ],
+ "loadAverageAtEnd": [
+  4.91,
+  5.24,
+  6.06
+ ],
+ "loadAverageAtStart": [
+  4.68,
+  5.27,
+  6.11
+ ],
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 1.76,
+  "freeGB": 2.35,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtStart": {
+  "compressorOccupiesGB": 1.76,
+  "freeGB": 2.64,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "E1",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "oneSkinThread": true,
+ "scenario": "ten",
+ "settleSeconds": 20,
+ "summary": {
+  "footprintMB": {
+   "closeStepMedian": -15.7,
+   "closeSteps": [
+    -15.7
+   ],
+   "meanOfOpenAndMinusClose": 25,
+   "openStepMedian": 34.3,
+   "openSteps": [
+    34.3
+   ],
+   "perWidget": 1.251
+  },
+  "gpuInUseMB": {
+   "closeStepMedian": -360.6,
+   "closeSteps": [
+    -360.6
+   ],
+   "meanOfOpenAndMinusClose": 366.2,
+   "openStepMedian": 371.7,
+   "openSteps": [
+    371.7
+   ],
+   "perWidget": 18.308
+  },
+  "systemAnonymousWiredCompressedMB": {
+   "closeStepMedian": -1272.1,
+   "closeSteps": [
+    -1272.1
+   ],
+   "meanOfOpenAndMinusClose": 1258.2,
+   "openStepMedian": 1244.3,
+   "openSteps": [
+    1244.3
+   ],
+   "perWidget": 62.91
+  },
+  "systemWiredMB": {
+   "closeStepMedian": -360.1,
+   "closeSteps": [
+    -360.1
+   ],
+   "meanOfOpenAndMinusClose": 361.3,
+   "openStepMedian": 362.4,
+   "openSteps": [
+    362.4
+   ],
+   "perWidget": 18.063
+  },
+  "vmObjectDirtyMB": {
+   "closeStepMedian": -15.7,
+   "closeSteps": [
+    -15.7
+   ],
+   "meanOfOpenAndMinusClose": 25,
+   "openStepMedian": 34.3,
+   "openSteps": [
+    34.3
+   ],
+   "perWidget": 1.251
+  },
+  "windowServerMB": {
+   "closeStepMedian": -5,
+   "closeSteps": [
+    -5
+   ],
+   "meanOfOpenAndMinusClose": 5.5,
+   "openStepMedian": 6,
+   "openSteps": [
+    6
+   ],
+   "perWidget": 0.275
+  }
+ },
+ "widgets": 20
+}
