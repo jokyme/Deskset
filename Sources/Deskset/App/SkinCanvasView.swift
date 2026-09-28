@@ -90,6 +90,9 @@ final class SkinCanvasView: NSView {
     /// The layer under the pointer changed (nil: none), for the sidebar to highlight its row.
     var onHoverChange: ((String?) -> Void)?
     var backdrop = Backdrop.checkerboard { didSet { needsDisplay = true } }
+    /// Whether the canvas paints its dotted work surface and the widget card's fill. The new Studio window turns it off
+    /// and puts a backdrop view (a wallpaper, a sample) below the canvas, which then shows through.
+    var paintsSurface = true { didSet { needsDisplay = true } }
     /// Editing is off while no skin is loaded.
     var isEditable = true
 
@@ -845,11 +848,11 @@ final class SkinCanvasView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let z = max(zoom, 0.01)
-        drawSurface(dirtyRect, zoom: z, ctx)
+        if paintsSurface { drawSurface(dirtyRect, zoom: z, ctx) }
         guard let skin else { return }
         let rect = skinRect
 
-        drawBackdrop(rect, zoom: z, ctx)
+        if paintsSurface { drawBackdrop(rect, zoom: z, ctx) }
         // The hatch marks areas the desktop shows transparent or cuts off; the layers are drawn over it.
         drawHatch(skin, card: rect, zoom: z, ctx)
         ctx.saveGState()
