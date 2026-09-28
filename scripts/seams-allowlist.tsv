@@ -178,6 +178,8 @@ random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private fon
 
 mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
 
+mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
+
 event.location	Sources/Deskset/Location/LocationCenter.swift	1	location service: faked in verification
 timer.asyncAfter	Sources/Deskset/Location/LocationCenter.swift	1	location service: faked in verification
 wall.Date()	Sources/Deskset/Location/LocationCenter.swift	2	location service: faked in verification
