@@ -40,6 +40,21 @@ struct RenderOptions: Equatable {
     /// `--color-space`: the bitmap the skin is drawn into. `device` (the default, what `--render` always drew) is the
     /// device RGB space; `srgb` is 8-bit premultiplied sRGB, the space reference images are compared in.
     var colorSpace = ColorSpace.device
+    /// The rest of the world the skin sees (`SkinEnvironment`). `standard` is a fixed value with `--clock` — so that a
+    /// render with `--clock`, `--seed` and `--data` is the same on every Mac — and the Mac's own without it; `system`
+    /// is always the Mac's.
+    /// `--locale ID`: day and month names, `%Z` and SysInfo's zone names, `locale-date` / `locale-time`,
+    /// `FormatLocale=Local`, the weather's `Units=Auto` for everything but the temperature, RunCommand's `LANG`.
+    /// Standard: en_US_POSIX (the locale that never changes).
+    var locale = Fixed<String>.standard
+    /// `--languages en,zh-Hans`: the preferred languages, and so the Windows ANSI code page legacy skin files are read
+    /// in. Standard: English (code page 1252).
+    var languages = Fixed<[String]>.standard
+    /// `--accent-color R,G,B[,A]`: `#MACACCENTCOLOR#`. Standard: macOS's blue for the appearance.
+    var accentColor = Fixed<RGBA>.standard
+    /// `--screen WxH`: one screen of that size, its work area the whole screen (`#SCREENAREAWIDTH#`,
+    /// `#WORKAREAHEIGHT#`…). Standard: 1920×1080.
+    var screen = Fixed<ScreenSize>.standard
     #if DEBUG
     /// `--legacy` (debug builds only): the skin is measured and drawn by the frozen copy of the renderer
     /// (`LegacySkinRenderer`), the reference the renderer is compared with while its code moves.
@@ -55,6 +70,22 @@ struct RenderOptions: Equatable {
         case device, srgb
     }
 
+    /// A part of the skin's environment: the standard value (fixed with `--clock`, else the Mac's), the Mac's
+    /// (`system`), or one given.
+    enum Fixed<T: Equatable>: Equatable {
+        case standard, system, given(T)
+    }
+
+    struct ScreenSize: Equatable {
+        var width: Double
+        var height: Double
+    }
+
+    /// The fixed values `standard` stands for with `--clock`.
+    static let standardLocale = "en_US_POSIX"
+    static let standardLanguages = ["en"]
+    static let standardScreen = ScreenSize(width: 1920, height: 1080)
+
     static let maxUpdates = 100_000
     static let maxInterval = 60_000.0
     static let scaleRange = 0.25...8.0
@@ -64,7 +95,8 @@ struct RenderOptions: Equatable {
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
         + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
-        + "[--seed N] [--data FILE|JSON] [--state out.json] [--color-space device|srgb] [--skins-dir DIR]"
+        + "[--seed N] [--data FILE|JSON] [--state out.json] [--color-space device|srgb] [--locale ID|system] "
+        + "[--languages LIST|system] [--accent-color R,G,B[,A]|system] [--screen WxH|system] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -183,10 +215,82 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--color-space") {
             o.warnings.append("--color-space needs a value; using device")
         }
+        // The environment: a value, `system` for the Mac's, or the standard one.
+        func fixed<T>(_ flag: String, expected: String, _ read: (String) -> T?) -> Fixed<T> {
+            guard let raw = value(flag) else {
+                if arguments.contains(flag) { o.warnings.append("\(flag) needs a value; using the standard one") }
+                return .standard
+            }
+            let text = raw.trimmingCharacters(in: .whitespaces)
+            if text.lowercased() == "system" { return .system }
+            guard let v = read(text) else {
+                o.warnings.append("\(flag) \"\(raw)\" is not \(expected); using the standard one")
+                return .standard
+            }
+            return .given(v)
+        }
+        o.locale = fixed("--locale", expected: "a locale (such as en_US or zh_CN) or system") { text in
+            // A locale whose language macOS knows (the region and script are taken as given).
+            let id = text.replacingOccurrences(of: "-", with: "_")
+            let language = Locale(identifier: id).language.languageCode?.identifier ?? ""
+            return id == standardLocale || Locale.isoLanguageCodes.contains(language) ? id : nil
+        }
+        o.languages = fixed("--languages", expected: "languages (such as en or zh-Hans,en) or system") { text in
+            let list = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            return list.isEmpty ? nil : list
+        }
+        o.accentColor = fixed("--accent-color", expected: "a color or system") { OptionValue.color($0) }
+        o.screen = fixed("--screen", expected: "WIDTHxHEIGHT (such as 1920x1080) or system") { text in
+            let parts = text.lowercased().split(separator: "x").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+            guard parts.count == 2, let w = parts[0], let h = parts[1], w.isFinite, h.isFinite, w >= 1, h >= 1,
+                  w <= 100_000, h <= 100_000 else { return nil }
+            return ScreenSize(width: w, height: h)
+        }
         #if DEBUG
         o.legacy = arguments.contains("--legacy")
         #endif
         return o
+    }
+
+    /// The skin's locale: the one given, en_US_POSIX with `--clock`, else nil (the Mac's).
+    var resolvedLocale: Locale? {
+        switch locale {
+        case .given(let id): return Locale(identifier: id)
+        case .system: return nil
+        case .standard: return clock == nil ? nil : Locale(identifier: RenderOptions.standardLocale)
+        }
+    }
+
+    /// The preferred languages: the ones given, English with `--clock`, else nil (the Mac's).
+    var resolvedLanguages: [String]? {
+        switch languages {
+        case .given(let list): return list
+        case .system: return nil
+        case .standard: return clock == nil ? nil : RenderOptions.standardLanguages
+        }
+    }
+
+    /// The environment the render's host gives the skin on top of the Mac's (`RenderHost.fixed`).
+    var environment: RenderHost.Fixed {
+        var f = RenderHost.Fixed()
+        f.locale = resolvedLocale
+        f.preferredLanguages = resolvedLanguages
+        switch accentColor {
+        case .given(let c): f.accent = .given(c)
+        case .system: f.accent = .mac
+        case .standard: f.accent = clock == nil ? .mac : .standard
+        }
+        let size: ScreenSize?
+        switch screen {
+        case .given(let s): size = s
+        case .system: size = nil
+        case .standard: size = clock == nil ? nil : RenderOptions.standardScreen
+        }
+        if let size {
+            let area = SkinRect(width: size.width, height: size.height)
+            f.screens = [SkinScreen(area: area, workArea: area)]
+        }
+        return f
     }
 
     /// An IANA time zone name (`Europe/Oslo`), `UTC` / `GMT`, or an abbreviation macOS knows (`CET`).
@@ -245,7 +349,8 @@ struct RenderOptions: Equatable {
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
 ///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
-///            [--data data.json] [--state state.json] [--color-space srgb] [--skins-dir path/to/Skins]
+///            [--data data.json] [--state state.json] [--color-space srgb] [--locale en_US] [--languages en]
+///            [--accent-color 0,122,255] [--screen 1920x1080] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
@@ -259,8 +364,14 @@ struct RenderOptions: Equatable {
 /// before each update, and is listed on stderr as not verifiable. `--time-zone` alone only changes the zone, and
 /// `--seed` makes its random numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
 /// `--data` gives what the skin reads about the Mac (system readings, battery, sensors, NowPlaying, audio levels, the
-/// weather, Wi-Fi, the desktop picture; `RenderData`): with `--clock` and `--seed`, the same image on every run and
-/// every Mac. `--state` writes what the skin ended up with (its measures' values and strings, its meters' frames and
+/// weather, Wi-Fi, the desktop picture, the Trash; `RenderData`). With `--clock` the rest of the skin's world is fixed
+/// too unless `--locale`, `--languages`, `--accent-color` or `--screen` say otherwise (`system`: the Mac's): the
+/// en_US_POSIX locale, English (legacy files in code page 1252), macOS's blue accent and one 1920×1080 screen. With
+/// `--clock`, `--seed` and `--data` a render is then the same on every run and every Mac, except what it reports as
+/// not verifiable (a service the data does not give, the user's files, the network) and the few things still read
+/// from the Mac (SysColor's colors, FileView's date format, fonts; the x86_64 build's edges, see below). A render
+/// starts again with deterministic hashing (`CommandLineTools.makeHashingDeterministic`), and its caches (NowPlaying's
+/// covers) are in its settings folder. `--state` writes what the skin ended up with (its measures' values and strings, its meters' frames and
 /// texts, its variables) as JSON, to compare runs where pixels may differ (the x86_64 build under Rosetta draws edges
 /// a little differently, and its trigonometric functions may differ in the last digit).
 enum RenderCommand {
@@ -286,8 +397,17 @@ enum RenderCommand {
         MediaUICache.root = URL(fileURLWithPath: SkinController.settingsPath, isDirectory: true)
             .appendingPathComponent("Caches", isDirectory: true)
         defer { MediaUICache.root = savedCacheRoot }
+        // The locale, languages, accent color and screens the skin sees (fixed with --clock). Legacy ANSI skin files
+        // are read in the code page of the render's languages (one code page per process: the render's skin is its
+        // only one).
+        let environment = o.environment
+        let savedCodePage = TextDecoding.ansiCodePage
+        if let languages = environment.preferredLanguages {
+            TextDecoding.ansiCodePage = TextDecoding.defaultANSICodePage(preferredLanguages: languages)
+        }
+        defer { TextDecoding.ansiCodePage = savedCodePage }
         // Weather: no network, place names from the bundled table; DESKSET_WEATHER_DEMO=1 draws a demo forecast.
-        WeatherWiring.installPreview()
+        WeatherWiring.installPreview(locale: environment.locale)
         let fileURL = URL(fileURLWithPath: o.input).standardizedFileURL
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             fputs("error: no such file: \(fileURL.path)\n", stderr)
@@ -319,6 +439,7 @@ enum RenderCommand {
             }
         }
         let host = RenderHost()
+        host.fixed = environment
         var skinHost: SkinHost = host
         #if DEBUG
         // --legacy: the frozen renderer measures the skin's text and images too, not only draws it.
@@ -351,7 +472,7 @@ enum RenderCommand {
             skin.skinClock.timeZone = { zone }
         }
         if let seed = o.seed { skin.random = SkinRandom(seed: seed) }
-        inputs?.install(for: skin, virtual: virtual)
+        inputs?.install(for: skin, virtual: virtual, locale: environment.locale)
         defer { inputs?.restore() }
         do {
             try skin.load()
@@ -568,6 +689,24 @@ enum RenderCommand {
 /// SkinHost used by `--render` and for checking skins that are not loaded: same metrics as the app, no window.
 final class RenderHost: SkinHost {
     var logs: [String] = []
+    /// What the skin sees instead of the Mac's own (`RenderOptions.environment`); nothing by default.
+    var fixed = Fixed()
+
+    /// Parts of the environment a render fixes (nil: the Mac's).
+    struct Fixed: Equatable {
+        enum Accent: Equatable {
+            /// The Mac's accent color.
+            case mac
+            /// macOS's blue for the skin's appearance (`SkinAppearance.light` / `.dark`).
+            case standard
+            case given(RGBA)
+        }
+
+        var screens: [SkinScreen]?
+        var accent = Accent.mac
+        var locale: Locale?
+        var preferredLanguages: [String]?
+    }
 
     func skinNeedsDisplay(_ skin: Skin) {}
     func skin(_ skin: Skin, handle bang: Bang) -> Bool { true }
@@ -583,6 +722,18 @@ final class RenderHost: SkinHost {
     func environment(for skin: Skin) -> SkinEnvironment {
         var env = SkinController.environment(windowFrame: nil)
         env.windowFrame = SkinRect(width: skin.width, height: skin.height)
+        if let screens = fixed.screens {
+            env.screens = screens
+            env.currentScreen = 0
+        }
+        switch fixed.accent {
+        case .mac: break
+        case .standard:
+            env.appearance.accentColor = (env.appearance.isDark ? SkinAppearance.dark : SkinAppearance.light).accentColor
+        case .given(let color): env.appearance.accentColor = color
+        }
+        if let locale = fixed.locale { env.locale = locale }
+        if let languages = fixed.preferredLanguages { env.preferredLanguages = languages }
         return env
     }
 }

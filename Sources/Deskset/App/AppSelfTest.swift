@@ -542,6 +542,30 @@ enum AppSelfTest {
             t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space"])?.warnings,
                     ["--color-space needs a value; using device"])
 
+            // The environment: fixed with --clock unless given or `system`; the Mac's without --clock.
+            t.equal(d?.environment, RenderHost.Fixed(), "no --clock: the Mac's")
+            let standard = fixed?.environment
+            t.equal(standard?.locale?.identifier, "en_US_POSIX")
+            t.equal(standard?.preferredLanguages, ["en"])
+            t.equal(standard?.accent, .standard)
+            t.equal(standard?.screens, [SkinScreen(area: SkinRect(width: 1920, height: 1080),
+                                                   workArea: SkinRect(width: 1920, height: 1080))])
+            let given = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "zh-CN",
+                                             "--languages", "zh-Hans, en", "--accent-color", "255,0,0",
+                                             "--screen", "1440x900"])
+            t.equal(given?.warnings, [])
+            t.equal(given?.environment.locale?.identifier, "zh_CN")
+            t.equal(given?.environment.preferredLanguages, ["zh-Hans", "en"])
+            t.equal(given?.environment.accent, .given(RGBA(r: 255, g: 0, b: 0)))
+            t.equal(given?.environment.screens?.first?.workArea.width, 1440)
+            let system = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "system",
+                                              "--languages", "system", "--accent-color", "system", "--screen", "SYSTEM"])
+            t.equal(system?.environment, RenderHost.Fixed(), "system: the Mac's, also with --clock")
+            let odd = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "xx_Nowhere",
+                                           "--screen", "wide", "--accent-color", "blue", "--languages"])
+            t.equal(odd?.warnings.count, 4)
+            t.equal(odd?.environment, standard, "the standard ones")
+
             let (root, config) = RenderCommand.locate(URL(fileURLWithPath: "/x/Skins/Suite/Clock/Clock.ini"), skinsDir: nil)
             t.equal(root.path, "/x/Skins")
             t.equal(config, "Suite\\Clock")

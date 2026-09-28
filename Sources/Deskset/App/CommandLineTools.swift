@@ -28,6 +28,7 @@ enum CommandLineTools {
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
                                            "--clock-hours", "--first-weekday", "--temperature-unit",
                                            "--clock", "--time-zone", "--seed", "--color-space", "--data", "--state",
+                                           "--locale", "--languages", "--accent-color", "--screen",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
@@ -49,6 +50,8 @@ enum CommandLineTools {
                       [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
                       [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
                       [--state out.json] [--color-space device|srgb] [--settings-dir DIR]
+                      [--locale ID|system] [--languages LIST|system] [--accent-color R,G,B[,A]|system]
+                      [--screen WxH|system]
                                         draw a skin without a window into a PNG
                Deskset --verify-drawing-cache SkinsFolder|Skin.ini… [--updates N] [--scale S] [--skins-dir DIR]
                                         check that skin windows' kept pictures match full drawings

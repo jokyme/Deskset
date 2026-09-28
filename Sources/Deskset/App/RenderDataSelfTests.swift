@@ -234,6 +234,51 @@ enum RenderDataSelfTests {
             t.equal(MediaUICache.root, appCache, "the app's cache folder again after the render")
         }
 
+        t.suite("App: render: --clock fixes the locale, languages, accent color and screens") {
+            // A skin that reads each of them: %Z and a day name in the skin's locale, the accent color and the screen,
+            // and a legacy file in the code page of the preferred languages (GBK text, read as 1252 in English).
+            let dir = t.temporaryDirectory("env-render").appendingPathComponent("Skins/Env/Render")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let ini = "[Rainmeter]\r\nUpdate=1000\r\n[Zone]\r\nMeasure=Time\r\nFormat=%Z\r\n[Day]\r\nMeasure=Time\r\n"
+                + "Format=%A\r\nFormatLocale=Local\r\n[Text]\r\nMeter=String\r\n"
+                + "Text=#MACACCENTCOLOR#|#SCREENAREAWIDTH#|#WORKAREAHEIGHT#\r\nDynamicVariables=1\r\n"
+                + "[Legacy]\r\nMeter=String\r\nText=中文\r\n"
+            try TextDecoding.encode(ini, as: .windowsCodePage(936))?.write(to: dir.appendingPathComponent("Render.ini"))
+            let out = t.temporaryDirectory("env-render-out")
+            func render(_ extra: [String]) -> [String: String] {
+                let state = out.appendingPathComponent("state.json")
+                try? FileManager.default.removeItem(at: state)
+                let status = RenderCommand.run(["Deskset", "--render", dir.appendingPathComponent("Render.ini").path,
+                                                "--out", out.appendingPathComponent("env.png").path, "--updates", "1",
+                                                "--clock", "2026-09-26T12:00:00Z", "--state", state.path] + extra)
+                t.equal(status, 0)
+                let json = (try? Data(contentsOf: state)).flatMap { try? JSONValue.parse($0) }
+                var result: [String: String] = [:]
+                for m in json?["measures"]?.array ?? [] { result[m["name"]?.string ?? ""] = m["string"]?.string }
+                for m in json?["meters"]?.array ?? [] { result[m["name"]?.string ?? ""] = m["text"]?.string }
+                return result
+            }
+            let codePage = TextDecoding.ansiCodePage
+            let standard = render([])
+            t.equal(standard["Day"], "Saturday", "en_US_POSIX")
+            t.equal(standard["Text"], "0,122,255,255|1920|1080", "macOS's blue, one 1920×1080 screen")
+            t.check(!(standard["Legacy"] ?? "中文").contains("中"), "English: a GBK file is read as code page 1252")
+            t.equal(render(["--locale", "en_US_POSIX", "--languages", "en", "--accent-color", "0,122,255",
+                            "--screen", "1920x1080"]), standard, "the standard values, given")
+            t.equal(render(["--dark"])["Text"], "10,132,255,255|1920|1080", "the dark appearance's blue")
+            let chinese = render(["--languages", "zh-Hans", "--locale", "zh_CN", "--accent-color", "255,0,0",
+                                  "--screen", "1440x900"])
+            t.equal(chinese["Legacy"], "中文", "Simplified Chinese: GBK")
+            t.equal(chinese["Text"], "255,0,0,255|1440|900")
+            t.equal(chinese["Day"], "星期六")
+            t.equal(TextDecoding.ansiCodePage, codePage, "the process's code page again")
+            let mac = render(["--locale", "system", "--accent-color", "system", "--screen", "system"])
+            let env = SkinController.environment(windowFrame: nil)
+            t.equal(mac["Text"], SkinAppearance.format(env.appearance.accentColor) + "|"
+                        + NumberFormatting.plain(env.screens[0].area.width, maxDecimals: 0) + "|"
+                        + NumberFormatting.plain(env.screens[0].workArea.height, maxDecimals: 0), "the Mac's")
+        }
+
         t.suite("App: render: --render starts again with deterministic hashing") {
             // The order of sets and dictionaries is seeded per process unless SWIFT_DETERMINISTIC_HASHING is set; the
             // command-line render sets it and starts again, so that order is the same in every run.

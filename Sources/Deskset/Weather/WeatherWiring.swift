@@ -63,11 +63,13 @@ enum WeatherWiring {
     /// No network and no location, but place names resolve (sun times work): `--render` and other previews. Lookups
     /// finish before the skin's update goes on, so images do not depend on how fast the place table loads.
     /// `demo`: synthetic forecasts (`DESKSET_WEATHER_DEMO=1`, clock from `DESKSET_WEATHER_DEMO_NOW`, ISO 8601).
-    static func previewEnvironment(demo: Bool = demoRequested, demoNow: Date? = demoClock) -> WeatherEnvironment {
+    /// `locale`: the one whose measurement system `Units=Auto` follows (a render's fixed one; nil: the Mac's).
+    static func previewEnvironment(demo: Bool = demoRequested, demoNow: Date? = demoClock,
+                                   locale: Locale? = nil) -> WeatherEnvironment {
         var env = WeatherEnvironment()
         env.placesTable = Paths.placesTable
         env.waitsForLookups = true
-        env.preferredUnits = { skinUnits() }
+        env.preferredUnits = { skinUnits(locale: locale ?? .current) }
         env.uses24HourClock = { MacRegional.current.clockHours == 24 }
         env.demo = demo
         env.demoNow = demoNow
@@ -82,8 +84,8 @@ enum WeatherWiring {
     /// Location Services. `clock`: the service's clock (the virtual one of a render with `--clock`).
     static func fixtureEnvironment(_ weather: SkinInputData.Given<SkinInputData.Weather>,
                                    timeZone: @escaping () -> TimeZone,
-                                   clock: WeatherClock? = nil) -> WeatherEnvironment {
-        var env = previewEnvironment(demo: false, demoNow: nil)
+                                   clock: WeatherClock? = nil, locale: Locale? = nil) -> WeatherEnvironment {
+        var env = previewEnvironment(demo: false, demoNow: nil, locale: locale)
         env.isLive = { _ in true }
         let w = weather.value
         env.transport = FixtureWeatherTransport(body: w?.forecast, status: w?.status ?? 200)
@@ -122,9 +124,9 @@ enum WeatherWiring {
         })
     }
 
-    /// `--render` and the other command-line previews.
-    static func installPreview() {
-        WeatherService.install(previewEnvironment())
+    /// `--render` and the other command-line previews; `locale`: a render's fixed one (nil: the Mac's).
+    static func installPreview(locale: Locale? = nil) {
+        WeatherService.install(previewEnvironment(locale: locale))
     }
 
     // MARK: Skin menu

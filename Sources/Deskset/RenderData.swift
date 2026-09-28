@@ -41,8 +41,9 @@ final class RenderData {
     }
 
     /// Puts the other fakes in place, after the skin is made and its clock set and before it loads (the weather's
-    /// `Location=timezone` is the city of the skin's time zone). `virtual`: the render's virtual time, if any.
-    func install(for skin: Skin, virtual: VirtualTimeExecutor?) {
+    /// `Location=timezone` is the city of the skin's time zone). `virtual`: the render's virtual time, if any;
+    /// `locale`: the render's fixed locale (the weather's `Units=Auto`), nil for the Mac's.
+    func install(for skin: Skin, virtual: VirtualTimeExecutor?, locale: Locale? = nil) {
         let clock = skin.skinClock
         if data.programs != nil {
             // Programs only recorded: each exits at once with the data's output. The skin's own writes
@@ -89,8 +90,8 @@ final class RenderData {
                 virtual.background.addSettleHook { c.advance(to: virtual.wallClock) }
             }
             WeatherService.install(WeatherWiring.fixtureEnvironment(weather, timeZone: { skinClock.timeZone() },
-                                                                    clock: clock))
-            restores.append { WeatherWiring.installPreview() }
+                                                                    clock: clock, locale: locale))
+            restores.append { WeatherWiring.installPreview(locale: locale) }
         }
         if let wifi = data.wifi {
             let fixed = FixedWiFi(wifi)
