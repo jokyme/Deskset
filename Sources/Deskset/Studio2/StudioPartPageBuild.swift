@@ -46,7 +46,9 @@ extension StudioPartPage {
         let title = partTitle(m, skin: skin)
         var page = StudioPage(id: "part:\(m.name)", title: title, subtitle: subtitle(m, kind: kind, skin: skin))
         page.crumbs = crumbs(m, skin: skin)
-        page.scope = scopeSentence(m, kind: kind)
+        // A shape that draws data is spoken of as what it looks like (a ring, a bar).
+        let spoken = kind == .shape && StudioPartNames.shapeData(m, in: skin) != nil ? StudioPartNames.shapeKind(m) : kind
+        page.scope = scopeSentence(m, kind: spoken)
         switch kind {
         case .number, .text:
             page.sections = [showsSection(m, kind: kind, skin: skin), textSection(m, skin: skin)].compactMap { $0 }
@@ -55,7 +57,7 @@ extension StudioPartPage {
         case .bar, .ring, .graph:
             page.sections = [dataSection(m, skin: skin), lookSection(m, kind: kind)].compactMap { $0 }
         case .shape:
-            page.sections = [shapeSection(m), strokeSection(m)].compactMap { $0 }
+            page.sections = [shapeShowsSection(m, skin: skin), shapeSection(m), strokeSection(m)].compactMap { $0 }
         case .part:
             break
         }
@@ -116,6 +118,13 @@ extension StudioPartPage {
     func subtitle(_ m: Meter, kind: StudioPartKind, skin: Skin) -> String {
         var parts: [String] = []
         let now = nowValue(m)
+        if kind == .shape, let data = StudioPartNames.shapeData(m, in: skin) {
+            // A shape that draws data (a ring's arc): what it shows now, and whose.
+            parts.append(StudioText.format(.nowValue, StudioWidgetPage.liveValue(data, skin: skin)))
+            let short = StudioWords.short(StudioWidgetFacts.dataName(data, in: skin).short)
+            parts.append(StudioText.format(.subtitleOf, StudioPartNames.shapeKind(m).noun(), short))
+            return parts.joined(separator: " · ")
+        }
         if let data = liveMeasure(m) {
             if let now { parts.append(StudioText.format(.nowValue, now)) }
             let short = StudioWords.short(StudioWidgetFacts.dataName(data, in: skin).short)
@@ -389,6 +398,20 @@ extension StudioPartPage {
                                              title: StudioText[.rowPicture], section: "shows")
         return StudioPage.Section(id: "shows", title: StudioText[.sectionShows],
                                   items: [.init(id: "shows.picture", kind: .row(row))])
+    }
+
+    /// What a shape that draws data shows (a ring's arc that reads the CPU's usage): the data, as the part works it out
+    /// in its own formulas (other data is chosen in the code).
+    func shapeShowsSection(_ m: Meter, skin: Skin) -> StudioPage.Section? {
+        guard let data = StudioPartNames.shapeData(m, in: skin) else { return nil }
+        var row = StudioPage.Row(label: StudioText[.sectionShows], control: .popup(.init(
+            items: [.init(title: StudioWords.data(StudioWidgetFacts.dataName(data, in: skin).name),
+                          detail: StudioWidgetPage.liveValue(data, skin: skin), symbol: StudioWords.symbol(data)),
+                    .init(title: StudioText[.showsOnlyThis], enabled: false)],
+            selected: 0, symbol: StudioWords.symbol(data))))
+        row.labelWidth = 58
+        row.tooltip = StudioText[.showsOnlyThis]
+        return StudioPage.Section(id: "shows", title: StudioText[.sectionShows], items: [.init(id: "shows.shape", kind: .row(row))])
     }
 
     func dataSection(_ m: Meter, skin: Skin) -> StudioPage.Section? {
