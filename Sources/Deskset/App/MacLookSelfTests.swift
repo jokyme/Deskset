@@ -356,9 +356,11 @@ enum MacLookSelfTests {
                         "tinted green and faded: \(tinted.prefix(3))")
                 let plain = opaque(360)
                 t.check(!plain.isEmpty && plain.allSatisfy { $0.r > 240 && $0.g > 240 && $0.b > 240 }, "white")
+                // The color's own alpha, once (AppKit applies a lone palette color's alpha twice unless it is repeated).
                 let translucent = pixels(rep, in: CGRect(x: 480, y: 0, width: 110, height: 100)).filter { $0.a > 20 }
-                t.check(!translucent.isEmpty && translucent.allSatisfy { $0.a <= 156 && $0.r < 10 },
-                        "the color's alpha: \(translucent.map(\.a).max() ?? 0)")
+                let most = translucent.map(\.a).max() ?? 0
+                t.check(!translucent.isEmpty && translucent.allSatisfy { $0.a <= 156 && $0.r < 10 } && most >= 150,
+                        "the color's alpha: \(most)")
             }
             // One drawing per set of colors; the same colors share it.
             let a = MacSymbol(name: "cloud.sun.fill", style: MacSymbol.Style(rendering: .palette, colors: [.black, .white]))

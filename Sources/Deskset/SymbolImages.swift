@@ -67,9 +67,18 @@ enum SymbolImages {
             configuration = configuration.applying(.preferringMulticolor())
         case .palette:
             configuration = configuration.applying(NSImage.SymbolConfiguration(
-                paletteColors: symbol.style.colors.isEmpty ? [.labelColor] : symbol.style.colors.map(\.nsColor)))
+                paletteColors: symbol.style.colors.isEmpty ? [.labelColor, .labelColor]
+                    : paletteColors(symbol.style.colors)))
         }
         return base.withSymbolConfiguration(configuration)
+    }
+
+    /// A palette's colors for AppKit, the last one repeated up to three: macOS gives the layers past the last color
+    /// that color anyway, but a palette of one translucent color comes out with its alpha applied twice (0,0,0,153
+    /// draws at alpha 92; measured on macOS 26), and two of it draw right.
+    static func paletteColors(_ colors: [RGBA]) -> [NSColor] {
+        guard let last = colors.last else { return [] }
+        return (colors + Array(repeating: last, count: max(MacSymbol.maxColors - colors.count, 0))).map(\.nsColor)
     }
 
     /// Monochrome, and a palette without colors: the template drawing, made white.
@@ -95,7 +104,7 @@ enum SymbolImages {
             // Without colors, drawn as a template like Monochrome (`render`).
             if !symbol.style.colors.isEmpty {
                 configuration = configuration.applying(NSImage.SymbolConfiguration(
-                    paletteColors: symbol.style.colors.map(\.nsColor)))
+                    paletteColors: paletteColors(symbol.style.colors)))
             }
         }
         return base.withSymbolConfiguration(configuration)
