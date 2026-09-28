@@ -277,9 +277,13 @@ plugin's source code.
 
 ### Sampling
 - Windows (Rainmeter): one thread per Category gathers data once a second regardless of Update / UpdateDivider.
-- Mac (Deskset): one shared background sampler takes a sample of all processes and cores once a second while any
-  measure needs it (a few milliseconds per sample) and stops when none does; Process / Processor counters use its last
-  two samples; memory / network / disk-space counters are read at the measure's update.
+- Mac (Deskset): one shared background sampler takes a sample of the processes and cores once a second while any
+  measure needs it and stops when none does; Process / Processor counters use its last two samples; memory / network /
+  disk-space counters are read at the measure's update. A sample reads only the user's own processes, the ones macOS
+  lets an app read (the others are the synthetic `System` process either way), and reads their virtual size, threads,
+  page faults, context switches, system calls and priority only while a measure uses one of those counters: about
+  0.2 ms of a performance core per sample. Measures that differ only in Index or Name (a "top 5" list) share one
+  ranking per sample.
 - Why: —
 - Skin impact: none.
 - Status: identical
