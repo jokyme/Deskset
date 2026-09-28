@@ -217,9 +217,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         applyWindowSettings()
     }
 
+    /// How many times the window was placed and shown at a start (ordered in when the app presents windows and the skin
+    /// does not start hidden). Self-tests.
+    private(set) var showCount = 0
+
     /// Places the window for a skin of `size` and shows it with its first frame (fading in when `fadeIn`), unless it
     /// starts hidden.
     private func show(fadeIn: Bool, size: CGSize) {
+        showCount += 1
         placeWindow(size: size)
         if app.presentsWindows && !isHiddenByBang {
             let target = targetAlpha

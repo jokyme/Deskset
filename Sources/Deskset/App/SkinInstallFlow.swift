@@ -103,6 +103,9 @@ final class SkinInstallFlow {
 
     /// Nothing queued or in progress.
     var isIdle: Bool { !busy && queue.isEmpty }
+    /// The skins of the package's root configs were stopped, and the installer waits for them to close before it
+    /// replaces their files.
+    private(set) var waitsForSkinsToClose = false
 
     /// Open panel for "Install Skin…": .rmskin packages, ZIP archives and skin folders.
     func chooseAndInstall() {
@@ -242,7 +245,9 @@ final class SkinInstallFlow {
             .filter { roots.contains(String($0.config.split(separator: "\\").first ?? "").lowercased()) }
             .map { ($0.config, $0.file) }
         let stopped = affected.compactMap { app.suspend(config: $0.0) }
+        waitsForSkinsToClose = true
         app.whenClosed(stopped, timeout: SkinInstallFlow.closeTimeout) { [self] in
+            waitsForSkinsToClose = false
             replaceFiles(inspection, packageURL: packageURL, affected: affected)
         }
     }
