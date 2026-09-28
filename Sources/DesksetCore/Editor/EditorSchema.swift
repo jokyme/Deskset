@@ -1523,7 +1523,7 @@ public enum EditorSchema {
                     Property("PlayerType", "Shows",
                              pick(list(["Title", "Artist", "Album", "Cover", "Duration", "Position", "Progress", "State",
                                         "Status", "Volume", "Rating", "Repeat", "Shuffle", "Number", "Year", "Genre", "File",
-                                        "Lyrics"]), style: .popup), default: "Title"),
+                                        "Lyrics", "MacPermission"]), style: .popup), default: "Title"),
                     Property("DisableLeadingZero", "Short times", flag("Write times as 3:05 instead of 03:05"), default: "0"),
                     Property("TrackChangeAction", "When the track changes", .action)]
         case "iTunesPlugin":

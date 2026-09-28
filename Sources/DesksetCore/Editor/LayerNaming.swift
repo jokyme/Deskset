@@ -1304,6 +1304,7 @@ final class LayerNamer {
             case "status": return named("Whether the player is open", "Player")
             case "shuffle": return named("Shuffle", "Shuffle")
             case "repeat": return named("Repeat", "Repeat")
+            case "macpermission": return named("Player permission", "Permission")
             default: return named("Now playing", "Music")
             }
         default:
