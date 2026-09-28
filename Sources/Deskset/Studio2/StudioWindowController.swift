@@ -779,6 +779,9 @@ extension StudioWindowController {
         canvas.onGestureFrames = { [weak self] frames in self?.geometry.preview(frames) }
         canvas.onEndGesture = { [weak self] keep in self?.geometry.end(keep: keep) }
         canvas.onNudge = { [weak self] dx, dy in self?.geometry.nudge(dx: dx, dy: dy) }
+        // Tab / ⇧Tab walk the parts in reading order; the selected one carries the focus ring.
+        canvas.onTab = { [weak self] backward in self?.selectNextPart(backward: backward) ?? false }
+        canvas.drawsPartFocusRing = true
         canvas.selectionTag = { [weak self] m in
             guard let self, let skin = self.skin else { return m.name }
             return self.partPage.partTitle(m, skin: skin)
@@ -833,6 +836,43 @@ extension StudioWindowController {
         }
         canvasController.overlay.setShowsDistances(false)
         codeSelectionChanged()
+    }
+
+    /// The parts one can see, in the order the widget is read: a row above first, then left to right (a row is the
+    /// parts whose heights overlap).
+    func partsInReadingOrder() -> [String] {
+        guard let skin else { return [] }
+        let parts = skin.meters.filter { !$0.hidden && !$0.isContainer && $0.frame.width > 0 && $0.frame.height > 0 }
+            .sorted { $0.frame.y < $1.frame.y }
+        var rows: [(bottom: Double, parts: [Meter])] = []
+        for m in parts {
+            if let last = rows.indices.last, m.frame.y < rows[last].bottom - 0.5 {
+                rows[last].parts.append(m)
+                rows[last].bottom = max(rows[last].bottom, m.frame.y + m.frame.height)
+            } else {
+                rows.append((m.frame.y + m.frame.height, [m]))
+            }
+        }
+        return rows.flatMap { $0.parts.sorted { $0.frame.x < $1.frame.x } }.map(\.name)
+    }
+
+    /// Tab (⇧Tab) on the canvas: the next (previous) part in reading order, round to the first again; the part's page
+    /// follows and VoiceOver says which part it is. False with no part to select.
+    func selectNextPart(backward: Bool) -> Bool {
+        let order = partsInReadingOrder()
+        guard !order.isEmpty else { return false }
+        let current = canvasController.canvas.selectedNames.last.flatMap { name in
+            order.firstIndex { $0.caseInsensitiveCompare(name) == .orderedSame }
+        }
+        let next: Int
+        if let current {
+            next = (current + (backward ? order.count - 1 : 1)) % order.count
+        } else {
+            next = backward ? order.count - 1 : 0
+        }
+        select(part: order[next])
+        if let skin, let m = skin.meter(named: order[next]) { announce(partPage.partTitle(m, skin: skin)) }
+        return true
     }
 
     /// Selects a part (a data page's "Used by", the self-tests).

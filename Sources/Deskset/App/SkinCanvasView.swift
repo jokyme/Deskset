@@ -80,7 +80,9 @@ final class SkinCanvasView: NSView {
     /// The layer under the pointer (never a locked one).
     private(set) var hover: String?
     /// Selected meters in the order they were selected; the last one is the primary selection.
-    private(set) var selectedNames: [String] = []
+    private(set) var selectedNames: [String] = [] {
+        didSet { if drawsPartFocusRing, selectedNames != oldValue { noteFocusRingMaskChanged() } }
+    }
     var selection: String? { selectedNames.last }
     /// Layers related to the inspector's selection (those showing the selected data source), outlined softly.
     var relatedNames: [String] = [] { didSet { if relatedNames != oldValue { needsDisplay = true } } }
@@ -156,6 +158,12 @@ final class SkinCanvasView: NSView {
     var onNudge: ((Double, Double) -> Void)?
     /// Delete / Backspace, ⌘D.
     var onDelete: (() -> Void)?
+    /// Tab / ⇧Tab (`true`: backward) for a host that walks the parts from the keyboard: true when it took the key (else
+    /// Tab goes on through the window's controls).
+    var onTab: ((Bool) -> Bool)?
+    /// The selected parts carry the system focus ring while the canvas has the keyboard (a host that lets the keyboard
+    /// select parts).
+    var drawsPartFocusRing = false
     var onDuplicate: (() -> Void)?
     /// The view's size or `origin` changed (the overlays over the canvas follow).
     var onLayoutChange: (() -> Void)?
@@ -509,6 +517,8 @@ final class SkinCanvasView: NSView {
     // MARK: Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 48, event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+           let onTab, onTab(event.modifierFlags.contains(.shift)) { return }
         guard isEditable, !selectedNames.isEmpty, let key = event.specialKey else { return super.keyDown(with: event) }
         let step: Double = event.modifierFlags.contains(.shift) ? 10 : 1
         switch key {
@@ -519,6 +529,25 @@ final class SkinCanvasView: NSView {
         case .delete, .deleteForward, .backspace: onDelete?()
         default: super.keyDown(with: event)
         }
+    }
+
+    /// The selection's focus ring (`drawsPartFocusRing`): around the selected parts, in the canvas's coordinates.
+    override var focusRingMaskBounds: NSRect {
+        guard let r = partFocusRect else { return .zero }
+        return r
+    }
+
+    override func drawFocusRingMask() {
+        guard let r = partFocusRect else { return }
+        NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill()
+    }
+
+    var partFocusRect: NSRect? {
+        guard drawsPartFocusRing, let skin else { return nil }
+        let frames = selectedNames.compactMap { skin.meter(named: $0) }.map { viewRect($0.frame) }
+        guard var r = frames.first else { return nil }
+        for f in frames.dropFirst() { r = r.union(f) }
+        return r.insetBy(dx: -1, dy: -1)
     }
 
     /// Esc: cancels a gesture, else goes one selection level up (`selectLevelUp`).

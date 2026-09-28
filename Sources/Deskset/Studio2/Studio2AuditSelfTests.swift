@@ -478,9 +478,22 @@ enum Studio2AuditSelfTests {
             defer { again.close() }
             let s2 = again.controller
             guard let w2 = s2.window else { return t.check(false, "a window") }
-            s2.select(part: "MeterCPUValue")
+            s2.select(part: nil)
             s2.focus(.canvas)
             t.equal(s2.focusArea, .canvas)
+            // Tab walks the parts in reading order, from the canvas (never through the window's other controls).
+            var tabs = 0
+            while s2.canvasController.canvas.selectedNames != ["MeterCPUValue"], tabs < 60 {
+                key(w2, "\t", 48)
+                tabs += 1
+            }
+            t.equal(s2.canvasController.canvas.selectedNames, ["MeterCPUValue"], "Tab reaches “21%” (\(tabs) presses)")
+            t.equal(s2.focusArea, .canvas, "the keyboard stays on the canvas")
+            t.check(s2.canvasController.canvas.partFocusRect != nil, "the selected part carries the focus ring")
+            t.equal(s2.partPage.meter?.name, "MeterCPUValue", "its page follows")
+            key(w2, "\t", 48, [.shift])
+            key(w2, "\t", 48)
+            t.equal(s2.canvasController.canvas.selectedNames, ["MeterCPUValue"], "⇧Tab goes back, Tab forward again")
             key(w2, String(UnicodeScalar(NSRightArrowFunctionKey)!), 124)
             key(w2, String(UnicodeScalar(NSRightArrowFunctionKey)!), 124, [.shift])
             s2.geometry.commitNudge()
