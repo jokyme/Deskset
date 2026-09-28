@@ -684,4 +684,196 @@ func runDeskNavigationGoldenTests(_ t: TestRunner) {
         }
         t.equal(reason(own, "small", "card"), "alreadyUsed “card” is already used in package.desk.")
     }
+
+    t.suite("Desk: service — outline") {
+        t.equal(monthView.documentSymbols().map(\.description).joined(separator: "\n"), """
+            info info @1:1-7:2
+              field name — "Month View" @2:5-2:23
+              field description — "This month at a glance, with today hig… @3:5-3:67
+              field author — "Deskset" @4:5-4:22
+              field version — "1.0" @5:5-5:19
+              field category — .time @6:5-6:20
+            options options @9:1-12:2
+              option weekStart — Picker @10:5-10:79
+              option highlight — ColorPicker @11:5-11:65
+            widget widget @14:1-43:2
+              variable monthsFromNow — 0 @15:5-15:31
+              computed month — calendar.month(offset: monthsFromNow, w… @16:5-16:89
+              element Column @18:5-42:24
+                element Row @19:9-27:10
+                  element Text — month.title @20:13-23:47
+                    event .onClick @23:17-23:47
+                  element Spacer @24:13-24:21
+                  element Icon — "chevron.left" @25:13-25:92
+                    event .onClick @25:46-25:92
+                  element Icon — "chevron.right" @26:13-26:93
+                    event .onClick @26:47-26:93
+                element Grid @28:9-38:10
+                  forLoop for name in month.weekdays @29:13-31:14
+                    element Text — name @30:17-30:47
+                  forLoop for day in month.days @32:13-37:14
+                    element Text — "{day.number}" @33:17-36:49
+            style arrow @45:1-45:81
+            style weekdayLabel @46:1-46:63
+            style dateCell @47:1-47:46
+            style todayCell @48:1-48:112
+            translations translations @50:1-57:2
+              language zh-Hans — 4 entries @51:5-56:6
+            """)
+        t.equal(cpu.documentSymbols().map(\.description).joined(separator: "\n"), """
+            info info @1:1-1:35
+              field name — "CPU" @1:8-1:19
+              field size — .small @1:21-1:33
+            widget widget @3:1-12:2
+              element Column @4:5-11:24
+                element Text — "CPU" @5:9-5:47
+                element Text — "{cpu.usage}%" @6:9-6:48
+                element Spacer @7:9-7:17
+                element Progress — cpu.usage @8:9-8:28
+            """)
+        t.equal(deskNavHarbor("package.desk").snapshot.documentSymbols().map(\.description).joined(separator: "\n"), """
+            package package @1:1-9:2
+              field name — "Harbor" @2:5-2:19
+              field description — "Tides, a lamp and a radio for the desk… @3:5-3:59
+              field author — "Deskset" @4:5-4:22
+              field version — "1.0" @5:5-5:19
+              field license — "MIT" @6:5-6:19
+              field deskVersion — 1 @7:5-7:19
+              field requires — "1.0" @8:5-8:20
+            options options @11:1-17:2
+              option accent — ColorPicker @12:5-12:57
+              section Units — Section @13:5-16:6
+                option metric — Toggle @14:9-15:49
+            style card @19:1-19:59
+            style heading @20:1-20:57
+            translations translations @22:1-35:2
+              language zh-Hans — 7 entries @23:5-31:6
+              language ja — 1 entry @32:5-34:6
+            """)
+        // Selection ranges, named elements, if / else, events with arguments, and the reserved blocks.
+        let shapes = deskNavService("""
+            info { name: "Shapes" }
+            widget {
+                variable page = 0
+                Column {
+                    Text("Title").name(title)
+                    if page == 0 {
+                        Text("First")
+                    } else if page == 1 {
+                        Text("Second")
+                    } else {
+                        Text("Other")
+                    }
+                }
+                .every(1s) { page = page + 1 }
+                .onClick { page = 0 }
+            }
+            component Card(title: String) { Text(title) }
+            """, language: .simplifiedChinese).snapshot
+        t.equal(shapes.documentSymbols().map(\.description).joined(separator: "\n"), """
+            info info @1:1-1:24
+              field name — "Shapes" @1:8-1:22
+            widget widget @2:1-16:2
+              variable page — 0 @3:5-3:22
+              element Column @4:5-15:26
+                element title — Text @5:9-5:34
+                ifBlock if page == 0 @6:9-8:10
+                  element Text — "First" @7:13-7:26
+                ifBlock else if page == 1 @8:16-10:10
+                  element Text — "Second" @9:13-9:27
+                elseBlock else @10:11-12:10
+                  element Text — "Other" @11:13-11:26
+                event .every — (1s) @14:5-14:35
+                event .onClick @15:5-15:26
+            component Card @17:1-17:46
+            """)
+        func walk(_ items: [DeskDocumentSymbol], _ visit: (DeskDocumentSymbol) -> Void) {
+            for item in items { visit(item); walk(item.children, visit) }
+        }
+        for snapshot in [monthView, cpu, shapes] {
+            walk(snapshot.documentSymbols()) { item in
+                t.check(item.range.start <= item.selectionRange.start && item.selectionRange.end <= item.range.end,
+                        "\(item.name): the selection is inside the item")
+                for child in item.children {
+                    t.check(item.range.start <= child.range.start && child.range.end <= item.range.end, "\(child.name) is inside \(item.name)")
+                }
+                if let element = item.element {
+                    t.equal(snapshot.range(of: element)?.range, item.range, "\(item.name): its element")
+                }
+            }
+        }
+        let title = shapes.documentSymbols()[1].children[1].children[0]
+        t.equal(shapes.index.range(utf8: shapes.index.utf8Range(of: title.selectionRange)).description, "5:9-5:13", "an element selects its component")
+        t.equal(deskNavService("").snapshot.documentSymbols(), [], "an empty file")
+    }
+
+    t.suite("Desk: service — folding") {
+        t.equal(monthView.foldingRanges().map(\.description), ["block 1-7", "block 9-12", "block 14-43", "block 18-39",
+            "block 19-27", "modifiers 20-23", "block 28-38", "block 29-31", "block 32-37", "modifiers 33-36",
+            "modifiers 39-42", "block 50-57", "language 51-56"])
+        t.equal(cpu.foldingRanges().map(\.description), ["block 3-12", "block 4-9", "modifiers 9-11"])
+        let folds = deskNavService("""
+            // A widget
+            // with notes
+            // on three lines.
+            info { name: "F" }
+            widget {
+                computed numbers = [
+                    1, 2,
+                    3
+                ]
+                Row(
+                    spacing: 4
+                ) { Text("A") }  // one comment
+                // alone
+                /* a comment
+                   over two lines */
+                Text("B")
+                    .bold()
+            }
+            """).snapshot
+        t.equal(folds.foldingRanges().map(\.description), ["comment 1-3", "block 5-18", "list 6-9", "arguments 10-12",
+                                                          "comment 14-15", "modifiers 16-17"])
+        for fold in monthView.foldingRanges() + folds.foldingRanges() {
+            t.check(fold.startLine < fold.endLine, "\(fold) spans lines")
+        }
+        t.equal(deskNavService("widget { Text(\"A\") }").snapshot.foldingRanges(), [], "one line")
+    }
+
+    t.suite("Desk: service — element at the cursor") {
+        let m = monthView
+        func hit(_ needle: String, occurrence: Int = 1, into: Int = 0) -> String {
+            guard let h = m.elementAt(deskNavPosition(m, needle, occurrence: occurrence, into: into)) else { return "nothing" }
+            var out = "\(h.component) \(h.range) call \(h.callRange)"
+            if let name = h.name { out += " named \(name)" }
+            if let loop = h.loopRange { out += " repeated by \(loop)" }
+            return out
+        }
+        t.equal(hit("{day.number}", into: 3), "Text 33:17-36:49 call 33:17-33:37 repeated by 32:13-37:14", "inside a for template")
+        t.equal(hit(".hidden(if: not day.inMonth)", into: 15), "Text 33:17-36:49 call 33:17-33:37 repeated by 32:13-37:14",
+                "on a modifier")
+        t.equal(hit("Text(name)"), "Text 30:17-30:47 call 30:17-30:27 repeated by 29:13-31:14")
+        t.equal(hit("monthsFromNow = 0", occurrence: 2), "Text 20:13-23:47 call 20:13-20:30", "inside an action")
+        t.equal(hit("Grid"), "Grid 28:9-38:10 call 28:9-28:25")
+        t.equal(hit("for day", into: 4), "Grid 28:9-38:10 call 28:9-28:25", "a for's own words belong to its container")
+        t.equal(hit(".rounded(26)", into: 2), "Column 18:5-42:24 call 18:5-18:24", "the root's modifiers")
+        t.equal(hit("variable monthsFromNow"), "nothing", "a declaration")
+        t.equal(hit("style arrow"), "nothing", "a style")
+        t.equal(hit("Spacer()", into: 8), "Spacer 24:13-24:21 call 24:13-24:21", "right after the element")
+        let named = deskNavService("widget { Column { Text(\"A\").name(title) } }").snapshot
+        t.equal(named.elementAt(deskNavPosition(named, "title"))?.name, "title")
+        // Every element, found again from its reference; stale references are refused.
+        let all = m.elements()
+        t.equal(all.count, m.checked.elements.count)
+        t.equal(all.map(\.component), ["Column", "Row", "Text", "Spacer", "Icon", "Icon", "Grid", "Text", "Text"])
+        for element in all {
+            t.equal(m.range(of: element.element), element)
+            t.equal(m.elementAt(element.callRange.start), element, "\(element.component) at its call")
+        }
+        let service = deskNavService(m.text, file: "MonthView.desk")
+        let old = service.snapshot.elements()[2].element
+        service.update(changes: [DeskTextChange(range: 0..<0, text: "// note\n")], version: 1)
+        t.equal(service.snapshot.range(of: old), nil, "a reference of an older snapshot")
+        t.equal(service.snapshot.elements()[2].range.start.line, 20, "the element moved down a line")
+    }
 }
