@@ -277,11 +277,12 @@ private struct OutlineBuilder {
         // The outline recurses once or twice per nested block: hostile nesting runs where the stack is large enough
         // (a background thread has 512 KiB).
         var deepest = 0
-        var depths: [Int: Int] = [i: 0]
-        for e in i..<table.entries[i].end {
+        let end = table.entries[i].end
+        var depths = [Int](repeating: 0, count: end - i)
+        for e in i..<end {
             let entry = table.entries[e]
-            let depth = (e == i ? 0 : depths[entry.parent] ?? 0) + (entry.kind == .block ? 1 : 0)
-            depths[e] = depth
+            let depth = (e == i ? 0 : depths[entry.parent - i]) + (entry.kind == .block ? 1 : 0)
+            depths[e - i] = depth
             deepest = max(deepest, depth)
         }
         return StackGuard.run(needing: (deepest + 8) * 24 * 1024) { item(i) }
