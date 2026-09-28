@@ -1,0 +1,52 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--mode",
+  "D1",
+  "--cgimage",
+  "--out",
+  "results/wsmem-b/sixty-C1-r5.json"
+ ],
+ "command": "wsmem",
+ "config": "D1+cgimage",
+ "footprintIncreasePerWidgetMB": 1.334,
+ "gpuInUseCloseStepMB": -8.4,
+ "gpuInUseOpenStepMB": -136,
+ "gpuInUseOpenStepPerWidgetMB": -27.21,
+ "layerBitmapsPerWidgetMB": 0.476,
+ "loadAverageAtEnd": [
+  6.94,
+  6.98,
+  6.84
+ ],
+ "loadAverageAtStart": [
+  7.36,
+  7.02,
+  6.85
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 2.57,
+  "freeGB": 0.8,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 2.56,
+  "freeGB": 3.1,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "D1",
+ "oneBitmapOfTheWindowMB": 0.476,
+ "scenario": "sixty",
+ "updateIntervalMs": 16.67,
+ "widgets": 5,
+ "windowServerBackToStart": true,
+ "windowServerBeforeMB": 1858,
+ "windowServerCloseStepMB": -3,
+ "windowServerOpenStepMB": 1,
+ "windowServerOpenStepPerWidgetMB": 0.2,
+ "windowServerResidentCloseStepMB": 0.05,
+ "windowServerResidentOpenStepMB": 0.95
+}

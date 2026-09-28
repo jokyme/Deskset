@@ -1,0 +1,264 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "DP",
+  "--cgimage",
+  "--window-space-base",
+  "--scratch",
+  "--out",
+  "results/cost-b/ten-CPxw-r3.json"
+ ],
+ "command": "cost",
+ "config": "DP+cgimage+scratch+windowSpaceBase",
+ "contexts": {},
+ "cpu": {
+  "framesPerSecond": 9.863,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 1.447,
+  "processPercentOfOneCore": 1.772,
+  "provisional": true,
+  "windowServerIdleWakeupsPerSecond": 0,
+  "windowServerIdleWakeupsPerSecondIncrease": 0,
+  "windowServerIdleWakeupsPerSecondOff": 0,
+  "windowServerPercentOfOneCore": 53.803,
+  "windowServerPercentOfOneCoreIncrease": 0.483,
+  "windowServerPercentOfOneCoreOff": 53.32
+ },
+ "frameCost": {
+  "commitP50us": 370,
+  "commitP99us": 745,
+  "p50us": 1918,
+  "p99us": 2718,
+  "updates": 410,
+  "what": "drawing before the commit"
+ },
+ "loadAverageAtEnd": [
+  10.24,
+  8.43,
+  8
+ ],
+ "memory": {
+  "backingStores": {
+   "CGImage 101x45 8bpc/32bpp Color LCD": 1,
+   "CGImage 126x34 8bpc/32bpp Color LCD": 2,
+   "CGImage 14x28 8bpc/32bpp Color LCD": 8,
+   "CGImage 170x38 8bpc/32bpp Color LCD": 1,
+   "CGImage 225x68 8bpc/32bpp Color LCD": 1,
+   "CGImage 298x44 8bpc/32bpp Color LCD": 2,
+   "CGImage 454x18 8bpc/32bpp Color LCD": 2,
+   "CGImage 456x88 8bpc/32bpp Color LCD": 1,
+   "CGImage 520x392 8bpc/32bpp Color LCD": 38,
+   "CGImage 66x34 8bpc/32bpp Color LCD": 1
+  },
+  "footprintAfterCloseMB": 28.74,
+  "footprintAfterSettleMB": 51.34,
+  "footprintAtEndMB": 50.74,
+  "footprintBeforeMB": 10.66,
+  "footprintCategoriesAfterSettleMB": {
+   "CG image": 11,
+   "CG raster data": 22,
+   "MALLOC metadata": 0.88,
+   "MALLOC_SMALL": 12,
+   "MALLOC_TINY": 0.3,
+   "TOTAL": 50,
+   "__DATA": 0.56,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.34,
+   "page table": 0.59,
+   "stack": 0.8,
+   "total": "50 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.42,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "MALLOC metadata": 0.78,
+   "MALLOC_SMALL": 5.7,
+   "MALLOC_TINY": 0.3,
+   "TOTAL": 11,
+   "__DATA": 0.54,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.31,
+   "page table": 0.5,
+   "stack": 0.31,
+   "total": "11 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.27,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 4.008,
+  "footprintIncreaseMB": 40.688,
+  "footprintIncreasePerWidgetMB": 4.069,
+  "layerBitmapsPerWidgetMB": 1.255,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 5.97,
+   "freeGB": 0.07,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 5.27,
+   "freeGB": 0.07,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 0.778,
+  "ownedBitmapsPerWidgetMB": 2.51,
+  "partitionMinimumMB": 1.247,
+  "windowServerCloseStepsMB": [
+   -7,
+   -6
+  ],
+  "windowServerIncreaseMB": 5,
+  "windowServerIncreasePerWidgetMB": 0.5,
+  "windowServerOpenStepsMB": [
+   5,
+   1
+  ]
+ },
+ "mode": "DP",
+ "offPhases": "windows ordered out, updates stopped",
+ "openAllMs": 89.4,
+ "pairs": 3,
+ "partition": {
+  "baseElements": 1,
+  "groupPixels": 122949,
+  "groups": 19,
+  "largestGroupPixels": 40128,
+  "tiles": 38,
+  "windowPixels": 203840
+ },
+ "phaseSeconds": 5,
+ "phases": [
+  {
+   "framesPerSecond": 9.87,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.58,
+   "loadAverageAfter": [
+    7.51,
+    7.87,
+    7.8
+   ],
+   "loadAverageBefore": [
+    7.56,
+    7.89,
+    7.8
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 1.767,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 57.05
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    7.31,
+    7.82,
+    7.78
+   ],
+   "loadAverageBefore": [
+    7.51,
+    7.87,
+    7.8
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.039,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 53.08
+  },
+  {
+   "framesPerSecond": 9.86,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.38,
+   "loadAverageAfter": [
+    7.32,
+    7.81,
+    7.78
+   ],
+   "loadAverageBefore": [
+    7.53,
+    7.86,
+    7.8
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 1.717,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 52.28
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.39,
+   "loadAverageAfter": [
+    7.22,
+    7.78,
+    7.77
+   ],
+   "loadAverageBefore": [
+    7.32,
+    7.81,
+    7.78
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.042,
+   "provisional": false,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 52.82
+  },
+  {
+   "framesPerSecond": 9.86,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 1.38,
+   "loadAverageAfter": [
+    8.56,
+    8.05,
+    7.86
+   ],
+   "loadAverageBefore": [
+    7.22,
+    7.78,
+    7.77
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 1.831,
+   "provisional": true,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 52.08
+  },
+  {
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.59,
+   "loadAverageAfter": [
+    8.48,
+    8.05,
+    7.86
+   ],
+   "loadAverageBefore": [
+    8.44,
+    8.03,
+    7.86
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.036,
+   "provisional": true,
+   "seconds": 5.07,
+   "windowServerIdleWakeupsPerSecond": 0,
+   "windowServerPercentOfOneCore": 54.06
+  }
+ ],
+ "scenario": "ten",
+ "settleSeconds": 20,
+ "updateIntervalMs": 1000,
+ "widgets": 10
+}

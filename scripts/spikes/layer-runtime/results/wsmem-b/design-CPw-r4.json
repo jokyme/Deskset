@@ -1,0 +1,53 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "DP",
+  "--cgimage",
+  "--window-space-base",
+  "--out",
+  "results/wsmem-b/design-CPw-r4.json"
+ ],
+ "command": "wsmem",
+ "config": "DP+cgimage+windowSpaceBase",
+ "footprintIncreasePerWidgetMB": 3.163,
+ "gpuInUseCloseStepMB": -18.2,
+ "gpuInUseOpenStepMB": 22.5,
+ "gpuInUseOpenStepPerWidgetMB": 4.49,
+ "layerBitmapsPerWidgetMB": 2.872,
+ "loadAverageAtEnd": [
+  6.16,
+  6.97,
+  6.82
+ ],
+ "loadAverageAtStart": [
+  7.98,
+  7.35,
+  6.95
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 2.67,
+  "freeGB": 4.68,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 2.67,
+  "freeGB": 3.89,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "DP",
+ "oneBitmapOfTheWindowMB": 1.978,
+ "scenario": "design",
+ "updateIntervalMs": 1000,
+ "widgets": 5,
+ "windowServerBackToStart": true,
+ "windowServerBeforeMB": 1850,
+ "windowServerCloseStepMB": -1,
+ "windowServerOpenStepMB": 3,
+ "windowServerOpenStepPerWidgetMB": 0.6,
+ "windowServerResidentCloseStepMB": -0.08,
+ "windowServerResidentOpenStepMB": 0.09
+}
