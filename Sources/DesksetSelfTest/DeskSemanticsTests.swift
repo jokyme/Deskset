@@ -274,7 +274,7 @@ func runDeskSemanticsTests(_ t: TestRunner) {
         print(String(format: "    Re-check after a one-character edit of a 300-line widget: %.1f ms (budget %.0f ms).",
                      recheck, 10 * factor))
         // Not a benchmark on CI: only a bound that keeps the editor responsive.
-        t.check(both < 300 * factor / 2, String(format: "parse + check of %d lines took %.0f ms", lineCount, both))
+        t.check(both < 300 * factor / 2 * deskCIScale, String(format: "parse + check of %d lines took %.0f ms", lineCount, both))
     }
 }
 
