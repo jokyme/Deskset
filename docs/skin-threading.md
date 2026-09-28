@@ -1834,3 +1834,16 @@ suite's `TestThreadExecutor`.
      end. Threads: 11–13 throughout. No crash.
    - The log: no error, no warning and no main-thread step over 250 ms in the hour.
    - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers at 60 frames a second).
+5. **§10's measurements**: not taken yet; they need a quiet machine with nobody at it.
+6. **The default is `engine`.** `SkinThreading.chosen` answers `engine` without the key and for a value that is
+   neither mode (logged); `defaults write app.deskset.Deskset SkinThreading main` (or `-SkinThreading main` for one
+   launch) keeps every skin on the main thread, for debugging, and says so in the log at launch. The headless modes,
+   the Manage window's dry runs, thumbnails, the Studio's own instance and the self-tests' apps keep the main executor
+   (§8.7); only the menu bar app reads the key. `--help` says which is the default.
+   - Checks after the change: Core 61,162 checks; the app suite 10,724 checks in each scroller style (default,
+     `WhenScrolling`, `Always`), with 6,461–6,582 debug comparisons and no difference (it has 46 checks more than at
+     step 7: the stress suite, the load order suite, the key suite's new checks). Main Thread Checker reports nothing
+     for the full runs of both programs. Two checks of other suites failed once each on a machine with a load average
+     of 20 or more, and pass on their own: a Rmskin check of leftover temporary folders (other processes' `Deskset-…`
+     folders in the shared temporary folder) and the stall monitor suite's busy step (now timed on the monitor's own
+     clock).
