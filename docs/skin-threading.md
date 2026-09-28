@@ -1759,3 +1759,78 @@ suite's `TestThreadExecutor`.
        main thread idle. It was stopped by its process id.
      - The default stays `main`. Stress runs on the engine thread, §10's measurements, the soak and making `engine`
        the default are the later pass's.
+
+**The later pass: stress, real skins, a soak, §10's measurements and the default (2026-09-28)**
+
+1. **The stress suite on the engine thread** ("App: threads: on the engine thread, every test and default skin loads,
+   refreshes, updates and draws in the app while the main thread is busy", `EngineStressSelfTests.swift`).
+   - An app made with `SkinThreading=engine`, so the app's own runtime is every skin's host and every skin shares the
+     one engine thread, as on a desktop. The root configs of TestSkins and the Stationery suite go into its one Skins
+     folder, each root once, so fixtures whose root config sits deeper (`TestSkins/Lua/LuaShowcase`) keep their
+     `@Resources`. MediaUI\WiFi is left out: in a skin window it asks Location Services, and the self-tests never ask.
+   - Every config (104; 142 files, the Lua skins among them) loads each of its files in turn, twice (the second load a
+     refresh). Each load is made visible in the window facts, is asked for 6 updates one after the other (`.update`,
+     as `!UpdateGroup` asks) and must present a frame. The work is bounded, so a slow machine only takes longer.
+   - Meanwhile the main thread replaces photos under the slideshows (16), purges the images (8), removes and restores
+     a skin font (6; every skin hears of it), publishes the AppKit inputs (8), moves windows (48), hovers skins (96),
+     opens their menus (24: exclusive access with the menu's 50 ms timeout, else the snapshot), reads their tooltips
+     (24), pauses and resumes every skin (4) and tells skins the appearance changed (8). The skins meanwhile refresh,
+     activate, update and unload each other (App\PingA, App\PongA, App\Closer). What skins open is noted, not opened;
+     NowPlaying uses the demo player; weather never reaches the network.
+   - It checks: nothing hangs; every load started on the engine thread, updated at least 6 times and drew (or was
+     hidden by its own bang); no load failed; at least 80 % of the loads ran to the end (the others were refreshed or
+     unloaded by another skin first: 4–8 of 284); the default skins load without a note, a file warning or a warning or
+     error in the log, at their card's size; the deep nesting fixture reaches the engine's limit on the engine thread's
+     8 MB stack; the slideshows show a version of their photo; the font-heavy skin measures with its own font; the
+     writers' keys reach their file; no weather request.
+   - Debug builds also fail every suite, not only this one, in which the engine called a runtime from another thread
+     than its skin's executor (`HostCallAudit`: the runtime's `SkinHost`, its image queries and its companion
+     channel; exclusive access counts as the owner's). No suite made such a call.
+   - Cost: about 42 s on an M4 Pro (debug build), 54 s under Main Thread Checker (nothing reported), 115 s as the
+     x86_64 build under Rosetta, 210 s under `taskpolicy -b`. `DESKSET_THREADS_SOAK=N` multiplies the loads and the
+     main thread's work.
+   - String\Review is drawn once per load. Its Border around simulated-bold Chalkduster takes CoreGraphics about 4 s
+     to draw, and every update redraws all of it: an updated meter counts as changed, so no picture of it is kept
+     (`SkinBitmapDrawing`). Drawn at every update, it held the engine thread, and so every other skin, for minutes. On
+     the main thread such a skin holds the whole app the same way; a thread for each skin (phase 3) confines it.
+2. **What the stress runs found, and the fixes.**
+   - The app self-tests wrote the playing track's covers into the user's real cache folder whenever Music was
+     playing, and each copy of the app deletes the older covers it finds there: a running Deskset and the self-tests
+     removed each other's covers ("Unable to open image" in the log). The self-tests keep `MediaUICache.root` in a
+     temporary folder from their start.
+   - The Studio latency suite allowed the desktop copy half the drag's steps plus one as previews, and failed on a busy
+     machine (20 of 36). It now allows one preview per `desktopPreviewInterval` (50 ms) of the drag's actual duration,
+     plus the first.
+   - `FrameTimingLog` (`defaults write app.deskset.Deskset FrameTimingLog -int 10`): every 10 s each skin that
+     presented frames logs how many, the time between two frames (median, 95th percentile, longest) and its longest
+     drawing. Off by default; for the measurements below.
+3. **The real skin packs** (local only, never committed: the 15 packs of the compatibility corpus).
+   - 379 of their 390 .ini files; the 11 that read the Wi-Fi network's name are left out, since a skin window asks
+     Location Services for it. 16 batches of at most 30 skins (a config at most once in a batch), each in a copy of
+     the debug build with a home of its own (`CFFIXED_USER_HOME`, a copy of the packs' Skins folder, a `state.json`
+     listing the batch, the demo audio and player, weather off, the main-thread stall log at 250 ms), for 2 minutes;
+     then a probe skin quits the app with `!Quit`. The same batch ran with `SkinThreading=main` alongside.
+   - Both modes: no crash, no ownership assertion, no hang; every batch's app quit by itself within 2 s of the
+     `!Quit` (exit status 0); the same 95 errors and 188 warnings in the logs (the packs' own: styles they never
+     define, Windows programs, missing images), apart from one more "Unable to open image" of a player skin's button
+     on main, which depends on when the demo player changes state.
+   - The main thread: with `main`, each batch's launch kept it busy for 640–1,120 ms (13 steps over 250 ms in all);
+     with `engine`, one step of 263 ms, the app's own launch before any skin loaded.
+   - **Found and fixed: the order of the loads at launch.** With `engine`, `loadActiveSkins` asked for every load at
+     once, so a skin's OnRefreshAction found the skins further down the list already registered: Enigma's Dock unloads
+     its Menu when it loads, and the Menu, next in the load order, never showed (394 skins loaded instead of 395). On
+     the main thread each load is over before the next begins: the Menu was not loaded yet when the Dock asked, and
+     loads after it. `AppController.activateInOrder` now loads the session's skins, and the first-run layout's, one
+     after another on any executor: each once the one before started, failed or was unloaded
+     (`SkinWindowController.whenSettled`). The first-run Manage window is placed once they are. The new suite "App:
+     engine thread: the session's skins load one after another, as on the main thread" (also a failed load and a skin
+     that unloads itself) fails with the loads asked for at once. Four batches ran again with the fix (the Dock's
+     among them): the same skins loaded in both modes.
+4. **The soak** (local): 60 minutes on the engine thread, in a copy of the debug build with a home of its own, of the
+   Stationery first-run layout (Clock, Calendar, Weather, System) and ten typical skins: five Stationery widgets
+   (Analog Clock, Spectrum with the demo audio, Now Playing with the demo player, Network, Temperature) and five from
+   the corpus (CoreLoads, EasyInfo, Elegant Watch, Simple Clean's visualizer, HDD_Usage_Bars' Mnml C), weather on.
+   - Memory footprint: 140 MB at minute 1 (the launch's), 107 MB from minute 5 to 40, 99 MB from minute 45 to the
+     end. Threads: 11–13 throughout. No crash.
+   - The log: no error, no warning and no main-thread step over 250 ms in the hour.
+   - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers at 60 frames a second).
