@@ -117,12 +117,7 @@ func costRun() -> JSON {
     // The backdrop (--backdrop): below the widgets, covering the grid they open in.
     var backdrop: NSPanel?
     if flag("--backdrop") {
-        let size = make().size
-        let columns = min(count, 5), rows = (count + 4) / 5
-        let first = gridOrigin(0, size: size, columns: 5)
-        let last = gridOrigin((rows - 1) * 5, size: size, columns: 5)
-        let frame = NSRect(x: first.x - 6, y: last.y - 6, width: CGFloat(columns) * (size.width + 12),
-                           height: first.y + size.height - last.y + 12)
+        let frame = gridFrame(count: count, size: make().size, columns: 5)
         let b = makePanel(frame)
         b.isOpaque = true
         b.backgroundColor = .black
@@ -265,7 +260,8 @@ func costRun() -> JSON {
     if !costs.isEmpty {
         var f: JSON = ["updates": costs.count, "p50us": r(percentile(costs, 0.5) * 1e6, 0),
                        "p99us": r(percentile(costs, 0.99) * 1e6, 0),
-                       "what": mode == .A ? "draw(_:) on the main thread (recording)" : "drawing before the commit"]
+                       "what": mode == .A ? "draw(_:) on the main thread (recording)"
+                        : mode == .B ? "updateLayer on the main thread (drawing the bitmap)" : "drawing before the commit"]
         let commits = windows.flatMap(\.commitCosts)
         if !commits.isEmpty {
             f["commitP50us"] = r(percentile(commits, 0.5) * 1e6, 0)

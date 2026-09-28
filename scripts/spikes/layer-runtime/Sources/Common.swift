@@ -264,13 +264,26 @@ func makePanel(_ frame: NSRect, clickable: Bool = false) -> NSPanel {
     return panel
 }
 
-/// Top-left placement on the main screen's visible frame, in a grid of `columns`.
+/// Placement on the main screen's visible frame in a grid of at most `columns` (fewer when they would not fit),
+/// anchored at the bottom right and growing left and up: the top left of the screen is where the Mac's owner keeps
+/// their own widgets, so the spike's windows stay away from it.
 func gridOrigin(_ index: Int, size: CGSize, columns: Int, gap: CGFloat = 12, top: CGFloat = 40) -> NSPoint {
     let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    let col = index % columns, row = index / columns
-    let x = visible.minX + 20 + CGFloat(col) * (size.width + gap)
-    let y = visible.maxY - top - CGFloat(row + 1) * size.height - CGFloat(row) * gap
+    let fit = max(1, Int((visible.width - 40 + gap) / (size.width + gap)))
+    let cols = max(1, min(columns, fit))
+    let col = index % cols, row = index / cols
+    let x = visible.maxX - 20 - CGFloat(col + 1) * size.width - CGFloat(col) * gap
+    let y = visible.minY + 20 + CGFloat(row) * (size.height + gap)
     return NSPoint(x: x, y: y)
+}
+
+/// The rectangle covering the first `count` grid cells of `gridOrigin`, grown by `margin`.
+func gridFrame(count: Int, size: CGSize, columns: Int, margin: CGFloat = 6) -> NSRect {
+    var frame = NSRect.null
+    for i in 0..<max(count, 1) {
+        frame = frame.union(NSRect(origin: gridOrigin(i, size: size, columns: columns), size: size))
+    }
+    return frame.insetBy(dx: -margin, dy: -margin)
 }
 
 // MARK: Memory pressure

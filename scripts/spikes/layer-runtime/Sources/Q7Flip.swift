@@ -115,7 +115,8 @@ func q7Flip() -> JSON {
     func run(hosting: Bool, ownFlip: Bool = false) -> JSON {
         var size = CGSize(width: 300, height: 200)
         let visible = NSScreen.main?.visibleFrame ?? .zero
-        let topLeft = NSPoint(x: visible.minX + 60, y: visible.maxY - 60)
+        // Room for the largest size (520 × 420 pt) at the bottom right (the top left of the screen is the owner's).
+        let topLeft = NSPoint(x: visible.maxX - 580, y: visible.minY + 480)
         let panel = makePanel(NSRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height))
         let container = FlippedView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true

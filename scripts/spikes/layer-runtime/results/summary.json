@@ -7447,5 +7447,1851 @@
    }
   }
  },
- "wsmem": {}
+ "wsmem": {
+  "design-A": {
+   "cleanRounds": 3,
+   "closeValues": [
+    -3,
+    -5,
+    -7,
+    2,
+    -4
+   ],
+   "config": "A",
+   "footprintIncreasePerWidgetMB": {
+    "max": 42.359,
+    "mean": 40.38,
+    "median": 41.3,
+    "min": 35.691,
+    "n": 5,
+    "standardError": 1.191
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -196.9,
+    "mean": -211.18,
+    "median": -213.3,
+    "min": -225.5,
+    "n": 5,
+    "standardError": 4.715
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 226.3,
+    "mean": 211.84,
+    "median": 212.3,
+    "min": 201.5,
+    "n": 5,
+    "standardError": 4.29
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 45.25,
+    "mean": 42.364,
+    "median": 42.45,
+    "min": 40.3,
+    "n": 5,
+    "standardError": 0.856
+   },
+   "gpuValues": [
+    205,
+    226.3,
+    212.3,
+    201.5,
+    214.1
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 0,
+    "mean": 0,
+    "median": 0,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 4.75,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 1.978,
+   "rounds": 5,
+   "scenario": "design",
+   "values": [
+    3,
+    5,
+    7,
+    1,
+    7
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1936,
+    "mean": 1918.2,
+    "median": 1916,
+    "min": 1909,
+    "n": 5,
+    "standardError": 4.883
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -3,
+    "mean": -5,
+    "median": -5,
+    "min": -7,
+    "n": 3,
+    "standardError": 1.155
+   },
+   "windowServerOpenStepMB": {
+    "max": 7,
+    "mean": 4.6,
+    "median": 5,
+    "min": 1,
+    "n": 5,
+    "standardError": 1.166
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 7,
+    "mean": 5,
+    "median": 5,
+    "min": 3,
+    "n": 3,
+    "standardError": 1.155
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1.4,
+    "mean": 0.92,
+    "median": 1,
+    "min": 0.2,
+    "n": 5,
+    "standardError": 0.233
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 1.4,
+    "mean": 1.0,
+    "median": 1,
+    "min": 0.6,
+    "n": 3,
+    "standardError": 0.231
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 0.73,
+    "mean": 0.262,
+    "median": 0.39,
+    "min": -0.59,
+    "n": 5,
+    "standardError": 0.232
+   }
+  },
+  "design-D1": {
+   "cleanRounds": 3,
+   "closeValues": [
+    -7,
+    -1,
+    -5,
+    -2,
+    -2
+   ],
+   "config": "D1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 5.697,
+    "mean": 5.588,
+    "median": 5.628,
+    "min": 5.478,
+    "n": 5,
+    "standardError": 0.042
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -7.1,
+    "mean": -24.94,
+    "median": -27.9,
+    "min": -34.5,
+    "n": 5,
+    "standardError": 4.753
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 33.8,
+    "mean": 22.96,
+    "median": 24.7,
+    "min": 13.4,
+    "n": 5,
+    "standardError": 3.497
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 6.77,
+    "mean": 4.59,
+    "median": 4.94,
+    "min": 2.68,
+    "n": 5,
+    "standardError": 0.701
+   },
+   "gpuValues": [
+    33.8,
+    13.4,
+    17.7,
+    24.7,
+    25.2
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 2.031,
+    "mean": 2.031,
+    "median": 2.031,
+    "min": 2.031,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 5.57,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 1.978,
+   "rounds": 5,
+   "scenario": "design",
+   "values": [
+    8,
+    1,
+    1,
+    0,
+    -1
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1942,
+    "mean": 1922,
+    "median": 1916,
+    "min": 1913,
+    "n": 5,
+    "standardError": 5.431
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -1,
+    "mean": -3.333,
+    "median": -2,
+    "min": -7,
+    "n": 3,
+    "standardError": 1.856
+   },
+   "windowServerOpenStepMB": {
+    "max": 8,
+    "mean": 1.8,
+    "median": 1,
+    "min": -1,
+    "n": 5,
+    "standardError": 1.594
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 8,
+    "mean": 3,
+    "median": 1,
+    "min": 0,
+    "n": 3,
+    "standardError": 2.517
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1.6,
+    "mean": 0.36,
+    "median": 0.2,
+    "min": -0.2,
+    "n": 5,
+    "standardError": 0.319
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 1.6,
+    "mean": 0.6,
+    "median": 0.2,
+    "min": 0,
+    "n": 3,
+    "standardError": 0.503
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 0.67,
+    "mean": 0.376,
+    "median": 0.31,
+    "min": 0.06,
+    "n": 5,
+    "standardError": 0.112
+   }
+  },
+  "design-DP": {
+   "cleanRounds": 0,
+   "closeValues": [
+    0,
+    -4,
+    0,
+    -1,
+    -6
+   ],
+   "config": "DP+surfaceBase@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 6.588,
+    "mean": 6.565,
+    "median": 6.569,
+    "min": 6.534,
+    "n": 5,
+    "standardError": 0.01
+   },
+   "gpuInUseCloseStepMB": {
+    "max": 202.6,
+    "mean": 21.52,
+    "median": -22.5,
+    "min": -28.3,
+    "n": 5,
+    "standardError": 45.289
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 31.4,
+    "mean": 24.88,
+    "median": 22.1,
+    "min": 19.2,
+    "n": 5,
+    "standardError": 2.563
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 6.27,
+    "mean": 4.972,
+    "median": 4.43,
+    "min": 3.84,
+    "n": 5,
+    "standardError": 0.511
+   },
+   "gpuValues": [
+    19.2,
+    22.1,
+    31.4,
+    30.7,
+    21
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 3.016,
+    "mean": 3.016,
+    "median": 3.016,
+    "min": 3.016,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 6.23,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 1.978,
+   "rounds": 5,
+   "scenario": "design",
+   "values": [
+    4,
+    0,
+    5,
+    5,
+    3
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1944,
+    "mean": 1921.2,
+    "median": 1917,
+    "min": 1910,
+    "n": 5,
+    "standardError": 6.045
+   },
+   "windowServerOpenStepMB": {
+    "max": 5,
+    "mean": 3.4,
+    "median": 4,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.927
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1,
+    "mean": 0.68,
+    "median": 0.8,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.185
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 0.89,
+    "mean": 0.492,
+    "median": 0.48,
+    "min": -0.05,
+    "n": 5,
+    "standardError": 0.173
+   }
+  },
+  "design-E1": {
+   "cleanRounds": 3,
+   "closeValues": [
+    0,
+    -3,
+    0,
+    1,
+    0
+   ],
+   "config": "E1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 5.544,
+    "mean": 4.871,
+    "median": 5.2,
+    "min": 3.309,
+    "n": 5,
+    "standardError": 0.414
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -25.3,
+    "mean": -29.22,
+    "median": -28.8,
+    "min": -33.1,
+    "n": 5,
+    "standardError": 1.398
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 33.8,
+    "mean": 27.7,
+    "median": 27.6,
+    "min": 22,
+    "n": 5,
+    "standardError": 1.998
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 6.77,
+    "mean": 5.536,
+    "median": 5.51,
+    "min": 4.4,
+    "n": 5,
+    "standardError": 0.401
+   },
+   "gpuValues": [
+    33.8,
+    27.6,
+    25.3,
+    29.8,
+    22
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 3.955,
+    "mean": 3.955,
+    "median": 3.955,
+    "min": 3.955,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 4.87,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 1.978,
+   "rounds": 5,
+   "scenario": "design",
+   "values": [
+    0,
+    3,
+    2,
+    3,
+    3
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1939,
+    "mean": 1919.6,
+    "median": 1917,
+    "min": 1910,
+    "n": 5,
+    "standardError": 5.095
+   },
+   "windowServerCloseStepMBClean": {
+    "max": 0,
+    "mean": -1,
+    "median": 0,
+    "min": -3,
+    "n": 3,
+    "standardError": 1.0
+   },
+   "windowServerOpenStepMB": {
+    "max": 3,
+    "mean": 2.2,
+    "median": 3,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.583
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 3,
+    "mean": 1.667,
+    "median": 2,
+    "min": 0,
+    "n": 3,
+    "standardError": 0.882
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.6,
+    "mean": 0.44,
+    "median": 0.6,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.117
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.6,
+    "mean": 0.333,
+    "median": 0.4,
+    "min": 0,
+    "n": 3,
+    "standardError": 0.176
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 0.91,
+    "mean": 0.648,
+    "median": 0.77,
+    "min": 0.3,
+    "n": 5,
+    "standardError": 0.129
+   }
+  },
+  "design-EP": {
+   "cleanRounds": 1,
+   "closeValues": [
+    14,
+    0,
+    0,
+    1,
+    2
+   ],
+   "config": "EP@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 3.497,
+    "mean": 3.454,
+    "median": 3.481,
+    "min": 3.341,
+    "n": 5,
+    "standardError": 0.029
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -16.6,
+    "mean": -29.22,
+    "median": -28.3,
+    "min": -48.5,
+    "n": 5,
+    "standardError": 5.512
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 35.7,
+    "mean": -25.94,
+    "median": 29.1,
+    "min": -242.6,
+    "n": 5,
+    "standardError": 54.242
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 7.14,
+    "mean": -5.188,
+    "median": 5.82,
+    "min": -48.52,
+    "n": 5,
+    "standardError": 10.848
+   },
+   "gpuValues": [
+    -242.6,
+    17.9,
+    30.2,
+    29.1,
+    35.7
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 3.114,
+    "mean": 3.114,
+    "median": 3.114,
+    "min": 3.114,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 5.6,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 1.978,
+   "rounds": 5,
+   "scenario": "design",
+   "values": [
+    -119,
+    0,
+    5,
+    5,
+    3
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1938,
+    "mean": 1919.2,
+    "median": 1916,
+    "min": 1910,
+    "n": 5,
+    "standardError": 4.934
+   },
+   "windowServerCloseStepMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerOpenStepMB": {
+    "max": 5,
+    "mean": -21.2,
+    "median": 3,
+    "min": -119,
+    "n": 5,
+    "standardError": 24.467
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1,
+    "mean": -4.24,
+    "median": 0.6,
+    "min": -23.8,
+    "n": 5,
+    "standardError": 4.893
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 2.27,
+    "mean": 1.224,
+    "median": 0.91,
+    "min": 0.86,
+    "n": 5,
+    "standardError": 0.267
+   }
+  },
+  "sixty-A": {
+   "cleanRounds": 0,
+   "closeValues": [
+    4,
+    -4,
+    -4,
+    -4,
+    5
+   ],
+   "config": "A",
+   "footprintIncreasePerWidgetMB": {
+    "max": 3.772,
+    "mean": 3.465,
+    "median": 3.369,
+    "min": 3.166,
+    "n": 5,
+    "standardError": 0.124
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -15.2,
+    "mean": -20.96,
+    "median": -19,
+    "min": -27.6,
+    "n": 5,
+    "standardError": 2.384
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 28.3,
+    "mean": 18.88,
+    "median": 23,
+    "min": 8.3,
+    "n": 5,
+    "standardError": 3.898
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 5.65,
+    "mean": 3.778,
+    "median": 4.61,
+    "min": 1.66,
+    "n": 5,
+    "standardError": 0.778
+   },
+   "gpuValues": [
+    28.3,
+    11,
+    23,
+    8.3,
+    23.8
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 2.856,
+    "mean": 2.818,
+    "median": 2.856,
+    "min": 2.666,
+    "n": 5,
+    "standardError": 0.038
+   },
+   "loadAverage1mAtStartMax": 8.66,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.476,
+   "rounds": 5,
+   "scenario": "sixty",
+   "values": [
+    1,
+    -2,
+    -1,
+    0,
+    1
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1941,
+    "mean": 1922.8,
+    "median": 1916,
+    "min": 1915,
+    "n": 5,
+    "standardError": 5.083
+   },
+   "windowServerOpenStepMB": {
+    "max": 1,
+    "mean": -0.2,
+    "median": 0,
+    "min": -2,
+    "n": 5,
+    "standardError": 0.583
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.2,
+    "mean": -0.04,
+    "median": 0,
+    "min": -0.4,
+    "n": 5,
+    "standardError": 0.117
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.17,
+    "mean": 0.892,
+    "median": 0.97,
+    "min": 0.38,
+    "n": 5,
+    "standardError": 0.136
+   }
+  },
+  "sixty-D1": {
+   "cleanRounds": 1,
+   "closeValues": [
+    -4,
+    0,
+    0,
+    4,
+    5
+   ],
+   "config": "D1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.322,
+    "mean": 2.205,
+    "median": 2.253,
+    "min": 1.953,
+    "n": 5,
+    "standardError": 0.065
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -0.6,
+    "mean": -17.68,
+    "median": -15.2,
+    "min": -40.1,
+    "n": 5,
+    "standardError": 6.959
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 36.6,
+    "mean": 17.7,
+    "median": 12,
+    "min": 3,
+    "n": 5,
+    "standardError": 5.908
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 7.32,
+    "mean": 3.538,
+    "median": 2.4,
+    "min": 0.6,
+    "n": 5,
+    "standardError": 1.181
+   },
+   "gpuValues": [
+    3,
+    25.2,
+    36.6,
+    12,
+    11.7
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 0.5,
+    "mean": 0.5,
+    "median": 0.5,
+    "min": 0.5,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 6.41,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.476,
+   "rounds": 5,
+   "scenario": "sixty",
+   "values": [
+    0,
+    0,
+    -5,
+    1,
+    1
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1946,
+    "mean": 1924.8,
+    "median": 1922,
+    "min": 1913,
+    "n": 5,
+    "standardError": 5.826
+   },
+   "windowServerCloseStepMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerOpenStepMB": {
+    "max": 1,
+    "mean": -0.6,
+    "median": 0,
+    "min": -5,
+    "n": 5,
+    "standardError": 1.122
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.2,
+    "mean": -0.12,
+    "median": 0,
+    "min": -1,
+    "n": 5,
+    "standardError": 0.224
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0,
+    "median": 0,
+    "min": 0,
+    "n": 1
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.47,
+    "mean": 0.878,
+    "median": 0.81,
+    "min": 0.41,
+    "n": 5,
+    "standardError": 0.182
+   }
+  },
+  "sixty-DP": {
+   "cleanRounds": 2,
+   "closeValues": [
+    -6,
+    4,
+    -5,
+    -2,
+    -1
+   ],
+   "config": "DP+surfaceBase@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 4.106,
+    "mean": 3.829,
+    "median": 3.903,
+    "min": 3.491,
+    "n": 5,
+    "standardError": 0.131
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -4.7,
+    "mean": -14.24,
+    "median": -14.2,
+    "min": -24.4,
+    "n": 5,
+    "standardError": 3.547
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 28.6,
+    "mean": 14.36,
+    "median": 10.8,
+    "min": 7.7,
+    "n": 5,
+    "standardError": 3.697
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 5.73,
+    "mean": 2.874,
+    "median": 2.15,
+    "min": 1.54,
+    "n": 5,
+    "standardError": 0.742
+   },
+   "gpuValues": [
+    14,
+    10.8,
+    28.6,
+    7.7,
+    10.7
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 1.063,
+    "mean": 1.063,
+    "median": 1.063,
+    "min": 1.063,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 6.73,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.476,
+   "rounds": 5,
+   "scenario": "sixty",
+   "values": [
+    1,
+    0,
+    5,
+    1,
+    -2
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1951,
+    "mean": 1925,
+    "median": 1922,
+    "min": 1909,
+    "n": 5,
+    "standardError": 7.701
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -2,
+    "mean": -3.5,
+    "median": -3.5,
+    "min": -5,
+    "n": 2,
+    "standardError": 1.5
+   },
+   "windowServerOpenStepMB": {
+    "max": 5,
+    "mean": 1,
+    "median": 1,
+    "min": -2,
+    "n": 5,
+    "standardError": 1.14
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 5,
+    "mean": 3,
+    "median": 3.0,
+    "min": 1,
+    "n": 2,
+    "standardError": 2.0
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1,
+    "mean": 0.2,
+    "median": 0.2,
+    "min": -0.4,
+    "n": 5,
+    "standardError": 0.228
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 1,
+    "mean": 0.6,
+    "median": 0.6,
+    "min": 0.2,
+    "n": 2,
+    "standardError": 0.4
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.36,
+    "mean": 0.744,
+    "median": 0.77,
+    "min": -0.02,
+    "n": 5,
+    "standardError": 0.232
+   }
+  },
+  "sixty-E1": {
+   "cleanRounds": 2,
+   "closeValues": [
+    0,
+    3,
+    1,
+    2,
+    0
+   ],
+   "config": "E1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.206,
+    "mean": 2.01,
+    "median": 1.972,
+    "min": 1.913,
+    "n": 5,
+    "standardError": 0.051
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -3.9,
+    "mean": -36.18,
+    "median": -13.7,
+    "min": -141.5,
+    "n": 5,
+    "standardError": 26.398
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 22.6,
+    "mean": 11.24,
+    "median": 12.9,
+    "min": -0.6,
+    "n": 5,
+    "standardError": 3.801
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 4.53,
+    "mean": 2.254,
+    "median": 2.58,
+    "min": -0.11,
+    "n": 5,
+    "standardError": 0.76
+   },
+   "gpuValues": [
+    -0.6,
+    22.6,
+    13.5,
+    12.9,
+    7.8
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 1.428,
+    "mean": 1.276,
+    "median": 1.238,
+    "min": 1.143,
+    "n": 5,
+    "standardError": 0.064
+   },
+   "loadAverage1mAtStartMax": 7.05,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.476,
+   "rounds": 5,
+   "scenario": "sixty",
+   "values": [
+    -3,
+    2,
+    0,
+    2,
+    1
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1943,
+    "mean": 1921.4,
+    "median": 1920,
+    "min": 1910,
+    "n": 5,
+    "standardError": 5.955
+   },
+   "windowServerCloseStepMBClean": {
+    "max": 1,
+    "mean": 0.5,
+    "median": 0.5,
+    "min": 0,
+    "n": 2,
+    "standardError": 0.5
+   },
+   "windowServerOpenStepMB": {
+    "max": 2,
+    "mean": 0.4,
+    "median": 1,
+    "min": -3,
+    "n": 5,
+    "standardError": 0.927
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 1,
+    "mean": 0.5,
+    "median": 0.5,
+    "min": 0,
+    "n": 2,
+    "standardError": 0.5
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.4,
+    "mean": 0.08,
+    "median": 0.2,
+    "min": -0.6,
+    "n": 5,
+    "standardError": 0.185
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.2,
+    "mean": 0.1,
+    "median": 0.1,
+    "min": 0,
+    "n": 2,
+    "standardError": 0.1
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.84,
+    "mean": 0.988,
+    "median": 1,
+    "min": 0.36,
+    "n": 5,
+    "standardError": 0.276
+   }
+  },
+  "sixty-EP": {
+   "cleanRounds": 0,
+   "closeValues": [
+    -1,
+    0,
+    0,
+    -5,
+    2
+   ],
+   "config": "EP@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.016,
+    "mean": 1.973,
+    "median": 1.956,
+    "min": 1.947,
+    "n": 5,
+    "standardError": 0.014
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -4.4,
+    "mean": -12.98,
+    "median": -9.3,
+    "min": -24.9,
+    "n": 5,
+    "standardError": 3.667
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 28.4,
+    "mean": 14.44,
+    "median": 13.6,
+    "min": -0.3,
+    "n": 5,
+    "standardError": 6.101
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 5.69,
+    "mean": 2.892,
+    "median": 2.72,
+    "min": -0.06,
+    "n": 5,
+    "standardError": 1.222
+   },
+   "gpuValues": [
+    2.4,
+    -0.3,
+    28.1,
+    13.6,
+    28.4
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 0.768,
+    "mean": 0.768,
+    "median": 0.768,
+    "min": 0.768,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 7.51,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.476,
+   "rounds": 5,
+   "scenario": "sixty",
+   "values": [
+    -4,
+    -4,
+    5,
+    1,
+    4
+   ],
+   "widgets": 5,
+   "windowServerBeforeMB": {
+    "max": 1944,
+    "mean": 1924,
+    "median": 1922,
+    "min": 1911,
+    "n": 5,
+    "standardError": 6.042
+   },
+   "windowServerOpenStepMB": {
+    "max": 5,
+    "mean": 0.4,
+    "median": 1,
+    "min": -4,
+    "n": 5,
+    "standardError": 1.913
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 1,
+    "mean": 0.08,
+    "median": 0.2,
+    "min": -0.8,
+    "n": 5,
+    "standardError": 0.383
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 2.47,
+    "mean": 1.434,
+    "median": 1.28,
+    "min": 0.91,
+    "n": 5,
+    "standardError": 0.273
+   }
+  },
+  "ten-A": {
+   "cleanRounds": 5,
+   "closeValues": [
+    -10,
+    -8,
+    -9,
+    -16,
+    -8
+   ],
+   "config": "A",
+   "footprintIncreasePerWidgetMB": {
+    "max": 12.049,
+    "mean": 11.911,
+    "median": 11.96,
+    "min": 11.748,
+    "n": 5,
+    "standardError": 0.055
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -248.4,
+    "mean": -253.06,
+    "median": -252.8,
+    "min": -256.7,
+    "n": 5,
+    "standardError": 1.495
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 264.2,
+    "mean": 253.3,
+    "median": 254.6,
+    "min": 245.1,
+    "n": 5,
+    "standardError": 3.595
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 13.21,
+    "mean": 12.662,
+    "median": 12.73,
+    "min": 12.25,
+    "n": 5,
+    "standardError": 0.181
+   },
+   "gpuValues": [
+    245.7,
+    245.1,
+    256.9,
+    264.2,
+    254.6
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 0,
+    "mean": 0,
+    "median": 0,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 5.91,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.778,
+   "rounds": 5,
+   "scenario": "ten",
+   "values": [
+    9,
+    8,
+    10,
+    16,
+    9
+   ],
+   "widgets": 20,
+   "windowServerBeforeMB": {
+    "max": 1933,
+    "mean": 1919,
+    "median": 1916,
+    "min": 1911,
+    "n": 5,
+    "standardError": 3.962
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -8,
+    "mean": -10.2,
+    "median": -9,
+    "min": -16,
+    "n": 5,
+    "standardError": 1.497
+   },
+   "windowServerOpenStepMB": {
+    "max": 16,
+    "mean": 10.4,
+    "median": 9,
+    "min": 8,
+    "n": 5,
+    "standardError": 1.435
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 16,
+    "mean": 10.4,
+    "median": 9,
+    "min": 8,
+    "n": 5,
+    "standardError": 1.435
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.8,
+    "mean": 0.52,
+    "median": 0.45,
+    "min": 0.4,
+    "n": 5,
+    "standardError": 0.072
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.8,
+    "mean": 0.52,
+    "median": 0.45,
+    "min": 0.4,
+    "n": 5,
+    "standardError": 0.072
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.31,
+    "mean": 0.772,
+    "median": 0.7,
+    "min": 0.41,
+    "n": 5,
+    "standardError": 0.153
+   }
+  },
+  "ten-D1": {
+   "cleanRounds": 1,
+   "closeValues": [
+    -2,
+    -10,
+    -6,
+    -2,
+    -8
+   ],
+   "config": "D1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.351,
+    "mean": 2.22,
+    "median": 2.151,
+    "min": 2.133,
+    "n": 5,
+    "standardError": 0.048
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -26.9,
+    "mean": -33.84,
+    "median": -36.1,
+    "min": -38.9,
+    "n": 5,
+    "standardError": 2.252
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 59.8,
+    "mean": 39.06,
+    "median": 34.3,
+    "min": 28.2,
+    "n": 5,
+    "standardError": 5.595
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 2.99,
+    "mean": 1.952,
+    "median": 1.72,
+    "min": 1.41,
+    "n": 5,
+    "standardError": 0.28
+   },
+   "gpuValues": [
+    28.2,
+    59.8,
+    34.3,
+    41.1,
+    31.9
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 0.828,
+    "mean": 0.828,
+    "median": 0.828,
+    "min": 0.828,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 5.37,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.778,
+   "rounds": 5,
+   "scenario": "ten",
+   "values": [
+    2,
+    0,
+    1,
+    7,
+    4
+   ],
+   "widgets": 20,
+   "windowServerBeforeMB": {
+    "max": 1937,
+    "mean": 1920,
+    "median": 1916,
+    "min": 1913,
+    "n": 5,
+    "standardError": 4.359
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -2,
+    "median": -2,
+    "min": -2,
+    "n": 1
+   },
+   "windowServerOpenStepMB": {
+    "max": 7,
+    "mean": 2.8,
+    "median": 2,
+    "min": 0,
+    "n": 5,
+    "standardError": 1.241
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 2,
+    "median": 2,
+    "min": 2,
+    "n": 1
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.35,
+    "mean": 0.14,
+    "median": 0.1,
+    "min": 0,
+    "n": 5,
+    "standardError": 0.062
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.1,
+    "median": 0.1,
+    "min": 0.1,
+    "n": 1
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 1.19,
+    "mean": 0.802,
+    "median": 0.73,
+    "min": 0.61,
+    "n": 5,
+    "standardError": 0.105
+   }
+  },
+  "ten-DP": {
+   "cleanRounds": 3,
+   "closeValues": [
+    105,
+    -3,
+    -8,
+    -5,
+    -3
+   ],
+   "config": "DP+surfaceBase@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 3.655,
+    "mean": 3.542,
+    "median": 3.519,
+    "min": 3.487,
+    "n": 5,
+    "standardError": 0.03
+   },
+   "gpuInUseCloseStepMB": {
+    "max": 254.7,
+    "mean": 11.28,
+    "median": -51.4,
+    "min": -53.2,
+    "n": 5,
+    "standardError": 60.885
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 55.5,
+    "mean": 22.06,
+    "median": 50.4,
+    "min": -92.9,
+    "n": 5,
+    "standardError": 28.837
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 2.77,
+    "mean": 1.102,
+    "median": 2.52,
+    "min": -4.64,
+    "n": 5,
+    "standardError": 1.44
+   },
+   "gpuValues": [
+    -92.9,
+    42.3,
+    55,
+    50.4,
+    55.5
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 1.563,
+    "mean": 1.563,
+    "median": 1.563,
+    "min": 1.563,
+    "n": 5,
+    "standardError": 0.0
+   },
+   "loadAverage1mAtStartMax": 4.67,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.778,
+   "rounds": 5,
+   "scenario": "ten",
+   "values": [
+    -102,
+    3,
+    8,
+    3,
+    9
+   ],
+   "widgets": 20,
+   "windowServerBeforeMB": {
+    "max": 1933,
+    "mean": 1917.8,
+    "median": 1914,
+    "min": 1910,
+    "n": 5,
+    "standardError": 4.067
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -3,
+    "mean": -5.333,
+    "median": -5,
+    "min": -8,
+    "n": 3,
+    "standardError": 1.453
+   },
+   "windowServerOpenStepMB": {
+    "max": 9,
+    "mean": -15.8,
+    "median": 3,
+    "min": -102,
+    "n": 5,
+    "standardError": 21.586
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 8,
+    "mean": 4.667,
+    "median": 3,
+    "min": 3,
+    "n": 3,
+    "standardError": 1.667
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.45,
+    "mean": -0.79,
+    "median": 0.15,
+    "min": -5.1,
+    "n": 5,
+    "standardError": 1.079
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.4,
+    "mean": 0.233,
+    "median": 0.15,
+    "min": 0.15,
+    "n": 3,
+    "standardError": 0.083
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 3.36,
+    "mean": 1.372,
+    "median": 0.7,
+    "min": 0.52,
+    "n": 5,
+    "standardError": 0.531
+   }
+  },
+  "ten-E1": {
+   "cleanRounds": 3,
+   "closeValues": [
+    -2,
+    0,
+    -2,
+    -6,
+    -1
+   ],
+   "config": "E1@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.03,
+    "mean": 1.722,
+    "median": 1.852,
+    "min": 1.378,
+    "n": 5,
+    "standardError": 0.136
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -18.9,
+    "mean": -32.38,
+    "median": -34.5,
+    "min": -38.8,
+    "n": 5,
+    "standardError": 3.68
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 46.1,
+    "mean": 36.66,
+    "median": 39.3,
+    "min": 20.8,
+    "n": 5,
+    "standardError": 4.451
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 2.31,
+    "mean": 1.836,
+    "median": 1.97,
+    "min": 1.04,
+    "n": 5,
+    "standardError": 0.224
+   },
+   "gpuValues": [
+    34,
+    20.8,
+    43.1,
+    39.3,
+    46.1
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 1.75,
+    "mean": 1.61,
+    "median": 1.555,
+    "min": 1.555,
+    "n": 5,
+    "standardError": 0.038
+   },
+   "loadAverage1mAtStartMax": 5.99,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.778,
+   "rounds": 5,
+   "scenario": "ten",
+   "values": [
+    4,
+    1,
+    6,
+    5,
+    6
+   ],
+   "widgets": 20,
+   "windowServerBeforeMB": {
+    "max": 1930,
+    "mean": 1917,
+    "median": 1914,
+    "min": 1910,
+    "n": 5,
+    "standardError": 3.493
+   },
+   "windowServerCloseStepMBClean": {
+    "max": 0,
+    "mean": -2.667,
+    "median": -2,
+    "min": -6,
+    "n": 3,
+    "standardError": 1.764
+   },
+   "windowServerOpenStepMB": {
+    "max": 6,
+    "mean": 4.4,
+    "median": 5,
+    "min": 1,
+    "n": 5,
+    "standardError": 0.927
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 5,
+    "mean": 3.333,
+    "median": 4,
+    "min": 1,
+    "n": 3,
+    "standardError": 1.202
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.3,
+    "mean": 0.22,
+    "median": 0.25,
+    "min": 0.05,
+    "n": 5,
+    "standardError": 0.046
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.25,
+    "mean": 0.167,
+    "median": 0.2,
+    "min": 0.05,
+    "n": 3,
+    "standardError": 0.06
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 2.2,
+    "mean": 1.55,
+    "median": 1.52,
+    "min": 1.06,
+    "n": 5,
+    "standardError": 0.204
+   }
+  },
+  "ten-EP": {
+   "cleanRounds": 5,
+   "closeValues": [
+    -1,
+    -2,
+    -1,
+    -8,
+    -5
+   ],
+   "config": "EP@srgb",
+   "footprintIncreasePerWidgetMB": {
+    "max": 2.081,
+    "mean": 1.961,
+    "median": 1.964,
+    "min": 1.866,
+    "n": 5,
+    "standardError": 0.037
+   },
+   "gpuInUseCloseStepMB": {
+    "max": -24,
+    "mean": -65.28,
+    "median": -44.8,
+    "min": -174.3,
+    "n": 5,
+    "standardError": 27.813
+   },
+   "gpuInUseOpenStepMB": {
+    "max": 176.9,
+    "mean": 66.36,
+    "median": 49,
+    "min": 19.1,
+    "n": 5,
+    "standardError": 28.22
+   },
+   "gpuInUseOpenStepPerWidgetMB": {
+    "max": 8.84,
+    "mean": 3.318,
+    "median": 2.45,
+    "min": 0.96,
+    "n": 5,
+    "standardError": 1.409
+   },
+   "gpuValues": [
+    35.7,
+    19.1,
+    51.1,
+    176.9,
+    49
+   ],
+   "layerBitmapsPerWidgetMB": {
+    "max": 1.621,
+    "mean": 1.596,
+    "median": 1.583,
+    "min": 1.583,
+    "n": 5,
+    "standardError": 0.008
+   },
+   "loadAverage1mAtStartMax": 6.67,
+   "memoryPressureLevels": [
+    1
+   ],
+   "oneBitmapOfTheWindowMB": 0.778,
+   "rounds": 5,
+   "scenario": "ten",
+   "values": [
+    2,
+    2,
+    2,
+    8,
+    3
+   ],
+   "widgets": 20,
+   "windowServerBeforeMB": {
+    "max": 1936,
+    "mean": 1919.8,
+    "median": 1914,
+    "min": 1912,
+    "n": 5,
+    "standardError": 4.477
+   },
+   "windowServerCloseStepMBClean": {
+    "max": -1,
+    "mean": -3.4,
+    "median": -2,
+    "min": -8,
+    "n": 5,
+    "standardError": 1.364
+   },
+   "windowServerOpenStepMB": {
+    "max": 8,
+    "mean": 3.4,
+    "median": 2,
+    "min": 2,
+    "n": 5,
+    "standardError": 1.166
+   },
+   "windowServerOpenStepMBClean": {
+    "max": 8,
+    "mean": 3.4,
+    "median": 2,
+    "min": 2,
+    "n": 5,
+    "standardError": 1.166
+   },
+   "windowServerOpenStepPerWidgetMB": {
+    "max": 0.4,
+    "mean": 0.17,
+    "median": 0.1,
+    "min": 0.1,
+    "n": 5,
+    "standardError": 0.058
+   },
+   "windowServerOpenStepPerWidgetMBClean": {
+    "max": 0.4,
+    "mean": 0.17,
+    "median": 0.1,
+    "min": 0.1,
+    "n": 5,
+    "standardError": 0.058
+   },
+   "windowServerResidentOpenStepMB": {
+    "max": 7.05,
+    "mean": 5.69,
+    "median": 5.42,
+    "min": 5.17,
+    "n": 5,
+    "standardError": 0.347
+   }
+  }
+ }
 }

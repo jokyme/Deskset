@@ -102,7 +102,8 @@ func q6SharedBase() -> JSON {
     func openWindow() -> (NSPanel, CALayer) {
         let size = CGSize(width: CGFloat(W) / scale, height: CGFloat(H) / scale)
         let visible = NSScreen.main?.visibleFrame ?? .zero
-        let panel = makePanel(NSRect(x: visible.minX + 20, y: visible.maxY - 20 - min(size.height, visible.height - 40),
+        // Bottom right (the top left of the screen is the owner's).
+        let panel = makePanel(NSRect(x: visible.maxX - 20 - size.width, y: visible.minY + 20,
                                      width: size.width, height: size.height))
         if let cs = nsColorSpace(space, screen: panel.screen) { panel.colorSpace = cs }
         let host = ContentHostView(frame: NSRect(origin: .zero, size: size))

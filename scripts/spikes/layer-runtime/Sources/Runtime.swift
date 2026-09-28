@@ -1,7 +1,10 @@
 // A skin window in one of the ways a skin can reach the screen:
 //
-//   A    today: a flipped view draws the whole skin in draw(_:) on the main thread (a display list the window server
-//        rasterizes).
+//   A    the drawing Deskset used until 2026-09-27: a flipped view draws the whole skin in draw(_:) on the main thread
+//        (a display-list context; Core Animation rasterizes it in this process on its accelerated path).
+//   B    Deskset's drawing since then: the view draws the whole skin on the main thread into a bitmap of its own
+//        (8-bit, premultiplied BGRA, in the window's color space, two bitmaps used in turn) and sets it as its
+//        layer's contents in updateLayer. (Deskset also keeps pictures of unchanged meters; B draws in full.)
 //   E1   one layer the skin thread redraws (setNeedsDisplay + displayIfNeeded, draw(in:) paints the whole skin).
 //   EP   the partition (Partition.swift): base tiles showing one shared base bitmap through contentsRect, plus one layer
 //        per group that the skin thread redraws with draw(in:) (base pixels copied in, then the group's elements).
@@ -20,8 +23,10 @@ import IOSurface
 import QuartzCore
 
 enum Mode: String, CaseIterable {
-    case A, E1, EP, D1, DP, OVE, OVD
-    var isLayered: Bool { self != .A }
+    case A, B, E1, EP, D1, DP, OVE, OVD
+    /// A and B: a view drawn on the main thread (no contentRoot).
+    var isView: Bool { self == .A || self == .B }
+    var isLayered: Bool { !isView }
     var isD: Bool { self == .D1 || self == .DP || self == .OVD }
 }
 
@@ -88,14 +93,21 @@ final class ContentHostView: NSView {
     override func updateLayer() {}
 }
 
-/// Today's SkinView: draws the whole skin in draw(_:) on the main thread.
+/// Deskset's SkinView: A draws the whole skin in draw(_:) on the main thread; B (`ownBitmap`) draws it in
+/// updateLayer into a bitmap of its own and sets that as the layer's contents.
 final class SkinDrawView: NSView {
     var paint: ((CGContext) -> Void)?
-    /// How long each draw(_:) took (recording the display list; the rasterization happens later, elsewhere).
+    /// How long each drawing took (A: recording the display list, rasterized later; B: drawing the bitmap).
     var onDrawn: ((Double) -> Void)?
     var label = "A"
+    /// B: draw into our own bitmaps (updateLayer) instead of draw(_:).
+    var ownBitmap = false
+    private var bitmaps: [CGContext] = []
+    private var nextBitmap = 0
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
+    override var wantsUpdateLayer: Bool { ownBitmap }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let start = now()
@@ -104,6 +116,42 @@ final class SkinDrawView: NSView {
         paint?(ctx)
         onDrawn?(now() - start)
     }
+
+    /// Like Deskset's SkinBitmapDrawing without its kept pictures: the window's color space (sRGB when it has
+    /// none), 8-bit premultiplied BGRA, two bitmaps used in turn so drawing never writes into the image the layer
+    /// still shows.
+    override func updateLayer() {
+        guard let layer, let paint else { return }
+        let scale = window?.backingScaleFactor ?? 2
+        let space = window?.colorSpace?.cgColorSpace ?? sRGB
+        let w = Int((bounds.width * scale).rounded(.up)), h = Int((bounds.height * scale).rounded(.up))
+        if bitmaps.count != 2 || bitmaps[0].width != w || bitmaps[0].height != h
+            || !CFEqual(bitmaps[0].colorSpace, space) {
+            bitmaps = (0..<2).compactMap { _ in
+                CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                            | CGBitmapInfo.byteOrder32Little.rawValue)
+            }
+            nextBitmap = 0
+        }
+        guard bitmaps.count == 2 else { return }
+        let start = now()
+        let ctx = bitmaps[nextBitmap]
+        nextBitmap = 1 - nextBitmap
+        ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: scale, y: -scale)
+        noteContext(ctx, label)
+        paint(ctx)
+        ctx.restoreGState()
+        layer.contentsScale = scale
+        layer.contents = ctx.makeImage()
+        onDrawn?(now() - start)
+    }
+
+    /// B: bytes of the two bitmaps.
+    var ownedBitmapBytes: Int { bitmaps.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
 }
 
 // MARK: Context introspection
@@ -323,9 +371,10 @@ final class SkinWindow {
         // Like Deskset: the skin view does not ask for a layer itself (AppKit gives every view in the window one).
         if config.mode.isLayered { container.wantsLayer = true }
         panel.contentView = container
-        if config.mode == .A {
+        if config.mode.isView {
             let v = SkinDrawView(frame: container.bounds)
             v.label = config.label
+            v.ownBitmap = config.mode == .B
             v.paint = { [unowned self] ctx in widget.draw(ctx, tick: tick) }
             v.onDrawn = { [unowned self] d in recordDraw(d) }
             container.addSubview(v)
@@ -358,7 +407,7 @@ final class SkinWindow {
     /// Builds the layer tree and commits the first frame at `tick`, on the skin's executor; returns when done.
     func buildAndCommit(tick first: Int) {
         tick = first
-        if config.mode == .A {
+        if config.mode.isView {
             drawView?.needsDisplay = true
             return
         }
@@ -436,7 +485,7 @@ final class SkinWindow {
     private func build() {
         let size = widget.size
         switch config.mode {
-        case .A:
+        case .A, .B:
             break
         case .E1:
             let l = PaintLayer()
@@ -666,7 +715,7 @@ final class SkinWindow {
         // Every update drains its own autorelease pool (see RunLoopThread.perform).
         let t = Timer(timeInterval: interval, repeats: true) { [unowned self] _ in autoreleasepool { step() } }
         t.tolerance = interval >= 0.5 ? 0.01 : 0.001
-        if config.mode == .A || thread == nil {
+        if config.mode.isView || thread == nil {
             RunLoop.main.add(t, forMode: .common)
             timer = t
         } else {
@@ -689,7 +738,7 @@ final class SkinWindow {
         let a = now()
         tick = next
         guard widget.changed(at: next) else { return }
-        if config.mode == .A {
+        if config.mode.isView {
             drawView?.needsDisplay = true
             record(commit: now(), cost: nil)
             return
@@ -697,7 +746,7 @@ final class SkinWindow {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         switch config.mode {
-        case .A:
+        case .A, .B:
             break
         case .E1, .OVE:
             for l in [single, topLayer].compactMap({ $0 }) {
@@ -733,7 +782,7 @@ final class SkinWindow {
 
     /// Bytes of bitmaps this window's runtime owns itself (D surface pools, the base bitmap, the scratch bitmap).
     var ownedBitmapBytes: Int {
-        var n = pools.reduce(0) { $0 + $1.bytes } + (singlePool?.bytes ?? 0)
+        var n = pools.reduce(0) { $0 + $1.bytes } + (singlePool?.bytes ?? 0) + (drawView?.ownedBitmapBytes ?? 0)
         if let base { n += base.bytesPerRow * base.height }
         if let s = baseSurface { n += s.allocationSize }
         if let c = scratchContext { n += c.bytesPerRow * c.height }

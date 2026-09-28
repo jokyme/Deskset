@@ -1,4 +1,5 @@
-// Question 1 and the pixel half of question 2: the same System-like skin shown as A (today's view drawing), E1 (one
+// Question 1 and the pixel half of question 2: the same System-like skin shown as A (the view drawing Deskset used
+// until 2026-09-27), B (Deskset's own-bitmap drawing since then), E1 (one
 // E layer), EP (the partition, E groups), D1 / DP (IOSurface contents) and two naive overlapping-layer variants,
 // read back from the window server one window at a time and compared pixel by pixel. Also composited over an
 // opaque backdrop window (what a person sees over the desktop).
@@ -86,41 +87,65 @@ struct Shot {
     let stable: Bool
 }
 
-/// Shows `configs` side by side, waits for them to render, and captures each (alone, and over a backdrop).
-func captureModes(_ widget: Widget, _ configs: [Config], tick: Int, backdrops: Bool, columns: Int = 4)
-    -> (shots: [Shot], windows: [SkinWindow], backings: JSON) {
-    let thread = sharedSkinThread
-    var windows: [SkinWindow] = []
-    for (i, c) in configs.enumerated() {
-        let w = SkinWindow(widget, c, origin: gridOrigin(i, size: widget.size, columns: columns), thread: thread)
-        w.buildAndCommit(tick: tick)
-        w.show()
-        windows.append(w)
-    }
-    var backdropWindows: [NSPanel] = []
-    if backdrops {
-        let image = backdropImage(widget.size, scale: windows.first?.scale ?? 2)
-        for w in windows { backdropWindows.append(makeBackdrop(for: w.panel, image: image)) }
-    }
-    pump(1.5)
+/// What `captureModes` saw: one shot per config, and the windows' scale and screen.
+struct Capture {
     var shots: [Shot] = []
+    var scale: CGFloat = 2
+    var screenSpace: CGColorSpace?
     var backings: JSON = [:]
-    for (w, c) in zip(windows, configs) {
-        guard let first = captureWindow(w.panel) else { continue }
-        pump(0.15)
-        let second = captureWindow(w.panel)
-        let a = Pixels.of(first)
-        let stable = second.map { compare(a, Pixels.of($0)).differing == 0 } ?? false
-        var over: Pixels?
-        if backdrops, let i = windows.firstIndex(where: { $0 === w }),
-           let img = captureWindows([w.panel, backdropWindows[i]]) {
-            over = Pixels.of(img)
+    var windowColorSpaces: [String] = []
+}
+
+/// Shows `configs` a few at a time (`batch` windows in a small grid at the bottom right of the screen), waits for
+/// them to render, captures each (alone, and over a backdrop), lets `whileOpen` use the batch's windows, and closes
+/// them before the next batch. Every capture reads one window (or one window and its backdrop), so the pixels do not
+/// depend on what else is on screen.
+func captureModes(_ widget: Widget, _ configs: [Config], tick: Int, backdrops: Bool, batch: Int = 4,
+                  whileOpen: (([SkinWindow]) -> Void)? = nil) -> Capture {
+    let thread = sharedSkinThread
+    var result = Capture()
+    var first = true
+    for chunkStart in stride(from: 0, to: configs.count, by: batch) {
+        let chunk = Array(configs[chunkStart..<min(chunkStart + batch, configs.count)])
+        var windows: [SkinWindow] = []
+        for (i, c) in chunk.enumerated() {
+            let w = SkinWindow(widget, c, origin: gridOrigin(i, size: widget.size, columns: 2), thread: thread)
+            w.buildAndCommit(tick: tick)
+            w.show()
+            windows.append(w)
         }
-        shots.append(Shot(label: c.label, alone: a, overBackdrop: over, format: describe(first), stable: stable))
-        if c.mode.isLayered { backings[c.label] = backingSummary(w.contentRoot) }
+        if first, let w = windows.first {
+            result.scale = w.scale
+            result.screenSpace = w.panel.screen?.colorSpace?.cgColorSpace
+            first = false
+        }
+        var backdropWindows: [NSPanel] = []
+        if backdrops {
+            let image = backdropImage(widget.size, scale: windows.first?.scale ?? 2)
+            for w in windows { backdropWindows.append(makeBackdrop(for: w.panel, image: image)) }
+        }
+        pump(1.5)
+        for (i, (w, c)) in zip(windows, chunk).enumerated() {
+            result.windowColorSpaces.append(w.panel.colorSpace?.localizedName ?? "none")
+            guard let firstImage = captureWindow(w.panel) else { continue }
+            pump(0.15)
+            let second = captureWindow(w.panel)
+            let a = Pixels.of(firstImage)
+            let stable = second.map { compare(a, Pixels.of($0)).differing == 0 } ?? false
+            var over: Pixels?
+            if backdrops, let img = captureWindows([w.panel, backdropWindows[i]]) {
+                over = Pixels.of(img)
+            }
+            result.shots.append(Shot(label: c.label, alone: a, overBackdrop: over, format: describe(firstImage),
+                                     stable: stable))
+            if c.mode.isLayered { result.backings[c.label] = backingSummary(w.contentRoot) }
+        }
+        for b in backdropWindows { b.orderOut(nil) }
+        whileOpen?(windows)
+        for w in windows { w.close() }
+        pump(0.3)
     }
-    for b in backdropWindows { b.orderOut(nil) }
-    return (shots, windows, backings)
+    return result
 }
 
 /// Comparison of two shots, split into pixels inside the partition's group boxes and the rest (base tiles).
@@ -154,6 +179,7 @@ func q1Screen() -> JSON {
             names.append(name + suffix)
         }
         add("A", .A)
+        add("B", .B)
         add("E1", .E1)
         add("EP", .EP)
         add("EPx", .EP, scratch: true)
@@ -165,9 +191,10 @@ func q1Screen() -> JSON {
         add("OVD", .OVD)
     }
     contextLog.reset()
-    let (shots, windows, backings) = captureModes(widget, configs, tick: tick, backdrops: true, columns: 5)
+    let capture = captureModes(widget, configs, tick: tick, backdrops: true)
+    let shots = capture.shots, backings = capture.backings
     guard shots.count == configs.count else { return ["error": "capture failed"] }
-    let scale = windows[0].scale
+    let scale = capture.scale
     let p = partition(widget, scale: scale)
     let boxes = p.groups.map(\.box)
     func shot(_ n: String) -> Shot { shots[names.firstIndex(of: n)!] }
@@ -179,22 +206,24 @@ func q1Screen() -> JSON {
     var pairs: JSON = [:]
     for sfx in ["", "@srgb"] {
         for (a, b) in [("EP", "E1"), ("EPx", "E1"), ("E1", "A"), ("EP", "A"), ("D1", "E1"), ("DP", "E1"),
-                       ("DP", "D1"), ("DPx", "D1"), ("DPx", "E1"), ("D1", "A"), ("OVE", "E1"), ("OVD", "D1")] {
+                       ("DP", "D1"), ("DPx", "D1"), ("DPx", "E1"), ("D1", "A"), ("OVE", "E1"), ("OVD", "D1"),
+                       ("B", "A"), ("E1", "B"), ("EP", "B"), ("EPx", "B"), ("D1", "B")] {
             pairs["\(a + sfx) vs \(b + sfx)"] = comparison(shot(a + sfx), shot(b + sfx), groups: boxes)
         }
     }
     pairs["DP(CGImage base) vs D1"] = comparison(shot("DP(CGImage base)"), shot("D1"), groups: boxes)
     // Across window color spaces: what a person would see change against today's A.
-    for (a, b) in [("E1@srgb", "A"), ("EP@srgb", "A"), ("A@srgb", "A"), ("D1@srgb", "D1"), ("E1@srgb", "E1")] {
+    for (a, b) in [("E1@srgb", "A"), ("EP@srgb", "A"), ("A@srgb", "A"), ("D1@srgb", "D1"), ("E1@srgb", "E1"),
+                   ("E1@srgb", "B"), ("EP@srgb", "B"), ("EPx@srgb", "B"), ("D1@srgb", "B"), ("B@srgb", "B")] {
         pairs["\(a) vs \(b)"] = comparison(shot(a), shot(b), groups: boxes)
     }
     j["pairs"] = pairs
     // The window server's color matching vs CoreGraphics': the offline sRGB reference converted by CG into the
     // capture's color space (the screen's), against what each mode shows.
-    if let screenSpace = windows[0].panel.screen?.colorSpace?.cgColorSpace {
+    if let screenSpace = capture.screenSpace {
         let converted = Pixels.drawn(renderWidget(widget, tick: tick, scale: scale), in: screenSpace)
         var ref: JSON = [:]
-        for n in ["A", "E1", "EP", "D1", "A@srgb", "E1@srgb", "EP@srgb", "D1@srgb"] {
+        for n in ["A", "B", "E1", "EP", "D1", "A@srgb", "B@srgb", "E1@srgb", "EP@srgb", "D1@srgb"] {
             ref[n] = compare(shot(n).alone, converted).json
         }
         j["vsOfflineSRGBReferenceConvertedByCG"] = ref
@@ -203,18 +232,18 @@ func q1Screen() -> JSON {
     if let dir = cropDir {
         // Small crops of the top left (title, icon, the AntiAlias=0 subtitle, the CPU pill) and difference maps.
         let region = CGRect(x: 24, y: 20, width: 200, height: 76)
-        let screenSpace = windows[0].panel.screen?.colorSpace?.cgColorSpace ?? sRGB
+        let screenSpace = capture.screenSpace ?? sRGB
         for n in ["A", "E1@srgb"] {
             writePNG(shot(n).alone.crop(region).image(space: screenSpace),
                      "\(dir)/q1-\(n.replacingOccurrences(of: "@", with: "-")).png")
         }
-        for (a, b) in [("E1", "A"), ("EP", "E1"), ("E1@srgb", "A"), ("OVD@srgb", "D1@srgb")] {
+        for (a, b) in [("E1", "A"), ("EP", "E1"), ("E1@srgb", "A"), ("OVD@srgb", "D1@srgb"), ("B", "A"),
+                       ("E1@srgb", "B")] {
             if let d = diffImage(shot(a).alone.crop(region), shot(b).alone.crop(region)) {
                 let file = "q1-diff-\(a)-vs-\(b).png".replacingOccurrences(of: "@", with: "-")
                 writePNG(d, "\(dir)/\(file)")
             }
         }
     }
-    for w in windows { w.close() }
     return j
 }

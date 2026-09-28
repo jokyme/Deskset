@@ -16,7 +16,8 @@
 #   scripts/spikes/layer-runtime/run.sh click         the click-through check: a person clicks where it says (90 s)
 #   python3 scripts/spikes/layer-runtime/summarize.py medians and spreads of the cost rounds -> results/summary.json
 #
-# Small borderless windows float at the top left of the main screen while it runs; they let clicks through. The
+# Small borderless windows float at the bottom right of the main screen while it runs (the top left is left alone);
+# they let clicks through. The
 # pixel steps need screen capture to be allowed for the app running the script: the spike only checks
 # (CGPreflightScreenCaptureAccess), it never asks. CPU and timing numbers depend on what else runs: every phase
 # records the load average, and numbers taken with a 1-minute load above 8 are marked provisional.
