@@ -1810,8 +1810,8 @@ suite's `TestThreadExecutor`.
      the debug build with a home of its own (`CFFIXED_USER_HOME`, a copy of the packs' Skins folder, a `state.json`
      listing the batch, the demo audio and player, weather off, the main-thread stall log at 250 ms), for 2 minutes;
      then a probe skin quits the app with `!Quit`. The same batch ran with `SkinThreading=main` alongside.
-   - Both modes: no crash, no ownership assertion, no hang; every batch's app quit by itself within 2 s of the
-     `!Quit` (exit status 0); the same 95 errors and 188 warnings in the logs (the packs' own: styles they never
+   - Both modes: no crash, no ownership assertion, no hang; every batch's app quit by itself on the probe's `!Quit`,
+     closing every skin, with exit status 0; the same 95 errors and 188 warnings in the logs (the packs' own: styles they never
      define, Windows programs, missing images), apart from one more "Unable to open image" of a player skin's button
      on main, which depends on when the demo player changes state.
    - The main thread: with `main`, each batch's launch kept it busy for 640–1,120 ms (13 steps over 250 ms in all);
