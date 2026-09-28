@@ -46,6 +46,11 @@ extension DeskSnapshot {
                 "People who changed “\(o.name)” in the Options panel get its default back: saved values are kept by the option’s name.",
                 "改过“\(o.name)”的人会回到默认值：选项的设置按名字保存。").text(in: options.messageLanguage))
         }
+        if o.kind == .saved {
+            notes.append(LocalizedText(
+                "Values people’s widgets saved under “\(o.name)” are not carried over: saved values are kept by name.",
+                "各人的小组件以“\(o.name)”保存的值不会带过去：保存的值按名字存放。").text(in: options.messageLanguage))
+        }
         switch target {
         case .inFile(let ref):
             // A widget's own style or option must not take a name the package uses: it would replace the package's.
