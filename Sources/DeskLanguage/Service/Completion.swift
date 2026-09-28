@@ -1064,13 +1064,18 @@ struct DeskCompletionBuilder {
                 guard spec.context != .option else { continue }
             }
             if let kind = context.elementKind, site != .option, !spec.appliesTo.contains(kind) { continue }
-            // Modifiers made for this kind of element (a shape's fill, a picture's tint) come before general ones.
-            let specific = context.elementKind != nil && spec.appliesTo.kinds.count <= 8
+            // Modifiers made for this kind of element (a shape's fill, a picture's tint) come before general ones. A
+            // modifier a container only passes down to its children (`.font`, `.align`) is not made for containers.
+            var own = spec.appliesTo
+            if spec.inheritable { own.subtract(.containers) }
+            let specific = context.elementKind.map { own.contains($0) } == true && own.kinds.count <= 8
             if spec.name == "rainmeter", !isConvertedFile { continue }
             if spec.name == "style", !hasUsableStyle { continue }
             if spec.name == "position", site == .element, let parent = ownerParentKind, parent != .freeform { continue }
             let present = spec.repeatable == .no && presentNames.contains(spec.name)
-            let rank = t.rank + (specific ? 25 : 0)
+            // On a container, what it only passes down comes after its own layout (`.padding`, `.background`).
+            let passedDown = context.elementKind.map { ElementKindSet.containers.contains($0) && !own.contains($0) } == true
+            let rank = t.rank + (specific ? 25 : 0) - (passedDown ? 12 : 0)
             if scan.dotTyped {
                 add(t, tier: 1, alreadyPresent: present, rank: rank)
             } else {

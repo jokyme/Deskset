@@ -464,4 +464,21 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let (_, images) = deskHarborCompletions("widget {\n    Image(|)\n}\n")
         t.check(images.labels.contains("\"images/waves.png\""), "\(images.labels.prefix(8))")
     }
+
+    t.suite("Desk: service — modifiers a container only passes down do not lead its list") {
+        let column = deskCompletions("widget {\n    Column { }.|\n}\n").1.labels
+        for general in ["padding", "background"] {
+            if let g = column.firstIndex(of: general), let a = column.firstIndex(of: "align") {
+                t.check(g < a, "\(general) before align on a Column: \(column.prefix(10))")
+            } else {
+                t.check(false, "\(general) and align offered: \(column.prefix(10))")
+            }
+        }
+        let text = deskCompletions("widget {\n    Text(\"a\").|\n}\n").1.labels
+        if let font = text.firstIndex(of: "font"), let align = text.firstIndex(of: "align") {
+            t.check(font < align, "font before align on Text: \(text.prefix(10))")
+        }
+        let rectangle = deskCompletions("widget {\n    Rectangle().|\n}\n").1.labels
+        t.check(Array(rectangle.prefix(3)).contains("fill"), "a shape's fill stays near the top: \(rectangle.prefix(5))")
+    }
 }
