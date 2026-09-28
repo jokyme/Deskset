@@ -11,6 +11,7 @@ enum Studio2PageSelfTests {
         inPlaceTests(t)
         walkthroughTests(t)
         stepTests(t)
+        revertKeepsOptionsTests(t)
         popoverTests(t)
         wordTests(t)
     }
@@ -281,6 +282,50 @@ enum Studio2PageSelfTests {
     }
 
     // MARK: Steps and their names
+
+    /// An option is this copy's setting, not a change of the design (§3.2–3.5): °F alone leaves the widget "Built-in";
+    /// a color then makes it "Edited by you" with one change, and Revert to Original takes the color back and keeps °F.
+    static func revertKeepsOptionsTests(_ t: AppTestRunner) {
+        t.suite("Studio2: page: Revert to Original keeps the options") {
+            Studio2SelfTests.prepare(t)
+            // The sample forecast of the designed screen (its parts show, so its unit is an option); never the network.
+            let previousWeather = WeatherService.shared.environment
+            var weather = WeatherWiring.previewEnvironment(demo: true, demoNow: METNorway.parseISO8601("2026-09-27T03:30:00Z"))
+            weather.transport = WeatherSelfTests.ForbiddenTransport()
+            WeatherService.install(weather)
+            defer { WeatherService.install(previousWeather) }
+            guard let opened = open(t, "03b-weather") else { return }
+            defer { opened.close() }
+            let studio = opened.controller, page = studio.widgetPage!
+            guard let unit = page.facts?.options.first(where: { $0.variable?.caseInsensitiveCompare("TempUnit") == .orderedSame }),
+                  case .choice(let values) = unit.kind, let f = values.firstIndex(where: { $0.uppercased() == "F" }) else {
+                return t.check(false, "Weather's temperature unit: \(page.facts?.options.map(\.label) ?? [])")
+            }
+            let medium = file(opened, "Stationery/Weather/Medium.ini")
+            let item = "option:\(StudioWidgetPage.key(unit))"
+            page.handle(.choose(item: item, index: f))
+            if !text(medium).contains("TempUnit=F") { page.handle(.segment(item: item, index: f)) }
+            t.check(text(medium).contains("TempUnit=F"), "°F, for this widget")
+            t.equal(studio.copySentence, StudioText[.copyBuiltIn], "an option is not an edit of the design")
+            t.check(page.revertLink() == nil, "nothing to revert")
+            t.check(page.page?.footer.contains { $0.id == "revert" } == false, "no Revert to Original in the footer")
+            // A color: one change, and the widget is edited.
+            page.handle(.swatch(item: "colors", swatch: "text"))
+            page.colorPopover?.takeFieldText("#FF2D55")
+            page.colorPopover?.close()
+            t.equal(studio.copySentence, StudioText[.copyEdited], "a color is")
+            t.equal(page.revertLink()?.detail, StudioText[.revertOne], "one change: the color")
+            page.handle(.link("revert"))
+            t.check(page.revertLink() == nil, "nothing left to revert")
+            t.check(text(medium).contains("TempUnit=F"), "°F stays")
+            t.check(!text(medium).uppercased().contains("FF2D55") && !text(medium).contains("255,45,85"), "the color went")
+            t.equal(studio.copySentence, StudioText[.copyBuiltIn])
+            t.check(AppSelfTest.spin {
+                opened.app.controller(for: "Stationery\\Weather")?.skin.variable("TempUnit") == "F"
+            }, "the desktop still shows °F")
+            t.equal(studio.session?.undoStack.undoActionName, StudioText[.revertToOriginal], "one step")
+        }
+    }
 
     static func stepTests(_ t: AppTestRunner) {
         t.suite("Studio2: page: steps, names and confirmations") {

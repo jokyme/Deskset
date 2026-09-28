@@ -230,6 +230,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         updateToolbar()
         preview?.refreshAll()
         widgetPage?.rebuild()
+        // The copy sentence counts design changes the way the page's Revert does (with the facts just worked out).
+        updateToolbar()
         partPage?.refresh()
         if sidebarController.isViewLoaded, canvasAccess != nil { refreshLayers() }
         canvasController.updateCompatCapsule()

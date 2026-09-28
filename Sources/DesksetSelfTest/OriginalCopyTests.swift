@@ -57,4 +57,28 @@ func runOriginalCopyTests(_ t: TestRunner) {
         t.equal(OriginalCopy.changes(files: files, widgetFolder: skins.appendingPathComponent("Suite/Clock"),
                                      skinsDirectory: skins, originals: root.appendingPathComponent("None")) { _ in "x" }, [])
     }
+
+    t.suite("Original copy: the widget's settings are not its design") {
+        let original = "[Variables]\n@Include=#@#Variables.inc\nCardW=360\nColor=255,0,0\n\n[MeasureTime]\nMeasure=Time\nFormat=%H:%M\n"
+        let settings: Set<OriginalCopy.Setting> = [.init(section: "Variables", key: "TempUnit"),
+                                                   .init(section: "MeasureTime", key: "Format")]
+        // °F added after the includes, the clock made 12-hour: settings only.
+        let options = original.replacingOccurrences(of: "CardW=360", with: "CardW=360\nTempUnit=F")
+            .replacingOccurrences(of: "%H:%M", with: "%I:%M")
+        t.equal(OriginalCopy.placesChanged(OriginalCopy.without(settings, original), OriginalCopy.without(settings, options)),
+                0, "no change of the design")
+        // A color as well: one place, and restoring keeps the settings.
+        let both = options.replacingOccurrences(of: "Color=255,0,0", with: "Color=0,255,0")
+        t.equal(OriginalCopy.placesChanged(OriginalCopy.without(settings, original), OriginalCopy.without(settings, both)), 1)
+        let restored = OriginalCopy.restored(original, keeping: settings, of: both)
+        t.check(restored.contains("Color=255,0,0"), "the color goes back")
+        t.check(restored.contains("TempUnit=F"), "°F stays")
+        t.check(restored.contains("Format=%I:%M"), "12-hour stays")
+        t.equal(OriginalCopy.placesChanged(OriginalCopy.without(settings, original), OriginalCopy.without(settings, restored)),
+                0, "nothing of the design is left to revert")
+        // A setting the original has and the copy took away is taken away again.
+        let removed = original.replacingOccurrences(of: "Format=%H:%M\n", with: "")
+        t.check(!OriginalCopy.restored(original, keeping: settings, of: removed).contains("Format="))
+        t.equal(OriginalCopy.restored(original, keeping: settings, of: original), original, "nothing to keep")
+    }
 }
