@@ -200,6 +200,10 @@ extension SkinWindowController {
                 Log.write("!SetWallpaper failed: \(error.localizedDescription)", level: .error, source: config)
             }
         }
+        // Skins on other threads read the desktop pictures as published (Chameleon): the new one at once.
+        DesktopInputs.mainScreenDesktop.refresh()
+        DesktopInputs.displayDesktops.refresh()
+        DesktopInputs.desktopFillColor.refresh()
     }
 }
 

@@ -237,10 +237,12 @@ struct SkinWindowModel {
 
     /// The skin's size changed: the window follows it with its top-left corner fixed, kept on screen when it is shown
     /// with KeepOnScreen (as the main thread does).
-    mutating func resize(to size: CGSize, screens: [WindowGeometry.Screen]) {
+    /// `screens` are read only when the window is to be kept on screen at its new size (a skin redraws often; its
+    /// size rarely changes).
+    mutating func resize(to size: CGSize, screens: @autoclosure () -> [WindowGeometry.Screen]) {
         guard let old = frame, old.size != size else { return }
         var f = CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height)
-        if settings.keepOnScreen && facts?.isOrderedIn == true { f = WindowGeometry.keptOnScreen(f, screens: screens) }
+        if settings.keepOnScreen && facts?.isOrderedIn == true { f = WindowGeometry.keptOnScreen(f, screens: screens()) }
         frame = f
     }
 

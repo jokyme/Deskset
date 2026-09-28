@@ -385,8 +385,9 @@ enum DesktopInputs {
         var frame: CGRect
     }
 
-    /// The app's appearance (light or dark) that system colors resolve for.
-    static let appearance = MainPublished<NSAppearance?>(maxAge: 1, initial: nil) {
+    /// The app's appearance (light or dark) that system colors resolve for. Published on every change
+    /// (`AppController.appearanceChanged`), so a long age limit.
+    static let appearance = MainPublished<NSAppearance?>(maxAge: 60, initial: nil) {
         NSApp?.effectiveAppearance ?? NSAppearance(named: .aqua)
     }
 

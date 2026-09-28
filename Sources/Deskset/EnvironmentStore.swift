@@ -10,8 +10,8 @@ import DesksetCore
 ///   always saw.
 /// - The app publishes all of it at launch, the screens again when displays change and the config editor when Settings ▸
 ///   Editor changes (`publish()`, `publishScreens()`, `publishConfigEditor()`); the appearance is `MacAppearance.current`,
-///   which the app publishes when it changes. A value older than its age limit is asked for again once, in the
-///   background.
+///   which the app publishes when it changes. A value older than its age limit (a minute: they are published on
+///   change) is asked for again once, in the background.
 /// - `#SETTINGSPATH#` is set, not worked out: the command-line modes and the self-tests point it at a folder of their own.
 ///
 /// A skin's own window place, Z position and screen come from its window model (`SkinWindowModel`); `environment` puts
@@ -19,8 +19,10 @@ import DesksetCore
 final class EnvironmentStore {
     static let shared = EnvironmentStore()
 
-    /// The screens (AppKit's frames and visible frames; the primary one first).
-    let screens = MainPublished<[WindowGeometry.Screen]>(maxAge: 5, initial: []) { WindowGeometry.currentScreens() }
+    /// The screens (AppKit's frames and visible frames; the primary one first). Published again whenever displays or
+    /// their work areas change (`publishScreens`, from `didChangeScreenParametersNotification`); the age limit is only a
+    /// safety net, long enough that skins redrawing on other threads do not wake the main thread for it.
+    let screens = MainPublished<[WindowGeometry.Screen]>(maxAge: 60, initial: []) { WindowGeometry.currentScreens() }
     /// `#CONFIGEDITOR#` (`Workspace.configEditorPath`, which looks the app up at most once a minute).
     let configEditor = MainPublished<String>(maxAge: 60, initial: SkinEnvironment().configEditor) {
         Workspace.configEditorPath
