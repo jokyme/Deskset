@@ -31,6 +31,8 @@ enum CommandLineTools {
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
+                                           // The Manage window snapshot.
+                                           "--hidden", "--coordinates",
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
                                            // --weather-report.
@@ -59,7 +61,7 @@ enum CommandLineTools {
                       [--mode design|split|code] [--tab add|layers|live] [--code-below] [--inspector-width N]
                       [--config NAME] [--category NAME] [--search TEXT] [--pane general|editor]
                       [--hover NAME] [--drag NAME:DX,DY] [--expert] [--tip N] [--expand NAME] [--edit-text NAME]
-                      [--scroll "CARD TITLE"]
+                      [--scroll "CARD TITLE"] [--hidden] [--coordinates X,Y]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
                Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
