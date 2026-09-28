@@ -69,6 +69,8 @@ enum AppSelfTest {
         EditorOpeningSelfTests.run(t)
         // The Studio's editing session.
         StudioSessionSelfTests.run(t)
+        // The new Studio window (behind the StudioV2 switch).
+        Studio2SelfTests.run(t)
         SensorSelfTests.run(t)
         VirtualTimeRenderSelfTests.run(t)
         RenderDataSelfTests.run(t)
