@@ -243,7 +243,7 @@ final class StudioAddContent: NSView {
                 return chip
             }
             fontChips = page.widgetFonts.map { f in
-                let chip = StudioAddChip(kind: .font(f.id), title: f.face, symbol: "textformat")
+                let chip = StudioAddChip(kind: .font(f.id), title: StudioFontMenu.title(f.face), symbol: "textformat")
                 chip.toolTip = StudioText[.addFontTip]
                 chip.onClick = { [weak page] in page?.onEvent?(.font(f.id)) }
                 addSubview(chip)

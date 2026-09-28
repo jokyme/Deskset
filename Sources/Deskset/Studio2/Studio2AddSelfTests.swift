@@ -20,7 +20,9 @@ enum Studio2AddSelfTests {
             t.equal(content.tiles.map(\.title), ["Text", "Symbol", "Picture", "Bar", "Ring", "Graph", "Shape", "Button"])
             t.equal(content.symbolChips.map(\.title), ["Chip", "Umbrella", "Rain"])
             t.check(content.colorChips.map(\.title).contains("CPU ring"), "this widget's colors: \(content.colorChips.map(\.title))")
-            t.check(content.fontChips.map(\.title).contains("System Rounded"), "and fonts")
+            t.check(content.fontChips.map(\.title).contains("SF Pro Rounded"),
+                    "and fonts, named as the Fonts menus name them: \(content.fontChips.map(\.title))")
+            t.check(!content.fontChips.map(\.title).contains("System Rounded"), "never by the file's alias")
             // A category.
             content.categoryChips.first?.onClick?()
             t.equal(content.dataRows.map(\.item.id), ["time", "date", "uptime"])
