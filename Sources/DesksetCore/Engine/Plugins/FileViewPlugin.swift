@@ -324,15 +324,17 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         iconGeneration += 1
         let generation = iconGeneration
         let size = iconSize
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            let ok = writer(source, size, destination)
-            hop.post {
-                guard let self, !self.closed, self.iconGeneration == generation else { return }
-                if ok {
-                    self.lastIcon = (source, size, destination)
-                    if self.childType == .icon { self.publishAsyncResult(number: 0, string: destination) }
-                }
+        // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
+        // saved.
+        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.queue, fixture: false,
+                                scripted: { $0.failureMessage == nil }) {
+            writer(source, size, destination)
+        }
+        skin.startBackground(job) { [weak self] ok in
+            guard let self, !self.closed, self.iconGeneration == generation else { return }
+            if ok {
+                self.lastIcon = (source, size, destination)
+                if self.childType == .icon { self.publishAsyncResult(number: 0, string: destination) }
             }
         }
         return lastIcon?.destination == destination ? destination : ""
@@ -347,15 +349,14 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         readGeneration += 1
         let generation = readGeneration
         let options = parentOptions
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            let result = FileViewMeasure.list(folder: folder, options: options)
-            hop.post {
-                guard let self, self.readGeneration == generation else { return }
-                self.reading = false
-                guard !self.closed else { return }
-                self.finishRead(result)
-            }
+        let job = BackgroundJob(.fileViewListing, subject: folder, on: PluginIO.queue, fixture: true) {
+            FileViewMeasure.list(folder: folder, options: options)
+        }
+        skin.startBackground(job) { [weak self] result in
+            guard let self, self.readGeneration == generation else { return }
+            self.reading = false
+            guard !self.closed else { return }
+            self.finishRead(result)
         }
     }
 

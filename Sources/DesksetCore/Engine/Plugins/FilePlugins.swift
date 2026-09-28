@@ -81,30 +81,29 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         loadingKey = k
         let path = self.path, separator = self.separator, subfolders = self.subfolders, filter = self.filter
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            let result = QuoteMeasure.readItems(path: path, separator: separator, subfolders: subfolders, filter: filter)
-            hop.post {
-                guard let self, !self.closed, self.loadingKey == k else { return }
-                self.loadingKey = nil
-                self.loadedAt = self.skin.clock()
-                switch result {
-                case .success(let list):
-                    let first = self.loadedKey != k
-                    self.items = list
-                    self.loadedKey = k
-                    if first || self.current == nil || !(list.contains(self.current ?? "")) {
-                        self.current = list.isEmpty ? nil : self.pick()
-                        self.publishAsyncResult(number: 0, string: self.current ?? "")
-                    }
-                case .failure(let message):
-                    self.items = []
-                    self.loadedKey = k
-                    self.current = nil
-                    self.publishAsyncResult(number: 0, string: "")
-                    if self.reported.insert(k).inserted {
-                        self.skin.log("QuotePlugin [\(self.name)]: \(message)", level: .warning)
-                    }
+        let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true) {
+            QuoteMeasure.readItems(path: path, separator: separator, subfolders: subfolders, filter: filter)
+        }
+        skin.startBackground(job) { [weak self] result in
+            guard let self, !self.closed, self.loadingKey == k else { return }
+            self.loadingKey = nil
+            self.loadedAt = self.skin.clock()
+            switch result {
+            case .success(let list):
+                let first = self.loadedKey != k
+                self.items = list
+                self.loadedKey = k
+                if first || self.current == nil || !(list.contains(self.current ?? "")) {
+                    self.current = list.isEmpty ? nil : self.pick()
+                    self.publishAsyncResult(number: 0, string: self.current ?? "")
+                }
+            case .failure(let message):
+                self.items = []
+                self.loadedKey = k
+                self.current = nil
+                self.publishAsyncResult(number: 0, string: "")
+                if self.reported.insert(k).inserted {
+                    self.skin.log("QuotePlugin [\(self.name)]: \(message)", level: .warning)
                 }
             }
         }
@@ -269,24 +268,26 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         scanning = true
         let o = options
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
-            // What the scan cost, in real time (the pause after it grows with it); the next scan is due on the skin's
-            // clock, counted from when the result reaches the skin.
-            let started = ProcessInfo.processInfo.systemUptime
-            let r = FolderInfoMeasure.scan(o)
-            let cost = ProcessInfo.processInfo.systemUptime - started
-            hop.post {
-                guard let self else { return }
-                self.scanning = false
-                self.nextScan = self.skin.clock() + cost * FolderInfoMeasure.scanPause
-                guard !self.closed, o == self.options else { return }
-                self.result = r
-                if r.denied && !self.reportedDenied {
-                    self.reportedDenied = true
-                    self.skin.log("FolderInfo [\(self.name)]: cannot read (all of) \(o.path) — no permission?",
-                                  level: .notice)
-                }
+        // What the scan cost, in real time (the pause after it grows with it); the next scan is due on the skin's clock,
+        // counted from when the result reaches the skin. A fixture scan in virtual time costs nothing: no real time
+        // goes into a virtual run.
+        let job = BackgroundJob(.folderInfo, subject: o.path, start: { deliver in
+            PluginIO.queue.async {
+                let started = ProcessInfo.processInfo.systemUptime
+                let r = FolderInfoMeasure.scan(o)
+                deliver((r, ProcessInfo.processInfo.systemUptime - started))
+            }
+        }, inline: { (FolderInfoMeasure.scan(o), 0) })
+        skin.startBackground(job) { [weak self] (r: Result, cost: TimeInterval) in
+            guard let self else { return }
+            self.scanning = false
+            self.nextScan = self.skin.clock() + cost * FolderInfoMeasure.scanPause
+            guard !self.closed, o == self.options else { return }
+            self.result = r
+            if r.denied && !self.reportedDenied {
+                self.reportedDenied = true
+                self.skin.log("FolderInfo [\(self.name)]: cannot read (all of) \(o.path) — no permission?",
+                              level: .notice)
             }
         }
     }
