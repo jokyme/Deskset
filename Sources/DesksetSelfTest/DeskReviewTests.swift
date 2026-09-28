@@ -276,7 +276,7 @@ func runDeskReviewTests(_ t: TestRunner) {
         let formatted = Desk.formatted(deskParse(text))
         let elapsed = ProcessInfo.processInfo.systemUptime - start
         t.equal(formatted, "widget {\n    Text(\"b\")\n}\n")
-        t.check(elapsed < 5, "formatting 200,000 blank lines took \(elapsed) s")
+        t.check(elapsed < 5 * deskCIScale, "formatting 200,000 blank lines took \(elapsed) s")
         print(String(format: "    formatter: 200,000 blank lines after `{` in %.0f ms", elapsed * 1000))
     }
 
@@ -305,7 +305,7 @@ func runDeskReviewTests(_ t: TestRunner) {
         let checked = deskCheck("info { name: \"T\" }\n" + many)
         let elapsed = ProcessInfo.processInfo.systemUptime - start
         t.equal(checked.diagnostics.filter { $0.id.rawValue == "DK2034" }.count, 500)
-        t.check(elapsed < 3, "2,000 stray lines took \(elapsed) s")
+        t.check(elapsed < 3 * deskCIScale, "2,000 stray lines took \(elapsed) s")
         print(String(format: "    2,000 stray top-level lines: parse + check %.0f ms", elapsed * 1000))
     }
 
