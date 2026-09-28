@@ -25,7 +25,27 @@ private func deskReviewFresh(_ snapshot: DeskSnapshot) -> DeskSnapshot {
     DeskLanguageService(openFile: snapshot.file, files: snapshot.folder).snapshot
 }
 
+/// `DESK_ACTIONS_DUMP='widget { … }'` prints each diagnostic of a text with its quick fixes, each applied and checked
+/// again (`*` marks the preferred one).
+private func deskReviewActionsDump(_ text: String) {
+    let file = DeskFileID("Test.desk")
+    let snapshot = DeskLanguageService(openFile: file, files: [file: text]).snapshot
+    for d in snapshot.diagnostics {
+        print("\(d.id.rawValue) \(d.severity) \(d.range) \(d.message)")
+        for action in snapshot.codeActions(for: d) where action.kind == .quickFix {
+            let fixed = DeskTextEditU16.apply(action.edit.edits(for: file), to: text)
+            let after = DeskLanguageService(openFile: file, files: [file: fixed]).snapshot.diagnostics
+            print("    \(action.isPreferred ? "*" : " ") \(action.title) → \(fixed.debugDescription)")
+            print("        \(after.map { "\($0.id.rawValue)\($0.severity == .error ? "!" : "")" })")
+        }
+    }
+}
+
 func runDeskServiceReviewTests(_ t: TestRunner) {
+    if let text = ProcessInfo.processInfo.environment["DESK_ACTIONS_DUMP"] {
+        deskReviewActionsDump(text.replacingOccurrences(of: "\\n", with: "\n"))
+        return
+    }
     t.suite("Desk: service — another parse of the same package does not reuse the widgets' checks") {
         let package = DeskFileID("package.desk")
         let lamp = DeskFileID("Lamp.desk")
@@ -371,5 +391,33 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         t.check(delivered.wait(timeout: .now() + 120) == .success, "the check is delivered")
         owner.sync { t.check(small.snapshot.isChecked) }
         t.check(small.lastCheckMilliseconds > 0, "the check was timed")
+    }
+
+    t.suite("Desk: service — a control with nothing to bind to declares a variable for it") {
+        func accept(_ marked: String, _ label: String) -> (String, DeskCompletionItem)? {
+            let (snapshot, list) = deskCompletions(marked)
+            guard let item = list.items.first(where: { $0.label == label }) else { return nil }
+            let edits = ([DeskTextEditU16(range: item.range, newText: item.plainText)] + item.additionalEdits)
+                .sorted { $0.range.start.offset < $1.range.start.offset }
+            return (DeskTextEditU16.apply(edits, to: snapshot.text), item)
+        }
+        let info = "info { name: \"T\" }\n"
+        for (marked, label, expect) in [
+            (info + "widget {\n    Tog|\n}\n", "Toggle", ["variable showSeconds = false", "Toggle(\"Show seconds\", showSeconds)"]),
+            (info + "widget {\n    Text(\"A\")\n    Inp|\n}\n", "Input", ["variable note = \"\"", "Input(note)"]),
+            (info + "widget { Tog| }\n", "Toggle", ["variable showSeconds = false"]),
+            (info + "widget {\n    variable note = 1\n    Inp|\n}\n", "Input", ["variable note2 = \"\"", "Input(note2)"]),
+        ] {
+            guard let (result, _) = accept(marked, label) else { t.check(false, "\(label) offered in \(marked)"); continue }
+            for piece in expect { t.check(result.contains(piece), "\(piece) in \(result)") }
+            t.equal(deskSnippetErrors(result, file: "Test.desk"), [], result)
+        }
+        // A value that fits is taken, and nothing is declared.
+        if let (result, item) = accept(info + "widget {\n    variable on = true\n    Tog|\n}\n", "Toggle") {
+            t.check(result.contains("Toggle(\"Show seconds\", on)"), result)
+            t.equal(item.additionalEdits, [])
+        } else {
+            t.check(false, "Toggle offered")
+        }
     }
 }

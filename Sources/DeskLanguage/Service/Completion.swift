@@ -685,9 +685,22 @@ struct DeskCompletionBuilder {
         guard seen.insert(key).inserted else { return }
         var snippetText = snippet ?? t.snippet
         var plainText = plain ?? t.plain
+        var extra: [DeskTextEditU16] = []
+        var needsValue = false
         if let call = t.call, snippet == nil || shown.hasPrefix(".") && !t.label.hasPrefix(".") {
             let me = self
-            let text = DeskSnippet.call(call.name, params: call.params, block: call.block, catalog: catalog) { me.contextualValue($0) }
+            // A control bound to a value the widget does not have yet: a variable is declared for it.
+            var declared: (name: String, edit: DeskTextEditU16)?
+            if let binding = call.params.first(where: { if case .binding = $0.type { return true } else { return false } }),
+               contextualValue(binding) == nil {
+                declared = bindingDeclaration(for: binding)
+                needsValue = declared == nil
+            }
+            if let declared { extra.append(declared.edit) }
+            let text = DeskSnippet.call(call.name, params: call.params, block: call.block, catalog: catalog) { p in
+                if let declared, case .binding = p.type { return declared.name }
+                return me.contextualValue(p)
+            }
             let lead = snippet != nil ? "." : ""
             snippetText = lead + text.snippet
             plainText = lead + text.plain
@@ -705,8 +718,9 @@ struct DeskCompletionBuilder {
         if fits, tierValue > 1 { tierValue -= 1 }
         if t.deprecated { tierValue += 10 }
         if alreadyPresent { tierValue += 20 }
+        if needsValue { tierValue += 3 }
         let r = rank ?? t.rank
-        let extra = t.permission.map { permissionEdits($0) } ?? []
+        extra += t.permission.map { permissionEdits($0) } ?? []
         let item = DeskCompletionItem(
             label: shown, kind: kind ?? t.kind, detail: t.detail, documentation: t.documentation, example: t.example,
             insertText: insert, plainText: plainPlaced, isSnippet: insert.contains("$"), range: scan.context.range,
@@ -1447,6 +1461,48 @@ struct DeskCompletionBuilder {
             return snapshot.visibleOwnNames(at: scan.utf8Range.lowerBound).first { $0.kind != .element }?.name
         }
         return nil
+    }
+
+    /// A `variable` for a control's binding when nothing the widget has fits (`Toggle` with no yes/no value, `Input`
+    /// with no text): its unique name, from the catalog's example, and the edit declaring it at the top of `widget`.
+    /// Nil where no variable can be declared (outside `widget`, a type with no plain first value).
+    func bindingDeclaration(for p: ParamSpec) -> (name: String, edit: DeskTextEditU16)? {
+        guard case .binding(let inner) = p.type else { return nil }
+        let initial: String
+        switch inner {
+        case .bool: initial = "false"
+        case .string: initial = "\"\""
+        default: return nil
+        }
+        let table = snapshot.nodeTable
+        let bytes = snapshot.index.bytes
+        let offset = scan.utf8Range.lowerBound
+        guard let widget = table.topLevel.first(where: {
+                  table.entries[$0].kind == .widgetBlock && table.entries[$0].textStart < offset && offset <= table.entries[$0].textEnd }),
+              let block = table.children(of: widget).first(where: { table.entries[$0].kind == .block }),
+              !table.ancestors(of: table.innermost(at: offset) ?? block).contains(where: { table.entries[$0].kind == .componentDecl }),
+              let open = table.entries[block].positioned.childTokens.first, open.kind == .lBrace else { return nil }
+        let at = open.textRange.upperBound
+        guard at < offset else { return nil }
+        let base = (p.previewValue ?? p.name).split(separator: ".").last.map(String.init) ?? p.name
+        guard Checker.isIdentifier(base) else { return nil }
+        var taken = Set(snapshot.visibleOwnNames(at: offset).map(\.name))
+        taken.formUnion(allOptions().keys)
+        let name = uniqueName(base, taken: taken)
+        // The indentation of the block's first line, or one level in from `widget`.
+        var lineStart = table.entries[widget].textStart
+        while lineStart > 0, bytes[lineStart - 1] != 0x0A, bytes[lineStart - 1] != 0x0D { lineStart -= 1 }
+        var indentEnd = lineStart
+        while indentEnd < bytes.count, bytes[indentEnd] == 0x20 || bytes[indentEnd] == 0x09 { indentEnd += 1 }
+        let indent = String(decoding: bytes[lineStart..<indentEnd], as: UTF8.self) + indentUnit
+        var text = "\n" + indent + "variable \(name) = \(initial)"
+        // `widget { Toggle(…) }` on one line: the rest of the line goes on its own.
+        var k = at
+        while k < bytes.count, bytes[k] == 0x20 || bytes[k] == 0x09 { k += 1 }
+        if k < bytes.count, bytes[k] != 0x0A, bytes[k] != 0x0D, !(bytes[k] == 0x2F && k + 1 < bytes.count && bytes[k + 1] == 0x2F) {
+            text += "\n" + indent
+        }
+        return (name, DeskTextEditU16(range: snapshot.index.range(utf8: at..<at), newText: text))
     }
 
     // MARK: Helpers
