@@ -67,6 +67,7 @@ extension DeskSnapshot {
             }
             if case .option = key { edits += localEnumEdits(option: o.name, to: newName, in: [file]) }
             if o.kind == .element, !Checker.isIdentifier(o.name) { edits += quotedTargetEdits(element: o.name, to: newName) }
+            edits += translationEdits(renaming: o.name, kind: o.kind, to: newName, after: edits)
             return .success(DeskRename(edit: workspaceEdit(edits), notes: notes))
         case .shared:
             let files = files(searchedFor: key)
@@ -85,6 +86,7 @@ extension DeskSnapshot {
                 }
             }
             if case .option = key { edits += localEnumEdits(option: o.name, to: newName, in: files) }
+            edits += translationEdits(renaming: o.name, kind: o.kind, to: newName, after: edits)
             return .success(DeskRename(edit: workspaceEdit(edits), notes: notes))
         }
     }
@@ -195,6 +197,98 @@ extension DeskSnapshot {
             edits.append(TextEdit(file: file, range: inner, replacement: newName))
         }
         return edits
+    }
+
+    /// The `translations` entries a rename must change with the texts it changes (`"Weather in {options.city}"`):
+    /// a translation is found by its text (§8.6), so the names read in its interpolations are no uses, and an entry
+    /// left alone would stop matching. A widget's own entries serve its texts, the package's serve every file's; an
+    /// entry is changed only when no text left unchanged still has its key.
+    func translationEdits(renaming name: String, kind: DeskNameKind, to newName: String, after edits: [TextEdit]) -> [TextEdit] {
+        switch kind {
+        case .variable, .saved, .computed, .loopVariable, .option: break
+        default: return []
+        }
+        var edited: [DeskFileID: [Range<Int>]] = [:]
+        for edit in edits { edited[edit.file, default: []].append(edit.range) }
+        var changed: [DeskFileID: Set<String>] = [:]
+        var kept: [DeskFileID: Set<String>] = [:]
+        for (file, ranges) in edited {
+            guard let checkedFile = checkedFile(file) else { continue }
+            for entry in checkedFile.stringTable {
+                if ranges.contains(where: { entry.range.lowerBound <= $0.lowerBound && $0.upperBound <= entry.range.upperBound }) {
+                    changed[file, default: []].insert(entry.key)
+                } else {
+                    kept[file, default: []].insert(entry.key)
+                }
+            }
+        }
+        guard !changed.isEmpty else { return [] }
+        var out: [TextEdit] = []
+        for (file, keys) in changed where file != packageFile {
+            out += translationRewrites(in: file, keys: keys.subtracting(kept[file] ?? []), name: name, kind: kind, to: newName)
+        }
+        if (isPackage || package != nil), let packageText = folder[packageFile], packageText.contains("translations") {
+            let keys = changed.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+            var keptKeys = kept.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+            for (file, result) in folderResults() where edited[file] == nil {
+                keptKeys.formUnion(result.stringTable.map(\.key))
+            }
+            if edited[packageFile] == nil, let checkedPackage = checkedFile(packageFile) {
+                keptKeys.formUnion(checkedPackage.stringTable.map(\.key))
+            }
+            out += translationRewrites(in: packageFile, keys: keys.subtracting(keptKeys), name: name, kind: kind, to: newName)
+        }
+        let made = Set(edits.map { "\($0.file.path) \($0.range)" })
+        return out.filter { !made.contains("\($0.file.path) \($0.range)") }
+    }
+
+    /// The name's reads in the interpolations of a file's `translations` entries whose key is one of `keys`:
+    /// `options.<name>` for an option, the bare name otherwise.
+    func translationRewrites(in file: DeskFileID, keys: Set<String>, name: String, kind: DeskNameKind, to newName: String) -> [TextEdit] {
+        guard !keys.isEmpty, let tree = checkedFile(file)?.tree else { return [] }
+        var out: [TextEdit] = []
+        for block in tree.rootNode.childNodes where block.kind == .translationsBlock {
+            guard let body = block.firstChild(.block) else { continue }
+            for group in BlockSyntax(unchecked: body).statements where group.kind == .group {
+                guard let groupBlock = group.firstChild(.block) else { continue }
+                for entryNode in BlockSyntax(unchecked: groupBlock).statements where entryNode.kind == .entry {
+                    let entry = EntrySyntax(unchecked: entryNode)
+                    guard keys.contains(Checker.translationKey(of: entry.key)) else { continue }
+                    var strings = [entry.key]
+                    if let value = StringLiteralSyntax(entry.value.node) { strings.append(value) }
+                    for string in strings {
+                        for segment in string.segments {
+                            guard case .interpolation(let interpolation) = segment else { continue }
+                            let tokens = Array(interpolation.node.tokens.dropFirst().dropLast().filter { !$0.token.isMissing })
+                            for range in DeskSnapshot.reads(of: name, isOption: kind == .option, in: tokens) {
+                                out.append(TextEdit(file: file, range: range, replacement: newName))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /// Where an interpolation's tokens read a name: `options.<name>` (not after a `.`) for an option; otherwise the
+    /// bare name, not after a `.` and not a call's label.
+    static func reads(of name: String, isOption: Bool, in tokens: [PositionedToken]) -> [Range<Int>] {
+        var out: [Range<Int>] = []
+        for (k, token) in tokens.enumerated() where token.kind == .identifier {
+            let afterDot = k > 0 && tokens[k - 1].kind == .dot
+            if isOption {
+                guard !afterDot, token.token.name == "options", k + 2 < tokens.count, tokens[k + 1].kind == .dot,
+                      tokens[k + 2].kind == .identifier, tokens[k + 2].token.name == name else { continue }
+                out.append(tokens[k + 2].textRange)
+            } else {
+                guard !afterDot, token.token.name == name else { continue }
+                let isLabel = k + 1 < tokens.count && tokens[k + 1].kind == .colon && k > 0
+                    && [.lParen, .comma].contains(tokens[k - 1].kind)
+                if !isLabel { out.append(token.textRange) }
+            }
+        }
+        return out
     }
 
     /// The local enum of an option as a file sees it: its own option's, else the package's.

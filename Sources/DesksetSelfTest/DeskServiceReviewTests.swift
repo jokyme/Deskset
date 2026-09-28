@@ -125,4 +125,100 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let after = deskNavService(renamed).snapshot
         t.check(!deskNavIDs(after.diagnostics).contains { $0.contains("DK3002") || $0.contains("unknown") }, "\(deskNavIDs(after.diagnostics))")
     }
+
+    t.suite("Desk: service — renaming a package option renames it inside translations") {
+        let package = DeskFileID("package.desk")
+        let widget = DeskFileID("T.desk")
+        let files: [DeskFileID: String] = [
+            package: """
+            package { name: "Weather" }
+            options {
+                city = Input("City", default: "Oslo")
+            }
+            translations {
+                "zh-Hans" { "Weather in {options.city}": "{options.city}的天气" }
+            }
+            """,
+            widget: """
+            info { name: "T" }
+            widget {
+                Text("Weather in {options.city}")
+            }
+            translations {
+                "de" { "Weather in {options.city}": "Wetter in {options.city}" }
+            }
+            """,
+        ]
+        func ids(_ texts: [DeskFileID: String]) -> [String] {
+            var model = DeskPackage()
+            for (file, text) in texts { model = model.settingText(text, of: file) }
+            return CheckedDeskPackage(package: model).allDiagnostics.map { "\($0.file.path) \($0.id.rawValue)" }.sorted()
+        }
+        let before = ids(files)
+        for (open, needle, into) in [(widget, "options.city", 8), (package, "city =", 0)] {
+            let snapshot = DeskLanguageService(openFile: open, files: files).snapshot
+            guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, needle, into: into), to: "town") else {
+                t.check(false, "city is renamed from \(open.path)")
+                continue
+            }
+            var after = files
+            for file in rename.edit.changedFiles { after[file] = DeskTextEditU16.apply(rename.edit.edits(for: file), to: files[file] ?? "") }
+            t.check(after[package]!.contains("\"Weather in {options.town}\": \"{options.town}的天气\""), after[package]!)
+            t.check(after[widget]!.contains("\"Weather in {options.town}\": \"Wetter in {options.town}\""), after[widget]!)
+            t.check(after[widget]!.contains("Text(\"Weather in {options.town}\")"), after[widget]!)
+            t.equal(ids(after), before, "from \(open.path): the folder checks the same")
+        }
+        // A widget's own names read in its own texts, translated by the widget and by the package; a text another
+        // widget still writes keeps the package's entry.
+        let own: [DeskFileID: String] = [
+            package: """
+            package { name: "Clicks" }
+            translations {
+                "de" {
+                    "Clicks: {count}": "Klicks: {count}"
+                    "Mode {options.mode}": "Modus {options.mode}"
+                    "Shared {count}": "Geteilt {count}"
+                }
+            }
+            """,
+            widget: """
+            info { name: "T" }
+            options { mode = Input("Mode", default: "a") }
+            widget {
+                variable count = 0
+                Text("Clicks: {count}").onClick { count = count + 1 }
+                Text("Mode {options.mode}")
+                Text("Shared {count}")
+            }
+            translations {
+                "fr" { "Clicks: {count}": "Clics : {count}" }
+            }
+            """,
+            DeskFileID("U.desk"): """
+            info { name: "U" }
+            widget {
+                variable count = 1
+                Text("Shared {count}")
+            }
+            """,
+        ]
+        let ownBefore = ids(own)
+        let snapshot = DeskLanguageService(openFile: widget, files: own).snapshot
+        for (needle, newName) in [("count = 0", "taps"), ("mode =", "style2")] {
+            guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, needle), to: newName) else {
+                t.check(false, "\(needle) is renamed")
+                continue
+            }
+            var after = own
+            for file in rename.edit.changedFiles { after[file] = DeskTextEditU16.apply(rename.edit.edits(for: file), to: own[file] ?? "") }
+            t.equal(ids(after), ownBefore, "\(needle): the folder checks the same")
+            if newName == "taps" {
+                t.check(after[package]!.contains("\"Clicks: {taps}\": \"Klicks: {taps}\""), after[package]!)
+                t.check(after[widget]!.contains("\"Clicks: {taps}\": \"Clics : {taps}\""), after[widget]!)
+                t.check(after[package]!.contains("\"Shared {count}\": \"Geteilt {count}\""), "U.desk still writes it")
+            } else {
+                t.check(after[package]!.contains("\"Mode {options.style2}\": \"Modus {options.style2}\""), after[package]!)
+            }
+        }
+    }
 }
