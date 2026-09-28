@@ -74,6 +74,9 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// The manual's CTRL override (⌘ on the Mac, see `dragOverride`).
     static func isOverride(_ flags: NSEvent.ModifierFlags) -> Bool { flags.contains(.command) }
 
+    /// Where the pointer is on the screen, which a drag follows (a self-test drags without moving the real pointer).
+    static var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext, let runtime = controller?.runtime else { return }
         ctx.clear(bounds)
@@ -191,7 +194,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
         pressed(0)
         c.bringToFrontOnClick()
         let (x, y) = point(event)
-        dragOrigin = NSEvent.mouseLocation
+        dragOrigin = SkinView.pointerLocation()
         windowOrigin = window?.frame.origin
         dragged = false
         dragOverride = SkinView.isOverride(event.modifierFlags)
@@ -201,6 +204,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
             return
         }
         dragAllowed = SkinView.leftMouseDown(c, x: x, y: y, clickCount: event.clickCount, override: dragOverride)
+        // Until the release, the skin's own moves wait: a drag wins over them.
+        if dragAllowed && !c.isStopped { c.beginDragPress() }
     }
 
     /// Runs the left-button down (and double-click) actions for a press at (x, y) and returns whether the press may
@@ -259,7 +264,7 @@ final class SkinView: NSView, NSViewToolTipOwner {
     override func mouseDragged(with event: NSEvent) {
         guard let c = controller, !c.isStopped, reportDrag(c, event), dragAllowed,
               let start = dragOrigin, let origin = windowOrigin, let window else { return }
-        let now = NSEvent.mouseLocation
+        let now = SkinView.pointerLocation()
         let dx = now.x - start.x, dy = now.y - start.y
         if !dragged && hypot(dx, dy) < 3 { return }
         dragged = true
@@ -277,16 +282,20 @@ final class SkinView: NSView, NSViewToolTipOwner {
         guard reportRelease(c, .left, event) else {
             dragOrigin = nil
             dragged = false
+            c.endDragPress(moved: false)
             return
         }
         let (x, y) = point(event)
         if dragged {
             dragged = false
-            c.windowMoved()
+            // The window's place is saved; a move the skin made meanwhile is dropped.
+            c.endDragPress(moved: true)
             // The press became a drag: it must not count as a click later (LeftMouseUpAction does not run).
             SkinView.endMousePress(c, x: x, y: y)
-        } else if dragOrigin != nil && !dragOverride {
-            c.runtime.send(.mouse(.leftUp, x: x, y: y))
+        } else {
+            // A move the skin made during the press is made now.
+            c.endDragPress(moved: false)
+            if dragOrigin != nil && !dragOverride { c.runtime.send(.mouse(.leftUp, x: x, y: y)) }
         }
         dragOrigin = nil
     }
@@ -432,6 +441,11 @@ final class SkinView: NSView, NSViewToolTipOwner {
         heldButtons = 0
         hoverPending = false
         pointerPresses = []
+        if let c = controller, c.isDragPressActive {
+            c.endDragPress(moved: dragged)
+            dragged = false
+            dragOrigin = nil
+        }
         guard let c = controller, !c.isStopped, report(c, .moved, event) else { return }
         let (x, y) = point(event)
         hover(c, x: x, y: y)

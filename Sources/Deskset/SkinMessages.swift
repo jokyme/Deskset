@@ -9,7 +9,8 @@ import DesksetCore
 //   kind still waiting take its place).
 // - `SkinRuntime.request` applies a request at once on the main thread; from any other thread it queues it with
 //   `DispatchQueue.main.async`, the queue of `AppController.later`, so requests keep their order.
-// Every skin runs on the main executor so far, so all of it happens inline and in the same order as before.
+// Every skin of the app runs on the main executor so far, so all of it happens inline and in the same order as before.
+// Bangs for other skins go straight to their runtimes (`SkinDirectory`), under the same rule.
 
 /// A message to a skin's runtime: input, actions, the window's facts and the skin's life.
 enum SkinMessage {
@@ -35,8 +36,9 @@ enum SkinMessage {
 
     // MARK: Actions
 
-    /// A bang another skin sent (`Skin.performSent`), or one the app sends for a skin group. `hops`: how many skins
-    /// it passed through; the runtime's own forwards count from there.
+    /// A bang another skin sent (by name, `*` or its skin group; a bang the app passes on for it): a window bang goes
+    /// to the window model, any other to the skin (`Skin.performSent`). `hops`: how many skins it passed through; the
+    /// runtime's own bangs for other skins count from there.
     case bang(Bang, from: String, hops: Int)
     /// An action run for the person from a section (by name): a context menu item (`Skin.executeInput`).
     case execute(String, section: String?)
@@ -52,7 +54,7 @@ enum SkinMessage {
 
     // MARK: The window
 
-    /// What the window really is (step 3 of phase 2 fills it in and reads it).
+    /// What the main thread did with the window (`SkinWindowModel.take`). A later one waiting behind takes its place.
     case windowFacts(SkinWindowFacts)
 
     // MARK: Life
@@ -77,23 +79,6 @@ enum SkinMessage {
     case close(fadeOut: Bool)
 }
 
-/// What the main thread did with a skin's window, for the runtime (docs/skin-threading.md §8.1). Nothing publishes it
-/// yet: step 3 of phase 2 echoes every window change in it.
-struct SkinWindowFacts: Equatable {
-    /// The window's frame (AppKit screen coordinates).
-    var frame: CGRect
-    /// The window's screen in the list of screens, when known.
-    var screen: Int?
-    /// Whether any part of the window can be seen (occlusion).
-    var isVisible: Bool
-    /// The backing scale factor of the window's screen.
-    var scale: CGFloat
-    /// Whether the window takes the pointer: shown and not letting it through (`SkinHost.skinWindowTakesPointer`).
-    var takesPointer: Bool
-    /// Counts the window changes, so the runtime can tell which of its own it has seen.
-    var sequence: Int
-}
-
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
 struct HostBang {
     var bang: Bang
@@ -109,23 +94,22 @@ enum SkinRequest {
     case display(size: CGSize)
     /// Where the glass goes now (`MacGlass`), back to front, in skin points.
     case glass([GlassRegion])
-    /// Window bangs for this skin or others: position, Z position, transparency, the window flags, !Show / !Hide.
-    case window(HostBang)
+    /// One of the skin's own window changes (position, Z position, transparency, the window flags, !Show / !Hide), made
+    /// in its window model already (`SkinWindowModel`): the main thread does the same to `AppState` and the panel.
+    case window(SkinWindowChange)
     /// Lua `SKIN:FadeWindow(from, to)` (0…255).
     case fadeWindow(from: Int, to: Int)
     /// Bangs that load, unload or refresh skins, or quit (they run on a later turn, `AppController.later`).
     case lifecycle(HostBang)
-    /// Bangs for the skins of a group: !UpdateGroup, !RedrawGroup, !SetVariableGroup, the skin group mouse bangs
-    /// (step 3 of phase 2: the skin directory carries them).
-    case group(HostBang)
     /// Menus and windows: !SkinMenu, !SkinCustomMenu, !TrayMenu, !Manage, !About, !EditSkin.
     case ui(HostBang)
     /// The system: the clipboard, the desktop picture, sounds. Paths are absolute already.
     case system(HostBang)
     /// `["https://…"]`, `["file.txt"]`, `["App.app" "file"]`.
     case open(SkinExecutePlan)
-    /// A bang the engine performed, or `*`, for other skins (`SkinHost.skin(_:forward:toConfig:)`), with the sender's
-    /// hops.
+    /// A bang for another config that the skin could not hand to it itself (`SkinDirectory`): the config is loading
+    /// (it follows the load), or not running. `*`: every other running skin (a runtime without a directory). With the
+    /// sender's hops.
     case forward(Bang, toConfig: String, hops: Int)
     /// A window companion (FrostedGlass's backdrop, InputText's box): step 5 of phase 2 moves them here.
     case companion(SkinCompanionRequest)
@@ -141,11 +125,15 @@ enum SkinCompanionRequest {}
 protocol SkinRuntimeWindow: AnyObject {
     /// Applies a request (main thread).
     func apply(_ request: SkinRequest, from runtime: SkinRuntime)
-    /// `SkinHost.environment(for:)`, asked on the main thread (step 3 of phase 2: from the environment store and the
-    /// window model instead).
-    func environment(for skin: Skin) -> SkinEnvironment
-    /// `SkinHost.skinWindowTakesPointer`, asked on the main thread.
-    var takesPointer: Bool { get }
+    /// Runs `body`, in which the skin's window bangs are applied, as one batch: the windows are stacked again and the
+    /// app hears of changed settings once, at the end (main thread).
+    func batchingWindowChanges(_ body: () -> Void)
+    /// Debug builds: the environment the live window gives now, which the window model's must equal while the skin runs
+    /// on the main executor (nil: nothing to compare, as while a skin's move waits for a drag to end). Main thread.
+    func liveEnvironment(for skin: Skin) -> SkinEnvironment?
+    /// Debug builds: whether the live window takes the pointer, which the published facts must say (nil: nothing to
+    /// compare). Main thread.
+    var liveTakesPointer: Bool? { get }
     /// The screen the window is on (`LiveSkinHost.windowScreen`; main thread).
     var screen: NSScreen? { get }
 }

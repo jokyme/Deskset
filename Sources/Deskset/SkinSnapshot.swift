@@ -182,15 +182,17 @@ enum SnapshotAudit {
         return answer
     }
 
-    /// Compares an answer the snapshot predicted with the one the live skin gave (debug builds).
+    /// Compares an answer the snapshot predicted with the one the live skin gave (debug builds). `sides` names the
+    /// two in the report: the window model's answers are compared with the live window's the same way.
     static func compare<T: Equatable>(_ what: @autoclosure () -> String, _ runtime: SkinRuntime, snapshot answer: T,
-                                      live liveAnswer: T) {
+                                      live liveAnswer: T,
+                                      sides: (predicted: String, live: String) = ("the snapshot", "the skin")) {
         #if DEBUG
         guard isActive(runtime) else { return }
         comparisons += 1
         guard answer != liveAnswer else { return }
-        let message = "\(runtime.config): \(what()): the snapshot says \(String(describing: answer)), "
-            + "the skin \(String(describing: liveAnswer))"
+        let message = "\(runtime.config): \(what()): \(sides.predicted) says \(String(describing: answer)), "
+            + "\(sides.live) \(String(describing: liveAnswer))"
         if let captured {
             captured(message)
             return

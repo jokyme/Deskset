@@ -33,19 +33,28 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// The skin is closed: it takes no more messages.
     private(set) var isClosed = false
     private var updatesPaused = false
-    /// The hops of the message being handled (0 for the skin's own work): what its forwards to other skins count from.
+    /// The hops of the message being handled (0 for the skin's own work): what its bangs for other skins count from.
     private var currentHops = 0
-    /// The window facts last received (nil: none yet).
-    private(set) var windowFacts: SkinWindowFacts?
-    /// What the window side last answered for the environment: the answer off the main thread (step 3 of phase 2
-    /// replaces it with the environment store and the window model). nil: never asked.
-    private var lastEnvironment: SkinEnvironment?
+    /// What the skin believes its window is (docs/skin-threading.md §8.1): its own window bangs change it at once, the
+    /// main thread's facts after them. On the executor.
+    private(set) var model = SkinWindowModel()
+    /// The running skins, where the skin sends its bangs for other skins (nil: every such bang goes through the main
+    /// thread, as for a runtime of the self-tests without an app).
+    weak var directoryStore: SkinDirectoryStore?
+    /// Loads this skin asked the main thread for (`!ActivateConfig`, `!ToggleConfig`) that the main thread has not
+    /// scheduled yet, by lowercased config: until then a bang for that config goes behind them, through the main
+    /// thread (the directory does not know of them yet). Only requests queued from another thread count.
+    private let loadsInFlight = Guarded<[String: Int]>([:])
+    /// Bangs for other skins dropped because a chain of skins triggering each other reached `maxHops`, and whether that
+    /// was logged (once).
+    private(set) var droppedHops = 0
+    private(set) var hopLimitLogs = 0
 
     /// Told of every message right before it is handled, on the executor (self-tests).
     var messageObserver: ((SkinMessage) -> Void)?
 
     /// Most bangs one skin passes on to another inside a single chain (`[!Update B]` in A's OnUpdateAction, `[!Update
-    /// A]` in B's…): the next one is dropped (and logged).
+    /// A]` in B's…): the next one is dropped (and logged, once per skin).
     static let maxHops = 16
 
     /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`. Load it with `load()`, on the executor.
@@ -146,7 +155,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.inputMirror = mirror
             return true
         case .windowFacts(let facts):
-            windowFacts = facts
+            model.take(facts)
             return true
         default:
             break
@@ -172,7 +181,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         case .focus(let focused):
             skin.focusChanged(focused)
         case .bang(let bang, _, let hops):
-            withHops(hops) { skin.performSent(bang) }
+            withHops(hops) {
+                // A window bang goes to the window model (the skin's actions never see it, as before); any other bang
+                // to the skin.
+                if HostBangs.kind(of: bang.name) == .window {
+                    windowBang(bang)
+                } else {
+                    skin.performSent(bang)
+                }
+            }
         case .execute(let action, let section):
             skin.executeInput(action, from: section.flatMap { skin.section(named: $0) })
         case .preview(let sections, let variables):
@@ -275,11 +292,162 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func request(_ request: SkinRequest) {
         if Thread.isMainThread {
             window?.apply(request, from: self)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.window?.apply(request, from: self)
+            return
+        }
+        // A load the main thread has not scheduled yet: bangs for that config wait for it (`isLoadPending`).
+        let load = SkinRuntime.configLoaded(by: request)
+        if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.apply(request, from: self)
+            if let load {
+                self.loadsInFlight.access {
+                    let left = ($0[load] ?? 1) - 1
+                    $0[load] = left > 0 ? left : nil
+                }
             }
+        }
+    }
+
+    /// The config (lowercased) a lifecycle request may load: !ActivateConfig and !ToggleConfig.
+    private static func configLoaded(by request: SkinRequest) -> String? {
+        guard case .lifecycle(let host) = request, host.bang.name == "activateconfig" || host.bang.name == "toggleconfig",
+              let raw = host.bang.args.first else { return nil }
+        let name = SkinLibrary.normalizedConfigName(raw).lowercased()
+        return name.isEmpty ? nil : name
+    }
+
+    // MARK: Bangs for other skins
+
+    /// Whether a bang for `config` must go behind a load: one the directory knows of, or one this skin asked for that
+    /// the main thread has not scheduled yet.
+    private func isLoadPending(_ config: String, in directory: SkinDirectory) -> Bool {
+        if directory.isLoadPending(config) { return true }
+        let key = SkinLibrary.normalizedConfigName(config).lowercased()
+        return loadsInFlight.access { $0[key] != nil }
+    }
+
+    /// Hands `message` (made with the hops it carries) to another skin's runtime: at once when it runs on this thread,
+    /// queued there otherwise. A chain of skins triggering each other stops at `maxHops`: the bang is dropped and
+    /// logged, once per skin.
+    private func deliver(_ bang: String, to target: SkinRuntime, _ message: (_ hops: Int) -> SkinMessage) {
+        guard currentHops < SkinRuntime.maxHops else {
+            droppedHops += 1
+            if hopLimitLogs == 0 {
+                hopLimitLogs += 1
+                Log.write("!\(bang) to \"\(target.config)\" ignored: skins keep triggering each other", level: .warning,
+                          source: config)
+            }
+            return
+        }
+        target.send(message(currentHops + 1))
+    }
+
+    /// Sends a bang the engine performed to the config `name` (not this one): straight to its runtime when it runs; to
+    /// the main thread when it is loading (the bang follows the load) or not running (the main thread says so in the
+    /// log), or without a directory.
+    private func send(_ bang: Bang, toConfig name: String) {
+        if let directory = directoryStore?.directory, !isLoadPending(name, in: directory),
+           let target = directory.runtime(for: name) {
+            deliver(bang.name, to: target) { .bang(bang, from: config, hops: $0) }
+        } else {
+            request(.forward(bang, toConfig: name, hops: currentHops))
+        }
+    }
+
+    /// The skins of a skin group, in load order (without a directory: this one, when it is in the group).
+    private func groupMembers(_ group: String) -> [SkinRuntime] {
+        if let directory = directoryStore?.directory { return directory.runtimes(inGroup: group) }
+        return snapshot.isInSkinGroup(group) ? [self] : []
+    }
+
+    /// A window bang (`SkinWindowBangs`): this skin's own changes its window model at once; the others' go to their
+    /// runtimes (a skin group, `*` and a config by name are resolved here, in load order). On the main thread the
+    /// windows are stacked again and the app hears of the changed settings once, after all of them.
+    private func windowBang(_ bang: Bang) {
+        guard let (targets, member) = SkinWindowBangs.targets(of: bang) else { return }
+        inWindowBatch {
+            switch targets {
+            case .own:
+                ownWindowBang(member)
+            case .config(let name) where name == "*":
+                guard let directory = directoryStore?.directory else {
+                    ownWindowBang(member)
+                    request(.forward(member, toConfig: "*", hops: currentHops))
+                    return
+                }
+                for target in directory.runtimes {
+                    if target === self {
+                        ownWindowBang(member)
+                    } else {
+                        deliver(member.name, to: target) { .bang(member, from: config, hops: $0) }
+                    }
+                }
+            case .config(let name):
+                if name.caseInsensitiveCompare(config) == .orderedSame {
+                    ownWindowBang(member)
+                } else {
+                    send(member, toConfig: name)
+                }
+            case .group(let group):
+                for target in groupMembers(group) {
+                    if target === self {
+                        ownWindowBang(member)
+                    } else {
+                        deliver(member.name, to: target) { .bang(member, from: config, hops: $0) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
+    private func ownWindowBang(_ bang: Bang) {
+        guard !isClosed, let change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        request(.window(change))
+    }
+
+    /// Runs `body` as one batch of window changes on the main thread (`SkinRuntimeWindow.batchingWindowChanges`).
+    private func inWindowBatch(_ body: () -> Void) {
+        if Thread.isMainThread, let window {
+            window.batchingWindowChanges(body)
+        } else {
+            body()
+        }
+    }
+
+    /// !UpdateGroup, !RedrawGroup, !SetVariableGroup and the skin group mouse bangs: for each skin of the group, in load
+    /// order (this one too when it is in the group, at once).
+    private func groupBang(_ bang: Bang) {
+        let a = bang.args
+        func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
+        func each(_ group: String, _ message: (_ hops: Int) -> SkinMessage) {
+            for target in groupMembers(group) {
+                if target === self {
+                    send(message(currentHops))
+                } else {
+                    deliver(bang.name, to: target, message)
+                }
+            }
+        }
+        let sender = config
+        switch bang.name {
+        case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
+             "togglemouseactionskingroup":
+            // "operate on the [Rainmeter] section of a named Group of skins": !XMouseAction Rainmeter MouseActions in
+            // each skin of the group.
+            let local = Bang(name: String(bang.name.dropLast("skingroup".count)), args: ["Rainmeter", a.first ?? ""])
+            each(arg(1)) { .bang(local, from: sender, hops: $0) }
+        case "updategroup":
+            each(arg(0)) { .update(hops: $0) }
+        case "redrawgroup":
+            each(arg(0)) { _ in .redraw }
+        case "setvariablegroup":
+            // !SetVariableGroup Variable Value Group
+            let local = Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""])
+            each(arg(2)) { .bang(local, from: sender, hops: $0) }
+        default:
+            break
         }
     }
 
@@ -363,7 +531,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     func skinNeedsDisplay(_ skin: Skin) {
         guard !isClosed else { return }
-        request(.display(size: SkinRuntime.windowSize(width: skin.width, height: skin.height)))
+        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        // The window follows the skin's size (top-left corner fixed): the skin reads its new size at once.
+        model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
+        request(.display(size: size))
     }
 
     /// Largest window side in points: guards against skins whose size formulas explode.
@@ -378,27 +549,47 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return CGSize(width: side(width), height: side(height))
     }
 
+    /// A bang the engine performed with another config's name, or `*` (the engine has performed it here already: every
+    /// other running skin follows, in load order).
     func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
-        request(.forward(bang, toConfig: config, hops: currentHops))
+        let name = SkinLibrary.normalizedConfigName(config)
+        guard name == "*" else { return send(bang, toConfig: name) }
+        guard let directory = directoryStore?.directory else {
+            return request(.forward(bang, toConfig: "*", hops: currentHops))
+        }
+        for target in directory.runtimes where target !== self {
+            deliver(bang.name, to: target) { .bang(bang, from: self.config, hops: $0) }
+        }
     }
 
-    /// Window, config and app bangs: which kind they are is decided here (false: not supported on macOS, and the
-    /// engine records a compatibility note); what they do is done on the main thread (`SkinWindowController.apply`).
+    /// Window, group, config and app bangs: which kind they are is decided here (false: not supported on macOS, and the
+    /// engine records a compatibility note). Window bangs change the window model and group bangs go to the group's
+    /// skins from here; what the others do is done on the main thread (`SkinWindowController.apply`).
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
         guard !isClosed else { return true }
         guard let kind = HostBangs.kind(of: bang.name) else { return false }
+        switch kind {
+        case .window:
+            windowBang(bang)
+            return true
+        case .group:
+            groupBang(bang)
+            return true
+        case .lifecycle, .ui, .system:
+            break
+        }
         let host = HostBang(bang: HostBangs.preparedForMain(bang, of: skin), hops: currentHops, whileClosing: isClosing)
         switch kind {
-        case .window: request(.window(host))
         case .lifecycle: request(.lifecycle(host))
-        case .group: request(.group(host))
         case .ui: request(.ui(host))
-        case .system: request(.system(host))
+        default: request(.system(host))
         }
         return true
     }
 
+    /// Lua `SKIN:FadeWindow`: the saved AlphaValue stays; the window model notes what it was faded to.
     func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool {
+        model.settings.fadedAlpha = SkinFadedAlpha(value: min(max(to, 0), 255), base: model.settings.alphaValue)
         request(.fadeWindow(from: from, to: to))
         return true
     }
@@ -416,10 +607,19 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         request(.glass(regions))
     }
 
+    /// From the window's facts. Debug builds compare with the live window while the skin runs on the main executor.
     func skinWindowTakesPointer(_ skin: Skin) -> Bool {
-        if Thread.isMainThread, let window { return window.takesPointer }
-        return windowFacts?.takesPointer ?? true
+        let answer = model.takesPointer
+        #if DEBUG
+        if SnapshotAudit.isActive(self), let live = window?.liveTakesPointer {
+            SnapshotAudit.compare("takes the pointer", self, snapshot: answer, live: live, sides: SkinRuntime.auditSides)
+        }
+        #endif
+        return answer
     }
+
+    /// How the debug comparison names the two answers it compares.
+    static let auditSides = (predicted: "the window model", live: "the window")
 
     func skin(_ skin: Skin, execute target: String, arguments: [String]) {
         switch SkinRuntime.executePlan(skin, target: target, arguments: arguments) {
@@ -468,15 +668,18 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         Images.size(atPath: path)
     }
 
-    /// The window side's answer on the main thread; elsewhere the one it gave last (the engine's defaults before it
-    /// answered).
+    /// The environment store's screens, paths and appearance with the window model's place, Z position and screen
+    /// (AutoSelectScreen). Debug builds compare it with the live window's while the skin runs on the main executor.
     func environment(for skin: Skin) -> SkinEnvironment {
-        if Thread.isMainThread, let window {
-            let env = window.environment(for: skin)
-            lastEnvironment = env
-            return env
+        let settings = model.settings
+        let env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
+                                                      autoSelectScreen: settings.autoSelectScreen)
+        #if DEBUG
+        if SnapshotAudit.isActive(self), let live = window?.liveEnvironment(for: skin) {
+            SnapshotAudit.compare("environment", self, snapshot: env, live: live, sides: SkinRuntime.auditSides)
         }
-        return lastEnvironment ?? SkinEnvironment()
+        #endif
+        return env
     }
 
     // MARK: SkinImageQueries

@@ -63,7 +63,7 @@ final class StudioHost: LiveSkinHost {
     func environment(for skin: Skin) -> SkinEnvironment {
         var env: SkinEnvironment
         if let c = desktop, !c.isStopped {
-            env = c.environment(for: skin)
+            env = c.environment
         } else {
             env = EnvironmentStore.shared.environment(windowFrame: nil)
         }

@@ -5,7 +5,8 @@ import DesksetCore
 /// glass), fades, hover polling, placement, dragging, snapping and keeping on screen, and the skin's `AppState`. The
 /// other half, `SkinRuntime`, owns the `Skin`; this one reaches it only through the runtime: messages (`runtime.send`),
 /// the skin's snapshot (`runtime.snapshot`), or exclusive access (`runtime.exclusive`) where it still reads the live
-/// skin. It applies what the runtime asks of the main thread (`apply`).
+/// skin. It applies what the runtime asks of the main thread (`apply`), and tells the runtime what it did with the
+/// window after every change (`publishFacts`): the runtime's window model (`SkinWindowModel`) follows it.
 final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow {
     let config: String
     let file: String
@@ -43,6 +44,17 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     private var displayPending = false
     private var fadeGeneration = 0
 
+    /// The last of the skin's own window changes applied here (`SkinWindowFacts.modelSequence`).
+    private var appliedModelSequence = 0
+    /// Counts the facts published, and the ones sent last.
+    private var factsSequence = 0
+    private var sentFacts: SkinWindowFacts?
+    /// A press on the skin that may drag its window is under way (`SkinView`): the skin's moves wait for its release.
+    private(set) var isDragPressActive = false
+    /// The skin's latest move while a press may drag the window: applied at the release, unless the press became a
+    /// drag (a drag in progress wins).
+    private(set) var heldMove: SkinWindowChange?
+
     /// Largest window side in points: guards against skins whose size formulas explode.
     static let maxWindowSide: CGFloat = SkinRuntime.maxWindowSide
     /// Most bangs one skin passes on to another inside a single chain.
@@ -59,7 +71,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// Whether the skin can currently be seen (loaded, not hidden by a bang).
     var isShown: Bool { !isStopped && !isHiddenByBang && window.isVisible }
 
-    init(config: String, file: String, app: AppController) throws {
+    /// `executor`: where the skin runs (the main executor, unless a self-test puts it on a thread of its own).
+    init(config: String, file: String, app: AppController, executor: SkinExecutor = MainSkinExecutor.shared) throws {
         self.config = config
         self.file = file
         self.app = app
@@ -67,11 +80,24 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView.addSubview(view)
         window = SkinWindowController.makePanel()
-        runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory)
+        runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory, executor: executor)
         super.init()
         runtime.window = self
+        runtime.directoryStore = app.skinDirectory
+        // The window model starts from the window as it is: loading may read #CURRENTCONFIGX# already.
+        publishFacts()
 
-        let loaded = try runtime.load()
+        let loaded: SkinRuntime.LoadResult
+        if executor.isCurrent {
+            loaded = try runtime.load()
+        } else {
+            // A skin on a thread of its own loads there, with the thread parked meanwhile.
+            let runtime = self.runtime
+            guard let result = executor.exclusive(timeout: 60, { Result { try runtime.load() } }) else {
+                throw SkinWindowController.LoadTimeout()
+            }
+            loaded = try result.get()
+        }
         // Wired up only once the skin loaded (NSWindow does not retain its delegate).
         window.contentView = contentView
         window.delegate = self
@@ -81,6 +107,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         if loaded.registeredFonts { app.fontsChanged() }
         for issue in loaded.issues { Log.write(issue, level: .warning, source: config) }
     }
+
+    /// The skin's thread did not let the main thread load it in time.
+    struct LoadTimeout: Error {}
 
     static func makePanel() -> SkinPanel {
         let panel = SkinPanel(contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
@@ -113,6 +142,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// StartHidden the window stays hidden until !Show.
     func start(fadeIn: Bool) {
         if state.startHidden { isHiddenByBang = true }
+        // Also publishes the settings the first load seeded (`seedWindowSettings`): #CURRENTCONFIGZPOS# of the first
+        // update.
         applyWindowSettings()
         // The first update, then the update clock (which never fires inline).
         runtime.send(.start)
@@ -125,6 +156,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             window.orderFrontRegardless()
             if duration > 0 { animateAlpha(to: target, duration: duration) }
         }
+        publishFacts()
     }
 
     /// Stops updating, runs OnCloseAction and closes the window (fading out when `fadeOut`).
@@ -136,6 +168,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         isClosing = true
         runtime.send(.close(fadeOut: fadeOut))
         isStopped = true
+        endDragPress(moved: false)
+        publishFacts()
         let window = self.window
         window.delegate = nil
         fadeGeneration += 1
@@ -205,6 +239,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         if isHiddenByBang && window.isVisible { window.orderOut(nil) }
         // ClickThrough has no tooltips.
         view.updateToolTips()
+        publishFacts()
     }
 
     private var targetAlpha: CGFloat {
@@ -223,6 +258,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// Ends a Lua FadeWindow override (the saved AlphaValue was set again, even to the same value).
     func clearFadedAlpha() {
         fadedAlpha = nil
+        publishFacts()
     }
 
     /// Lua `SKIN:FadeWindow(from, to)`: the window goes to `from` and fades to `to` (0…255) over FadeDuration. The
@@ -231,6 +267,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         guard !isStopped else { return }
         let from = min(max(from, 0), 255), to = min(max(to, 0), 255)
         fadedAlpha = (to, state.alphaValue)
+        defer { publishFacts() }
         guard !isHiddenByBang else { return }
         let duration = SkinVisibility.fadeSeconds(state.fadeDuration)
         if duration > 0 && app.presentsWindows && window.isVisible { window.alphaValue = CGFloat(from) / 255 }
@@ -316,12 +353,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     func setHidden(_ hidden: Bool, fade: Bool) {
         guard !isStopped else { return }
         isHiddenByBang = hidden
+        defer { publishFacts() }
         updateHoverTracking()
         let duration = fade ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
         if hidden {
             animateAlpha(to: 0, duration: window.isVisible ? duration : 0) { [weak self] in
                 guard let self, self.isHiddenByBang else { return }
                 self.window.orderOut(nil)
+                self.publishFacts()
             }
         } else {
             if !window.isVisible && app.presentsWindows {
@@ -359,11 +398,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         isHovering = inside
         applyMouseHandling()
         applyAlpha(animated: true)
+        publishFacts()
     }
 
     // MARK: Placement
 
-    private var screens: [WindowGeometry.Screen] { WindowGeometry.currentScreens() }
+    private var screens: [WindowGeometry.Screen] { EnvironmentStore.shared.currentScreens }
     private var primaryHeight: CGFloat { WindowGeometry.primaryHeight(screens) }
 
     /// The window size for the skin's size (from the snapshot).
@@ -449,6 +489,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         view.frame = NSRect(origin: .zero, size: size)
         defaultPosition = nil
         if isNew { saveFrame(frame, force: true) }
+        publishFacts()
     }
 
     /// Displays were added, removed or rearranged: re-derive the position from the saved one (so a skin returns to
@@ -460,6 +501,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         } else {
             window.setFrame(constrained(window.frame), display: false)
         }
+        publishFacts()
     }
 
     /// After a drag or !Move.
@@ -470,6 +512,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             window.setFrameOrigin(frame.origin)
         }
         saveFrame(frame)
+        publishFacts()
     }
 
     private func saveFrame(_ frame: CGRect, force: Bool = false) {
@@ -524,6 +567,20 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             displayPending = false
             view.needsDisplay = true
         }
+        publishFacts()
+    }
+
+    /// Whoever moved the window (a drag, a screen change, AppKit): the runtime hears of it.
+    func windowDidMove(_ notification: Notification) {
+        publishFacts()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        publishFacts()
+    }
+
+    func windowDidChangeBackingProperties(_ notification: Notification) {
+        publishFacts()
     }
 
     // MARK: Requests from the runtime
@@ -536,7 +593,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         case .glass(let regions):
             guard !isStopped else { return }
             glass.apply(regions, in: contentView, below: view)
-        case .window(let bang), .lifecycle(let bang), .group(let bang), .ui(let bang), .system(let bang):
+        case .window(let change):
+            applyWindowChange(change)
+        case .lifecycle(let bang), .ui(let bang), .system(let bang):
             applyHostBang(bang)
         case .fadeWindow(let from, let to):
             fadeWindow(from: from, to: to)
@@ -612,6 +671,100 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         for target in targets where !target.isStopped { target.runtime.send(.bang(bang, from: sender, hops: hops + 1)) }
     }
 
+    // MARK: The window model
+
+    /// One of the skin's own window changes, made in its window model already: the same happens to `AppState` and the
+    /// panel, as the window bangs always did here. The windows are stacked again and the app hears of the settings once
+    /// per batch (`AppController.batchingWindowChanges`). A move that comes while a press may drag the window waits for
+    /// the release (`endDragPress`).
+    private func applyWindowChange(_ change: SkinWindowChange) {
+        guard !isStopped else { return }
+        if case .move = change.operation, isDragPressActive {
+            heldMove = change
+            return
+        }
+        appliedModelSequence = max(appliedModelSequence, change.sequence)
+        switch change.operation {
+        case .move(let frame):
+            let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
+            moveTo(x: p.x, y: p.y)
+        case .zPosition(let value):
+            app.state.update(config) { $0.alwaysOnTop = value }
+            applyWindowSettings()
+            if isShown && app.presentsWindows { window.orderFrontRegardless() }
+            // Skins sharing the new Position are stacked by load order again (as the menu and the Manage window do).
+            app.windowChangesNeed(restack: true, settingsChanged: true)
+        case .alpha(let value):
+            clearFadedAlpha()
+            app.state.update(config) { $0.alphaValue = value }
+            applyWindowSettings()
+            app.windowChangesNeed(settingsChanged: true)
+        case .flag(let flag, let value):
+            app.state.update(config) { $0[keyPath: flag.state] = value }
+            applyWindowSettings()
+            app.windowChangesNeed(settingsChanged: true)
+            if flag == .keepOnScreen { windowMoved() }
+        case .fadeDuration(let milliseconds):
+            app.state.update(config) { $0.fadeDuration = milliseconds }
+            applyWindowSettings()
+            app.windowChangesNeed(settingsChanged: true)
+        case .hidden(let hidden, let fade):
+            setHidden(hidden, fade: fade)
+        }
+        publishFacts()
+    }
+
+    /// A press on the skin that may drag its window (Draggable, no LeftMouseDownAction there…) began (`SkinView`).
+    func beginDragPress() {
+        isDragPressActive = true
+    }
+
+    /// That press ended; `moved`: it dragged the window. The window's place is saved after a drag; a move the skin made
+    /// meanwhile is dropped (the drag wins) or, when the press did not drag, made now. The runtime hears where the window
+    /// is either way.
+    func endDragPress(moved: Bool) {
+        guard isDragPressActive else {
+            if moved { windowMoved() }
+            return
+        }
+        isDragPressActive = false
+        let held = heldMove
+        heldMove = nil
+        if let held { appliedModelSequence = max(appliedModelSequence, held.sequence) }
+        if moved {
+            windowMoved()
+        } else if let held, case .move(let frame) = held.operation, !isStopped {
+            let p = WindowGeometry.topLeft(of: frame, primaryHeight: primaryHeight)
+            moveTo(x: p.x, y: p.y)
+        }
+        publishFacts()
+    }
+
+    /// What the window is now, for the runtime.
+    var facts: SkinWindowFacts {
+        SkinWindowFacts(frame: window.frame, screen: window.screen.flatMap { NSScreen.screens.firstIndex(of: $0) },
+                        isVisible: window.occlusionState.contains(.visible), isOrderedIn: window.isVisible,
+                        scale: window.backingScaleFactor, colorSpace: window.colorSpace?.cgColorSpace,
+                        appearance: view.effectiveAppearance.name.rawValue, takesPointer: takesPointer,
+                        settings: SkinWindowSettings(state, hidden: isHiddenByBang,
+                                                     fadedAlpha: fadedAlpha.map { SkinFadedAlpha(value: $0.value,
+                                                                                                 base: $0.base) }),
+                        // While a move of the skin's waits, its model keeps that move and what came after it.
+                        modelSequence: heldMove.map { min(appliedModelSequence, $0.sequence - 1) } ?? appliedModelSequence,
+                        sequence: factsSequence)
+    }
+
+    /// Tells the runtime what the window is (`SkinWindowFacts`) when that changed since it was last told: after every
+    /// change the main thread makes or applies. With the main executor the model follows at once.
+    func publishFacts() {
+        var now = facts
+        if let sent = sentFacts, sent.hasSameValues(as: now) { return }
+        factsSequence += 1
+        now.sequence = factsSequence
+        sentFacts = now
+        runtime.send(.windowFacts(now))
+    }
+
     /// `["target" arguments…]`: a web page, a file or an app opens.
     private func open(_ plan: SkinExecutePlan) {
         switch plan {
@@ -661,10 +814,22 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         SkinRuntime.executePlan(skin, target: target, arguments: arguments)
     }
 
-    func environment(for skin: Skin) -> SkinEnvironment {
+    /// The environment of the live window (main thread): the Studio's instance of the widget reads its desktop copy's.
+    var environment: SkinEnvironment {
         let s = state
         return EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
                                                    autoSelectScreen: s.autoSelectScreen)
+    }
+
+    /// While a move of the skin's waits for a drag to end, the model and the window differ on purpose.
+    func liveEnvironment(for skin: Skin) -> SkinEnvironment? {
+        heldMove == nil ? environment : nil
+    }
+
+    var liveTakesPointer: Bool? { takesPointer }
+
+    func batchingWindowChanges(_ body: () -> Void) {
+        app.batchingWindowChanges(body)
     }
 }
 

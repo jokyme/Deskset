@@ -4,8 +4,10 @@ import DesksetCore
 // Window, config and application bangs the engine hands to the host.
 // Manual: https://docs.rainmeter.net/manual/bangs/ (skin, skin group and application bangs).
 //
-// The runtime answers the engine on the skin's executor (`HostBangs.kind`: supported or not, and which kind); what a
-// bang does happens on the main thread, where the runtime's request is applied (`SkinWindowController.applyHostBang`).
+// The runtime answers the engine on the skin's executor (`HostBangs.kind`: supported or not, and which kind). Window
+// bangs change the skin's window model there and go to other skins' runtimes (`SkinWindowModel`, `SkinDirectory`), as
+// the group bangs do; what the config, menu and system bangs do happens on the main thread, where the runtime's
+// request is applied (`SkinWindowController.applyHostBang`).
 
 /// Which bangs the host handles, and of what kind: the request the runtime makes for them.
 enum HostBangs {
@@ -55,7 +57,7 @@ enum HostBangs {
 }
 
 extension SkinWindowController {
-    /// Does what a bang the runtime handed over does (`HostBangs`), on the main thread.
+    /// Does what a config, menu or system bang the runtime handed over does (`HostBangs`), on the main thread.
     func applyHostBang(_ host: HostBang) {
         guard !isStopped else { return }
         let bang = host.bang
@@ -74,32 +76,6 @@ extension SkinWindowController {
             app.controllers(forConfigArgument: arg(index), current: self)
         }
         func group(_ index: Int) -> [SkinWindowController] { app.controllers(inGroup: arg(index)) }
-        func update(_ list: [SkinWindowController], _ change: (inout SkinState) -> Void) {
-            for t in list {
-                app.state.update(t.config, change)
-                t.applyWindowSettings()
-            }
-            app.skinSettingsChanged()
-        }
-        func setFlag(_ list: [SkinWindowController], _ key: WritableKeyPath<SkinState, Bool>) {
-            for t in list {
-                app.state.update(t.config) { $0[keyPath: key] = SkinVisibility.flag(arg(0), current: $0[keyPath: key]) }
-                t.applyWindowSettings()
-            }
-            app.skinSettingsChanged()
-        }
-        func zPosition() -> Int { min(max(OptionValue.int(arg(0)) ?? 0, -2), 2) }
-        func alpha() -> Int { min(max(OptionValue.int(arg(0)) ?? 255, 0), 255) }
-        func milliseconds() -> Int {
-            let v = OptionValue.number(arg(0)) ?? 250
-            return v.isFinite ? Int(min(max(v, 0), Double(SkinState.maxFadeDuration))) : 250
-        }
-        func setZPos(_ list: [SkinWindowController], _ value: Int) {
-            update(list) { $0.alwaysOnTop = value }
-            list.forEach { if $0.isShown && app.presentsWindows { $0.window.orderFrontRegardless() } }
-            // Skins sharing the new Position are stacked by load order again (like the menu / Manage window do).
-            app.restack()
-        }
 
         /// While OnCloseAction runs, the closing skin cannot reload or unload itself.
         func others(_ list: [SkinWindowController]) -> [SkinWindowController] {
@@ -146,91 +122,6 @@ extension SkinWindowController {
                     app.activate(config: config, file: file, fade: true)
                 }
             }
-        case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
-             "togglemouseactionskingroup":
-            // "operate on the [Rainmeter] section of a named Group of skins": !XMouseAction Rainmeter MouseActions
-            // in each skin of the group.
-            let verb = String(bang.name.dropLast("skingroup".count))
-            for t in group(1) where !t.isStopped {
-                t.runtime.send(.bang(Bang(name: verb, args: ["Rainmeter", a.first ?? ""]), from: config, hops: host.hops))
-            }
-        case "updategroup":
-            group(0).forEach { $0.runtime.send(.update(hops: host.hops)) }
-        case "redrawgroup":
-            group(0).forEach { $0.runtime.send(.redraw) }
-        case "setvariablegroup":
-            // !SetVariableGroup Variable Value Group
-            for t in group(2) where !t.isStopped {
-                t.runtime.send(.bang(Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""]), from: config,
-                                     hops: host.hops))
-            }
-
-        // Window position and behaviour
-        case "move":
-            guard let x = OptionValue.number(arg(0)), let y = OptionValue.number(arg(1)) else { return }
-            targets(2).forEach { $0.moveTo(x: x, y: y) }
-        case "setwindowposition":
-            // !SetWindowPosition WindowX WindowY [AnchorX AnchorY] [Config]
-            let configIndex = a.count >= 5 ? 4 : (a.count == 3 ? 2 : -1)
-            let list = configIndex >= 0 ? targets(configIndex) : [self]
-            for t in list {
-                let size = t.window.frame.size
-                let anchor = a.count >= 4 ? (arg(2), arg(3)) : ("0", "0")
-                if let p = WindowPosition.resolve(x: arg(0), y: arg(1), anchorX: anchor.0, anchorY: anchor.1,
-                                                  skinSize: size, screens: WindowGeometry.currentScreens()) {
-                    t.moveTo(x: p.x, y: p.y)
-                }
-            }
-        case "zpos":
-            setZPos(targets(1), zPosition())
-        case "zposgroup":
-            setZPos(group(1), zPosition())
-        case "settransparency":
-            let list = targets(1)
-            list.forEach { $0.clearFadedAlpha() }
-            update(list) { $0.alphaValue = alpha() }
-        case "settransparencygroup":
-            let list = group(1)
-            list.forEach { $0.clearFadedAlpha() }
-            update(list) { $0.alphaValue = alpha() }
-        case "draggable": setFlag(targets(1), \.draggable)
-        case "draggablegroup": setFlag(group(1), \.draggable)
-        case "clickthrough": setFlag(targets(1), \.clickThrough)
-        case "clickthroughgroup": setFlag(group(1), \.clickThrough)
-        case "keeponscreen":
-            setFlag(targets(1), \.keepOnScreen)
-            targets(1).forEach { $0.windowMoved() }
-        case "keeponscreengroup":
-            setFlag(group(1), \.keepOnScreen)
-            group(1).forEach { $0.windowMoved() }
-        case "snapedges": setFlag(targets(1), \.snapEdges)
-        case "snapedgesgroup": setFlag(group(1), \.snapEdges)
-        case "autoselectscreen":
-            // Positions are kept in desktop coordinates whatever the setting; it decides which monitor the
-            // monitor variables without @N refer to (see `EnvironmentStore.environment`).
-            setFlag(targets(1), \.autoSelectScreen)
-        case "autoselectscreengroup":
-            setFlag(group(1), \.autoSelectScreen)
-
-        // Visibility
-        case "show": targets(0).forEach { $0.setHidden(false, fade: false) }
-        case "hide": targets(0).forEach { $0.setHidden(true, fade: false) }
-        case "toggle": targets(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: false) }
-        case "showfade": targets(0).forEach { $0.setHidden(false, fade: true) }
-        case "hidefade": targets(0).forEach { $0.setHidden(true, fade: true) }
-        case "togglefade": targets(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: true) }
-        case "showgroup": group(0).forEach { $0.setHidden(false, fade: false) }
-        case "hidegroup": group(0).forEach { $0.setHidden(true, fade: false) }
-        case "togglegroup": group(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: false) }
-        case "showfadegroup": group(0).forEach { $0.setHidden(false, fade: true) }
-        case "hidefadegroup": group(0).forEach { $0.setHidden(true, fade: true) }
-        case "togglefadegroup": group(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: true) }
-        case "fadeduration":
-            let ms = milliseconds()
-            update(targets(1)) { $0.fadeDuration = ms }
-        case "fadedurationgroup":
-            let ms = milliseconds()
-            update(group(1)) { $0.fadeDuration = ms }
 
         // Menus and windows
         case "skinmenu":
@@ -270,7 +161,7 @@ extension SkinWindowController {
             app.later { _ in NSApp.terminate(nil) }
 
         default:
-            // Not supported (`HostBangs.kind` answered nil): the runtime never hands such a bang over.
+            // Window and group bangs never come here (the runtime carries them out), nor unsupported ones.
             break
         }
     }

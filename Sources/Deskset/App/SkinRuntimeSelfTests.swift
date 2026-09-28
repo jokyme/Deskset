@@ -383,15 +383,16 @@ final class RecordingWindow: SkinRuntimeWindow {
         case .snapshotChanged(let changes):
             // With nothing in it: a test's marker; else what the runtime posted.
             if changes.isEmpty { log.append("marker \(place)") } else { snapshotPosts.append(changes) }
-        case .window(let host): log.append("window \(host.bang.name) \(place)")
+        case .window(let change): log.append("window \(change.bang) \(place)")
         case .system(let host): log.append("system \(host.bang.name) \(place)")
         case .fadeWindow(let from, _): log.append("fade \(from) \(place)")
         default: log.append("other \(place)")
         }
     }
 
-    func environment(for skin: Skin) -> SkinEnvironment { SkinEnvironment() }
-    var takesPointer: Bool { true }
+    func batchingWindowChanges(_ body: () -> Void) { body() }
+    func liveEnvironment(for skin: Skin) -> SkinEnvironment? { nil }
+    var liveTakesPointer: Bool? { nil }
     var screen: NSScreen? { nil }
 }
 

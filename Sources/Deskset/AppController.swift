@@ -21,8 +21,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// times a second. Headless it follows at once, unless a self-test asks.
     var defersDesktopUpdates: Bool
 
-    /// Running skins keyed by lowercased config name.
-    private(set) var controllers: [String: SkinWindowController] = [:]
+    /// Running skins keyed by lowercased config name. The skins' directory follows every change.
+    private(set) var controllers: [String: SkinWindowController] = [:] {
+        didSet { publishDirectory() }
+    }
+    /// What the skins know of each other: the running ones and the configs a bang is loading (`SkinDirectory`).
+    let skinDirectory = SkinDirectoryStore()
+    /// Where a config's skin runs. The main executor; a self-test puts some on threads of their own (the engine thread
+    /// of a later step of docs/skin-threading.md's phase 2 comes in here).
+    var skinExecutor: (String) -> SkinExecutor = { _ in MainSkinExecutor.shared }
     /// Last position of each config in this session (used on refresh when SavePosition is off).
     var sessionPositions: [String: (Double, Double)] = [:]
     private var statusItem: NSStatusItem?
@@ -460,8 +467,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Configs a bang asked to load (or reload as another variant) that have not been loaded yet (lowercased name →
-    /// number of scheduled loads).
-    private var pendingLoads: [String: Int] = [:]
+    /// number of scheduled loads). The skins' directory follows every change.
+    private var pendingLoads: [String: Int] = [:] {
+        didSet { publishDirectory() }
+    }
+
+    /// Publishes the skins' directory: the running skins in load order, the configs a bang is loading.
+    func publishDirectory() {
+        skinDirectory.publish(entries: sortedControllers.map { SkinDirectory.Entry(config: $0.config, runtime: $0.runtime) },
+                              pendingLoads: Set(pendingLoads.keys))
+    }
 
     /// `later` for a change that may load `config` (`!ActivateConfig`, `!ToggleConfig`). Until it has run, bangs
     /// addressed to that config wait for it (see `isLoadPending`), so `[!ActivateConfig X][!Move 10 10 X]` moves the
@@ -510,7 +525,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.active = true
         }
         do {
-            let c = try SkinWindowController(config: entry.name, file: chosen, app: self)
+            let c = try SkinWindowController(config: entry.name, file: chosen, app: self,
+                                             executor: skinExecutor(entry.name))
             controllers[key] = c
             if firstLoad { c.seedWindowSettings() }
             if let previous { c.runtime.continueCounter(from: previous) }
@@ -632,6 +648,42 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A skin's window settings changed (menu, Manage window or bang).
     func skinSettingsChanged() {
         notifyChanged()
+    }
+
+    // MARK: Window changes from skins
+
+    private var windowBatchDepth = 0
+    private var windowBatchNeeds = (restack: false, settingsChanged: false)
+    private var windowBatchFlushQueued = false
+
+    /// Runs `body`, in which skins' window bangs are applied (`SkinWindowController.applyWindowChange`), as one batch:
+    /// the windows are stacked again and the app hears of changed settings once, at the end, as for one bang for a
+    /// group of skins. Re-entrant.
+    func batchingWindowChanges(_ body: () -> Void) {
+        windowBatchDepth += 1
+        body()
+        windowBatchDepth -= 1
+        if windowBatchDepth == 0 { flushWindowChanges() }
+    }
+
+    /// A skin's window change needs the windows stacked again, or the app told of changed settings: at the end of the
+    /// batch it came in; one that came on its own (queued from a skin's thread) after the others queued with it.
+    func windowChangesNeed(restack: Bool = false, settingsChanged: Bool = false) {
+        if restack { windowBatchNeeds.restack = true }
+        if settingsChanged { windowBatchNeeds.settingsChanged = true }
+        guard windowBatchDepth == 0, !windowBatchFlushQueued else { return }
+        windowBatchFlushQueued = true
+        later { app in
+            app.windowBatchFlushQueued = false
+            app.flushWindowChanges()
+        }
+    }
+
+    private func flushWindowChanges() {
+        let needs = windowBatchNeeds
+        windowBatchNeeds = (false, false)
+        if needs.settingsChanged { skinSettingsChanged() }
+        if needs.restack { restack() }
     }
 
     /// A skin registered fonts: skins laid out before may have measured their text with a fallback font, so their
@@ -1058,6 +1110,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if presentsWindows && c.isShown { c.window.orderFrontRegardless() }
             restack()
         }
+        // Bangs for `*` and skin groups go in load order.
+        if before.loadOrder != after.loadOrder { publishDirectory() }
         if !before.keepOnScreen && after.keepOnScreen { c.windowMoved() }
         if !before.savePosition && after.savePosition { c.windowMoved() }
         skinSettingsChanged()
