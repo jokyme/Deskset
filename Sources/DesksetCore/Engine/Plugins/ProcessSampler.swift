@@ -10,12 +10,13 @@ import Foundation
 // processes), and idle time as the synthetic process "Idle", so the per-process CPU values still add up to the whole
 // machine like Windows' "Process" counters do.
 //
-// What a sample costs (Apple silicon, about 600 processes, 400 of them the user's, 2026-09-28; the sampler's utility
-// thread often runs on an efficiency core, where each call takes about five times as long): `proc_pid_rusage` version
-// 4 took 0.29 ms for the user's processes and version 2, which has every field used here, 0.19 ms; asking for the
-// other users' processes failed one call each, 0.11 ms; `proc_taskinfo` took 0.17 ms. So a sample reads version 2,
-// lists only the user's processes, and reads `proc_taskinfo` only while a measure needs one of its counters (virtual
-// size, threads, page faults, context switches, system calls, priority): 0.63 ms → 0.19 ms.
+// What a sample costs (Apple silicon, about 600 processes, 400 of them the user's, 2026-09-28, on a performance core;
+// the sampler's utility thread may run on an efficiency core, where each call takes about five times as long,
+// measured with `taskpolicy -b`): `proc_pid_rusage` version 4 took 0.29 ms for the user's processes and version 2,
+// which has every field used here, 0.19 ms; asking for the other users' processes failed one call each, 0.11 ms;
+// `proc_taskinfo` took 0.17 ms. So a sample reads version 2, lists only the user's processes, and reads
+// `proc_taskinfo` only while a measure needs one of its counters (virtual size, threads, page faults, context
+// switches, system calls, priority): 0.63 ms → 0.19 ms.
 
 /// Cumulative counters of one process. Times are in 100-nanosecond units (Windows performance counter units).
 struct ProcessRecord: Equatable {
