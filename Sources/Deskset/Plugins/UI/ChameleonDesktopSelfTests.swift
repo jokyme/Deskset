@@ -510,7 +510,7 @@ enum ChameleonDesktopSelfTests {
                 H=40
                 """.write(to: skinFolder.appendingPathComponent("Probe.ini"), atomically: true, encoding: .utf8)
             app.rescanLibrary()
-            try withDesktops([ScreenDesktop(picture: file.path, frame: primary, area: area)]) {
+            withDesktops([ScreenDesktop(picture: file.path, frame: primary, area: area)]) {
                 guard let c = app.activate(config: "Probe", file: "Probe.ini") else {
                     t.check(false, "the skin loads")
                     return
