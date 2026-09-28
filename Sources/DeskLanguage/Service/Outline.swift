@@ -159,28 +159,106 @@ extension DeskSnapshot {
 
     // MARK: Outline
 
-    /// The outline of the open file.
+    /// The outline of the open file. A top-level block the previous snapshot outlined, with the same element names
+    /// and language, is not outlined again (`DeskBlockMemo`).
     public func documentSymbols() -> [DeskDocumentSymbol] {
         caches.outline.value {
-            // The outline recurses once or twice per nested block: hostile nesting runs where the stack is large
-            // enough (a background thread has 512 KiB).
-            let table = nodeTable
-            var depths = [Int](repeating: 0, count: table.entries.count)
-            var deepest = 0
-            for (i, entry) in table.entries.enumerated() {
-                depths[i] = (entry.parent >= 0 ? depths[entry.parent] : 0) + (entry.kind == .block ? 1 : 0)
-                deepest = max(deepest, depths[i])
+            let elements = elementNamesByStart()
+            var builder: OutlineBuilder?
+            var items: [DeskOutlineItem] = []
+            var offset = 0
+            for child in tree.root.children {
+                defer { offset += child.byteLength }
+                guard case .node(let node) = child else { continue }
+                let range = offset..<(offset + node.byteLength)
+                var key = DeskOutlineBlockKey(language: options.messageLanguage)
+                var low = 0, high = elements.count
+                while low < high {
+                    let mid = (low + high) / 2
+                    if elements[mid].start < range.lowerBound { low = mid + 1 } else { high = mid }
+                }
+                while low < elements.count, elements[low].start < range.upperBound {
+                    key.elements.append(elements[low].start - offset)
+                    key.names.append(elements[low].name)
+                    low += 1
+                }
+                if let kept = memo.outline(node, key: key) {
+                    if let item = kept { items.append(item.shifted(by: offset)) }
+                    continue
+                }
+                if builder == nil { builder = OutlineBuilder(snapshot: self, table: nodeTable) }
+                let item = builder!.item(forTopLevelAt: offset, node: node)
+                memo.storeOutline(node, key: key, item: item?.shifted(by: -offset))
+                if let item { items.append(item) }
             }
-            return StackGuard.run(needing: (deepest + 8) * 24 * 1024) { OutlineBuilder(snapshot: self, table: table).build() }
+            return symbols(items)
         }
+    }
+
+    /// The starts of the calls the checker made elements of, with their names, sorted.
+    private func elementNamesByStart() -> [(start: Int, name: String?)] {
+        var out: [(start: Int, name: String?)] = []
+        for (id, facts) in checked.elements where id.treeVersion == tree.version && id.kind == .callStmt {
+            out.append((id.utf8Start, facts.name))
+        }
+        return out.sorted { $0.start < $1.start }
+    }
+
+    /// Outline items in UTF-8 as outline symbols, converting every offset in one pass.
+    private func symbols(_ items: [DeskOutlineItem]) -> [DeskDocumentSymbol] {
+        var offsets: [Int] = []
+        for item in items { item.collectOffsets(into: &offsets) }
+        let order = offsets.indices.sorted { offsets[$0] < offsets[$1] }
+        let converted = index.positions(ofAscendingUTF8: order.map { offsets[$0] })
+        var positions = [DeskPosition](repeating: DeskPosition(offset: 0, line: 0, column: 0), count: offsets.count)
+        for (k, i) in order.enumerated() {
+            let p = converted[k]
+            positions[i] = DeskPosition(offset: p.utf16, line: p.line, column: p.column)
+        }
+        var next = 0
+        func make(_ item: DeskOutlineItem) -> DeskDocumentSymbol {
+            let p = positions[next..<(next + 4)].map { $0 }
+            next += 4
+            let children = item.children.map(make)
+            return DeskDocumentSymbol(name: item.name, detail: item.detail, kind: item.kind,
+                                      range: DeskRange(start: p[0], end: p[1]), selectionRange: DeskRange(start: p[2], end: p[3]),
+                                      children: children,
+                                      element: item.element.map { NodeID(kind: .callStmt, utf8Start: $0, treeVersion: tree.version) })
+        }
+        return items.map(make)
     }
 
     // MARK: Folding
 
     /// Every part of the file that can be folded, sorted by position: blocks, arguments and lists over several
-    /// lines, runs of comment lines, modifier chains on their own lines, and the languages of `translations`.
+    /// lines, runs of comment lines, modifier chains on their own lines, and the languages of `translations`. A
+    /// top-level block the previous snapshot folded is not looked at again (`DeskBlockMemo`).
     public func foldingRanges() -> [DeskFoldingRange] {
-        caches.folding.value { FoldingBuilder(snapshot: self, table: nodeTable).build() }
+        caches.folding.value {
+            var builder: FoldingBuilder?
+            var out: [DeskFoldingRange] = []
+            var offset = 0
+            for child in tree.root.children {
+                defer { offset += child.byteLength }
+                switch child {
+                case .node(let node):
+                    var relative = memo.folding(node)
+                    if relative == nil {
+                        if builder == nil { builder = FoldingBuilder(snapshot: self) }
+                        let found = builder!.ranges(ofTopLevelAt: offset, node: node)
+                        relative = found.map { ($0.kind, ($0.range.lowerBound - offset)..<($0.range.upperBound - offset)) }
+                        memo.storeFolding(node, ranges: relative!)
+                    }
+                    for (kind, r) in relative! {
+                        out.append(DeskFoldingRange(kind: kind, range: index.range(utf8: (r.lowerBound + offset)..<(r.upperBound + offset))))
+                    }
+                case .token(let token):
+                    if builder == nil { builder = FoldingBuilder(snapshot: self) }
+                    out += builder!.comments(of: token, at: offset).map { DeskFoldingRange(kind: $0.kind, range: index.range(utf8: $0.range)) }
+                }
+            }
+            return out
+        }
     }
 }
 
@@ -192,54 +270,64 @@ private struct OutlineBuilder {
     var index: DeskTextIndex { snapshot.index }
     var language: DiagnosticLanguage { snapshot.options.messageLanguage }
 
-    func build() -> [DeskDocumentSymbol] {
-        var out: [DeskDocumentSymbol] = []
-        for i in table.children(of: 0) {
-            let entry = table.entries[i]
-            switch entry.kind {
-            case .infoBlock, .packageBlock:
-                let fields = statements(inBlockOf: i).compactMap { field($0) }
-                out.append(symbol(i, name: entry.kind == .infoBlock ? "info" : "package",
-                                  kind: entry.kind == .infoBlock ? .info : .package, children: fields))
-            case .optionsBlock:
-                out.append(symbol(i, name: "options", kind: .options, children: optionItems(statements(inBlockOf: i))))
-            case .widgetBlock:
-                out.append(symbol(i, name: "widget", kind: .widget, children: viewItems(statements(inBlockOf: i))))
-            case .styleDecl:
-                let tokens = entry.positioned.childTokens
-                guard tokens.count >= 2, !tokens[1].token.isMissing, tokens[1].kind != .lBrace else {
-                    out.append(symbol(i, name: "style", kind: .style))
-                    continue
-                }
-                out.append(symbol(i, name: tokens[1].token.name, kind: .style, selection: tokens[1].textRange))
-            case .translationsBlock:
-                out.append(symbol(i, name: "translations", kind: .translations,
-                                  children: statements(inBlockOf: i).compactMap { languageGroup($0) }))
-            case .componentDecl, .scriptBlock:
-                let tokens = entry.positioned.childTokens
-                let named = tokens.count >= 2 && tokens[1].kind == .identifier && !tokens[1].token.isMissing
-                out.append(symbol(i, name: named ? tokens[1].token.name : tokens.first?.token.text ?? "",
-                                  kind: entry.kind == .componentDecl ? .component : .script,
-                                  selection: named ? tokens[1].textRange : nil))
-            default:
-                break
-            }
+    /// The item of the top-level node that starts at `offset` (nil for one the outline does not show).
+    func item(forTopLevelAt offset: Int, node: SyntaxNode) -> DeskOutlineItem? {
+        guard let i = table.children(of: 0).first(where: { table.entries[$0].offset == offset && table.entries[$0].node === node })
+        else { return nil }
+        // The outline recurses once or twice per nested block: hostile nesting runs where the stack is large enough
+        // (a background thread has 512 KiB).
+        var deepest = 0
+        var depths: [Int: Int] = [i: 0]
+        for e in i..<table.entries[i].end {
+            let entry = table.entries[e]
+            let depth = (e == i ? 0 : depths[entry.parent] ?? 0) + (entry.kind == .block ? 1 : 0)
+            depths[e] = depth
+            deepest = max(deepest, depth)
         }
-        return out
+        return StackGuard.run(needing: (deepest + 8) * 24 * 1024) { item(i) }
+    }
+
+    private func item(_ i: Int) -> DeskOutlineItem? {
+        let entry = table.entries[i]
+        switch entry.kind {
+        case .infoBlock, .packageBlock:
+            let fields = statements(inBlockOf: i).compactMap { field($0) }
+            return symbol(i, name: entry.kind == .infoBlock ? "info" : "package",
+                          kind: entry.kind == .infoBlock ? .info : .package, children: fields)
+        case .optionsBlock:
+            return symbol(i, name: "options", kind: .options, children: optionItems(statements(inBlockOf: i)))
+        case .widgetBlock:
+            return symbol(i, name: "widget", kind: .widget, children: viewItems(statements(inBlockOf: i)))
+        case .styleDecl:
+            let tokens = entry.positioned.childTokens
+            guard tokens.count >= 2, !tokens[1].token.isMissing, tokens[1].kind != .lBrace else {
+                return symbol(i, name: "style", kind: .style)
+            }
+            return symbol(i, name: tokens[1].token.name, kind: .style, selection: tokens[1].textRange)
+        case .translationsBlock:
+            return symbol(i, name: "translations", kind: .translations,
+                          children: statements(inBlockOf: i).compactMap { languageGroup($0) })
+        case .componentDecl, .scriptBlock:
+            let tokens = entry.positioned.childTokens
+            let named = tokens.count >= 2 && tokens[1].kind == .identifier && !tokens[1].token.isMissing
+            return symbol(i, name: named ? tokens[1].token.name : tokens.first?.token.text ?? "",
+                          kind: entry.kind == .componentDecl ? .component : .script,
+                          selection: named ? tokens[1].textRange : nil)
+        default:
+            return nil
+        }
     }
 
     // MARK: Pieces
 
-    func range(_ r: Range<Int>) -> DeskRange { index.range(utf8: r) }
-
     func symbol(_ i: Int, name: String, detail: String? = nil, kind: DeskOutlineKind, selection: Range<Int>? = nil,
-                children: [DeskDocumentSymbol] = [], element: ElementRef? = nil) -> DeskDocumentSymbol {
+                children: [DeskOutlineItem] = [], element: Int? = nil) -> DeskOutlineItem {
         let entry = table.entries[i]
         let full = entry.textRange
         var chosen = selection ?? firstTokenRange(i) ?? full
         if chosen.lowerBound < full.lowerBound || chosen.upperBound > full.upperBound { chosen = full }
-        return DeskDocumentSymbol(name: name, detail: detail, kind: kind, range: range(full), selectionRange: range(chosen),
-                                  children: children, element: element)
+        return DeskOutlineItem(name: name, detail: detail, kind: kind, range: full, selection: chosen, children: children,
+                               element: element)
     }
 
     func firstTokenRange(_ i: Int) -> Range<Int>? {
@@ -274,7 +362,7 @@ private struct OutlineBuilder {
         return line.count > limit ? String(line.prefix(limit - 1)) + "…" : line
     }
 
-    func field(_ i: Int) -> DeskDocumentSymbol? {
+    func field(_ i: Int) -> DeskOutlineItem? {
         let entry = table.entries[i]
         guard entry.kind == .field else { return nil }
         let children = table.children(of: i)
@@ -284,8 +372,8 @@ private struct OutlineBuilder {
                       kind: .field, selection: table.entries[label].textRange)
     }
 
-    func optionItems(_ items: [Int]) -> [DeskDocumentSymbol] {
-        var out: [DeskDocumentSymbol] = []
+    func optionItems(_ items: [Int]) -> [DeskOutlineItem] {
+        var out: [DeskOutlineItem] = []
         for i in items {
             let entry = table.entries[i]
             switch entry.kind {
@@ -298,8 +386,9 @@ private struct OutlineBuilder {
                 out.append(symbol(i, name: name.token.name, detail: control, kind: .option, selection: name.textRange))
             case .field:
                 // `name: Toggle(…)`: an option written like a field.
-                if let item = field(i) { out.append(DeskDocumentSymbol(name: item.name, detail: item.detail, kind: .option,
-                                                                        range: item.range, selectionRange: item.selectionRange)) }
+                if let item = field(i) { out.append(DeskOutlineItem(name: item.name, detail: item.detail, kind: .option,
+                                                                     range: item.range, selection: item.selection,
+                                                                     children: [], element: nil)) }
             case .callStmt:
                 let call = CallStmtSyntax(unchecked: entry.positioned)
                 let callee = call.callee.path.joined(separator: ".")
@@ -314,8 +403,8 @@ private struct OutlineBuilder {
         return out
     }
 
-    func viewItems(_ items: [Int]) -> [DeskDocumentSymbol] {
-        var out: [DeskDocumentSymbol] = []
+    func viewItems(_ items: [Int]) -> [DeskOutlineItem] {
+        var out: [DeskOutlineItem] = []
         for i in items {
             let entry = table.entries[i]
             switch entry.kind {
@@ -346,8 +435,8 @@ private struct OutlineBuilder {
     }
 
     /// `if` and its `else if` / `else` branches, as siblings.
-    func ifChain(_ i: Int) -> [DeskDocumentSymbol] {
-        var out: [DeskDocumentSymbol] = []
+    func ifChain(_ i: Int) -> [DeskOutlineItem] {
+        var out: [DeskOutlineItem] = []
         var current: Int? = i
         var first = true
         while let ifIndex = current {
@@ -360,7 +449,7 @@ private struct OutlineBuilder {
             let block = children.first { table.entries[$0].kind == .block }
             let bodyEnd = block.map { table.entries[$0].textEnd } ?? entry.textEnd
             var item = symbol(ifIndex, name: name, kind: .ifBlock, children: viewItems(statements(inBlockOf: ifIndex)))
-            item.range = range(entry.textStart..<max(entry.textStart, bodyEnd))
+            item.range = entry.textStart..<max(entry.textStart, bodyEnd)
             out.append(item)
             first = false
             guard let elseClause = children.first(where: { table.entries[$0].kind == .elseClause }),
@@ -370,14 +459,14 @@ private struct OutlineBuilder {
             } else {
                 var elseItem = symbol(elseClause, name: "else", kind: .elseBlock,
                                       children: viewItems(table.children(of: body).filter { table.entries[$0].kind != .unexpected }))
-                elseItem.range = range(table.entries[elseClause].textRange)
+                elseItem.range = table.entries[elseClause].textRange
                 out.append(elseItem)
             }
         }
         return out
     }
 
-    func element(_ i: Int) -> DeskDocumentSymbol {
+    func element(_ i: Int) -> DeskOutlineItem {
         let entry = table.entries[i]
         let id = table.id(i)
         let call = CallStmtSyntax(unchecked: entry.positioned)
@@ -391,12 +480,12 @@ private struct OutlineBuilder {
         let children = viewItems(statements(inBlockOf: i)) + events(of: i)
         return symbol(i, name: name, detail: detail, kind: .element,
                       selection: callee.name.token.isMissing ? nil : callee.name.textRange, children: children,
-                      element: facts == nil ? nil : id)
+                      element: facts == nil ? nil : entry.textStart)
     }
 
     /// The modifiers of a statement whose block holds actions (`.onClick { }`, `.every(1s) { }`).
-    func events(of i: Int) -> [DeskDocumentSymbol] {
-        var out: [DeskDocumentSymbol] = []
+    func events(of i: Int) -> [DeskOutlineItem] {
+        var out: [DeskOutlineItem] = []
         for m in table.children(of: i) where table.entries[m].kind == .modifierApp {
             let tokens = table.entries[m].positioned.childTokens
             guard tokens.count >= 2, !tokens[1].token.isMissing else { continue }
@@ -409,7 +498,7 @@ private struct OutlineBuilder {
         return out
     }
 
-    func languageGroup(_ i: Int) -> DeskDocumentSymbol? {
+    func languageGroup(_ i: Int) -> DeskOutlineItem? {
         let entry = table.entries[i]
         guard entry.kind == .group else { return nil }
         let group = GroupSyntax(unchecked: entry.positioned)
@@ -420,20 +509,25 @@ private struct OutlineBuilder {
     }
 }
 
-/// Builds the folding ranges from the node table and the comments.
+/// Builds the folding ranges of a top-level block from the node table and the comments.
 private struct FoldingBuilder {
     let snapshot: DeskSnapshot
-    let table: DeskNodeTable
 
     var index: DeskTextIndex { snapshot.index }
 
-    func build() -> [DeskFoldingRange] {
-        var out: [DeskFoldingRange] = []
+    /// The ranges of the top-level node at `offset` (absolute UTF-8), sorted by start and then by length, longest
+    /// first. A range never crosses a top-level block: a run of comment lines lies in one token's leading trivia.
+    func ranges(ofTopLevelAt offset: Int, node: SyntaxNode) -> [(kind: DeskFoldingKind, range: Range<Int>)] {
+        let table = snapshot.nodeTable
+        guard let top = table.children(of: 0).first(where: { table.entries[$0].offset == offset && table.entries[$0].node === node })
+        else { return [] }
+        var out: [(kind: DeskFoldingKind, range: Range<Int>)] = []
         func add(_ kind: DeskFoldingKind, _ r: Range<Int>) {
             guard r.upperBound > r.lowerBound, index.line(ofUTF8: r.lowerBound) < index.line(ofUTF8: r.upperBound) else { return }
-            out.append(DeskFoldingRange(kind: kind, range: index.range(utf8: r)))
+            out.append((kind, r))
         }
-        for (i, entry) in table.entries.enumerated() {
+        for i in top..<table.entries[top].end {
+            let entry = table.entries[i]
             switch entry.kind {
             case .block:
                 let parent = entry.parent >= 0 ? table.entries[entry.parent].kind : .sourceFile
@@ -455,61 +549,86 @@ private struct FoldingBuilder {
                 break
             }
         }
-        out += comments()
-        var seen = Set<DeskFoldingRange>()
-        return out.filter { seen.insert($0).inserted }.sorted {
-            ($0.range.start.offset, -$0.range.end.offset) < ($1.range.start.offset, -$1.range.end.offset)
+        var runs = Runs(index: index)
+        node.walkTokens(base: offset) { token, at in
+            runs.visit(token, at: at)
+            return true
+        }
+        out += runs.finish()
+        var seen = Set<FoldingKey>()
+        return out.filter { seen.insert(FoldingKey(kind: $0.kind, range: $0.range)).inserted }.sorted {
+            ($0.range.lowerBound, -$0.range.upperBound) < ($1.range.lowerBound, -$1.range.upperBound)
         }
     }
 
+    /// The comment ranges of a token (the end of the file) at `offset`.
+    func comments(of token: Token, at offset: Int) -> [(kind: DeskFoldingKind, range: Range<Int>)] {
+        var runs = Runs(index: index)
+        runs.visit(token, at: offset)
+        return runs.finish()
+    }
+
+    private struct FoldingKey: Hashable {
+        var kind: DeskFoldingKind
+        var range: Range<Int>
+    }
+
     /// Runs of line comments on consecutive lines, and block comments over several lines.
-    func comments() -> [DeskFoldingRange] {
-        var out: [DeskFoldingRange] = []
+    private struct Runs {
+        let index: DeskTextIndex
+        var out: [(kind: DeskFoldingKind, range: Range<Int>)] = []
         var run: (start: Int, end: Int, lastLine: Int, count: Int)?
-        func close() {
-            if let r = run, r.count >= 2 { out.append(DeskFoldingRange(kind: .comment, range: index.range(utf8: r.start..<r.end))) }
+
+        init(index: DeskTextIndex) { self.index = index }
+
+        mutating func close() {
+            if let r = run, r.count >= 2 { out.append((.comment, r.start..<r.end)) }
             run = nil
         }
-        snapshot.tree.root.walkTokens { token, at in
+
+        mutating func visit(_ token: Token, at: Int) {
             var offset = at
-            func visit(_ pieces: [Trivia]) {
-                for piece in pieces {
-                    let length = piece.utf8Length
-                    switch piece {
-                    case .lineComment:
-                        let line = index.line(ofUTF8: offset)
-                        // Only comments alone on their line make a run.
-                        let lineStart = index.utf8Range(ofLine: line).lowerBound
-                        guard index.bytes[lineStart..<offset].allSatisfy({ $0 == 0x20 || $0 == 0x09 || $0 == 0xEF || $0 == 0xBB || $0 == 0xBF }) else {
-                            close()
-                            break
-                        }
-                        if let r = run, r.lastLine + 1 == line {
-                            run = (r.start, offset + length, line, r.count + 1)
-                        } else {
-                            close()
-                            run = (offset, offset + length, line, 1)
-                        }
-                    case .blockComment:
-                        close()
-                        if index.line(ofUTF8: offset) < index.line(ofUTF8: offset + length) {
-                            out.append(DeskFoldingRange(kind: .comment, range: index.range(utf8: offset..<(offset + length))))
-                        }
-                    case .spaces, .tabs, .newline, .byteOrderMark:
-                        break
-                    default:
-                        close()
-                    }
-                    offset += length
-                }
-            }
-            visit(token.leadingTrivia)
+            visit(token.leadingTrivia, &offset)
             if !token.text.isEmpty { close() }
             offset += token.text.utf8.count
-            visit(token.trailingTrivia)
-            return true
+            visit(token.trailingTrivia, &offset)
         }
-        close()
-        return out
+
+        private mutating func visit(_ pieces: [Trivia], _ offset: inout Int) {
+            for piece in pieces {
+                let length = piece.utf8Length
+                switch piece {
+                case .lineComment:
+                    let line = index.line(ofUTF8: offset)
+                    // Only comments alone on their line make a run.
+                    let lineStart = index.utf8Range(ofLine: line).lowerBound
+                    guard index.bytes[lineStart..<offset].allSatisfy({ $0 == 0x20 || $0 == 0x09 || $0 == 0xEF || $0 == 0xBB || $0 == 0xBF }) else {
+                        close()
+                        break
+                    }
+                    if let r = run, r.lastLine + 1 == line {
+                        run = (r.start, offset + length, line, r.count + 1)
+                    } else {
+                        close()
+                        run = (offset, offset + length, line, 1)
+                    }
+                case .blockComment:
+                    close()
+                    if index.line(ofUTF8: offset) < index.line(ofUTF8: offset + length) {
+                        out.append((.comment, offset..<(offset + length)))
+                    }
+                case .spaces, .tabs, .newline, .byteOrderMark:
+                    break
+                default:
+                    close()
+                }
+                offset += length
+            }
+        }
+
+        mutating func finish() -> [(kind: DeskFoldingKind, range: Range<Int>)] {
+            close()
+            return out
+        }
     }
 }

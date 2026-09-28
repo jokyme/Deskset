@@ -228,11 +228,53 @@ extension DeskSnapshot {
         return out
     }
 
-    /// The runs of the `k`-th top-level child of the file (the last is the end of the file), built once.
+    /// The runs of the `k`-th top-level child of the file (the last is the end of the file), built once. A block
+    /// the previous snapshot classified from the same facts is not classified again (`DeskBlockMemo`).
     func semanticBlock(_ k: Int) -> DeskSemanticBlock {
         caches.semanticBlocks.value(for: k) {
-            DeskSemanticClassifier(snapshot: self).block(k)
+            let children = tree.root.children
+            guard case .node(let node) = children[k] else { return DeskSemanticClassifier(snapshot: self).block(k) }
+            var offset = 0
+            for child in children.prefix(k) { offset += child.byteLength }
+            let facts = semanticBlockFacts(offset..<(offset + node.byteLength))
+            if let runs = memo.semantic(node, facts: facts) {
+                return DeskSemanticBlock(node: node, offset: offset, length: node.byteLength, runs: runs)
+            }
+            let block = DeskSemanticClassifier(snapshot: self).block(k)
+            memo.storeSemantic(node, facts: facts, runs: block.runs)
+            return block
         }
+    }
+
+    /// The facts classification reads inside a range of the file, relative to its start.
+    func semanticBlockFacts(_ range: Range<Int>) -> DeskSemanticBlockFacts {
+        let facts = semanticFacts
+        let names = symbolIndex.names
+        var out = DeskSemanticBlockFacts()
+        // The first name at or after the range's start (names are sorted and never overlap).
+        var low = 0, high = names.count
+        while low < high {
+            let mid = (low + high) / 2
+            if names[mid].range.lowerBound < range.lowerBound { low = mid + 1 } else { high = mid }
+        }
+        let base = range.lowerBound
+        var k = low
+        while k < names.count, names[k].range.lowerBound < range.upperBound {
+            let o = names[k]
+            out.names.append(.init(start: o.range.lowerBound - base, end: o.range.upperBound - base, kind: o.kind,
+                                   role: o.role, path: o.path))
+            k += 1
+        }
+        for r in facts.unused where range.contains(r.lowerBound) { out.unused += [r.lowerBound - base, r.upperBound - base] }
+        for start in facts.elementCalls where range.contains(start) { out.elementCalls.append(start - base) }
+        for start in facts.translationKeys where range.contains(start) { out.translationKeys.append(start - base) }
+        out.elementCalls.sort()
+        out.translationKeys.sort()
+        // Pairs of (start, end), sorted by start.
+        var pairs: [(Int, Int)] = []
+        for i in stride(from: 0, to: out.unused.count, by: 2) { pairs.append((out.unused[i], out.unused[i + 1])) }
+        out.unused = pairs.sorted { $0 < $1 }.flatMap { [$0.0, $0.1] }
+        return out
     }
 
     private func semanticTokens(ofBlock k: Int) -> [DeskSemanticToken] {
