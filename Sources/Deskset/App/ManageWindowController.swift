@@ -726,13 +726,11 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
             hiddenNotice.set(title: ManageModel.Hidden.title,
                              text: ManageModel.Hidden.explanation(startHidden: running.state.startHidden))
         }
-        let settingsShowHint = file != nil && hidden
-        if !hidden, let moved = movedWhileHidden, moved.caseInsensitiveCompare(running?.config ?? "") == .orderedSame {
-            movedWhileHidden = nil
-        }
-        let moved = running.map { r in movedWhileHidden?.caseInsensitiveCompare(r.config) == .orderedSame } ?? false
-        coordinatesHint.stringValue = ManageModel.Hidden.coordinatesHint(moved: moved)
-        coordinatesHintRow?.isHidden = !settingsShowHint
+        // A skin that shows again forgets that it was moved while hidden.
+        let movedHere = running.map { movedWhileHidden?.caseInsensitiveCompare($0.config) == .orderedSame } ?? false
+        if movedHere && !hidden { movedWhileHidden = nil }
+        coordinatesHint.stringValue = ManageModel.Hidden.coordinatesHint(moved: movedHere && hidden)
+        coordinatesHintRow?.isHidden = !(file != nil && hidden)
     }
 
     /// A folder that is not a config (e.g. a root folder that only holds sub-configs).
