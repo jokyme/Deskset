@@ -223,6 +223,18 @@ final class TrashMonitor: @unchecked Sendable {
     private var waiters: [(executor: SkinExecutor, callback: () -> Void)] = []
     /// Skins' background work waiting for the reading in flight (called on the reading's queue).
     private var listeners: [() -> Void] = []
+    /// Whether the reading in flight measures the size.
+    private var inFlightIncludesSize = false
+    /// The size was asked for while a reading without it was in flight (a skin's `RecycleType=Count` measure started
+    /// it, and its `Size` measure came next in the same update): another reading, with the size, follows as soon as
+    /// that one is done, and these wait for it.
+    private var sizeFollowUp: SizeFollowUp?
+
+    private struct SizeFollowUp {
+        var force = false
+        var waiters: [(executor: SkinExecutor, callback: () -> Void)] = []
+        var listeners: [() -> Void] = []
+    }
     /// Changes when the readings are forgotten (`forget`).
     private var generation = 0
 
@@ -268,23 +280,42 @@ final class TrashMonitor: @unchecked Sendable {
 
     private func refresh(includeSize: Bool, force: Bool, waiter: (executor: SkinExecutor, callback: () -> Void)?,
                          listener: (() -> Void)?) {
+        refresh(includeSize: includeSize, force: force, throttled: true, waiters: waiter.map { [$0] } ?? [],
+                listeners: listener.map { [$0] } ?? [])
+    }
+
+    /// `throttled`: a reading that finished less than half a second ago is reused (not for a size follow-up, which
+    /// comes right after a reading that left the size out, and must look at the Trash again).
+    private func refresh(includeSize: Bool, force: Bool, throttled: Bool,
+                         waiters asking: [(executor: SkinExecutor, callback: () -> Void)],
+                         listeners hearing: [() -> Void]) {
         let now = TrashMonitor.clock()
         lock.lock()
         if inFlight {
-            if let waiter { waiters.append(waiter) }
-            if let listener { listeners.append(listener) }
+            if includeSize && !inFlightIncludesSize {
+                var followUp = sizeFollowUp ?? SizeFollowUp()
+                followUp.force = followUp.force || force
+                followUp.waiters += asking
+                followUp.listeners += hearing
+                sizeFollowUp = followUp
+            } else {
+                waiters += asking
+                listeners += hearing
+            }
             lock.unlock()
             return
         }
-        if !force && now - lastRefresh < 0.5 && (!includeSize || status.size != nil || status.sizeDenied) {
+        if throttled && !force && now - lastRefresh < 0.5
+            && (!includeSize || status.size != nil || status.sizeDenied) {
             lock.unlock()
-            if let waiter { waiter.executor.async(waiter.callback) }
-            listener?()
+            for waiter in asking { waiter.executor.async(waiter.callback) }
+            hearing.forEach { $0() }
             return
         }
-        if let waiter { waiters.append(waiter) }
-        if let listener { listeners.append(listener) }
+        waiters += asking
+        listeners += hearing
         inFlight = true
+        inFlightIncludesSize = includeSize
         let previousSignature = sizeSignature
         let previousSizeTime = sizeTime
         let previous = status
@@ -300,9 +331,12 @@ final class TrashMonitor: @unchecked Sendable {
                 let done = waiters, heard = listeners
                 waiters = []
                 listeners = []
+                let followUp = sizeFollowUp
+                sizeFollowUp = nil
                 lock.unlock()
                 TrashMonitor.deliver(done)
                 heard.forEach { $0() }
+                startSizeFollowUp(followUp)
                 return
             }
             let folders = TrashMonitor.folders()
@@ -337,10 +371,20 @@ final class TrashMonitor: @unchecked Sendable {
             let done = waiters, heard = listeners
             waiters = []
             listeners = []
+            let followUp = sizeFollowUp
+            sizeFollowUp = nil
             lock.unlock()
             TrashMonitor.deliver(done)
             heard.forEach { $0() }
+            startSizeFollowUp(followUp)
         }
+    }
+
+    /// The reading with the size that was asked for while one without it ran (see `sizeFollowUp`).
+    private func startSizeFollowUp(_ followUp: SizeFollowUp?) {
+        guard let followUp else { return }
+        refresh(includeSize: true, force: followUp.force, throttled: false, waiters: followUp.waiters,
+                listeners: followUp.listeners)
     }
 
     /// Runs the waiters' callbacks, in the order they asked, with one block per executor: all the skins on the main

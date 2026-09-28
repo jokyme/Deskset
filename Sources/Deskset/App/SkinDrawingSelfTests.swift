@@ -548,6 +548,22 @@ enum SkinDrawingSelfTests {
     /// Every default skin and test skin (and, when `DESKSET_DRAWING_CHECK_SKINS` names more Skins folders, separated
     /// by colons, those too: a local corpus that never goes into the repository) through `DrawingCacheCheck`.
     static func repositorySkinTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: the check finds skins in root configs and in configs below them") {
+            let root = t.temporaryDirectory("drawing-check-files")
+            let names = ["Loose.ini", "Clock/Clock.ini", "Clock/Small.ini", "Suite/Cpu/Cpu.ini", "Suite/Cpu/Deep/Deep.ini",
+                         "Suite/@Resources/Styles.ini", "Suite/@resources/More/Other.ini", "Suite/Notes.txt"]
+            for name in names {
+                let url = root.appendingPathComponent(name)
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                         withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: url.path, contents: Data("[Rainmeter]\n".utf8))
+            }
+            let found = DrawingCacheCheck.skinFiles(in: root).map { url in
+                url.pathComponents.drop(while: { $0 != root.lastPathComponent }).dropFirst().joined(separator: "/")
+            }
+            t.equal(found, ["Clock/Clock.ini", "Clock/Small.ini", "Suite/Cpu/Cpu.ini", "Suite/Cpu/Deep/Deep.ini"],
+                    "skins in a root config are checked; @Resources and files loose in the Skins folder are not")
+        }
         t.suite("App: skin drawing: every repository skin's pictures match full drawings") {
             var folders = ["DefaultSkins", "TestSkins"].compactMap { Paths.repositoryFolder($0) }
             guard folders.count == 2 else {

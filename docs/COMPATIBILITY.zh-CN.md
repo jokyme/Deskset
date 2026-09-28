@@ -2582,6 +2582,14 @@ MeterStyle 名称（Enigma 的阅读器和便笺标签页）在加载时记录 �
 Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两个 Windows 注册表显存值。MSI Afterburner 的提示已经
 消失。在 Deskset 没有完全磁盘访问权限时，PogPack 的 Garbage 皮肤还会提示其废纸篓大小需要该权限（§4）。
 
+**2026-09-28 重新测试**，此前的改动包括新的绘制方式（皮肤窗口保留未变化 meter 的图片）、按用户语言的代码页读取旧式 ANSI 文件、
+皮肤运行 Windows 程序时改为记录日志而不再打开：每一轮（普通、演示音频、英文和中文语言、安装后的副本，以及每秒一次共 5 次更新的
+慢速一轮）都是 390 个中 390 个渲染成功，没有崩溃也没有卡死（60 秒上限）；9 个皮肤共 11 条提示——即 2026-09-27 的 10 条加上
+废纸篓那一条。绘制检查（`Deskset --verify-drawing-cache`）在全部 390 个皮肤中没有发现任何一帧与完整绘制不同。在中文系统的 Mac
+上，语料中 162 个旧式 ANSI 文件没有一个能按 GBK 解码，因此读取结果与以前相同。这次测试发现并修复了两个问题：绘制检查会跳过直接
+放在根配置文件夹里的皮肤；RecycleManager 的 Size measure 放在 Count measure 之后时，在每秒一次的更新下从不读取废纸篓大小
+（PogPack 的 Garbage）。原始数据：[`compat/retest-2026-09-28.md`](compat/retest-2026-09-28.md)。
+
 ---
 
 ## 13. 已知缺口与计划
