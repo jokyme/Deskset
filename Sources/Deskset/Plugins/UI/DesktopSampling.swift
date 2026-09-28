@@ -215,18 +215,19 @@ final class WallpaperImages {
     private static let kept = 3
 
     private let entries = Guarded<[(key: String, picture: Picture)]>([])
-    private let framesByFile = Guarded<[String: (light: Int, dark: Int)?]>([:])
+    /// Which picture a file shows in light and in dark (the same one for a picture that is not dynamic), by file and
+    /// date: a check that finds nothing new opens no file.
+    private let framesByFile = Guarded<[String: (light: Int, dark: Int)]>([:])
 
     /// The picture of `file` shown in the given appearance (a dynamic picture's light or dark one). `modified` is the
     /// file's modification date, part of what identifies a decoded picture.
     func picture(file: String, modified: TimeInterval, dark: Bool) -> Picture? {
-        let url = URL(fileURLWithPath: file)
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
-        else { return nil }
-        let frame = self.frame(of: source, file: file, modified: modified, dark: dark)
+        guard let frame = self.frame(file: file, modified: modified, dark: dark) else { return nil }
         let key = "\(file)|\(modified)|\(frame)"
         if let hit = entries.access({ list in list.first { $0.key == key }?.picture }) { return hit }
-        guard let decoded = WallpaperImages.decode(source, frame: frame) else { return nil }
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: file) as CFURL,
+                                                      [kCGImageSourceShouldCache: false] as CFDictionary),
+              let decoded = WallpaperImages.decode(source, frame: frame) else { return nil }
         entries.access { list in
             list.removeAll { $0.key == key }
             list.insert((key, decoded), at: 0)
@@ -235,21 +236,21 @@ final class WallpaperImages {
         return decoded
     }
 
-    /// Which picture of the file is shown in the appearance, worked out once per file and date.
-    func frame(of source: CGImageSource, file: String, modified: TimeInterval, dark: Bool) -> Int {
+    /// Which picture of the file is shown in the appearance, worked out once per file and date (the file is opened
+    /// only then); nil when it cannot be read as a picture.
+    func frame(file: String, modified: TimeInterval, dark: Bool) -> Int? {
         let key = "\(file)|\(modified)"
-        let frames: (light: Int, dark: Int)?
-        if let known = framesByFile.access({ $0[key] }) {
-            frames = known
-        } else {
-            frames = DynamicWallpaper.appearanceFrames(source)
-            framesByFile.access { map in
-                if map.count > 16 { map.removeAll() }
-                map[key] = .some(frames)
-            }
+        if let known = framesByFile.access({ $0[key] }) { return dark ? known.dark : known.light }
+        guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: file) as CFURL,
+                                                      [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0 else { return nil }
+        let primary = CGImageSourceGetPrimaryImageIndex(source)
+        let frames = DynamicWallpaper.appearanceFrames(source) ?? (primary, primary)
+        framesByFile.access { map in
+            if map.count > 16 { map.removeAll() }
+            map[key] = frames
         }
-        if let frames { return dark ? frames.dark : frames.light }
-        return CGImageSourceGetPrimaryImageIndex(source)
+        return dark ? frames.dark : frames.light
     }
 
     /// The picture of `file` shown in the given appearance, decoded at up to `maxPixels` and not kept: the render

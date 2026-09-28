@@ -461,9 +461,8 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         let url = URL(fileURLWithPath: file)
         // A dynamic desktop picture shows its light or dark picture.
         var frame = 0
-        if desktop, exists,
-           let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) {
-            frame = WallpaperImages.shared.frame(of: source, file: file, modified: modified, dark: request.dark)
+        if desktop, exists {
+            frame = WallpaperImages.shared.frame(file: file, modified: modified, dark: request.dark) ?? 0
         }
         var key = "\(file)|\(modified)|\(frame)|\(String(describing: crop))|\(String(describing: request.aspect))"
         if let screen = request.screen {
