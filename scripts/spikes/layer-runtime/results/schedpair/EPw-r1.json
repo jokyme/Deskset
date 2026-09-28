@@ -1,0 +1,2427 @@
+{
+ "arguments": [
+  "--mode",
+  "EPw",
+  "--seed",
+  "1",
+  "--out",
+  "results/schedpair/EPw-r1.json"
+ ],
+ "command": "schedpair",
+ "config": "EP+windowSpaceBase",
+ "cycles": 8,
+ "loadAverage1mMax": 10.14,
+ "loadAverage1mMedian": 9.05,
+ "loadAverageAtEnd": [
+  8.57,
+  8.6,
+  9.06
+ ],
+ "mode": "EPw",
+ "note": "pCoreShareOfCPU and averageGHz are the way's own values, not differences",
+ "overIdle": {
+  "bkept-aligned": {
+   "averageGHz": {
+    "mean": 3.819,
+    "median": 3.865,
+    "n": 8,
+    "standardError": 0.039
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 27.311,
+    "median": 25.57,
+    "n": 8,
+    "standardError": 1.351
+   },
+   "energyMilliwatts": {
+    "mean": 32.228,
+    "median": 31.67,
+    "n": 8,
+    "standardError": 1.176
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 110.884,
+    "median": 108.62,
+    "n": 8,
+    "standardError": 3.22
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 0.95,
+    "median": 1,
+    "n": 8,
+    "standardError": 0.098
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 0.715,
+    "median": 0.701,
+    "n": 8,
+    "standardError": 0.033
+   },
+   "runnableMsPerSecond": {
+    "mean": 7.116,
+    "median": 7.06,
+    "n": 8,
+    "standardError": 0.284
+   }
+  },
+  "bkept-spread": {
+   "averageGHz": {
+    "mean": 3.801,
+    "median": 3.819,
+    "n": 8,
+    "standardError": 0.017
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 44.235,
+    "median": 42.18,
+    "n": 8,
+    "standardError": 2.154
+   },
+   "energyMilliwatts": {
+    "mean": 43.337,
+    "median": 41.12,
+    "n": 8,
+    "standardError": 2.475
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 122.93,
+    "median": 112.68,
+    "n": 8,
+    "standardError": 10.868
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 10.475,
+    "median": 10.2,
+    "n": 8,
+    "standardError": 0.405
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 1.164,
+    "median": 1.127,
+    "n": 8,
+    "standardError": 0.057
+   },
+   "runnableMsPerSecond": {
+    "mean": 11.907,
+    "median": 11.34,
+    "n": 8,
+    "standardError": 0.579
+   }
+  },
+  "one-aligned": {
+   "averageGHz": {
+    "mean": 3.787,
+    "median": 3.804,
+    "n": 8,
+    "standardError": 0.038
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 25.695,
+    "median": 25.85,
+    "n": 8,
+    "standardError": 0.318
+   },
+   "energyMilliwatts": {
+    "mean": 28.072,
+    "median": 28.35,
+    "n": 8,
+    "standardError": 0.593
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 87.565,
+    "median": 88.13,
+    "n": 8,
+    "standardError": 0.462
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 2.575,
+    "median": 2.6,
+    "n": 8,
+    "standardError": 0.122
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 0.679,
+    "median": 0.671,
+    "n": 8,
+    "standardError": 0.011
+   },
+   "runnableMsPerSecond": {
+    "mean": 6.943,
+    "median": 6.88,
+    "n": 8,
+    "standardError": 0.107
+   }
+  },
+  "one-coalesced": {
+   "averageGHz": {
+    "mean": 3.845,
+    "median": 3.85,
+    "n": 8,
+    "standardError": 0.01
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 24.435,
+    "median": 24.45,
+    "n": 8,
+    "standardError": 0.222
+   },
+   "energyMilliwatts": {
+    "mean": 27.284,
+    "median": 27.4,
+    "n": 8,
+    "standardError": 0.171
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 85.046,
+    "median": 85.21,
+    "n": 8,
+    "standardError": 0.372
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 2.675,
+    "median": 3,
+    "n": 8,
+    "standardError": 0.146
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 0.635,
+    "median": 0.641,
+    "n": 8,
+    "standardError": 0.006
+   },
+   "runnableMsPerSecond": {
+    "mean": 6.448,
+    "median": 6.52,
+    "n": 8,
+    "standardError": 0.061
+   }
+  },
+  "one-spread": {
+   "averageGHz": {
+    "mean": 3.801,
+    "median": 3.815,
+    "n": 8,
+    "standardError": 0.013
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 39.839,
+    "median": 39.64,
+    "n": 8,
+    "standardError": 0.466
+   },
+   "energyMilliwatts": {
+    "mean": 36.659,
+    "median": 36.75,
+    "n": 8,
+    "standardError": 0.279
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 91.276,
+    "median": 90.47,
+    "n": 8,
+    "standardError": 0.688
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 11.075,
+    "median": 11.2,
+    "n": 8,
+    "standardError": 0.106
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 1.048,
+    "median": 1.051,
+    "n": 8,
+    "standardError": 0.012
+   },
+   "runnableMsPerSecond": {
+    "mean": 10.845,
+    "median": 10.88,
+    "n": 8,
+    "standardError": 0.13
+   }
+  },
+  "threads-aligned": {
+   "averageGHz": {
+    "mean": 3.71,
+    "median": 3.759,
+    "n": 8,
+    "standardError": 0.05
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 60.799,
+    "median": 60.8,
+    "n": 8,
+    "standardError": 1.595
+   },
+   "energyMilliwatts": {
+    "mean": 45.495,
+    "median": 46.15,
+    "n": 8,
+    "standardError": 1.74
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 101.509,
+    "median": 99.47,
+    "n": 8,
+    "standardError": 2.669
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 2.35,
+    "median": 2.4,
+    "n": 8,
+    "standardError": 0.091
+   },
+   "pCoreShareOfCPU": {
+    "mean": 0.967,
+    "median": 0.971,
+    "n": 8,
+    "standardError": 0.004
+   },
+   "processPercentOfOneCore": {
+    "mean": 1.639,
+    "median": 1.642,
+    "n": 8,
+    "standardError": 0.041
+   },
+   "runnableMsPerSecond": {
+    "mean": 18.251,
+    "median": 18.42,
+    "n": 8,
+    "standardError": 0.458
+   }
+  },
+  "threads-spread": {
+   "averageGHz": {
+    "mean": 3.792,
+    "median": 3.802,
+    "n": 8,
+    "standardError": 0.013
+   },
+   "cyclesMillionsPerSecond": {
+    "mean": 40.519,
+    "median": 40.89,
+    "n": 8,
+    "standardError": 0.469
+   },
+   "energyMilliwatts": {
+    "mean": 37.341,
+    "median": 37.48,
+    "n": 8,
+    "standardError": 0.303
+   },
+   "instructionsMillionsPerSecond": {
+    "mean": 92.726,
+    "median": 93.74,
+    "n": 8,
+    "standardError": 0.554
+   },
+   "interruptWakeupsPerSecond": {
+    "mean": 12.025,
+    "median": 12,
+    "n": 8,
+    "standardError": 0.281
+   },
+   "pCoreShareOfCPU": {
+    "mean": 1,
+    "median": 1,
+    "n": 8,
+    "standardError": 0
+   },
+   "processPercentOfOneCore": {
+    "mean": 1.068,
+    "median": 1.075,
+    "n": 8,
+    "standardError": 0.012
+   },
+   "runnableMsPerSecond": {
+    "mean": 11.052,
+    "median": 11.09,
+    "n": 8,
+    "standardError": 0.124
+   }
+  }
+ },
+ "phaseSeconds": 5,
+ "phases": [
+  {
+   "counters": {
+    "averageGHz": 3.746,
+    "billedSystemMsPerSecond": 1.2,
+    "cpuPercentOfOneCore": 1.645,
+    "cyclesMillionsPerSecond": 61.61,
+    "cyclesPerInstruction": 0.636,
+    "energyMilliwatts": 44.54,
+    "instructionsMillionsPerSecond": 96.95,
+    "interruptWakeupsPerSecond": 3,
+    "pCoreShareOfCPU": 0.975,
+    "pCoreShareOfCycles": 0.983,
+    "pCoreShareOfInstructions": 0.987,
+    "runnableMsPerSecond": 18.45,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.66,
+    7.56,
+    9.07
+   ],
+   "loadAverageBefore": [
+    6.89,
+    7.62,
+    9.1
+   ],
+   "processPercentOfOneCore": 1.644,
+   "provisional": false,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.865,
+    "billedSystemMsPerSecond": 0.214,
+    "cpuPercentOfOneCore": 0.635,
+    "cyclesMillionsPerSecond": 24.52,
+    "cyclesPerInstruction": 0.236,
+    "energyMilliwatts": 30.4,
+    "instructionsMillionsPerSecond": 104.06,
+    "interruptWakeupsPerSecond": 1.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.38,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.37,
+    7.49,
+    9.03
+   ],
+   "loadAverageBefore": [
+    6.66,
+    7.56,
+    9.07
+   ],
+   "processPercentOfOneCore": 0.634,
+   "provisional": false,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.815,
+    "billedSystemMsPerSecond": 2.513,
+    "cpuPercentOfOneCore": 1.011,
+    "cyclesMillionsPerSecond": 38.57,
+    "cyclesPerInstruction": 0.43,
+    "energyMilliwatts": 35.48,
+    "instructionsMillionsPerSecond": 89.71,
+    "interruptWakeupsPerSecond": 11.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.47,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.53,
+    7.49,
+    9.01
+   ],
+   "loadAverageBefore": [
+    6.66,
+    7.53,
+    9.04
+   ],
+   "processPercentOfOneCore": 1.011,
+   "provisional": false,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.832,
+    "billedSystemMsPerSecond": 2.332,
+    "cpuPercentOfOneCore": 1.006,
+    "cyclesMillionsPerSecond": 38.55,
+    "cyclesPerInstruction": 0.423,
+    "energyMilliwatts": 35.66,
+    "instructionsMillionsPerSecond": 91.11,
+    "interruptWakeupsPerSecond": 12.2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.43,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.88,
+    7.55,
+    9.02
+   ],
+   "loadAverageBefore": [
+    6.53,
+    7.49,
+    9.01
+   ],
+   "processPercentOfOneCore": 1.006,
+   "provisional": false,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.846,
+    "billedSystemMsPerSecond": 2.007,
+    "cpuPercentOfOneCore": 1.075,
+    "cyclesMillionsPerSecond": 41.35,
+    "cyclesPerInstruction": 0.377,
+    "energyMilliwatts": 39.83,
+    "instructionsMillionsPerSecond": 109.82,
+    "interruptWakeupsPerSecond": 10.8,
+    "pCoreShareOfCPU": 0.999,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.07,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.73,
+    7.5,
+    9
+   ],
+   "loadAverageBefore": [
+    6.88,
+    7.55,
+    9.02
+   ],
+   "processPercentOfOneCore": 1.075,
+   "provisional": false,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.898,
+    "billedSystemMsPerSecond": 1.084,
+    "cpuPercentOfOneCore": 0.614,
+    "cyclesMillionsPerSecond": 23.94,
+    "cyclesPerInstruction": 0.28,
+    "energyMilliwatts": 26.58,
+    "instructionsMillionsPerSecond": 85.65,
+    "interruptWakeupsPerSecond": 3.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.25,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.83,
+    7.51,
+    8.99
+   ],
+   "loadAverageBefore": [
+    6.73,
+    7.5,
+    9
+   ],
+   "processPercentOfOneCore": 0.614,
+   "provisional": false,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.854,
+    "billedSystemMsPerSecond": 0,
+    "cpuPercentOfOneCore": 0.003,
+    "cyclesMillionsPerSecond": 0.1,
+    "cyclesPerInstruction": 1.86,
+    "energyMilliwatts": 0.05,
+    "instructionsMillionsPerSecond": 0.05,
+    "interruptWakeupsPerSecond": 0.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.03,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    6.95,
+    7.51,
+    8.98
+   ],
+   "loadAverageBefore": [
+    6.77,
+    7.49,
+    8.98
+   ],
+   "processPercentOfOneCore": 0.002,
+   "provisional": false,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.801,
+    "billedSystemMsPerSecond": 1.477,
+    "cpuPercentOfOneCore": 0.638,
+    "cyclesMillionsPerSecond": 24.27,
+    "cyclesPerInstruction": 0.283,
+    "energyMilliwatts": 27.31,
+    "instructionsMillionsPerSecond": 85.77,
+    "interruptWakeupsPerSecond": 3,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.52,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 0,
+   "loadAverageAfter": [
+    7.11,
+    7.53,
+    8.98
+   ],
+   "loadAverageBefore": [
+    6.95,
+    7.51,
+    8.98
+   ],
+   "processPercentOfOneCore": 0.638,
+   "provisional": false,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.846,
+    "billedSystemMsPerSecond": 0,
+    "cpuPercentOfOneCore": 0.002,
+    "cyclesMillionsPerSecond": 0.09,
+    "cyclesPerInstruction": 1.683,
+    "energyMilliwatts": 0.05,
+    "instructionsMillionsPerSecond": 0.05,
+    "interruptWakeupsPerSecond": 0.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.03,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    10.14,
+    8.16,
+    9.19
+   ],
+   "loadAverageBefore": [
+    7.11,
+    7.53,
+    8.98
+   ],
+   "processPercentOfOneCore": 0.002,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.835,
+    "billedSystemMsPerSecond": 1.635,
+    "cpuPercentOfOneCore": 1.03,
+    "cyclesMillionsPerSecond": 39.48,
+    "cyclesPerInstruction": 0.439,
+    "energyMilliwatts": 36.15,
+    "instructionsMillionsPerSecond": 89.86,
+    "interruptWakeupsPerSecond": 11.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.64,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    9.81,
+    8.15,
+    9.17
+   ],
+   "loadAverageBefore": [
+    10.05,
+    8.17,
+    9.18
+   ],
+   "processPercentOfOneCore": 1.03,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.856,
+    "billedSystemMsPerSecond": 1.146,
+    "cpuPercentOfOneCore": 0.663,
+    "cyclesMillionsPerSecond": 25.56,
+    "cyclesPerInstruction": 0.291,
+    "energyMilliwatts": 28.37,
+    "instructionsMillionsPerSecond": 87.86,
+    "interruptWakeupsPerSecond": 3,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.77,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    9.42,
+    8.1,
+    9.15
+   ],
+   "loadAverageBefore": [
+    9.81,
+    8.15,
+    9.17
+   ],
+   "processPercentOfOneCore": 0.663,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.807,
+    "billedSystemMsPerSecond": 2.732,
+    "cpuPercentOfOneCore": 1.082,
+    "cyclesMillionsPerSecond": 41.2,
+    "cyclesPerInstruction": 0.439,
+    "energyMilliwatts": 37.18,
+    "instructionsMillionsPerSecond": 93.91,
+    "interruptWakeupsPerSecond": 12.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.05,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    9.23,
+    8.08,
+    9.13
+   ],
+   "loadAverageBefore": [
+    9.42,
+    8.1,
+    9.15
+   ],
+   "processPercentOfOneCore": 1.082,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.828,
+    "billedSystemMsPerSecond": 1.487,
+    "cpuPercentOfOneCore": 1.134,
+    "cyclesMillionsPerSecond": 43.41,
+    "cyclesPerInstruction": 0.391,
+    "energyMilliwatts": 41.43,
+    "instructionsMillionsPerSecond": 110.99,
+    "interruptWakeupsPerSecond": 10.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.63,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    8.74,
+    8.01,
+    9.1
+   ],
+   "loadAverageBefore": [
+    8.89,
+    8.03,
+    9.11
+   ],
+   "processPercentOfOneCore": 1.134,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.908,
+    "billedSystemMsPerSecond": 0.369,
+    "cpuPercentOfOneCore": 0.657,
+    "cyclesMillionsPerSecond": 25.66,
+    "cyclesPerInstruction": 0.246,
+    "energyMilliwatts": 31.21,
+    "instructionsMillionsPerSecond": 104.38,
+    "interruptWakeupsPerSecond": 1.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.63,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    10.04,
+    8.29,
+    9.19
+   ],
+   "loadAverageBefore": [
+    8.74,
+    8.01,
+    9.1
+   ],
+   "processPercentOfOneCore": 0.657,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.85,
+    "billedSystemMsPerSecond": 0.788,
+    "cpuPercentOfOneCore": 0.626,
+    "cyclesMillionsPerSecond": 24.08,
+    "cyclesPerInstruction": 0.287,
+    "energyMilliwatts": 26.86,
+    "instructionsMillionsPerSecond": 83.78,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.34,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    10.04,
+    8.32,
+    9.19
+   ],
+   "loadAverageBefore": [
+    10.04,
+    8.29,
+    9.19
+   ],
+   "processPercentOfOneCore": 0.625,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.736,
+    "billedSystemMsPerSecond": 0.901,
+    "cpuPercentOfOneCore": 1.52,
+    "cyclesMillionsPerSecond": 56.78,
+    "cyclesPerInstruction": 0.59,
+    "energyMilliwatts": 44.43,
+    "instructionsMillionsPerSecond": 96.32,
+    "interruptWakeupsPerSecond": 2.6,
+    "pCoreShareOfCPU": 0.957,
+    "pCoreShareOfCycles": 0.971,
+    "pCoreShareOfInstructions": 0.981,
+    "runnableMsPerSecond": 16.87,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 1,
+   "loadAverageAfter": [
+    9.87,
+    8.32,
+    9.19
+   ],
+   "loadAverageBefore": [
+    10.04,
+    8.32,
+    9.19
+   ],
+   "processPercentOfOneCore": 1.519,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.809,
+    "billedSystemMsPerSecond": 2.184,
+    "cpuPercentOfOneCore": 1.061,
+    "cyclesMillionsPerSecond": 40.39,
+    "cyclesPerInstruction": 0.447,
+    "energyMilliwatts": 36.97,
+    "instructionsMillionsPerSecond": 90.37,
+    "interruptWakeupsPerSecond": 11.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.06,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.83,
+    8.35,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.64,
+    8.29,
+    9.17
+   ],
+   "processPercentOfOneCore": 1.061,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.846,
+    "billedSystemMsPerSecond": 0.876,
+    "cpuPercentOfOneCore": 0.666,
+    "cyclesMillionsPerSecond": 25.63,
+    "cyclesPerInstruction": 0.296,
+    "energyMilliwatts": 28.02,
+    "instructionsMillionsPerSecond": 86.61,
+    "interruptWakeupsPerSecond": 3.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.74,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.76,
+    8.37,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.83,
+    8.35,
+    9.19
+   ],
+   "processPercentOfOneCore": 0.667,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.792,
+    "billedSystemMsPerSecond": 1.31,
+    "cpuPercentOfOneCore": 1.613,
+    "cyclesMillionsPerSecond": 61.17,
+    "cyclesPerInstruction": 0.613,
+    "energyMilliwatts": 46.97,
+    "instructionsMillionsPerSecond": 99.78,
+    "interruptWakeupsPerSecond": 3.2,
+    "pCoreShareOfCPU": 0.971,
+    "pCoreShareOfCycles": 0.98,
+    "pCoreShareOfInstructions": 0.983,
+    "runnableMsPerSecond": 17.84,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.7,
+    8.38,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.76,
+    8.37,
+    9.19
+   ],
+   "processPercentOfOneCore": 1.612,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.775,
+    "billedSystemMsPerSecond": 0.032,
+    "cpuPercentOfOneCore": 0.01,
+    "cyclesMillionsPerSecond": 0.37,
+    "cyclesPerInstruction": 1.197,
+    "energyMilliwatts": 0.22,
+    "instructionsMillionsPerSecond": 0.31,
+    "interruptWakeupsPerSecond": 0.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.11,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.29,
+    8.33,
+    9.16
+   ],
+   "loadAverageBefore": [
+    9.49,
+    8.35,
+    9.17
+   ],
+   "processPercentOfOneCore": 0.01,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.782,
+    "billedSystemMsPerSecond": 1.63,
+    "cpuPercentOfOneCore": 1.137,
+    "cyclesMillionsPerSecond": 43.01,
+    "cyclesPerInstruction": 0.381,
+    "energyMilliwatts": 41.34,
+    "instructionsMillionsPerSecond": 112.99,
+    "interruptWakeupsPerSecond": 10.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.45,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.26,
+    8.34,
+    9.16
+   ],
+   "loadAverageBefore": [
+    9.29,
+    8.33,
+    9.16
+   ],
+   "processPercentOfOneCore": 1.137,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.804,
+    "billedSystemMsPerSecond": 0.97,
+    "cpuPercentOfOneCore": 0.67,
+    "cyclesMillionsPerSecond": 25.49,
+    "cyclesPerInstruction": 0.288,
+    "energyMilliwatts": 28.93,
+    "instructionsMillionsPerSecond": 88.44,
+    "interruptWakeupsPerSecond": 2.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.9,
+    "servicedSystemMsPerSecond": 0.006
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.08,
+    8.32,
+    9.15
+   ],
+   "loadAverageBefore": [
+    9.26,
+    8.34,
+    9.16
+   ],
+   "processPercentOfOneCore": 0.67,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.728,
+    "billedSystemMsPerSecond": 0.305,
+    "cpuPercentOfOneCore": 0.659,
+    "cyclesMillionsPerSecond": 24.56,
+    "cyclesPerInstruction": 0.232,
+    "energyMilliwatts": 28.79,
+    "instructionsMillionsPerSecond": 106.05,
+    "interruptWakeupsPerSecond": 1.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.62,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    8.99,
+    8.32,
+    9.14
+   ],
+   "loadAverageBefore": [
+    8.99,
+    8.31,
+    9.14
+   ],
+   "processPercentOfOneCore": 0.659,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.747,
+    "billedSystemMsPerSecond": 2.173,
+    "cpuPercentOfOneCore": 1.07,
+    "cyclesMillionsPerSecond": 40.1,
+    "cyclesPerInstruction": 0.436,
+    "energyMilliwatts": 37.54,
+    "instructionsMillionsPerSecond": 91.88,
+    "interruptWakeupsPerSecond": 14,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.02,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 2,
+   "loadAverageAfter": [
+    9.56,
+    8.45,
+    9.18
+   ],
+   "loadAverageBefore": [
+    8.99,
+    8.32,
+    9.14
+   ],
+   "processPercentOfOneCore": 1.07,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.73,
+    "billedSystemMsPerSecond": 2.516,
+    "cpuPercentOfOneCore": 1.057,
+    "cyclesMillionsPerSecond": 39.41,
+    "cyclesPerInstruction": 0.436,
+    "energyMilliwatts": 37.06,
+    "instructionsMillionsPerSecond": 90.3,
+    "interruptWakeupsPerSecond": 12,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.95,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.59,
+    8.48,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.56,
+    8.45,
+    9.18
+   ],
+   "processPercentOfOneCore": 1.056,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.797,
+    "billedSystemMsPerSecond": 1.159,
+    "cpuPercentOfOneCore": 0.723,
+    "cyclesMillionsPerSecond": 27.46,
+    "cyclesPerInstruction": 0.308,
+    "energyMilliwatts": 30.27,
+    "instructionsMillionsPerSecond": 89.28,
+    "interruptWakeupsPerSecond": 3.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.39,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.38,
+    8.45,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.59,
+    8.48,
+    9.18
+   ],
+   "processPercentOfOneCore": 0.723,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.776,
+    "billedSystemMsPerSecond": 1.719,
+    "cpuPercentOfOneCore": 1.056,
+    "cyclesMillionsPerSecond": 39.87,
+    "cyclesPerInstruction": 0.424,
+    "energyMilliwatts": 37.81,
+    "instructionsMillionsPerSecond": 94.06,
+    "interruptWakeupsPerSecond": 11.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.95,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.17,
+    8.44,
+    9.16
+   ],
+   "loadAverageBefore": [
+    9.27,
+    8.44,
+    9.16
+   ],
+   "processPercentOfOneCore": 1.056,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.828,
+    "billedSystemMsPerSecond": 0.357,
+    "cpuPercentOfOneCore": 0.62,
+    "cyclesMillionsPerSecond": 23.74,
+    "cyclesPerInstruction": 0.278,
+    "energyMilliwatts": 27.54,
+    "instructionsMillionsPerSecond": 85.3,
+    "interruptWakeupsPerSecond": 3.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.3,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9,
+    8.41,
+    9.14
+   ],
+   "loadAverageBefore": [
+    9.17,
+    8.44,
+    9.16
+   ],
+   "processPercentOfOneCore": 0.62,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.786,
+    "billedSystemMsPerSecond": 0.017,
+    "cpuPercentOfOneCore": 0.006,
+    "cyclesMillionsPerSecond": 0.23,
+    "cyclesPerInstruction": 1.284,
+    "energyMilliwatts": 0.14,
+    "instructionsMillionsPerSecond": 0.18,
+    "interruptWakeupsPerSecond": 0.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.07,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    8.68,
+    8.35,
+    9.12
+   ],
+   "loadAverageBefore": [
+    9,
+    8.41,
+    9.14
+   ],
+   "processPercentOfOneCore": 0.006,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.77,
+    "billedSystemMsPerSecond": 1.314,
+    "cpuPercentOfOneCore": 1.56,
+    "cyclesMillionsPerSecond": 58.79,
+    "cyclesPerInstruction": 0.594,
+    "energyMilliwatts": 46.03,
+    "instructionsMillionsPerSecond": 98.99,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 0.984,
+    "pCoreShareOfCycles": 0.989,
+    "pCoreShareOfInstructions": 0.993,
+    "runnableMsPerSecond": 17.33,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.05,
+    8.44,
+    9.14
+   ],
+   "loadAverageBefore": [
+    8.62,
+    8.35,
+    9.11
+   ],
+   "processPercentOfOneCore": 1.559,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.88,
+    "billedSystemMsPerSecond": 0.292,
+    "cpuPercentOfOneCore": 0.647,
+    "cyclesMillionsPerSecond": 25.1,
+    "cyclesPerInstruction": 0.238,
+    "energyMilliwatts": 31.81,
+    "instructionsMillionsPerSecond": 105.46,
+    "interruptWakeupsPerSecond": 1,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.5,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.77,
+    8.6,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.05,
+    8.44,
+    9.14
+   ],
+   "processPercentOfOneCore": 0.647,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.696,
+    "billedSystemMsPerSecond": 1.494,
+    "cpuPercentOfOneCore": 1.136,
+    "cyclesMillionsPerSecond": 42,
+    "cyclesPerInstruction": 0.377,
+    "energyMilliwatts": 40.21,
+    "instructionsMillionsPerSecond": 111.45,
+    "interruptWakeupsPerSecond": 10.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.68,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 3,
+   "loadAverageAfter": [
+    9.71,
+    8.61,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.77,
+    8.6,
+    9.19
+   ],
+   "processPercentOfOneCore": 1.136,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.535,
+    "billedSystemMsPerSecond": 1.232,
+    "cpuPercentOfOneCore": 0.726,
+    "cyclesMillionsPerSecond": 25.66,
+    "cyclesPerInstruction": 0.289,
+    "energyMilliwatts": 24.57,
+    "instructionsMillionsPerSecond": 88.82,
+    "interruptWakeupsPerSecond": 2.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.42,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.69,
+    8.64,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.49,
+    8.58,
+    9.18
+   ],
+   "processPercentOfOneCore": 0.726,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.724,
+    "billedSystemMsPerSecond": 2.431,
+    "cpuPercentOfOneCore": 1.059,
+    "cyclesMillionsPerSecond": 39.43,
+    "cyclesPerInstruction": 0.419,
+    "energyMilliwatts": 37.62,
+    "instructionsMillionsPerSecond": 94.09,
+    "interruptWakeupsPerSecond": 11,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.94,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.39,
+    8.59,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.69,
+    8.64,
+    9.19
+   ],
+   "processPercentOfOneCore": 1.059,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.595,
+    "billedSystemMsPerSecond": 0.011,
+    "cpuPercentOfOneCore": 0.006,
+    "cyclesMillionsPerSecond": 0.21,
+    "cyclesPerInstruction": 1.302,
+    "energyMilliwatts": 0.13,
+    "instructionsMillionsPerSecond": 0.16,
+    "interruptWakeupsPerSecond": 0.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.07,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.36,
+    8.6,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.39,
+    8.59,
+    9.17
+   ],
+   "processPercentOfOneCore": 0.006,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.797,
+    "billedSystemMsPerSecond": 1.966,
+    "cpuPercentOfOneCore": 1.109,
+    "cyclesMillionsPerSecond": 42.11,
+    "cyclesPerInstruction": 0.367,
+    "energyMilliwatts": 41.98,
+    "instructionsMillionsPerSecond": 114.71,
+    "interruptWakeupsPerSecond": 10.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.34,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.17,
+    8.57,
+    9.16
+   ],
+   "loadAverageBefore": [
+    9.36,
+    8.6,
+    9.17
+   ],
+   "processPercentOfOneCore": 1.109,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.759,
+    "billedSystemMsPerSecond": 1.373,
+    "cpuPercentOfOneCore": 1.556,
+    "cyclesMillionsPerSecond": 58.49,
+    "cyclesPerInstruction": 0.583,
+    "energyMilliwatts": 46.28,
+    "instructionsMillionsPerSecond": 100.34,
+    "interruptWakeupsPerSecond": 2.6,
+    "pCoreShareOfCPU": 0.969,
+    "pCoreShareOfCycles": 0.98,
+    "pCoreShareOfInstructions": 0.983,
+    "runnableMsPerSecond": 17.34,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.29,
+    8.62,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.4,
+    8.63,
+    9.18
+   ],
+   "processPercentOfOneCore": 1.555,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.873,
+    "billedSystemMsPerSecond": 0.263,
+    "cpuPercentOfOneCore": 0.754,
+    "cyclesMillionsPerSecond": 29.21,
+    "cyclesPerInstruction": 0.247,
+    "energyMilliwatts": 35.39,
+    "instructionsMillionsPerSecond": 118.33,
+    "interruptWakeupsPerSecond": 1.2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.58,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.1,
+    8.59,
+    9.16
+   ],
+   "loadAverageBefore": [
+    9.29,
+    8.62,
+    9.17
+   ],
+   "processPercentOfOneCore": 0.754,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.824,
+    "billedSystemMsPerSecond": 1.862,
+    "cpuPercentOfOneCore": 1.112,
+    "cyclesMillionsPerSecond": 42.51,
+    "cyclesPerInstruction": 0.454,
+    "energyMilliwatts": 38.55,
+    "instructionsMillionsPerSecond": 93.56,
+    "interruptWakeupsPerSecond": 12.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.54,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.5,
+    8.68,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.1,
+    8.59,
+    9.16
+   ],
+   "processPercentOfOneCore": 1.112,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.81,
+    "billedSystemMsPerSecond": 0.363,
+    "cpuPercentOfOneCore": 0.647,
+    "cyclesMillionsPerSecond": 24.66,
+    "cyclesPerInstruction": 0.285,
+    "energyMilliwatts": 27.9,
+    "instructionsMillionsPerSecond": 86.55,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.55,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 4,
+   "loadAverageAfter": [
+    9.4,
+    8.69,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.7,
+    8.73,
+    9.2
+   ],
+   "processPercentOfOneCore": 0.647,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.806,
+    "billedSystemMsPerSecond": 2.003,
+    "cpuPercentOfOneCore": 1.566,
+    "cyclesMillionsPerSecond": 59.61,
+    "cyclesPerInstruction": 0.299,
+    "energyMilliwatts": 60.8,
+    "instructionsMillionsPerSecond": 199.23,
+    "interruptWakeupsPerSecond": 11,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 16.04,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.37,
+    8.69,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.4,
+    8.69,
+    9.18
+   ],
+   "processPercentOfOneCore": 1.566,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.364,
+    "billedSystemMsPerSecond": 1.557,
+    "cpuPercentOfOneCore": 1.704,
+    "cyclesMillionsPerSecond": 57.33,
+    "cyclesPerInstruction": 0.563,
+    "energyMilliwatts": 36.15,
+    "instructionsMillionsPerSecond": 101.74,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 0.942,
+    "pCoreShareOfCycles": 0.955,
+    "pCoreShareOfInstructions": 0.97,
+    "runnableMsPerSecond": 18.99,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.34,
+    8.7,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.37,
+    8.69,
+    9.18
+   ],
+   "processPercentOfOneCore": 1.704,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.577,
+    "billedSystemMsPerSecond": 0.49,
+    "cpuPercentOfOneCore": 0.711,
+    "cyclesMillionsPerSecond": 25.45,
+    "cyclesPerInstruction": 0.234,
+    "energyMilliwatts": 28.71,
+    "instructionsMillionsPerSecond": 108.93,
+    "interruptWakeupsPerSecond": 1.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.17,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.49,
+    8.76,
+    9.19
+   ],
+   "loadAverageBefore": [
+    9.79,
+    8.8,
+    9.21
+   ],
+   "processPercentOfOneCore": 0.711,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.805,
+    "billedSystemMsPerSecond": 0.052,
+    "cpuPercentOfOneCore": 0.01,
+    "cyclesMillionsPerSecond": 0.38,
+    "cyclesPerInstruction": 1.218,
+    "energyMilliwatts": 0.22,
+    "instructionsMillionsPerSecond": 0.31,
+    "interruptWakeupsPerSecond": 0.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.11,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.21,
+    8.71,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.49,
+    8.76,
+    9.19
+   ],
+   "processPercentOfOneCore": 0.01,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.802,
+    "billedSystemMsPerSecond": 2.544,
+    "cpuPercentOfOneCore": 1.077,
+    "cyclesMillionsPerSecond": 40.95,
+    "cyclesPerInstruction": 0.435,
+    "energyMilliwatts": 37.98,
+    "instructionsMillionsPerSecond": 94.05,
+    "interruptWakeupsPerSecond": 13.2,
+    "pCoreShareOfCPU": 0.999,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.2,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.27,
+    8.73,
+    9.18
+   ],
+   "loadAverageBefore": [
+    9.21,
+    8.71,
+    9.17
+   ],
+   "processPercentOfOneCore": 1.077,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.857,
+    "billedSystemMsPerSecond": 0.793,
+    "cpuPercentOfOneCore": 0.662,
+    "cyclesMillionsPerSecond": 25.55,
+    "cyclesPerInstruction": 0.299,
+    "energyMilliwatts": 28,
+    "instructionsMillionsPerSecond": 85.52,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.77,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    9.17,
+    8.72,
+    9.17
+   ],
+   "loadAverageBefore": [
+    9.27,
+    8.73,
+    9.18
+   ],
+   "processPercentOfOneCore": 0.662,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.784,
+    "billedSystemMsPerSecond": 1.297,
+    "cpuPercentOfOneCore": 0.708,
+    "cyclesMillionsPerSecond": 26.78,
+    "cyclesPerInstruction": 0.302,
+    "energyMilliwatts": 29.3,
+    "instructionsMillionsPerSecond": 88.58,
+    "interruptWakeupsPerSecond": 3.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.26,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    8.99,
+    8.7,
+    9.16
+   ],
+   "loadAverageBefore": [
+    8.99,
+    8.69,
+    9.16
+   ],
+   "processPercentOfOneCore": 0.707,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.804,
+    "billedSystemMsPerSecond": 1.806,
+    "cpuPercentOfOneCore": 1.088,
+    "cyclesMillionsPerSecond": 41.39,
+    "cyclesPerInstruction": 0.461,
+    "energyMilliwatts": 36.87,
+    "instructionsMillionsPerSecond": 89.81,
+    "interruptWakeupsPerSecond": 11.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.22,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 5,
+   "loadAverageAfter": [
+    8.91,
+    8.68,
+    9.15
+   ],
+   "loadAverageBefore": [
+    8.99,
+    8.7,
+    9.16
+   ],
+   "processPercentOfOneCore": 1.088,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.86,
+    "billedSystemMsPerSecond": 1.256,
+    "cpuPercentOfOneCore": 0.681,
+    "cyclesMillionsPerSecond": 26.3,
+    "cyclesPerInstruction": 0.306,
+    "energyMilliwatts": 28.57,
+    "instructionsMillionsPerSecond": 85.84,
+    "interruptWakeupsPerSecond": 3.2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.01,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    9,
+    8.71,
+    9.15
+   ],
+   "loadAverageBefore": [
+    8.91,
+    8.68,
+    9.15
+   ],
+   "processPercentOfOneCore": 0.682,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.754,
+    "billedSystemMsPerSecond": 0.051,
+    "cpuPercentOfOneCore": 0.011,
+    "cyclesMillionsPerSecond": 0.43,
+    "cyclesPerInstruction": 1.481,
+    "energyMilliwatts": 0.22,
+    "instructionsMillionsPerSecond": 0.29,
+    "interruptWakeupsPerSecond": 0.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.13,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.85,
+    8.68,
+    9.14
+   ],
+   "loadAverageBefore": [
+    8.92,
+    8.69,
+    9.15
+   ],
+   "processPercentOfOneCore": 0.011,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.795,
+    "billedSystemMsPerSecond": 2.867,
+    "cpuPercentOfOneCore": 1.116,
+    "cyclesMillionsPerSecond": 42.35,
+    "cyclesPerInstruction": 0.45,
+    "energyMilliwatts": 38.31,
+    "instructionsMillionsPerSecond": 94.05,
+    "interruptWakeupsPerSecond": 11.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.62,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.7,
+    8.65,
+    9.13
+   ],
+   "loadAverageBefore": [
+    8.85,
+    8.68,
+    9.14
+   ],
+   "processPercentOfOneCore": 1.116,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.829,
+    "billedSystemMsPerSecond": 2.329,
+    "cpuPercentOfOneCore": 1.018,
+    "cyclesMillionsPerSecond": 38.98,
+    "cyclesPerInstruction": 0.429,
+    "energyMilliwatts": 36.18,
+    "instructionsMillionsPerSecond": 90.76,
+    "interruptWakeupsPerSecond": 11.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 10.52,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.72,
+    8.66,
+    9.13
+   ],
+   "loadAverageBefore": [
+    8.7,
+    8.65,
+    9.13
+   ],
+   "processPercentOfOneCore": 1.018,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.817,
+    "billedSystemMsPerSecond": 0.685,
+    "cpuPercentOfOneCore": 0.652,
+    "cyclesMillionsPerSecond": 24.88,
+    "cyclesPerInstruction": 0.296,
+    "energyMilliwatts": 27.31,
+    "instructionsMillionsPerSecond": 84.01,
+    "interruptWakeupsPerSecond": 3.6,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.65,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.75,
+    8.67,
+    9.13
+   ],
+   "loadAverageBefore": [
+    8.9,
+    8.7,
+    9.14
+   ],
+   "processPercentOfOneCore": 0.652,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.854,
+    "billedSystemMsPerSecond": 0.392,
+    "cpuPercentOfOneCore": 0.803,
+    "cyclesMillionsPerSecond": 30.93,
+    "cyclesPerInstruction": 0.279,
+    "energyMilliwatts": 34.79,
+    "instructionsMillionsPerSecond": 110.98,
+    "interruptWakeupsPerSecond": 1.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 8.08,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.61,
+    8.64,
+    9.11
+   ],
+   "loadAverageBefore": [
+    8.75,
+    8.67,
+    9.13
+   ],
+   "processPercentOfOneCore": 0.802,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.819,
+    "billedSystemMsPerSecond": 1.074,
+    "cpuPercentOfOneCore": 1.1,
+    "cyclesMillionsPerSecond": 42.02,
+    "cyclesPerInstruction": 0.372,
+    "energyMilliwatts": 41.12,
+    "instructionsMillionsPerSecond": 112.87,
+    "interruptWakeupsPerSecond": 13.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.33,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.32,
+    8.58,
+    9.09
+   ],
+   "loadAverageBefore": [
+    8.61,
+    8.64,
+    9.11
+   ],
+   "processPercentOfOneCore": 1.1,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.749,
+    "billedSystemMsPerSecond": 1.315,
+    "cpuPercentOfOneCore": 1.891,
+    "cyclesMillionsPerSecond": 70.9,
+    "cyclesPerInstruction": 0.591,
+    "energyMilliwatts": 54.26,
+    "instructionsMillionsPerSecond": 120.02,
+    "interruptWakeupsPerSecond": 2.8,
+    "pCoreShareOfCPU": 0.971,
+    "pCoreShareOfCycles": 0.981,
+    "pCoreShareOfInstructions": 0.99,
+    "runnableMsPerSecond": 21.01,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 6,
+   "loadAverageAfter": [
+    8.38,
+    8.59,
+    9.09
+   ],
+   "loadAverageBefore": [
+    8.32,
+    8.58,
+    9.09
+   ],
+   "processPercentOfOneCore": 1.893,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.802,
+    "billedSystemMsPerSecond": 1.787,
+    "cpuPercentOfOneCore": 1.093,
+    "cyclesMillionsPerSecond": 41.56,
+    "cyclesPerInstruction": 0.438,
+    "energyMilliwatts": 37.85,
+    "instructionsMillionsPerSecond": 94.82,
+    "interruptWakeupsPerSecond": 12,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.37,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.31,
+    8.57,
+    9.07
+   ],
+   "loadAverageBefore": [
+    8.43,
+    8.59,
+    9.09
+   ],
+   "processPercentOfOneCore": 1.094,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.834,
+    "billedSystemMsPerSecond": 1.813,
+    "cpuPercentOfOneCore": 1.117,
+    "cyclesMillionsPerSecond": 42.85,
+    "cyclesPerInstruction": 0.378,
+    "energyMilliwatts": 41.39,
+    "instructionsMillionsPerSecond": 113.25,
+    "interruptWakeupsPerSecond": 10.2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.48,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.37,
+    8.57,
+    9.07
+   ],
+   "loadAverageBefore": [
+    8.31,
+    8.57,
+    9.07
+   ],
+   "processPercentOfOneCore": 1.117,
+   "provisional": true,
+   "seconds": 5,
+   "way": "bkept-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.551,
+    "billedSystemMsPerSecond": 0.08,
+    "cpuPercentOfOneCore": 0.019,
+    "cyclesMillionsPerSecond": 0.67,
+    "cyclesPerInstruction": 1.286,
+    "energyMilliwatts": 0.37,
+    "instructionsMillionsPerSecond": 0.52,
+    "interruptWakeupsPerSecond": 0.8,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.21,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.58,
+    8.61,
+    9.08
+   ],
+   "loadAverageBefore": [
+    8.37,
+    8.57,
+    9.07
+   ],
+   "processPercentOfOneCore": 0.019,
+   "provisional": true,
+   "seconds": 5,
+   "way": "idle"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.762,
+    "billedSystemMsPerSecond": 1.169,
+    "cpuPercentOfOneCore": 1.696,
+    "cyclesMillionsPerSecond": 63.8,
+    "cyclesPerInstruction": 0.639,
+    "energyMilliwatts": 46.7,
+    "instructionsMillionsPerSecond": 99.8,
+    "interruptWakeupsPerSecond": 3.2,
+    "pCoreShareOfCPU": 0.964,
+    "pCoreShareOfCycles": 0.976,
+    "pCoreShareOfInstructions": 0.986,
+    "runnableMsPerSecond": 18.94,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.43,
+    8.58,
+    9.07
+   ],
+   "loadAverageBefore": [
+    8.29,
+    8.55,
+    9.06
+   ],
+   "processPercentOfOneCore": 1.695,
+   "provisional": true,
+   "seconds": 5,
+   "way": "threads-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.856,
+    "billedSystemMsPerSecond": 0.942,
+    "cpuPercentOfOneCore": 0.661,
+    "cyclesMillionsPerSecond": 25.48,
+    "cyclesPerInstruction": 0.3,
+    "energyMilliwatts": 27.46,
+    "instructionsMillionsPerSecond": 84.82,
+    "interruptWakeupsPerSecond": 3.2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 6.74,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.39,
+    8.57,
+    9.06
+   ],
+   "loadAverageBefore": [
+    8.43,
+    8.58,
+    9.07
+   ],
+   "processPercentOfOneCore": 0.661,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-coalesced"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.864,
+    "billedSystemMsPerSecond": 0.529,
+    "cpuPercentOfOneCore": 0.92,
+    "cyclesMillionsPerSecond": 35.54,
+    "cyclesPerInstruction": 0.272,
+    "energyMilliwatts": 38.12,
+    "instructionsMillionsPerSecond": 130.75,
+    "interruptWakeupsPerSecond": 2,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 8.73,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.68,
+    8.63,
+    9.08
+   ],
+   "loadAverageBefore": [
+    8.39,
+    8.57,
+    9.06
+   ],
+   "processPercentOfOneCore": 0.92,
+   "provisional": true,
+   "seconds": 5.01,
+   "way": "bkept-aligned"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.817,
+    "billedSystemMsPerSecond": 1.308,
+    "cpuPercentOfOneCore": 1.129,
+    "cyclesMillionsPerSecond": 43.08,
+    "cyclesPerInstruction": 0.461,
+    "energyMilliwatts": 37.59,
+    "instructionsMillionsPerSecond": 93.42,
+    "interruptWakeupsPerSecond": 12,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 11.72,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.27,
+    8.54,
+    9.04
+   ],
+   "loadAverageBefore": [
+    8.47,
+    8.58,
+    9.06
+   ],
+   "processPercentOfOneCore": 1.129,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-spread"
+  },
+  {
+   "counters": {
+    "averageGHz": 3.863,
+    "billedSystemMsPerSecond": 1.202,
+    "cpuPercentOfOneCore": 0.686,
+    "cyclesMillionsPerSecond": 26.52,
+    "cyclesPerInstruction": 0.302,
+    "energyMilliwatts": 28.66,
+    "instructionsMillionsPerSecond": 87.8,
+    "interruptWakeupsPerSecond": 3.4,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 7.03,
+    "servicedSystemMsPerSecond": 0
+   },
+   "cycle": 7,
+   "loadAverageAfter": [
+    8.57,
+    8.6,
+    9.06
+   ],
+   "loadAverageBefore": [
+    8.27,
+    8.54,
+    9.04
+   ],
+   "processPercentOfOneCore": 0.686,
+   "provisional": true,
+   "seconds": 5,
+   "way": "one-aligned"
+  }
+ ],
+ "provisionalPhases": 56,
+ "widgetsPerSet": 10
+}
