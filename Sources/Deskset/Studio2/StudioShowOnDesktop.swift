@@ -67,7 +67,8 @@ final class StudioDesktopView {
     }
 
     /// Comes back: the widget's window at its own level, the Studio window at full strength, the ring gone.
-    func back() {
+    /// `reactivate`: the Studio window comes to the front again (not when it is closing).
+    func back(reactivate: Bool = true) {
         guard isShowing else { return }
         isShowing = false
         keyPressedAt = nil
@@ -81,13 +82,13 @@ final class StudioDesktopView {
             let alpha = saved.studioAlpha
             // Set at once (an animation still running would otherwise end at the faded value), then shown.
             studioWindow?.alphaValue = alpha
-            if presentsWindows, !StudioMotion.isReduced {
+            if presentsWindows, reactivate, !StudioMotion.isReduced {
                 studioWindow?.alphaValue = Self.fadedAlpha
                 StudioMotion.animate(0.2, { _ in self.studioWindow?.animator().alphaValue = alpha })
             }
         }
         saved = nil
-        if presentsWindows { studioWindow?.makeKeyAndOrderFront(nil) }
+        if presentsWindows, reactivate { studioWindow?.makeKeyAndOrderFront(nil) }
         onChange?()
     }
 

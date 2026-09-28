@@ -100,7 +100,7 @@ final class StudioPreviewController {
 
     /// The window lets go of the widget: the preview ends (the next widget starts live).
     func detach() {
-        desktopView.back()
+        desktopView.back(reactivate: false)
         setInteracting(false)
         previewPopover?.close()
         timePopover?.close()
