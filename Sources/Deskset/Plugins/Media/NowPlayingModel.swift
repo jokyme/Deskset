@@ -357,9 +357,11 @@ enum NowPlayingValues {
 
     /// `PlayerType=MacPermission`: whether a player the measure cannot read keeps it from showing what plays.
     ///
-    /// - 1 while a running player refused Automation, 2 while a running player has not been asked yet (macOS asks at
-    ///   the first poll; its prompt may be on screen), else 0. The preferred player first, a refusal before an
-    ///   undecided player.
+    /// - It is about the player the measure would show if it could read it: the preferred player while it runs, else
+    ///   the other one. 1 while that player runs and refused Automation, 2 while it runs and has not been asked yet
+    ///   (macOS asks at the first poll; its prompt may be on screen), else 0. So a refused other player counts only
+    ///   while the preferred player is closed: while the preferred one runs, the measure shows it (not playing, with
+    ///   its own controls), whatever the other one refused.
     /// - Always 0 while the measure shows a track (another player's): the refusal hides nothing then.
     /// - The string names the player the number is about ("Music", "Spotify"); for 0, the player the measure shows
     ///   (the preferred one when none runs), so it is never empty.
@@ -370,13 +372,11 @@ enum NowPlayingValues {
                            permissions: [MediaApp: NowPlayingPermission]) -> (number: Double, string: String) {
         let quiet = (0.0, shown.app.displayName)
         guard !shown.hasTrack else { return quiet }
-        let order = [preferred, preferred.other]
-        for wanted in [NowPlayingPermission.refused, .notDetermined] {
-            if let app = order.first(where: { running.contains($0) && permissions[$0] == wanted }) {
-                return (Double(wanted.rawValue), app.displayName)
-            }
+        let candidate = running.contains(preferred) ? preferred : preferred.other
+        guard running.contains(candidate), let permission = permissions[candidate], permission != .allowed else {
+            return quiet
         }
-        return quiet
+        return (Double(permission.rawValue), candidate.displayName)
     }
 }
 

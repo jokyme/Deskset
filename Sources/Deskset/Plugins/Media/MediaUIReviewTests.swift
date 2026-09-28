@@ -155,9 +155,17 @@ enum MediaUIReviewTests {
             t.equal(value(.music, shown: pausedNoTrack, running: [.music, .spotify], [.music: .refused]), "1 Music",
                     "a player without a track does not hide the refusal")
             t.equal(value(.music, shown: closedMusic, running: [.music, .spotify],
-                          [.music: .notDetermined, .spotify: .refused]), "1 Spotify", "a refusal before an undecided one")
+                          [.music: .notDetermined, .spotify: .refused]), "2 Music",
+                    "the preferred player runs: it is the one the measure shows")
             t.equal(value(.spotify, shown: closedSpotify, running: [.music, .spotify],
                           [.music: .refused, .spotify: .refused]), "1 Spotify", "the preferred player first")
+            var idleMusic = NowPlayingSnapshot(app: .music)
+            idleMusic.running = true
+            t.equal(value(.music, shown: idleMusic, running: [.music, .spotify], [.music: .allowed, .spotify: .refused]),
+                    "0 Music", "another player's refusal while the preferred one runs: not playing, with its controls")
+            t.equal(value(.music, shown: closedMusic, running: [.spotify], [.spotify: .refused]), "1 Spotify",
+                    "the preferred player is closed: the refused one is what the measure would show")
+            t.equal(value(.music, shown: closedMusic, running: [.spotify], [.spotify: .notDetermined]), "2 Spotify")
             t.equal(value(.music, shown: closedMusic, running: [.music], [.music: .notDetermined]), "2 Music")
             t.equal(value(.music, shown: closedMusic, running: [.music], [.music: .allowed]), "0 Music")
             t.equal(NowPlayingField.nowPlaying(" macPERMISSION "), .macPermission)
