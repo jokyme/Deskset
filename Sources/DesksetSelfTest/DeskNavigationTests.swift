@@ -996,4 +996,33 @@ func runDeskNavigationSweep(_ t: TestRunner) {
         }
         print("    \(positions) positions and \(renames) renames swept")
     }
+
+    t.suite("Desk: service — navigation on a small stack") {
+        // Deep nesting and long chains, asked on a thread with a background queue's 512 KiB of stack.
+        let deep = "widget {\n" + String(repeating: "Column {\n", count: 3_000) + "Text(\"A\")\n" + String(repeating: "}\n", count: 3_000) + "}\n"
+        let chain = "widget {\n    variable a = 1\n    computed b = " + Array(repeating: "a", count: 5_000).joined(separator: " + ")
+            + "\n    Text(\"{b}\")\n    if a == 1 { Text(\"x\") }"
+            + (2..<1_500).map { " else if a == \($0) { Text(\"y\") }" }.joined() + "\n}\n"
+        for (label, text) in [("deep", deep), ("chain", chain)] {
+            let snapshot = deskNavService(text).snapshot
+            var outline: [DeskDocumentSymbol] = []
+            var folds: [DeskFoldingRange] = []
+            var definition: [DeskLocation] = []
+            var hit: DeskElementHit?
+            let done = DispatchSemaphore(value: 0)
+            let thread = Thread {
+                outline = snapshot.documentSymbols()
+                folds = snapshot.foldingRanges()
+                definition = snapshot.definition(at: deskNavPosition(snapshot, "a +", into: 0))
+                hit = snapshot.elementAt(deskNavPosition(snapshot, "Text(\"A\")", into: 2))
+                done.signal()
+            }
+            thread.stackSize = 512 * 1024
+            thread.start()
+            t.check(done.wait(timeout: .now() + 600) == .success, "\(label) finishes")
+            t.check(!outline.isEmpty && !folds.isEmpty, label)
+            if label == "chain" { t.equal(deskNavDescribe(definition, snapshot), ["Test.desk 2:14 a"]) }
+            if label == "deep" { t.check(hit != nil, "an element (past the nesting limit the checker keeps the outer ones)") }
+        }
+    }
 }

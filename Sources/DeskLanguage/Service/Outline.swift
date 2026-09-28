@@ -161,7 +161,18 @@ extension DeskSnapshot {
 
     /// The outline of the open file.
     public func documentSymbols() -> [DeskDocumentSymbol] {
-        caches.outline.value { OutlineBuilder(snapshot: self, table: nodeTable).build() }
+        caches.outline.value {
+            // The outline recurses once or twice per nested block: hostile nesting runs where the stack is large
+            // enough (a background thread has 512 KiB).
+            let table = nodeTable
+            var depths = [Int](repeating: 0, count: table.entries.count)
+            var deepest = 0
+            for (i, entry) in table.entries.enumerated() {
+                depths[i] = (entry.parent >= 0 ? depths[entry.parent] : 0) + (entry.kind == .block ? 1 : 0)
+                deepest = max(deepest, depths[i])
+            }
+            return StackGuard.run(needing: (deepest + 8) * 24 * 1024) { OutlineBuilder(snapshot: self, table: table).build() }
+        }
     }
 
     // MARK: Folding
