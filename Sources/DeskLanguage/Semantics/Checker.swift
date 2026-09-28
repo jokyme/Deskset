@@ -481,6 +481,10 @@ final class Checker {
         checked.loopIdentities = loopIdentities
         checked.assets = assetUses
         checked.folderPending = folderPending
+        for decl in declOrder where !decl.poisoned {
+            guard let val = decl.val, !val.error, val.open == nil else { continue }
+            checked.declarationTypes[decl.id] = SemType(type: val.type, displayBase: val.base, range: val.range)
+        }
         return checked
     }
 
@@ -683,11 +687,15 @@ enum FolderChecks {
         }
         guard !extra.isEmpty else { return checked }
         let all = (checked.diagnostics + extra).sorted { $0.range.lowerBound < $1.range.lowerBound }
-        return CheckedFile(tree: checked.tree, diagnostics: all, symbols: checked.symbols, types: checked.types,
-                           elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
-                           reactions: checked.reactions, freeformOrders: checked.freeformOrders,
-                           stringTable: checked.stringTable, requirements: checked.requirements,
-                           options: checked.options, styles: checked.styles, translations: checked.translations,
-                           root: checked.root)
+        var result = CheckedFile(tree: checked.tree, diagnostics: all, symbols: checked.symbols, types: checked.types,
+                                 elements: checked.elements, dataUses: checked.dataUses, dependencies: checked.dependencies,
+                                 reactions: checked.reactions, freeformOrders: checked.freeformOrders,
+                                 stringTable: checked.stringTable, requirements: checked.requirements,
+                                 options: checked.options, styles: checked.styles, translations: checked.translations,
+                                 root: checked.root)
+        result.loopIdentities = checked.loopIdentities
+        result.assets = checked.assets
+        result.declarationTypes = checked.declarationTypes
+        return result
     }
 }

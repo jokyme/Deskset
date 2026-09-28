@@ -459,6 +459,9 @@ public struct CheckedFile: Sendable {
     public var loopIdentities: [NodeID: String] = [:]
     /// The pictures the file names.
     public var assets = AssetUses()
+    /// The type each `variable`, `saved` and `computed` declaration settled to (by its initializer, or by its uses
+    /// when the initializer left it open), keyed by the declaration; absent where no use decided it.
+    public var declarationTypes: [NodeID: SemType] = [:]
 
     public init(tree: SyntaxTree, diagnostics: [Diagnostic], symbols: [NodeID: Symbol], types: [NodeID: SemType],
                 elements: [NodeID: ElementFacts], dataUses: [DataUse], dependencies: [NodeID: Set<DepKey>],
