@@ -217,15 +217,22 @@ private func clockFiles(manifest: String = clockManifest, variables: String? = n
     ]
 }
 
-/// DesksetCore's work folders (`Deskset-…`) in the system temporary directory right now.
+/// The installer's work folders (`RmskinFiles.makeTemporaryDirectory`). Other `Deskset-…` folders in the system
+/// temporary directory are other code's, often other processes': a skin's file sandbox (`Deskset-Sandbox-…`), the
+/// settings folder of the app's command-line modes (`Deskset-settings-…`, kept for as long as a `--render` runs).
+private let installerFolderPrefixes = ["Deskset-rmskin-", "Deskset-zip-"]
+
+/// The installer's work folders in the system temporary directory right now.
 private func temporaryItems(_ t: TestRunner) -> Set<String> {
-    t.systemTemporaryItems(prefix: "Deskset-")
+    installerFolderPrefixes.reduce(into: Set<String>()) { $0.formUnion(t.systemTemporaryItems(prefix: $1)) }
 }
 
 /// Work folders created since `before` that are still there: leftovers (see `TestRunner.newSystemTemporaryItems`,
 /// which ignores the short-lived folders of other processes).
 private func temporaryLeftovers(_ t: TestRunner, since before: Set<String>) -> Set<String> {
-    t.newSystemTemporaryItems(prefix: "Deskset-", since: before)
+    installerFolderPrefixes.reduce(into: Set<String>()) {
+        $0.formUnion(t.newSystemTemporaryItems(prefix: $1, since: before))
+    }
 }
 
 // MARK: - Test infrastructure
@@ -239,6 +246,8 @@ private func rmskinTemporaryCheckTests(_ t: TestRunner) {
 
         let fm = FileManager.default
         let before = temporaryItems(t)
+        // This check's own folders only: other processes make and keep `Deskset-…` folders of their own meanwhile.
+        let ours = t.systemTemporaryItems(prefix: "Deskset-selftest-")
         let leftover = fm.temporaryDirectory.appendingPathComponent("Deskset-selftest-leftover-\(UUID().uuidString)")
         let passing = fm.temporaryDirectory.appendingPathComponent("Deskset-selftest-passing-\(UUID().uuidString)")
         try fm.createDirectory(at: leftover, withIntermediateDirectories: true)
@@ -249,10 +258,22 @@ private func rmskinTemporaryCheckTests(_ t: TestRunner) {
         }
         // Another process's short-lived work folder: gone again while the check waits.
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { try? fm.removeItem(at: passing) }
-        t.equal(t.newSystemTemporaryItems(prefix: "Deskset-", since: before, grace: 1), [leftover.lastPathComponent],
+        t.equal(t.newSystemTemporaryItems(prefix: "Deskset-selftest-", since: ours, grace: 1), [leftover.lastPathComponent],
                 "a folder that stays is a leftover, one that goes away again is not")
         try fm.removeItem(at: leftover)
         t.equal(temporaryLeftovers(t, since: before), [])
+
+        // The installer's work folders are the ones the checks look for; another process's folders are not.
+        for label in ["rmskin", "zip"] {
+            let work = try RmskinFiles.makeTemporaryDirectory(label)
+            t.check(installerFolderPrefixes.contains { work.lastPathComponent.hasPrefix($0) }, work.lastPathComponent)
+            t.equal(temporaryLeftovers(t, since: before), [work.lastPathComponent], "\(label): seen")
+            try fm.removeItem(at: work)
+        }
+        let other = fm.temporaryDirectory.appendingPathComponent("Deskset-settings-\(UUID().uuidString)")
+        try fm.createDirectory(at: other, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: other) }
+        t.equal(temporaryLeftovers(t, since: before), [], "a command-line mode's settings folder is not the installer's")
     }
 }
 
