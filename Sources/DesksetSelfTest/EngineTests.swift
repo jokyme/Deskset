@@ -1339,6 +1339,27 @@ private func runMeterGeneralTests(_ t: TestRunner) {
         t.check(!skin.mouseEvent(.leftUp, x: 50, y: 35), "a hidden container hides its content")
     }
 
+    t.suite("Engine: hover actions of overlapping meters run in meter order") {
+        // Entering or leaving several meters in one move: their MouseOverAction / MouseLeaveAction run in the order of
+        // the meters, the same on every run (not in the order of a Set, which Swift seeds per process and instance).
+        var ini = "[Rainmeter]\nUpdate=-1\n"
+        for i in 1...8 {
+            ini += "[M\(i)]\nMeter=Image\nW=40\nH=40\nMouseOverAction=[!Log over-\(i)]\nMouseLeaveAction=[!Log leave-\(i)]\n"
+        }
+        for round in 0..<5 {
+            let (skin, host, _) = try makeEngineSkin(t, ini)
+            skin.update()
+            skin.mouseMoved(x: 10, y: 10)
+            skin.mouseMoved(x: 200, y: 200)
+            skin.mouseMoved(x: 10, y: 10)
+            skin.mouseExited()
+            let lines = host.logs.map { String($0.split(separator: " ").last ?? "") }
+            let over = (1...8).map { "over-\($0)" }, leave = (1...8).map { "leave-\($0)" }
+            t.equal(lines, over + leave + over + leave, "round \(round)")
+            skin.close()
+        }
+    }
+
     t.suite("Engine: mouse actions and mouse action state bangs") {
         let (skin, _, _) = try makeEngineSkin(t, """
         [Rainmeter]

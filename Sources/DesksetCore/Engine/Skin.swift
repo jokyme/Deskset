@@ -2015,12 +2015,15 @@ public final class Skin {
             && m.isHit(x: x, y: y) {
             now.insert(m.name.lowercased())
         }
-        for key in now.subtracting(hoveredMeters) {
+        // In the order of the meters, not of the sets (which Swift seeds at random in every process): when the pointer
+        // enters or leaves two overlapping meters in one move, their actions run in the same order on every run.
+        let entered = now.subtracting(hoveredMeters), left = hoveredMeters.subtracting(now)
+        for key in inMeterOrder(entered) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.over), !a.isEmpty {
                 withMouse(x: x, y: y, in: m.frame) { execute(a, from: m) }
             }
         }
-        for key in hoveredMeters.subtracting(now) {
+        for key in inMeterOrder(left) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.leave), !a.isEmpty {
                 withMouse(x: x, y: y, in: m.frame) { execute(a, from: m) }
             }
@@ -2167,12 +2170,25 @@ public final class Skin {
         host?.skinOutsidePointerNeedsChanged(self)
     }
 
+    /// `keys` (lower-case meter names) in the order of the skin's meters; names of meters the skin no longer has last,
+    /// sorted.
+    private func inMeterOrder(_ keys: Set<String>) -> [String] {
+        guard keys.count > 1 else { return Array(keys) }
+        var ordered: [String] = []
+        for m in meters {
+            let key = m.name.lowercased()
+            if keys.contains(key), !ordered.contains(key) { ordered.append(key) }
+        }
+        if ordered.count < keys.count { ordered += keys.subtracting(ordered).sorted() }
+        return ordered
+    }
+
     public func mouseExited() {
         assertOwned()
         defer { mirror(.exited) }
         environmentValid = false
         for m in meters where m.handlesMouseItself { m.mouseHover(inside: false, x: -1, y: -1) }
-        for key in hoveredMeters {
+        for key in inMeterOrder(hoveredMeters) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.leave), !a.isEmpty { execute(a, from: m) }
         }
         hoveredMeters = []
