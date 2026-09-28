@@ -632,7 +632,7 @@ extension StudioWindowController {
     }
 
     /// Esc with nothing in the window taking it: one level up.
-    @objc func cancelOperation(_ sender: Any?) {
+    override func cancelOperation(_ sender: Any?) {
         goUp()
     }
 
