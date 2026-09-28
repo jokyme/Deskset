@@ -477,7 +477,6 @@ enum StudioSessionSelfTests {
         }
     }
 
-    /// Every desktop copy of `config` seen while the run loop runs for `seconds` (kept alive, so none is counted twice).
     /// Reloads of `config` until `done` holds (at most `timeout` seconds; a slow CI runner may need several), and during
     /// `extra` seconds after that, to see a second reload that should not happen.
     static func reloads(_ app: AppController, _ config: String, until done: () -> Bool, timeout: TimeInterval = 20,
@@ -497,6 +496,8 @@ enum StudioSessionSelfTests {
         return seen.count - 1
     }
 
+    /// Reloads of `config` while the run loop runs for `seconds`: every desktop copy seen (kept alive, so none is
+    /// counted twice) but the first.
     static func reloads(_ app: AppController, _ config: String, during seconds: TimeInterval) -> Int {
         var seen: [SkinController] = app.controller(for: config).map { [$0] } ?? []
         let end = Date().addingTimeInterval(seconds)

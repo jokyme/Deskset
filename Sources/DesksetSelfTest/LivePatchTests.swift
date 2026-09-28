@@ -83,8 +83,8 @@ private let volatileLabels: Set<String> = [
     "autoRangeMin", "autoRangeMax",
     // A Bitmap's transition toward its target frames runs on a timer of its own (the target is compared).
     "displayedFrames", "shownReal", "transitionStep",
-    // Counts of changes (a Shape's parsed shapes).
-    "revision",
+    // Counts of changes (a Shape's parsed shapes) and of the times it parsed them (a patch reads the options again).
+    "revision", "parseCount",
 ]
 
 /// A stable description of an object's stored properties (superclasses included). Sections and the skin it refers to
@@ -539,7 +539,8 @@ private let sampleOverrides: [String: [String]] = [
     "primaryimage": ["graph100x50.png", ""], "secondaryimage": ["graph100x50.png", ""],
     "bothimage": ["graph100x50.png", ""], "tooltiptext": ["Now %1", ""], "tooltiptitle": ["Title", ""],
     "onupdateaction": ["", "[!SetVariable Clicked 1]"], "antialias": ["1", "0"],
-    "macsymbolsize": ["24", "8"], "macsymbolweight": ["Bold", "Light"], "macsymbolrendering": ["Hierarchical", "Multicolor"], "fontface": ["Helvetica", "System", "#Size#"],
+    "macsymbolsize": ["24", "8"], "macsymbolweight": ["Bold", "Light"], "macsymbolrendering": ["Hierarchical", "Multicolor", "Palette"],
+    "macsymbolcolors": ["255,204,0 | 0,0,0,153", "#Color#", ""], "fontface": ["Helvetica", "System", "#Size#"],
 ]
 
 /// Sample values from what a key is: its EditorSchema kind, or its name.

@@ -370,6 +370,13 @@ private func runtimeVariables(_ t: TestRunner) throws {
     t.equal(value("alpha"), "7", "!SetVariable")
     t.equal(value("new"), "x", "a variable a bang made")
     t.equal(skin.runtimeVariables.first { $0.name == "new" }?.description, "new=x")
+    // An editor preview's values are not the skin's: what the preview replaced is listed.
+    skin.previewVariables(["Alpha": "99", "Previewed": "y"])
+    t.equal(skin.variable("Alpha"), "99", "the preview shows")
+    t.equal(value("alpha"), "7", "the value the preview replaced")
+    t.equal(value("previewed"), nil, "not a variable only the preview made")
+    skin.endPreview()
+    t.equal(value("alpha"), "7")
 
     // !WriteKeyValue and a refresh: the reloaded skin lists the value written.
     skin.execute("[!WriteKeyValue Variables Zeta written]", from: nil)

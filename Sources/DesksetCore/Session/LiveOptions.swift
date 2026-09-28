@@ -99,7 +99,7 @@ public enum LiveOptions {
     /// The general image options with an optional prefix (ImageOptions.read, MacSymbol.Style.read).
     static func imageKeys(prefix: String = "", crop: Bool = true, rotate: Bool = true) -> Set<String> {
         var keys = ["greyscale", "imagetint", "imagealpha", "imageflip", "useexiforientation", "imagepath",
-                    "macsymbolsize", "macsymbolweight", "macsymbolrendering"]
+                    "macsymbolsize", "macsymbolweight", "macsymbolrendering", "macsymbolcolors"]
         if crop { keys.append("imagecrop") }
         if rotate { keys.append("imagerotate") }
         return Set(keys.map { prefix + $0 })
