@@ -124,11 +124,12 @@ final class StudioCanvasAccessibility: NSObject, NSAccessibilityCustomRotorItemS
                 e.setAccessibilityRole(Self.role(m))
                 let issues = StudioPartIssues.issues(of: m, in: skin)
                 e.problem = StudioPartNames.issueSentence(issues, in: skin, names: names)
-                if let data = StudioPartNames.shownData(m, in: skin),
-                   !issues.contains(where: { if case .windowsData = $0 { return true } else { return false } }) {
+                if issues.contains(where: { if case .windowsData = $0 { return true } else { return false } }) {
+                    e.value = "0"
+                } else if let data = StudioPartNames.shownData(m, in: skin) {
                     e.value = StudioPartNames.value(m, data: data, in: skin)
                 } else {
-                    e.value = e.problem == nil ? nil : "0"
+                    e.value = nil
                 }
                 e.setAccessibilityCustomActions(actions(for: m.name))
                 elements.append(e)
@@ -144,7 +145,7 @@ final class StudioCanvasAccessibility: NSObject, NSAccessibilityCustomRotorItemS
     func refreshValues() {
         guard let window, let skin = window.skin else { return }
         for e in parts {
-            guard let m = skin.meter(named: e.name), e.problem == nil,
+            guard let m = skin.meter(named: e.name), e.value != "0" || e.problem == nil,
                   let data = StudioPartNames.shownData(m, in: skin) else { continue }
             e.value = StudioPartNames.value(m, data: data, in: skin)
         }

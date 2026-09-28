@@ -11,6 +11,14 @@ final class StudioSidebarState {
     var liveTimer: Timer?
     /// Return moved the focus from the canvas to the inspector: Esc there brings it back to the part.
     var focusFromCanvas = false
+    /// Rainmeter details as the pages last showed them (Settings may change them too).
+    var shownDetails: Bool?
+    var observers: [NSObjectProtocol] = []
+
+    deinit {
+        liveTimer?.invalidate()
+        for o in observers { NotificationCenter.default.removeObserver(o) }
+    }
 }
 
 /// The sidebar in the window: the Layers list follows the Studio's instance and the canvas's selection, and carries
@@ -47,6 +55,12 @@ extension StudioWindowController {
             return (true, !stayed && !session.undoStack.canUndo)
         }
         canvasController.compatCapsule.onStay = { [weak self] in self?.stayWithINI() }
+        sidebarState.shownDetails = showsRainmeterDetails
+        sidebarState.observers.append(NotificationCenter.default.addObserver(
+            forName: .desksetEditorPreferencesChanged, object: app.state, queue: .main) { [weak self] _ in
+                guard let self, self.sidebarState.shownDetails != self.showsRainmeterDetails else { return }
+                self.rainmeterDetailsChanged()
+            })
     }
 
     /// Stay with INI: the offer goes for this skin, remembered.
@@ -169,6 +183,7 @@ extension StudioWindowController {
     var showsRainmeterDetails: Bool { app.state.editor.showIniNames }
 
     @objc func toggleRainmeterDetails(_ sender: Any?) {
+        sidebarState.shownDetails = !showsRainmeterDetails
         app.state.updateEditor { $0.showIniNames.toggle() }
         rainmeterDetailsChanged()
         announce(showsRainmeterDetails ? StudioText[.rainmeterNamesShown] : StudioText[.rainmeterNamesHidden])
@@ -176,6 +191,7 @@ extension StudioWindowController {
 
     /// The pages and the list follow a change of Rainmeter details; the first-time hint goes.
     func rainmeterDetailsChanged() {
+        sidebarState.shownDetails = showsRainmeterDetails
         setHint(nil)
         widgetPage.refresh()
         partPage.refresh()
@@ -187,6 +203,7 @@ extension StudioWindowController {
     /// hide them. Once per user.
     func turnOnRainmeterDetailsTheFirstTime() {
         guard isRainmeterSkin, !app.state.editor.seenTips.contains(Self.rainmeterNamesTip) else { return }
+        sidebarState.shownDetails = true
         app.state.updateEditor { e in
             e.showIniNames = true
             e.seenTips.insert(Self.rainmeterNamesTip)

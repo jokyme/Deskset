@@ -372,8 +372,10 @@ enum Studio2PageSelfTests {
             let variables = file(opened, "Nocturne/@Resources/Variables.inc")
             let nocturne = file(opened, "Nocturne/Nocturne.ini")
             let before = data(nocturne)
+            // The first Rainmeter skin turned Rainmeter details on: All Variables… ends the options.
+            t.check(studio.showsRainmeterDetails, "Rainmeter details on")
             t.equal(page.page?.section("options")?.items.map(\.id),
-                    ["option:AccentColor", "option:PanelAlpha", "option:ClockFormat"])
+                    ["option:AccentColor", "option:PanelAlpha", "option:ClockFormat", "options.variables"])
             guard case .row(let clock)? = page.page?.item("option:ClockFormat")?.kind,
                   case .segmented(let s) = clock.control else { return t.check(false, "the clock") }
             t.equal(s.items, ["1:30 PM", "13:30"])

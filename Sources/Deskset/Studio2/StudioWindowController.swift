@@ -308,6 +308,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     func updateToolbar() {
         toolbar?.apply(toolbarState)
+        if canvasAccess != nil { canvasController.updateCompatCapsule() }
     }
 
     private func observeUndo(_ manager: UndoManager) {
