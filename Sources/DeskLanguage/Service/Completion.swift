@@ -391,8 +391,13 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             var zh: [String] = []
             for p in shown {
                 let words = catalog.displayName(for: p.type)
-                en.append("\(p.label ?? p.name): \(words.en)")
-                zh.append("\(p.label ?? p.name)：\(words.zh)")
+                if let label = p.label {
+                    en.append("\(label) (\(words.en))")
+                    zh.append("\(label)（\(words.zh)）")
+                } else {
+                    en.append(words.en)
+                    zh.append(words.zh)
+                }
             }
             if signature.params.count > shown.count {
                 en.append("…")
@@ -562,9 +567,13 @@ final class DeskCompletionCatalog: @unchecked Sendable {
         self.cases = cases
 
         // Units.
+        // The units people write most come first in each dimension.
+        let common = ["s", "ms", "min", "h", "d", "%", "pt", "°", "GB", "MB", "KB", "TB", "B", "MB/s", "KB/s", "GB/s", "B/s",
+                      "°C", "°F", "GHz", "MHz", "W", "V", "A", "rpm", "km/h", "mph", "mm", "hPa"]
         units = catalog.units.map { u in
-            (u, DeskCompletionTemplate(label: u.spelling, kind: .unit, detail: catalog.displayName(for: .number(u.dimension)),
-                                       commit: [",", ")"], valueType: .number(u.dimension)))
+            let order = common.firstIndex(of: u.spelling) ?? common.count
+            return (u, DeskCompletionTemplate(label: u.spelling, kind: .unit, detail: catalog.displayName(for: .number(u.dimension)),
+                                              rank: max(1, 99 - order), commit: [",", ")"], valueType: .number(u.dimension)))
         }
 
         // Format options.
@@ -686,7 +695,7 @@ struct DeskCompletionBuilder {
             insertText: insert, plainText: plainPlaced, isSnippet: insert.contains("$"), range: scan.context.range,
             filterText: ([shown] + t.words).joined(separator: " "), sortText: "", isDeprecated: t.deprecated,
             isAlreadyPresent: alreadyPresent, commitCharacters: t.commit, catalogPath: t.path, additionalEdits: extra)
-        candidates.append((item, (m, tierValue, nearness, 100 - max(0, min(100, r)), t.since, shown)))
+        candidates.append((item, (m, tierValue, nearness, 200 - max(0, min(200, r)), t.since, shown)))
     }
 
     /// Ranks and cuts the list.
@@ -831,7 +840,7 @@ struct DeskCompletionBuilder {
         for t in templates.controls {
             let isSection = catalog.control(named: t.label)?.block == .optionItems
             if isSection {
-                add(t, tier: 2, label: t.label)
+                add(t, tier: 1, label: t.label)
                 continue
             }
             let name = uniqueName(DeskCompletionBuilder.optionName(for: t.label), taken: taken)
@@ -852,6 +861,8 @@ struct DeskCompletionBuilder {
             let menuEntry = spec.group == .menuEntries || spec.kind == .divider
             if context.inMenu {
                 guard menuEntry else { continue }
+                add(t, tier: spec.group == .menuEntries ? 2 : 3)
+                continue
             } else if spec.group == .menuEntries {
                 continue
             }
@@ -925,14 +936,17 @@ struct DeskCompletionBuilder {
                 guard spec.context != .option else { continue }
             }
             if let kind = context.elementKind, site != .option, !spec.appliesTo.contains(kind) { continue }
+            // Modifiers made for this kind of element (a shape's fill, a picture's tint) come before general ones.
+            let specific = context.elementKind != nil && spec.appliesTo.kinds.count <= 8
             if spec.name == "rainmeter", !isConvertedFile { continue }
             if spec.name == "style", !hasUsableStyle { continue }
             if spec.name == "position", site == .element, let parent = ownerParentKind, parent != .freeform { continue }
             let present = spec.repeatable == .no && scan.presentModifiers.contains(spec.name)
+            let rank = t.rank + (specific ? 25 : 0)
             if scan.dotTyped {
-                add(t, tier: 1, alreadyPresent: present)
+                add(t, tier: 1, alreadyPresent: present, rank: rank)
             } else {
-                add(t, tier: 1, label: "." + t.label, snippet: "." + t.snippet, plain: "." + t.plain, alreadyPresent: present)
+                add(t, tier: 1, label: "." + t.label, snippet: "." + t.snippet, plain: "." + t.plain, alreadyPresent: present, rank: rank)
             }
         }
     }
@@ -970,10 +984,10 @@ struct DeskCompletionBuilder {
         case .value(let type):
             addValueMembers(of: type)
         case .element(let name):
-            for (member, en, zh) in DeskCompletionBuilder.geometry {
+            for (k, (member, en, zh)) in DeskCompletionBuilder.geometry.enumerated() {
                 add(DeskCompletionTemplate(label: member, kind: .data, detail: L(en, zh),
                                            documentation: L("Where \(name) is in its Freeform, in points", "\(name) 在自由摆放里的位置，单位是点"),
-                                           commit: [",", ")"], valueType: .length), tier: 1)
+                                           rank: 90 - k, commit: [",", ")"], valueType: .length), tier: 1)
             }
         }
     }
@@ -1085,6 +1099,9 @@ struct DeskCompletionBuilder {
                 addCases("Color")
                 addCases("Paint")
             case .lengthSpec: addCases("LengthKeyword")
+            case .size, .record("Size"):
+                // A widget's size compares with its preset (`widget.size == .small`).
+                addCases("SizePreset")
             case .oneOf(let types): types.forEach(addFor)
             case .binding(let inner): addFor(inner)
             case .list(let inner) where withDot == false: addFor(inner)
@@ -1121,7 +1138,7 @@ struct DeskCompletionBuilder {
         if expected == .bool || expected == nil || expected == .any {
             for word in ["true", "false"] {
                 add(DeskCompletionTemplate(label: word, kind: .keyword, detail: L("yes or no", "是或否"), valueType: .bool),
-                    tier: expected == .bool ? 1 : 6)
+                    tier: expected == .bool ? 1 : 4)
             }
             add(DeskCompletionTemplate(label: "not", kind: .keyword, detail: L("The opposite", "取反"), snippet: "not ",
                                        plain: "not ", valueType: .bool), tier: expected == .bool ? 2 : 7)
@@ -1130,10 +1147,15 @@ struct DeskCompletionBuilder {
             snapshot.nodeTable.ancestors(of: i).contains { snapshot.nodeTable.entries[$0].kind == .styleDecl }
         } ?? false
         if !inStyle {
-            for own in snapshot.visibleOwnNames(at: offset) where own.kind != .element {
+            let declaring = declarationBeingWritten
+            for own in snapshot.visibleOwnNames(at: offset) where own.kind != .element && own.name != declaring {
+                var tier = 2
+                if let expected, expected != .any, let type = own.type {
+                    tier = DeskCompletionBuilder.fits(type, expected) || DeskSnapshot.fits(type, expected) ? 2 : 6
+                }
                 add(DeskCompletionTemplate(label: own.name, kind: own.kind == .loopVariable ? .loopVariable : .variable,
                                            detail: ownDetail(own), commit: ["."], valueType: own.type),
-                    tier: 2, nearness: own.nearness)
+                    tier: tier, nearness: own.nearness)
             }
         }
         if context.inActions, snapshot.eventRecord(at: offset) != "Event" || enclosingEvent(at: offset) {
@@ -1196,13 +1218,13 @@ struct DeskCompletionBuilder {
             for t in expected.components {
                 if case .number(let d) = t, d != .plain { return d }
                 if t == .lengthSpec { return .length }
+                if t == .fraction { return .percent }
             }
             return nil
         }()
         for (spec, t) in templates.units {
             if let dimension, spec.dimension != dimension { continue }
-            let common = ["%", "s", "ms", "min", "pt", "GB", "MB", "°C"].contains(spec.spelling)
-            add(t, tier: dimension == nil && !common ? 3 : 1)
+            add(t, tier: dimension == nil && t.rank < 70 ? 3 : 1)
         }
     }
 
@@ -1443,6 +1465,23 @@ struct DeskCompletionBuilder {
         guard let owner = scan.modifierOwner, let facts = snapshot.checked.elements[snapshot.nodeTable.id(owner)],
               let parent = facts.parent else { return nil }
         return snapshot.checked.elements[parent]?.kind
+    }
+
+    /// The name a `variable`, `saved` or `computed` declaration around the cursor declares (not offered in its own
+    /// initializer).
+    var declarationBeingWritten: String? {
+        let table = snapshot.nodeTable
+        guard let i = table.innermost(at: scan.utf8Range.lowerBound) ?? scan.block else { return nil }
+        for a in [i] + table.ancestors(of: i) where table.entries[a].kind == .declaration {
+            let tokens = table.entries[a].positioned.childTokens
+            return tokens.count >= 2 && !tokens[1].token.isMissing ? tokens[1].token.name : nil
+        }
+        // The cursor right after `=`, before anything of the initializer.
+        guard let p = snapshot.tokenTable.previousPresent(endingAtOrBefore: scan.utf8Range.lowerBound) else { return nil }
+        let parent = snapshot.tokenTable.entries[p].parent
+        guard parent >= 0, table.entries[parent].kind == .declaration else { return nil }
+        let tokens = table.entries[parent].positioned.childTokens
+        return tokens.count >= 2 && !tokens[1].token.isMissing ? tokens[1].token.name : nil
     }
 
     /// The name of the style whose body holds the cursor.

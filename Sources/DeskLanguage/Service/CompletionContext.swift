@@ -574,8 +574,10 @@ extension DeskSnapshot {
                 if let close, close.kind == .rBrace, !close.token.isMissing, close.textStart < offset {
                     // Closed before the cursor.
                 } else if let close, close.kind == .rBrace, close.token.isMissing, close.textStart < offset,
-                          close.textStart > tokens.entries[p].textStart {
-                    // Left open, and repaired before the cursor.
+                          close.textStart > tokens.entries[p].textStart,
+                          let next = tokens.lastStarting(before: offset).map({ $0 }), tokens.entries[next].textStart > close.textStart,
+                          tokens.entries[next].isPresent {
+                    // Left open, and repaired before a statement that comes before the cursor.
                 } else {
                     return statementStart(block: node, offset: offset, scan)
                 }
@@ -841,6 +843,7 @@ extension DeskSnapshot {
             s.context.place = .implicitMember
             s.context.expectedType = expectedType(forSlotOf: parent, offset: offset)
             s.context.inActions = inActionBlock(parent)
+            s.context.userInitiated = s.context.inActions && enclosingActionIsUser(parent)
             return s
         case .callee, .target:
             let target = TargetSyntax(unchecked: table.entries[parent].positioned)
@@ -931,7 +934,31 @@ extension DeskSnapshot {
         if let type = index.valueTypes[e] ?? recordedType(e)?.type { return .value(type) }
         // The checker typed nothing (the code around is broken): the names along the chain.
         if let parts = namePath(e) { return memberBase(ofPath: parts, at: entry.textStart) }
+        if entry.kind == .callExpr, let callee = table.children(of: e).first, let parts = namePath(callee),
+           let type = callResultType(parts, at: entry.textStart) {
+            return .value(type)
+        }
         return nil
+    }
+
+    /// What a call gives, from the names of its callee: a data function (`calendar.month(…)`), a global function, or
+    /// a member function of a value (`note.split(…)`).
+    func callResultType(_ parts: [String], at offset: Int) -> DeskType? {
+        let catalog = options.catalog
+        if parts.count == 1, let f = catalog.function(named: parts[0]) {
+            if let data = f.data { return data.type }
+            if case .fixed(let t)? = f.signatures.first?.result { return t }
+            return nil
+        }
+        if parts.count >= 2, let found = catalog.serviceMember(dotted: parts) { return found.spec.type }
+        guard parts.count >= 2, case .value(let base)? = memberBase(ofPath: Array(parts.dropLast()), at: offset),
+              let member = catalog.member(parts[parts.count - 1], of: base, call: true) else { return nil }
+        switch member.signatures.first?.result {
+        case .receiver?: return base
+        case .elementOf?: if case .list(let inner) = base { return inner }
+        default: break
+        }
+        return member.type
     }
 
     /// `a.b.c` as names, for a chain of names and members without calls.
@@ -1128,18 +1155,19 @@ extension DeskSnapshot {
 
     /// A parameter whose values are names or paths changes the place.
     private func specialize(_ s: inout DeskCompletionScan, param: ParamSpec, site: DeskCallSite) {
+        if param.type == .styleRef { s.context.place = .styleName }
+        if param.type == .elementName { s.context.place = .elementName }
         switch param.role {
         case .styleRef:
             s.context.place = .styleName
         case .elementName:
             s.context.place = .elementName
         case .declaresElementName:
+            // A new name: nothing to offer.
             s.context.place = .none
         default:
             break
         }
-        if param.type == .styleRef { s.context.place = .styleName }
-        if param.type == .elementName { s.context.place = .elementName }
         // Freeform geometry: a position or size may name a sibling.
         if site.owner == .modifier, case .modifier(let name)? = site.path,
            ["position", "width", "height", "size", "offset"].contains(name),
@@ -1203,6 +1231,7 @@ extension DeskSnapshot {
         s.formatValueType = table.children(of: i).first.flatMap { table.entries[$0].kind == .formatOption ? nil : recordedType($0)?.type ?? symbolIndex.valueTypes[$0] }
         s.context.expectedType = s.formatValueType
         s.callSite = callSite(at: offset)
+        s.argumentIndex = s.callSite?.argumentIndex(at: offset) ?? 0
         return s
     }
 
@@ -1286,9 +1315,21 @@ extension DeskSnapshot {
             let branches = children.filter { table.entries[$0].kind.isExpression }.dropFirst()
             return branches.first { $0 != child }.flatMap(typeOf)
         case .listLiteral:
-            if case .list(let element)? = expectedType(forSlotOf: parent, offset: offset) { return element }
-            if case .binding(.list(let element))? = expectedType(forSlotOf: parent, offset: offset) { return element }
-            return children.first { $0 != child && table.entries[$0].kind.isExpression }.flatMap(typeOf)
+            let outer = expectedType(forSlotOf: parent, offset: offset)
+            if case .list(let element)? = outer, element != .any { return element }
+            if case .binding(.list(let element))? = outer, element != .any { return element }
+            // The other items say what the list holds (`[.sunday, .|]`).
+            for sibling in children where sibling != child && table.entries[sibling].kind.isExpression {
+                if let type = typeOf(sibling) { return type }
+                if table.entries[sibling].kind == .implicitMemberExpr,
+                   let name = table.entries[sibling].positioned.childTokens.dropFirst().first, !name.token.isMissing,
+                   let type = catalog.implicitMemberTypes(name.token.name).first {
+                    if catalog.enumeration(type) != nil { return .enumeration(type) }
+                    return type == "Color" ? .color : .paint
+                }
+            }
+            if case .list(let element)? = outer { return element }
+            return nil
         case .parenExpr:
             return expectedType(forSlotOf: parent, offset: offset)
         case .assignment:

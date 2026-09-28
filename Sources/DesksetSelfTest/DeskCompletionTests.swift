@@ -30,18 +30,21 @@ func deskCompletions(_ marked: String, file: String = "Test.desk", others: [Stri
 struct DeskCompletionCase {
     var text: String
     var place: DeskCompletionPlace
-    /// The first must be the first item; all must be among the first ten.
+    /// All must be among the first ten, the first among the first three.
     var top: [String]
+    /// Offered anywhere in the list.
+    var present: [String]
     var absent: [String]
     var file = "Test.desk"
     var others: [String: String] = [:]
     var options = DeskServiceOptions()
 
-    init(_ text: String, _ place: DeskCompletionPlace, top: [String] = [], absent: [String] = [], file: String = "Test.desk",
-         others: [String: String] = [:], options: DeskServiceOptions = DeskServiceOptions()) {
+    init(_ text: String, _ place: DeskCompletionPlace, top: [String] = [], present: [String] = [], absent: [String] = [],
+         file: String = "Test.desk", others: [String: String] = [:], options: DeskServiceOptions = DeskServiceOptions()) {
         self.text = text
         self.place = place
         self.top = top
+        self.present = present
         self.absent = absent
         self.file = file
         self.others = others
@@ -69,6 +72,7 @@ func runDeskCompletionTests(_ t: TestRunner) {
         print("  \(list.items.count) items\(list.isIncomplete ? ", incomplete" : "")")
         return
     }
+    runDeskCompletionCaseTests(t)
     runDeskCompletionSnippetTests(t)
 }
 
@@ -260,4 +264,241 @@ func deskPlaceholderDepth(_ chars: [Character], before end: Int) -> Int {
         i += 1
     }
     return depth
+}
+
+// MARK: - Cases
+
+/// A service on the Harbor package with one of its widgets' text replaced by a marked text.
+func deskHarborCompletions(_ marked: String, file: String = "Tide.desk") -> (DeskSnapshot, DeskCompletionList) {
+    let (text, offset) = deskCursorText(marked)
+    let service = DeskLanguageService(package: deskHarbor(), openFile: DeskFileID(path: file))
+    let snapshot = service.replaceText(text, version: 1)
+    return (snapshot, snapshot.completions(at: snapshot.index.position(utf16: offset)))
+}
+
+let deskCompletionPackage = """
+options {
+    shared = Toggle("Shared")
+}
+style card { .padding(14) }
+style heading { .font(.headline) }
+"""
+
+/// `W` wraps a body in a widget with a few declarations and a named element.
+func deskW(_ body: String) -> String {
+    """
+    options {
+        accent = ColorPicker("Accent", default: .blue)
+        theme = Picker("Theme", [.light, .dark])
+    }
+
+    widget {
+        variable page = 0
+        variable size = .small
+        computed month = calendar.month(offset: page)
+        Column {
+            Text("Title").name(title)
+    \(body)
+        }
+    }
+
+    style card { .padding(4) }
+    style big { .font(20) }
+    """
+}
+
+func deskCompletionCases() -> [DeskCompletionCase] {
+    typealias C = DeskCompletionCase
+    let future = DeskServiceOptions(catalog: deskFutureCatalog(), appVersion: AppVersion(major: 1, minor: 2))
+    let fonts = DeskServiceOptions(fonts: DeskFakeFonts())
+    return [
+        // Top level.
+        C("|", .topLevel, top: ["widget", "info", "options"], absent: ["Text", "package", "Column"]),
+        C("wid|", .topLevel, top: ["widget"], absent: ["info"]),
+        C("info { name: \"A\" }\n\n|\n\nwidget {\n    Text(\"A\")\n}\n", .topLevel, top: ["options", "style"], absent: ["info", "widget"]),
+        C("|", .topLevel, top: ["package", "options"], absent: ["widget", "info"], file: "package.desk"),
+        C("package { name: \"P\" }\n|", .topLevel, top: ["options"], absent: ["package", "widget"], file: "package.desk"),
+        // Info and package fields.
+        C("info {\n    name: \"A\"\n    |\n}\n", .fields, top: ["size", "description"], absent: ["name", "Text"]),
+        C("info {\n    si|\n}\n", .fields, top: ["size"], absent: ["name"]),
+        C("info {\n    perm|\n}\n", .fields, top: ["permissions"]),
+        C("package {\n    |\n}\n", .fields, top: ["name"], absent: ["size", "permissions", "category"], file: "package.desk"),
+        C("info {\n    category: .|\n}\n", .implicitMember, top: ["developer", "time"], absent: ["small", "red"]),
+        C("info {\n    size: .|\n}\n", .implicitMember, top: ["small", "medium", "large"], absent: ["caption"]),
+        C("info {\n    permissions: [.music, .|]\n}\n", .implicitMember, top: ["accessibility", "calendar"], absent: ["small"]),
+        // Options.
+        C("options {\n    |\n}\n", .optionItems, top: ["Picker", "Toggle"], absent: ["Text", "Choice", "Column"]),
+        C("options {\n    Section(\"More\") {\n        |\n    }\n}\n", .optionItems, top: ["Picker", "Toggle"], absent: ["Text"]),
+        C("options {\n    Sec|\n}\n", .optionItems, top: ["Section"]),
+        C("options {\n    a = |\n}\n", .control, top: ["Picker", "Toggle"], absent: ["Section", "Choice", "Text"]),
+        C("options {\n    a = Pi|\n}\n", .control, top: ["Picker"], absent: ["Toggle"]),
+        C("options {\n    a = Toggle(\"A\")\n        .|\n}\n", .modifiers, top: ["hidden", "help"], absent: ["font", "onClick", "padding"]),
+        // Views.
+        C("widget {\n    |\n}\n", .views, top: ["Text", "Column", "Row"], present: ["variable", "saved", "computed", "if", "for"],
+          absent: ["Item", "open", "Picker"]),
+        C("widget {\n    Text(\"A\")\n    |\n}\n", .views, top: ["Text"], absent: ["variable", "saved", "Item"]),
+        C("widget {\n    Column {\n        Te|\n    }\n}\n", .views, top: ["Text"], absent: ["Column"]),
+        C("widget {\n    VStack|\n}\n", .views, top: ["Column"], absent: ["Row"]),
+        C("widget {\n    HStack|\n}\n", .views, top: ["Row"]),
+        C("widget {\n    ZStack|\n}\n", .views, top: ["Freeform"]),
+        C("widget {\n    Column {\n        fo|\n    }\n}\n", .views, top: ["for"]),
+        C("widget {\n    Column {\n        if|\n    }\n}\n", .views, top: ["if", "if else"]),
+        C("widget {\n    Text(\"A\").menu {\n        |\n    }\n}\n", .views, top: ["Item", "Menu", "Divider"], absent: ["Text", "Column"]),
+        C("widget {\n    Text(\"A\").menu {\n        Menu(\"More\") {\n            |\n        }\n    }\n}\n", .views, top: ["Item"], absent: ["Text"]),
+        C("widget {\n    Column {\n        Text(\"A\")\n        |", .views, top: ["Text"], absent: ["widget"]),
+        C("widget {\n    Column {\n        Te|", .views, top: ["Text"]),
+        C("widget {\n    Column {\n        Str|\n    }\n}\n", .views, top: ["Text"]),
+        // Actions.
+        C(deskW("        Text(\"A\").onClick {\n            |\n        }"), .actions, top: ["page", "open"], absent: ["Text", "font", "month"]),
+        C(deskW("        Text(\"A\").onClick { op| }"), .actions, top: ["open"]),
+        C(deskW("        Text(\"A\").every(1s) {\n            |\n        }"), .actions, top: ["page"], absent: ["open", "copy", "run", "Text"]),
+        C(deskW("        Text(\"A\").onClick {\n            after(1s) {\n                |\n            }\n        }"), .actions, top: ["page", "open"], absent: ["Text"]),
+        C(deskW("        Text(\"A\").onClick {\n            if page > 1 {\n                |\n            }\n        }"), .actions, top: ["page"], absent: ["Text"]),
+        C(deskW("        Text(\"A\").onClick {\n            mus|\n        }"), .actions, top: ["music"]),
+        // Modifiers.
+        C(deskW("        Text(\"A\").|"), .modifiers, top: ["color", "font"], absent: ["Item", "tint", "fill", "Text"]),
+        C(deskW("        Text(\"A\")\n            .|"), .modifiers, top: ["color", "font"], absent: ["tint"]),
+        C(deskW("        Text(\"A\")\n            .pa|"), .modifiers, top: ["padding"], absent: ["font"]),
+        C(deskW("        Text(\"A\").foregroundC|"), .modifiers, top: ["color"]),
+        C(deskW("        Icon(\"wifi\").|"), .modifiers, top: ["color"], absent: ["lines", "uppercase"]),
+        C(deskW("        Image(\"cover.png\").|"), .modifiers, top: ["background", "imageMode"], present: ["tint"], absent: ["lines", "fill"]),
+        C(deskW("        Circle().|"), .modifiers, top: ["fill"], absent: ["lines", "tint"]),
+        C(deskW("        Text(\"A\").position(x: 4).|"), .modifiers, absent: ["position", "rainmeter"]),
+        C(deskW("        Freeform {\n            Text(\"A\").pos|\n        }"), .modifiers, top: ["position"]),
+        C("widget {\n    Text(\"A\")\n}\n\nstyle s {\n    .|\n}\n", .modifiers, top: ["color", "font"], absent: ["onClick", "name", "every", "menu"]),
+        C("widget {\n    Text(\"A\")\n}\n\nstyle s {\n    pad|\n}\n", .modifiers, top: [".padding"]),
+        C(deskW("        Text(\"A\").hover {\n            .|\n        }"), .modifiers, top: ["color"], absent: ["onClick", "hover", "menu", "name"]),
+        C(deskW("        Text(\"A\").pressed { .sc| }"), .modifiers, top: ["scale"]),
+        // Members.
+        C(deskW("        Text(cpu.|)"), .member, top: ["usage"], absent: ["title", "play"]),
+        C(deskW("        Text(cpu.us|)"), .member, top: ["usage"]),
+        C(deskW("        Text(audio.|)"), .member, top: ["level"], absent: ["usage"]),
+        C(deskW("        Text(audio.microphone.|)"), .member, top: ["level"]),
+        C(deskW("        Text(\"A\").hidden(if: options.|)"), .member, top: ["accent", "theme"], absent: ["usage"]),
+        C(deskW("        Text(calendar.month(offset: 1).|)"), .member, top: ["title"]),
+        C(deskW("        Text(month.|)"), .member, top: ["title"], absent: ["usage"]),
+        C(deskW("        Text(\"{month.days.|}\")"), .member, top: ["count"], absent: ["usage"]),
+        C(deskW("        Text(music.title.|)"), .member, top: ["length"], absent: ["split", "usage"]),
+        C(deskW("        Text(\"A\").onClick {\n            if event.|\n        }"), .member, absent: ["usage"]),
+        C(deskW("        Text(\"A\").onClick {\n            music.|\n        }"), .member, top: ["playPause", "next"], absent: ["title", "artist"]),
+        C(deskW("        Text(music.|)"), .member, top: ["title", "artist"], absent: ["play", "next"]),
+        C(deskW("        Text(\"A\").onClick {\n            volume.|\n        }"), .member, top: ["set"], present: ["level", "muted"]),
+        C(deskW("        Text(\"A\").onClick {\n            options.|\n        }"), .member, top: ["accent", "theme"]),
+        C(deskW("        Freeform {\n            Text(\"A\").name(first)\n            Text(\"B\").position(x: first.|)\n        }"), .member,
+          top: ["left", "right", "top"], absent: ["usage"]),
+        C("widget {\n    computed m = calendar.|\n}\n", .member, top: ["month"]),
+        // Implicit members with an expected type.
+        C(deskW("        Text(\"A\").font(.|)"), .implicitMember, top: ["caption", "headline"], absent: ["red", "small"]),
+        C(deskW("        Text(\"A\").font(.he|)"), .implicitMember, top: ["headline"]),
+        C(deskW("        if widget.size == .| {\n            Text(\"B\")\n        }"), .implicitMember, top: ["small", "medium"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").onClick { size = .| }"), .implicitMember, top: ["small"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").hidden(if: options.theme == .|)"), .implicitMember, top: ["dark", "light"], absent: ["small"]),
+        C(deskW("        Text(\"A\").color(page > 1 ? .red : .|)"), .implicitMember, top: ["accent"], absent: ["small", "caption"]),
+        C(deskW("        Text(\"A\").color(options.accent.ifMissing(.|))"), .implicitMember, top: ["accent"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").background(.|)"), .implicitMember, top: ["glass"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").width(.|)"), .implicitMember, top: ["fill", "fit"], absent: ["caption", "red"]),
+        C("options {\n    day = Picker(\"Day\", [.sunday, .|])\n}\n", .implicitMember, top: ["monday"]),
+        // Argument labels and values.
+        C(deskW("        Grid(|) {\n            Text(\"G\")\n        }"), .argument, top: ["columns:"], absent: ["cpu"]),
+        C(deskW("        Grid(col|) {\n            Text(\"G\")\n        }"), .argument, top: ["columns:"]),
+        C(deskW("        Progress(cpu.usage, |)"), .argument, top: ["total:"], absent: ["cpu", "page"]),
+        C(deskW("        Text(\"A\").padding(|)"), .argument, top: ["horizontal:"], absent: ["caption"]),
+        C(deskW("        Text(\"A\").color(.red, |)"), .argument, top: ["if:"]),
+        C(deskW("        Text(\"A\").font(|)"), .argument, top: [".caption"], absent: ["columns:"]),
+        C(deskW("        Text(|)"), .argument, top: ["page", "month"], absent: ["columns:"]),
+        // Units.
+        C(deskW("        Text(\"A\").every(5|) { page = page + 1 }"), .unit, top: ["s", "ms", "min"], absent: ["pt", "%", "GB"]),
+        C(deskW("        Text(\"A\").every(5m|) { page = page + 1 }"), .unit, top: ["ms", "min"], absent: ["s", "h"]),
+        C(deskW("        Text(\"A\").padding(4|)"), .unit, top: ["pt"], absent: ["s"]),
+        C(deskW("        Text(\"A\").opacity(50|)"), .unit, top: ["%"], absent: ["s", "pt"]),
+        C(deskW("        Text(\"A\").hidden(if: memory.free < 2|)"), .unit, top: ["GB", "MB"], absent: ["s", "pt"]),
+        // Styles, elements and Freeform geometry.
+        C(deskW("        Text(\"A\").style(|)"), .styleName, top: ["big", "card"], absent: ["Text", "cpu"]),
+        C(deskW("        Text(\"A\").style(ca|)"), .styleName, top: ["card"], absent: ["big"]),
+        C("widget {\n    Text(\"A\").style(|)\n}\n\nstyle own { .padding(2) }\n", .styleName, top: ["own", "card", "heading"],
+          others: ["package.desk": deskCompletionPackage]),
+        C(deskW("        Text(\"A\").onClick { hide(|) }"), .elementName, top: ["title"], absent: ["page", "cpu"]),
+        C(deskW("        Text(\"A\").onClick { showOrHide(ti|) }"), .elementName, top: ["title"]),
+        C(deskW("        Freeform {\n            Text(\"A\").name(first)\n            Text(\"B\").position(x: |)\n        }"), .value,
+          top: ["first"], absent: ["Text"]),
+        C(deskW("        Text(\"A\").name(|)"), .none, absent: ["title", "page"]),
+        // Values and interpolations.
+        C(deskW("        Text(\"{|}\")"), .value, top: ["page", "month"], absent: ["Text", "open"]),
+        C(deskW("        Text(\"{cp|}\")"), .value, top: ["cpu"]),
+        C(deskW("        Text(\"{cpu.usage, |}\")"), .formatOption, top: ["decimals:"], absent: ["unit:", "format:", "bits:"]),
+        C(deskW("        Text(\"{memory.used, |}\")"), .formatOption, top: ["unit:", "decimals:"], absent: ["format:"]),
+        C(deskW("        Text(\"{time.now, |}\")"), .formatOption, top: ["format:"], absent: ["unit:", "decimals:"]),
+        C(deskW("        Text(\"{memory.used, decimals: 1, |}\")"), .formatOption, top: ["unit:"], absent: ["decimals:"]),
+        C(deskW("        Text(\"{memory.used, unit: .|}\")"), .implicitMember, top: ["gb", "mb"], absent: ["celsius", "caption"]),
+        C(deskW("        if |"), .value, top: ["true", "false", "not"], present: ["page", "cpu"], absent: ["Text"]),
+        C(deskW("        for d in | {\n        }"), .value, top: ["disks"], present: ["month"], absent: ["Text"]),
+        C("widget {\n    variable x = |\n}\n", .value, top: ["cpu"], present: ["true"], absent: ["Text", "open", "x"]),
+        C(deskW("        Text(\"A\").onClick { page = page + | }"), .value, top: ["page"], absent: ["open", "Text"]),
+        // Pictures, fonts, translations and languages.
+        C("widget {\n    Image(\"|\")\n}\n", .imagePath, top: ["images/buoy.gif", "images/paper.jpg", "images/waves.png"], absent: ["fonts/HarborSans.ttf"]),
+        C("widget {\n    Image(\"images/w|\")\n}\n", .imagePath, top: ["images/waves.png"], absent: ["images/buoy.gif"]),
+        C("widget {\n    Text(\"A\").font(\"|\", 13)\n}\n", .fontFamily, top: ["Harbor Sans", "System"]),
+        C("widget {\n    Text(\"A\").font(\"Futur|\", 13)\n}\n", .fontFamily, top: ["Futura"], options: fonts),
+        C("widget {\n    Text(\"Hello\")\n    Text(\"Bye\")\n}\n\ntranslations {\n    \"zh-Hans\" {\n        \"Hello\": \"你好\"\n        |\n    }\n}\n",
+          .translationKey, top: ["Bye"], absent: ["Hello"]),
+        C("widget {\n    Text(\"Hello\")\n    Text(\"Bye\")\n}\n\ntranslations {\n    \"zh-Hans\" {\n        \"B|\"\n    }\n}\n",
+          .translationKey, top: ["Bye"], absent: ["Hello"]),
+        C("widget {\n    Text(\"Hello\")\n}\n\ntranslations {\n    \"zh-Hans\" {\n        \"Hello\": \"你好\"\n    }\n    |\n}\n",
+          .languageTag, top: ["zh-Hant", "ja"], absent: ["zh-Hans"]),
+        C("widget {\n    Text(\"Hello\")\n}\n\ntranslations {\n    \"j|\"\n}\n", .languageTag, top: ["ja"], absent: ["de"]),
+        C("widget {\n    Text(\"Hello\")\n}\n\ntranslations {\n    \"zh-CN\" {\n    }\n    |\n}\n", .languageTag, top: ["zh-Hant"], absent: ["zh-Hans"]),
+        // Nothing newer than the file's requires or target (D89).
+        C("widget {\n    Text(\"A\").spa|\n}\n", .modifiers, top: ["sparkle"], options: future),
+        C("info {\n    requires: \"1.0\"\n}\n\nwidget {\n    Text(\"A\").spa|\n}\n", .modifiers, absent: ["sparkle"], options: future),
+        C("widget {\n    Text(\"A\").spa|\n}\n", .modifiers, absent: ["sparkle"],
+          options: DeskServiceOptions(catalog: deskFutureCatalog(), appVersion: AppVersion(major: 1, minor: 2),
+                                      targetAppVersion: .deskFirstRelease)),
+        // Nowhere to complete.
+        C("widget {\n    // Te|\n    Text(\"A\")\n}\n", .none, absent: ["Text"]),
+        C("widget {\n    Text(\"Hel|lo\")\n}\n", .none, absent: ["Text"]),
+        C("widget {\n    Text(\"A\").padding(1|2)\n}\n", .none, absent: ["pt"]),
+        C("widget {\n    Text(\"A\") |\n}\n", .none, absent: ["Text", "font"]),
+    ]
+}
+
+func runDeskCompletionCaseTests(_ t: TestRunner) {
+    t.suite("Desk: service — completion") {
+        let cases = deskCompletionCases()
+        t.check(cases.count >= 80, "at least 80 cases: \(cases.count)")
+        var places = Set<DeskCompletionPlace>()
+        for c in cases {
+            let harbor = c.text.contains("Image(") || c.text.contains("font(\"|") && c.options.fonts == nil
+            let (snapshot, list) = harbor ? deskHarborCompletions(c.text) : deskCompletions(c.text, file: c.file, others: c.others, options: c.options)
+            let label = c.text.replacingOccurrences(of: "\n", with: "⏎")
+            places.insert(list.context.place)
+            t.equal(list.context.place, c.place, "\(label): place (\(list.context))")
+            let labels = list.labels
+            if let first = c.top.first {
+                t.check(labels.prefix(3).contains(first), "\(label): \(first) among the first three of \(labels.prefix(8))")
+            }
+            for item in c.present {
+                t.check(labels.contains(item), "\(label): \(item) is offered")
+            }
+            for item in c.top {
+                t.check(labels.prefix(10).contains(item), "\(label): \(item) among the first ten of \(labels.prefix(12))")
+            }
+            for item in c.absent {
+                t.check(!labels.contains(item), "\(label): \(item) is not offered")
+            }
+            // Every range inside the text, every item well formed.
+            let length = snapshot.index.utf16Count
+            for item in list.items {
+                t.check(item.range.start.offset >= 0 && item.range.end.offset <= length, "\(label): \(item.label) range \(item.range)")
+                t.check(!item.label.isEmpty && !item.plainText.isEmpty && !item.sortText.isEmpty, "\(label): \(item.label) complete")
+                for text in [item.detail.en, item.detail.zh, item.documentation?.en ?? "", item.documentation?.zh ?? ""] {
+                    t.equal(deskMessageLeaks(text), [], "\(label): \(item.label) text \(text)")
+                }
+            }
+            t.check(list.items.map(\.sortText) == list.items.map(\.sortText).sorted(), "\(label): sorted by sortText")
+        }
+        // Every place is reached by some case.
+        for place in DeskCompletionPlace.allCases where place != .symbolName {
+            t.check(places.contains(place), "a case reaches \(place)")
+        }
+    }
 }
