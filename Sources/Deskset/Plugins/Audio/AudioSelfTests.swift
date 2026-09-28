@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 import DesksetCore
@@ -2176,6 +2177,11 @@ enum AudioSelfTests {
                 let me = getpid()
                 t.check(AudioHAL.queue.sync { AudioProcesses.objects().contains { AudioProcesses.pid(of: $0) == me } },
                         "Core Audio lists Deskset among its client processes")
+                // The silence watchdog's evidence: apps with a Dock icon, never Deskset itself.
+                let apps = AudioHAL.queue.sync { AudioProcesses.appsRunningOutput() }
+                t.check(!apps.contains(me), "Deskset is not an app that plays")
+                t.check(apps.allSatisfy { NSRunningApplication(processIdentifier: $0)?.activationPolicy == .regular },
+                        "only regular apps: \(apps)")
             } else {
                 t.check(CoreAudioOutputActivity.makeIfSupported() == nil)
             }
