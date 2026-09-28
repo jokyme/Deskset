@@ -231,6 +231,7 @@ wait.deadline	Sources/Deskset/Plugins/Audio/AudioSystem.swift	1	audio service (A
 effect.fileWrite	Sources/Deskset/Plugins/FileViewIconWriter.swift	2	FileView icon files
 
 background.mainHop	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	2	NowPlaying service and cover art: faked in verification
+wait.deadline	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	media workers: waitUntilIdle, for --render in virtual time (a condition, with a real-time limit)
 
 background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
 effect.appleScript	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	2	controlling Music and Spotify: SideEffects (fake player)
@@ -251,7 +252,6 @@ effect.audioHardware	Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift	2	Me
 effect.postEvent	Sources/Deskset/Plugins/Media/NowPlayingMeasures.swift	1	MediaKey and volume keys: SideEffects
 
 background.global	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
-background.hop	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
 mono.systemUptime	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	front app and desktop info plugins: service, faked in verification
 random.pid	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
 
@@ -264,11 +264,11 @@ event.notification	Sources/Deskset/Plugins/UI/InputTextMeasure.swift	2	InputText
 
 mono.systemUptime	Sources/Deskset/Plugins/UI/WiFiStatus.swift	2	Wi-Fi service: faked in verification
 
-effect.fileWrite	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
-wait.runLoop	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
-wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
-wall.Date()	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
-wall.sinceNow	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing between updates and the output file; virtual time replaces the pacing
+effect.fileWrite	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wait.runLoop	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wall.Date()	Sources/Deskset/RenderCommand.swift	5	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
+wall.sinceNow	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
 
 mono.systemUptime	Sources/Deskset/Sensors/IOReport.swift	1	sensor service (MacSensors): faked in verification
 
@@ -340,6 +340,11 @@ effect.iniWrite	Sources/DesksetCore/Editor/IniKeyRemoval.swift	*	Skin Studio edi
 effect.fileWrite	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
 random.hashSeed	Sources/DesksetCore/Editor/ValueUsages.swift	*	Skin Studio editing (Core half); never runs inside a skin
 
+background.hop	Sources/DesksetCore/Engine/BackgroundWork.swift	1	the background seam itself: in live mode results come back through SkinHop, as before
+timer.executorAfter	Sources/DesksetCore/Engine/BackgroundWork.swift	1	a fake's delay, on the executor (VirtualTimeExecutor)
+wait.deadline	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle: waits for real work that has no fake (a condition, with a real-time limit)
+wall.sinceNow	Sources/DesksetCore/Engine/BackgroundWork.swift	1	VirtualBackgroundWork.settle's real-time limit
+
 zone.Locale.current	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live preferred languages (Locale.preferredLanguages)
 zone.inferredCurrent	Sources/DesksetCore/Engine/EngineTypes.swift	1	SkinEnvironment's live locale (Locale.autoupdatingCurrent), the default a host passes
 
@@ -351,30 +356,24 @@ background.URLSession	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNet
 background.operationQueue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
 background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.swift	1	WebParser downloads: fake network in verification
 
-background.hop	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 effect.fileWrite	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	7	WebParser Download=1 and Debug=2 files: SideEffects
 
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
-background.hop	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	plugin file I/O queue; results come back through Skin.hop (fake completions)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
 background.global	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
-background.hop	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 background.process	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	opening a file with its app (PluginProcess.launcher seam): SideEffects.launch
 effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	FileView reveal and trash: SideEffects.launch (PluginProcess.launcher)
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
 zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
 
-background.hop	Sources/DesksetCore/Engine/Plugins/MacSensorsPlugin.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
-
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/MousePlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.global	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
-background.hop	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
 mono.DispatchTime.now	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	3	round-trip time (fake network in verification)
 random.swift	Sources/DesksetCore/Engine/Plugins/PingPlugin.swift	2	ICMP identifier and sequence; never visible to the skin
 
@@ -387,7 +386,6 @@ effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.sw
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
 
 background.fileEvents	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	3	RunCommand child process and its pipes: SideEffects.launch
-background.hop	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 background.process	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand child process and its pipes: SideEffects.launch
 background.queue	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand child process and its pipes: SideEffects.launch
 effect.fileWrite	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCommand OutputFile: SideEffects
@@ -395,12 +393,10 @@ effect.signal	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	2	RunCom
 timer.asyncAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	RunCommand drains the pipes on its own queue
 timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
-background.hop	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	background work started by a skin; completes through the executor (fake completion in verification)
 random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
 
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
-background.hop	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 
 effect.iniWrite	Sources/DesksetCore/Engine/Skin.swift	1	!WriteKeyValue: SideEffects (writes go to a copy in sandboxed runs)
