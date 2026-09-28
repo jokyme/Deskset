@@ -377,6 +377,29 @@ func runDeskHoverTests(_ t: TestRunner) {
         print("    \(examples) examples, \(hovers) hovers")
     }
 
+    t.suite("Desk: service — hover goldens: own names, options, styles, units, enum cases") {
+        let snapshot = deskNavService(deskHoverGoldenText).snapshot
+        let chinese = deskNavService(deskHoverGoldenText, language: .simplifiedChinese).snapshot
+        let print = ProcessInfo.processInfo.environment["DESK_GOLDEN_PRINT"] != nil
+        for (needle, occurrence, expected) in deskHoverGoldens {
+            let position = deskNavPosition(snapshot, needle, occurrence: occurrence)
+            guard let hover = snapshot.hover(at: position) else {
+                t.check(false, "no hover at \(needle) #\(occurrence)")
+                continue
+            }
+            let markdown = hover.markdown(.english)
+            if print { Swift.print("(\"\(needle)\", \(occurrence), \"\"\"\n\(markdown)\"\"\"),") }
+            t.equal(markdown, expected + "\n", "\(needle) #\(occurrence)")
+            // The same card in Chinese: other words, the same code, no leaks.
+            let zh = chinese.hover(at: position)
+            t.equal(zh, hover, "a card does not depend on the service's language")
+            let zhMarkdown = hover.markdown(.simplifiedChinese)
+            t.check(zhMarkdown != markdown && zhMarkdown.unicodeScalars.contains { $0.value >= 0x4E00 && $0.value <= 0x9FFF },
+                    "\(needle): Chinese card")
+            for text in hover.prose(.english) + hover.prose(.simplifiedChinese) { t.equal(deskMessageLeaks(text), [], text) }
+        }
+    }
+
     t.suite("Desk: service — hover and signature help, every name of every file") {
         var positions = 0
         var hovers = 0
@@ -500,3 +523,332 @@ func runDeskSignatureHelpTests(_ t: TestRunner) {
         print("    \(arguments) arguments and \(options) format options of the catalog examples")
     }
 }
+
+let deskHoverGoldenText = """
+options {
+    look = Picker("Look", [.mono, .full], default: .mono)
+    city = Input("City", default: "Oslo")
+}
+
+widget {
+    variable page = 0
+    saved seconds = 90s
+    computed free = memory.free
+    Column {
+        Text("{free}").name(title).font(.headline).style(card)
+        Text("{memory.used}").hidden(if: memory.free < 2GB).every(500ms) { page = page + 1 }
+        Progress(disk.used, total: 500GB)
+        for day in calendar.month(offset: page).days { Text("{day.number}") }
+        Text("Low").color(.red, if: options.look == .full).onClick { show(title) }
+    }
+}
+
+style card { .font(13, .semibold).color(.white).padding(4).hover { .color(.accent) } }
+
+translations {
+    "zh-Hans" { "Low": "低" }
+}
+"""
+
+/// (needle, occurrence, expected English Markdown).
+let deskHoverGoldens: [(String, Int, String)] = [
+("look", 1, """
+**Option `look`**
+
+```desk
+look = Picker("Look", [.mono, .full], default: .mono)
+```
+
+An option: a setting people change in the widget's Options panel.
+
+- Control: Choice (`Picker`)
+- Label: “Look”
+- Type: one of `.mono`, `.full`
+- Default: `.mono`
+
+[Reference](#control-picker)
+"""),
+("city", 1, """
+**Option `city`**
+
+```desk
+city = Input("City", default: "Oslo")
+```
+
+An option: a setting people change in the widget's Options panel.
+
+- Control: Text (`Input`)
+- Label: “City”
+- Type: text in quotes
+- Default: `"Oslo"`
+
+[Reference](#control-input)
+"""),
+("page", 1, """
+**Variable `page`**
+
+```desk
+variable page = 0
+```
+
+A value the widget keeps while it runs; actions can change it.
+
+- Type: a number
+- Starts at: `0`
+"""),
+("seconds", 1, """
+**Saved value `seconds`**
+
+```desk
+saved seconds = 90s
+```
+
+A value the widget keeps even when it restarts; actions can change it.
+
+- Type: a time, such as `2s` or `500ms`
+- Starts at: `90s`
+"""),
+("free", 1, """
+**Computed value `free`**
+
+```desk
+computed free = memory.free
+```
+
+A value worked out from others; it changes when they do.
+
+- Type: an amount of data, such as `2GB`, counted in 1024s
+"""),
+("title", 1, """
+**Element name `title`**
+
+```desk
+Text("{free}").name(title).font(.headline).style(card)
+```
+
+The name of an element: actions such as `show(…)` and positions refer to the element by it.
+
+- Component: Text (`Text`)
+
+[Reference](#component-text)
+"""),
+("day", 1, """
+**Loop variable `day`**
+
+```desk
+for day in calendar.month(offset: page).days { Text("{day.number}") }
+```
+
+Each item of the list this `for` goes through, in turn.
+
+A day of a month
+
+- Each item: a day of a month
+"""),
+("card", 1, """
+**Style `card`**
+
+```desk
+style card { .font(13, .semibold).color(.white).padding(4).hover { .color(.accent) } }
+```
+
+A style: modifiers that elements take with `.style(…)`.
+
+- Sets: font (`.font`), color (`.color`), padding (`.padding`) and while pointed at (`.hover`)
+"""),
+("card", 2, """
+**Style `card`**
+
+```desk
+style card { .font(13, .semibold).color(.white).padding(4).hover { .color(.accent) } }
+```
+
+A style: modifiers that elements take with `.style(…)`.
+
+- Sets: font (`.font`), color (`.color`), padding (`.padding`) and while pointed at (`.hover`)
+"""),
+("title", 2, """
+**Element name `title`**
+
+```desk
+Text("{free}").name(title).font(.headline).style(card)
+```
+
+The name of an element: actions such as `show(…)` and positions refer to the element by it.
+
+- Component: Text (`Text`)
+
+[Reference](#component-text)
+"""),
+("90s", 1, """
+**`90s`**
+
+a time, such as `2s` or `500ms`
+
+- Equals: 90,000 ms · 1.5 min · 0.025 h
+
+[Reference](#units)
+"""),
+("2GB", 1, """
+**`2GB`**
+
+an amount of data, such as `2GB`
+
+- Equals: 2,147,483,648 B · 2,097,152 KB · 2048 MB
+- Counted in: 1024, as the data it is compared with counts (like Activity Monitor)
+
+[Reference](#units)
+"""),
+("500ms", 1, """
+**`500ms`**
+
+a time, such as `2s` or `500ms`
+
+- Equals: 0.5 s
+
+[Reference](#units)
+"""),
+("500GB", 1, """
+**`500GB`**
+
+an amount of data, such as `2GB`
+
+- Equals: 500,000,000,000 B · 500,000 MB · 0.5 TB
+- Counted in: 1000, as the data it is compared with counts (like Finder)
+
+[Reference](#units)
+"""),
+("headline", 1, """
+**Headline**
+
+```desk
+.headline
+```
+
+A text style: a size, weight and design that fit together
+
+- Sets: the font design `.standard`, the font `"System"`, the text size `15` and the font weight `.semibold`
+- Since: Deskset 1.0
+
+Example:
+
+```desk
+.font(.headline)
+```
+
+[Reference](#choices-fontpreset-headline)
+"""),
+("mono", 2, """
+**`.mono`**
+
+```desk
+.mono
+```
+
+One of the choices of `options.look`.
+
+- Choice of: `options.look`
+"""),
+("red", 1, """
+**Red**
+
+```desk
+.red
+```
+
+The system's red, adapting to light and dark
+
+- Since: Deskset 1.0
+
+Example:
+
+```desk
+.color(.red)
+```
+
+[Reference](#choices-color-red)
+"""),
+("Low", 1, """
+**Text**
+
+Text people read; `translations { }` can replace it in other languages.
+
+- Key: “Low”
+- zh-Hans: “低”
+
+[Reference](#translations)
+"""),
+("offset", 1, """
+**`offset:`**
+
+```desk
+calendar.month(offset: …, weekStart: …)
+```
+
+Months from now: 0 this month, 1 the next
+
+- Parameter of: Month grid (`calendar.month`)
+- Type: a number
+- Default: `0`
+
+[Reference](#data-calendar-month)
+"""),
+("total", 1, """
+**`total:`**
+
+```desk
+Progress(value, total: …, fills: …)
+```
+
+What full is, for values with no known range
+
+- Parameter of: Progress bar (`Progress`)
+- Type: a number
+
+[Reference](#component-progress)
+"""),
+("used", 1, """
+**Memory used**
+
+```desk
+memory.used
+```
+
+Memory in use (Activity Monitor's “Memory Used”)
+
+- Value: an amount of data, such as `2GB`, counted in 1024s
+- Updates: every 2 seconds
+- Since: Deskset 1.0
+
+Example:
+
+```desk
+Progress(memory.used)
+```
+
+Rainmeter: `Measure=PhysicalMemory`
+
+[Reference](#data-memory-used)
+"""),
+("show", 1, """
+**Show**
+
+```desk
+show(element)
+```
+
+Shows a named element; it keeps its space
+
+- Since: Deskset 1.0
+
+Example:
+
+```desk
+.onMouseEnter { show(details) }
+```
+
+Rainmeter: `[!ShowMeter …]`
+
+[Reference](#function-show)
+"""),
+]

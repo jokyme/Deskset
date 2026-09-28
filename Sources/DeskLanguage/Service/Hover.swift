@@ -230,7 +230,15 @@ extension DeskSnapshot {
             }
             hover.facts.append(DeskHoverFact(DeskHoverWords.sets, DeskSnapshot.joined(parts)))
         }
-        if case .enumCase(let type, _) = path, let local = checkedOption(forLocalEnum: type) {
+        if case .enumCase(let type, let name) = path, catalog.enumeration(type) == nil, let local = checkedOption(forLocalEnum: type) {
+            // A choice of a Picker's own (`.mono` of `options.look`).
+            let row = catalog.displayName("enum:local")?.name ?? LocalizedText("one of the choices of `options.{name}`", "`options.{name}` 的可选项之一")
+            let sentence = LocalizedText(row.en.replacingOccurrences(of: "{name}", with: local),
+                                         row.zh.replacingOccurrences(of: "{name}", with: local))
+            hover.title = LocalizedText("`.\(name)`", "`.\(name)`")
+            hover.paragraphs = [LocalizedText(sentence.en.prefix(1).uppercased() + sentence.en.dropFirst() + ".", sentence.zh + "。")]
+            hover.reference = nil
+            hover.facts.removeAll { $0.label == DeskServiceWords.since }
             hover.facts.append(DeskHoverFact(DeskHoverWords.choiceOf, LocalizedText("`options.\(local)`", "`options.\(local)`")))
         }
         // Fields of `info` and `package`.
@@ -551,7 +559,9 @@ extension DeskSnapshot {
             let converted = (canonical - other.offset) / other.factor(base: base ?? 1000)
             guard converted.isFinite, converted != 0 || value == 0 else { continue }
             let magnitude = abs(converted)
-            guard value == 0 || (magnitude >= 0.01 && magnitude < 1e7) else { continue }
+            // Amounts of data always say how many bytes they are.
+            let exactBytes = other.spelling == "B" || other.spelling == "B/s"
+            guard value == 0 || exactBytes || (magnitude >= 0.01 && magnitude < 1e7) else { continue }
             conversions.append("\(DeskServiceWords.number(converted)) \(other.spelling)")
             if conversions.count == 3 { break }
         }
@@ -582,6 +592,15 @@ extension DeskSnapshot {
         var p = table.entries[n].parent
         while p >= 0 {
             let kind = table.entries[p].kind
+            if kind == .argument, table.entries[p].parent >= 0 {
+                // An argument: the other arguments of the call (`Progress(disk.used, total: 500GB)`).
+                for sibling in table.children(of: table.entries[p].parent) where sibling != p && table.entries[sibling].kind == .argument {
+                    for value in table.children(of: sibling) where table.entries[value].kind != .label {
+                        if let base = recordedType(value)?.displayBase { return base }
+                    }
+                }
+                return nil
+            }
             guard kind == .binaryExpr || kind == .parenExpr || kind == .prefixExpr else { return nil }
             if let base = recordedType(p)?.displayBase { return base }
             for sibling in table.children(of: p) where sibling != child {
