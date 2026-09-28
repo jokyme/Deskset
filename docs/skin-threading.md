@@ -834,10 +834,12 @@ are isolated from the Studio either way.
 
 ### 8.7 Command-line modes and self-tests
 
-- `--render`, `--snapshot-ui`, `--system-report`, the Manage window's dry runs and component thumbnails keep using
-  `MainSkinExecutor`. `RenderCommand.wait` pumping `RunLoop.main` keeps working.
-- The existing self-tests keep their synchronous behaviour.
-- New suites cover the threaded runtime (§10).
+- `--render`, `--snapshot-ui`, `--verify-drawing-cache`, `--system-report`, the Manage window's dry runs, component
+  thumbnails and the Studio's own instance of a widget keep using `MainSkinExecutor`, whatever `SkinThreading` says:
+  only the menu bar app reads that key, and only for its desktop skins. `RenderCommand.wait` pumping `RunLoop.main`
+  keeps working.
+- The existing self-tests keep their synchronous behaviour: their apps are made with `SkinThreading.main`.
+- New suites cover the threaded runtime (§10): "App: engine thread: …" builds its apps with `.engine`.
 
 ---
 
@@ -1710,3 +1712,47 @@ suite's `TestThreadExecutor`.
      Checker, under `taskpolicy -b` and as the x86_64 build under Rosetta.
    - A copy of the app started with `SkinThreading=engine` and a user folder of its own (`CFFIXED_USER_HOME`) loads
      the default suite with no ownership assertion.
+   - **Done (2026-09-28):** `SkinThreadExecutor` (DesksetCore, `Engine/SkinThreadExecutor.swift`; the stress suite and
+     every "on a thread" suite use it now, and `TestThreadExecutor` is gone), `SkinThreading` and
+     `AppController(threading:)`, whose `skinExecutor` hands every desktop skin the one engine thread ("Deskset skin
+     engine", `.userInitiated`, made with the first skin), `SkinWindowController.whenStarted`, and the suites "App:
+     engine thread: …" (`EngineThreadSelfTests.swift`) and "Executor: skin thread: …" (Core). Differences from the
+     plan:
+     - The skin thread is marked (`SkinThreadExecutor.isSkinThread`, a thread-specific key), and
+       `SkinThreadExecutor.assertNotWaiting(on:)` stops a debug build when a marked thread would wait: in
+       `MainPublished.refresh` (a skin thread reads what was published; working the value out itself is the main
+       thread's job), in `MediaUIMainHop` when the tests make its hops run inline, and in `exclusive` when a skin
+       thread asks another skin thread's executor (a sideways wait). Nothing in the app calls `DispatchQueue.main.sync`,
+       so there was no call to guard.
+     - An executor nobody holds any more ends its thread (`deinit`); `AppController.endEngineThread()` ends the
+       engine thread for the self-tests, once their skins closed.
+     - What uses a skin window right after `activate` waits for `.started` when the skin loads on the engine thread:
+       `showInspector` and `CodeEditorRouter` open the Studio once it started. The first-run layout's move before the
+       start is kept as the session's position and placed then (step 5), as the new suite checks.
+     - Skins that start after the batch that loaded them (`loadActiveSkins`, the first-run layout) are stacked once
+       more on the next turn (`restackSoon`): on the main thread they started inside the batch, before its restack.
+     - Bangs between skins stay synchronous on the one thread, as planned. A pair of skins updating each other is
+       stopped by the engine's two nested updates before the hop limit, exactly as on the main thread; a ring of
+       nine skins reaches the 17th hop, which is dropped and logged once, within one piece of the thread's work.
+     - Checks: the Core suites "Executor: skin thread: …" (FIFO from one and several senders, never inline, an 8 MB
+       stack at `.userInitiated`, delays and timers on the thread and cancelled from the main thread, a background
+       thread and the thread itself, a park between two pieces of work and re-entrant, a timeout and the late park
+       returning at once, the wait checks, `stop`, a skin's whole life with `!Delay` on the thread). The app suites
+       "App: engine thread: …" (13 suites) build their app with `.engine`, present no windows and force visibility
+       through the window facts: the key and its note in the log; the wait checks; load, refresh (from the menu and
+       a skin's own `!Refresh`), unload and quit in reverse load order; the first-run layout; frames presented while
+       the main thread was blocked for at least 500 ms and until three more frames of each of two skins arrived;
+       clicks, hover, the wheel and focus as messages run on the thread, tooltips and the cursor from the snapshot,
+       also while a gate holds the thread; window bangs and the environment; bangs between skins; FrostedGlass and
+       InputText; the menu's fallback while another skin's Lua call holds the thread; the Studio opened on a skin that
+       had not started, its own instance on main and a ticketed reload; pause, wake, fonts and Dark Mode; every
+       default widget and all 42 of its files loading, updating and drawing on the thread. Every wait is for a
+       condition. They pass repeatedly, under `taskpolicy -b`, under Main Thread Checker (nothing reported) and
+       COUNTS_ROSETTA.
+     - COUNTS_APP
+     - A debug copy started from the build folder with `-SkinThreading engine`, a user folder of its own
+       (`CFFIXED_USER_HOME`) and the demo audio and NowPlaying sources loaded all 23 default widgets in about
+       1.5 s with no ownership assertion; a sample showed their updates and frames on "Deskset skin engine" and the
+       main thread idle. It was stopped by its process id.
+     - The default stays `main`. Stress runs on the engine thread, §10's measurements, the soak and making `engine`
+       the default are the later pass's.

@@ -214,9 +214,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// meanwhile: a skin on a thread of its own is loading (with the main executor, never once `activate` returned).
     var isStarting: Bool { loadSent && !isStarted && !loadFailed && !isStopped }
 
-    /// Runs `body` on the main thread once the skin has started and its window is placed (`.started`): at once unless it
-    /// is starting (`isStarting`). Dropped when it never starts (the load failed, or the window was stopped first). What
-    /// uses the window right after `activate` waits with it (the Studio opening on a skin it just loaded).
+    /// Runs `body` on the main thread once the skin has started and its window is placed (`.started`); at once when it
+    /// is not starting (`isStarting`). A `body` still waiting is dropped when the skin never starts (the load failed, or
+    /// the window was stopped first). What uses the window right after `activate` waits with it (the Studio opening on
+    /// a skin it just loaded).
     func whenStarted(_ body: @escaping () -> Void) {
         guard isStarting else { return body() }
         startWaiters.append(body)
