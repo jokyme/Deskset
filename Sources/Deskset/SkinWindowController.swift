@@ -334,9 +334,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         // OnCloseAction runs while the skin can still handle bangs (it cannot reload or unload itself any more).
         isClosing = true
         runtime.send(.close(fadeOut: fadeOut, ticket: ticket))
-        // The Studio hears of the close through this window half (`.closed(ticket)`): it stays until the skin has
-        // closed (at once on the main executor).
-        if ticket != nil { runtime.whenClosed { withExtendedLifetime(self) {} } }
+        // This window half stays until the skin has closed (at once on the main executor): OnCloseAction's requests
+        // (config, menu and system bangs, what it opens, bangs for configs that are loading) and the Studio's
+        // `.closed(ticket)` come through it.
+        runtime.whenClosed { withExtendedLifetime(self) {} }
         isStopped = true
         endDragPress(moved: false)
         holdsFacts = false

@@ -9,6 +9,7 @@ import DesksetCore
 enum EngineReloadSelfTests {
     static func run(_ t: AppTestRunner) {
         loadQueueTests(t)
+        closeTests(t)
     }
 
     typealias E = EngineThreadSelfTests
@@ -68,6 +69,83 @@ enum EngineReloadSelfTests {
                 t.equal(b2.window.frame.size, NSSize(width: 120, height: 60), "and so is its window")
             }
             E.finish(t, app, tracked)
+        }
+    }
+
+    // MARK: OnCloseAction's bangs for the app
+
+    /// Asks the app for a load, an unload, a refresh and a web page as it closes.
+    static let closer = """
+        [Rainmeter]
+        Update=-1
+        OnCloseAction=[!ActivateConfig "Engine\\Target"][!DeactivateConfig "Engine\\Victim"][!Refresh "Engine\\Other"]["https://example.com/closed"]
+
+        """ + E.box
+
+    static func closeTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: OnCloseAction's config bangs and what it opens are carried out, on unload and on refresh") {
+            let opened = Guarded<[String]>([])
+            SkinWindowController.opensForTesting = { plan in opened.access { $0.append("\(plan)") } }
+            defer { SkinWindowController.opensForTesting = nil }
+            var outcomes: [SkinThreading: [String]] = [:]
+            for threading in [SkinThreading.main, .engine] {
+                guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                try E.write(app, ["Closer": closer, "Target": E.plain, "Victim": E.plain, "Other": E.plain])
+                var tracked: [() -> Skin?] = []
+                var outcome: [String] = []
+                autoreleasepool {
+                    /// Loads `names`; the ones that failed.
+                    func load(_ names: [String]) -> [String] {
+                        let loaded = names.compactMap { app.activate(config: "Engine\\\($0)", file: nil) }
+                        tracked += loaded.map(E.track)
+                        _ = AppSelfTest.spin(timeout: 60) { loaded.allSatisfy { $0.isStarted || $0.loadFailed } }
+                        return loaded.filter(\.loadFailed).map(\.config)
+                    }
+                    func running() -> [String] {
+                        app.sortedControllers.filter { $0.isStarted }.map(\.config).sorted()
+                    }
+                    for step in ["unload", "refresh"] {
+                        opened.access { $0 = [] }
+                        if let target = app.controller(for: "Engine\\Target") { app.deactivate(target) }
+                        let failed = load(["Victim", "Other"] + (app.controller(for: "Engine\\Closer") == nil ? ["Closer"] : []))
+                        // Only the runtime is kept here: nothing but the app holds the closing skin's window half.
+                        guard let closing = app.controller(for: "Engine\\Closer")?.runtime,
+                              let other = app.controller(for: "Engine\\Other") else { return t.check(false, "loaded") }
+                        t.equal(failed, [], "\(threading) \(step): loaded")
+                        // In a pool of its own, drained at once as the run loop drains it after a turn: AppKit keeps the
+                        // window's delegate in the pool while it closes the window.
+                        autoreleasepool {
+                            if step == "unload" {
+                                app.deactivate(config: "Engine\\Closer")
+                            } else {
+                                if let c = app.controller(for: "Engine\\Closer") { app.refresh(c) }
+                                if let now = app.controller(for: "Engine\\Closer") { tracked.append(E.track(now)) }
+                            }
+                        }
+                        let done = AppSelfTest.spin(timeout: 60) {
+                            closing.didClose && app.controller(for: "Engine\\Target")?.isStarted == true
+                                && app.controller(for: "Engine\\Victim") == nil
+                                && app.controller(for: "Engine\\Other").map { $0 !== other && $0.isStarted } == true
+                                && !opened.current.isEmpty
+                        }
+                        t.check(done, "\(threading) \(step): Target loaded, Victim unloaded, Other refreshed, the page "
+                                + "opened: \(running()), \(opened.current)")
+                        for name in ["Target", "Other"] {
+                            if let c = app.controller(for: "Engine\\\(name)") { tracked.append(E.track(c)) }
+                        }
+                        t.equal(opened.current, ["open(https://example.com/closed)"], "\(threading) \(step): opened once")
+                        t.equal(app.state.skin("Engine\\Victim")?.active, false, "\(threading) \(step): Victim inactive")
+                        outcome.append("\(step): \(running()) \(opened.current)")
+                    }
+                }
+                outcomes[threading] = outcome
+                if threading == .engine {
+                    E.finish(t, app, tracked)
+                } else {
+                    app.stopAllForTermination()
+                }
+            }
+            t.equal(outcomes[.engine], outcomes[.main], "the engine thread does what the main thread does")
         }
     }
 }

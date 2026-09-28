@@ -59,7 +59,10 @@ enum HostBangs {
 extension SkinWindowController {
     /// Does what a config, menu or system bang the runtime handed over does (`HostBangs`), on the main thread.
     func applyHostBang(_ host: HostBang) {
-        guard !isStopped else { return }
+        // A stopped window still does what its skin asked for until the skin has closed: OnCloseAction's bangs
+        // (`whileClosing`: the skin cannot reload or unload itself any more, `others`), and, for a skin on another
+        // thread, what its work queued before the close asked. With the main executor both happen before `stop` returns.
+        guard !isStopped || !hasClosed else { return }
         let bang = host.bang
         let a = bang.args
         // `[!ActivateConfig X][!Show X]`: X is loaded on the next run loop turn, so a bang for X that follows in the
