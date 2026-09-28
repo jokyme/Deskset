@@ -40,6 +40,7 @@ enum StudioMemorySelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
+        rebuildProbe(t)
         t.suite("App: studio memory") {
             AppSelfTest.stopEarlierSkins()
             let budget = ProcessInfo.processInfo.environment["DESKSET_STUDIO_MEMORY_BUDGET_MB"].flatMap(Double.init)
@@ -87,6 +88,47 @@ enum StudioMemorySelfTests {
         if let budget {
             t.check(opened - desktop <= budget, "\(config): the Studio adds \(opened - desktop) MB, over \(budget) MB")
             t.check(zoomed - desktop <= budget, "\(config): at 800% the Studio adds \(zoomed - desktop) MB, over \(budget) MB")
+        }
+    }
+}
+
+extension StudioMemorySelfTests {
+    final class Weak {
+        weak var view: NSView?
+        init(_ v: NSView) { view = v }
+    }
+
+    /// The inspector built again six times (another layer selected each time), each step drained of what it autoreleased
+    /// as the app's event loop drains it after an event: none of the old cards stays alive — nothing holds on to them
+    /// (a step made by the self-tests outside any pool keeps what it autoreleased until the suite's pool drains; the
+    /// latency suite drains each step's).
+    static func rebuildProbe(_ t: AppTestRunner) {
+        t.suite("App: studio memory: the inspector's old views go when it is built again") {
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar") else { return }
+            defer { editor.window?.close() }
+            guard let skin = editor.skin else { return t.check(false, "skin") }
+            let names = skin.meters.prefix(6).map(\.name)
+            autoreleasepool {
+                editor.select(section: names[0])
+                EditorWindowSelfTests.settle()
+            }
+            var survivors: [Weak] = []
+            var fieldCount = 0
+            for i in 1...6 {
+                var old: [Weak] = []
+                autoreleasepool {
+                    for v in editor.inspectorStack.arrangedSubviews { old.append(Weak(v)) }
+                    fieldCount = 0
+                    func walk(_ v: NSView) { if v is NSTextField { fieldCount += 1 }; v.subviews.forEach(walk) }
+                    editor.inspectorStack.arrangedSubviews.forEach(walk)
+                    editor.select(section: names[i % names.count])
+                }
+                autoreleasepool { EditorWindowSelfTests.settle() }
+                survivors += old.filter { $0.view != nil && $0.view?.window == nil }
+            }
+            let alive = survivors.compactMap(\.view)
+            t.check(fieldCount > 0, "the pages have fields")
+            t.check(alive.isEmpty, "the old cards are released: \(alive.map { $0.identifier?.rawValue ?? "\(type(of: $0))" })")
         }
     }
 }

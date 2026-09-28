@@ -290,6 +290,11 @@ enum StudioLatencySelfTests {
         /// One step as the user makes it, `step` then the display pass (the sample), then the canvas alone and what
         /// follows on the next turn — the names, the desktop copy — as phases.
         func sample(_ step: () -> Void, into times: inout [Double], _ phases: inout [String: [Double]]) {
+            // What the step autoreleased goes when it ends, as the app's event loop drains it after each event (the old
+            // inspector rows, the old layer rows): otherwise they pile up until the suite ends, and later steps slow.
+            autoreleasepool { measureSample(step, into: &times, &phases) }
+        }
+        func measureSample(_ step: () -> Void, into times: inout [Double], _ phases: inout [String: [Double]]) {
             let start = now()
             step()
             let stepped = now()
@@ -330,6 +335,9 @@ enum StudioLatencySelfTests {
         var backToBack: [Double] = [], backToBackUndos: [Double] = [], busy: [Double] = []
         var busyParts: [String: [Double]] = [:]
         func inARow(_ step: () -> Void, into times: inout [Double]) {
+            autoreleasepool { measureInARow(step, into: &times) }
+        }
+        func measureInARow(_ step: () -> Void, into times: inout [Double]) {
             let start = now()
             // The next turn: the names and the desktop patch the step before left for it, then what the run loop does
             // besides (the undo manager closes the step's group, the window draws what the names changed).
@@ -537,15 +545,20 @@ enum StudioLatencySelfTests {
         for i in 1...samples {
             let value = run.value(written, i)
             guard let range = valueRange() else { return t.check(false, "\(name): \(run.key) of \(target) in the code") }
-            code.textView.setSelectedRange(range)
-            code.textView.insertText(value, replacementRange: range)
-            let start = now()
-            guard code.fireTypedText() else { return t.check(false, "\(name): the pause is waited for") }
-            display()
-            times.append(ms(since: start))
-            for (phase, time) in session.reloadPhases.phases { phases[phase, default: []].append(time) }
-            t.equal(editor.skin?.meter(named: target)?.rawOption(run.key), value, "\(name): typed code \(i) shows")
-            EditorWindowSelfTests.settle()
+            // What the pause autoreleased goes with it, as after an event in the app.
+            let paused = autoreleasepool { () -> Bool in
+                code.textView.setSelectedRange(range)
+                code.textView.insertText(value, replacementRange: range)
+                let start = now()
+                guard code.fireTypedText() else { return false }
+                display()
+                times.append(ms(since: start))
+                for (phase, time) in session.reloadPhases.phases { phases[phase, default: []].append(time) }
+                t.equal(editor.skin?.meter(named: target)?.rawOption(run.key), value, "\(name): typed code \(i) shows")
+                EditorWindowSelfTests.settle()
+                return true
+            }
+            guard paused else { return t.check(false, "\(name): the pause is waited for") }
         }
         // Should the last value typed be the one the step wrote: one more, not timed, to have typing to commit.
         if !code.isDirty, let range = valueRange() {
