@@ -2,9 +2,9 @@
 ;
 ; Both sizes include this file before Stationery.inc (Deskset's settings folder), where the user's items are kept, so
 ; those win. An item is Launch<k> (k = 1…8; the Small shows 1–4): an app, folder or file (a path, ~ for the home
-; folder), a link (any scheme:), shortcut:<name> (a shortcut from the Shortcuts app) or trash. LaunchLabel<k> renames
-; it (empty: its own name); LaunchSymbol<k> and LaunchColor<k> give a link or shortcut tile its SF Symbol and one of
-; the colours of Tiles.inc.
+; folder; a symbolic link or Finder alias shows its original's icon), a link (any scheme:), shortcut:<name> (a shortcut
+; from the Shortcuts app) or trash. LaunchLabel<k> renames it (empty: its own name); LaunchSymbol<k> and LaunchColor<k>
+; give a link or shortcut tile its SF Symbol and one of the colours of Tiles.inc.
 ;
 ; The defaults are things the Dock does not do: Screenshot, Documents, Downloads, AirDrop; Lock Screen and Do Not
 ; Disturb (shortcuts), Shortcuts, and the Trash.
