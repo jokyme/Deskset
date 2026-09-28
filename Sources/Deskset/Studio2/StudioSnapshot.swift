@@ -150,6 +150,15 @@ enum StudioSnapshot {
             controller.widgetPage.openColor(role, swatch: swatch)
         }
         if let swatch = screen.hoverSwatch { controller.widgetPage.handle(.hoverSwatch(item: "colors", swatch: swatch)) }
+        // The sidebar's page, and the data row the pointer is on.
+        if screen.depth == .build {
+            controller.sidebarController.show(screen.sidebarPage)
+            controller.refreshLayers()
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            controller.sidebarController.layout()
+            controller.sidebarController.layersView.layoutSubtreeIfNeeded()
+            if let data = screen.pointedData { controller.sidebarController.layersView.setHoveredData(data) }
+        }
         // The part's page, as the screen has it.
         if let part = screen.selection {
             StudioPartPage.rememberedInMemory = []
@@ -299,7 +308,8 @@ enum StudioSnapshot {
             as [NSView] {
             draw(plane, in: content)
         }
-        for floating in [canvas.captionTag, canvas.statusCapsule, canvas.previewBar, canvas.zoomCapsule] as [NSView] {
+        for floating in [canvas.captionTag, canvas.statusCapsule, canvas.compatCapsule, canvas.hintPill,
+                         canvas.previewBar, canvas.zoomCapsule] as [NSView] {
             draw(floating, in: content)
         }
         if !controller.inspectorItem.isCollapsed {
@@ -320,11 +330,45 @@ enum StudioSnapshot {
             r.fill()
             NSColor.separatorColor.setFill()
             NSRect(x: r.maxX - 1, y: r.minY, width: 1, height: r.height).fill()
-            draw(pane, in: content)
+            // Its pieces (a scroll view's own drawing is not what the window shows off screen).
+            for view in controller.sidebarController.snapshotViews {
+                if let tabs = view as? NSSegmentedControl {
+                    drawSegments(tabs, in: content, dark: dark)
+                } else {
+                    draw(view, in: content)
+                }
+            }
         }
     }
 
     // MARK: Stand-ins
+
+    /// A segmented control as the window in front draws it: a capsule track, the chosen segment filled with the accent
+    /// color and its words white (off screen the control draws the grey of a window behind others).
+    static func drawSegments(_ control: NSSegmentedControl, in content: NSView, dark: Bool) {
+        guard !control.isHiddenOrHasHiddenAncestor else { return }
+        let r = control.convert(control.bounds, to: content).insetBy(dx: 0, dy: 0.5)
+        let track = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        (dark ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 0, alpha: 0.06)).setFill()
+        track.fill()
+        var x = r.minX + 2
+        let font = NSFont.systemFont(ofSize: 13)
+        for i in 0..<control.segmentCount {
+            let w = control.width(forSegment: i) > 0 ? control.width(forSegment: i) : (r.width - 4) / CGFloat(control.segmentCount)
+            let seg = NSRect(x: x, y: r.minY + 2, width: w, height: r.height - 4)
+            let chosen = control.isSelected(forSegment: i)
+            if chosen {
+                NSColor.controlAccentColor.setFill()
+                NSBezierPath(roundedRect: seg, xRadius: seg.height / 2, yRadius: seg.height / 2).fill()
+            }
+            let label = NSAttributedString(string: control.label(forSegment: i) ?? "", attributes: [
+                .font: chosen ? NSFont.systemFont(ofSize: 13, weight: .medium) : font,
+                .foregroundColor: chosen ? NSColor.white : NSColor.labelColor])
+            let size = label.size()
+            label.draw(at: NSPoint(x: seg.midX - size.width / 2, y: seg.midY - size.height / 2))
+            x += w + 2
+        }
+    }
 
     /// A glass capsule (or circle) of the toolbar: a pale fill, a hairline and a soft shadow.
     static func drawGlass(_ rect: NSRect, dark: Bool, fill: NSColor? = nil) {

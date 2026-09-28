@@ -252,6 +252,9 @@ final class StudioWidgetPage {
             return ByteCountFormatter.string(fromByteCount: Int64(max(v, 0)), countStyle: .memory)
         case "netin", "netout", "nettotal":
             return ByteCountFormatter.string(fromByteCount: Int64(max(v, 0)), countStyle: .file) + "/s"
+        case "uptime":
+            let days = Int(v) / 86_400, hours = Int(v) % 86_400 / 3600, minutes = Int(v) % 3600 / 60
+            return days > 0 ? "\(days) d \(hours) h" : hours > 0 ? "\(hours) h \(minutes) min" : "\(minutes) min"
         default: return NumberFormatting.plain((v * 10).rounded() / 10)
         }
     }

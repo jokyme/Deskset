@@ -677,7 +677,7 @@ extension StudioPartPage {
             let names = written.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
             let words = names.compactMap { skin.measure(named: $0) }.map { measure -> String in
                 let source = ["string", "calc", "script"].contains(measure.type)
-                    ? (LayerNaming.formulaSource(measure, in: skin) ?? referencedData(measure, skin: skin) ?? measure) : measure
+                    ? (LayerNaming.formulaSource(measure, in: skin) ?? StudioPartNames.referencedData(measure, in: skin) ?? measure) : measure
                 return StudioWords.data(StudioWidgetFacts.dataName(source, in: skin).name)
             }
             return StudioPage.Dense(label: label, control: .text(words.isEmpty ? StudioText[.boxNone] : words.joined(separator: ", ")),

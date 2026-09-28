@@ -65,6 +65,10 @@ struct StudioScreen {
     var hoverSwatch: String?
     /// The recent colors the popover lists.
     var recentColors: [RGBA] = []
+    /// The sidebar's page at the Build depth.
+    var sidebarPage = StudioSidebarViewController.Page.layers
+    /// The data row of Layers the pointer is on (the canvas outlines the parts that use it).
+    var pointedData: String?
     /// What the design shows that the window does not have yet: listed with the differences.
     var later: [String] = []
 
@@ -88,6 +92,16 @@ struct StudioScreen {
         "measurebattery": (1, nil),
     ]
 
+    /// The design's readings for Nocturne: CPU 23 %, GPU 34 %, 20.4 GB of memory, 2.7 MB/s down, 553 kB/s up.
+    static let nocturneReadings: [String: (value: Double, text: String?)] = [
+        "measurecpu": (23, nil),
+        "measuregpuusage": (34, nil),
+        "measuregpu": (34, nil),
+        "measureram": (20.4 * 1_073_741_824, nil),
+        "measurenetin": (2.7 * 1_048_576, nil),
+        "measurenetout": (553 * 1024, nil),
+    ]
+
     /// The designed screens, in the order of the design.
     static let all: [StudioScreen] = [
         StudioScreen(name: "03-customize", fixture: .system, zoom: 1.65, updates: 4, pinned: systemReadings,
@@ -109,9 +123,10 @@ struct StudioScreen {
                      later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
                              "Shows examples (the number is written by the widget's data, not the part)",
                              "the pointer drawn on the link"]),
-        StudioScreen(name: "07-layers", fixture: .system, edits: [systemDemo], depth: .build, zoom: 1.9,
-                     updates: 4,
-                     later: ["layers", "connect menu"]),
+        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.9, updates: 4,
+                     pinned: systemReadings,
+                     later: ["INI layers are flat: no columns or rows, no shared styles or calculated values",
+                             "the ring's page (Show as, Center) and the connect menu"]),
         StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3, selection: "MeterValue", everySetting: true,
                      distances: true, scrubbing: "every:FontSize", backdrop: .workbench, updates: 2,
                      pinned: ["measurecpu": (23, nil)],
@@ -128,8 +143,9 @@ struct StudioScreen {
                      zoom: 1.5, later: ["code pane in place of the inspector", "INI diagnostics", "log count",
                                         "last working version capsule"]),
         StudioScreen(name: "13b-compat", fixture: .nocturne, depth: .build, zoom: 1.5,
-                     later: ["compatibility capsule", "needs attention", "measures in the layers",
-                             "Changed to fit the Mac", "the Shows rows the design leaves out"]),
+                     pinned: nocturneReadings, pointedData: "MeasureCPU",
+                     later: ["needs attention and its marks on the canvas", "Changed to fit the Mac",
+                             "the Shows rows the design leaves out", "every part and data item of the fixture listed"]),
         StudioScreen(name: "17-show-on-desktop", fixture: .system, edits: [systemDemo], zoom: 1,
                      updates: 4,
                      later: ["show on desktop: the window fades and the widget on the desktop comes up"]),

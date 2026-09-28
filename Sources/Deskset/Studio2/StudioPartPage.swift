@@ -360,10 +360,10 @@ final class StudioPartPage {
         }
     }
 
+    /// A change of scope, said to VoiceOver ("Now changing: All 4 numbers").
     private func announce(_ text: String) {
-        guard !text.isEmpty, window.app.presentsWindows, let view = window.window?.contentView else { return }
-        NSAccessibility.post(element: view, notification: .announcementRequested,
-                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        guard !text.isEmpty else { return }
+        window.announce(StudioText.format(.announceScope, text))
     }
 
     // MARK: Writing
@@ -548,36 +548,14 @@ final class StudioPartPage {
 
     /// The live data a part shows (through a formula or a text built from it, to the data it comes from).
     func liveMeasure(_ m: Meter) -> Measure? {
-        guard let skin, let bound = m.measures.first else { return nil }
-        if ["string", "calc", "script"].contains(bound.type) {
-            return LayerNaming.formulaSource(bound, in: skin) ?? referencedData(bound, skin: skin) ?? bound
-        }
-        return bound
+        guard let skin else { return nil }
+        return StudioPartNames.liveMeasure(m, in: skin)
     }
 
-    /// The first live data a text built from others names (`String=#Ready#|[MeasureCPU:0]` → MeasureCPU).
-    func referencedData(_ measure: Measure, skin: Skin) -> Measure? {
-        for key in ["String", "Formula"] {
-            guard let text = measure.fileOption(key) else { continue }
-            var rest = Substring(text)
-            while let open = rest.firstIndex(of: "[") {
-                rest = rest[rest.index(after: open)...]
-                let name = rest.prefix { $0 != "]" && $0 != ":" && $0 != "[" }
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "&"))
-                if let found = skin.measure(named: name), found !== measure,
-                   !["string", "calc", "script"].contains(found.type) { return found }
-            }
-        }
-        return nil
-    }
-
-    /// A part named by its data ("CPU usage"), else by what it is (`LayerNaming`).
+    /// A part named by its data ("CPU usage", its bar "CPU bar"), a static text by its words, else by what it is
+    /// (`StudioPartNames`).
     func partTitle(_ m: Meter, skin: Skin) -> String {
-        if let data = liveMeasure(m) {
-            return StudioWords.data(StudioWidgetFacts.dataName(data, in: skin).name)
-        }
-        let title = LayerNaming.layer(m, in: skin).title
-        return title
+        StudioPartNames.title(m, in: skin)
     }
 
     /// What the part shows now ("21%").

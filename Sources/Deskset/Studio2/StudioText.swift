@@ -381,6 +381,80 @@ enum StudioText {
         case menuHide = "canvas.hide"
         case menuShowPart = "canvas.show"
         case partsCount = "part.partsCount"
+        // Step 5: the sidebar, Rainmeter details, the compatibility capsule, accessibility.
+        case roleButton = "ax.roleButton"
+        case freeLayout = "layers.freeLayout"
+        case axWidget = "ax.widget"
+        case axHidden = "ax.hidden"
+        case axLocked = "ax.locked"
+        case axProblem = "ax.problem"
+        case issueWindowsPlugin = "issue.windowsPlugin"
+        case issueWindowsData = "issue.windowsData"
+        case issueWindowsProgram = "issue.windowsProgram"
+        case findLayer = "layers.find"
+        case measuresGroup = "layers.measures"
+        case dataGroup = "layers.data"
+        case dataUsedByTag = "layers.usedBy"
+        case dataUnusedTag = "layers.unused"
+        case noLayersFound = "layers.noneFound"
+        case layersEmpty = "layers.empty"
+        case rainmeterNamesOn = "details.on"
+        case rainmeterNamesHidden = "details.off"
+        case rainmeterNamesShown = "details.shown"
+        case showRainmeterDetails = "details.menu"
+        case compatOffer = "compat.offer"
+        case compatSwitch = "compat.switch"
+        case compatSwitchLater = "compat.switchLater"
+        case compatStay = "compat.stay"
+        case compatTip = "compat.tip"
+        case stepOrder = "step.order"
+        case stepShow = "step.show"
+        case stepDelete = "step.delete"
+        case stepAdd = "step.add"
+        case stepForward = "step.forward"
+        case stepBackward = "step.backward"
+        case layerHide = "layers.hide"
+        case layerShow = "layers.show"
+        case layerLock = "layers.lock"
+        case layerUnlock = "layers.unlock"
+        case layerLockTip = "layers.lockTip"
+        case layerDifferentFiles = "layers.differentFiles"
+        case confirmShown = "confirm.shown"
+        case confirmDeleted = "confirm.deleted"
+        case confirmAdded = "confirm.added"
+        case axDelete = "ax.delete"
+        case axBringForward = "ax.bringForward"
+        case axSendBackward = "ax.sendBackward"
+        case axInCanvas = "ax.inCanvas"
+        case rotorProblems = "ax.problems"
+        case announceOpen = "ax.open"
+        case announceOpenBuild = "ax.openBuild"
+        case announceUndo = "ax.undo"
+        case announceRedo = "ax.redo"
+        case announceScope = "ax.scope"
+        case addSearch = "add.search"
+        case addShowData = "add.showData"
+        case addThisMac = "add.thisMac"
+        case addParts = "add.parts"
+        case addSymbols = "add.symbols"
+        case addBrowse = "add.browse"
+        case addThisWidget = "add.thisWidget"
+        case addTime = "add.time"
+        case addWeather = "add.weather"
+        case addMusic = "add.music"
+        case addText = "add.text"
+        case addSymbol = "add.symbol"
+        case addPicture = "add.picture"
+        case addButton = "add.button"
+        case addNumber = "add.number"
+        case addNothing = "add.nothing"
+        case addHowTo = "add.howTo"
+        case addClickOne = "add.clickOne"
+        case addCancel = "add.cancel"
+        case addPageTip = "add.tip"
+        case addFontTip = "add.fontTip"
+        case addColorTip = "add.colorTip"
+        case addUnavailable = "add.unavailable"
     }
 
     /// English, then Simplified Chinese. `%@` and `%d` are filled by `format`.
@@ -718,6 +792,79 @@ enum StudioText {
         .menuHide: ("Hide %@", "隐藏%@"),
         .menuShowPart: ("Show %@", "显示%@"),
         .partsCount: ("%d parts", "%d 个部件"),
+        .roleButton: ("button", "按钮"),
+        .freeLayout: ("free layout", "自由摆放"),
+        .axWidget: ("%@, the widget", "%@，小组件"),
+        .axHidden: ("hidden", "已隐藏"),
+        .axLocked: ("locked", "已锁定"),
+        .axProblem: ("needs attention", "需要处理"),
+        .issueWindowsPlugin: ("%@ reads 0: it comes from %@, which only runs on Windows", "%@ 显示 0：它来自只能在 Windows 上运行的 %@"),
+        .issueWindowsData: ("%@ reads 0: it only works on Windows", "%@ 显示 0：它只能在 Windows 上用"),
+        .issueWindowsProgram: ("“%@” opens a Windows program", "“%@”会打开一个 Windows 程序"),
+        .findLayer: ("Find a layer", "查找图层"),
+        .measuresGroup: ("Measures", "数据（measure）"),
+        .dataGroup: ("Data", "数据"),
+        .dataUsedByTag: ("%@ · used by %@", "%@ · %@在用"),
+        .dataUnusedTag: ("%@ · not used", "%@ · 没有部件在用"),
+        .noLayersFound: ("Nothing matches “%@”", "没有和“%@”相符的图层"),
+        .layersEmpty: ("No parts yet: add one from Add", "还没有部件：从“添加”里加一个"),
+        .rainmeterNamesOn: ("Rainmeter names on · ⌥⌘R to hide", "已显示 Rainmeter 名称 · ⌥⌘R 隐藏"),
+        .rainmeterNamesHidden: ("Rainmeter names hidden", "已隐藏 Rainmeter 名称"),
+        .rainmeterNamesShown: ("Rainmeter names shown", "已显示 Rainmeter 名称"),
+        .showRainmeterDetails: ("Show Rainmeter Details", "显示 Rainmeter 细节"),
+        .compatOffer: ("Also available as a Deskset widget: more Mac features, but you’d edit Desk instead of INI.", "也可以换成 Deskset 小组件：能用更多 Mac 功能，但以后改的是 Desk，不是 INI。"),
+        .compatSwitch: ("Switch", "换过去"),
+        .compatSwitchLater: ("Switching to a Deskset widget comes in a later version", "以后的版本可以换成 Deskset 小组件"),
+        .compatStay: ("Stay with INI", "继续用 INI"),
+        .compatTip: ("%@ stays a Rainmeter skin: changes are written into its .ini files.", "%@ 仍是 Rainmeter 皮肤：改动写进它的 .ini 文件。"),
+        .stepOrder: ("Change Order", "更改顺序"),
+        .stepShow: ("Show", "显示"),
+        .stepDelete: ("Delete", "删除"),
+        .stepAdd: ("Add %@", "添加 %@"),
+        .stepForward: ("Bring Forward", "前移"),
+        .stepBackward: ("Send Backward", "后移"),
+        .layerHide: ("Hide", "隐藏"),
+        .layerShow: ("Show", "显示"),
+        .layerLock: ("Lock", "锁定"),
+        .layerUnlock: ("Unlock", "解锁"),
+        .layerLockTip: ("Lock it so it can’t be moved by accident", "锁定，免得不小心移动"),
+        .layerDifferentFiles: ("These parts are in different files, so their order can’t change here", "这些部件在不同的文件里，这里改不了它们的顺序"),
+        .confirmShown: ("%@ shows again", "%@又显示了"),
+        .confirmDeleted: ("%@ deleted", "%@已删除"),
+        .confirmAdded: ("Added %@", "已添加 %@"),
+        .axDelete: ("Delete", "删除"),
+        .axBringForward: ("Bring Forward", "前移"),
+        .axSendBackward: ("Send Backward", "后移"),
+        .axInCanvas: ("in %@", "在 %@ 里"),
+        .rotorProblems: ("Problems", "问题"),
+        .announceOpen: ("Customizing “%@”. The inspector shows the widget page.", "正在自定“%@”。检查器显示小组件页。"),
+        .announceOpenBuild: ("Building “%@”. The sidebar shows its layers.", "正在搭建“%@”。侧栏显示它的图层。"),
+        .announceUndo: ("Undid %@", "已撤销 %@"),
+        .announceRedo: ("Redid %@", "已重做 %@"),
+        .announceScope: ("Now changing: %@", "现在改的是：%@"),
+        .addSearch: ("Data, parts, symbols", "数据、部件、符号"),
+        .addShowData: ("Show data", "显示数据"),
+        .addThisMac: ("This Mac", "这台 Mac"),
+        .addParts: ("Parts", "部件"),
+        .addSymbols: ("Symbols", "符号"),
+        .addBrowse: ("Browse…", "浏览…"),
+        .addThisWidget: ("In this widget", "这个组件里的"),
+        .addTime: ("Time", "时间"),
+        .addWeather: ("Weather", "天气"),
+        .addMusic: ("Music", "音乐"),
+        .addText: ("Text", "文字"),
+        .addSymbol: ("Symbol", "符号"),
+        .addPicture: ("Picture", "图片"),
+        .addButton: ("Button", "按钮"),
+        .addNumber: ("Number", "数字"),
+        .addNothing: ("Nothing matches “%@”", "没有和“%@”相符的"),
+        .addHowTo: ("Show %@ as…", "把%@显示成…"),
+        .addClickOne: ("Click one to add it", "点一种就加上"),
+        .addCancel: ("Cancel", "取消"),
+        .addPageTip: ("Click to add after the selection, or drag onto the widget", "点按加在选中的后面，或拖到小组件上"),
+        .addFontTip: ("Drag onto a text to use this font", "拖到文字上就用这个字体"),
+        .addColorTip: ("Drag onto a part to use this color", "拖到部件上就用这个颜色"),
+        .addUnavailable: ("Not on this Mac", "这台 Mac 上没有"),
     ]
 
     static subscript(_ key: Key) -> String { string(key, in: language) }

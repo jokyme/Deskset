@@ -48,6 +48,12 @@ final class StudioCanvasViewController: NSViewController {
     let statusCapsule: StudioStatusCapsule
     let previewBar: StudioPreviewBar
     let zoomCapsule: StudioZoomCapsule
+    /// "Rainmeter skin · compatibility mode" (and the offer to switch), over a Rainmeter skin.
+    let compatCapsule: StudioCompatCapsule
+    /// A hint over the canvas's corner while the sidebar is closed ("Rainmeter names on · ⌥⌘R to hide").
+    let hintPill = StudioHintPill()
+    /// Whether the compatibility capsule shows, and its offer.
+    var compatState: () -> (shown: Bool, offer: Bool) = { (false, false) }
     /// The skin the canvas draws (the session's instance).
     var skinProvider: () -> Skin? = { nil } {
         didSet {
@@ -74,6 +80,8 @@ final class StudioCanvasViewController: NSViewController {
     static let previewBarRoom: CGFloat = 76
     /// Where the status capsule's middle is, from the top of the pane.
     static let statusCapsuleY: CGFloat = 104
+    /// Where the compatibility capsule's middle is (the design's 132).
+    static let compatCapsuleY: CGFloat = 134
     private var redrawTimer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var lastZoom: CGFloat = 0
@@ -85,6 +93,7 @@ final class StudioCanvasViewController: NSViewController {
         statusCapsule = StudioStatusCapsule(standIn: standIns)
         previewBar = StudioPreviewBar(standIn: standIns)
         zoomCapsule = StudioZoomCapsule(standIn: standIns)
+        compatCapsule = StudioCompatCapsule(standIn: standIns)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -135,10 +144,12 @@ final class StudioCanvasViewController: NSViewController {
             plane.autoresizingMask = [.width, .height]
             container.addSubview(plane)
         }
-        for floating in [captionTag, statusCapsule, previewBar, zoomCapsule] as [NSView] {
+        for floating in [captionTag, statusCapsule, compatCapsule, hintPill, previewBar, zoomCapsule] as [NSView] {
             container.addSubview(floating)
         }
         statusCapsule.isHidden = true
+        compatCapsule.isHidden = true
+        hintPill.isHidden = true
         container.widthAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
         view = container
         observers.append(NotificationCenter.default.addObserver(
@@ -278,10 +289,39 @@ final class StudioCanvasViewController: NSViewController {
         let room = right - 16
         let cx = centred ? w / 2 : 16 + max(bar, room) / 2
         previewBar.frame = NSRect(x: (cx - bar / 2).rounded(), y: h - 34 - barHeight / 2, width: bar, height: barHeight)
+        var statusY = Self.statusCapsuleY
+        if !compatCapsule.isHidden {
+            let size = compatCapsule.fittingSize2
+            let width = min(size.width, w - 32)
+            compatCapsule.frame = NSRect(x: ((w - width) / 2).rounded(), y: Self.compatCapsuleY - size.height / 2,
+                                         width: width, height: size.height)
+            statusY = compatCapsule.frame.maxY + 10 + StudioStatusCapsule.height / 2
+        }
         let status = statusCapsule.fittingWidth
-        statusCapsule.frame = NSRect(x: ((w - status) / 2).rounded(), y: Self.statusCapsuleY - StudioStatusCapsule.height / 2,
+        statusCapsule.frame = NSRect(x: ((w - status) / 2).rounded(), y: statusY - StudioStatusCapsule.height / 2,
                                      width: status, height: StudioStatusCapsule.height)
+        if !hintPill.isHidden {
+            let size = hintPill.fittingSize(width: w - 32)
+            hintPill.frame = NSRect(x: 16, y: Self.toolbarHeight + 12, width: size.width, height: size.height)
+        }
         placeCaption()
+    }
+
+    /// Shows or hides the compatibility capsule and its offer, as the window says.
+    func updateCompatCapsule() {
+        _ = view
+        let state = compatState()
+        compatCapsule.isHidden = !state.shown
+        compatCapsule.showsOffer = state.offer
+        layoutFloating()
+    }
+
+    /// The hint over the canvas's corner (nil: none).
+    func setHint(_ text: String?) {
+        _ = view
+        hintPill.text = text ?? ""
+        hintPill.isHidden = text == nil
+        layoutFloating()
     }
 
     // MARK: Drawing
@@ -308,14 +348,5 @@ final class StudioCanvasViewController: NSViewController {
     func stopRedrawing() {
         redrawTimer?.invalidate()
         redrawTimer = nil
-    }
-}
-
-/// The sidebar (Build depth): Add and Layers. Empty for now; it is collapsed while the Studio customizes.
-final class StudioSidebarViewController: NSViewController {
-    override func loadView() {
-        let v = NSView()
-        v.setAccessibilityLabel(StudioText[.sidebar])
-        view = v
     }
 }

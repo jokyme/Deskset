@@ -71,6 +71,12 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     private var runningPopover: NSPopover?
     /// The window's own undo stack until it shows a widget.
     private let ownUndoManager = UndoManager()
+    /// The sidebar's filter, hint and timer, and the keyboard's route.
+    let sidebarState = StudioSidebarState()
+    /// The canvas's parts as VoiceOver sees them.
+    private(set) var canvasAccess: StudioCanvasAccessibility!
+    /// What VoiceOver says when the step being made is done (else the step's name).
+    var pendingAnnouncement: String?
 
     init(app: AppController) {
         self.app = app
@@ -95,6 +101,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         window.title = StudioText[.studioWindow]
         super.init(window: window)
         window.delegate = self
+        window.onControlTab = { [weak self] backward in self?.cycleFocus(backward: backward) }
 
         sidebarItem.minimumThickness = Self.sidebarWidth
         sidebarItem.maximumThickness = Self.sidebarWidth
@@ -129,8 +136,10 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         partPage = StudioPartPage(window: self)
         geometry = StudioGeometry(window: self)
         inspectorController.pageView.onEvent = { [weak self] event in self?.pageEvent(event) }
-        inspectorController.onEscape = { [weak self] in self?.goUp() }
+        inspectorController.onEscape = { [weak self] in self?.escapeFromInspector() }
+        canvasAccess = StudioCanvasAccessibility(window: self)
         wireCanvas()
+        wireSidebar()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -159,8 +168,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             observeUndo(session.undoStack)
         }
         link?.link(c)
+        turnOnRainmeterDetailsTheFirstTime()
         widgetChanged(fit: true)
         preview.attach()
+        startLayersTimer()
+        announce(StudioText.format(depth == .build ? .announceOpenBuild : .announceOpen, widgetName))
     }
 
     /// The window lets go of its widget's session (it closes, or shows another widget): the Studio's instance and the
@@ -198,6 +210,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         preview?.refreshAll()
         widgetPage?.rebuild()
         partPage?.refresh()
+        if sidebarController.isViewLoaded, canvasAccess != nil { refreshLayers() }
+        canvasController.updateCompatCapsule()
         scheduleThumbnails()
     }
 
@@ -250,6 +264,10 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         sidebarItem.isCollapsed = !open
         updateToolbar()
         widgetPage?.refresh()
+        if canvasAccess != nil {
+            placeHint()
+            if open { refreshLayers() }
+        }
     }
 
     /// The inspector's width when the window opens (the design's 318 pt, within 300–330).
@@ -282,8 +300,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         s.canRedo = undo?.canRedo ?? false
         s.undoName = undo?.undoActionName ?? ""
         s.redoName = undo?.redoActionName ?? ""
-        // Add shows as on while the sidebar is on its Add page (the sidebar's pages come later).
-        s.addOn = false
+        // Add shows as on while the sidebar is open on its Add page.
+        s.addOn = !sidebarItem.isCollapsed && sidebarController.page == .add
         s.primary = StudioText[.done]
         return s
     }
@@ -315,7 +333,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     /// Add: the sidebar opens (Build), on its Add page; again: it closes.
     @objc func addAction(_ sender: Any?) {
-        setSidebarOpen(sidebarItem.isCollapsed)
+        if !sidebarItem.isCollapsed, sidebarController.page == .add {
+            setSidebarOpen(false)
+        } else {
+            showSidebarPage(.add)
+        }
     }
 
     /// Code: the code next to the canvas (comes with the code pane).
@@ -342,6 +364,12 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     @objc func showOnDesktop(_ sender: Any?) { preview.desktopView.toggle() }
     /// ⌥⌘P: Interact.
     @objc func toggleInteract(_ sender: Any?) { preview.setInteracting(!preview.state.interacting) }
+
+    /// Check marks and titles of the menu items the window answers.
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let answer = validateStudioMenuItem(item) { return answer }
+        return responds(to: item.action)
+    }
 
     /// The inspector button on macOS 13 (from 14 the split view controller's `toggleInspector:`).
     @objc func toggleInspectorPane(_ sender: Any?) {
@@ -396,8 +424,15 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             refreshOthers(t)
             partPage.refresh()
             updateToolbar()
-        case .reverted(let t, _):
+            refreshLayers()
+            canvasController.updateCompatCapsule()
+            announce(pendingAnnouncement ?? t.name)
+            pendingAnnouncement = nil
+        case .reverted(let t, let undo):
             refreshOthers(t)
+            refreshLayers()
+            canvasController.updateCompatCapsule()
+            announce(StudioText.format(undo ? .announceUndo : .announceRedo, t.name))
             widgetPage.stepReverted()
             partPage.stepReverted()
             widgetPage.refresh()
@@ -460,6 +495,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     func windowWillClose(_ notification: Notification) {
         thumbnailTimer?.invalidate()
+        sidebarState.liveTimer?.invalidate()
+        sidebarState.liveTimer = nil
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         flagsMonitor = nil
         geometry.commitNudge()
@@ -478,8 +515,19 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 /// segment in the accent color, not the grey of a window behind others.
 final class StudioWindow: NSWindow {
     var drawsAsKey = false
+    /// ⌃Tab and ⌃⇧Tab: the keyboard's route between the panes (before any view takes the key).
+    var onControlTab: ((Bool) -> Void)?
     override var isKeyWindow: Bool { drawsAsKey || super.isKeyWindow }
     override var isMainWindow: Bool { drawsAsKey || super.isMainWindow }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 48,
+           event.modifierFlags.intersection([.control, .command, .option]) == [.control], let onControlTab {
+            onControlTab(event.modifierFlags.contains(.shift))
+            return
+        }
+        super.sendEvent(event)
+    }
 }
 
 /// The popover under the widget's name: which file runs on the desktop, a sentence on what that means, and Show in
@@ -576,11 +624,14 @@ extension StudioWindowController {
                 return self?.keyEquivalent(event) ?? false
             }
             container.onKeyDown = { [weak self] event in
-                // ⇧Return: one level up.
-                guard event.keyCode == 36 || event.keyCode == 76,
-                      event.modifierFlags.intersection([.shift, .command, .option, .control]) == [.shift] else { return false }
-                self?.goUp()
-                return true
+                guard let self, event.keyCode == 36 || event.keyCode == 76 else { return false }
+                let flags = event.modifierFlags.intersection([.shift, .command, .option, .control])
+                // ⇧Return: one level up; Return: the keyboard to the part's page.
+                if flags == [.shift] {
+                    self.goUp()
+                    return true
+                }
+                return flags.isEmpty && self.returnFromCanvas()
             }
         }
         if app.presentsWindows {
@@ -598,6 +649,10 @@ extension StudioWindowController {
 
     /// One part selected: its page; nothing (or several): the widget page.
     func selectionChanged(_ names: [String]) {
+        if canvasAccess != nil {
+            sidebarController.layersView.outline(parts: [])
+            sidebarController.layersView.select(parts: names)
+        }
         if names.count == 1 {
             partPage.show(part: names[0])
         } else {
@@ -636,9 +691,10 @@ extension StudioWindowController {
         goUp()
     }
 
-    /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code.
+    /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code; the sidebar's keys.
     func keyEquivalent(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return false }
+        if sidebarKeyEquivalent(event) { return true }
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         guard flags == [.command, .option] else { return false }
         if event.charactersIgnoringModifiers?.lowercased() == "e" || event.keyCode == 14 {

@@ -82,4 +82,22 @@ func runStudioPartIssuesTests(_ t: TestRunner) {
                 .windowsData(measure: "MeasureTemp", plugin: "HWiNFO"))
         t.equal(StudioPartIssues.issue(of: skin.measure(named: "MeasureCPU")!, in: skin), nil)
     }
+
+    t.suite("Studio symbols: everyday names and search") {
+        t.equal(StudioSymbolIndex.name(of: "laptopcomputer", chinese: false), "Laptop")
+        t.equal(StudioSymbolIndex.name(of: "laptopcomputer", chinese: true), "笔记本电脑")
+        t.equal(StudioSymbolIndex.name(of: "cpu.fill", chinese: false), "Chip", "a drawing variant: its base")
+        t.equal(StudioSymbolIndex.name(of: "battery.25", chinese: false), "Battery")
+        t.equal(StudioSymbolIndex.name(of: "arrow.triangle.2.circlepath", chinese: false), "Arrow triangle 2 circlepath",
+                "not in the index: its words")
+        t.equal(StudioSymbolIndex.search("umbrella").first?.symbol, "umbrella.fill")
+        t.equal(StudioSymbolIndex.search("雨伞").first?.symbol, "umbrella.fill", "Chinese")
+        t.equal(StudioSymbolIndex.search("rain").first?.symbol, "cloud.rain.fill", "a name before a keyword")
+        t.check(StudioSymbolIndex.search("rain").contains { $0.symbol == "umbrella.fill" }, "a keyword finds it too")
+        t.check(StudioSymbolIndex.search("gamecontroller").contains { $0.symbol == "gamecontroller.fill" }, "the code name")
+        t.equal(StudioSymbolIndex.search("").count, StudioSymbolIndex.all.count)
+        t.equal(StudioSymbolIndex.search("zzzz"), [])
+        let symbols = StudioSymbolIndex.all.map(\.symbol)
+        t.equal(Set(symbols).count, symbols.count, "no symbol twice")
+    }
 }

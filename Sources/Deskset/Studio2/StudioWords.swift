@@ -14,6 +14,7 @@ enum StudioWords {
             "GPU usage": "GPU 占用率", "GPU temperature": "GPU 温度", "CPU temperature": "CPU 温度",
             "Fan speed": "风扇转速", "Power": "功率", "Battery": "电池", "Download speed": "下载速度",
             "Upload speed": "上传速度", "Network speed": "网速", "Total memory": "内存总量", "Swap used": "交换用量",
+            "Disk used": "磁盘用量", "Time": "时间", "Date": "日期", "Uptime": "开机时间",
         ]
         if let t = table[name] { return t }
         if name.hasPrefix("Free space on ") { return String(name.dropFirst("Free space on ".count)) + " 的可用空间" }
@@ -96,6 +97,8 @@ enum StudioWords {
         case "netout": return "arrow.up.circle"
         case "nettotal": return "network"
         case "powerplugin": return "battery.75percent"
+        case "time": return "clock"
+        case "uptime": return "timer"
         case "macsensors", "usagemonitor":
             let s = measure.string(measure.type == "macsensors" ? "Sensor" : "Alias").lowercased()
             if s.hasPrefix("gpu") { return "cube.transparent" }
