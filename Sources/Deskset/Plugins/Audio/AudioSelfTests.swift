@@ -1077,6 +1077,18 @@ enum AudioSelfTests {
         func stop() {}
     }
 
+    /// System audio on macOS 13 – 14.1 with Screen Recording refused: nothing runs, and the status says which
+    /// permission is missing.
+    final class ScreenRefusedBackend: AudioCaptureBackend {
+        let deviceID: AudioObjectID? = 7
+        func start(ring: AudioRingBuffer, events: AudioBackendEvents) -> AudioSourceStatus {
+            var s = AudioSourceStatus(message: "Screen Recording is off", permissionNote: AudioPermissions.screenRecordingNote)
+            s.missingPermission = .screenRecording
+            return s
+        }
+        func stop() {}
+    }
+
     static func stationeryTests(_ t: AppTestRunner) {
         t.suite("App: Audio Stationery visualizers say System Audio Recording is refused") {
             guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
@@ -1091,9 +1103,12 @@ enum AudioSelfTests {
             engine.isCaptureAllowed = true
             engine.stopDelay = 0
             engine.makeBackend = { _ in RefusedBackend() }
+            func file(_ config: String) -> URL { root.appendingPathComponent("Stationery/\(config)/Medium.ini") }
             func load(_ config: String) throws -> Skin {
-                let file = root.appendingPathComponent("Stationery/\(config)/Medium.ini")
-                let skin = Skin(config: "Stationery\\\(config)", fileURL: file, skinsDirectory: root,
+                // The last widget's source goes first (stopDelay 0), so this one starts its own capture.
+                engine.drain()
+                engine.drain()
+                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config), skinsDirectory: root,
                                 system: SystemMonitor.shared, host: host)
                 try skin.load()
                 for case let m as AudioLevelMeasure in skin.measures {
@@ -1104,9 +1119,17 @@ enum AudioSelfTests {
                 }
                 skin.update()   // the parent subscribes
                 engine.drain()
-                // DeviceStatus is read every 15 updates while the widgets move (every 30 for Studio VU's row).
-                for _ in 0..<40 { skin.update() }
+                // MacPermission is read every 15 updates while the widgets move (every 30 for Studio VU's row), and
+                // Studio VU's grace for a capture that does not start takes 4 of its lamp steps.
+                for _ in 0..<80 { skin.update() }
                 return skin
+            }
+            func variable(_ config: String, _ key: String) -> String? {
+                let text = (try? String(contentsOf: file(config), encoding: .utf8)) ?? ""
+                guard let line = text.components(separatedBy: "\n").first(where: { $0.hasPrefix(key + "=") }) else {
+                    return nil
+                }
+                return String(line.dropFirst(key.count + 1))
             }
 
             let spectrum = try load("Spectrum")
@@ -1114,6 +1137,8 @@ enum AudioSelfTests {
             t.equal((spectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow System Audio Recording")
             t.equal(spectrum.meter(named: "MeterBar0")?.hidden, true, "the bars rest")
             t.check(spectrum.issues.contains(AudioCaptureEngine.silenceNote), "and a compatibility note")
+            // (The render host leaves the refresh out; the file shows the tempo the widget chose.)
+            t.equal(variable("Spectrum", "Tempo"), "Rest", "a Notice runs at the Rest tempo")
             spectrum.close()
 
             let studio = try load("StudioVU")
@@ -1123,7 +1148,49 @@ enum AudioSelfTests {
             t.equal(studio.meter(named: "MeterTime")?.hidden, true)
             t.check(studio.meter(named: "MeterTitle")?.toolTipText.contains("System Audio Recording") == true,
                     "its tooltip says where: \(studio.meter(named: "MeterTitle")?.toolTipText ?? "")")
+            t.equal(variable("StudioVU", "StudioFast"), "0", "the needles can't move: the slow tempo")
+            t.equal(variable("StudioVU", "StudioLive"), "1", "the lamps stay as they are")
             studio.close()
+
+            // macOS 13 – 14.1 (the OS check made to match): Screen Recording refused.
+            engine.makeBackend = { _ in ScreenRefusedBackend() }
+            for config in ["Spectrum", "StudioVU"] {
+                var text = try String(contentsOf: file(config), encoding: .utf8)
+                text = text.replacingOccurrences(of: "\nTempo=Rest\n", with: "\nTempo=Live\n")
+                    .replacingOccurrences(of: "\nTempoLive=0\n", with: "\nTempoLive=1\n")
+                    .replacingOccurrences(of: "\nStudioFast=0\n", with: "\nStudioFast=1\n")
+                try text.write(to: file(config), atomically: true, encoding: .utf8)
+            }
+            let audioInc = root.appendingPathComponent("Stationery/@Resources/Spectrum/Audio.inc")
+            for url in [audioInc, file("StudioVU")] {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                t.check(text.contains("IfMatch=^macOS (13|14\\.[01])(\\.|$)"), "\(url.lastPathComponent): the OS check")
+                try text.replacingOccurrences(of: "IfMatch=^macOS (13|14\\.[01])(\\.|$)", with: "IfMatch=^macOS")
+                    .write(to: url, atomically: true, encoding: .utf8)
+            }
+            let oldSpectrum = try load("Spectrum")
+            t.equal((oldSpectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording")
+            t.equal(oldSpectrum.meter(named: "MeterNoticeTitle")?.hidden, false)
+            oldSpectrum.close()
+            let oldStudio = try load("StudioVU")
+            t.equal((oldStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "Studio VU on macOS 13 – 14.1")
+            t.equal((oldStudio.meter(named: "MeterArtist") as? StringMeter)?.text, "Open Privacy Settings")
+            t.check(oldStudio.meter(named: "MeterTitle")?.toolTipText.contains("Screen Recording") == true,
+                    "\(oldStudio.meter(named: "MeterTitle")?.toolTipText ?? "")")
+            oldStudio.close()
+
+            // A capture that does not start, with nothing said about why (macOS 13 – 14.1): after a few seconds the
+            // row asks for Screen Recording too.
+            engine.makeBackend = { _ in
+                let f = FakeBackend()
+                f.running = false
+                return f
+            }
+            let silentStudio = try load("StudioVU")
+            t.equal((silentStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "no capture a few seconds after load")
+            silentStudio.close()
             engine.drain()
             engine.drain()
         }
