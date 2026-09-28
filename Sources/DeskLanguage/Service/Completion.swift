@@ -1470,8 +1470,9 @@ struct DeskCompletionBuilder {
                 }
                 paths.append(path)
             }
-        } else if let resources = snapshot.resources, !prefix.isEmpty {
-            paths = resources.similarPaths(to: prefix)
+        } else if let resources = snapshot.resources {
+            paths = resources.paths(matching: prefix, limit: 100)
+            if paths.isEmpty, !prefix.isEmpty { paths = resources.similarPaths(to: prefix) }
         }
         for path in paths.sorted() {
             add(DeskCompletionTemplate(label: path, kind: .file, detail: L("A picture in the widget's folder", "组件文件夹里的图片"),
@@ -1487,8 +1488,13 @@ struct DeskCompletionBuilder {
                 for family in file.fontFamilies ?? [] { families.append((family, 0)) }
             }
         }
-        if let fonts = snapshot.options.fonts, !prefix.isEmpty {
-            for family in fonts.similarFamilies(to: prefix) { families.append((family, 1)) }
+        if let fonts = snapshot.options.fonts {
+            let listed = fonts.families(matching: prefix, limit: 60)
+            for family in listed { families.append((family, 1)) }
+            // A misspelling, when nothing starts with what is typed.
+            if listed.isEmpty, !prefix.isEmpty {
+                for family in fonts.similarFamilies(to: prefix) { families.append((family, 1)) }
+            }
         }
         for family in ["System", "System Rounded", "System Mono", "System Serif"] { families.append((family, 2)) }
         for (family, near) in families {
@@ -1499,12 +1505,31 @@ struct DeskCompletionBuilder {
     }
 
     private mutating func addSymbols() {
-        guard let symbols = snapshot.options.symbols, !prefix.isEmpty else { return }
-        for name in symbols.similarSymbols(to: prefix) {
+        let symbols = snapshot.options.symbols
+        var names: [(String, Int)] = []
+        let listed = symbols?.symbols(matching: prefix, limit: 60) ?? []
+        names += listed.map { ($0, 0) }
+        // Symbols widgets often show, whatever the Mac lists.
+        names += DeskCompletionBuilder.commonSymbols.filter { symbols?.exists($0) ?? true }.map { ($0, 1) }
+        // A misspelling, when nothing starts with what is typed.
+        if listed.isEmpty, !prefix.isEmpty, let symbols {
+            names += symbols.similarSymbols(to: prefix).map { ($0, 2) }
+        }
+        for (name, near) in names {
             add(DeskCompletionTemplate(label: name, kind: .symbol, detail: L("An SF Symbol", "SF 符号"),
-                                       snippet: DeskSnippet.escapeLiteral(name), plain: name), tier: 1)
+                                       snippet: DeskSnippet.escapeLiteral(name), plain: name, words: name.split(separator: ".").map(String.init)),
+                tier: 1, nearness: near)
         }
     }
+
+    /// SF Symbols a widget often shows, offered before the Mac's full list.
+    static let commonSymbols = [
+        "cpu", "memorychip", "internaldrive", "wifi", "network", "battery.100", "bolt.fill", "thermometer.medium",
+        "fanblades", "clock", "calendar", "alarm", "sun.max.fill", "cloud.sun.fill", "cloud.rain.fill", "cloud.fill",
+        "moon.fill", "snowflake", "wind", "drop.fill", "music.note", "play.fill", "pause.fill", "forward.fill",
+        "backward.fill", "speaker.wave.2.fill", "heart.fill", "star.fill", "bell.fill", "gearshape", "house.fill",
+        "arrow.up", "arrow.down", "chevron.left", "chevron.right", "checkmark.circle.fill", "xmark.circle.fill",
+    ]
 
     /// Texts of the file not yet translated in the language block.
     private mutating func addTranslationKeys() {

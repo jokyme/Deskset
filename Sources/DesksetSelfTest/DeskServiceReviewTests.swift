@@ -41,6 +41,28 @@ private func deskReviewActionsDump(_ text: String) {
     }
 }
 
+/// A Mac's symbols and fonts that can be listed by prefix, as the Studio's index lists them.
+private struct DeskReviewSymbols: SymbolValidating {
+    let all = ["cloud.sun.fill", "cloud.rain.fill", "wifi", "wifi.slash", "sun.max.fill", "cpu"]
+    func exists(_ symbol: String) -> Bool { all.contains(symbol) }
+    func minimumMacOS(of symbol: String) -> Int? { nil }
+    func similarSymbols(to symbol: String) -> [String] { all.filter { DidYouMean.distance($0, symbol) <= 2 } }
+    func symbols(matching prefix: String, limit: Int) -> [String] {
+        Array(all.filter { name in prefix.isEmpty || name.hasPrefix(prefix) || name.split(separator: ".").contains { $0.hasPrefix(prefix) } }
+            .prefix(limit))
+    }
+}
+
+private struct DeskReviewFonts: FontCataloging {
+    let installed = ["Helvetica", "Helvetica Neue", "Futura", "Menlo"]
+    func isInstalled(family: String) -> Bool { installed.contains(family) }
+    func macSubstitute(forWindowsFamily family: String) -> String? { nil }
+    func similarFamilies(to family: String) -> [String] { installed.filter { DidYouMean.distance($0, family) <= 2 } }
+    func families(matching prefix: String, limit: Int) -> [String] {
+        Array(installed.filter { prefix.isEmpty || $0.lowercased().hasPrefix(prefix.lowercased()) }.prefix(limit))
+    }
+}
+
 func runDeskServiceReviewTests(_ t: TestRunner) {
     if let text = ProcessInfo.processInfo.environment["DESK_ACTIONS_DUMP"] {
         deskReviewActionsDump(text.replacingOccurrences(of: "\\n", with: "\n"))
@@ -524,5 +546,31 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         t.equal(Set(swiftUI).count, swiftUI.count, "no title twice")
         t.check(titles("Text(\"CPU\").font-size(14)").contains("Remove `-size(14)`"))
         t.check(titles("VStack { Text(\"a\") }", .simplifiedChinese).contains("改成 `Column`"))
+    }
+
+    t.suite("Desk: service — symbols, fonts and pictures are listed by what is typed, not by misspelling") {
+        var options = DeskServiceOptions()
+        options.symbols = DeskReviewSymbols()
+        options.fonts = DeskReviewFonts()
+        func labels(_ marked: String) -> [String] { deskCompletions(marked, options: options).1.labels }
+        let empty = labels("widget {\n    Icon(\"|\")\n}\n")
+        t.check(empty.contains("cloud.sun.fill") && empty.contains("wifi"), "\(empty.prefix(8))")
+        let clo = labels("widget {\n    Icon(\"clo|\")\n}\n")
+        t.check(clo.contains("cloud.sun.fill") && clo.contains("cloud.rain.fill"), "\(clo)")
+        t.check(labels("widget {\n    Icon(\"sun|\")\n}\n").contains("cloud.sun.fill"), "a part of the name")
+        t.check(labels("widget {\n    Icon(\"wfi|\")\n}\n").contains("wifi"), "a misspelling when nothing starts so")
+        let hel = labels("widget {\n    Text(\"a\").font(\"Hel|\")\n}\n")
+        t.check(hel.contains("Helvetica Neue") && hel.contains("Helvetica"), "\(hel)")
+        // Without a list, the usual symbols still come.
+        let plain = deskCompletions("widget {\n    Icon(\"|\")\n}\n").1.labels
+        t.check(plain.contains("wifi"), "\(plain.prefix(8))")
+        // The folder's pictures by prefix, when the service has only its resources.
+        let service = DeskLanguageService(openFile: DeskFileID("W.desk"),
+                                          files: [DeskFileID("W.desk"): "widget {\n    Image(\"im\")\n}\n"],
+                                          resources: PackageResources(package: deskHarbor()))
+        let snapshot = service.snapshot
+        let at = (snapshot.text as NSString).range(of: "\"im").location + 3
+        let pictures = snapshot.completions(at: snapshot.index.position(utf16: at)).labels
+        t.check(pictures.contains("images/waves.png"), "\(pictures)")
     }
 }

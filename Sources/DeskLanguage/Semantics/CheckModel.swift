@@ -21,6 +21,13 @@ public protocol ResourceResolving: Sendable {
     func kind(of relativePath: String) -> ResourceKind?
     /// Files whose names are close (DK4029's suggestion).
     func similarPaths(to relativePath: String) -> [String]
+    /// Pictures whose path or name starts with `prefix` (every picture for an empty one), at most `limit`, for
+    /// completion. The default lists none.
+    func paths(matching prefix: String, limit: Int) -> [String]
+}
+
+extension ResourceResolving {
+    public func paths(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// The fonts of this Mac. Without it, font checks are skipped.
@@ -29,6 +36,13 @@ public protocol FontCataloging: Sendable {
     /// The Mac font a Windows family is shown with (DK4033), or nil when it is not a Windows font.
     func macSubstitute(forWindowsFamily family: String) -> String?
     func similarFamilies(to family: String) -> [String]
+    /// Families whose name, or a word of it, starts with `prefix`, best first, at most `limit`, for completion (an
+    /// empty prefix: the usual ones). Not the misspelling suggestion (`similarFamilies`). The default lists none.
+    func families(matching prefix: String, limit: Int) -> [String]
+}
+
+extension FontCataloging {
+    public func families(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// SF Symbol names. Without it, symbol checks are skipped.
@@ -36,6 +50,13 @@ public protocol SymbolValidating: Sendable {
     func exists(_ symbol: String) -> Bool
     func minimumMacOS(of symbol: String) -> Int?
     func similarSymbols(to symbol: String) -> [String]
+    /// Symbol names that start with `prefix`, or have a part (between dots) that does, best first, at most `limit`,
+    /// for completion. Not the misspelling suggestion (`similarSymbols`). The default lists none.
+    func symbols(matching prefix: String, limit: Int) -> [String]
+}
+
+extension SymbolValidating {
+    public func symbols(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// A font as the layout pass measures it.

@@ -53,6 +53,23 @@ public struct PackageResources: ResourceResolving {
         return parts.joined(separator: "/")
     }
 
+    /// The folder's pictures below `base` whose path or file name starts with `prefix`, in path order.
+    public func paths(matching prefix: String, limit: Int) -> [String] {
+        let lead = base.isEmpty ? "" : base + "/"
+        let folded = DeskPackagePath.foldedKey(prefix)
+        var out: [String] = []
+        for path in candidates.sorted() where path.hasPrefix(lead) {
+            let relative = String(path.dropFirst(lead.count))
+            guard byPath[DeskPackagePath.foldedKey(path)]?.kind == .image else { continue }
+            let name = (relative as NSString).lastPathComponent
+            if folded.isEmpty || DeskPackagePath.foldedKey(relative).hasPrefix(folded) || DeskPackagePath.foldedKey(name).hasPrefix(folded) {
+                out.append(relative)
+                if out.count >= limit { break }
+            }
+        }
+        return out
+    }
+
     public func kind(of relativePath: String) -> ResourceKind? {
         if let file = file(for: relativePath) {
             switch file.kind {
