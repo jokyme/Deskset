@@ -479,6 +479,14 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 常见写法如 `(?siU)<tag>(.*)</tag>` 行为相同；冷门的 PCRE 特性可能无法匹配。
 - **状态：** 完全一致（常见写法）/ 部分支持（冷门 PCRE 特性）
 
+#### 运行 Windows 程序
+- **Windows：** `["Program.exe"]` 和 `!Execute ["…"]` 会运行程序、脚本或快捷方式，常常是皮肤自带的。
+- **Mac：** 网址、文件、文件夹和 Mac App 照常打开；Windows 程序、脚本或快捷方式（`.exe`、`.bat`、`.cmd`、`.lnk`、`.vbs`、
+  `.ps1` 等）不会打开，即使文件存在，皮肤日志里会说明。
+- **原因：** macOS 运行不了它们；交给访达只会弹出“macOS 不支持 Microsoft Windows 应用程序”的提示。
+- **对皮肤的影响：** 皮肤自带的小工具（语音、设置程序）不起作用；同一动作里的其他部分照常执行。
+- **状态：** 不支持
+
 #### 更新间隔与 Counter
 - **Windows：** `Update` 最小 16 ms，-1 表示只更新一次；Calc 的 `Counter` 只有在皮肤卸载后才重置。
 - **Mac：** 相同。

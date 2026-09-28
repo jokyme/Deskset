@@ -481,6 +481,19 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; exotic PCRE features may not match.
 - Status: identical (common cases) / partial (exotic PCRE)
 
+### Running Windows programs
+- Windows (Rainmeter): `["Program.exe" "arguments"]` and `!Execute ["…"]` run a program, script or shortcut, often one
+  that ships with the skin (`#CURRENTPATH#Tool.exe`, a `.bat` file, a `.lnk` shortcut).
+- Mac (Deskset): URLs, files, folders and Mac apps open as on Windows (a Mac app gets the files and URLs among the
+  arguments). A Windows program, script or shortcut (`.exe`, `.com`, `.bat`, `.cmd`, `.scr`, `.pif`, `.msi`, `.vbs`,
+  `.vbe`, `.js`, `.jse`, `.wsf`, `.wsh`, `.ps1`, `.lnk`, `.ahk`) is not opened, even when the file exists; the skin's
+  log says "Cannot run … (Windows programs are not supported)".
+- Why: macOS cannot run them, and handing one to Finder only brings up its "macOS doesn't support Microsoft Windows
+  applications" alert, at whatever moment the skin runs the action.
+- Skin impact: tools that come with a skin (voice lines, configuration programs) do nothing; the rest of the action
+  runs.
+- Status: not supported
+
 ### Update interval and Counter
 - Windows (Rainmeter): `Update` minimum 16 ms, -1 = once; the Calc `Counter` "only resets when the skin is unloaded
   and then loaded again - not when the skin is refreshed".
