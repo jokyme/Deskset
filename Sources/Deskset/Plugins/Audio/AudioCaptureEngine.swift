@@ -243,8 +243,8 @@ protocol AudioLevelEngine: AnyObject {
     func unsubscribe(_ analyzer: AudioAnalyzer)
     /// Latest status of a source.
     func status(for key: AudioSourceKey) -> AudioSourceStatus
-    /// True when subscribing captures nothing (no permission asked, no recording indicator): a skin outside a skin
-    /// window may subscribe.
+    /// True when subscribing captures nothing at all (levels given as data): a skin outside a skin window may
+    /// subscribe without asking `AudioPlugins.mayCapture(for:)`.
     var capturesNothing: Bool { get }
 }
 
@@ -285,8 +285,9 @@ final class AudioCaptureEngine: AudioLevelEngine {
     /// Without new frames for this long the analyzers decay towards silence.
     static let silenceTimeout: TimeInterval = 0.1
 
-    /// The demo signal captures nothing (`DESKSET_AUDIO_DEMO`).
-    var capturesNothing: Bool { AudioCaptureEngine.demoSignal }
+    /// The engine captures (whether a skin may use it, demo signal or not, is `AudioPlugins.mayCapture(for:)`'s
+    /// question).
+    var capturesNothing: Bool { false }
 
     /// Creates the backend for a source (replaced in tests).
     var makeBackend: (AudioSourceKey) -> AudioCaptureBackend? = AudioCaptureEngine.defaultBackend
