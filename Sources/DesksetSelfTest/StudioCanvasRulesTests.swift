@@ -138,6 +138,20 @@ func runStudioEverySettingTests(_ t: TestRunner) {
         for key in ["measurename", "text", "fontsize", "fontcolor", "x", "y", "solidcolor", "padding", "leftmouseupaction"] {
             t.check(keys.contains(key), "\(key) is on the page")
         }
+        // §4.10: content, text, size and position (rotation too), box, pointer and clicks, spoken; the engine's own
+        // settings last, in More. No "Look": that is the suite's Auto · Light · Dark · Clear.
+        func section(of key: String) -> StudioEverySetting.Section? {
+            groups.first { $0.rows.contains { $0.key.caseInsensitiveCompare(key) == .orderedSame } }?.section
+        }
+        t.equal(section(of: "Angle"), .layout, "rotation is size and position")
+        for key in ["UpdateDivider", "DynamicVariables", "Group", "MeterStyle", "TrailingSpaces"] {
+            t.equal(section(of: key), .more, "\(key) is in More")
+        }
+        t.equal(sections.last, .more)
+        t.equal(section(of: "SolidColor"), .box)
+        let style = groups.flatMap(\.rows).first { $0.key == "MeterStyle" }
+        t.equal(style?.item.field.label(chinese: false), "Shared Style")
+        t.equal(style?.item.field.label(chinese: true), "共用样式")
         let size = groups.flatMap(\.rows).first { $0.key == "FontSize" }
         t.equal(size?.written, "20")
         t.equal(size?.isSet, true)

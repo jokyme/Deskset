@@ -682,9 +682,12 @@ extension StudioPartPage {
         }
         if filter.isEmpty {
             let spoken = "“\(partTitle(m, skin: skin))\(nowValue(m).map { ", \($0)" } ?? "")”"
-            page.sections.append(StudioPage.Section(id: "every.spoken", title: Self.everyTitle(.spoken), items: [
+            // Before the engine's own settings, which come last.
+            let at = page.sections.firstIndex { $0.id == "every.\(StudioEverySetting.Section.more.rawValue)" }
+                ?? page.sections.count
+            page.sections.insert(StudioPage.Section(id: "every.spoken", title: Self.everyTitle(.spoken), items: [
                 .init(id: "every.voiceover", kind: .dense(.init(label: StudioText[.voiceOver], control: .text(spoken)))),
-            ], dense: true))
+            ], dense: true), at: at)
         }
         page.footer = [StudioPage.Link(id: "show-in-code", title: StudioText[.showInCode], detail: "⌥⌘↩",
                                        symbol: "chevron.left.forwardslash.chevron.right")]

@@ -271,6 +271,9 @@ public enum StudioCatalog {
               aliases: ["inline", "highlight", "局部", "突出"]),
         Field("InlinePattern", .text, "Which Words", "哪些字", .text, aliases: ["pattern", "匹配"]),
         Field("AntiAlias", .text, "Smooth Edges", "平滑边缘", .toggle, aliases: ["antialias", "smooth", "平滑"]),
+        // A MeterStyle is a shared style: "Look" is the suite's Auto · Light · Dark · Clear (§3.3).
+        Field("MeterStyle", .text, "Shared Style", "共用样式", .text,
+              aliases: ["style", "meter style", "shared style", "样式", "共用样式"]),
 
         // Its look.
         Field("BarColor", .look, "Fill", "填充色", .color, level: .essential,

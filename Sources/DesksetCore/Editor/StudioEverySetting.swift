@@ -1,32 +1,45 @@
 import Foundation
 
 /// Every Setting: every option a part (or a data item) can take, in one dense page in the order of the box — what it
-/// shows, its text, its look, its size and place, the box itself, the pointer and clicks, what VoiceOver says — with a
+/// shows, its text, its size and place, the box itself, the pointer and clicks, what VoiceOver says, then the engine's
+/// own settings — with a
 /// filter that answers to the same words as the search (`StudioAliasIndex`): typing a Rainmeter name ("FontColor")
 /// keeps the row it maps to, and the row says which word found it.
 public enum StudioEverySetting {
-    /// The page's sections, in the order of the box.
+    /// The page's sections, in the order of the box (§4.10: content, text, size and position, box, pointer and
+    /// clicks, spoken), then the settings only the engine has a use for.
     public enum Section: String, CaseIterable, Equatable {
-        case content, text, look, layout, box, pointer, spoken
+        case content, text, layout, box, pointer, spoken, more
 
         public var title: (en: String, zh: String) {
             switch self {
             case .content: return ("Content", "内容")
             case .text: return ("Text", "文字")
-            case .look: return ("Look", "外观")
             case .layout: return ("Size and position", "大小和位置")
             case .box: return ("Box", "盒子")
             case .pointer: return ("Pointer and clicks", "指针和点按")
             case .spoken: return ("Spoken", "朗读")
+            case .more: return ("More", "更多")
             }
         }
 
-        /// Where a catalog section goes on this page (the pointer and the clicks are one section).
-        public init(_ s: StudioCatalog.Section) {
+        /// Settings of the engine rather than of what the part looks like (how often it is drawn again, live values,
+        /// group names, its shared style, a custom transform, spaces at the ends of its text): the last section.
+        static let engineKeys: Set<String> = ["updatedivider", "dynamicvariables", "group", "meterstyle",
+                                              "transformationmatrix", "onupdateaction", "trailingspaces"]
+        /// A part's rotation, which is where it is on the page.
+        static let rotationKeys: Set<String> = ["angle", "imagerotate"]
+
+        /// Where a catalog entry goes on this page: what the part draws is its content, the pointer and the clicks
+        /// are one section, rotation is size and position, glass is the box's; the engine's own settings go last.
+        public init(_ s: StudioCatalog.Section, key: String = "") {
+            let k = key.lowercased()
+            if Self.engineKeys.contains(k) { self = .more; return }
+            if Self.rotationKeys.contains(k) { self = .layout; return }
+            if k.hasPrefix("macglass") { self = .box; return }
             switch s {
-            case .shows: self = .content
+            case .shows, .look: self = .content
             case .text: self = .text
-            case .look: self = .look
             case .layout: self = .layout
             case .clicks, .pointer: self = .pointer
             case .box: self = .box
@@ -98,7 +111,7 @@ public enum StudioEverySetting {
             let written = values(p.key) ?? p.legacyKeys.lazy.compactMap(values).first
             let value = (written?.isEmpty == false ? written : nil)
                 ?? EditorSchema.defaultValue(of: p, in: schema, values: values)
-            let section = measure ? Section.content : Section(item.field.section)
+            let section = measure ? Section.content : Section(item.field.section, key: item.field.key)
             bySection[section, default: []].append(Row(item: item, written: written, value: value, via: via))
         }
         return Section.allCases.compactMap { s in bySection[s].map { Group(section: s, rows: $0) } }

@@ -588,6 +588,6 @@ final class StudioPartPage {
     /// Every Setting's section of an option (for a confirmation under its row).
     func everySection(_ key: String) -> String {
         guard let f = StudioCatalog.field(key) else { return "every" }
-        return "every." + StudioEverySetting.Section(f.section).rawValue
+        return "every." + StudioEverySetting.Section(f.section, key: f.key).rawValue
     }
 }

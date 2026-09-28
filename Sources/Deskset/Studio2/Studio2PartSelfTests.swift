@@ -397,9 +397,17 @@ enum Studio2PartSelfTests {
             t.check(page.id.hasPrefix("every:"), page.id)
             t.equal(page.sections.first?.id, "every.content", "in the order of the box")
             let order = page.sections.map(\.id)
-            let expected = ["every.content", "every.text", "every.look", "every.layout", "every.box", "every.pointer",
-                            "every.spoken"].filter { order.contains($0) }
+            let expected = ["every.content", "every.text", "every.layout", "every.box", "every.pointer",
+                            "every.spoken", "every.more"].filter { order.contains($0) }
             t.equal(order, expected)
+            t.check(!order.contains("every.look"), "no Look section: that word is the suite's looks")
+            t.equal(order.last, "every.more", "the engine's own settings last")
+            if let text = page.section("every.text"), let layout = page.section("every.layout"),
+               let box = page.section("every.box") {
+                t.check(order.firstIndex(of: layout.id)! == order.firstIndex(of: text.id)! + 1,
+                        "size and position right after the text")
+                t.check(order.firstIndex(of: box.id)! > order.firstIndex(of: layout.id)!)
+            }
             t.check(page.item("every.box") != nil, "the box diagram")
             t.equal(page.filter?.placeholder, "Filter these settings")
             // Filtering by a Rainmeter name keeps the row it maps to, and says so.
