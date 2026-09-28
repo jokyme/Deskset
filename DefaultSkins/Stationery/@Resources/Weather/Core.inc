@@ -16,7 +16,8 @@ Location=#Location#
 ; Auto is not a unit: MacWeather then follows the Mac's own setting
 TemperatureUnit=#TempUnit#
 FormatLocale=#Locale#
-; the roles of palette symbols, inherited by every child (read once Deskset has palette symbols; ignored until then)
+; the colours of the weather symbols' layers (Type=SymbolPalette), inherited by every child: clouds (and moons, snow
+; and lightning) in the secondary ink, the sun yellow, rain in the rain colour; all white ink in Clear
 PaletteInk=#SecondaryTextColor#
 PaletteSun=#SunColor#
 PaletteRain=#PrecipitationTextColor#
@@ -53,6 +54,14 @@ Measure=Plugin
 Plugin=MacWeather
 Parent=MeasureWx
 Type=Symbol
+Group=Weather
+
+[MeasureWxPalette]
+; the colours of that symbol's layers for MacSymbolColors ("0,0,0,153|255,204,0" for a sun behind a cloud in Light)
+Measure=Plugin
+Plugin=MacWeather
+Parent=MeasureWx
+Type=SymbolPalette
 Group=Weather
 
 [MeasureWxHigh]
