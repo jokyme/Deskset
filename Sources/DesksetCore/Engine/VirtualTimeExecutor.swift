@@ -15,9 +15,13 @@ import Foundation
 /// - Work runs only inside `advance(by:)` / `runUntilIdle()`, never when it is handed over: `async` is due now and runs
 ///   at the next `runUntilIdle()`; so is a hop back from background work (`SkinHop.post`), in the order it was posted.
 /// - `async(after: d)` is due at now + max(d, 0).
-/// - `timer(interval: i, …)` fires first at now + i and then, when it repeats, every i after the time it was due; the
-///   leeway is ignored; once cancelled it is not queued again. A repeating interval below 0.1 ms is 0.1 ms, as for a
-///   Foundation timer.
+/// - `timer(interval: i, …)` fires first at now + i and then, when it repeats, every i: its k-th firing is due at the
+///   time it was made + k × i (computed afresh for each k, so the due times do not drift by adding up rounding
+///   errors); the leeway is ignored; once cancelled it is not queued again. A repeating interval below 0.1 ms is
+///   0.1 ms, as for a Foundation timer.
+/// - Due times and the times steps move to lie on a grid of nanoseconds (`onGrid`): a timer's 3rd firing at 0.1-second
+///   intervals and an update computed as 3 × 100 ms / 1000 are then the same moment (0.3), not 0.30000000000000004
+///   and 0.3, and work due at the moment a step moves to runs in that step.
 /// - `advance(by: d)` runs, in order, the work due at or before now + d, setting virtual time to each item's due time
 ///   before the item runs (the clock the skins read follows); work queued meanwhile that falls due within that range
 ///   runs too. Virtual time then stands at now + d.
@@ -153,11 +157,20 @@ public final class VirtualTimeExecutor: SkinExecutor, @unchecked Sendable {
     /// A repeating timer's shortest interval (Foundation's, for an interval of 0 or less).
     static let minimumRepeatInterval: TimeInterval = 0.0001
 
+    /// `t` rounded to a whole number of nanoseconds (below a million seconds, where a nanosecond is still finer than
+    /// a double can tell apart; later times, and times that are not finite, as they are). See the rules above.
+    static func onGrid(_ t: TimeInterval) -> TimeInterval {
+        guard t.isFinite, abs(t) < 1e6 else { return t }
+        return (t * 1e9).rounded() / 1e9
+    }
+
     private func schedule(after delay: TimeInterval, _ work: SkinScheduledWork, repeating: TimeInterval?) {
         let d = delay.isNaN ? 0 : max(delay, 0)
         lock.lock()
         sequence &+= 1
-        queue.push(VirtualWorkItem(due: elapsed + d, sequence: sequence, work: work, interval: repeating))
+        let origin = elapsed
+        queue.push(VirtualWorkItem(due: VirtualTimeExecutor.onGrid(origin + d), sequence: sequence, work: work,
+                                   interval: repeating, origin: origin, tick: 1))
         lock.unlock()
     }
 
@@ -175,7 +188,7 @@ public final class VirtualTimeExecutor: SkinExecutor, @unchecked Sendable {
     public func advance(by seconds: TimeInterval) -> Int {
         let d = seconds.isFinite ? max(seconds, 0) : 0
         lock.lock()
-        let target = elapsed + d
+        let target = VirtualTimeExecutor.onGrid(elapsed + d)
         lock.unlock()
         return run(through: target)
     }
@@ -186,7 +199,7 @@ public final class VirtualTimeExecutor: SkinExecutor, @unchecked Sendable {
     @discardableResult
     public func advance(until time: TimeInterval) -> Int {
         guard time.isFinite else { return 0 }
-        return run(through: time)
+        return run(through: VirtualTimeExecutor.onGrid(time))
     }
 
     /// The due time of the next piece of work still pending (nil: none).
@@ -237,12 +250,14 @@ public final class VirtualTimeExecutor: SkinExecutor, @unchecked Sendable {
             guard item.work.isPending else { continue }
             count += 1
             item.work.fire()
-            // A repeating timer that is still firing is due again one interval after the time it was due.
+            // A repeating timer that is still firing: its next firing, k + 1 intervals after the time it was made.
             if let interval = item.interval, item.work.isPending {
                 lock.lock()
                 sequence &+= 1
-                queue.push(VirtualWorkItem(due: item.due + interval, sequence: sequence, work: item.work,
-                                           interval: interval))
+                let tick = item.tick + 1
+                queue.push(VirtualWorkItem(due: VirtualTimeExecutor.onGrid(item.origin + Double(tick) * interval),
+                                           sequence: sequence, work: item.work, interval: interval,
+                                           origin: item.origin, tick: tick))
                 lock.unlock()
             }
         }
@@ -258,6 +273,10 @@ struct VirtualWorkItem {
     let work: SkinScheduledWork
     /// A repeating timer's interval.
     let interval: TimeInterval?
+    /// When the work was handed over (a repeating timer's k-th firing is due at `origin` + k × `interval`).
+    let origin: TimeInterval
+    /// Which firing this is (1 for the first).
+    let tick: Int
 
     func precedes(_ other: VirtualWorkItem) -> Bool {
         due != other.due ? due < other.due : sequence < other.sequence

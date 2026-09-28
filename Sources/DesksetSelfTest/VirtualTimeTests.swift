@@ -266,6 +266,36 @@ private func runVirtualQueueTests(_ t: TestRunner) {
         zero.cancel()
     }
 
+    t.suite("Executor: virtual time — a 0.1 s timer's k-th firing and an update at k × 100 ms / 1000 are one moment") {
+        // Added up, 0.1 + 0.1 + 0.1 is 0.30000000000000004: the timer's 3rd firing would come after an update at
+        // exactly 0.3 (how --render computes update i: Double(i) * interval / 1000), and the two ways of driving a skin
+        // would order the same work differently. Due times are k intervals from the start, on a nanosecond grid.
+        let v = virtualExecutor()
+        var log: [String] = []
+        var ticks = 0
+        let timer = v.timer(interval: 0.1, leeway: 0, repeats: true) {
+            ticks += 1
+            log.append("tick \(ticks)")
+        }
+        for i in 1...10 {
+            v.advance(until: Double(i) * 100 / 1000)
+            log.append("update \(i)")
+        }
+        t.equal(log, (1...10).flatMap { ["tick \($0)", "update \($0)"] }, "each tick before the update at its moment")
+        t.equal(v.now, 1, "time stands at exactly 1 s")
+        // Many firings later there is no drift: the 1000th is at exactly 100 s, the time of update 1000.
+        v.advance(until: 99.95)
+        t.equal(ticks, 999)
+        v.advance(until: 1000 * 100 / 1000)
+        t.equal(ticks, 1000, "the 1000th firing is due at 100 s, not 99.9999999999986 or 100.00000000000142")
+        timer.cancel()
+
+        t.equal(VirtualTimeExecutor.onGrid(0.1 + 0.1 + 0.1), 0.3)
+        t.equal(VirtualTimeExecutor.onGrid(0.3), 0.3, "on the grid already")
+        t.equal(VirtualTimeExecutor.onGrid(2e6 + 0.1), 2e6 + 0.1, "far times as they are")
+        t.check(VirtualTimeExecutor.onGrid(.infinity) == .infinity)
+    }
+
     t.suite("Executor: virtual time — advance runs in (due, submission) order, setting the time before each") {
         let v = virtualExecutor()
         var log: [String] = []
