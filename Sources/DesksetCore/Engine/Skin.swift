@@ -1422,6 +1422,14 @@ public final class Skin {
         }
     }
 
+    /// The host's facts changed between two pieces of work (the window moved, as the main thread reports it): the next
+    /// read asks the host again, also outside an update or action (a reader with exclusive access, which is no piece of
+    /// work). Within a piece of work the facts it read stay, as ever.
+    public func hostFactsChanged() {
+        assertOwned()
+        if workDepth == 0 { environmentValid = false }
+    }
+
     /// Host facts, fetched at most once per update / top-level action.
     func currentEnvironment() -> SkinEnvironment {
         if !environmentValid {

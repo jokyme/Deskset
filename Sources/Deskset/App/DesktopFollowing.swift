@@ -15,6 +15,9 @@ final class SessionFollowing {
     fileprivate(set) var pendingFiles: [SourceFileID] = []
     fileprivate(set) var pendingPlace: WidgetPosition?
     fileprivate(set) var isPending = false
+    /// Patches sent to the desktop copy whose answer has not come back yet: a copy on the engine thread answers on a
+    /// later turn (with the main executor, inside the send).
+    fileprivate(set) var patchesInFlight = 0
     fileprivate var timer: Timer?
     /// Patches the desktop copy took, and the ones it had to load again for instead (for the self-tests).
     fileprivate(set) var desktopPatches = 0
@@ -86,6 +89,10 @@ extension EditingSession {
     /// Whether a patch of the desktop copy waits for its turn.
     var hasPendingDesktopPatch: Bool { follow.isPending }
 
+    /// Whether a patch was sent to the desktop copy and its answer has not come back yet (it may still say the copy must
+    /// load again).
+    var isDesktopPatchInFlight: Bool { follow.patchesInFlight > 0 }
+
     /// Patches the desktop copy has taken, and the ones it loaded again for instead.
     var desktopPatchCounts: (applied: Int, refused: Int) { (follow.desktopPatches, follow.desktopPatchesRefused) }
 
@@ -105,6 +112,7 @@ extension EditingSession {
         // The window that moves after the patch: this copy's (a copy that replaced it meanwhile loaded the files).
         weak var target = c
         // Inline with the main executor (the answer too); a copy on the engine thread answers on a later turn.
+        follow.patchesInFlight += 1
         c.runtime.send(.patch(snapshot) { [weak self] result, elapsed in
             let done: () -> Void = { self?.desktopTookPatch(result, elapsed: elapsed, place: place, target: target) }
             if Thread.isMainThread { done() } else { DispatchQueue.main.async(execute: done) }
@@ -114,6 +122,7 @@ extension EditingSession {
     /// The desktop copy took the patch (`result`), or says it must load again for it.
     private func desktopTookPatch(_ result: SkinPatchResult, elapsed: Double, place: WidgetPosition?,
                                   target: SkinController?) {
+        follow.patchesInFlight -= 1
         noteDesktopTiming(elapsed)
         switch result {
         case .needsReload(let reason):

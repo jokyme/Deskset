@@ -231,6 +231,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         case .windowFacts(let facts):
             model.take(facts)
             frames.take(model.facts)
+            skin.hostFactsChanged()
             return true
         case .patch(let sources, let done):
             // Answered whatever happens: the Studio waits for it to move the window or load the widget again.

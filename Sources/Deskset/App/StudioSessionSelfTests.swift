@@ -930,11 +930,13 @@ extension StudioSessionSelfTests {
             return c.runtime.exclusive(timeout: 30, body)
         }
 
-        /// Waits until the reload the session asked for has ended and the copy on the desktop has started.
+        /// Waits until the desktop copy has followed the last step — its patch answered (a refused one reloads it) and
+        /// the reload the session asked for ended — and the copy on the desktop has started.
         @discardableResult
         func settle() -> Bool {
             let done = AppSelfTest.spin(timeout: 30) { [self] in
-                guard let session, !session.isAwaitingOwnReload, let c = desktop else { return false }
+                guard let session, !session.hasPendingDesktopPatch, !session.isDesktopPatchInFlight,
+                      !session.isAwaitingOwnReload, let c = desktop else { return false }
                 return c.isStarted
             }
             if let c = desktop { note(c) }
