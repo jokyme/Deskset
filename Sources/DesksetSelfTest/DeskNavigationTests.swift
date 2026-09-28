@@ -997,6 +997,47 @@ func runDeskNavigationSweep(_ t: TestRunner) {
         print("    \(positions) positions and \(renames) renames swept")
     }
 
+    t.suite("Desk: service — navigation latency") {
+        #if DEBUG
+        let build = "debug"
+        let factor = 10.0
+        #else
+        let build = "release"
+        let factor = 1.0
+        #endif
+        func best(_ runs: Int, _ body: () -> Void) -> Double {
+            var fastest = Double.infinity
+            for _ in 0..<runs {
+                let start = ProcessInfo.processInfo.systemUptime
+                body()
+                fastest = min(fastest, ProcessInfo.processInfo.systemUptime - start)
+            }
+            return fastest * 1000
+        }
+        for lines in [300, 2_000] {
+            let text = deskLargeWidget(lines: lines)
+            let service = deskNavService(text, file: "Large.desk")
+            let page = deskNavPosition(service.snapshot, "page + 1")
+            // A new snapshot of the same check starts with empty caches: the first request builds the index.
+            var snapshot = service.snapshot
+            let first = best(3) {
+                snapshot = service.setMessageLanguage(.english)
+                _ = snapshot.definition(at: page)
+            }
+            let references = best(3) { _ = snapshot.references(at: page) }
+            let highlights = best(3) { _ = snapshot.documentHighlights(at: page) }
+            let element = best(3) { _ = snapshot.elementAt(page) }
+            let rename = best(3) { _ = snapshot.rename(at: page, to: "pageNumber") }
+            let outline = best(3) { _ = service.setMessageLanguage(.english).documentSymbols() }
+            let folding = best(3) { _ = service.setMessageLanguage(.english).foldingRanges() }
+            print(String(format: "    Desk navigation, %@ build, %d lines: first request (index) %.1f ms; references %.2f ms; "
+                         + "highlights %.2f ms; element %.2f ms; rename %.1f ms; outline %.1f ms; folding %.1f ms",
+                         build as NSString, lines, first, references, highlights, element, rename, outline, folding))
+            let bound = (lines == 300 ? 100.0 : 400.0) * factor
+            t.check(first < bound && rename < bound * 2 && outline < bound, "navigation of \(lines) lines is usable")
+        }
+    }
+
     t.suite("Desk: service — navigation on a small stack") {
         // Deep nesting and long chains, asked on a thread with a background queue's 512 KiB of stack.
         let deep = "widget {\n" + String(repeating: "Column {\n", count: 3_000) + "Text(\"A\")\n" + String(repeating: "}\n", count: 3_000) + "}\n"
