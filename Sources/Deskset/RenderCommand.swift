@@ -300,10 +300,19 @@ enum RenderCommand {
         var inputs: RenderData?
         if let argument = o.data {
             do {
-                let data = try SkinInputData.load(argument, directory: URL(fileURLWithPath:
-                    FileManager.default.currentDirectoryPath))
+                let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                let data = try SkinInputData.load(argument, directory: directory)
                 for key in data.unknownKeys { fputs("warning: --data: \(key) is not a data key; ignored\n", stderr) }
                 inputs = RenderData(data)
+                // The data's own folder (a file's), and the folder of the desktop picture it gives.
+                let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.hasPrefix("{") {
+                    inputs?.folders.append(URL(fileURLWithPath: text, relativeTo: directory).standardizedFileURL
+                        .deletingLastPathComponent())
+                }
+                if let picture = data.desktopImage?.value {
+                    inputs?.folders.append(URL(fileURLWithPath: picture).deletingLastPathComponent())
+                }
             } catch {
                 fputs("error: --data: \(error)\n", stderr)
                 return 1
@@ -325,6 +334,10 @@ enum RenderCommand {
         defer { restoreServices() }
         if let virtual {
             skin.runInVirtualTime(virtual)
+            // Fixtures read the skin's own tree, and the files the render brings along: its settings folder and the
+            // data's (anything else a skin lists or reads — a Downloads folder — is the user's, and is reported).
+            virtual.background.allowFixtureReads(under: URL(fileURLWithPath: SkinController.settingsPath))
+            for folder in inputs?.folders ?? [] { virtual.background.allowFixtureReads(under: folder) }
             // The weather service installed above is the preview (no network, place lookups at once): a fake service.
             virtual.background.setFake(.service, for: .weather)
             virtual.background.setFake(.service, for: .sun)

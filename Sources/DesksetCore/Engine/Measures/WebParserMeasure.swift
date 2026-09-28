@@ -383,7 +383,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         let page = BackgroundJob(.webParserPage, subject: target.displayString, start: { deliver in
             handle = WebParserNetwork.shared.start(request) { deliver(process($0)) }
         }, inline: WebParserNetwork.readAtOnce(request).map { read in { process(read()) } },
-           scripted: { process(WebParserNetwork.scripted($0)) })
+           scripted: { process(WebParserNetwork.scripted($0)) }, reads: target.filePath)
         // Weak, like every closure that runs off the skin's thread: the transfer does not keep the measure alive (its
         // deinit cancels the transfer when the skin is dropped), and the measure is never released on the background
         // queue. The results find the measure again on the skin's executor.
@@ -596,7 +596,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         let download = BackgroundJob(.webParserDownload, subject: target.displayString, start: { deliver in
             handle = WebParserNetwork.shared.start(request) { deliver(save($0)) }
         }, inline: WebParserNetwork.readAtOnce(request).map { read in { save(read()) } },
-           scripted: { save(WebParserNetwork.scripted($0)) })
+           scripted: { save(WebParserNetwork.scripted($0)) }, reads: target.filePath)
         // Weak, as for the page (see `startFetch`).
         skin.startBackground(download, then: { [weak self] outcome, transportFailure in
             guard let self else { return discard(outcome, transportFailure) }

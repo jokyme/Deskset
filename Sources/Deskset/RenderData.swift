@@ -22,6 +22,8 @@ final class RenderData {
     private var audio: ScriptedAudioLevels?
     /// The skin's side effects when the data gives its programs: what it started and wrote.
     private(set) var recording: RecordingSideEffects?
+    /// Folders of files the data brings along (its own file's, the desktop picture's): fixtures may read them.
+    var folders: [URL] = []
     private var restores: [() -> Void] = []
 
     init(_ data: SkinInputData) {

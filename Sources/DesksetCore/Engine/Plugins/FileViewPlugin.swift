@@ -367,7 +367,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         let options = parentOptions
         // A folder the skin removed or renamed in a recording's sandbox reads as it is there (see FolderInfo).
         let readFolder = skin.readablePath(folder)
-        let job = BackgroundJob(.fileViewListing, subject: folder, on: PluginIO.queue, fixture: true) {
+        let job = BackgroundJob(.fileViewListing, subject: folder, on: PluginIO.queue, fixture: true, reads: folder) {
             FileViewMeasure.list(folder: readFolder, options: options)
         }
         skin.startBackground(job) { [weak self] result in

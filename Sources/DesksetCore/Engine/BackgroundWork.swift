@@ -193,24 +193,30 @@ public struct BackgroundJob<T> {
     /// Turns a scripted value into a result (any value: one that does not suit the kind is a failure); nil when the
     /// work cannot be scripted.
     let scripted: ((BackgroundFakeValue) -> T)?
+    /// The file or folder the work reads, when it reads one: a fixture fake does the work itself only when that lies
+    /// in the skin's own tree (its root config folder, with `@Resources`) or in a folder the host allowed
+    /// (`VirtualBackgroundWork.allowFixtureReads`); anywhere else it is the user's live data (a Downloads folder a
+    /// launcher lists), which differs from run to run, so the work runs for real and is reported.
+    public var reads: String?
 
     /// Work that reports back through a callback of its own (a transfer, a process, a service).
     public init(_ kind: BackgroundWorkKind, subject: String,
                 start: @escaping (@escaping (T) -> Void) -> Void,
-                inline: (() -> T)? = nil, scripted: ((BackgroundFakeValue) -> T)? = nil) {
+                inline: (() -> T)? = nil, scripted: ((BackgroundFakeValue) -> T)? = nil, reads: String? = nil) {
         self.kind = kind
         self.subject = subject
         self.start = start
         self.inline = inline
         self.scripted = scripted
+        self.reads = reads
     }
 
-    /// Work done in one go on `queue`. `fixture`: it only reads the Mac's files, so a fixture fake may do it on the
-    /// executor.
+    /// Work done in one go on `queue`. `fixture`: it only reads the Mac's files (`reads`), so a fixture fake may do it
+    /// on the executor.
     public init(_ kind: BackgroundWorkKind, subject: String, on queue: DispatchQueue, fixture: Bool,
-                scripted: ((BackgroundFakeValue) -> T)? = nil, _ work: @escaping () -> T) {
+                reads: String? = nil, scripted: ((BackgroundFakeValue) -> T)? = nil, _ work: @escaping () -> T) {
         self.init(kind, subject: subject, start: { deliver in queue.async { deliver(work()) } },
-                  inline: fixture ? work : nil, scripted: scripted)
+                  inline: fixture ? work : nil, scripted: scripted, reads: reads)
     }
 }
 
@@ -225,7 +231,8 @@ extension Skin {
                                    orElse dropped: ((T) -> Void)? = nil) {
         let hop = self.hop()
         if let virtual = executor as? VirtualTimeExecutor {
-            virtual.background.start(job, hop: hop, config: config, then: completion, orElse: dropped)
+            virtual.background.start(job, hop: hop, config: config, tree: rootConfigDirectory, then: completion,
+                                     orElse: dropped)
             return
         }
         job.start { result in
@@ -261,6 +268,8 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
     weak var executor: VirtualTimeExecutor?
     private let condition = NSCondition()
     private var fakes = VirtualBackgroundWork.defaultFakes
+    /// Folders a fixture may read besides the skin's own tree (`allowFixtureReads`), as `placeKey` gives them.
+    private var fixtureRoots: [String] = []
     private var running = 0
     private var reportList: [BackgroundWorkReport] = []
     private var reported: Set<String> = []
@@ -280,6 +289,34 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         condition.lock()
         fakes[kind] = fake
         condition.unlock()
+    }
+
+    /// Lets fixtures read the files in `folder` too (the folder of `--data`, a render's own settings folder): files
+    /// the run brings along, not the user's.
+    public func allowFixtureReads(under folder: URL) {
+        let key = VirtualBackgroundWork.placeKey(folder.path)
+        condition.lock()
+        if !fixtureRoots.contains(key) { fixtureRoots.append(key) }
+        condition.unlock()
+    }
+
+    /// Whether a fixture may read `path`: it lies in `tree` (the skin's root config folder) or an allowed folder.
+    func fixtureMayRead(_ path: String, tree: URL?) -> Bool {
+        let key = VirtualBackgroundWork.placeKey(path)
+        condition.lock()
+        var roots = fixtureRoots
+        condition.unlock()
+        if let tree { roots.append(VirtualBackgroundWork.placeKey(tree.path)) }
+        return roots.contains { key == $0 || key.hasPrefix($0 + "/") }
+    }
+
+    /// `path` as file places are compared (links followed, compared the way the default Mac file system compares
+    /// names).
+    static func placeKey(_ path: String) -> String {
+        let expanded = path.hasPrefix("file://") ? (URL(string: path)?.path ?? path) : path
+        var key = URL(fileURLWithPath: expanded).standardizedFileURL.resolvingSymlinksInPath().path.lowercased()
+        while key.count > 1, key.hasSuffix("/") { key.removeLast() }
+        return key
     }
 
     /// One line per skin and kind of work, in the order they were first met.
@@ -323,8 +360,8 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         return running == 0
     }
 
-    func start<T>(_ job: BackgroundJob<T>, hop: SkinHop, config: String, then completion: @escaping (T) -> Void,
-                  orElse dropped: ((T) -> Void)?) {
+    func start<T>(_ job: BackgroundJob<T>, hop: SkinHop, config: String, tree: URL? = nil,
+                  then completion: @escaping (T) -> Void, orElse dropped: ((T) -> Void)?) {
         let request = BackgroundWorkRequest(kind: job.kind, subject: job.subject, config: config)
         let fake = self.fake(for: job.kind)
         var produce: (() -> T)?
@@ -333,8 +370,12 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
         switch fake?.source {
         case .fixture?:
             if let inline = job.inline {
-                produce = inline
-                how = "fixture: done on the executor from the files on disk"
+                if let reads = job.reads, !fixtureMayRead(reads, tree: tree) {
+                    reason = "it reads the user's files (\(reads)), not the skin's own"
+                } else {
+                    produce = inline
+                    how = "fixture: done on the executor from the files on disk"
+                }
             } else {
                 reason = "no fixture: it depends on the network, a program or the Mac's live state"
             }

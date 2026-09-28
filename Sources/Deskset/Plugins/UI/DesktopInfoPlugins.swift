@@ -334,7 +334,7 @@ final class ChameleonMeasure: MediaUIMeasure {
         // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake) unless
         // the data gives it.
         let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: DispatchQueue.global(qos: .utility),
-                                fixture: !desktop || source.isFixture) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
+                                fixture: !desktop || source.isFixture, reads: path) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
             let file = desktop ? ChameleonMeasure.wallpaperFile(path) : path
             let modified = file.isEmpty ? 0 : ((try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate]
                 as? Date)?.map { $0.timeIntervalSince1970 } ?? 0)

@@ -83,7 +83,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
         let path = self.path, separator = self.separator, subfolders = self.subfolders, filter = self.filter
         // A file the skin wrote to a recording's sandbox is read from its copy.
         let readPath = skin.readablePath(path)
-        let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true) {
+        let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true, reads: path) {
             QuoteMeasure.readItems(path: readPath, separator: separator, subfolders: subfolders, filter: filter)
         }
         skin.startBackground(job) { [weak self] result in
@@ -283,7 +283,7 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
                 let r = FolderInfoMeasure.scan(scanned)
                 deliver((r, ProcessInfo.processInfo.systemUptime - started))
             }
-        }, inline: { (FolderInfoMeasure.scan(scanned), 0) })
+        }, inline: { (FolderInfoMeasure.scan(scanned), 0) }, reads: o.path)
         skin.startBackground(job) { [weak self] (r: Result, cost: TimeInterval) in
             guard let self else { return }
             self.scanning = false

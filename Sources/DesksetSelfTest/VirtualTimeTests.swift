@@ -579,6 +579,58 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Executor: virtual time — fixtures read only the skin's own files and the folders the host brings") {
+        // A launcher that lists the user's Downloads, a FolderInfo on it: live data that changes between runs, so it
+        // is not a fixture (it runs for real and is reported); the skin's own files are.
+        let elsewhere = t.temporaryDirectory("virtual-user-files")
+        try Data("x".utf8).write(to: elsewhere.appendingPathComponent("a.txt"))
+        try "one|two".write(to: elsewhere.appendingPathComponent("quotes.txt"), atomically: true, encoding: .utf8)
+        let ini = """
+        [Rainmeter]
+        Update=-1
+        [Own]
+        Measure=Plugin
+        Plugin=QuotePlugin
+        PathName=#@#quotes.txt
+        [User]
+        Measure=Plugin
+        Plugin=QuotePlugin
+        PathName=\(elsewhere.path)/quotes.txt
+        Separator=|
+        [Info]
+        Measure=Plugin
+        Plugin=FolderInfo
+        Folder=\(elsewhere.path)
+        InfoType=FileCount
+        [M]
+        Meter=Image
+        """
+        let v = virtualExecutor()
+        let skin = try virtualSkin(t, ini, files: ["Root/@Resources/quotes.txt": "alpha"], executor: v)
+        skin.update()
+        t.check(v.background.settle(timeout: 60))
+        v.runUntilIdle()
+        t.equal(skin.measure(named: "Own")?.stringValue, "alpha", "the skin's @Resources: a fixture")
+        t.check(["one", "two"].contains(skin.measure(named: "User")?.stringValue ?? ""), "the user's file is still read")
+        t.equal((skin.measure(named: "Info") as? FolderInfoMeasure)?.latestResult.files, 2)
+        let reports = v.background.reports
+        t.equal(reports.filter { $0.kind == .quote }.map(\.faked), [true, false], "own file faked, the user's not")
+        t.equal(v.background.unverifiable.map(\.kind), [.quote, .folderInfo])
+        t.check(v.background.unverifiable.allSatisfy { $0.reason.contains("the user's files") },
+                "\(v.background.unverifiable)")
+        skin.close()
+
+        // A folder the host brings along (a render's data or settings folder) counts as the skin's own.
+        let allowed = virtualExecutor()
+        allowed.background.allowFixtureReads(under: elsewhere)
+        let again = try virtualSkin(t, ini, files: ["Root/@Resources/quotes.txt": "alpha"], executor: allowed)
+        again.update()
+        allowed.runUntilIdle()
+        t.equal(allowed.background.unverifiable.count, 0, "\(allowed.background.unverifiable)")
+        t.equal((again.measure(named: "Info") as? FolderInfoMeasure)?.latestResult.files, 2)
+        again.close()
+    }
+
     t.suite("Executor: virtual time — a fake's completion is due at the next runUntilIdle, or after its delay") {
         let v = virtualExecutor()
         let skin = try virtualSkin(t, "[M]\nMeter=Image\n", executor: v)

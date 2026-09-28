@@ -19,6 +19,12 @@ enum WebParserTarget: Equatable {
         case .invalid(let reason): return "<\(reason)>"
         }
     }
+
+    /// The local file it names (nil for the web and unusable URLs).
+    var filePath: String? {
+        if case .file(let path) = self { return path }
+        return nil
+    }
 }
 
 // URL rules from the manual (WebParser → URL):
