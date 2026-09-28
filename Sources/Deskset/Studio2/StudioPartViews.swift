@@ -390,8 +390,9 @@ final class StudioColorLabelView: NSView {
         swatch.frame = NSRect(x: 0, y: (h - 18) / 2, width: 18, height: 18)
         // A label's fitting width (its intrinsic width is a few points short of what it draws uncut).
         let tw = ceil(title.fittingSize.width) + 1
-        title.frame = NSRect(x: 23, y: (h - 16) / 2, width: min(tw, bounds.width - 23), height: 16)
-        let nx = 23 + tw + 2
+        title.frame = NSRect(x: 22, y: (h - 16) / 2, width: min(tw, bounds.width - 22), height: 16)
+        // The two labels' own insets make the gap between them.
+        let nx = 22 + tw
         // The note in the smaller size when the usual one would be cut ("follows Light/Dark" in full).
         note.font = StudioPageStyle.noteFont
         if ceil(note.fittingSize.width) > bounds.width - nx { note.font = StudioPageStyle.smallFont }

@@ -24,7 +24,7 @@ enum StudioInk {
         let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         var accent = NSColor.controlAccentColor
         appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? accent }
-        return (dark ? accent.blended(withFraction: 0.45, of: .white) : accent.blended(withFraction: 0.45, of: .black))
+        return (dark ? accent.blended(withFraction: 0.6, of: .white) : accent.blended(withFraction: 0.45, of: .black))
             ?? accent
     }
 }

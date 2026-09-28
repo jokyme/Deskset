@@ -79,10 +79,22 @@ enum StudioPartNames {
             let words = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !words.isEmpty { return LayerNaming.quoted(words) }
         }
-        if kind == .symbol, let image = m.fileOption("ImageName") {
+        if kind == .symbol, var image = m.fileOption("ImageName") {
+            // A symbol named by a variable (`sf:#WxPlaceSymbol#`): the name it stands for.
+            if image.contains("#") { image = m.skin.resolve(image, in: m, sectionVariables: false) }
             let symbol = image.trimmingCharacters(in: .whitespaces).dropFirst(3)
             if !symbol.isEmpty, !symbol.contains("%"), !symbol.contains("[") {
                 return StudioSymbolIndex.name(of: String(symbol), chinese: StudioText.language == .chinese)
+            }
+            // A symbol its data chooses (`sf:[MeasureWxSymbol]`): named after that data ("Weather symbol").
+            if let open = symbol.firstIndex(of: "[") {
+                let name = symbol[symbol.index(after: open)...].prefix { $0 != "]" && $0 != ":" }
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "&"))
+                if let data = skin.measure(named: name) {
+                    let n = StudioWidgetFacts.dataName(data, in: skin, names: names).short
+                    return StudioText.format(.symbolOf, StudioWords.short(n))
+                }
+                return StudioText[.addSymbol]
             }
         }
         return (names?.layer(m.name) ?? LayerNaming.layer(m, in: skin)).title
