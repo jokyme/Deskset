@@ -1,0 +1,1295 @@
+{
+ "arguments": [
+  "--stepped",
+  "--crops",
+  "results/crops",
+  "--out",
+  "results/q1-stepped.json"
+ ],
+ "capturesStable": {
+  "A at 60 Hz": true,
+  "A drawn once": true,
+  "A redrawn": true,
+  "B": true,
+  "B+kept": true,
+  "B+kept drawn once": true,
+  "C1": true,
+  "CPw": true,
+  "E1": true,
+  "E1 RGBA16Float": true,
+  "EPw": true,
+  "EPxw": true
+ },
+ "command": "q1",
+ "keptPictures": {
+  "B+kept": {
+   "elements": 24,
+   "elementsDrawn": 13,
+   "lastPictureVsFullDrawingOffline": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "picturesCopied": 4,
+   "picturesMade": 0,
+   "tick": 7
+  },
+  "B+kept drawn once": {
+   "elements": 24,
+   "elementsDrawn": 24,
+   "lastPictureVsFullDrawingOffline": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "picturesCopied": 0,
+   "picturesMade": 0,
+   "tick": 7
+  }
+ },
+ "loadAverageAtEnd": [
+  6.69,
+  7.83,
+  8.25
+ ],
+ "pairs": {
+  "A at 60 Hz vs A drawn once": {
+   "all": {
+    "byMaxDiff": {
+     "1": 13012,
+     "2": 793,
+     "3": 529,
+     "4-7": 782,
+     "8+": 666
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 7.742,
+    "differingPixels": 15782,
+    "maxChannelDiff": 103,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 8631,
+     "2": 707,
+     "3": 422,
+     "4-7": 630,
+     "8+": 526
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 8.878,
+    "differingPixels": 10916,
+    "maxChannelDiff": 103,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 4381,
+     "2": 86,
+     "3": 107,
+     "4-7": 152,
+     "8+": 140
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 6.016,
+    "differingPixels": 4866,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "A at 60 Hz vs A redrawn": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "A redrawn vs A drawn once": {
+   "all": {
+    "byMaxDiff": {
+     "1": 13012,
+     "2": 793,
+     "3": 529,
+     "4-7": 782,
+     "8+": 666
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 7.742,
+    "differingPixels": 15782,
+    "maxChannelDiff": 103,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 8631,
+     "2": 707,
+     "3": 422,
+     "4-7": 630,
+     "8+": 526
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 8.878,
+    "differingPixels": 10916,
+    "maxChannelDiff": 103,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 4381,
+     "2": 86,
+     "3": 107,
+     "4-7": 152,
+     "8+": 140
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 6.016,
+    "differingPixels": 4866,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "B vs A drawn once": {
+   "all": {
+    "byMaxDiff": {
+     "1": 167947,
+     "2": 3896,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.323,
+    "differingPixels": 171883,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 101491,
+     "2": 3120,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.117,
+    "differingPixels": 104651,
+    "maxChannelDiff": 6,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66456,
+     "2": 776,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.114,
+    "differingPixels": 67232,
+    "maxChannelDiff": 2,
+    "pixels": 80891
+   }
+  },
+  "B vs A redrawn": {
+   "all": {
+    "byMaxDiff": {
+     "1": 166121,
+     "2": 4797,
+     "3": 577,
+     "4-7": 817,
+     "8+": 675
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.864,
+    "differingPixels": 172987,
+    "maxChannelDiff": 102,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 99635,
+     "2": 3856,
+     "3": 464,
+     "4-7": 669,
+     "8+": 532
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.528,
+    "differingPixels": 105156,
+    "maxChannelDiff": 102,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66486,
+     "2": 941,
+     "3": 113,
+     "4-7": 148,
+     "8+": 143
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.855,
+    "differingPixels": 67831,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "B vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.133,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "B+kept drawn once vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.133,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "B+kept vs A at 60 Hz": {
+   "all": {
+    "byMaxDiff": {
+     "1": 166034,
+     "2": 4849,
+     "3": 574,
+     "4-7": 816,
+     "8+": 675
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.845,
+    "differingPixels": 172948,
+    "maxChannelDiff": 102,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 99548,
+     "2": 3908,
+     "3": 461,
+     "4-7": 668,
+     "8+": 532
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.496,
+    "differingPixels": 105117,
+    "maxChannelDiff": 102,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66486,
+     "2": 941,
+     "3": 113,
+     "4-7": 148,
+     "8+": 143
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.855,
+    "differingPixels": 67831,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "B+kept vs A redrawn": {
+   "all": {
+    "byMaxDiff": {
+     "1": 166034,
+     "2": 4849,
+     "3": 574,
+     "4-7": 816,
+     "8+": 675
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.845,
+    "differingPixels": 172948,
+    "maxChannelDiff": 102,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 99548,
+     "2": 3908,
+     "3": 461,
+     "4-7": 668,
+     "8+": 532
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.496,
+    "differingPixels": 105117,
+    "maxChannelDiff": 102,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66486,
+     "2": 941,
+     "3": 113,
+     "4-7": 148,
+     "8+": 143
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.855,
+    "differingPixels": 67831,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "C1 vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.133,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "CPw vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1400,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.687,
+    "differingPixels": 1400,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1400,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.139,
+    "differingPixels": 1400,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "CPw vs EPw": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "E1 RGBA16Float vs A at 60 Hz": {
+   "all": {
+    "byMaxDiff": {
+     "1": 13012,
+     "2": 793,
+     "3": 529,
+     "4-7": 782,
+     "8+": 666
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 7.742,
+    "differingPixels": 15782,
+    "maxChannelDiff": 103,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 8631,
+     "2": 707,
+     "3": 422,
+     "4-7": 630,
+     "8+": 526
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 8.878,
+    "differingPixels": 10916,
+    "maxChannelDiff": 103,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 4381,
+     "2": 86,
+     "3": 107,
+     "4-7": 152,
+     "8+": 140
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 6.016,
+    "differingPixels": 4866,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "E1 RGBA16Float vs A drawn once": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "E1 RGBA16Float vs A redrawn": {
+   "all": {
+    "byMaxDiff": {
+     "1": 13012,
+     "2": 793,
+     "3": 529,
+     "4-7": 782,
+     "8+": 666
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 7.742,
+    "differingPixels": 15782,
+    "maxChannelDiff": 103,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 8631,
+     "2": 707,
+     "3": 422,
+     "4-7": 630,
+     "8+": 526
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 8.878,
+    "differingPixels": 10916,
+    "maxChannelDiff": 103,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 4381,
+     "2": 86,
+     "3": 107,
+     "4-7": 152,
+     "8+": 140
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 6.016,
+    "differingPixels": 4866,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "E1 vs A redrawn": {
+   "all": {
+    "byMaxDiff": {
+     "1": 166121,
+     "2": 4797,
+     "3": 577,
+     "4-7": 817,
+     "8+": 675
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.864,
+    "differingPixels": 172987,
+    "maxChannelDiff": 102,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 99635,
+     "2": 3856,
+     "3": 464,
+     "4-7": 669,
+     "8+": 532
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 85.528,
+    "differingPixels": 105156,
+    "maxChannelDiff": 102,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 66486,
+     "2": 941,
+     "3": 113,
+     "4-7": 148,
+     "8+": 143
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 83.855,
+    "differingPixels": 67831,
+    "maxChannelDiff": 26,
+    "pixels": 80891
+   }
+  },
+  "E1 vs B": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "E1 vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.133,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "EPw vs B": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     43
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     43
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "EPw vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1400,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.687,
+    "differingPixels": 1400,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1400,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.139,
+    "differingPixels": 1400,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "EPw vs E1": {
+   "all": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     43
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     43
+    ],
+    "differingPercent": 0.006,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "EPxw vs B": {
+   "all": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  },
+  "EPxw vs B+kept": {
+   "all": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 0.683,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "inGroupBoxes": {
+    "byMaxDiff": {
+     "1": 1393,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     36,
+     84,
+     454,
+     276
+    ],
+    "differingPercent": 1.133,
+    "differingPixels": 1393,
+    "maxChannelDiff": 1,
+    "pixels": 122949
+   },
+   "outsideGroups": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 80891
+   }
+  }
+ },
+ "screenColorSpace": "Color LCD",
+ "steps": "windows built at tick 0 and stepped to tick 7 (a redraw per tick, 0.15 s apart), except the ones marked drawn once (built at tick 7)",
+ "widget": "system (260 × 196 pt), tick 7, default window color space"
+}

@@ -7,7 +7,9 @@
 #                                                     env q5 q1 q4 q6 q7 memtrace offmain glass swap cost wscpu
 #                                                     wsmem probes, and the second campaign (with Deskset's own
 #                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b cost-c wscpu-c
-#                                                     wsmem-c cost-threads
+#                                                     wsmem-c cost-threads, and the corrections (2026-09-28,
+#                                                     second half): q1s q5r q5x sysmem cschange wspair cost-d frames60
+#                                                     cschange-person (a person changes the display's color profile)
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
 #   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
@@ -15,6 +17,10 @@
 #   scripts/spikes/layer-runtime/run.sh --round 1 --combo ten-A cost
 #                                                     only these rounds (repeatable) and cost / wscpu / memtrace
 #                                                     results (repeatable): to repeat runs taken under load
+#   scripts/spikes/layer-runtime/run.sh --wait-load 8 [--wait-max S] cost-d
+#                                                     before every timed run (cost-d, frames60, wspair), wait up to
+#                                                     S seconds (default 600) for the 1-minute load to drop below 8
+#   scripts/spikes/layer-runtime/run.sh --frame-rounds N frames60   rounds of the 60 Hz frame check (default 10)
 #   scripts/spikes/layer-runtime/run.sh click         the click-through check: a person clicks where it says (90 s)
 #   python3 scripts/spikes/layer-runtime/summarize.py medians and spreads of the cost rounds -> results/summary.json
 #
@@ -26,6 +32,9 @@ set -euo pipefail
 
 ROUNDS=3
 WSMEM_ROUNDS=5
+WAIT_LOAD=""
+WAIT_MAX=600
+FRAME_ROUNDS=10
 ONLY=""
 PICK_ROUNDS=""
 PICK_COMBOS=""
@@ -38,17 +47,21 @@ while [[ $# -gt 0 ]]; do
                         [[ "$WSMEM_ROUNDS" =~ ^[1-9][0-9]*$ ]] || { echo "--wsmem-rounds needs a number" >&2; exit 2; }
                         shift 2 ;;
         --only) ONLY="${2:-}"; shift 2 ;;
+        --wait-load) WAIT_LOAD="${2:-}"; shift 2 ;;
+        --wait-max) WAIT_MAX="${2:-}"; shift 2 ;;
+        --frame-rounds) FRAME_ROUNDS="${2:-}"; shift 2 ;;
         --round) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "--round needs a number" >&2; exit 2; }
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads)
+        -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads|q1s|q5r|q5x|sysmem|cschange|cschange-person|wspair|cost-d|frames60)
             STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
 done
 [[ ${#STEPS[@]} -gt 0 ]] || STEPS=(env probes q5 q1 q4 q6 q7 offmain glass swap memtrace cost wscpu wsmem cost-b wscpu-b
-                                  wsmem-b memtrace-b cost-c wscpu-c wsmem-c cost-threads)
+                                  wsmem-b memtrace-b cost-c wscpu-c wsmem-c cost-threads q1s q5r q5x sysmem cschange
+                                  wspair cost-d frames60)
 cd "$(dirname "$0")"
 
 BUILD="$(mktemp -d)"
@@ -85,6 +98,20 @@ run() {
     fi
 }
 FAILED=()
+
+# waitload: with --wait-load L, waits (up to 10 minutes) until the 1-minute load average is below L.
+waitload() {
+    [[ -n "$WAIT_LOAD" ]] || return 0
+    local waited=0
+    while (( waited < WAIT_MAX )); do
+        local load
+        load="$(sysctl -n vm.loadavg | tr -d '{}' | awk '{print $1}')"
+        awk -v l="$load" -v m="$WAIT_LOAD" 'BEGIN { exit !(l < m) }' && return 0
+        sleep 15
+        waited=$((waited + 15))
+    done
+    echo "[$(date +%H:%M:%S)] load still at or above $WAIT_LOAD after $WAIT_MAX s, running anyway" >&2
+}
 
 # wanted ROUND SCENARIO NAME: whether --round / --combo / --only let this run through.
 wanted() {
@@ -226,6 +253,46 @@ WSCPU=(
     "sixty EP --mode EP --window-cs srgb"
     "sixty D1 --mode D1 --window-cs srgb"
     "sixty DP --mode DP --window-cs srgb"
+)
+
+# The corrections (2026-09-28, second half). Memory with a view that sees pixels handed to the window server
+# (footprint --vmObjectDirty, SysMem.swift), one window opening per process: 20 System widgets or 12 design skins.
+SYSMEM=(
+    "ten A --mode A" "ten B --mode B" "ten Bkept --mode B --kept" "ten E1 --mode E1"
+    "ten EPw --mode EP --window-space-base" "ten EPxw --mode EP --window-space-base --scratch"
+    "ten C1 --mode D1 --cgimage" "ten CPw --mode DP --cgimage --window-space-base"
+    "ten CPxw --mode DP --cgimage --window-space-base --scratch"
+    "ten D1srgb --mode D1 --window-cs srgb" "ten DPsrgb --mode DP --window-cs srgb"
+    "ten E1-onethread --mode E1 --one-thread" "ten EPw-onethread --mode EP --window-space-base --one-thread"
+    "ten C1-onethread --mode D1 --cgimage --one-thread"
+    "ten CPw-onethread --mode DP --cgimage --window-space-base --one-thread"
+    "design A --mode A" "design B --mode B" "design Bkept --mode B --kept" "design E1 --mode E1"
+    "design EPw --mode EP --window-space-base" "design EPxw --mode EP --window-space-base --scratch"
+    "design C1 --mode D1 --cgimage" "design CPw --mode DP --cgimage --window-space-base"
+    "design CPxw --mode DP --cgimage --window-space-base --scratch"
+    "design D1srgb --mode D1 --window-cs srgb" "design DPsrgb --mode DP --window-cs srgb"
+)
+# CPU, one interleaved batch in its own folder (nothing overwritten): the ways the decisions compare, at 60 Hz and
+# with 10 widgets, and the scheduling variants (one skin thread, updates spread over the second, coalesced updates),
+# all with proc_pid_rusage v6 counters and the GPU's utilization.
+COST_D=(
+    "sixty A --mode A --frames" "sixty B --mode B --frames" "sixty Bkept --mode B --kept --frames"
+    "sixty E1 --mode E1 --frames" "sixty EPw --mode EP --window-space-base --frames"
+    "sixty CPw --mode DP --cgimage --window-space-base --frames" "sixty C1 --mode D1 --cgimage --frames"
+    "ten A --mode A" "ten Bkept --mode B --kept" "ten E1 --mode E1" "ten EPw --mode EP --window-space-base"
+    "ten CPw --mode DP --cgimage --window-space-base" "ten C1 --mode D1 --cgimage"
+    "ten E1-onethread --mode E1 --one-thread" "ten EPw-onethread --mode EP --window-space-base --one-thread"
+    "ten CPw-onethread --mode DP --cgimage --window-space-base --one-thread"
+    "ten EPw-stagger --mode EP --window-space-base --stagger"
+    "ten CPw-stagger --mode DP --cgimage --window-space-base --stagger"
+    "ten Bkept-stagger --mode B --kept --stagger"
+    "ten EPw-onethread-stagger --mode EP --window-space-base --one-thread --stagger"
+    "ten EPw-onethread-coalesce --mode EP --window-space-base --one-thread --coalesce"
+    "ten CPw-onethread-coalesce --mode DP --cgimage --window-space-base --one-thread --coalesce"
+)
+# 60 Hz frames on screen, 10 s per round, interleaved.
+FRAMES60=(
+    "EPw --mode EP --window-space-base" "CPw --mode DP --cgimage --window-space-base" "Bkept --mode B --kept"
 )
 
 for step in "${STEPS[@]}"; do
@@ -383,6 +450,72 @@ for step in "${STEPS[@]}"; do
                     --hide-at 25 "$@"
             done ;;
         click) "$BUILD/spike" click ;;
+        q1s) run q1-stepped q1 --stepped --crops "$OUT/crops" ;;
+        q5r)
+            run q5-review-search q5 --review-search
+            run q5-review-search-half-point q5 --review-search --grid 0.5 ;;
+        q5x)
+            # The offline partitions at 1× and 2×, as this Mac's arm64 build and as an x86_64 build (under Rosetta on
+            # Apple silicon: CoreGraphics' output depends on the architecture, see ci-probe).
+            swiftc -O -swift-version 5 -target x86_64-apple-macos13 -o "$BUILD/spike-x86_64" Sources/*.swift \
+                2> "$BUILD/warnings-x86_64.txt" || { cat "$BUILD/warnings-x86_64.txt" >&2; exit 1; }
+            for scale in 1 2; do
+                run "q5-partitions/arm64-${scale}x" q5 --partitions-only --scale "$scale"
+                echo "[$(date +%H:%M:%S)] q5-partitions/x86_64-${scale}x" >&2
+                arch -x86_64 "$BUILD/spike-x86_64" q5 --partitions-only --scale "$scale" \
+                    --out "$OUT/q5-partitions/x86_64-rosetta-${scale}x.json" && tidy "$OUT/q5-partitions/x86_64-rosetta-${scale}x.json"
+            done ;;
+        sysmem)
+            # The positive control first (8 copies of a 9.77 MB image must show about +78 MB), then the ways.
+            for cs in srgb default; do
+                for v in none single copies; do run "sysmem/control-$v-$cs" sysmem --control "$v" --window-cs "$cs" --cycles 3; done
+            done
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${SYSMEM[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "sysmem/$scenario-$name-r$r" sysmem --scenario "$scenario" --cycles 1 "$@"
+                done
+            done ;;
+        cschange)
+            run cschange/program-no-reaction cschange
+            run cschange/program-react cschange --react ;;
+        cschange-person)
+            # For a person at the Mac: change the display's color profile in System Settings → Displays while each
+            # run waits (90 s), and back again.
+            run cschange/person-no-reaction cschange --wait 90
+            run cschange/person-react cschange --wait 90 --react ;;
+        wspair)
+            for r in $(seq 1 "$ROUNDS"); do
+                wanted "$r" sixty wspair || continue
+                waitload
+                run "wspair/r$r" wspair --cycles 10 --seed "$r"
+            done ;;
+        cost-d)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${COST_D[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    waitload
+                    run "cost-d/$scenario-$name-r$r" cost --scenario "$scenario" --settle 10 --ws-cycles 0 --gpu "$@"
+                done
+            done ;;
+        frames60)
+            for r in $(seq 1 "$FRAME_ROUNDS"); do
+                for entry in "${FRAMES60[@]}"; do
+                    set -- $entry
+                    name="$1"
+                    shift
+                    wanted "$r" sixty "$name" || continue
+                    waitload
+                    run "frames60/$name-r$r" cost --scenario sixty --settle 3 --pairs 1 --seconds 2 --ws-cycles 0 \
+                        --no-top --frames --frames-seconds 10 "$@"
+                done
+            done ;;
     esac
 done
 echo "[$(date +%H:%M:%S)] done (load $(sysctl -n vm.loadavg | tr -d '{}' | xargs))" >&2

@@ -12,6 +12,10 @@
 //   cost          memory, CPU and wakeups of one mode in one scenario (q2 / q3; run.sh repeats and interleaves)
 //   memtrace      this process's footprint every second while one mode runs a scenario (when memory settles)
 //   wsmem         WindowServer's footprint when a fresh process opens several widgets of one scenario and mode
+//   cschange      a partitioned window when its color space changes: which thread draws, and base vs groups
+//                 (ColorSpaceChange.swift)
+//   wspair        WindowServer's and this process's CPU for several ways of showing the 60 Hz visualizer, measured
+//                 against each other in one process (WsPair.swift)
 //   sysmem        what opening windows costs the whole machine (GPU memory in use, system pages), with a positive
 //                 control (SysMem.swift)
 //   q5            gradients cut at box edges (pure CoreGraphics)
@@ -147,6 +151,10 @@ case "wsmem":
     runApp { windowServerMemoryRun() }
 case "sysmem":
     runApp { systemMemoryRun() }
+case "wspair":
+    runApp { windowServerPairs() }
+case "cschange":
+    runApp { colorSpaceChange() }
 case "q6":
     runApp { q6SharedBase() }
 case "q7":

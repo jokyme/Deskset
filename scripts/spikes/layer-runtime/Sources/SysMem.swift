@@ -10,22 +10,24 @@
 //        an 800 × 800 pt window (1600 × 1600 px): empty, one layer showing a 9.77 MB image of random pixels (which
 //        the memory compressor cannot shrink), or 8 layers each showing its own copy of it (78 MB of distinct
 //        pixels). copies − single must come out near 7 × 9.77 = 68 MB for a method to be trusted.
-//   sysmem --scenario ten|design|sixty --mode … [--count N]   widgets updating at the scenario's rate (options as
-//        for `cost`; default 20 System widgets, 12 design skins, 12 visualizers; windows overlap when they do not fit)
+//   sysmem --scenario ten|design|sixty --mode … [--count N] [--one-thread]   widgets updating at the scenario's rate
+//        (options as for `cost`; default 20 System widgets, 12 design skins, 12 visualizers; windows overlap when they
+//        do not fit; --one-thread: all widgets on one skin thread, to tell the layers' memory from the threads')
 //
 //   --cycles N   open / close cycles in this process (default 5)
 //   --settle S   seconds the windows run before the "open" sample (default 20 for widgets: CA adds second buffers to
 //                layers that keep updating within 5–20 s; 4 for the controls)
 //
 // Each cycle: a sample, open, wait `settle`, a sample, close, wait 4 s, a sample. A sample is the median of 7 readings
-// 0.25 s apart; it is taken only when the readings agree (the GPU's memory in use within 4 MB), retried up to 8
-// times otherwise, so a sample is not taken in the middle of someone else's allocation burst. The steps of every
-// cycle are kept (open: after − before, close: after closing − open).
+// 0.25 s apart (with --quiet-gpu it is taken only when the readings agree, the GPU's memory in use within 4 MB,
+// retried up to 8 times otherwise). The steps of every cycle are kept (open: after − before, close: after closing −
+// open).
 //
 // Readings: the GPU's "In use system memory" (IOAccelerator, the whole system: every IOSurface and texture, the window
 // server's included), WindowServer's footprint from `top` (1 MB resolution), system-wide anonymous + wired +
-// compressed pages (host_statistics64; everything the machine holds, very noisy when builds run), and this process's
-// phys_footprint.
+// compressed pages (host_statistics64; everything the machine holds, very noisy when builds run), this process's
+// phys_footprint, and this process as `footprint --vmObjectDirty` sees it (every dirty page of the VM objects mapped
+// into it, also those the window server maps: see vmObjectDirtyFootprint).
 import AppKit
 import QuartzCore
 
@@ -52,17 +54,21 @@ func systemMemoryRun() -> JSON {
                 if let v = s["wired"] as? Double { wired.append(v) }
             }
             let spread = (gpu.max() ?? 0) - (gpu.min() ?? 0)
-            if spread <= 4 || attempt >= 8 { break }
+            if !flag("--quiet-gpu") || spread <= 4 || attempt >= 8 { break }
             pump(1)
         }
         var ws: [Double] = []
         for _ in 0..<3 { if let m = windowServerMemory().mem { ws.append(m / mb) } }
+        let vm = vmObjectDirtyFootprint()
         var s: JSON = ["attempts": attempt, "gpuSpreadMB": r((gpu.max() ?? 0) - (gpu.min() ?? 0), 1),
-                       "footprintMB": r(physFootprint() / mb, 2), "load": loadAverage()[0]]
+                       "footprintMB": r(physFootprint() / mb, 2), "load": loadAverage()[0],
+                       "pressureLevel": memoryPressure()["pressureLevel"] ?? -1]
         if !gpu.isEmpty { s["gpuInUseMB"] = r(median(gpu), 1) }
         if !system.isEmpty { s["systemAnonymousWiredCompressedMB"] = r(median(system), 1) }
         if !wired.isEmpty { s["systemWiredMB"] = r(median(wired), 1) }
         if !ws.isEmpty { s["windowServerMB"] = r(median(ws), 0) }
+        if let t = vm["totalMB"] as? Double { s["vmObjectDirtyMB"] = t }
+        s["vmObjectDirtyCategoriesMB"] = vm
         return s
     }
     func step(_ a: JSON, _ b: JSON, _ key: String) -> Double? {
@@ -74,6 +80,8 @@ func systemMemoryRun() -> JSON {
     var widgets = 1
     var lastBitmaps: JSON = [:]
     var open: () -> [AnyObject] = { [] }
+    /// Opens one window of the same kind on a thread of its own (the warm-up: frameworks and caches, not counted).
+    var warmUp: () -> Void = {}
     var close: ([AnyObject]) -> Void = { _ in }
     if let control {
         let space = choice("--window-cs", WindowSpace.default)
@@ -150,18 +158,32 @@ func systemMemoryRun() -> JSON {
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         j["oneBitmapOfTheWindowMB"] = r(Double(size.width * scale * size.height * scale) * 4 / mb, 3)
         var threads: [RunLoopThread] = []
-        for i in 0..<widgets { threads.append(RunLoopThread.make("skin \(i)")) }
+        let oneThread = flag("--one-thread")
+        j["oneSkinThread"] = oneThread
+        for i in 0..<(oneThread ? 1 : widgets) { threads.append(RunLoopThread.make("skin \(i)")) }
         open = {
             autoreleasepool {
                 var ws: [SkinWindow] = []
                 for i in 0..<widgets {
-                    let w = SkinWindow(make(), config, origin: packedOrigin(i, size: size), thread: threads[i])
+                    let w = SkinWindow(make(), config, origin: packedOrigin(i, size: size),
+                                       thread: threads[oneThread ? 0 : i])
                     w.buildAndCommit(tick: 0)
                     w.show()
                     w.start(interval: interval)
                     ws.append(w)
                 }
                 return ws
+            }
+        }
+        let warmThread = RunLoopThread.make("warm-up")
+        warmUp = {
+            autoreleasepool {
+                let w = SkinWindow(make(), config, origin: packedOrigin(0, size: size), thread: warmThread)
+                w.buildAndCommit(tick: 0)
+                w.show()
+                w.start(interval: interval)
+                pump(3)
+                w.close()
             }
         }
         close = { objects in
@@ -175,14 +197,20 @@ func systemMemoryRun() -> JSON {
         }
     }
 
-    // Warm-up: one open / close, not counted.
-    do {
+    // Warm-up, not counted: the controls open and close once; widgets open one window on a thread of their own (the
+    // measured windows' threads then hold nothing from before, and nothing the warm-up keeps can be released during
+    // the measurement). With widgets, use one cycle per process (run.sh does): memory a closed window's thread or CA
+    // keeps is released when the next cycle's windows open, which would hide part of the next open step.
+    if control != nil {
         let o = open()
         pump(min(settle, 5))
         close(o)
-        pump(2)
+    } else {
+        warmUp()
     }
-    let keys = ["gpuInUseMB", "windowServerMB", "systemAnonymousWiredCompressedMB", "systemWiredMB", "footprintMB"]
+    pump(2)
+    let keys = ["vmObjectDirtyMB", "footprintMB", "gpuInUseMB", "windowServerMB", "systemAnonymousWiredCompressedMB",
+                "systemWiredMB"]
     var perCycle: [JSON] = []
     var opens: [String: [Double]] = [:], closes: [String: [Double]] = [:]
     for _ in 0..<cycles {

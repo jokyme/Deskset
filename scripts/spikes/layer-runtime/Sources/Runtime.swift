@@ -338,6 +338,30 @@ final class ContextLog {
 
 func noteContext(_ ctx: CGContext, _ label: String) { contextLog.note(ctx, label) }
 
+/// Every draw(in:) with its time, thread and color space, while `recording` (cschange).
+let drawEvents = DrawEvents()
+final class DrawEvents {
+    private let lock = NSLock()
+    private var events: [(t: Double, main: Bool, space: String, label: String)] = []
+    var recording = false
+    func note(_ ctx: CGContext, _ label: String) {
+        guard recording else { return }
+        let e = (now(), Thread.isMainThread, colorSpaceName(ctx.colorSpace), label)
+        lock.lock()
+        events.append(e)
+        lock.unlock()
+    }
+    /// The events since `from` (seconds) grouped by thread, color space and label, counted.
+    func summary(from: Double, to: Double = .infinity) -> JSON {
+        lock.lock()
+        let list = events.filter { $0.t >= from && $0.t < to }
+        lock.unlock()
+        var counts: [String: Int] = [:]
+        for e in list { counts["\(e.label) [\(e.main ? "main" : "skin")] \(e.space)", default: 0] += 1 }
+        return counts
+    }
+}
+
 // MARK: Layers
 
 /// A layer with no implicit animations.
@@ -353,6 +377,7 @@ final class PaintLayer: QuietLayer {
 
     override func draw(in ctx: CGContext) {
         noteContext(ctx, label)
+        drawEvents.note(ctx, label)
         if ctx.ctm.d > 0 {
             ctx.translateBy(x: 0, y: bounds.height)
             ctx.scaleBy(x: 1, y: -1)
@@ -969,6 +994,40 @@ final class SkinWindow {
         if flush && !Thread.isMainThread { CATransaction.flush() }
         let c = now(), cCPU = threadCPUSeconds()
         record(commit: c, tick: next, cost: b - a, commitCost: c - b, cpu: bCPU - aCPU, commitCPU: cCPU - bCPU)
+    }
+
+    /// After the window's color space changed (cschange --react): on the skin thread, the base bitmap drawn again in
+    /// the new space, the tiles pointed at it, the scratch bitmap dropped, every group redrawn, one transaction.
+    func redrawForColorSpaceChange() {
+        guard let p = part, config.mode == .EP || config.mode == .DP else {
+            if let l = single {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                l.setNeedsDisplay()
+                l.displayIfNeeded()
+                CATransaction.commit()
+                if !Thread.isMainThread { CATransaction.flush() }
+            }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let image = config.baseInWindowSpace ? renderBaseInWindowSpace(p) : renderBase(widget, p, tick: tick)
+        base = image
+        for t in tileLayers { t.contents = image }
+        for g in p.groups { baseCrops[g.id] = image.cropping(to: g.box.cg) }
+        scratchContext = nil
+        if config.scratch { drawScratch(Array(p.groups.indices)) }
+        if config.mode == .EP {
+            for l in groupLayers {
+                l.setNeedsDisplay()
+                l.displayIfNeeded()
+            }
+        } else {
+            for i in p.groups.indices { drawGroupD(i) }
+        }
+        CATransaction.commit()
+        if !Thread.isMainThread { CATransaction.flush() }
     }
 
     /// Bytes of bitmaps this window's runtime owns itself (D surface pools, the base bitmap, the scratch bitmap).

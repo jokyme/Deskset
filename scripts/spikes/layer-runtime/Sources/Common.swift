@@ -448,3 +448,30 @@ func systemMemoryMB() -> JSON {
             "fileBacked": r(Double(s.external_page_count) * page, 1),
             "anonymousWiredCompressed": r(internalMB + wired + occupied, 1)]
 }
+
+/// This process's memory as `footprint --vmObjectDirty` sees it: dirty (and compressed) pages of every VM object
+/// mapped into the process, counted in full even when another process (the window server) maps the same object.
+/// phys_footprint leaves out the pages of CGImages that Core Animation handed to the window server while the window
+/// is on screen; this view does not. No root needed for our own process. Total and a few categories, in MB.
+func vmObjectDirtyFootprint() -> JSON {
+    guard let out = run("/usr/bin/footprint", ["--vmObjectDirty", "-w", "-f", "bytes", "-p", String(getpid())])
+    else { return [:] }
+    var j: JSON = [:]
+    for line in out.split(separator: "\n") {
+        if let r = line.range(of: "Footprint: ") {
+            let digits = line[r.upperBound...].prefix { $0.isNumber }
+            if let v = Double(digits) { j["totalMB"] = (v / 1_048_576 * 100).rounded() / 100 }
+            continue
+        }
+        // "   8192000 B      0 B      0 B      0 B      0 B     30    CG raster data" (dirty, swapped, clean, …)
+        let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+        guard parts.count >= 12, parts[1] == "B", let dirty = Double(parts[0]), let swapped = Double(parts[2]) else {
+            continue
+        }
+        let name = parts[11...].joined(separator: " ")
+        guard ["CG image", "CG raster data", "CoreAnimation", "IOSurface", "IOAccelerator", "IOAccelerator (graphics)",
+               "MALLOC_SMALL", "MALLOC_LARGE", "untagged (VM_ALLOCATE)"].contains(name) else { continue }
+        j[name] = ((dirty + swapped) / 1_048_576 * 100).rounded() / 100
+    }
+    return j
+}

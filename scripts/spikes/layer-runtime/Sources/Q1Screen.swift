@@ -161,6 +161,7 @@ func comparison(_ a: Shot, _ b: Shot, groups: [PixelRect]) -> JSON {
 /// One run shows the same skin in every mode in two window color spaces (the screen's, as Deskset has today, and
 /// sRGB), a few windows at a time, so any two can be compared.
 func q1Screen() -> JSON {
+    if flag("--stepped") { return q1Stepped() }
     guard canCapture else { return ["error": "screen capture is not allowed for this process"] }
     let widget = Widgets.system()
     let tick = 7
@@ -260,6 +261,145 @@ func q1Screen() -> JSON {
             if let d = diffImage(shot(a).alone.crop(region), shot(b).alone.crop(region)) {
                 let file = "q1-diff-\(a)-vs-\(b).png".replacingOccurrences(of: "@", with: "-")
                 writePNG(d, "\(dir)/\(file)")
+            }
+        }
+    }
+    return j
+}
+
+/// `q1 --stepped`: question 1 against what Deskset actually shows. The plain q1 builds every window directly at tick
+/// 7 and draws it once, so B there is B drawn in full (Deskset keeps pictures of unchanged elements: B+kept) and A
+/// is A drawn once (an A skin that keeps redrawing moves onto Core Animation's accelerated path, `memtrace`). Here
+/// every window starts at tick 0 and is stepped through ticks 1…7 (a redraw each), so B+kept has made and copied its
+/// pictures and E layers have their second buffers; A is also captured after 10 more redraws at tick 7 and after
+/// 2 s of redraws at 60 Hz, next to A drawn once at tick 7. Default window color space (Deskset's), System widget.
+func q1Stepped() -> JSON {
+    guard canCapture else { return ["error": "screen capture is not allowed for this process"] }
+    let widget = Widgets.system()
+    let tick = 7
+    struct Entry {
+        let name: String
+        let config: Config
+        let stepped: Bool
+        var extraRedraws = 0
+        var sixtyHzSeconds = 0.0
+    }
+    func config(_ m: Mode, kept: Bool = false, windowSpaceBase: Bool = false, scratch: Bool = false,
+                cgImages: Bool = false, format: FormatChoice = .rgba8) -> Config {
+        var c = Config(mode: m)
+        c.keptPictures = kept
+        c.baseInWindowSpace = windowSpaceBase
+        c.scratch = scratch
+        c.cgImages = cgImages
+        c.format = format
+        return c
+    }
+    let entries: [Entry] = [
+        Entry(name: "A drawn once", config: config(.A), stepped: false),
+        Entry(name: "A redrawn", config: config(.A), stepped: true, extraRedraws: 10),
+        Entry(name: "A at 60 Hz", config: config(.A), stepped: true, sixtyHzSeconds: 2),
+        Entry(name: "B", config: config(.B), stepped: true),
+        Entry(name: "B+kept", config: config(.B, kept: true), stepped: true),
+        Entry(name: "B+kept drawn once", config: config(.B, kept: true), stepped: false),
+        Entry(name: "E1", config: config(.E1), stepped: true),
+        Entry(name: "EPw", config: config(.EP, windowSpaceBase: true), stepped: true),
+        Entry(name: "EPxw", config: config(.EP, windowSpaceBase: true, scratch: true), stepped: true),
+        Entry(name: "C1", config: config(.D1, cgImages: true), stepped: true),
+        Entry(name: "CPw", config: config(.DP, windowSpaceBase: true, cgImages: true), stepped: true),
+        Entry(name: "E1 RGBA16Float", config: config(.E1, format: .rgba16f), stepped: true),
+    ]
+    var shots: [String: Pixels] = [:]
+    var stable: [String: Bool] = [:]
+    var kept: JSON = [:]
+    var screenSpace: CGColorSpace?
+    let batch = 4
+    for start in stride(from: 0, to: entries.count, by: batch) {
+        let chunk = Array(entries[start..<min(start + batch, entries.count)])
+        var windows: [SkinWindow] = []
+        for (i, e) in chunk.enumerated() {
+            let w = SkinWindow(widget, e.config, origin: gridOrigin(i, size: widget.size, columns: 2),
+                               thread: sharedSkinThread)
+            w.buildAndCommit(tick: e.stepped ? 0 : tick)
+            w.show()
+            windows.append(w)
+        }
+        screenSpace = screenSpace ?? windows.first?.panel.screen?.colorSpace?.cgColorSpace
+        pump(0.6)
+        for t in 1...tick {
+            for (w, e) in zip(windows, chunk) where e.stepped {
+                if e.config.mode.isView { w.step() } else { w.onSkinSync { w.step() } }
+                _ = t
+            }
+            pump(0.15)
+        }
+        for (w, e) in zip(windows, chunk) {
+            for _ in 0..<e.extraRedraws {
+                w.drawView?.needsDisplay = true
+                pump(0.05)
+            }
+            if e.sixtyHzSeconds > 0, let v = w.drawView {
+                let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { _ in v.needsDisplay = true }
+                RunLoop.main.add(timer, forMode: .common)
+                pump(e.sixtyHzSeconds)
+                timer.invalidate()
+            }
+        }
+        pump(1.5)
+        for (w, e) in zip(windows, chunk) {
+            guard let first = captureWindow(w.panel) else { continue }
+            pump(0.15)
+            let a = Pixels.of(first)
+            stable[e.name] = captureWindow(w.panel).map { compare(a, Pixels.of($0)).differing == 0 } ?? false
+            shots[e.name] = a
+            if let v = w.drawView, v.keptPictures {
+                let k = v.keptStats
+                var entry: JSON = ["picturesCopied": k.copied, "picturesMade": k.made, "elementsDrawn": k.drawn,
+                                   "elements": widget.elements.count, "tick": w.tick]
+                if let c = v.keptCheck(tick: w.tick) { entry["lastPictureVsFullDrawingOffline"] = c }
+                kept[e.name] = entry
+            }
+        }
+        for w in windows { w.close() }
+        pump(0.3)
+    }
+    guard shots.count == entries.count else { return ["error": "capture failed", "captured": Array(shots.keys)] }
+    let p = partition(widget, scale: 2)
+    func cmp(_ a: String, _ b: String) -> JSON {
+        guard let x = shots[a], let y = shots[b] else { return [:] }
+        let boxes = p.groups.map(\.box)
+        func inGroup(_ px: Int, _ py: Int) -> Bool { boxes.contains { $0.contains(x: px, y: py) } }
+        return ["all": compare(x, y).json, "inGroupBoxes": compare(x, y, include: inGroup).json,
+                "outsideGroups": compare(x, y) { !inGroup($0, $1) }.json]
+    }
+    var pairs: JSON = [:]
+    for (a, b) in [("E1", "B+kept"), ("EPw", "B+kept"), ("EPxw", "B+kept"), ("C1", "B+kept"), ("CPw", "B+kept"),
+                   ("B", "B+kept"), ("B+kept drawn once", "B+kept"), ("E1", "B"), ("EPw", "B"), ("EPxw", "B"),
+                   ("EPw", "E1"), ("CPw", "EPw"),
+                   ("A redrawn", "A drawn once"), ("A at 60 Hz", "A drawn once"), ("A at 60 Hz", "A redrawn"),
+                   ("E1 RGBA16Float", "A drawn once"), ("E1 RGBA16Float", "A redrawn"), ("E1 RGBA16Float", "A at 60 Hz"),
+                   ("B", "A drawn once"), ("B", "A redrawn"), ("B+kept", "A redrawn"), ("B+kept", "A at 60 Hz"),
+                   ("E1", "A redrawn")] {
+        pairs["\(a) vs \(b)"] = cmp(a, b)
+    }
+    var j: JSON = ["widget": "system (260 × 196 pt), tick \(tick), default window color space",
+                   "steps": "windows built at tick 0 and stepped to tick \(tick) (a redraw per tick, 0.15 s apart), "
+                       + "except the ones marked drawn once (built at tick \(tick))",
+                   "pairs": pairs, "capturesStable": stable, "keptPictures": kept,
+                   "screenColorSpace": colorSpaceName(screenSpace)]
+    if let dir = cropDir {
+        let region = CGRect(x: 24, y: 20, width: 200, height: 76)
+        for (a, b) in [("E1", "B+kept"), ("A redrawn", "A drawn once")] {
+            if let x = shots[a], let y = shots[b], let d = diffImage(x.crop(region), y.crop(region)) {
+                writePNG(d, "\(dir)/q1s-diff-\(a)-vs-\(b).png".replacingOccurrences(of: " ", with: "-"))
+            }
+            // The whole window too.
+            if let x = shots[a], let y = shots[b], let d = diffImage(x, y) {
+                writePNG(d, "\(dir)/q1s-diff-full-\(a)-vs-\(b).png".replacingOccurrences(of: " ", with: "-"))
+            }
+        }
+        for n in ["A drawn once", "A redrawn"] {
+            if let x = shots[n] {
+                writePNG(x.image(space: screenSpace ?? sRGB), "\(dir)/q1s-\(n).png".replacingOccurrences(of: " ", with: "-"))
             }
         }
     }

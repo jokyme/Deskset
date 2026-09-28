@@ -1,0 +1,237 @@
+{
+ "arguments": [
+  "--out",
+  "results/cschange/program-no-reaction.json"
+ ],
+ "colorSpacesAtEnd": [
+  "Color LCD / screen Color LCD",
+  "Color LCD / screen Color LCD"
+ ],
+ "colorSpacesAtStart": [
+  "Color LCD / screen Color LCD",
+  "Color LCD / screen Color LCD"
+ ],
+ "command": "cschange",
+ "draws": {
+  "E1 [main] Color LCD": 1,
+  "E1 [main] kCGColorSpaceSRGB": 1,
+  "EP+windowSpaceBase group [main] Color LCD": 10,
+  "EP+windowSpaceBase group [main] kCGColorSpaceSRGB": 10
+ },
+ "drawsAfterSwitch": {
+  "E1 [main] kCGColorSpaceSRGB": 1,
+  "EP+windowSpaceBase group [main] kCGColorSpaceSRGB": 10
+ },
+ "drawsAfterSwitchBack": {
+  "E1 [main] Color LCD": 1,
+  "EP+windowSpaceBase group [main] Color LCD": 10
+ },
+ "drawsBeforeSwitch": {},
+ "loadAverageAtEnd": [
+  9.92,
+  9.08,
+  8.66
+ ],
+ "mode": "NSWindow.colorSpace set to srgb by the program, then back to the screen's",
+ "notifications": [],
+ "partitionVsOneLayerBefore": {
+  "byMaxDiff": {
+   "1": 7,
+   "2": 0,
+   "3": 0,
+   "4-7": 0,
+   "8+": 0
+  },
+  "differingBounds": [
+   55,
+   141,
+   377,
+   43
+  ],
+  "differingPercent": 0.003,
+  "differingPixels": 7,
+  "maxChannelDiff": 1,
+  "pixels": 203840
+ },
+ "react": false,
+ "samples": 36,
+ "switchAtMs": 1036.3,
+ "switchBackAtMs": 5204.3,
+ "timeline": [
+  {
+   "atMs": 6.2,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "before"
+  },
+  {
+   "atMs": 267.2,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "before"
+  },
+  {
+   "atMs": 526.2,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "before"
+  },
+  {
+   "atMs": 784.8,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "before"
+  },
+  {
+   "atMs": 1046.4,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 1305.4,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 1564.3,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 2085.3,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 2872.1,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 3133.3,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching to srgb"
+  },
+  {
+   "atMs": 5210,
+   "oneLayerVsItselfBefore": 109684,
+   "partitionVsItselfBefore": 60300,
+   "partitionVsOneLayer": {
+    "max": 4,
+    "pixels": 106411
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 5473.7,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 5992.9,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 6517.9,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 7042.6,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 7566,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  },
+  {
+   "atMs": 8082.8,
+   "oneLayerVsItselfBefore": 0,
+   "partitionVsItselfBefore": 0,
+   "partitionVsOneLayer": {
+    "max": 1,
+    "pixels": 7
+   },
+   "phase": "after switching back"
+  }
+ ],
+ "widget": "system, tick 7, not updating",
+ "windows": [
+  "EPw",
+  "E1"
+ ]
+}

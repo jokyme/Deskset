@@ -14,7 +14,7 @@
 //   --ws-cycles N      open / close cycles for WindowServer's memory at the end (default 1; the scenario's own open
 //                      and close is one more)
 //   --frames           60 Hz: after the phases, read the frame number back from the screen for 5 s (not in the CPU
-//                      numbers)
+//                      numbers; --frames-seconds N for longer), with the commits around the longest freeze
 //   --no-top           phases do not sample WindowServer's idle wakeups (a `top` call takes about 0.9 s): for many
 //                      short on / off pairs that only look at CPU
 //   --reshow-wait N    seconds between showing the windows again and the next on phase (default 1.5)
@@ -375,7 +375,9 @@ func costRun() -> JSON {
             frames["commitCostP99us"] = r(percentile(w.commitCosts, 0.99) * 1e6, 0)
         }
         j["frames"] = frames
-        if flag("--frames") && canCapture { j["onScreen"] = sampleFrames(w, seconds: 5) }
+        if flag("--frames") && canCapture {
+            j["onScreen"] = sampleFrames(w, seconds: Double(option("--frames-seconds") ?? "") ?? 5)
+        }
     }
     stopUpdates(windows)
     close(&windows)
@@ -523,13 +525,19 @@ final class GPUSampler {
 /// `memtrace`: this process's footprint every second while one mode runs a scenario (after a warm-up window), with
 /// the footprint's categories every 10 s: when does the memory settle, and what is it?
 ///   --mode --scenario --window-cs --format as for `cost`; --seconds N (default 40); --hide-at S: order the windows
-///   out at S seconds and back in 5 s later; --interval S: update interval instead of the scenario's; --no-images:
-///   the widgets without their Image meters.
+///   out at S seconds and back in `--hide-for` (default 5) seconds later; --interval S: update interval instead of the
+///   scenario's; --no-images: the widgets without their Image meters; --count N: widgets instead of the scenario's.
+///   With --hide-at, the result also gives the footprint while shown (median of the 5 s before hiding) and while
+///   hidden (median of the last 3 s hidden), per widget: the pages of CGImages handed to the window server are not
+///   in phys_footprint while the window is on screen and come back while it is ordered out, so the hidden footprint
+///   counts every mode's own bitmaps the same way.
 func memTrace() -> JSON {
     let mode = choice("--mode", Mode.A)
     let scenario = scenarioOption()
     let seconds = Int(option("--seconds") ?? "") ?? 40
     let hideAt = Int(option("--hide-at") ?? "") ?? -1
+    let hideFor = Int(option("--hide-for") ?? "") ?? 5
+    let pressure0 = memoryPressure()
     var config = Config(mode: mode)
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
@@ -538,7 +546,7 @@ func memTrace() -> JSON {
     config.scratch = flag("--scratch")
     config.keptPictures = flag("--kept")
     config.cgImages = flag("--cgimage")
-    let (make, count, scenarioInterval): (() -> Widget, Int, Double) = {
+    let (make, scenarioCount, scenarioInterval): (() -> Widget, Int, Double) = {
         switch scenario {
         case "design": return ({ Widgets.design() }, 1, 1.0)
         case "sixty": return ({ Widgets.visualizer() }, 1, 1.0 / 60)
@@ -546,6 +554,7 @@ func memTrace() -> JSON {
         default: return ({ Widgets.system() }, 10, 1.0)
         }
     }()
+    let count = Int(option("--count") ?? "") ?? scenarioCount
     let interval = Double(option("--interval") ?? "") ?? scenarioInterval
     let mb = 1024.0 * 1024.0
     var threads: [RunLoopThread] = []
@@ -554,7 +563,7 @@ func memTrace() -> JSON {
             (0..<n).map { i in
                 let widget = make()
                 if threads.count <= i { threads.append(RunLoopThread.make("skin \(i)")) }
-                let w = SkinWindow(widget, config, origin: gridOrigin(i, size: widget.size, columns: 5),
+                let w = SkinWindow(widget, config, origin: packedOrigin(i, size: widget.size),
                                    thread: threads[i])
                 w.buildAndCommit(tick: 0)
                 w.show()
@@ -578,8 +587,12 @@ func memTrace() -> JSON {
         trace.append(r((physFootprint() - base) / mb, 2))
         if s % 10 == 0 { categories["\(s)"] = footprintCategories() }
         if s == hideAt { for w in windows { w.panel.orderOut(nil) } }
-        if s == hideAt + 5 { for w in windows { w.show() } }
+        if s == hideAt + hideFor { for w in windows { w.show() } }
     }
+    let bitmaps: JSON = windows.first.map { w in
+        ["layerBitmapsPerWidgetMB": r(Double(windows.reduce(0) { $0 + $1.layerBitmapBytes }) / mb / Double(count), 3),
+         "ownedBitmapsPerWidgetMB": r(Double(w.ownedBitmapBytes) / mb, 3)]
+    } ?? [:]
     autoreleasepool {
         for w in windows { w.close() }
         windows = []
@@ -587,10 +600,19 @@ func memTrace() -> JSON {
     pump(2)
     let after = r((physFootprint() - base) / mb, 2)
     for t in threads { t.stop() }
-    return ["config": config.label, "scenario": scenario, "widgets": count, "intervalMs": r(interval * 1000, 1),
-            "images": !Widgets.omitImages, "baselineMB": r(base / mb, 2),
-            "increaseEverySecondMB": trace, "increaseAfterCloseMB": after, "categories": categories,
-            "hideAt": hideAt]
+    var j: JSON = ["config": config.label, "scenario": scenario, "widgets": count, "intervalMs": r(interval * 1000, 1),
+                   "images": !Widgets.omitImages, "baselineMB": r(base / mb, 2),
+                   "increaseEverySecondMB": trace, "increaseAfterCloseMB": after, "categories": categories,
+                   "hideAt": hideAt, "hideFor": hideFor, "bitmaps": bitmaps,
+                   "memoryPressureAtStart": pressure0, "memoryPressureAtEnd": memoryPressure()]
+    if hideAt > 5 && hideAt + hideFor <= seconds && hideFor >= 3 {
+        // trace[k] is the reading after k + 1 seconds; hidden from the reading after hideAt + 1 seconds.
+        let shown = Array(trace[(hideAt - 5)..<hideAt])
+        let hidden = Array(trace[(hideAt + hideFor - 3)..<(hideAt + hideFor)])
+        j["shownPerWidgetMB"] = r(median(shown) / Double(count), 3)
+        j["hiddenPerWidgetMB"] = r(median(hidden) / Double(count), 3)
+    }
+    return j
 }
 
 /// `wsmem`: WindowServer's footprint when a fresh process opens `--count` widgets of one scenario and mode, updating
