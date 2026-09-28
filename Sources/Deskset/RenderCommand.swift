@@ -746,11 +746,32 @@ enum RenderCommand {
     /// for a fixed time, and not past `deadline`.
     static func settleServices(before deadline: Date) {
         for _ in 0..<8 {
+            let queued = MediaUIWorker.jobsQueued
             MediaUIWorker.waitForAll(before: deadline)
-            var delivered = false
-            while Date() < deadline, CFRunLoopRunInMode(.defaultMode, 0, true) == .handledSource { delivered = true }
-            if !delivered { return }
+            let handled = deliverMainThreadWork(before: deadline)
+            // Another round when what was delivered may have given the workers (a cover after a poll) or the main
+            // thread more to do: new jobs, or sources handled besides the pass that ran the marker.
+            if MediaUIWorker.jobsQueued == queued && handled <= 1 { return }
         }
+    }
+
+    /// Runs the main thread's run loop until everything queued on the main queue so far has run — a marker queued
+    /// behind it has — and then while it still handles sources, not past `deadline`. Returns the passes that handled a
+    /// source. A pass that fires a timer returns without running the main queue's blocks, and in a process where other
+    /// skins run (the app's self-tests) a timer is due at almost any time: a pass that handled nothing does not mean
+    /// that nothing waits (a NowPlaying poll's result would then reach the skin an update late, or not at all).
+    static func deliverMainThreadWork(before deadline: Date) -> Int {
+        var reached = false
+        DispatchQueue.main.async { reached = true }
+        var handled = 0
+        while Date() < deadline {
+            if CFRunLoopRunInMode(.defaultMode, 0, true) == .handledSource {
+                handled += 1
+            } else if reached {
+                break
+            }
+        }
+        return handled
     }
 
     /// Finds the Skins folder (an ancestor named "Skins", else the file's grandparent) and the config name.

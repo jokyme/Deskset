@@ -313,6 +313,7 @@ background.dispatch	Sources/Deskset/Plugins/UI/WiFiStatus.swift	4	the Wi-Fi read
 mono.systemUptime	Sources/Deskset/Plugins/UI/WiFiStatus.swift	2	Wi-Fi service: faked in verification
 random.hashOrder	Sources/Deskset/Plugins/UI/WiFiStatus.swift	1	sorted by signal and then by name: a total order, whatever the dictionary's
 
+background.mainHop	Sources/Deskset/RenderCommand.swift	1	--render in virtual time: a marker queued behind what the services handed to the main thread, so that all of it is delivered before an update (tooling, not a skin input)
 effect.fileWrite	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output files (the image, --state); with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.runLoop	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
