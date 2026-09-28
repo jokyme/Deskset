@@ -190,10 +190,12 @@ enum StudioLatencySelfTests {
         // about 20 times a second) and the canvas draws a frame.
         var gestureFrames: [Double] = []
         let sentBefore = session.desktopPreviewsSent
+        var gestureSeconds = 0.0
         if let meter = editor.skin?.meter(named: target) {
             editor.canvasSelectionChanged([target])
             let start = NSPoint(x: canvas.origin.x + CGFloat(meter.frame.x + min(meter.frame.width, 4) / 2),
                                 y: canvas.origin.y + CGFloat(meter.frame.y + min(meter.frame.height, 4) / 2))
+            let began = now()
             canvas.beginGesture(.move, at: start)
             for i in 1...max(samples * 3, 30) {
                 let t0 = now()
@@ -203,11 +205,16 @@ enum StudioLatencySelfTests {
                 RunLoop.main.run(until: Date().addingTimeInterval(1.0 / 60))
             }
             canvas.endGesture(keep: false)
+            gestureSeconds = ms(since: began) / 1000
             EditorWindowSelfTests.settle()
         }
         let sent = session.desktopPreviewsSent - sentBefore
-        t.check(gestureFrames.isEmpty || sent <= gestureFrames.count / 2 + 1,
-                "\(config): the desktop copy got \(sent) of \(gestureFrames.count) previews")
+        // At most one preview per `desktopPreviewInterval` of the gesture, and the first at once: a busy or slow machine
+        // takes longer over the steps, and more previews go out in that time.
+        let allowed = Int((gestureSeconds / EditingSession.desktopPreviewInterval).rounded(.up)) + 1
+        t.check(gestureFrames.isEmpty || sent <= min(allowed, gestureFrames.count),
+                "\(config): the desktop copy got \(sent) of \(gestureFrames.count) previews in "
+                + "\(String(format: "%.2f", gestureSeconds)) s (at most \(allowed))")
         t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(config): a cancelled drag writes nothing")
 
         let edit = Stat(samples: edits), undo = Stat(samples: undos)
