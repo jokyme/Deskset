@@ -4,7 +4,10 @@ import Foundation
 // Semantic tokens, hover cards and signature help of the language service. Properties on every file of the corpus
 // and every catalog example, golden results on the acceptance widgets and small snippets.
 //
-// `DESK_TOKENS_DUMP=path/to/file.desk` prints the semantic tokens of a file (to write goldens).
+// `DESK_TOKENS_DUMP=path/to/file.desk` prints the semantic tokens of a file, `DESK_HOVER_DUMP=path` (with
+// `DESK_HOVER_ZH=1` in Chinese) its hover cards and signature help, `DESK_GOLDEN_PRINT=1` the hover goldens as
+// they are now, `DESK_TOKENS_PROFILE=1` the cost of each part of the semantic tokens, `DESK_CATALOG_LEAKS=1` the
+// catalog texts that look like leaked ids or placeholders.
 
 /// `line:column text type[modifiers]` for each token (1-based).
 func deskTokenLines(_ snapshot: DeskSnapshot, _ tokens: [DeskSemanticToken]) -> [String] {
@@ -1001,13 +1004,7 @@ func runDeskServiceInfoLatency(_ t: TestRunner) {
             let snapshot = service.setMessageLanguage(.english)
             for k in snapshot.semanticBlockRanges.indices { _ = snapshot.semanticBlock(k) }
             let all = best(3) { _ = DeskSemanticTokens(tokens: snapshot.semanticTokens().tokens, index: snapshot.index) }
-            let convert = best(3) {
-                for k in snapshot.semanticBlockRanges.indices {
-                    let block = snapshot.semanticBlock(k)
-                    for run in block.runs { _ = snapshot.index.range(utf8: (block.offset + run.start)..<(block.offset + run.end)) }
-                }
-            }
-            print(String(format: "    index %.1f, facts (with index) %.1f, blocks (with facts) %.1f, encode %.1f, convert %.1f ms", index, facts, blocks, all, convert))
+            print(String(format: "    index %.1f, facts (with index) %.1f, blocks (with facts) %.1f, encode %.1f ms", index, facts, blocks, all))
         }
         for lines in [300, 2_000] {
             let text = deskLargeWidget(lines: lines)
