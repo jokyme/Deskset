@@ -412,6 +412,7 @@ enum CodeFollowingSelfTests {
             settle()
             let code = editor.codeView
             let instance = editor.skin
+            editor.window?.makeFirstResponder(code.textView)
             let end = (code.text as NSString).length
             code.textView.setSelectedRange(NSRange(location: end, length: 0))
             code.textView.insertText("\n[MeterTyped]\nMeter=String\nText=Typed\nY=30\n", replacementRange: code.textView.selectedRange())
@@ -419,6 +420,7 @@ enum CodeFollowingSelfTests {
             t.check(editor.skin !== instance, "a layer added: the Studio's instance loaded again")
             t.check(editor.skin?.meter(named: "MeterTyped") != nil, "it shows the typed layer")
             t.check(editor.allItems.contains { $0.title == "MeterTyped" }, "the layers list it")
+            t.check(editor.window?.firstResponder === code.textView, "the code keeps the keyboard focus")
             t.equal(StudioReviewSelfTests.read(url), typedIni, "nothing written")
             t.equal(session.buffers.buffer(url)?.text, typedIni)
             t.check(!session.undoStack.canUndo, "no step")

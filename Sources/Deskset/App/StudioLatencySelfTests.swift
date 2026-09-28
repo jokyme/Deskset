@@ -13,7 +13,9 @@ import DesksetCore
 /// its own (`desktop`), not part of the sample, and a value step that loads it again fails the suite. Every phase is
 /// printed as p50 / p95 (`EditingSession.lastTimings`: the Studio's reload split into loading, its first update and the
 /// window's parts; `frame`: the canvas drawn), and each widget runs three kinds of step (`Run`): a font size and a text
-/// color in design mode, and the font size again with the code pane open (split), which follows every step. A sixth,
+/// color in design mode, and the font size again with the code pane open (split), which follows every step by its
+/// edits; the split run also times typed code (the value typed over in the code pane) from the end of the typing pause
+/// to a frame of the canvas showing it (`code → canvas`), nothing written until the commit. A sixth,
 /// heavy widget — a Lua script that builds its text as it loads, WebParser measures, a large include — shows that a step
 /// costs no load there either (neither the Studio's instance nor the desktop copy loads again). A gesture is measured
 /// too: each step of a drag of the layer (the previews and a frame of the canvas), about 60 a second, and how many of
