@@ -690,7 +690,18 @@ final class SkinWindow {
     /// window position, and keeps an image of the result for the groups to copy their boxes from.
     private func drawScratch(_ groups: [Int]) {
         guard let p = part, base != nil else { return }
-        if scratchContext == nil { scratchContext = bitmapContext(widget.size, scale: scale) }
+        if scratchContext == nil {
+            // In the base bitmap's color space and depth (sRGB 8-bit unless +windowSpaceBase).
+            if config.baseInWindowSpace, let b = base, let space = b.colorSpace {
+                scratchContext = CGContext(data: nil, width: b.width, height: b.height,
+                                           bitsPerComponent: b.bitsPerComponent, bytesPerRow: 0, space: space,
+                                           bitmapInfo: b.bitmapInfo.rawValue)
+                scratchContext?.translateBy(x: 0, y: CGFloat(b.height))
+                scratchContext?.scaleBy(x: scale, y: -scale)
+            } else {
+                scratchContext = bitmapContext(widget.size, scale: scale)
+            }
+        }
         guard let ctx = scratchContext else { return }
         for i in groups {
             let g = p.groups[i]

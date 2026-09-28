@@ -159,7 +159,7 @@ func comparison(_ a: Shot, _ b: Shot, groups: [PixelRect]) -> JSON {
 }
 
 /// One run shows the same skin in every mode in two window color spaces (the screen's, as Deskset has today, and
-/// sRGB), all at once, so any two can be compared.
+/// sRGB), a few windows at a time, so any two can be compared.
 func q1Screen() -> JSON {
     guard canCapture else { return ["error": "screen capture is not allowed for this process"] }
     let widget = Widgets.system()
@@ -169,12 +169,14 @@ func q1Screen() -> JSON {
     var configs: [Config] = []
     for space in [WindowSpace.default, .srgb] {
         let suffix = space == .default ? "" : "@srgb"
-        func add(_ name: String, _ m: Mode, surfaceBase: Bool = false, scratch: Bool = false) {
+        func add(_ name: String, _ m: Mode, surfaceBase: Bool = false, scratch: Bool = false,
+                 windowSpaceBase: Bool = false) {
             var c = Config(mode: m)
             c.format = format
             c.windowSpace = space
             c.baseSurface = surfaceBase
             c.scratch = scratch
+            c.baseInWindowSpace = windowSpaceBase
             configs.append(c)
             names.append(name + suffix)
         }
@@ -186,7 +188,12 @@ func q1Screen() -> JSON {
         add("D1", .D1)
         add("DP", .DP, surfaceBase: true)
         add("DPx", .DP, surfaceBase: true, scratch: true)
-        if space == .default { add("DP(CGImage base)", .DP) }
+        if space == .default {
+            add("DP(CGImage base)", .DP)
+            // The partition with its base (and scratch) bitmap in the window's color space, like B's own bitmap.
+            add("EPw", .EP, windowSpaceBase: true)
+            add("EPxw", .EP, scratch: true, windowSpaceBase: true)
+        }
         add("OVE", .OVE)
         add("OVD", .OVD)
     }
@@ -212,6 +219,9 @@ func q1Screen() -> JSON {
         }
     }
     pairs["DP(CGImage base) vs D1"] = comparison(shot("DP(CGImage base)"), shot("D1"), groups: boxes)
+    for (a, b) in [("EPw", "E1"), ("EPw", "B"), ("EPxw", "E1"), ("EPxw", "B"), ("EPw", "A")] {
+        pairs["\(a) vs \(b)"] = comparison(shot(a), shot(b), groups: boxes)
+    }
     // Across window color spaces: what a person would see change against today's A.
     for (a, b) in [("E1@srgb", "A"), ("EP@srgb", "A"), ("A@srgb", "A"), ("D1@srgb", "D1"), ("E1@srgb", "E1"),
                    ("E1@srgb", "B"), ("EP@srgb", "B"), ("EPx@srgb", "B"), ("D1@srgb", "B"), ("B@srgb", "B")] {

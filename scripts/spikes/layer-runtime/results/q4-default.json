@@ -194,6 +194,7 @@
  "command": "q4",
  "configs": {
   "A (today)": "A",
+  "B (today)": "B",
   "D1 (sRGB IOSurface, today's window)": "D1",
   "E1/auto": "E1/auto",
   "E1/rgba16f": "E1/rgba16f",
@@ -208,6 +209,7 @@
  },
  "contextsFirstFrames": {
   "A [main] kCGContextTypeDisplayList": 1,
+  "B [main] kCGContextTypeBitmap Color LCD 8bpc": 1,
   "E1 [skin] kCGContextTypeBitmap Color LCD 8bpc": 1,
   "E1+displayBeforeAttach [main] kCGContextTypeBitmap Color LCD 8bpc": 1,
   "E1+displayBeforeAttach [skin] kCGContextTypeBitmap kCGColorSpaceSRGB 8bpc": 1,
@@ -223,6 +225,7 @@
  },
  "contextsNextThreeFrames": {
   "A [main] kCGContextTypeDisplayList": 3,
+  "B [main] kCGContextTypeBitmap Color LCD 8bpc": 3,
   "E1 [skin] kCGContextTypeBitmap Color LCD 8bpc": 3,
   "E1+displayBeforeAttach [skin] kCGContextTypeBitmap Color LCD 8bpc": 3,
   "E1/auto [skin] kCGContextTypeCoreAnimationAutomatic": 3,
@@ -235,11 +238,30 @@
   "EP/rgba16f+windowSpaceBase group [skin] kCGContextTypeBitmap Color LCD 16bpc float": 38
  },
  "loadAverageAtEnd": [
-  5.42,
-  6.08,
-  5.03
+  12.74,
+  10.83,
+  8.64
  ],
  "pairs": {
+  "B (today) vs A (today)": {
+   "byMaxDiff": {
+    "1": 167947,
+    "2": 3896,
+    "3": 20,
+    "4-7": 20,
+    "8+": 0
+   },
+   "differingBounds": [
+    0,
+    0,
+    520,
+    392
+   ],
+   "differingPercent": 84.323,
+   "differingPixels": 171883,
+   "maxChannelDiff": 6,
+   "pixels": 203840
+  },
   "E1/auto": {
    "vs A (today)": {
     "byMaxDiff": {
@@ -277,6 +299,25 @@
     "differingPercent": 1.582,
     "differingPixels": 3225,
     "maxChannelDiff": 5,
+    "pixels": 203840
+   },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 168041,
+     "2": 3867,
+     "3": 2,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.336,
+    "differingPixels": 171910,
+    "maxChannelDiff": 3,
     "pixels": 203840
    },
    "vs D1 (today's window)": {
@@ -324,6 +365,25 @@
     "differingPercent": 0,
     "differingPixels": 0,
     "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 167947,
+     "2": 3896,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.323,
+    "differingPixels": 171883,
+    "maxChannelDiff": 6,
     "pixels": 203840
    },
    "vs D1 (today's window)": {
@@ -385,6 +445,19 @@
     "maxChannelDiff": 6,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 106883,
@@ -444,6 +517,19 @@
     "maxChannelDiff": 6,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 106883,
@@ -501,6 +587,25 @@
     "differingPercent": 77.055,
     "differingPixels": 157068,
     "maxChannelDiff": 5,
+    "pixels": 203840
+   },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 145860,
+     "2": 4012,
+     "3": 1,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 73.525,
+    "differingPixels": 149873,
+    "maxChannelDiff": 3,
     "pixels": 203840
    },
    "vs D1 (today's window)": {
@@ -621,6 +726,25 @@
     "maxChannelDiff": 2,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 145980,
+     "2": 4036,
+     "3": 19,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 73.614,
+    "differingPixels": 150055,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 108625,
@@ -739,6 +863,25 @@
     "maxChannelDiff": 1,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 167947,
+     "2": 3896,
+     "3": 20,
+     "4-7": 20,
+     "8+": 0
+    },
+    "differingBounds": [
+     0,
+     0,
+     520,
+     392
+    ],
+    "differingPercent": 84.323,
+    "differingPixels": 171883,
+    "maxChannelDiff": 6,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 167662,
@@ -849,6 +992,25 @@
     "differingPercent": 86.571,
     "differingPixels": 176466,
     "maxChannelDiff": 6,
+    "pixels": 203840
+   },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 98207,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 48.178,
+    "differingPixels": 98207,
+    "maxChannelDiff": 1,
     "pixels": 203840
    },
    "vs D1 (today's window)": {
@@ -969,6 +1131,25 @@
     "maxChannelDiff": 6,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 98387,
+     "2": 112,
+     "3": 14,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     1,
+     1,
+     518,
+     390
+    ],
+    "differingPercent": 48.329,
+    "differingPixels": 98513,
+    "maxChannelDiff": 3,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 46706,
@@ -1087,6 +1268,25 @@
     "maxChannelDiff": 6,
     "pixels": 203840
    },
+   "vs B (today)": {
+    "byMaxDiff": {
+     "1": 7,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     55,
+     141,
+     377,
+     43
+    ],
+    "differingPercent": 0.003,
+    "differingPixels": 7,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
    "vs D1 (today's window)": {
     "byMaxDiff": {
      "1": 106883,
@@ -1166,6 +1366,7 @@
  "windowColorSpace": "default",
  "windowColorSpaces": {
   "A (today)": "Color LCD",
+  "B (today)": "Color LCD",
   "D1 (sRGB IOSurface, today's window)": "Color LCD",
   "E1/auto": "Color LCD",
   "E1/rgba16f": "Color LCD",
