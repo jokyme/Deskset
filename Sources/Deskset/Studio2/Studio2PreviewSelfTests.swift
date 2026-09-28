@@ -490,7 +490,7 @@ enum Studio2PreviewSelfTests {
             t.equal(UserDefaults.standard.string(forKey: StudioPreferences.backdropKey), defaultsBefore,
                     "the user's own settings are not touched headless")
             t.equal(canvas.previewBar.backdropItem.title, "Workbench")
-            t.check(canvas.previewBar.backdropItem.isOn)
+            t.check(!canvas.previewBar.backdropItem.isOn, "a place to work, not a preset of the preview")
             let menu = preview.menus.backdropMenu(preview.state, fidelity: .close, reduceTransparency: false,
                                                   canShowNeighbours: true, neighboursShown: false)
             t.equal(menu.items.filter { $0.state == .on }.map(\.title), ["Workbench"])

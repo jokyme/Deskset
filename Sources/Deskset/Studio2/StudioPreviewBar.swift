@@ -379,7 +379,9 @@ final class StudioPreviewBar: StudioCapsuleView {
         appearanceItem.title = dark ? StudioText[.darkMode] : StudioText[.lightMode]
         appearanceItem.isOn = state.appearance != .followMac || state.glass != .standard
         backdropItem.title = state.backdrop.title
-        backdropItem.isOn = state.backdrop != .desktop
+        // A sample picture is a preset of the preview (in the accent); the workbench and the others are where the user
+        // likes to work, remembered, and read as plain choices.
+        backdropItem.isOn = [.bright, .busy, .dark].contains(state.backdrop)
         backdropItem.suffix = state.backdrop == .desktop ? Self.fidelityWord(fidelity) : nil
         backdropItem.toolTip = state.backdrop == .desktop ? Self.fidelityTip(fidelity) : StudioText[.backdrop]
         dataItem.title = state.dataLabel
