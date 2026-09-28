@@ -374,7 +374,7 @@ enum Studio2SelfTests {
             t.equal(CommandLineTools.validate(["Deskset", "--snapshot-ui", "studio2", "--screen", "03-customize",
                                                "--language", "zh", "--dark", "--size", "1400x860"]), .mode)
             t.equal(CommandLineTools.validate(["Deskset", "--screen", "03-customize"]),
-                    .invalid("--screen needs one of --render, --snapshot-ui, --weather-report"))
+                    .invalid("--screen needs one of --render, --snapshot-ui, --weather-report, --benchmark"))
             t.check(CommandLineTools.usage.contains("studio2"), "the help names it")
 
             // 03-customize: the window at 2x, the toolbar stand-ins, Stationery System on the canvas, the inspector.

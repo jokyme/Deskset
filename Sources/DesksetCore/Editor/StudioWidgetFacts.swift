@@ -263,6 +263,19 @@ private final class Builder {
     let shown: Set<String>
     /// The meters in drawing order (lowercased name → position).
     let order: [String: Int]
+    /// Where each meter is (lowercased name → its frame's top and left): the order a person reads the parts in.
+    let position: [String: (y: Double, x: Double)]
+
+    /// Whether `a` comes before `b` as the widget is read: a row above first, then left to right (the file's order
+    /// is how the widget updates and draws, which need not be where things are).
+    func readsBefore(_ a: String, _ b: String) -> Bool {
+        guard let pa = position[a.lowercased()], let pb = position[b.lowercased()] else {
+            return (order[a.lowercased()] ?? 0) < (order[b.lowercased()] ?? 0)
+        }
+        if abs(pa.y - pb.y) > 12 { return pa.y < pb.y }
+        if pa.x != pb.x { return pa.x < pb.x }
+        return (order[a.lowercased()] ?? 0) < (order[b.lowercased()] ?? 0)
+    }
 
     init(skin: Skin, index: ValueUsageIndex, names: LayerNameCatalog) {
         self.skin = skin
@@ -271,6 +284,8 @@ private final class Builder {
         background = names.background ?? skin.detectedBackgroundLayer()
         shown = Set(skin.meters.filter { !$0.hidden && !Builder.isInvisible($0) }.map { $0.name.lowercased() })
         order = Dictionary(skin.meters.enumerated().map { ($1.name.lowercased(), $0) }, uniquingKeysWith: { a, _ in a })
+        position = Dictionary(skin.meters.map { ($0.name.lowercased(), (y: $0.frame.y, x: $0.frame.x)) },
+                              uniquingKeysWith: { a, _ in a })
     }
 
     /// A meter that draws nothing of its own: a hit box (an empty picture or text with a clear background).
@@ -490,7 +505,7 @@ private final class Builder {
             result.card = role(groups[card], kind: .card)
             taken.insert(card)
         }
-        var parts: [(role: StudioWidgetFacts.ColorRole, uses: Int, first: Int)] = []
+        var parts: [(role: StudioWidgetFacts.ColorRole, uses: Int, first: String)] = []
         for (i, g) in groups.enumerated() where !taken.contains(i) {
             let drawn = g.members.flatMap(\.uses).filter(isDrawn)
             guard g.color.a >= 10, !drawn.isEmpty else {
@@ -504,11 +519,11 @@ private final class Builder {
                 continue
             }
             let r = role(g, kind: .part)
-            let first = r.meters.compactMap { order[$0.lowercased()] }.min() ?? Int.max
+            let first = r.meters.min { readsBefore($0, $1) } ?? ""
             parts.append((r, drawn.count, first))
         }
-        // The most used first; among those used as much, in drawing order.
-        parts.sort { a, b in a.uses != b.uses ? a.uses > b.uses : a.first < b.first }
+        // The most used first; among those used as much, in the order the widget is read.
+        parts.sort { a, b in a.uses != b.uses ? a.uses > b.uses : readsBefore(a.first, b.first) }
         result.parts = parts.map(\.role)
         return result
     }
@@ -720,7 +735,7 @@ private final class Builder {
             rows.append(StudioWidgetFacts.ShowsRow(kind: Self.kindNoun(representative), number: 0, measure: m.name,
                                                    meters: meters, choices: []))
         }
-        rows.sort { (order[$0.meters[0].lowercased()] ?? 0) < (order[$1.meters[0].lowercased()] ?? 0) }
+        rows.sort { readsBefore($0.meters[0], $1.meters[0]) }
         var counts: [String: Int] = [:]
         for r in rows { counts[r.kind, default: 0] += 1 }
         var seen: [String: Int] = [:]
