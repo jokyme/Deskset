@@ -333,12 +333,37 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   whole value is removed (`"""x"""` → `""x""`); a key repeated within one section of one file: the first wins; an
   `@Include` before any section is ignored (with a warning); a missing include file is also looked for next to the
   including file and case-insensitively; encodings: UTF-32 / UTF-8 / UTF-16 byte-order marks, BOM-less UTF-16, UTF-8,
-  otherwise Windows-1252; an unterminated `[Name` line is a section header; include limits 30 levels, 500 files,
-  32 MB per file. `!WriteKeyValue` writes a value with leading or trailing spaces in quotes (so it reads back
-  unchanged) and turns line breaks in a value into spaces.
+  otherwise the ANSI code page of the Mac's language (next entry); an unterminated `[Name` line is a section header;
+  include limits 30 levels, 500 files, 32 MB per file. `!WriteKeyValue` writes a value with leading or trailing spaces
+  in quotes (so it reads back unchanged) and turns line breaks in a value into spaces.
 - Why: the manual does not describe these edge cases; the fallbacks only apply when a file would otherwise be missing.
 - Skin impact: none for valid skins.
 - Status: identical (+ leniencies)
+
+### Legacy ANSI skin files (code page)
+- Windows (Rainmeter): the extended characters of a file saved as ANSI are "based on the Windows Codepage (locale)
+  active in your Windows system": Windows-1252 in the US and Western Europe, GBK (936) on a Simplified Chinese
+  Windows, Big5 (950) on a Traditional Chinese one, and so on. UTF-16 LE is the encoding that reads the same everywhere
+  (/tips/unicode-in-rainmeter/).
+- Mac (Deskset): macOS has no system code page, so the first language in System Settings > General > Language & Region
+  stands for the Windows locale: Simplified Chinese → 936 (GBK), Traditional Chinese → 950 (Big5), Japanese → 932,
+  Korean → 949, Thai → 874, Vietnamese → 1258, Russian and other Cyrillic languages → 1251, Central European
+  languages → 1250, Greek → 1253, Turkish → 1254, Hebrew → 1255, Arabic and Persian → 1256, Baltic languages → 1257,
+  any other language → 1252. The app picks it when it starts, before any skin loads, and uses it for skin and include
+  files, Lua scripts, QuotePlugin files, WebParser's CodePage=0 fallback, the Skin Studio and the installer. A file
+  written back (`!WriteKeyValue`, the Skin Studio, variables kept on reinstall) stays in that code page; text the code
+  page cannot hold switches the file to UTF-16 LE with BOM (the Skin Studio's code view asks first). Byte-order marks,
+  BOM-less UTF-16 and valid UTF-8 are detected first, whatever the language, and a file that is not valid in the code
+  page is read as Windows-1252 (nothing is dropped). The command-line modes do the same (`--render` follows
+  `-AppleLanguages`); `--self-test` keeps 1252 on every Mac. RunCommand's `OutputType=ANSI` and Lua strings that are
+  not UTF-8 stay Windows-1252 (see their entries). Deskset 0.1.0 read every ANSI file as Windows-1252.
+- Why: the Mac's language is the closest equivalent of the Windows locale. Judgment call: only the first language
+  counts, like the one system locale on Windows.
+- Skin impact: an ANSI skin in the code page of the user's language shows its text and font names correctly (a GBK
+  skin with `FontFace=微软雅黑` draws in PingFang SC on a Mac set to Simplified Chinese). An ANSI skin in another code
+  page shows wrong characters, as on a Windows set to another locale; saving it as UTF-16 LE (or UTF-8) makes it read
+  the same on every Mac. A change of language applies the next time Deskset starts.
+- Status: identical (judgment call: the Mac's first language stands for the Windows locale)
 
 ### Variables (details)
 - Windows (Rainmeter): `#Var#`, nested `[#Var]`, escapes `#*Var*#` / `[*Name*]`, character variables `[\x263A]` /

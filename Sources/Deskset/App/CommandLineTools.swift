@@ -94,6 +94,24 @@ enum CommandLineTools {
         return .app
     }
 
+    /// The Windows "ANSI" code page that legacy skin files are read and written in (`TextDecoding.ansiCodePage`): the
+    /// one of the Mac's first preferred language (zh-Hans → 936 GBK, zh-Hant → 950 Big5, ja → 932, ru → 1251…), as
+    /// Rainmeter uses the Windows locale's. It applies to the menu bar app (with the Skin Studio and the installer) and
+    /// to every command-line mode. nil under `--self-test`: the checks keep the core's 1252 so they read the same on
+    /// every Mac, and suites that need another code page set it and restore it.
+    static func ansiCodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) -> Int? {
+        if arguments.dropFirst().contains("--self-test") { return nil }
+        return TextDecoding.defaultANSICodePage(preferredLanguages: preferredLanguages)
+    }
+
+    /// Sets `TextDecoding.ansiCodePage` for these arguments (see `ansiCodePage(for:)`). Called first thing at startup:
+    /// the setting is not synchronised, so it must be in place before any skin loads, on any thread.
+    static func useANSICodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) {
+        if let codePage = ansiCodePage(for: arguments, preferredLanguages: preferredLanguages) {
+            TextDecoding.ansiCodePage = codePage
+        }
+    }
+
     /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
     /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
     /// missing), so the Stationery widgets save as they do in the app.

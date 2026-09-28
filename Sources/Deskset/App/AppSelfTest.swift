@@ -8,6 +8,7 @@ enum AppSelfTest {
     static func run(filter: String?) -> Int32 {
         let t = AppTestRunner(filter: filter)
         print("Deskset app self-test")
+        ANSICodePageSelfTests.codePageAtStart = TextDecoding.ansiCodePage
         // No SMC key list is kept on disk during the self-tests, from the first suite on: skins that read the sensors
         // through the app's own service (the thread stress suite loads TestSkins/Plugins/Sensors) walk the keys
         // instead of reading or writing the user's cache.
@@ -25,6 +26,7 @@ enum AppSelfTest {
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
+        ANSICodePageSelfTests.run(t)
         systemMonitorTests(t)
         iconTests(t)
         controllerTests(t)

@@ -594,6 +594,8 @@ func runIniTests(_ t: TestRunner) {
     }
 
     t.suite("Ini: ANSI files use the code page of the language (like the Windows locale)") {
+        // The core's default on every Mac: only the app sets it (at startup, never in its self-tests).
+        t.equal(savedANSICodePage, 1252, "the default code page")
         // "Unicode in Rainmeter": ANSI extended characters depend on the Windows code page of the locale.
         t.equal(TextDecoding.defaultANSICodePage(preferredLanguages: ["zh-Hans-SG"]), 936)
         t.equal(TextDecoding.defaultANSICodePage(preferredLanguages: ["zh-Hans-CN", "en-US"]), 936)
@@ -669,6 +671,8 @@ func runIniTests(_ t: TestRunner) {
         let saved = TextDecoding.ansiCodePage
         TextDecoding.ansiCodePage = 936
         t.equal(TextDecoding.decode(Data(gbk)), zh.text)
+        TextDecoding.ansiCodePage = 950
+        t.equal(TextDecoding.decode(Data([0x4B, 0x3D, 0xA4, 0xA4, 0xA4, 0xE5])), "K=中文")
         TextDecoding.ansiCodePage = saved
     }
 
