@@ -54,6 +54,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     private(set) var toolbar: StudioToolbar!
     /// The preview bar, the zoom capsule, Interact, Actual Size and Show on Desktop.
     private(set) var preview: StudioPreviewController!
+    /// The widget page (the inspector while nothing is selected).
+    private(set) var widgetPage: StudioWidgetPage!
     /// The editing session of the widget shown (nil before it shows one, and once closed).
     private(set) var session: EditingSession?
     /// The widget on the desktop (nil with no session).
@@ -75,9 +77,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         } else {
             inspectorItem = NSSplitViewItem(viewController: inspectorController)
         }
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                              backing: .buffered, defer: false)
+        let window = StudioWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                                  backing: .buffered, defer: false)
+        // Off screen nothing is ever the key window: the controls draw as they do in the window in front.
+        window.drawsAsKey = !app.presentsWindows
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.titlebarAppearsTransparent = true
@@ -116,6 +120,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         toolbar.titleView.onClick = { [weak self] in self?.showRunningPopover() }
         preview = StudioPreviewController(windowController: self, canvas: canvasController,
                                           presentsWindows: app.presentsWindows)
+        widgetPage = StudioWidgetPage(window: self)
+        inspectorController.pageView.onEvent = { [weak self] event in self?.widgetPage.handle(event) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -153,6 +159,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// fields left on the stack goes, and anything registered for the window itself.
     func unbindSession() {
         guard let session else { return }
+        widgetPage.close()
+        widgetPage.thumbnails.clear()
         preview.detach()
         if let fieldEditor = window?.fieldEditor(false, for: nil) {
             session.undoStack.removeAllActions(withTarget: fieldEditor)
@@ -176,6 +184,29 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         canvasController.reload(fit: fit)
         updateToolbar()
         preview?.refreshAll()
+        widgetPage?.rebuild()
+        scheduleThumbnails()
+    }
+
+    private var thumbnailTimer: Timer?
+
+    /// The look thumbnails are drawn a moment after the widget changed (each is an instance of the widget), in a
+    /// window on screen; off screen they are drawn when asked (`drawThumbnails`).
+    private func scheduleThumbnails() {
+        guard app.presentsWindows else { return }
+        thumbnailTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.4, repeats: false) { [weak self] _ in self?.drawThumbnails() }
+        RunLoop.main.add(timer, forMode: .common)
+        thumbnailTimer = timer
+    }
+
+    /// Draws the look thumbnails now and shows them.
+    func drawThumbnails() {
+        thumbnailTimer?.invalidate()
+        thumbnailTimer = nil
+        guard let session, let look = widgetPage.facts?.look else { return }
+        widgetPage.thumbnails.render(session: session, look: look, skinsDirectory: app.skinsDirectory)
+        widgetPage.refresh()
     }
 
     /// The name the window shows: the widget's `[Metadata] Name`, else its folder.
@@ -205,6 +236,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         guard sidebarItem.isCollapsed == open else { return }
         sidebarItem.isCollapsed = !open
         updateToolbar()
+        widgetPage?.refresh()
     }
 
     /// The inspector's width when the window opens (the design's 318 pt, within 300–330).
@@ -276,8 +308,9 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// Code: the code next to the canvas (comes with the code pane).
     @objc func codeAction(_ sender: Any?) {}
 
-    /// Done: whatever is still waiting is written, then the window closes.
+    /// Done: an open color popover hands its pick over, whatever is still waiting is written, then the window closes.
     @objc func doneAction(_ sender: Any?) {
+        widgetPage.colorPopover?.close()
         flush()
         window?.close()
     }
@@ -344,7 +377,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         switch change {
         case .reloaded:
             widgetChanged()
-        case .applied, .reverted:
+        case .applied:
+            updateToolbar()
+        case .reverted:
+            widgetPage.stepReverted()
+            widgetPage.refresh()
             updateToolbar()
         case .revertFailed:
             if app.presentsWindows { NSSound.beep() }
@@ -395,6 +432,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     }
 
     func windowWillClose(_ notification: Notification) {
+        thumbnailTimer?.invalidate()
+        widgetPage.colorPopover?.close()
         runningPopover?.close()
         pendingDiskCheck?.invalidate()
         pendingDiskCheck = nil
@@ -402,6 +441,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         unbindSession()
         Self.openWindows.removeAll { $0 === self }
     }
+}
+
+/// The Studio's window. Off screen (snapshots, self-tests) it draws its controls as the key window does — the chosen
+/// segment in the accent color, not the grey of a window behind others.
+final class StudioWindow: NSWindow {
+    var drawsAsKey = false
+    override var isKeyWindow: Bool { drawsAsKey || super.isKeyWindow }
+    override var isMainWindow: Bool { drawsAsKey || super.isMainWindow }
 }
 
 /// The popover under the widget's name: which file runs on the desktop, a sentence on what that means, and Show in

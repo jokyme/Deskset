@@ -132,10 +132,23 @@ enum StudioSnapshot {
         controller.updateToolbar()
         let preview = controller.preview!
         preview.setBackdrop(screen.backdrop)
+        if !screen.pinned.isEmpty {
+            // Pinned before the instance's first update: some readings are taken only once (a name, a disk's size).
+            preview.sample.pinned = screen.pinned
+            controller.session?.reloadStudioSkin()
+        }
         for _ in 1..<max(screen.updates, 1) { controller.skin?.update() }
         if let data = screen.data { preview.setData(data) }
         if screen.frozen { preview.setTime(.frozen(StudioScreen.frozenTime)) }
         if screen.previewPopover { preview.showPreviewPopover() }
+        // The widget page as the numbers are now, its look thumbnails, and the color popover when the screen has it.
+        controller.widgetPage.rebuild()
+        controller.drawThumbnails()
+        if let swatch = screen.colorPopover, let facts = controller.widgetPage.facts,
+           let role = controller.widgetPage.colorRoles(facts)[swatch] {
+            StudioColorPopover.recentInMemory = screen.recentColors
+            controller.widgetPage.openColor(role, swatch: swatch)
+        }
         controller.window?.contentView?.layoutSubtreeIfNeeded()
         controller.canvasController.geometryChanged()
         controller.canvasController.layoutFloating()
@@ -233,6 +246,11 @@ enum StudioSnapshot {
             if let popover = controller.runningPopoverContent {
                 drawPopover(popover.view, anchor: controller.toolbar.titleView, in: content, dark: dark)
             }
+            if let popover = controller.widgetPage.colorPopover, let anchor = controller.widgetPage.popoverAnchor() {
+                _ = popover.view
+                drawPopover(popover.view, anchor: anchor.view, in: content, dark: dark, edge: .maxX,
+                            anchorRect: anchor.rect)
+            }
             if let popover = controller.preview.previewPopoverContent {
                 drawPopover(popover.view, anchor: controller.canvasController.previewBar.appearanceItem, in: content,
                             dark: dark, minX: 62)
@@ -277,7 +295,8 @@ enum StudioSnapshot {
             r.fill()
             NSColor.separatorColor.setFill()
             NSRect(x: r.minX, y: r.minY, width: 1, height: r.height).fill()
-            draw(pane, in: content)
+            // The page itself (a scroll view's own drawing is not what the window shows off screen).
+            draw(controller.inspectorController.pageView, in: content)
         }
         if !controller.sidebarItem.isCollapsed {
             let pane = controller.sidebarController.view
@@ -451,15 +470,50 @@ enum StudioSnapshot {
         }
     }
 
+    /// A popover left of its anchor, its arrow on its right edge pointing at the anchor (the color popover beside a
+    /// swatch of the inspector): placed so the arrow sits a third of the way down, kept inside the window.
+    static func drawSidePopover(_ view: NSView, size: NSSize, anchor a: NSRect, in content: NSView, dark: Bool,
+                                arrow: CGFloat) {
+        var frame = NSRect(x: a.minX - arrow - size.width, y: a.midY - size.height * 0.62, width: size.width,
+                           height: size.height)
+        frame.origin.y = min(max(frame.minY, 8), content.bounds.height - size.height - 60)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: dark ? 0.5 : 0.22)
+        shadow.shadowBlurRadius = 22
+        shadow.shadowOffset = NSSize(width: 0, height: -10)
+        shadow.set()
+        let path = NSBezierPath(roundedRect: frame, xRadius: 14, yRadius: 14)
+        let tipX = frame.maxX + arrow
+        path.move(to: NSPoint(x: frame.maxX - 1, y: a.midY + arrow))
+        path.line(to: NSPoint(x: tipX, y: a.midY))
+        path.line(to: NSPoint(x: frame.maxX - 1, y: a.midY - arrow))
+        path.close()
+        (dark ? NSColor(white: 0.19, alpha: 0.97) : NSColor(srgbRed: 0.93, green: 0.93, blue: 0.95, alpha: 0.97)).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        (dark ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 0, alpha: 0.10)).setStroke()
+        let outline = NSBezierPath(roundedRect: frame.insetBy(dx: 0.25, dy: 0.25), xRadius: 14, yRadius: 14)
+        outline.lineWidth = 0.5
+        outline.stroke()
+        guard let part = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: part)
+        part.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
     /// A popover (`NSPopover` on screen) composed off-screen: its material, its arrow pointing at `anchor`, and its
     /// content, below the anchor (or above it when there is no room).
-    static func drawPopover(_ view: NSView, anchor: NSView, in content: NSView, dark: Bool, minX: CGFloat = 8) {
+    static func drawPopover(_ view: NSView, anchor: NSView, in content: NSView, dark: Bool, minX: CGFloat = 8,
+                            edge: NSRectEdge = .minY, anchorRect: NSRect? = nil) {
         view.layoutSubtreeIfNeeded()
         let size = view.fittingSize.width > 0 ? view.fittingSize : view.frame.size
         view.setFrameSize(size)
         view.layoutSubtreeIfNeeded()
-        let a = anchor.convert(anchor.bounds, to: content)
+        let a = anchor.convert(anchorRect ?? anchor.bounds, to: content)
         let arrow: CGFloat = 9
+        if edge == .maxX {
+            return drawSidePopover(view, size: size, anchor: a, in: content, dark: dark, arrow: arrow)
+        }
         var frame = NSRect(x: a.midX - size.width / 2, y: a.minY - arrow - size.height, width: size.width,
                            height: size.height)
         frame.origin.x = min(max(frame.minX, minX), content.bounds.width - size.width - 8)

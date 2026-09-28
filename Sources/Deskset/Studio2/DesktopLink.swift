@@ -149,6 +149,33 @@ final class DesktopLink {
         if skin.executor.isCurrent { run() } else { skin.async(run) }
     }
 
+    // MARK: Changes that reach beyond the widget's own files
+
+    /// The desktop runs another variant of the widget (`Small.ini`, `Large.ini`): loaded in place of this one; the
+    /// session follows it (`desktopChanged`). False when the variant is not there.
+    @discardableResult
+    func switchVariant(to file: String) -> Bool {
+        guard session.fileURL?.lastPathComponent.caseInsensitiveCompare(file) != .orderedSame else { return false }
+        guard app.activate(config: config, file: file) != nil else { return false }
+        desktopChanged()
+        return true
+    }
+
+    /// The other widgets on the desktop that read one of `files` (a file a suite shares, such as its look) load again,
+    /// so they show what was written there. Found from this widget's files (which configs of its root include them),
+    /// never from the other widgets' skins.
+    func refreshOthers(reading files: [URL]) {
+        guard let skin = session.studioSkin else { return }
+        var configs: Set<String> = []
+        for f in files { configs.formUnion(skin.configsIncluding(f).map { $0.lowercased() }) }
+        let mine = SkinLibrary.normalizedConfigName(config).lowercased()
+        for (_, c) in app.controllers where !c.isStopped {
+            let key = SkinLibrary.normalizedConfigName(c.config).lowercased()
+            guard key != mine, configs.contains(key) else { continue }
+            app.refresh(c)
+        }
+    }
+
     /// Where the widget comes from, for the copy sentence under its name.
     var provenance: StudioProvenance {
         let root = SkinLibrary.normalizedConfigName(config).split(separator: "\\").first.map(String.init) ?? config

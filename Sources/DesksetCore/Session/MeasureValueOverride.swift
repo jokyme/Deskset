@@ -28,11 +28,14 @@ public final class MeasureValueOverride {
     public var data: Data = .live
     /// The instant the Time measures show (nil: the clock). Those with a `TimeStamp` of their own keep it.
     public var frozenTime: Date?
+    /// Readings pinned by name (lowercased measure name → number and text), whatever `data` says and whatever the
+    /// measure is (a total too): the designed screens' readings, so a snapshot shows the same numbers on every Mac.
+    public var pinned: [String: (value: Double, text: String?)] = [:]
 
     public init() {}
 
     /// Whether anything is replaced.
-    public var isActive: Bool { data != .live || frozenTime != nil }
+    public var isActive: Bool { data != .live || frozenTime != nil || !pinned.isEmpty }
 
     /// The text the long-text preset shows.
     public static let longSample = "A much longer text than this widget was made for, to see where it wraps or ends"
@@ -55,6 +58,11 @@ public final class MeasureValueOverride {
     /// Called by `Measure.performUpdate` before the measure computes its value: true when the override set the
     /// measure's number and text itself (the measure then only runs its rules).
     func takesOver(_ measure: Measure) -> Bool {
+        if let pin = pinned[measure.name.lowercased()] {
+            measure.value = pin.value
+            if let text = pin.text { measure.rawString = text }
+            return true
+        }
         if let frozenTime, let time = measure as? TimeMeasure {
             return show(frozenTime, in: time)
         }

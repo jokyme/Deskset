@@ -302,12 +302,3 @@ final class StudioSidebarViewController: NSViewController {
         view = v
     }
 }
-
-/// The inspector: the page of what is selected ("What do you want to change?" on top). Empty for now.
-final class StudioInspectorViewController: NSViewController {
-    override func loadView() {
-        let v = NSView()
-        v.setAccessibilityLabel(StudioText[.inspector])
-        view = v
-    }
-}

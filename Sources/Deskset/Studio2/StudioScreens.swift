@@ -48,6 +48,13 @@ struct StudioScreen {
     var previewPopover = false
     /// How many updates the Studio's instance makes before the picture (sample readings settle over a few).
     var updates = 1
+    /// Readings pinned by measure name (the design's numbers on the widget's live measures, so the page names the
+    /// data as the widget reads it).
+    var pinned: [String: (value: Double, text: String?)] = [:]
+    /// The swatch the color popover is open on ("part:1": the second part color).
+    var colorPopover: String?
+    /// The recent colors the popover lists.
+    var recentColors: [RGBA] = []
     /// What the design shows that the window does not have yet: listed with the differences.
     var later: [String] = []
 
@@ -55,11 +62,29 @@ struct StudioScreen {
     static let systemDemo = FileEdit(path: "@Resources/System/Settings.inc", find: "SystemSource=Live",
                                      replace: "SystemSource=Demo")
 
+    /// The design's readings for System on its live measures: CPU 21 %, 20.4 of 24 GB, 88 % of the disk used, the GPU
+    /// at 34 %, up 14 days 5 hours, a MacBook Pro.
+    static let systemReadings: [String: (value: Double, text: String?)] = [
+        "measurecpu": (21, nil),
+        "measurememused": (20.4 * 1_073_741_824, nil),
+        "measurememtotal": (24 * 1_073_741_824, nil),
+        "measureswapall": (20.4 * 1_073_741_824, nil),
+        "measurediskavail": (117_520_000_000, nil),
+        "measuredisktotal": (994_662_584_320, nil),
+        "measurediskname": (0, "Macintosh HD"),
+        "measuregpu": (34, "34"),
+        "measureuptime": (1_228_320, nil),
+        "measurecomputername": (0, "MacBook Pro"),
+        "measurebattery": (1, nil),
+    ]
+
     /// The designed screens, in the order of the design.
     static let all: [StudioScreen] = [
-        StudioScreen(name: "03-customize", fixture: .system, edits: [systemDemo], zoom: 1.65,
-                     updates: 4,
-                     later: ["widget page", "color popover", "search field"]),
+        StudioScreen(name: "03-customize", fixture: .system, zoom: 1.65, updates: 4, pinned: systemReadings,
+                     colorPopover: "part:1",
+                     recentColors: [RGBA(r: 250, g: 115, b: 89), RGBA(r: 92, g: 107, b: 242)],
+                     later: ["Different in Dark Mode in the color popover", "the color field shows the file's R,G,B",
+                             "Disk reads as free space on Macintosh HD", "look thumbnails over a sample backdrop"]),
         // A city picked (the design's), and the sample forecast of `DESKSET_WEATHER_DEMO`.
         StudioScreen(name: "03b-weather", fixture: .weather,
                      edits: [FileEdit(path: "@Resources/Variables.inc", find: "Location=timezone",

@@ -169,6 +169,89 @@ enum StudioText {
         case backToStudio = "desktop.back"
         case escapeKey = "desktop.esc"
         case showingDesktop = "desktop.announce"
+        // The inspector's pages.
+        case sourceOption = "page.source.option"
+        case sourceLive = "page.source.live"
+        case sourceRule = "page.source.rule"
+        case sourceStyle = "page.source.style"
+        case invalidValue = "page.invalid"
+        case selected = "page.selected"
+        case textSmaller = "page.textSmaller"
+        case textBigger = "page.textBigger"
+        case sectionOptions = "widget.options"
+        case sectionShows = "widget.shows"
+        case sectionColors = "widget.colors"
+        case sectionFonts = "widget.fonts"
+        case sectionFontsAndSize = "widget.fontsAndSize"
+        case sectionLookAndSize = "widget.lookAndSize"
+        case fontNumbers = "widget.font.numbers"
+        case fontLabels = "widget.font.labels"
+        case fontWords = "widget.font.words"
+        case fontThisWidget = "widget.font.thisWidget"
+        case fontMac = "widget.font.mac"
+        case size = "widget.size"
+        case sizeSmallShort = "widget.size.small"
+        case sizeMediumShort = "widget.size.medium"
+        case sizeLargeShort = "widget.size.large"
+        case sizeLater = "widget.size.later"
+        case lookAuto = "widget.look.auto"
+        case lookLight = "widget.look.light"
+        case lookDark = "widget.look.dark"
+        case lookClear = "widget.look.clear"
+        case lookShared = "widget.look.shared"
+        case swatchText = "widget.swatch.text"
+        case swatchCard = "widget.swatch.card"
+        case swatchMore = "widget.swatch.more"
+        case followTheLook = "widget.followTheLook"
+        case partsOne = "widget.parts.one"
+        case partsMany = "widget.parts.many"
+        case paints = "widget.paints"
+        case moreSettings = "widget.moreSettings"
+        case moreSettingsDetail = "widget.moreSettings.detail"
+        case allOptions = "widget.allOptions"
+        case allVariables = "widget.allVariables"
+        case allData = "widget.allData"
+        case moreColorsTitle = "widget.moreColors"
+        case showsRing = "widget.shows.ring"
+        case showsBar = "widget.shows.bar"
+        case showsGraph = "widget.shows.graph"
+        case showsGauge = "widget.shows.gauge"
+        case showsShape = "widget.shows.shape"
+        case showsOnlyThis = "widget.shows.onlyThis"
+        case clock = "widget.clock"
+        case hours12 = "widget.hours12"
+        case hours24 = "widget.hours24"
+        case unitsAuto = "widget.units.auto"
+        case onLabel = "widget.on"
+        // Undo names and the confirmations under a changed control.
+        case undoColor = "undo.color"
+        case undoFont = "undo.font"
+        case undoTextSize = "undo.textSize"
+        case undoLook = "undo.look"
+        case undoSize = "undo.size"
+        case undoShows = "undo.shows"
+        case undoOption = "undo.option"
+        case confirmColor = "confirm.color"
+        case confirmFont = "confirm.font"
+        case confirmBigger = "confirm.bigger"
+        case confirmSmaller = "confirm.smaller"
+        case confirmLook = "confirm.look"
+        case confirmSize = "confirm.size"
+        case confirmShows = "confirm.shows"
+        case confirmOption = "confirm.option"
+        case confirmUndo = "confirm.undo"
+        // The color popover.
+        case colorInWidget = "color.inWidget"
+        case colorMac = "color.mac"
+        case colorAccent = "color.accent"
+        case colorRecent = "color.recent"
+        case colorOpacity = "color.opacity"
+        case colorMore = "color.more"
+        case colorEyedropper = "color.eyedropper"
+        case colorHex = "color.hex"
+        case colorPartsOne = "color.parts.one"
+        case colorPartsMany = "color.parts.many"
+        case colorBadValue = "color.badValue"
         // The status menu.
         case useNewStudio = "menu.useNewStudio"
         case studioWindow = "window.studio"
@@ -301,6 +384,87 @@ enum StudioText {
         .backToStudio: ("Back to Studio", "回到 Studio"),
         .escapeKey: ("Esc", "Esc"),
         .showingDesktop: ("Showing the desktop. Press Escape to go back.", "正在显示桌面，按 Esc 返回。"),
+        .sourceOption: ("Option", "选项"),
+        .sourceLive: ("Live", "实时"),
+        .sourceRule: ("Rule", "规则"),
+        .sourceStyle: ("Style", "样式"),
+        .invalidValue: ("Written as “%@”, which this can’t show", "写的是“%@”，这里显示不了"),
+        .selected: ("Selected", "已选中"),
+        .textSmaller: ("Make All Text Smaller", "缩小全部文字"),
+        .textBigger: ("Make All Text Bigger", "放大全部文字"),
+        .sectionOptions: ("Options", "选项"),
+        .sectionShows: ("Shows", "显示内容"),
+        .sectionColors: ("Colors", "颜色"),
+        .sectionFonts: ("Fonts", "字体"),
+        .sectionFontsAndSize: ("Fonts and size", "字体和大小"),
+        .sectionLookAndSize: ("Look and size", "外观和大小"),
+        .fontNumbers: ("Numbers", "数字"),
+        .fontLabels: ("Labels", "文字"),
+        .fontWords: ("Words", "文字"),
+        .fontThisWidget: ("In This Widget", "这个小组件的字体"),
+        .fontMac: ("Mac Fonts", "Mac 字体"),
+        .size: ("Size", "大小"),
+        .sizeSmallShort: ("Small", "小"),
+        .sizeMediumShort: ("Medium", "中"),
+        .sizeLargeShort: ("Large", "大"),
+        .sizeLater: ("Scaling a whole widget comes in a later version", "整体缩放在以后的版本里提供"),
+        .lookAuto: ("Auto", "自动"),
+        .lookLight: ("Light", "浅色"),
+        .lookDark: ("Dark", "深色"),
+        .lookClear: ("Clear", "透明"),
+        .lookShared: ("The look is shared by all %d %@ widgets", "全部 %d 个 %@ 小组件共用这个外观"),
+        .swatchText: ("Text", "文字"),
+        .swatchCard: ("Card", "卡片"),
+        .swatchMore: ("More…", "更多…"),
+        .followTheLook: ("follow the look", "跟随外观"),
+        .partsOne: ("1 part", "1 个部件"),
+        .partsMany: ("%d parts", "%d 个部件"),
+        .paints: ("%@ · %@", "%@ · %@"),
+        .moreSettings: ("More Settings", "更多设置"),
+        .moreSettingsDetail: ("Clicks, updates, name", "点按、刷新、名称"),
+        .allOptions: ("All Options (%d)…", "全部选项（%d 个）…"),
+        .allVariables: ("All Variables (%d)…", "全部变量（%d 个）…"),
+        .allData: ("All Data (%d)…", "全部数据（%d 个）…"),
+        .moreColorsTitle: ("Every color in this widget", "这个小组件里的每一个颜色"),
+        .showsRing: ("Ring", "圆环"),
+        .showsBar: ("Bar", "进度条"),
+        .showsGraph: ("Graph", "曲线"),
+        .showsGauge: ("Gauge", "仪表"),
+        .showsShape: ("Shape", "形状"),
+        .showsOnlyThis: ("This part works out its own value: other data is changed in the code",
+                         "这个部件自己算出数值：换别的数据要在代码里改"),
+        .clock: ("Clock", "时钟"),
+        .hours12: ("1:30 PM", "下午 1:30"),
+        .hours24: ("13:30", "13:30"),
+        .unitsAuto: ("Auto", "自动"),
+        .onLabel: ("On", "开"),
+        .undoColor: ("Color", "颜色"),
+        .undoFont: ("Font", "字体"),
+        .undoTextSize: ("Text Size", "字号"),
+        .undoLook: ("Look", "外观"),
+        .undoSize: ("Size", "大小"),
+        .undoShows: ("Shows", "显示内容"),
+        .undoOption: ("%@", "%@"),
+        .confirmColor: ("%@ is now %@", "%@已改为%@"),
+        .confirmFont: ("%@ are now in %@", "%@已改为%@"),
+        .confirmBigger: ("All text is bigger", "全部文字已放大"),
+        .confirmSmaller: ("All text is smaller", "全部文字已缩小"),
+        .confirmLook: ("The look is now %@", "外观已改为%@"),
+        .confirmSize: ("Now %@ on your desktop", "桌面上现在是%@"),
+        .confirmShows: ("%@ now shows %@", "%@现在显示%@"),
+        .confirmOption: ("%@ is now %@", "%@已改为%@"),
+        .confirmUndo: ("Undo", "撤销"),
+        .colorInWidget: ("In this widget", "这个小组件的颜色"),
+        .colorMac: ("Mac colors", "Mac 颜色"),
+        .colorAccent: ("Accent · follows your Mac", "强调色 · 跟随你的 Mac"),
+        .colorRecent: ("Recent", "最近"),
+        .colorOpacity: ("Opacity", "不透明度"),
+        .colorMore: ("More Colors…", "更多颜色…"),
+        .colorEyedropper: ("Pick a color from the screen", "从屏幕上取色"),
+        .colorHex: ("Color code", "色值"),
+        .colorPartsOne: ("1 part in this widget", "这个小组件里 1 个部件"),
+        .colorPartsMany: ("%d parts in this widget", "这个小组件里 %d 个部件"),
+        .colorBadValue: ("Not a color: try #40BA5C", "不是颜色：试试 #40BA5C"),
         .useNewStudio: ("Use New Studio", "使用新的 Studio"),
         .studioWindow: ("Studio", "Studio"),
     ]

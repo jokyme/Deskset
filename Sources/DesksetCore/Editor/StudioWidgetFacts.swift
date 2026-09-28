@@ -32,8 +32,12 @@ public struct StudioWidgetFacts {
         public var label: String
         /// What it paints, as a title ("Memory ring"), for the color popover.
         public var title: String
-        /// The parts it paints that are shown (for the outline on the canvas and the counts).
+        /// The kind of data part it paints ("ring", "bar"), when it paints one.
+        public var partKind: String?
+        /// The parts it paints that are shown (for the outline on the canvas).
         public var meters: [String]
+        /// How many parts that is, as a person counts them: a symbol inside a ring is part of the ring.
+        public var parts: Int
         /// The `[Variables]` entry a change writes; nil: the color is written in the options themselves.
         public var variable: String?
         /// Whether the written value may carry an alpha (false when it is used as `#Name#,alpha`).
@@ -555,11 +559,24 @@ private final class Builder {
         }
         meters.sort { (order[$0.lowercased()] ?? 0) < (order[$1.lowercased()] ?? 0) }
         let variable = writtenVariable(g)
-        let (label, title) = words(for: g, meters: meters, variable: variable)
+        let (label, title, partKind) = words(for: g, meters: meters, variable: variable)
         return StudioWidgetFacts.ColorRole(kind: kind, group: g, color: g.color, label: label, title: title,
-                                           meters: meters, variable: variable,
+                                           partKind: partKind, meters: meters, parts: partCount(meters),
+                                           variable: variable,
                                            acceptsAlpha: variable.map { !withAlpha.contains($0.lowercased()) } ?? true,
                                            followsLook: followsLook(variable: variable, g))
+    }
+
+    /// The meters as parts: those drawn inside another of them (a symbol in its ring) count with it.
+    func partCount(_ meters: [String]) -> Int {
+        let frames = meters.compactMap { skin.meter(named: $0)?.frame }
+        let count = frames.enumerated().filter { i, f in
+            !frames.enumerated().contains { j, g in
+                j != i && g.width * g.height > f.width * f.height && g.x <= f.x && g.y <= f.y
+                    && g.x + g.width >= f.x + f.width && g.y + g.height >= f.y + f.height
+            }
+        }.count
+        return max(count, 1)
     }
 
     /// The `[Variables]` entry a change of the group writes: the one every use reaches its color through, nearest to
@@ -570,7 +587,7 @@ private final class Builder {
         var chains: [[String]] = []
         for member in g.members where !member.uses.isEmpty {
             guard let root = member.variableName else { continue }
-            let vias = Set(member.uses.filter { !isActionUse($0) }.map { $0.via ?? root })
+            let vias = Set(member.uses.map { $0.via ?? root })
             for via in vias { chains.append(chain(from: via, to: root)) }
         }
         guard let first = chains.first else { return g.variables.first }
@@ -609,13 +626,13 @@ private final class Builder {
     }
 
     /// The words of a color: a short one for its swatch and a title for its popover.
-    func words(for g: ValueUsageIndex.ColorGroup, meters: [String], variable: String?) -> (String, String) {
+    func words(for g: ValueUsageIndex.ColorGroup, meters: [String], variable: String?) -> (String, String, String?) {
         // A data part: the data's short name, and the part's kind ("Memory", "Memory ring").
         for m in meters {
             guard let meter = skin.meter(named: m), Self.drawsData.contains(meter.type), let data = followedData(meter),
                   let measure = skin.measure(named: data) else { continue }
             let short = StudioWidgetFacts.dataName(measure, in: skin, names: names).short
-            return (short, "\(short) \(Self.kindNoun(meter))")
+            return (short, "\(short) \(Self.kindNoun(meter))", Self.kindNoun(meter))
         }
         func capitalized(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
         if let variable {
@@ -624,10 +641,10 @@ private final class Builder {
                 words = String(words.dropLast(suffix.count))
             }
             let short = words.isEmpty ? g.name : capitalized(words)
-            return (short, short)
+            return (short, short, nil)
         }
         let title = capitalized(g.name)
-        return (title.split(separator: " ").first.map(String.init) ?? title, title)
+        return (title.split(separator: " ").first.map(String.init) ?? title, title, nil)
     }
 
     // MARK: Shows
