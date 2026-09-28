@@ -278,3 +278,43 @@ func packedOrigin(_ index: Int, size: CGSize, gap: CGFloat = 8) -> NSPoint {
     let y = visible.minY + 20 + CGFloat(row) * (size.height + gap) + CGFloat(layer) * 11
     return NSPoint(x: x, y: y)
 }
+
+/// `hold --scenario … --mode … [--count N] [--seconds S]`: opens the widgets, lets them update for S seconds (default
+/// 45) and closes them. For measuring WindowServer from outside while they are open (`run.sh wsfootprint-person`, which
+/// needs a person to type the administrator password once: `footprint` needs root for WindowServer).
+func holdWidgets() -> JSON {
+    let mode = choice("--mode", Mode.EP)
+    let scenario = scenarioOption()
+    var config = Config(mode: mode)
+    config.windowSpace = choice("--window-cs", WindowSpace.default)
+    config.baseSurface = mode == .DP && !flag("--cgimage")
+    config.baseInWindowSpace = flag("--window-space-base")
+    config.scratch = flag("--scratch")
+    config.keptPictures = flag("--kept")
+    config.cgImages = flag("--cgimage")
+    let seconds = Double(option("--seconds") ?? "") ?? 45
+    let (make, defaultCount, interval): (() -> Widget, Int, Double) = {
+        switch scenario {
+        case "design": return ({ Widgets.design() }, 12, 1.0)
+        case "sixty": return ({ Widgets.visualizer() }, 12, 1.0 / 60)
+        default: return ({ Widgets.system() }, 20, 1.0)
+        }
+    }()
+    let count = Int(option("--count") ?? "") ?? defaultCount
+    var threads: [RunLoopThread] = []
+    var windows: [SkinWindow] = []
+    autoreleasepool {
+        for i in 0..<count {
+            threads.append(RunLoopThread.make("skin \(i)"))
+            let w = SkinWindow(make(), config, origin: packedOrigin(i, size: make().size), thread: threads[i])
+            w.buildAndCommit(tick: 0)
+            w.show()
+            w.start(interval: interval)
+            windows.append(w)
+        }
+    }
+    pump(seconds)
+    autoreleasepool { for w in windows { w.close() } }
+    pump(1)
+    return ["config": config.label, "scenario": scenario, "widgets": count, "seconds": seconds]
+}

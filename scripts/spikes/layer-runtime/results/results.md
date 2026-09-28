@@ -5,6 +5,14 @@ number below comes from a JSON file next to this one; each section names its fil
 of the H1 experiment are answered here, and question 8 (a `CARenderer` probe on the CI runners, `../ci-probe/`,
 measured on the runners on 2026-09-28) in its own section.
 
+**Corrected after a review (2026-09-28, afternoon).** The review found 25 problems: memory compared through
+`phys_footprint`, which does not see images handed to the window server; WindowServer memory read from `top`, which
+cannot see layer contents; memory-pressure and interleaving claims the raw data contradicts; a 60 Hz rule that H1's own
+numbers already triggered; a CI check that was exact by construction; a B baseline that is not what Deskset ships; an
+A baseline that is not what updating skins looked like; and several overstated figures. The affected sections say
+what changed; new measurements are in `q1-stepped.json`, `q5-review-search*.json`, `q5-partitions/`, `sysmem/`,
+`cost-d/`, `wspair/`, `frames60/`, `cschange/` and `ci-probe/local-*-plan-groups.json`.
+
 On 2026-09-27, while this experiment ran, Deskset itself stopped drawing skins with `draw(_:)` (called **A** below)
 and started drawing each skin window on the main thread into a bitmap of its own, in the window's color space, that
 becomes the view's layer contents, keeping pictures of meters that did not change (**B**). The plan's baseline is A;
@@ -25,15 +33,34 @@ E layers in B's color space.
   99 cost runs, and 23 of 69 WindowServer CPU runs, had a phase above 8. **Numbers from runs with a load above 8 are
   marked provisional** (an asterisk in the tables, with how many of the rounds were affected). Memory and pixel results
   do not depend on the load.
-- Memory: normal memory pressure (level 1) during every run used here, 1–2 GB free. (An earlier campaign ran under
-  memory pressure level 2; its pixel, color and flip results were identical, its memory numbers are not used.)
-- `phys_footprint` counts only pages that are mapped into the process. A `CGImage` made from a bitmap context keeps
-  the context's pages by copy-on-write and is charged again only when something in the process reads it
-  (`probes.json`: 8 such images of 9.77 MB each added 0.34 MB, and 78.75 MB once CoreGraphics drew them; a live
-  9.77 MB context counted 9.78 MB). CA hands images to the window server without reading them (question 6). B's own
-  bitmaps even leave the footprint: a design skin in B showed +1.86 MB for 8 s and then −0.1 MB; `vmmap` then listed
-  its bitmap memory ("CG raster data") as a 2,000 KB copy-on-write region with 0 KB resident. So memory is also given
-  as the uncompressed bytes of the bitmaps the layers or the view hold ("layer bitmaps", "own bitmaps").
+- Memory pressure (corrected after review): **not** level 1 in every run. `memoryPressureAfterSettle.pressureLevel`
+  was 2 in 5 of 51 first-campaign cost runs and 36 of 99 second-campaign runs (every round of `ten-A`, `ten-B`,
+  `ten-Bkept` and `ten-E1`, and rounds 1–2 of most design and sixty combinations), with 0.05–8.5 GB free. The level
+  is confounded with the mode (no C run reached level 2, most E runs did), and level-2 rounds read lower (design E1
+  3.14 / 3.64 MB at level 2 vs 4.41 at level 1; design EPw 2.28 / 2.70 vs 3.03). The tables below give phys_footprint
+  medians of level-1 rounds where there are any, and mark the rest; the memory comparisons use the measurement
+  added after review (below), which records the level of every sample.
+- `phys_footprint` does not see the pages of `CGImage`s made from bitmap contexts while Core Animation has handed them
+  to the window server: 8 such images of 9.77 MB each in an sRGB window add 0.34–0.8 MB to it, and B's two bitmaps
+  per System widget come back into it only while the windows are ordered out (`memtrace-b/ten-B.json`: 2.6 MB shown,
+  17.66 MB hidden, 2.66 MB shown again: +15 MB = 10 × two 0.78 MB bitmaps; `memtrace-b/design-B.json`: +2.3 MB for
+  8 s, then +0.4 MB, 4.3 MB hidden). The pages are still in memory. (An earlier version of this paragraph also
+  quoted a design-skin B trace of +1.86 MB then −0.1 MB and a `vmmap` listing; no committed file holds them, so they
+  are withdrawn.) So modes that hand over images (B, C, and the partition's base) look cheaper by phys_footprint than
+  modes whose pixels live in CA backing stores or IOSurfaces. After review, memory is compared with
+  **`footprint --vmObjectDirty`** of the spike's own process (no root needed), which counts every dirty page of the
+  VM objects mapped into it, including those the window server maps too. It passes the positive control that every
+  other reading here fails: 8 separate copies of a 9.77 MB random-pixel image in an sRGB window add +78.7 MB
+  (8 × 9.77 = 78.1), one image +10.2 MB, an empty window +0.4 MB (`sysmem/control-*.json`). Memory is also given as the
+  uncompressed bytes of the bitmaps the layers or the view hold ("layer bitmaps", "own bitmaps"), each buffer counted
+  once.
+- WindowServer's memory is **not measured** (corrected after review). `footprint`, `vmmap` and `proc_pid_rusage`
+  need root for WindowServer; `top`'s MEM stays at +12–13 MB for one image, 61 tiles sharing it, and 8 separate
+  copies (78 MB of distinct pixels), so it follows the window's surface, not the layers' contents; the GPU's memory
+  in use and system-wide page counts (anonymous + wired + compressed) moved by tens to thousands of MB on their own on
+  this machine and did not show the 8 copies either (`sysmem/control-*-gpu-quiet-wait.json`: GPU steps −20…+24 MB,
+  system steps +440…+1,430 MB for +78 MB). `run.sh wsfootprint-person` measures it with `sudo footprint` for a person
+  who types the administrator password once.
 - The spike logs the kind of context every draw gets. Describing a context with `CFCopyDescription` costs 2.76 µs
   and **leaks 214 bytes per call** on macOS 26.5 (`probes.json`: +20.39 MB per 100,000 calls; a color space's
   description leaks nothing), so the log describes each context type once and then only counts.
@@ -44,7 +71,7 @@ E layers in B's color space.
 - Dates: questions 1, 2 and 4 (`q1.json`, `q4-*.json`, `env.json`), the second cost campaign (`cost-b/`, `wscpu-b/`,
   `wsmem-b/`, `memtrace-b/`) are from 2026-09-28; questions 5–7, the first campaign (`cost/`, `wscpu/`, `wsmem/`,
   `memtrace/`), `probes.json` and the side checks are from 2026-09-27, run with the same code except where windows
-  were placed on screen.
+  were placed on screen. Everything added after review is from the afternoon of 2026-09-28.
 
 ## What the spike does
 
@@ -101,14 +128,14 @@ Two consecutive captures of every window were identical.
 
 | # | question | answer (details in the sections below) |
 |---|---|---|
-| 1 | partition vs one E layer vs A, read back from the screen (built-in XDR display, 2×, color space "Color LCD" ≈ Display P3) | **The partition equals one E layer when its base bitmap is in the E contexts' color space: max 1 in 7 px (0.003 %)**, all from CoreGraphics' whole-pixel translation of curved paths, and **0** when the groups are drawn through a window-sized scratch bitmap — in an sRGB window with an sRGB base, and in the default window with the base in the window's space. An sRGB base in the default window: max 1 in 48 %. **One E layer in the default window is identical to today's B**; E, B vs A: max 6 in 84 %. Rendering in an sRGB window changes today's B by max 9 in 54 % (A: max 10 in 87 %). Overlapping layers (reproduced): max 2–4 in 7–25 %. |
+| 1 | partition vs one E layer vs A, read back from the screen (built-in XDR display, 2×, color space "Color LCD" ≈ Display P3) | **The partition equals one E layer when its base bitmap is in the E contexts' color space: max 1 in 7 px (0.003 %)**, all from CoreGraphics' whole-pixel translation of curved paths, and **0** when the groups are drawn through a window-sized scratch bitmap — in an sRGB window with an sRGB base, and in the default window with the base in the window's space. An sRGB base in the default window: max 1 in 48 %. **One E layer in the default window is identical to B drawn in full; it differs from what Deskset draws (B+kept) by max 1 in 0.68 %** (B+kept's own rounding). Against A drawn once: max 6 in 84 %; against A as it looked while updating (Core Animation's accelerated path): max 102 in 85 %. An sRGB window changes about 54 % of B's pixels, 99.9 % of them by 1–2 levels (outliers up to 9 in 0.05 %). Overlapping layers (reproduced): max 2–4 in 7–25 %. |
 | 2 | E vs D | Identical (0) in an sRGB window; in the default window max 9 in 54 % (E follows the window's color space, D's surfaces are sRGB). Partition with IOSurfaces vs one IOSurface: max 1 in 7 px; through the scratch bitmap 0. Memory and CPU: question 3 (D costs more memory than E; C, our own bitmaps as `CGImage` contents, is in question 3 too). |
 | 3 | memory and CPU at 2× | This process, per widget updating every second: the partition 2.17 MB (E) / 2.82 MB (C) / 3.49 MB (D) for a 260 × 196 pt System widget, 2.70 / 2.19 / 5.69 MB for the 360 pt design skin; one E layer 2.22 / 3.64 MB; today's B+kept 3.38 / 6.33 MB; A 15.5 / 123 MB (its accelerated path). WindowServer: at most +1.0 MB per widget in every way, no more than A or B (`top`; `footprint` and `vmmap` need root). CPU for 10 System widgets: **0.58–0.62 % when their updates run on one thread** (C / E partition; B+kept 0.75 %, A 0.62–0.78 %), but 1.24–1.51 % with one thread per widget updating at the same moment and 1.03 % spread over the second; WindowServer's CPU: no measurable change. Wakeups 1.4–4.6 per second for all 10 (13 when spread). 60 Hz visualizer: 298–300 of 300 frames on screen in every way; CPU C 4.07 %, D 4.18 %, E 5.57 %, B+kept 3.98 %, A 8.11 %. |
-| 4 | the `draw(in:)` context and formats | A bitmap context (`kCGContextTypeBitmap`, data in this process) **in the window's color space** ("Color LCD" by default, sRGB in an sRGB window, Display P3 in a P3 window) — not always sRGB. 8 bpc for `RGBA8Uint`, 16 bpc float for `RGBA16Float` (extended sRGB in an sRGB window), `kCGContextTypeCoreAnimationAutomatic` when no format is set; A gets a display list. **Closest to today's B: `RGBA8Uint` in the default (or a P3) window: identical.** Closest to A: `RGBA16Float` in the default window: identical. The plan's `RGBA8Uint` in an sRGB window: max 9 in 54 % from B, max 10 in 87 % from A, identical to D. |
-| 5 | gradients cut at box edges (pure CG) | 270° StylePanel gradient cut by a 100 × 30 pt box: max 1 in 70.8 % of the box; **64.4 % reproduced exactly** (298 box positions on a 1 pt grid); over all positions median 67.9 %, 0–84 %. Box at the panel's top left, translation only, solid translucent panel: 0. **Whole-window base bitmap + whole-pixel sub-rectangles: 0.** |
+| 4 | the `draw(in:)` context and formats | A bitmap context (`kCGContextTypeBitmap`, data in this process) **in the window's color space** ("Color LCD" by default, sRGB in an sRGB window, Display P3 in a P3 window) — not always sRGB. 8 bpc for `RGBA8Uint`, 16 bpc float for `RGBA16Float` (extended sRGB in an sRGB window), `kCGContextTypeCoreAnimationAutomatic` when no format is set; A gets a display list. **Closest to B (drawn in full): `RGBA8Uint` in the default (or a P3) window: identical** (B+kept differs from it by max 1 in 0.68 %). Closest to A drawn once: `RGBA16Float` in the default window: identical (not to A as it looked while updating, question 1). The plan's `RGBA8Uint` in an sRGB window: max 9 in 54 % from B, max 10 in 87 % from A, identical to D. |
+| 5 | gradients cut at box edges (pure CG) | 270° StylePanel gradient cut by a 100 × 30 pt box: max 1 in 70.8 % of the box; over all positions median 67.9 %, 0–84 %: **the effect is reproduced (about two thirds of the pixels off by 1), the review's figures (64.4 / 57.2 / 59.9 %) are not**: no box position gives all three. Box at the panel's top left, translation only, solid translucent panel: 0. **Whole-window base bitmap + whole-pixel sub-rectangles: 0.** Whole partitions: max 1 in ≤ 0.009 % at 1× and 2×, arm64 and x86_64. |
 | 6 | base tiles sharing one image | **Counted once**: 61 tiles cost what one layer with the image costs (this process within 0.08 MB; WindowServer +12–13 MB either way; in the default window CA's color-converted copy, +19.6 MB, is made once for all 61 tiles, but once per image for separate copies: 8 copies +156.6 MB). **Read back byte for byte**: 0 differing pixels offscreen (`CARenderer`) and on screen (vs one layer). |
 | 7 | ContentHost flipping | All markers in place in 5 of 5 captures over 4 resizes; **AppKit wrote to `contentRoot` 0 times** (25 times to a layer-hosting root). Screen change not tested (one screen). |
-| 8 | offscreen `CARenderer` on the CI runners | **Both runners have a Metal device** ("Apple Paravirtual device" on `macos-26` and on `macos-26-intel`) and render every tree; **within a run, tiles vs one layer and E groups vs one layer are identical (0) on both.** Against this Mac: `macos-26` is byte-identical for bitmaps and flat colors (Core Animation's own shapes: max 1 in 0.2–0.65 %); `macos-26-intel` differs everywhere except copied bitmaps (CoreGraphics output depends on the CPU architecture: identical to this Mac's x86_64 build under Rosetta). Two silent traps: `CARenderer` does not clear the texture, and on the Intel runner a shared texture never sees the GPU's writes (the first run compared garbage with garbage and called it identical). Per render at 2× (a new 20-layer tree each time, one renderer): 3.4 ms on `macos-26`, 7.0 ms on `macos-26-intel`, 0.5 ms here. |
+| 8 | offscreen `CARenderer` on the CI runners | **Both runners have a Metal device** ("Apple Paravirtual device" on `macos-26` and on `macos-26-intel`) and render every tree. Within a run, partitions made of pixels **copied from the one-layer bitmap** are identical to it on both (true by construction: it shows that CA composites copied pixels exactly). The partition drawn the plan's way (added after review) was run only here, arm64 and x86_64 under Rosetta (the Intel runner's CoreGraphics output): max 1–2 in 2–3 px, all CoreGraphics translation noise, CA adds nothing; the runners run it on the next push. Against this Mac: `macos-26` is byte-identical for bitmaps and flat colors (Core Animation's own shapes: max 1 in 0.2–0.65 %); `macos-26-intel` differs everywhere except copied bitmaps (CoreGraphics output depends on the CPU architecture). Two silent traps: `CARenderer` does not clear the texture, and on the Intel runner a shared texture never sees the GPU's writes. Per render at 2× (a new 20-layer tree each time, one renderer), round medians: 1.5–4.2 ms on `macos-26`, 6.5–12.0 ms on `macos-26-intel` (most rounds provisional by load per core), 0.5 ms here. |
 | – | layers committed off the main thread | 65 layers at 60 Hz from a skin thread: 179–180 of 180 frames reached the screen, 0 of 13,428 captures (12 runs) showed two commits mixed, and frames kept reaching the screen while the main thread was blocked (53–54 committed, 54–56 distinct frames seen during 3 × 300 ms blocks). |
 | – | glass following a moving element | Every frame a main-thread frame at 60 Hz: **the 50 ms bound holds** (no patch waited longer than 50.7 ms; with 120 ms main-thread stalls 5–7 of 216 frames per run were reclaimed). No drift while stalls stay under 50 ms (0 of about 1,300 captures per run); 120 ms stalls leave the glass up to 6 pt (two frames' movement) behind the element in 6.3–7.1 % of the captures. |
 | – | refresh by swapping windows | **No blank and no doubled frame** in 300 swaps (4 ways, 3 rounds, about 240 captures per second); a new window with its first frame takes 58 ms, replacing `contentRoot`'s layers in the same window 7 ms. |
@@ -171,9 +198,10 @@ System widget, tick 7 (19 groups, 38 base tiles), each mode in its own window, f
 | **EPw** (partition, base in the window's space) vs E1 | **max 1, 0.003 % (7 px)** | – |
 | EPx (through an sRGB scratch bitmap) vs E1 | max 9, 56.58 % | **0** |
 | **EPxw** (base and scratch bitmap in the window's space) vs E1 | **0** | – |
-| E1 vs **B** (today) | **0** | max 9, 53.81 % (E1 in an sRGB window vs B in the default window) |
+| E1 vs **B** (drawn in full) | **0** | max 9, 53.81 % (E1 in an sRGB window vs B in the default window) |
 | EPw vs B / EPxw vs B | max 1, 7 px / **0** | – |
 | C1 / CPw / CPxw (our own bitmaps as contents) vs B | **0** / max 1, 7 px / **0** | C1 / CP vs E1: 0 / max 1, 7 px |
+| E1 / EPxw / C1 vs **B+kept** (what Deskset draws; after review, `q1-stepped.json`, stepped from tick 0 to 7) | max 1, 1,393 px (0.68 %); EPw and CPw 1,400 px | – |
 | B vs A | max 6, 84.32 % | 0 (B and A both in an sRGB window) |
 | E1 vs A | max 6, 84.32 % | 0 (in an sRGB window); vs A in the default window: max 10, 87.24 % |
 | A in an sRGB window vs A in the default window | – | max 10, 87.24 % |
@@ -271,8 +299,12 @@ skin thread (A and B: the main thread).
   GPU's "In use system memory" (the whole system, from the I/O Registry).
 - Frame cost: time to draw one update (A: recording in `draw(_:)`; B: drawing the bitmap in `updateLayer`; E / D:
   drawing before the commit, on the skin thread) and to commit it.
-- Rounds: every combination 3 times (the cost and wscpu tables; combinations interleaved, round 1 of each, then
-  round 2…), WindowServer memory 5 times. Tables give the median and (min–max).
+- Rounds: every combination 3 times (the cost and wscpu tables), WindowServer memory 5 times. Tables give the median
+  and (min–max). Corrected after review: `cost-b` itself was interleaved (10:01–10:48), but the C step (C1, CPw, CPxw
+  and a rerun of B+kept at 60 Hz) and the thread step ran later as separate batches (committed 13:02 and 13:15–13:27)
+  under other loads, and wrote into the same folder: their comparisons with E are **not** interleaved, and the B+kept
+  rerun overwrote the files that had been interleaved with EPw (originally 4.17 / 3.84 / 3.77 %, now 3.90 / 4.08 /
+  3.98 %). The batch added after review (`cost-d/`) interleaves all of them and overwrites nothing.
 
 Two campaigns: **2026-09-27** (E and D in sRGB windows, the plan's format, and A) and **2026-09-28** (today's B and
 B+kept, E and C in the window's own color space, A again as the bridge; 10 System widgets also on one shared skin
@@ -493,8 +525,11 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
 | opening to first frame < 100 ms | 68 ms for 10 | 60 ms | 77 ms | 24 ms | 12–31 ms |
 | 60 Hz visualizer | 299 / 300 frames, 5.57 % | 300 / 300, 4.07 % | 299 / 300, 4.18 % | 300 / 301, 3.98 % | 299 / 300, 8.11 % |
 
-(CPU numbers from runs with a load above 8 are provisional, see the tables; the medians of the combinations measured
-in both campaigns, A and one E layer, agree within 0.16 % of a core.)
+(CPU numbers from runs with a load above 8 are provisional, see the tables. Corrected after review: the two campaigns
+do **not** agree closely enough to compare across them. The bridge moved by up to 0.87 points (12 %) at 60 Hz: sixty-A
+7.24 → 8.11 %, sixty-E1 6.20 → 6.49 %, and E1 was not even the same configuration (an sRGB window on 09-27, the
+default window on 09-28). So modes are not ranked across campaigns; D's 1.13 / 4.18 % compare only with the first
+campaign's E and A.)
 
 ## 4. Color: the `draw(in:)` context, formats and color spaces (`q4-default.json`, `q4-srgb.json`, `q4-p3.json`)
 
@@ -524,9 +559,10 @@ the layer), its first `draw(in:)` runs on the skin thread in sRGB and CA then dr
 the window's color space (1 of 1 E1 layers, 10 of 19 EP groups). Committing the tree first and displaying in the next
 transaction avoids it; the spike does that everywhere else.
 
-Which combination brings E closest to A and to today's B (System widget, one E layer; A and B in the default window):
+Which combination brings E closest to A and to B (System widget, one E layer; A and B in the default window; A drawn
+once and B drawn in full, see question 1 for B+kept and for A while updating):
 
-| E layer | vs A | vs B (today) |
+| E layer | vs A (drawn once) | vs B (drawn in full) |
 |---|---|---|
 | default window, RGBA8Uint | max 6, 84.32 % | **0** (identical) |
 | Display P3 window, RGBA8Uint | max 6, 84.32 % | **0** (identical; B in a P3 window also equals B in the default window) |

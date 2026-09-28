@@ -10,6 +10,8 @@
 #                                                     wsmem-c cost-threads, and the corrections (2026-09-28,
 #                                                     second half): q1s q5r q5x sysmem cschange wspair cost-d frames60
 #                                                     cschange-person (a person changes the display's color profile)
+#                                                     wsfootprint-person (a person types the administrator password
+#                                                     once: WindowServer's footprint per way)
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
 #   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
@@ -54,7 +56,7 @@ while [[ $# -gt 0 ]]; do
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
         -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads|q1s|q5r|q5x|sysmem|cschange|cschange-person|wspair|cost-d|frames60)
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c|cost-threads|q1s|q5r|q5x|sysmem|cschange|cschange-person|wspair|cost-d|frames60|wsfootprint-person)
             STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
@@ -484,6 +486,31 @@ for step in "${STEPS[@]}"; do
         cschange)
             run cschange/program-no-reaction cschange
             run cschange/program-react cschange --react ;;
+        wsfootprint-person)
+            # For a person at the Mac (asks for the administrator password once): WindowServer's footprint, which
+            # needs root, before, while and after each way's widgets are open (20 System widgets, 12 design skins).
+            sudo -v || exit 1
+            mkdir -p "$OUT/wsfootprint"
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${SYSMEM[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    [[ "$name" == *onethread* ]] && continue
+                    wanted "$r" "$scenario" "$name" || continue
+                    file="$OUT/wsfootprint/$scenario-$name-r$r.txt"
+                    echo "[$(date +%H:%M:%S)] wsfootprint $scenario $name r$r" >&2
+                    sudo -v
+                    { echo "before"; sudo footprint -f bytes --noCategories -p WindowServer; } > "$file" 2>&1
+                    "$BUILD/spike" hold --scenario "$scenario" --seconds 45 "$@" &
+                    holder=$!
+                    sleep 30
+                    { echo "open"; sudo footprint -f bytes --noCategories -p WindowServer; } >> "$file" 2>&1
+                    wait "$holder"
+                    sleep 3
+                    { echo "closed"; sudo footprint -f bytes --noCategories -p WindowServer; } >> "$file" 2>&1
+                done
+            done ;;
         cschange-person)
             # For a person at the Mac: change the display's color profile in System Settings → Displays while each
             # run waits (90 s), and back again.

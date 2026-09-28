@@ -151,6 +151,8 @@ case "wsmem":
     runApp { windowServerMemoryRun() }
 case "sysmem":
     runApp { systemMemoryRun() }
+case "hold":
+    runApp { holdWidgets() }
 case "wspair":
     runApp { windowServerPairs() }
 case "cschange":
