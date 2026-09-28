@@ -51,6 +51,16 @@ bash scripts/build-app.sh            # build/Deskset.app
   (`Skin.executor`, or `Skin.async` / `Skin.hop()`), never `DispatchQueue.main` or `RunLoop.main` directly: skins are
   moving off the main thread ([docs/skin-threading.md](docs/skin-threading.md)). Debug builds check that a skin is
   only touched where its executor runs.
+- Anything that makes two runs of the same skin differ goes through the skin's seams, so that a run can be replayed
+  with a fixed clock, seed and data (`--render --clock --seed --data`): the time, uptime and time zone through
+  `Skin.skinClock`, the locale through `Skin.locale`, random numbers through `Skin.random`, timers and delays through
+  the executor, background work and its result through `Skin.startBackground` / `Skin.backgroundHop`, and every
+  effect outside the skin (starting a program, writing a file, opening a URL, sending a key or setting the volume)
+  through `Skin.sideEffects`. Services a skin reads (NowPlaying, weather, audio levels…) sit behind a protocol with a
+  fake. `swift scripts/check-seams.swift --check` (run by CI, a few seconds) fails on a new direct `Date()`,
+  `.random`, timer, queue or outside effect in the engine, plugins and services; route it through a seam, or add it
+  to `scripts/seams-allowlist.tsv` with a note saying why. The list only shrinks: the check also fails when an
+  allowance is higher than the sources need, so lower it (`--update` does) when you remove a direct call.
 - `Deskset --render Skin.ini --out skin.png` draws a skin without a window, which is handy for checking a change by eye.
 - Skins update and draw on the main thread, so anything that keeps it busy makes animated skins skip frames. Build
   windows in steps (`MainThreadSteps`, as the skin editor does) rather than all at once. To find stalls,
