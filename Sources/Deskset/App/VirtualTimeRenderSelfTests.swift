@@ -39,13 +39,14 @@ enum VirtualTimeRenderSelfTests {
             try "north\nsouth\neast\nwest\nup\ndown".write(to: dir.appendingPathComponent("quotes.txt"), atomically: true,
                                                             encoding: .utf8)
             let out = t.temporaryDirectory("virtual-render-out")
-            func render(_ name: String) -> (status: Int32, seconds: TimeInterval, png: Data?) {
+            func render(_ name: String, _ extra: [String] = []) -> (status: Int32, seconds: TimeInterval, png: Data?) {
                 let png = out.appendingPathComponent(name)
                 let started = ProcessInfo.processInfo.systemUptime
                 // Three updates a minute apart: two minutes of waiting in real time, none in virtual time.
                 let status = RenderCommand.run(["Deskset", "--render", dir.appendingPathComponent("Render.ini").path,
                                                 "--out", png.path, "--updates", "3", "--interval", "60000",
-                                                "--scale", "1", "--clock", "2026-09-28T09:00:00Z", "--seed", "7"])
+                                                "--scale", "1", "--clock", "2026-09-28T09:00:00Z", "--seed", "7"]
+                                               + extra)
                 return (status, ProcessInfo.processInfo.systemUptime - started, try? Data(contentsOf: png))
             }
             let first = render("first.png"), second = render("second.png")
@@ -62,6 +63,22 @@ enum VirtualTimeRenderSelfTests {
             t.check(square.redComponent > 0.9 && square.blueComponent < 0.1,
                     "the delayed action ran at its virtual time: \(square)")
             t.check(rep.pixelsHigh > 30, "the quote, a fixture read in virtual time, is shown: \(rep.pixelsHigh) px high")
+
+            // --color-space srgb: the same picture in an sRGB bitmap, also the same on every run.
+            let srgb = render("srgb.png", ["--color-space", "srgb"]), srgb2 = render("srgb2.png", ["--color-space", "srgb"])
+            t.equal(srgb.status, 0)
+            t.check(srgb.png != nil && srgb.png == srgb2.png, "an sRGB render is the same on every run")
+            guard let sData = srgb.png, let sRep = NSBitmapImageRep(data: sData) else {
+                t.check(false, "the sRGB render is readable")
+                return
+            }
+            t.equal(sRep.colorSpace.colorSpaceModel, .rgb)
+            t.equal(sRep.colorSpace.cgColorSpace?.name, CGColorSpace.sRGB, "the sRGB render is in sRGB")
+            t.equal(sRep.pixelsWide, rep.pixelsWide)
+            t.equal(sRep.pixelsHigh, rep.pixelsHigh)
+            let sSquare = sRep.colorAt(x: 10, y: 10)?.usingColorSpace(.sRGB)
+            t.check((sSquare?.redComponent ?? 0) > 0.9 && (sSquare?.blueComponent ?? 1) < 0.1,
+                    "the same picture: \(String(describing: sSquare))")
         }
     }
 }

@@ -524,6 +524,16 @@ enum AppSelfTest {
             t.equal(clock.uptime(), SteppedSkinClock.defaultUptime + 2.5)
             t.check(!clock.nowIsLive && !clock.uptimeIsLive && !clock.timeZoneIsLive)
 
+            // --color-space: device RGB unless srgb is asked for.
+            t.equal(d?.colorSpace, .device)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "sRGB"])?.colorSpace, .srgb)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "device"])?.colorSpace, .device)
+            let space = RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "p3"])
+            t.equal(space?.colorSpace, .device)
+            t.equal(space?.warnings, ["--color-space \"p3\" is not device or srgb; using device"])
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space"])?.warnings,
+                    ["--color-space needs a value; using device"])
+
             let (root, config) = RenderCommand.locate(URL(fileURLWithPath: "/x/Skins/Suite/Clock/Clock.ini"), skinsDir: nil)
             t.equal(root.path, "/x/Skins")
             t.equal(config, "Suite\\Clock")

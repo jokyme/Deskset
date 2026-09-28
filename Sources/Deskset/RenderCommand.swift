@@ -31,10 +31,17 @@ struct RenderOptions: Equatable {
     var timeZone: TimeZone?
     /// `--seed`: the skin's random numbers come from a generator with this seed (nil: the system's).
     var seed: UInt64?
+    /// `--color-space`: the bitmap the skin is drawn into. `device` (the default, what `--render` always drew) is the
+    /// device RGB space; `srgb` is 8-bit premultiplied sRGB, the space reference images are compared in.
+    var colorSpace = ColorSpace.device
     var warnings: [String] = []
 
     enum Appearance: String, Equatable {
         case light, dark, system
+    }
+
+    enum ColorSpace: String, Equatable {
+        case device, srgb
     }
 
     static let maxUpdates = 100_000
@@ -46,7 +53,7 @@ struct RenderOptions: Equatable {
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
         + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
-        + "[--seed N] [--skins-dir DIR]"
+        + "[--seed N] [--color-space device|srgb] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -146,6 +153,16 @@ struct RenderOptions: Equatable {
         } else if arguments.contains("--seed") {
             o.warnings.append("--seed needs a value; using the system's random numbers")
         }
+        if let raw = value("--color-space") {
+            let word = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            if let space = ColorSpace(rawValue: word) {
+                o.colorSpace = space
+            } else {
+                o.warnings.append("--color-space \"\(raw)\" is not device or srgb; using device")
+            }
+        } else if arguments.contains("--color-space") {
+            o.warnings.append("--color-space needs a value; using device")
+        }
         return o
     }
 
@@ -205,7 +222,7 @@ struct RenderOptions: Equatable {
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
 ///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
-///            [--skins-dir path/to/Skins]
+///            [--color-space srgb] [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
@@ -296,30 +313,10 @@ enum RenderCommand {
         }
         let width = min(max(Int(ceil(skinW * scale)), 1), RenderOptions.maxPixels)
         let height = min(max(Int(ceil(skinH * scale)), 1), RenderOptions.maxPixels)
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: rep) else {
+        guard let png = draw(skin, width: width, height: height, scale: scale, options: o) else {
             fputs("error: cannot create bitmap \(width)x\(height)\n", stderr)
             return 1
         }
-        let cg = context.cgContext
-        cg.clear(CGRect(x: 0, y: 0, width: width, height: height))
-        if let background = o.background {
-            cg.setFillColor(background.cgColor)
-            cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        }
-        // Flip to Rainmeter's top-left origin and scale to the requested backing scale.
-        cg.translateBy(x: 0, y: CGFloat(height))
-        cg.scaleBy(x: CGFloat(scale), y: CGFloat(-scale))
-        let flipped = NSGraphicsContext(cgContext: cg, flipped: true)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = flipped
-        // No window, so MacGlass shows as a stand-in, drawn for the background when one is given.
-        SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let png = rep.representation(using: .png, properties: [:]) else { return 1 }
         do {
             try FileManager.default.createDirectory(at: output.deletingLastPathComponent(),
                                                     withIntermediateDirectories: true)
@@ -335,6 +332,46 @@ enum RenderCommand {
             fputs("note: not verifiable in virtual time: \(work)\n", stderr)
         }
         return 0
+    }
+
+    /// Draws the skin into a new bitmap of `width` × `height` pixels at `scale` and returns it as PNG: in the device
+    /// RGB space (`--color-space device`, the default: the bytes `--render` always wrote), or in 8-bit premultiplied
+    /// sRGB (`--color-space srgb`). nil when the bitmap cannot be made.
+    static func draw(_ skin: Skin, width: Int, height: Int, scale: Double, options o: RenderOptions) -> Data? {
+        func paint(_ cg: CGContext) {
+            cg.clear(CGRect(x: 0, y: 0, width: width, height: height))
+            if let background = o.background {
+                cg.setFillColor(background.cgColor)
+                cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            }
+            // Flip to Rainmeter's top-left origin and scale to the requested backing scale.
+            cg.translateBy(x: 0, y: CGFloat(height))
+            cg.scaleBy(x: CGFloat(scale), y: CGFloat(-scale))
+            let flipped = NSGraphicsContext(cgContext: cg, flipped: true)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = flipped
+            // No window, so MacGlass shows as a stand-in, drawn for the background when one is given.
+            SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: o.background.map(GlassPlaceholder.isDark)))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        switch o.colorSpace {
+        case .device:
+            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+                  let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+            paint(context.cgContext)
+            return rep.representation(using: .png, properties: [:])
+        case .srgb:
+            guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+                  let cg = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                     space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                return nil
+            }
+            paint(cg)
+            guard let image = cg.makeImage() else { return nil }
+            return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+        }
     }
 
     /// Makes the app's appearance the one asked for, and publishes it for the skin (`MacAppearance`, SysColor).

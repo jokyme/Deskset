@@ -1102,14 +1102,15 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--skins-dir DIR]`
-  在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--color-space device|srgb]
+  [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
   每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--clock`
   让皮肤从给定时刻起在虚拟时间里运行：第 i 次更新发生在给定时间加 i 个间隔，时区为 UTC，除非 `--time-zone` 指定别的时区
   （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤读取的
   本地文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取；需要网络、外部程序或实时系统状态
   的工作照常执行，最多等一个间隔拿回结果，并在 stderr 中标为无法验证。`--seed` 让皮肤的随机数（Calc 的 `Random`、
-  QuotePlugin、Lua 的 `math.random`…）每次运行都相同。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  QuotePlugin、Lua 的 `math.random`…）每次运行都相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
+  预乘的 sRGB 位图（参考图比较用的色彩空间）。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
