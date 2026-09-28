@@ -2,11 +2,12 @@
 # Builds the layer-runtime spike (the H1 experiment: many Core Animation layers instead of one bitmap) and runs its
 # experiments, writing raw JSON into results/ (see main.swift for what each step answers).
 #
-#   scripts/spikes/layer-runtime/run.sh               every step except the interactive click check (about 3 hours)
+#   scripts/spikes/layer-runtime/run.sh               every step except the interactive click check (about 6 hours)
 #   scripts/spikes/layer-runtime/run.sh q1 q5 cost    only these steps:
 #                                                     env q5 q1 q4 q6 q7 memtrace offmain glass swap cost wscpu
 #                                                     wsmem probes, and the second campaign (with Deskset's own
-#                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b
+#                                                     bitmap, B): cost-b wscpu-b wsmem-b memtrace-b cost-c wscpu-c
+#                                                     wsmem-c
 #   scripts/spikes/layer-runtime/run.sh --rounds N    rounds of the timing steps (default 3; the cost table runs every
 #                                                     combination once per round, interleaved)
 #   scripts/spikes/layer-runtime/run.sh --wsmem-rounds N  rounds of the WindowServer memory step (default 5)
@@ -19,8 +20,8 @@
 #
 # Small borderless windows float at the bottom right of the main screen while it runs (the top left is left alone);
 # they let clicks through. The pixel steps need screen capture to be allowed for the app running the script: the
-# spike only checks (CGPreflightScreenCaptureAccess), it never asks. CPU and timing numbers depend on what else runs: every phase
-# records the load average, and numbers taken with a 1-minute load above 8 are marked provisional.
+# spike only checks (CGPreflightScreenCaptureAccess), it never asks. CPU and timing numbers depend on what else
+# runs: every phase records the load average, and numbers taken with a 1-minute load above 8 are marked provisional.
 set -euo pipefail
 
 ROUNDS=3
@@ -41,13 +42,13 @@ while [[ $# -gt 0 ]]; do
                  PICK_ROUNDS+=" $2 "; shift 2 ;;
         --combo) PICK_COMBOS+=" ${2:-} "; shift 2 ;;
         -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
-        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b)
+        env|q1|q4|q5|q6|q7|memtrace|offmain|glass|swap|cost|wscpu|wsmem|probes|click|cost-b|wscpu-b|wsmem-b|memtrace-b|cost-c|wscpu-c|wsmem-c)
             STEPS+=("$1"); shift ;;
         *) echo "unknown step or option: $1 (see $0 --help)" >&2; exit 2 ;;
     esac
 done
 [[ ${#STEPS[@]} -gt 0 ]] || STEPS=(env probes q5 q1 q4 q6 q7 offmain glass swap memtrace cost wscpu wsmem cost-b wscpu-b
-                                  wsmem-b memtrace-b)
+                                  wsmem-b memtrace-b cost-c wscpu-c wsmem-c)
 cd "$(dirname "$0")"
 
 BUILD="$(mktemp -d)"
@@ -175,6 +176,35 @@ WSMEM_B=(
     "sixty EPw --mode EP --window-space-base"
 )
 
+# C: our own bitmaps in the window's color space as the layers' contents (like B's, per layer, from the skin
+# thread): one layer (C1), the partition (CPw) and the partition through a scratch bitmap (CPxw). Also B+kept at 60 Hz
+# again (its check against a full drawing used to race with the next frame). Written next to the second campaign.
+COST_C=(
+    "ten C1 --mode D1 --cgimage"
+    "ten CPw --mode DP --cgimage --window-space-base"
+    "ten CPxw --mode DP --cgimage --window-space-base --scratch"
+    "design C1 --mode D1 --cgimage"
+    "design CPw --mode DP --cgimage --window-space-base"
+    "design CPxw --mode DP --cgimage --window-space-base --scratch"
+    "sixty C1 --mode D1 --cgimage --frames"
+    "sixty CPw --mode DP --cgimage --window-space-base --frames"
+    "sixty CPxw --mode DP --cgimage --window-space-base --scratch --frames"
+    "sixty Bkept --mode B --kept --frames"
+)
+WSCPU_C=(
+    "ten CPw --mode DP --cgimage --window-space-base"
+    "sixty C1 --mode D1 --cgimage"
+    "sixty CPw --mode DP --cgimage --window-space-base"
+)
+WSMEM_C=(
+    "ten C1 --mode D1 --cgimage --count 10"
+    "ten CPw --mode DP --cgimage --window-space-base --count 10"
+    "design C1 --mode D1 --cgimage"
+    "design CPw --mode DP --cgimage --window-space-base"
+    "sixty C1 --mode D1 --cgimage"
+    "sixty CPw --mode DP --cgimage --window-space-base"
+)
+
 WSCPU=(
     "ten A --mode A"
     "ten E1 --mode E1 --window-cs srgb"
@@ -283,6 +313,37 @@ for step in "${STEPS[@]}"; do
         wsmem-b)
             for r in $(seq 1 "$WSMEM_ROUNDS"); do
                 for entry in "${WSMEM_B[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "wsmem-b/$scenario-$name-r$r" wsmem --scenario "$scenario" "$@"
+                done
+            done ;;
+        cost-c)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${COST_C[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "cost-b/$scenario-$name-r$r" cost --scenario "$scenario" "$@"
+                done
+            done ;;
+        wscpu-c)
+            for r in $(seq 1 "$ROUNDS"); do
+                for entry in "${WSCPU_C[@]}"; do
+                    set -- $entry
+                    scenario="$1" name="$2"
+                    shift 2
+                    wanted "$r" "$scenario" "$name" || continue
+                    run "wscpu-b/$scenario-$name-r$r" cost --scenario "$scenario" --seconds 2 --pairs 10 --settle 5 \
+                        --ws-cycles 0 --no-top --off-shown --backdrop "$@"
+                done
+            done ;;
+        wsmem-c)
+            for r in $(seq 1 "$WSMEM_ROUNDS"); do
+                for entry in "${WSMEM_C[@]}"; do
                     set -- $entry
                     scenario="$1" name="$2"
                     shift 2
