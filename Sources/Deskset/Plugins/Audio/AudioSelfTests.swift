@@ -23,6 +23,7 @@ enum AudioSelfTests {
         deviceTests(t)
         testSkinTests(t)
         stationeryTests(t)
+        stripComeUpTests(t)
     }
 
     // MARK: Signals
@@ -1193,6 +1194,105 @@ enum AudioSelfTests {
             silentStudio.close()
             engine.drain()
             engine.drain()
+        }
+    }
+
+    static func stripComeUpTests(_ t: AppTestRunner) {
+        t.suite("App: Audio Stationery Spectrum strip comes up in view at rest for a Notice or a refused player") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let root = t.temporaryDirectory("stationery-strip")
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
+            // At rest (the tempo a Notice and the quiet write into the strip), with Hide When Idle on.
+            func edit(_ path: String, _ pairs: [(String, String)]) throws {
+                let url = root.appendingPathComponent("Stationery/" + path)
+                var text = try String(contentsOf: url, encoding: .utf8)
+                for (old, new) in pairs {
+                    t.check(text.contains(old), "\(path): \(old)")
+                    text = text.replacingOccurrences(of: old, with: new)
+                }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            try edit("Spectrum/Strip.ini", [("\nTempo=Live\n", "\nTempo=Rest\n"), ("\nTempoLive=1\n", "\nTempoLive=0\n")])
+            try edit("@Resources/Variables.inc", [("\nHideSpectrumWhenIdle=0", "\nHideSpectrumWhenIdle=1")])
+
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let backend = PermissionBackendHolder()
+            let center = NowPlayingCenter(backend: backend.backend)
+            center.forceLive = true
+            center.interval = 3600
+            center.log = { _ in }
+            /// The strip's first update, as after a refresh: returns whether it would come up hidden.
+            func firstUpdate() throws -> (hide: Double?, comeUp: Double?, mode: Double?) {
+                let skin = Skin(config: "Stationery\\Spectrum", fileURL: root.appendingPathComponent("Stationery/Spectrum/Strip.ini"),
+                                skinsDirectory: root, system: SystemMonitor.shared, host: host)
+                try skin.load()
+                for case let m as AudioLevelMeasure in skin.measures {
+                    m.engine = engine
+                    m.mayCapture = { _ in true }
+                    m.system = { fakeSnapshot() }
+                    m.prepareSystem = {}
+                }
+                for case let m as NowPlayingClientMeasure in skin.measures { m.center = center }
+                var result: (Double?, Double?, Double?) = (nil, nil, nil)
+                MediaUITests.inline([center.worker]) {
+                    skin.update()
+                    result = (skin.measure(named: "MeasureStripHide")?.value,
+                              skin.measure(named: "MeasureStripComeUp")?.value, skin.measure(named: "MeasureMode")?.value)
+                }
+                skin.close()
+                engine.drain()
+                engine.drain()
+                return result
+            }
+
+            // Nothing refused (no player runs): it rests hidden, so it comes up hidden.
+            backend.backend.running = []
+            let plain = try firstUpdate()
+            t.equal(plain.mode, 1, "at rest")
+            t.equal(plain.hide, 1, "rests hidden")
+            t.equal(plain.comeUp, 1, "comes up hidden")
+
+            // The verdict kept by the capture across the refresh: the Notice, in view.
+            engine.makeBackend = { _ in RefusedBackend() }
+            let kept = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(kept, to: key)
+            engine.drain()
+            let notice = try firstUpdate()
+            t.equal(notice.mode, 2, "the Notice")
+            t.equal(notice.hide, 0)
+            t.equal(notice.comeUp, 0, "a Notice comes up in view")
+            engine.unsubscribe(kept)
+            engine.drain()
+            engine.drain()
+
+            // Music refused Automation (at rest): in view, so its tooltip can say where to allow it.
+            backend.backend.running = [.music]
+            MediaUITests.inline([center.worker]) {
+                let subscription = center.subscribe(live: true)
+                center.poll()
+                withExtendedLifetime(subscription) {}
+            }
+            let refused = try firstUpdate()
+            t.equal(refused.mode, 1, "at rest")
+            t.equal(refused.hide, 0, "a refused player keeps the strip in view")
+            t.equal(refused.comeUp, 0)
+        }
+    }
+
+    /// Music running, with Automation refused (for widgets that read NowPlaying).
+    final class PermissionBackendHolder {
+        let backend = MediaUIReviewTests.PermissionBackend()
+        init() {
+            backend.running = [.music]
+            backend.peeked[.music] = .refused
+            backend.answers[.music] = .denied
         }
     }
 
