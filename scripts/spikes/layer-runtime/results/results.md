@@ -129,8 +129,8 @@ Two consecutive captures of every window were identical.
 | # | question | answer (details in the sections below) |
 |---|---|---|
 | 1 | partition vs one E layer vs A, read back from the screen (built-in XDR display, 2×, color space "Color LCD" ≈ Display P3) | **The partition equals one E layer when its base bitmap is in the E contexts' color space: max 1 in 7 px (0.003 %)**, all from CoreGraphics' whole-pixel translation of curved paths, and **0** when the groups are drawn through a window-sized scratch bitmap — in an sRGB window with an sRGB base, and in the default window with the base in the window's space. An sRGB base in the default window: max 1 in 48 %. **One E layer in the default window is identical to B drawn in full; it differs from what Deskset draws (B+kept) by max 1 in 0.68 %** (B+kept's own rounding). Against A drawn once: max 6 in 84 %; against A as it looked while updating (Core Animation's accelerated path): max 102 in 85 %. An sRGB window changes about 54 % of B's pixels, 99.9 % of them by 1–2 levels (outliers up to 9 in 0.05 %). Overlapping layers (reproduced): max 2–4 in 7–25 %. |
-| 2 | E vs D | Identical (0) in an sRGB window; in the default window max 9 in 54 % (E follows the window's color space, D's surfaces are sRGB). Partition with IOSurfaces vs one IOSurface: max 1 in 7 px; through the scratch bitmap 0. Memory and CPU: question 3 (D costs more memory than E; C, our own bitmaps as `CGImage` contents, is in question 3 too). |
-| 3 | memory and CPU at 2× | This process, per widget updating every second: the partition 2.17 MB (E) / 2.82 MB (C) / 3.49 MB (D) for a 260 × 196 pt System widget, 2.70 / 2.19 / 5.69 MB for the 360 pt design skin; one E layer 2.22 / 3.64 MB; today's B+kept 3.38 / 6.33 MB; A 15.5 / 123 MB (its accelerated path). WindowServer: at most +1.0 MB per widget in every way, no more than A or B (`top`; `footprint` and `vmmap` need root). CPU for 10 System widgets: **0.58–0.62 % when their updates run on one thread** (C / E partition; B+kept 0.75 %, A 0.62–0.78 %), but 1.24–1.51 % with one thread per widget updating at the same moment and 1.03 % spread over the second; WindowServer's CPU: no measurable change. Wakeups 1.4–4.6 per second for all 10 (13 when spread). 60 Hz visualizer: 298–300 of 300 frames on screen in every way; CPU C 4.07 %, D 4.18 %, E 5.57 %, B+kept 3.98 %, A 8.11 %. |
+| 2 | E vs D | Identical (0) in an sRGB window; in the default window max 9 in 54 % (E follows the window's color space, D's surfaces are sRGB). Partition with IOSurfaces vs one IOSurface: max 1 in 7 px; through the scratch bitmap 0. Memory (VM-object view, after review): DP 3.32 MB per System widget and 5.75 per design skin against EPw 2.08 / 3.53, so D does not help. C (our own bitmaps as `CGImage` contents) is in question 3. |
+| 3 | memory and CPU at 2× | **Memory, after review, through `footprint --vmObjectDirty`** (phys_footprint misses images handed to the window server): per System widget updating every second EPw 2.08 MB, E1 1.88, CPw 3.13, C1 2.61, DP 3.32, B 2.49, **today's B+kept 5.60**; per design skin EPw 3.53, CPw 4.73, E1 4.39, B+kept 12.05. C costs about 1 MB more than E; one thread per widget adds 0.06–0.16 MB. **WindowServer memory: not measured** (`top` stays at +12–13 MB for 1 image or 8 separate copies of it). **CPU for 10 System widgets depends on when the updates run**: the same instructions cost 1.5 times the cycles when the updates are spread over the second and twice when ten threads run them at once; EPw 1.61 % on ten aligned threads, 1.06–1.21 % spread (B+kept spread 1.13–1.19 %), 0.64–0.71 % coalesced on one thread (B+kept aligned 0.74–0.87 %). WindowServer's CPU at 1 Hz cannot be resolved below about 2 % of a core. **60 Hz** (paired, WindowServer included): CPw costs 1.3 points less than EPw in total; against B+kept, EPw +1.6 points in this process (over the plan's 1-point rule), CPw +0.2. Frames: EPw failed 298 / 300 in 2 of 13 rounds (one 170 ms stall inside its commit), CPw and B+kept in none. |
 | 4 | the `draw(in:)` context and formats | A bitmap context (`kCGContextTypeBitmap`, data in this process) **in the window's color space** ("Color LCD" by default, sRGB in an sRGB window, Display P3 in a P3 window) — not always sRGB. 8 bpc for `RGBA8Uint`, 16 bpc float for `RGBA16Float` (extended sRGB in an sRGB window), `kCGContextTypeCoreAnimationAutomatic` when no format is set; A gets a display list. **Closest to B (drawn in full): `RGBA8Uint` in the default (or a P3) window: identical** (B+kept differs from it by max 1 in 0.68 %). Closest to A drawn once: `RGBA16Float` in the default window: identical (not to A as it looked while updating, question 1). The plan's `RGBA8Uint` in an sRGB window: max 9 in 54 % from B, max 10 in 87 % from A, identical to D. |
 | 5 | gradients cut at box edges (pure CG) | 270° StylePanel gradient cut by a 100 × 30 pt box: max 1 in 70.8 % of the box; over all positions median 67.9 %, 0–84 %: **the effect is reproduced (about two thirds of the pixels off by 1), the review's figures (64.4 / 57.2 / 59.9 %) are not**: no box position gives all three. Box at the panel's top left, translation only, solid translucent panel: 0. **Whole-window base bitmap + whole-pixel sub-rectangles: 0.** Whole partitions: max 1 in ≤ 0.009 % at 1× and 2×, arm64 and x86_64. |
 | 6 | base tiles sharing one image | **Counted once** (measured after review with `footprint --vmObjectDirty`, which sees the pages): 61 tiles sharing a 9.77 MB image add +10.2 MB in an sRGB window, exactly what one layer with it adds, while 8 separate copies add +78.7 MB; in the default window CA's color-converted copy is made once for all 61 tiles (+20.0 MB) and once per separate image (8 copies +156.9 MB). WindowServer's share was not measured (`top` cannot see it). **Read back byte for byte**: 0 differing pixels offscreen (`CARenderer`) and on screen (vs one layer). |
@@ -305,7 +305,42 @@ phys_footprint reading ("C 2.19 vs E 2.70 MB for the design skin"). These counts
 scenes (a C bitmap redrawn while the window server still holds its previous image is copied on write), which the
 next view sees.
 
-<!-- sysmem table -->
+**Seen through `footprint --vmObjectDirty`** (`sysmem/`): the dirty and compressed pages of every VM object mapped
+into the spike's process, also those the window server maps, which passes the positive control (Conditions). One
+window opening per process (20 System widgets or 12 design skins updating every second, measured after 20 s), two
+rounds per way, all at memory pressure level 1; the two rounds agree within 0.11 MB per widget (A within 1.2). Per
+widget, median of the two rounds, with phys_footprint of the same opening for comparison:
+
+| way | System widget: VM-object view | phys_footprint | design skin: VM-object view | phys_footprint |
+|---|---|---|---|---|
+| E1 (one layer) | 1.88 | 1.86 | 4.39 | 4.39 |
+| **EPw** (partition, E) | **2.08** | 1.89 | **3.53** | 2.60 |
+| EPxw (through a scratch bitmap) | 2.84 | 3.06 | 4.98 | 4.98 |
+| C1 (one layer) | 2.61 | 0.34 | 6.33 | 0.36 |
+| **CPw** (partition, C) | **3.13** | 2.57 | **4.73** | 2.19 |
+| CPxw | 3.86 | 3.70 | 6.20 | 4.58 |
+| D1, sRGB IOSurfaces | 1.94 | 1.94 | 4.50 | 4.50 |
+| DP, sRGB IOSurfaces | 3.32 | 3.30 | 5.75 | 5.74 |
+| B drawn in full | 2.49 | 0.23 | 6.10 | 0.23 |
+| **B+kept** (today) | **5.60** | 3.47 | **12.05** | 6.19 |
+| A | 3.21 + graphics memory not mapped into the process | 9.59 | 8.73 + the same | 18.28 |
+| E1 / EPw / C1 / CPw, all 20 widgets on one skin thread | 1.72 / 2.02 / 2.48 / 3.03 | 1.72 / 1.82 / 0.23 / 2.47 | – | – |
+
+- **The two views agree wherever nothing is handed over as an image** (E1, D, EPxw), and part ways exactly where
+  images are: B, B+kept, C and the partition's base. The earlier ranking by phys_footprint inverted C and E.
+- **C costs more than E**: CPw 3.13 vs EPw 2.08 MB per System widget (+1.05), 4.73 vs 3.53 per design skin (+1.20);
+  one layer +0.73 / +1.94. Beyond the bitmap bytes (+0.15 / +0.65), C's bitmaps are copied on write when a group is
+  redrawn while the window server still holds its previous image ("CG image" pages next to "CG raster data").
+- **The partition with E holds the least of the layered ways** and 37 % (System) / 29 % (design) of today's B+kept.
+  B drawn in full is not cheap either (2.49 / 6.10 MB: two bitmaps and their copies).
+- The scratch bitmap adds 0.76 / 1.45 MB.
+- **One thread per widget adds little memory**: ten threads vs one, 0.06–0.16 MB per widget (EPw 0.06, CPw 0.10, C1
+  0.13, E1 0.16). The larger differences phys_footprint showed (0.3–0.7 MB) were attribution, not thread stacks.
+- A's view leaves out its accelerated path's graphics memory, which is owned by the process but not mapped into it
+  ("Owned physical footprint (unmapped) (graphics)", about 145 MB for 10 System widgets): for A, phys_footprint is the
+  better number. No other way has any such memory (checked for all of them).
+- What the window server holds for each way is still not measured.
+
 
 ### After review: CPU (`cost-d/`, `wspair/`, `frames60/`, `schedpair/`)
 
@@ -710,24 +745,29 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
 - Opening (all widgets built and their first frame committed): 10 System widgets in 46–86 ms in every layered mode
   (A and B 12–31 ms), one design skin or visualizer in 2–15 ms.
 
-**Against the plan's targets**
+**Against the plan's targets** (rewritten after review: memory through the VM-object view, CPU from the interleaved
+batch and the paired steps, ✗ = over the target; all CPU numbers provisional by load)
 
 | target | E (EPw) | C (CPw) | D (DP, sRGB) | today's B+kept | A |
 |---|---|---|---|---|---|
-| default skin ≤ 2 MB per idle widget (measured: System widget updating every second) | 2.17 (one thread: 1.89) | 2.82 (2.46) | 3.49 | 3.38 | 15.5 |
-| design skin ≤ 2.5 × one bitmap (4.95 MB) and ≤ 6 MB | **2.70** | **2.19** | 5.69 ✗ | 6.33 ✗ | 123 ✗ |
-| WindowServer ≤ A's increase + 1 MB (A: 0.45–0.50 per System widget, 0.8–1.0 per design skin) | 0.10 / 0.60 | 0.20 / 0.40 | 0.15 / – | 0.35 / 1.0 | – |
-| 10 widgets: this process < 1 % of a core | 1.51 ✗ (spread 1.03, one thread **0.62**) | 1.24 ✗ (one thread **0.58**) | 1.13 ✗ | **0.75** | **0.62–0.78** |
-| 10 widgets: WindowServer < 1 % | yes (−0.15 ± 0.44) | yes (−0.36 ± 0.27) | yes (0.08 ± 0.19) | yes (0.22 ± 0.46) | yes |
-| ≤ 12 wakeups per second | 3.7 (spread: 13.3) | 1.4 | 1.4 | 1.6 | 5.7–6.8 |
-| opening to first frame < 100 ms | 68 ms for 10 | 60 ms | 77 ms | 24 ms | 12–31 ms |
-| 60 Hz visualizer | 299 / 300 frames, 5.57 % | 300 / 300, 4.07 % | 299 / 300, 4.18 % | 300 / 301, 3.98 % | 299 / 300, 8.11 % |
+| default skin ≤ 2 MB per idle widget (measured: System widget updating every second, not idle) | 2.08 ✗ (just over; E1 1.88) | 3.13 ✗ | 3.32 ✗ | 5.60 ✗ | 9.59 ✗ |
+| of which: one thread per widget instead of one shared thread | +0.06 | +0.10 | – | (main thread) | (main thread) |
+| design skin ≤ 2.5 × one bitmap (4.95 MB) and ≤ 6 MB | **3.53** | **4.73** | 5.75 ✗ | 12.05 ✗ | 18.28 ✗ |
+| WindowServer memory ≤ A's increase + 1 MB | not measured | not measured | not measured | not measured | – |
+| 10 widgets: this process < 1 % of a core | ten threads 1.61 ✗, spread 1.06–1.21 ✗, **one thread coalesced 0.64–0.71** | 1.32 ✗, spread 0.97, one thread coalesced 0.69 | first campaign only | aligned 0.74–0.87, spread 1.13–1.19 ✗ | 0.76 |
+| 10 widgets: WindowServer < 1 % | cannot be resolved below about 2 % | same | same | same | same |
+| ≤ 12 wakeups per second (per process, 10 widgets) | aligned 5.3, spread 15.3 ✗ | 3.2, spread 12.0 | 1.4 (first campaign) | 3.7, spread 12.7 ✗ | 8.1 |
+| opening to first frame < 100 ms (10 widgets) | 68–76 ms | 55–61 ms | 77 ms | 23–28 ms | 23–43 ms |
+| 60 Hz visualizer: ≥ 298 / 300 frames | **2 of 13 rounds ✗** (291; 296.9 with a 170 ms commit stall) | 13 of 13 | 3 of 3 (first campaign) | 13 of 13 in the frame checks | 3 of 3 |
+| 60 Hz: CPU at most 1 point over today's B+kept | **+1.5–1.6 ✗** in this process; +4.3–6.3 with WindowServer | +0.2–0.4; +3.0–4.7 with WindowServer | not compared (other campaign) | – | +4.5 |
 
-(CPU numbers from runs with a load above 8 are provisional, see the tables. Corrected after review: the two campaigns
-do **not** agree closely enough to compare across them. The bridge moved by up to 0.87 points (12 %) at 60 Hz: sixty-A
-7.24 → 8.11 %, sixty-E1 6.20 → 6.49 %, and E1 was not even the same configuration (an sRGB window on 09-27, the
-default window on 09-28). So modes are not ranked across campaigns; D's 1.13 / 4.18 % compare only with the first
-campaign's E and A.)
+(The 60 Hz rows compare within one batch; "with WindowServer" includes the main-thread ways' unexplained low
+WindowServer readings, so it is an upper bound. A's +4.5 is from the interleaved batch, 8.35 vs 3.90 %.)
+
+Corrected after review: the two campaigns before review do **not** agree closely enough to compare across them. The
+bridge moved by up to 0.87 points (12 %) at 60 Hz: sixty-A 7.24 → 8.11 %, sixty-E1 6.20 → 6.49 %, and E1 was not even
+the same configuration (an sRGB window on 09-27, the default window on 09-28). So modes are not ranked across
+campaigns; D's 1.13 / 4.18 % compare only with the first campaign's E and A.
 
 ## 4. Color: the `draw(in:)` context, formats and color spaces (`q4-default.json`, `q4-srgb.json`, `q4-p3.json`)
 
