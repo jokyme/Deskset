@@ -39,8 +39,11 @@ public final class CatalogIndex: Sendable {
     public let implicitMembers: [String: [(type: String, since: AppVersion)]]
     /// Normalized keyword (lowercased, without `-`, `_` and spaces) → the items that list it.
     public let keywords: [String: [CatalogPath]]
+    /// `DeskCatalog.newestSince`, worked out once: every check context without an App version asks for it.
+    public let newestSince: AppVersion
 
     init(_ c: DeskCatalog) {
+        newestSince = c.computeNewestSince()
         func unique<T>(_ items: [T], _ key: (T) -> String) -> [String: T] {
             var d: [String: T] = [:]
             for item in items where d[key(item)] == nil { d[key(item)] = item }
