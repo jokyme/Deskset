@@ -53,6 +53,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     private var loadSent = false
     /// What waits for `.started` (`whenStarted`).
     private var startWaiters: [() -> Void] = []
+    /// What waits for the start to be over, however it ends (`whenSettled`).
+    private var settleWaiters: [() -> Void] = []
     /// The runtime reported `.closed`: OnCloseAction has run.
     private(set) var hasClosed = false
     /// Until the skin loaded, the window's facts wait (the first ones excepted): the runtime seeds its model with the
@@ -208,6 +210,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         let waiters = startWaiters
         startWaiters = []
         for body in waiters { body() }
+        settled()
     }
 
     /// The runtime was sent `.load` and has reported neither `.started` nor `.failed` yet, and the window was not stopped
@@ -221,6 +224,20 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func whenStarted(_ body: @escaping () -> Void) {
         guard isStarting else { return body() }
         startWaiters.append(body)
+    }
+
+    /// Runs `body` on the main thread once the skin is no longer starting (`isStarting`): it started, its load failed,
+    /// or the window was stopped first; at once when it is not starting. Loading skins one after another waits with it
+    /// (`AppController.activateInOrder`).
+    func whenSettled(_ body: @escaping () -> Void) {
+        guard isStarting else { return body() }
+        settleWaiters.append(body)
+    }
+
+    private func settled() {
+        let waiters = settleWaiters
+        settleWaiters = []
+        for body in waiters { body() }
     }
 
     /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config, and the
@@ -238,6 +255,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         content.teardown()
         app.skinFailed(self, error: error)
         if let ticket { app.studioReload(ticket, .failed, self) }
+        settled()
     }
 
     /// Self-tests: starts a window whose skin loaded at once (`init(config:file:app:)`): the first update, placement,
@@ -329,6 +347,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         let duration = fadeOut && window.isVisible && app.presentsWindows
             ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
         let content = self.content, companions = self.companions!
+        defer { settled() }
         guard duration > 0 else {
             window.orderOut(nil)
             window.close()

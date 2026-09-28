@@ -146,18 +146,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DesktopInputs.publishAll()
         EnvironmentStore.shared.publish()
         observeAppearance()
-        loadActiveSkins()
+        let opensFiles = !pendingOpenURLs.isEmpty
+        loadActiveSkins { [weak self] in
+            // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
+            // rather than over them, once they are placed.
+            guard let self, firstRun, !opensFiles else { return }
+            let manage = self.manageWindow ?? ManageWindowController(app: self)
+            self.manageWindow = manage
+            manage.placeBeside(self.controllers.values.map { $0.window.frame })
+            self.showManageWindow(selecting: self.firstRunSelection, file: nil)
+        }
         launched = true
-        if !pendingOpenURLs.isEmpty {
+        if opensFiles {
             installer.open(CodeEditorRouter.routeOpenedFiles(pendingOpenURLs, app: self))
             pendingOpenURLs = []
-        } else if firstRun {
-            // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
-            // rather than over them.
-            let manage = manageWindow ?? ManageWindowController(app: self)
-            manageWindow = manage
-            manage.placeBeside(controllers.values.map { $0.window.frame })
-            showManageWindow(selecting: firstRunSelection, file: nil)
         }
     }
 
@@ -283,12 +285,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if launched { installer.open(CodeEditorRouter.routeOpenedFiles(urls, app: self)) } else { pendingOpenURLs += urls }
     }
 
-    /// Loads the skins of the last session. On the very first launch (no skin has any state yet) the first-run
-    /// layout's skins at their places (`loadFirstRunLayout`); without one, the Clock alone.
-    func loadActiveSkins() {
+    /// Loads the skins of the last session, one after another (`activateInOrder`). On the very first launch (no skin
+    /// has any state yet) the first-run layout's skins at their places (`loadFirstRunLayout`); without one, the Clock
+    /// alone. `then`: once the last one has started (at once with the main executor).
+    func loadActiveSkins(then: (() -> Void)? = nil) {
         var active = state.activeConfigs
         if active.isEmpty && state.data.skins.isEmpty {
-            let loaded = loadFirstRunLayout()
+            let loaded = loadFirstRunLayout(then: then)
             if let first = loaded.first {
                 firstRunSelection = first
                 restack()
@@ -297,8 +300,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             state.update(DefaultSkins.firstClock.config) { $0.file = DefaultSkins.firstClock.file; $0.active = true }
             active = state.activeConfigs
         }
-        for (config, s) in active { activate(config: config, file: s.file, fade: true, restack: false) }
+        activateInOrder(active.map { ($0.config, $0.state.file) }) { [weak self] in
+            self?.restack()
+            then?()
+        }
         restack()
+    }
+
+    /// Loads the skins of `items` (config, file) one after another, each once the one before has started (or its load
+    /// failed, or it was unloaded meanwhile), as the main thread always has: with the main executor each load is over
+    /// when `activate` returns, and a skin's OnRefreshAction sees only the skins loaded before it. On the engine thread
+    /// the loads would otherwise all be asked for at once, and a skin's `!DeactivateConfig` for a config further down
+    /// the list (Enigma's Dock unloads its Menu when it loads) would unload a skin that had not loaded yet, which then
+    /// never showed. `each`: every window made, with the index of its item (the first-run layout places it). `done`:
+    /// after the last one settled (at once with the main executor). Main thread.
+    func activateInOrder(_ items: [(config: String, file: String?)],
+                         each: ((SkinWindowController, Int) -> Void)? = nil, done: @escaping () -> Void) {
+        var next = 0
+        func goOn() {
+            while next < items.count {
+                let index = next
+                next += 1
+                guard !isTerminating else { break }
+                guard let c = activate(config: items[index].config, file: items[index].file, fade: true, restack: false)
+                else { continue }
+                each?(c, index)
+                if c.isStarting {
+                    c.whenSettled { goOn() }
+                    return
+                }
+            }
+            done()
+        }
+        goOn()
+    }
+
+    /// Whether `activate` would make a window for `config` and `file`: the config exists and has an .ini file to load.
+    func canActivate(config: String, file: String?) -> Bool {
+        guard let entry = self.config(named: config) else { return false }
+        return self.file(toLoad: file, of: entry) != nil
     }
 
     // MARK: System events

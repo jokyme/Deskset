@@ -208,19 +208,22 @@ extension AppController {
 
     /// Loads the skins of the first-run layout (`DefaultSkins/FirstRun.ini`) at their places: the configs loaded, in
     /// order; none without the file or when none of its configs exists (the caller then loads the Clock alone).
-    func loadFirstRunLayout() -> [String] {
+    func loadFirstRunLayout(then: (() -> Void)? = nil) -> [String] {
         guard let source = defaultSkinsSource,
               let layout = FirstRunLayout.load(from: source.appendingPathComponent(DefaultSkins.firstRunFileName))
         else { return [] }
         let screens = WindowGeometry.currentScreens()
         let visible = screens.first?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 875)
         let primaryHeight = WindowGeometry.primaryHeight(screens)
-        var loaded: [String] = []
-        for entry in layout.entries {
-            guard let c = activate(config: entry.config, file: entry.file, fade: true, restack: false) else { continue }
-            if let p = entry.position(visibleFrame: visible, primaryHeight: primaryHeight) { c.moveTo(x: p.x, y: p.y) }
-            loaded.append(c.config)
-        }
+        // One after another (`activateInOrder`); which ones load is known now.
+        let entries = layout.entries.filter { canActivate(config: $0.config, file: $0.file) }
+        let loaded = entries.compactMap { config(named: $0.config)?.name }
+        activateInOrder(entries.map { ($0.config, $0.file) }, each: { c, index in
+            if let p = entries[index].position(visibleFrame: visible, primaryHeight: primaryHeight) { c.moveTo(x: p.x, y: p.y) }
+        }, done: { [weak self] in
+            self?.restack()
+            then?()
+        })
         if !loaded.isEmpty {
             Log.write("First launch: loaded \(loaded.joined(separator: ", ")) from \(DefaultSkins.firstRunFileName)")
         }

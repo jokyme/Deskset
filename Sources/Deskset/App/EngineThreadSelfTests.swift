@@ -10,6 +10,7 @@ enum EngineThreadSelfTests {
     static func run(_ t: AppTestRunner) {
         keyTests(t)
         lifeTests(t)
+        orderTests(t)
         frameTests(t)
         inputTests(t)
         windowTests(t)
@@ -219,11 +220,16 @@ enum EngineThreadSelfTests {
             keptApps.append(app)
             try FileManager.default.createDirectory(at: app.skinsDirectory, withIntermediateDirectories: true)
             app.installDefaultSkinsIfNeeded()
-            app.loadActiveSkins()
-            let clock = app.controller(for: "Stationery\\Clock"), weather = app.controller(for: "Stationery\\Weather")
-            t.check(clock != nil && weather != nil, "both windows are made at once")
-            t.check(AppSelfTest.spin(timeout: 60) { clock?.isStarted == true && weather?.isStarted == true },
-                    "and start on the engine thread")
+            var loadedAll = 0
+            app.loadActiveSkins { loadedAll += 1 }
+            let clock = app.controller(for: "Stationery\\Clock")
+            t.check(clock != nil && app.controller(for: "Stationery\\Weather") == nil,
+                    "the first window is made at once, the next once it started (activateInOrder)")
+            t.check(AppSelfTest.spin(timeout: 60) {
+                clock?.isStarted == true && app.controller(for: "Stationery\\Weather")?.isStarted == true
+            }, "both start on the engine thread")
+            let weather = app.controller(for: "Stationery\\Weather")
+            t.check(AppSelfTest.spin(timeout: 30) { loadedAll == 1 }, "then the launch goes on, once")
             let screens = WindowGeometry.currentScreens()
             let visible = screens.first?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 875)
             let height = WindowGeometry.primaryHeight(screens)
@@ -239,6 +245,66 @@ enum EngineThreadSelfTests {
             app.stopAllForTermination()
             app.endEngineThread()
             t.check(AppSelfTest.spin(timeout: 30) { engine?.hasExited == true })
+        }
+    }
+
+    // MARK: Loading one after another
+
+    static func orderTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: the session's skins load one after another, as on the main thread") {
+            // Dock unloads its Menu when it loads (Enigma's Dock does); the Menu comes after it in the load order, so
+            // on the main thread it was not loaded yet and loads after. On the engine thread, a skin whose file went
+            // missing fails and the loads go on; so do they after a skin that unloads itself before it started.
+            let dock = """
+                [Rainmeter]
+                Update=-1
+                OnRefreshAction=[!DeactivateConfig "Engine\\Menu"]
+
+                """ + box
+            let gone = "[Rainmeter]\nUpdate=-1\nOnRefreshAction=[!DeactivateConfig]\n\n" + box
+            for threading in [SkinThreading.main, .engine] {
+                guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+                try write(app, ["Dock": dock, "Menu": plain, "Broken": plain, "Gone": gone, "Last": plain])
+                for (order, name) in ["Dock", "Broken", "Gone", "Menu", "Last"].enumerated() {
+                    app.state.update("Engine\\\(name)") {
+                        $0.file = "\(name).ini"
+                        $0.loadOrder = order + 1
+                    }
+                }
+                var tracked: [() -> Skin?] = []
+                var finished = 0
+                autoreleasepool {
+                    let gate = SkinLifecycleSelfTests.Gate()
+                    if let engine = threading == .engine ? app.skinExecutor("Engine\\Dock") : nil {
+                        // Held until Broken's file is gone: its window is made (the file was there), its load fails.
+                        gate.hold(engine)
+                    }
+                    app.loadActiveSkins { finished += 1 }
+                    if threading == .engine {
+                        t.equal(app.sortedControllers.map(\.config), ["Engine\\Dock"], "one window at a time")
+                        try? FileManager.default.removeItem(at: app.skinsDirectory
+                            .appendingPathComponent("Engine/Broken/Broken.ini"))
+                        gate.open()
+                    }
+                    tracked = app.sortedControllers.map(track)
+                    t.check(AppSelfTest.spin(timeout: 60) { finished == 1 }, "\(threading): every load settled")
+                    // Gone's !DeactivateConfig of itself runs on a later turn (`AppController.later`), in both modes.
+                    t.check(AppSelfTest.spin(timeout: 60) { app.controller(for: "Engine\\Gone") == nil },
+                            "\(threading): the skin that unloads itself is gone")
+                    t.equal(finished, 1)
+                    let running = app.sortedControllers.filter(\.isStarted).map(\.config)
+                    t.equal(running, threading == .engine ? ["Engine\\Dock", "Engine\\Menu", "Engine\\Last"]
+                                                          : ["Engine\\Dock", "Engine\\Broken", "Engine\\Menu",
+                                                             "Engine\\Last"],
+                            "\(threading): the Menu loaded after the Dock, as on the main thread")
+                    tracked += app.sortedControllers.map(track)
+                }
+                if threading == .engine {
+                    finish(t, app, tracked)
+                } else {
+                    app.stopAllForTermination()
+                }
+            }
         }
     }
 
