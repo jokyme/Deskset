@@ -12,6 +12,7 @@ enum EngineReloadSelfTests {
         closeTests(t)
         orderTests(t)
         installTests(t)
+        keptWindowTests(t)
     }
 
     typealias E = EngineThreadSelfTests
@@ -360,6 +361,85 @@ enum EngineReloadSelfTests {
                 }
             }
             t.equal(outcomes[.engine], outcomes[.main], "the engine thread does what the main thread does")
+        }
+    }
+
+    // MARK: The replaced window stays until the new copy starts
+
+    static func keptWindowTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: a reload keeps the old window with its last frame until the new copy started") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["Kept": E.ticker])
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "Engine\\Kept", file: nil), let engine = app.engineThread else {
+                    return t.check(false, "load")
+                }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted }, "started")
+                c.visibilityForTesting = true
+                t.check(AppSelfTest.spin(timeout: 60) { c.content.state.presented >= 1 }, "it shows a frame")
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(engine)
+                guard let c2 = app.refresh(c) else {
+                    gate.open()
+                    return t.check(false, "a new copy")
+                }
+                tracked.append(E.track(c2))
+                t.check(c.isStopped && c.isKeptForReplacement, "the old copy is stopped, its window kept")
+                t.check(!c.content.state.tornDown && c.content.shown.image != nil, "still showing its last frame")
+                // Replaced again before it started: the new copy never showed anything, the old window waits on.
+                guard let c3 = app.refresh(c2) else {
+                    gate.open()
+                    return t.check(false, "a third copy")
+                }
+                tracked.append(E.track(c3))
+                t.check(c2.isStopped && !c2.isKeptForReplacement, "the copy that never started goes at once")
+                t.check(c.isKeptForReplacement && !c.content.state.tornDown, "the first window still waits")
+                gate.open()
+                t.check(AppSelfTest.spin(timeout: 60) { c3.isStarted }, "the last copy started")
+                t.check(!c.isKeptForReplacement && c.content.state.tornDown, "then the old window closed")
+                t.check(c2.content.state.tornDown)
+                app.deactivate(config: "Engine\\Kept")
+            }
+            E.finish(t, app, tracked)
+        }
+
+        t.suite("App: engine thread: a replaced window goes at once on the main thread, and when the new copy fails") {
+            guard let main = try AppSelfTest.makeApp(t) else { return }
+            try E.write(main, ["Kept": E.plain])
+            autoreleasepool {
+                guard let c = main.activate(config: "Engine\\Kept", file: nil), let c2 = main.refresh(c) else {
+                    return t.check(false, "load")
+                }
+                t.check(c.isStopped && !c.isKeptForReplacement && c.content.state.tornDown, "main: closed at once")
+                t.check(c2.isStarted)
+                main.stopAllForTermination()
+            }
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["Kept": E.plain])
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "Engine\\Kept", file: nil), let engine = app.engineThread else {
+                    return t.check(false, "load")
+                }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted }, "started")
+                let gate = SkinLifecycleSelfTests.Gate()
+                gate.hold(engine)
+                guard let c2 = app.refresh(c) else {
+                    gate.open()
+                    return t.check(false, "a new copy")
+                }
+                tracked.append(E.track(c2))
+                try? FileManager.default.removeItem(at: app.skinsDirectory.appendingPathComponent("Engine/Kept/Kept.ini"))
+                t.check(c.isKeptForReplacement, "kept while the new copy loads")
+                gate.open()
+                t.check(AppSelfTest.spin(timeout: 60) { c2.loadFailed }, "the new copy failed")
+                t.check(!c.isKeptForReplacement && c.content.state.tornDown, "and the old window went with it")
+                t.check(app.controller(for: "Engine\\Kept") == nil, "the config is unloaded")
+            }
+            E.finish(t, app, tracked)
         }
     }
 }
