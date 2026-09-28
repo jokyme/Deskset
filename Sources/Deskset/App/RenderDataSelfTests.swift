@@ -171,6 +171,61 @@ enum RenderDataSelfTests {
             t.equal(bad, 1)
         }
 
+        t.suite("App: render: covers go to the render's own cache, never the app's") {
+            // A cover the running app shows: writing a new cover deletes the player's other covers in its folder, so
+            // a render that wrote into the app's cache would take the desktop skin's album art away.
+            guard let fixtures = Paths.repositoryFolder("TestSkins")?.appendingPathComponent("Runtime/Data") else {
+                t.check(false, "the fixtures in TestSkins/Runtime/Data")
+                return
+            }
+            let appCache = t.temporaryDirectory("app-cache")
+            let live = appCache.appendingPathComponent("NowPlaying/cover-music-LIVE.png")
+            try FileManager.default.createDirectory(at: live.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(contentsOf: fixtures.appendingPathComponent("cover.png")).write(to: live)
+            let savedRoot = MediaUICache.root
+            MediaUICache.root = appCache
+            defer { MediaUICache.root = savedRoot }
+
+            let dir = t.temporaryDirectory("cover-render").appendingPathComponent("Skins/Cover/Render")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try """
+            [Rainmeter]
+            Update=1000
+            [Cover]
+            Measure=NowPlaying
+            PlayerName=Music
+            PlayerType=Cover
+            [Art]
+            Meter=Image
+            MeasureName=Cover
+            W=40
+            H=40
+            """.write(to: dir.appendingPathComponent("Render.ini"), atomically: true, encoding: .utf8)
+            let data = """
+            {"nowPlaying": {"title": "Rain on Glass", "artist": "Deskset Ensemble", "duration": 245,
+                            "cover": "\(fixtures.appendingPathComponent("cover.png").path)"}}
+            """
+            let out = t.temporaryDirectory("cover-render-out")
+            let settings = t.temporaryDirectory("cover-render-settings")
+            let savedSettings = SkinController.settingsPath
+            SkinController.settingsPath = settings.path + "/"
+            defer { SkinController.settingsPath = savedSettings }
+            let state = out.appendingPathComponent("state.json")
+            let status = RenderCommand.run(["Deskset", "--render", dir.appendingPathComponent("Render.ini").path,
+                                            "--out", out.appendingPathComponent("cover.png").path, "--updates", "3",
+                                            "--clock", "2026-09-26T12:00:00Z", "--seed", "7", "--data", data,
+                                            "--state", state.path])
+            t.equal(status, 0)
+            let cover = (try? Data(contentsOf: state)).flatMap { try? JSONValue.parse($0) }?["measures"]?.array?
+                .first { $0["name"]?.string == "Cover" }?["string"]?.string ?? ""
+            t.check(cover.hasPrefix(settings.path + "/Caches/NowPlaying/cover-music-"),
+                    "the cover is in the render's settings folder: \(cover)")
+            t.check(FileManager.default.fileExists(atPath: cover))
+            t.equal(try FileManager.default.contentsOfDirectory(atPath: live.deletingLastPathComponent().path),
+                    ["cover-music-LIVE.png"], "the app's cover is still there, and nothing was added")
+            t.equal(MediaUICache.root, appCache, "the app's cache folder again after the render")
+        }
+
         t.suite("App: render: the data's fakes") {
             // Wi-Fi.
             let wifi = FixedWiFi(.value(SkinInputData.WiFi(current: SkinInputData.WiFiNetwork(ssid: "Home", rssi: -60),

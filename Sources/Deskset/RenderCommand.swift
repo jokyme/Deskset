@@ -278,6 +278,14 @@ enum RenderCommand {
             MacAppearance.current.refresh()
         }
         applyAppearance(o.appearance)
+        // The files plugins cache (NowPlaying's covers, with --data or DESKSET_NOWPLAYING_DEMO) go to the render's
+        // settings folder (`Caches` in #SETTINGSPATH#): never into the app's real cache (~/Library/Caches/Deskset),
+        // where writing a cover deletes the cover the running app's skins show, and renders side by side (each with a
+        // settings folder of its own) never share one.
+        let savedCacheRoot = MediaUICache.root
+        MediaUICache.root = URL(fileURLWithPath: SkinController.settingsPath, isDirectory: true)
+            .appendingPathComponent("Caches", isDirectory: true)
+        defer { MediaUICache.root = savedCacheRoot }
         // Weather: no network, place names from the bundled table; DESKSET_WEATHER_DEMO=1 draws a demo forecast.
         WeatherWiring.installPreview()
         let fileURL = URL(fileURLWithPath: o.input).standardizedFileURL

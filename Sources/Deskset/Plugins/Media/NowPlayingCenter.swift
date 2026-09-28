@@ -379,7 +379,10 @@ final class NowPlayingCenter {
     /// Seconds between polls.
     var interval: TimeInterval = 1
     /// Cover files go here (tests use a temporary folder).
-    var coverFolder: URL { MediaUICache.folder("NowPlaying") }
+    var coverFolder: URL { coverFolderOverride ?? MediaUICache.folder("NowPlaying") }
+    /// A folder of this center's own for its covers (a `--render --data` center: its covers stay in the render's
+    /// folder even when a cover job finishes after the render); nil: the app's cache.
+    var coverFolderOverride: URL?
 
     /// What measures read, from whichever thread runs their skin. Only the main thread changes the snapshots and
     /// the refusals; a read changes the last choice and the time of the last read.

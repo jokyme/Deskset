@@ -60,6 +60,9 @@ final class RenderData {
         if let nowPlaying = data.nowPlaying {
             let center = NowPlayingCenter(backend: DemoNowPlayingBackend(fixture: nowPlaying))
             center.forceLive = true
+            // Its covers go to the render's cache folder (`RenderCommand.run`), also those of a cover job that
+            // finishes after the render: never to the app's cache, where writing one deletes the app's own cover.
+            center.coverFolderOverride = MediaUICache.folder("NowPlaying")
             if let virtual { center.clock = { virtual.uptime } }
             NowPlayingCenter.current = center
             restores.append { NowPlayingCenter.current = .shared }
