@@ -215,6 +215,8 @@ kind("effect.appleScript", "effect",
      "AppleScript and Apple events (controlling Music, Spotify)")
 kind("effect.signal", "effect", #"(?<![.\w])kill\s*\("#, "signalling a process")
 kind("effect.terminate", "effect", #"\bNSApp\.terminate\("#, "quitting the app")
+kind("effect.pluginProcess", "effect", #"\bPluginProcess\.run\("#,
+     "a plugin starts a program (open, osascript) through PluginProcess, whose launcher is already replaceable")
 kind("effect.iniWrite", "effect", #"\bIniWriter\.(writeValue|removeSection|removeKey|moveSection|withFileLock)\("#,
      "writing a skin's .ini file")
 kind("effect.fileWrite", "effect",
@@ -543,17 +545,31 @@ func summary(_ hits: [Hit]) {
     }
 }
 
+/// Per class: the uses in code that runs inside or for a skin first, then those in UI and tooling code (the allow
+/// list's * entries), each with the allow list's note.
 func markdown(_ hits: [Hit]) {
+    var notes: [Key: Allowance] = [:]
+    for a in readAllowList() { notes[Key(kind: a.kind, file: a.file)] = a }
+    func table(_ rows: [Hit]) {
+        write("| Kind | Location | Code | Note |")
+        write("|---|---|---|---|")
+        for hit in rows {
+            let file = hit.file.replacingOccurrences(of: "Sources/", with: "")
+            let text = code(hit.text).replacingOccurrences(of: "|", with: "\\|").replacingOccurrences(of: "`", with: "'")
+            let note = (notes[Key(kind: hit.kind.id, file: hit.file)]?.note ?? "").replacingOccurrences(of: "|", with: "\\|")
+            write("| \(hit.kind.id) | \(file):\(hit.line) | `\(text)` | \(note) |")
+        }
+    }
     for klass in classes {
         let inClass = hits.filter { $0.kind.klass == klass.id }
         guard !inClass.isEmpty else { continue }
-        write("\n#### \(klass.title) (\(inClass.count))\n")
-        write("| Kind | Location | Code |")
-        write("|---|---|---|")
-        for hit in inClass {
-            let file = hit.file.replacingOccurrences(of: "Sources/", with: "")
-            let text = code(hit.text).replacingOccurrences(of: "|", with: "\\|").replacingOccurrences(of: "`", with: "'")
-            write("| \(hit.kind.id) | \(file):\(hit.line) | `\(text)` |")
+        let ui = inClass.filter { notes[Key(kind: $0.kind.id, file: $0.file)].map { $0.count == nil } ?? false }
+        let skin = inClass.filter { notes[Key(kind: $0.kind.id, file: $0.file)].map { $0.count != nil } ?? true }
+        write("\n#### \(klass.title) (\(inClass.count): \(skin.count) in skin code, \(ui.count) in UI and tooling)\n")
+        if !skin.isEmpty { table(skin) }
+        if !ui.isEmpty {
+            write("\nUI and tooling:\n")
+            table(ui)
         }
     }
 }

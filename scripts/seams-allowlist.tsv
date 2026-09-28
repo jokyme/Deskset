@@ -354,7 +354,7 @@ background.queue	Sources/DesksetCore/Engine/Measures/WebParser/WebParserNetwork.
 
 background.hop	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 effect.fileWrite	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	7	WebParser Download=1 and Debug=2 files: SideEffects
-random.UUID	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	1	download file names; never visible to the skin
+random.UUID	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	1	temporary download names; Download=1 without DownloadFile makes the path the measure value: SkinRandom
 
 timer.executorAfter	Sources/DesksetCore/Engine/Meters/BitmapMeter.swift	1	already on the executor (VirtualTimeExecutor)
 
@@ -369,6 +369,7 @@ random.swift	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	QuotePlugin:
 background.global	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	background work; result comes back through Skin.hop (fake completion)
 background.hop	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	background work started by a skin; completes through the executor (fake completion in verification)
 background.process	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	opening a file with its app (PluginProcess.launcher seam): SideEffects.launch
+effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	FileView reveal and trash: SideEffects.launch (PluginProcess.launcher)
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
 zone.localizedText	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	2	file dates and sort order in the user locale: SkinEnvironment.locale
 
@@ -387,6 +388,7 @@ mono.machTime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	process 
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	plugin timing: SkinClock.uptime
 timer.dispatchSource	Sources/DesksetCore/Engine/Plugins/ProcessSampler.swift	1	the process sampler's own queue and timer (a shared service)
 
+effect.pluginProcess	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	3	RecycleManager OpenBin and EmptyBin: SideEffects.launch (PluginProcess.launcher)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	5	plugin timing: SkinClock.uptime
 
 background.fileEvents	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	3	RunCommand child process and its pipes: SideEffects.launch
