@@ -133,7 +133,7 @@ Two consecutive captures of every window were identical.
 | 3 | memory and CPU at 2× | This process, per widget updating every second: the partition 2.17 MB (E) / 2.82 MB (C) / 3.49 MB (D) for a 260 × 196 pt System widget, 2.70 / 2.19 / 5.69 MB for the 360 pt design skin; one E layer 2.22 / 3.64 MB; today's B+kept 3.38 / 6.33 MB; A 15.5 / 123 MB (its accelerated path). WindowServer: at most +1.0 MB per widget in every way, no more than A or B (`top`; `footprint` and `vmmap` need root). CPU for 10 System widgets: **0.58–0.62 % when their updates run on one thread** (C / E partition; B+kept 0.75 %, A 0.62–0.78 %), but 1.24–1.51 % with one thread per widget updating at the same moment and 1.03 % spread over the second; WindowServer's CPU: no measurable change. Wakeups 1.4–4.6 per second for all 10 (13 when spread). 60 Hz visualizer: 298–300 of 300 frames on screen in every way; CPU C 4.07 %, D 4.18 %, E 5.57 %, B+kept 3.98 %, A 8.11 %. |
 | 4 | the `draw(in:)` context and formats | A bitmap context (`kCGContextTypeBitmap`, data in this process) **in the window's color space** ("Color LCD" by default, sRGB in an sRGB window, Display P3 in a P3 window) — not always sRGB. 8 bpc for `RGBA8Uint`, 16 bpc float for `RGBA16Float` (extended sRGB in an sRGB window), `kCGContextTypeCoreAnimationAutomatic` when no format is set; A gets a display list. **Closest to B (drawn in full): `RGBA8Uint` in the default (or a P3) window: identical** (B+kept differs from it by max 1 in 0.68 %). Closest to A drawn once: `RGBA16Float` in the default window: identical (not to A as it looked while updating, question 1). The plan's `RGBA8Uint` in an sRGB window: max 9 in 54 % from B, max 10 in 87 % from A, identical to D. |
 | 5 | gradients cut at box edges (pure CG) | 270° StylePanel gradient cut by a 100 × 30 pt box: max 1 in 70.8 % of the box; over all positions median 67.9 %, 0–84 %: **the effect is reproduced (about two thirds of the pixels off by 1), the review's figures (64.4 / 57.2 / 59.9 %) are not**: no box position gives all three. Box at the panel's top left, translation only, solid translucent panel: 0. **Whole-window base bitmap + whole-pixel sub-rectangles: 0.** Whole partitions: max 1 in ≤ 0.009 % at 1× and 2×, arm64 and x86_64. |
-| 6 | base tiles sharing one image | **Counted once**: 61 tiles cost what one layer with the image costs (this process within 0.08 MB; WindowServer +12–13 MB either way; in the default window CA's color-converted copy, +19.6 MB, is made once for all 61 tiles, but once per image for separate copies: 8 copies +156.6 MB). **Read back byte for byte**: 0 differing pixels offscreen (`CARenderer`) and on screen (vs one layer). |
+| 6 | base tiles sharing one image | **Counted once** (measured after review with `footprint --vmObjectDirty`, which sees the pages): 61 tiles sharing a 9.77 MB image add +10.2 MB in an sRGB window, exactly what one layer with it adds, while 8 separate copies add +78.7 MB; in the default window CA's color-converted copy is made once for all 61 tiles (+20.0 MB) and once per separate image (8 copies +156.9 MB). WindowServer's share was not measured (`top` cannot see it). **Read back byte for byte**: 0 differing pixels offscreen (`CARenderer`) and on screen (vs one layer). |
 | 7 | ContentHost flipping | All markers in place in 5 of 5 captures over 4 resizes; **AppKit wrote to `contentRoot` 0 times** (25 times to a layer-hosting root). Screen change not tested (one screen). |
 | 8 | offscreen `CARenderer` on the CI runners | **Both runners have a Metal device** ("Apple Paravirtual device" on `macos-26` and on `macos-26-intel`) and render every tree. Within a run, partitions made of pixels **copied from the one-layer bitmap** are identical to it on both (true by construction: it shows that CA composites copied pixels exactly). The partition drawn the plan's way (added after review) was run only here, arm64 and x86_64 under Rosetta (the Intel runner's CoreGraphics output): max 1–2 in 2–3 px, all CoreGraphics translation noise, CA adds nothing; the runners run it on the next push. Against this Mac: `macos-26` is byte-identical for bitmaps and flat colors (Core Animation's own shapes: max 1 in 0.2–0.65 %); `macos-26-intel` differs everywhere except copied bitmaps (CoreGraphics output depends on the CPU architecture). Two silent traps: `CARenderer` does not clear the texture, and on the Intel runner a shared texture never sees the GPU's writes. Per render at 2× (a new 20-layer tree each time, one renderer), round medians: 1.5–4.2 ms on `macos-26`, 6.5–12.0 ms on `macos-26-intel` (most rounds provisional by load per core), 0.5 ms here. |
 | – | layers committed off the main thread | 65 layers at 60 Hz from a skin thread: 179–180 of 180 frames reached the screen, 0 of 13,428 captures (12 runs) showed two commits mixed, and frames kept reaching the screen while the main thread was blocked (53–54 committed, 54–56 distinct frames seen during 3 × 300 ms blocks). |
@@ -363,7 +363,24 @@ What the counters show:
   296), B+kept (297, 296) and EPw (297); none for CPw, C1 and E1. Longest freezes 19–56 ms. `frames60/` (10 s,
   10 rounds) is the cleaner check; the one long freeze there is EPw's 170 ms commit stall.
 
-<!-- schedpair -->
+**The same in pairs within one process** (`schedpair/`, 2 processes × 8 cycles; three sets of 10 System widgets on
+screen, EPw on 10 threads, EPw on one shared thread, B+kept on the main thread; one way runs at a time for 5 s, an idle
+phase in every cycle; mean ± standard error over the 16 cycles, increase over idle; load 7–14):
+
+| way (10 widgets, 1 s) | process % of one core | instructions M/s | cycles M/s | cycles per instruction | wakeups/s |
+|---|---|---|---|---|---|
+| EPw, 10 threads, aligned | 1.62 ± 0.02 | 101 | 60.3 | 0.60 | 2.5 |
+| EPw, 10 threads, spread | 1.06 ± 0.01 | 93 | 40.4 | 0.44 | 11.7 |
+| EPw, one thread, aligned | 0.67 ± 0.01 | 88 | 25.5 | 0.29 | 2.7 |
+| EPw, one thread, spread | 1.05 ± 0.01 | 92 | 40.1 | 0.44 | 11.3 |
+| **EPw, one thread, coalesced** | **0.64 ± 0.01** | 86 | 24.5 | 0.29 | 2.7 |
+| B+kept, aligned | 0.74 ± 0.03 | 116 | 28.3 | 0.24 | 1.1 |
+| B+kept, spread | 1.13 ± 0.03 | 118 | 43.2 | 0.37 | 10.3 |
+
+Same order, much tighter: spreading the timers costs +0.4 points whether the widgets share a thread or not, and costs
+B+kept the same +0.4; ten threads updating at the same moment cost +1.0 point over one thread; coalescing the updates
+on one thread is the cheapest way here, below B+kept with aligned timers.
+
 
 ### As measured before review
 
@@ -582,15 +599,14 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
   one core, the scratch variants 1.72–1.91 %, one layer (E1, C1, D1) and B drawn in full 1.56–2.08 %; today's B+kept
   0.75 % and A 0.62–0.78 % (both on the main thread). At 60 Hz: B+kept 3.98 %, CPw 4.07 %, DP 4.18 %, EPw 5.57 %,
   E1 6.49 %, B 7.73 %, A 8.11 %. The design skin is cheap in every mode that redraws only what changed (0.09–0.15 %).
-- **Most of the partition's cost in the 10-widget runs comes from the ten threads, not from the layers.** The same 10
-  widgets on **one shared skin thread**, updating one after another: EPw **0.62 %**, CPw **0.58 %** (below B+kept),
-  E1 1.41 %, C1 1.50 %. On ten threads with their updates **spread over the second** instead of at the same moment:
-  EPw 1.03 %, E1 1.85 %. Per widget update, EPw draws in 1,481 µs and commits in 386 µs on ten simultaneous threads,
-  700 µs + 88 µs on ten spread threads, 447 µs + 51 µs on one thread. The process's CPU time drops with it, so this
-  is not only waiting for locks; likely causes are short bursts on cores that are not ramped up or on efficiency
-  cores, and contention in Core Animation's commit path (commit time falls 7.6×). The spike does not separate them.
-  Deskset's threading plan gives every skin its own thread: this deserves a measurement in the real engine (its
-  skins' timers are not aligned, which is the "spread" case).
+- **Most of the partition's cost in the 10-widget runs comes from how the updates are timed, not from the layers.**
+  The same 10 widgets on **one shared skin thread**, updating one after another: EPw 0.62 %, CPw 0.58 % (below
+  B+kept), E1 1.41 %, C1 1.50 %. On ten threads with their updates **spread over the second** instead of at the same
+  moment: EPw 1.03 %, E1 1.85 %. Corrected after review: these runs were separate batches (not interleaved with the
+  others), B+kept and one thread were measured only with aligned timers, and CPU time was read as work. The
+  interleaved batch with counters ("After review: CPU" above) separates the factors: the instructions stay the same,
+  the cycles per instruction change; spreading the timers costs the same on one thread as on ten, and B+kept pays it
+  too; coalescing the updates is what saves.
 - One layer drawing the whole skin shows the same effect: 2,014–2,023 µs per System widget for E1 and C1 on ten
   simultaneous threads, 1,235–1,279 µs on one thread, 1,384 µs for B on the main thread (the same pixels into the same
   kind of bitmap).
@@ -642,10 +658,15 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
     plan's 1-point rule) and C +0.2; with WindowServer, E +4.3 and C +3.0. Part of that WindowServer difference is the
     way the main-thread modes read: A, B and B+kept all read 2–3 points *below* the idle phase (B and E1 draw the same
     pixels into one layer, yet WindowServer reads 2.9 points more when a skin thread commits them). That is either
-    real (main-thread commits reach the window server in a cheaper way) or CPU time the window server spends for this
-    process billed elsewhere; the spike records billed and serviced system time since then (`ProcCounters`), but
-    this batch did not. Until that is settled, **the sums against B+kept are an upper bound and the process-only
-    differences a lower bound.**
+    real (main-thread commits reach the window server in a cheaper way) or an artifact of how its time is read.
+    A second paired run with billed system time (`wspair-billed/`, 8 cycles, A / B / B+kept / E1 / EPw / CPw) rules
+    out the obvious artifact: time other processes spent for this one and billed to it is *smaller* for the
+    main-thread ways (3.4–5.6 ms per second) than for the partitions (EPw 9.7, CPw 10.9 ms per second, about 0.4–0.5
+    points of a core more than B+kept). The same run repeats the rest: CPw − EPw −1.6 ± 0.5 points in total
+    (WindowServer −0.4 ± 0.5), EPw − B+kept +1.6 ± 0.05 in this process, +6.3 ± 1.3 with WindowServer. The main-thread
+    ways' low WindowServer readings stay unexplained, so **the sums against B+kept are an upper bound and the
+    process-only differences a lower bound**; the billed time says the partitions do make other processes work about
+    half a point more than B+kept.
   - The first campaign's "+2 % for partitions in sRGB windows" does not reproduce when paired: EP in an sRGB window
     costs WindowServer 0.40 ± 0.31 more than EPw, 0.67 ± 0.64 more than E1 in an sRGB window.
   - The GPU's utilization (whole system) rose by 1–2 points for every way, with no difference between ways that
@@ -815,19 +836,23 @@ process after the window was on screen for 2 s; WindowServer's footprint from `t
 (The first of the 3 cycles is higher in every row, by 3–22 MB, and is not the median: allocator growth of the first
 cycle; the random-pixel column's first cycle also holds the 9.8 MB buffer the noise was made in.)
 
-- **Counted once**: 61 tiles that share one image cost what one layer with that image costs, in this process (within
-  0.08 MB in every column) and in WindowServer (+12…13 MB either way), and read back byte for byte.
-- The clearest case is the default window: CA converts an sRGB `CGImage` into the display's color space inside this
-  process, **+19.6 MB for a 9.77 MB image** (an 8-byte-per-pixel copy: 1600 × 1600 × 8 bytes = 19.5 MB), once for all
-  the tiles that share it and again for every separate image (8 copies: +156.6 MB = 8 × 19.5). An IOSurface tagged
-  sRGB is not converted, and nothing is converted in an sRGB window.
-- In an sRGB window the image itself does not show up in this process (one image, 61 tiles and 8 copies all within
-  0.5 MB of the empty window): `phys_footprint` does not charge a `CGImage` made from a bitmap context until the
-  process reads it (see Conditions), and CA hands the image to the window server without reading it. So the "copies"
-  control only shows what separate copies cost where CA touches them (the default window). An IOSurface the process
-  wrote is charged (+9.8 MB).
-- WindowServer grew by 12–13 MB for any content in this 1600 × 1600 px window (0 for the empty window), however many
-  layers, images or copies showed it.
+- Corrected after review: in the sRGB window the table's `phys_footprint` column is blind (one image, 61 tiles and
+  8 separate copies all within 0.5 MB of the empty window), and `top`'s WindowServer column is blind too (+12–13 MB
+  for one image and for 8 copies of it: it follows the window's surface, not the contents). So this table showed
+  "counted once" only in the default window, through CA's converted copy.
+- **Measured again with a view that sees the pages** (`footprint --vmObjectDirty` of this process, the same
+  random-pixel image, `sysmem/control-*.json`, median of 3 open steps):
+
+  | window | empty | one layer | **61 tiles sharing it** | 61 `CGImage.cropping` tiles | 8 separate copies |
+  |---|---|---|---|---|---|
+  | sRGB (contents already in the window's space: what the plan does) | +0.5 MB | +10.2 MB | **+10.2 MB** | +13.3 MB | +78.7 MB |
+  | default (sRGB contents, CA converts them) | +0.5 MB | +20.0 MB | **+20.0 MB** | +20.2 MB | +156.9 MB |
+
+  **Counted once, in both windows**: 61 tiles sharing one image cost exactly one image, 8 copies cost 8 (78.7 MB for
+  8 × 9.77). In the default window CA's converted 8-byte-per-pixel copy is made once for all tiles sharing an image
+  and once per separate image (8 × 19.6 MB). Cropped images hold a little more (+3 MB here). What the window server
+  holds for them was not measured.
+- An IOSurface the process wrote is charged to it in any view (+9.8 MB).
 
 ## 7. ContentHost flipping (`q7.json`)
 

@@ -1,0 +1,362 @@
+{
+ "arguments": [
+  "--control",
+  "shared",
+  "--window-cs",
+  "default",
+  "--cycles",
+  "3",
+  "--out",
+  "results/sysmem/control-shared-default.json"
+ ],
+ "command": "sysmem",
+ "control": "shared",
+ "cycles": [
+  {
+   "before": {
+    "attempts": 1,
+    "footprintMB": 29.38,
+    "gpuInUseMB": 1023.2,
+    "gpuSpreadMB": 4.7,
+    "load": 7.38,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 19049.9,
+    "systemWiredMB": 3782.8,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 19.56,
+     "MALLOC_SMALL": 5.05,
+     "totalMB": 29.3,
+     "untagged (VM_ALLOCATE)": 0.98
+    },
+    "vmObjectDirtyMB": 29.3,
+    "windowServerMB": 2023
+   },
+   "closed": {
+    "attempts": 1,
+    "footprintMB": 20.49,
+    "gpuInUseMB": 1022.5,
+    "gpuSpreadMB": 3.7,
+    "load": 7.25,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 18309.5,
+    "systemWiredMB": 3788.3,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 9.78,
+     "MALLOC_SMALL": 5.97,
+     "totalMB": 20.44,
+     "untagged (VM_ALLOCATE)": 1
+    },
+    "vmObjectDirtyMB": 20.44,
+    "windowServerMB": 2036
+   },
+   "open": {
+    "attempts": 1,
+    "footprintMB": 49.34,
+    "gpuInUseMB": 1039.2,
+    "gpuSpreadMB": 139.6,
+    "load": 7.39,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 18152.1,
+    "systemWiredMB": 3800.4,
+    "vmObjectDirtyCategoriesMB": {
+     "CG raster data": 9.78,
+     "CoreAnimation": 9.77,
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 19.56,
+     "MALLOC_SMALL": 5.5,
+     "totalMB": 49.3,
+     "untagged (VM_ALLOCATE)": 1
+    },
+    "vmObjectDirtyMB": 49.3,
+    "windowServerMB": 2034
+   },
+   "steps": {
+    "footprintMBClose": -28.9,
+    "footprintMBOpen": 20,
+    "gpuInUseMBClose": -16.7,
+    "gpuInUseMBOpen": 16,
+    "systemAnonymousWiredCompressedMBClose": 157.4,
+    "systemAnonymousWiredCompressedMBOpen": -897.8,
+    "systemWiredMBClose": -12.1,
+    "systemWiredMBOpen": 17.6,
+    "vmObjectDirtyMBClose": -28.9,
+    "vmObjectDirtyMBOpen": 20,
+    "windowServerMBClose": 2,
+    "windowServerMBOpen": 11
+   }
+  },
+  {
+   "before": {
+    "attempts": 1,
+    "footprintMB": 20.83,
+    "gpuInUseMB": 1023.5,
+    "gpuSpreadMB": 4.9,
+    "load": 7.63,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 18377.9,
+    "systemWiredMB": 3807.5,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 9.78,
+     "MALLOC_SMALL": 6.31,
+     "totalMB": 20.78,
+     "untagged (VM_ALLOCATE)": 1
+    },
+    "vmObjectDirtyMB": 20.78,
+    "windowServerMB": 2035
+   },
+   "closed": {
+    "attempts": 1,
+    "footprintMB": 11.8,
+    "gpuInUseMB": 1022.6,
+    "gpuSpreadMB": 3.7,
+    "load": 7.17,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 19445.9,
+    "systemWiredMB": 3784,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_SMALL": 7.06,
+     "totalMB": 11.77,
+     "untagged (VM_ALLOCATE)": 1.02
+    },
+    "vmObjectDirtyMB": 11.77,
+    "windowServerMB": 2065
+   },
+   "open": {
+    "attempts": 1,
+    "footprintMB": 40.75,
+    "gpuInUseMB": 1038.7,
+    "gpuSpreadMB": 5.9,
+    "load": 7.66,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 18979.5,
+    "systemWiredMB": 3815.1,
+    "vmObjectDirtyCategoriesMB": {
+     "CG raster data": 9.78,
+     "CoreAnimation": 9.77,
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 9.78,
+     "MALLOC_SMALL": 6.67,
+     "totalMB": 40.7,
+     "untagged (VM_ALLOCATE)": 1.02
+    },
+    "vmObjectDirtyMB": 40.7,
+    "windowServerMB": 2060
+   },
+   "steps": {
+    "footprintMBClose": -29,
+    "footprintMBOpen": 19.9,
+    "gpuInUseMBClose": -16.1,
+    "gpuInUseMBOpen": 15.2,
+    "systemAnonymousWiredCompressedMBClose": 466.4,
+    "systemAnonymousWiredCompressedMBOpen": 601.6,
+    "systemWiredMBClose": -31.1,
+    "systemWiredMBOpen": 7.6,
+    "vmObjectDirtyMBClose": -28.9,
+    "vmObjectDirtyMBOpen": 19.9,
+    "windowServerMBClose": 5,
+    "windowServerMBOpen": 25
+   }
+  },
+  {
+   "before": {
+    "attempts": 1,
+    "footprintMB": 12.16,
+    "gpuInUseMB": 1026.9,
+    "gpuSpreadMB": 341.3,
+    "load": 7.4,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 19625.4,
+    "systemWiredMB": 3801.9,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.08,
+     "MALLOC_SMALL": 7.47,
+     "totalMB": 12.17,
+     "untagged (VM_ALLOCATE)": 1.02
+    },
+    "vmObjectDirtyMB": 12.17,
+    "windowServerMB": 2073
+   },
+   "closed": {
+    "attempts": 1,
+    "footprintMB": 32.69,
+    "gpuInUseMB": 1027,
+    "gpuSpreadMB": 341.5,
+    "load": 7.56,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 19880.3,
+    "systemWiredMB": 3720.1,
+    "vmObjectDirtyCategoriesMB": {
+     "IOAccelerator": 0.09,
+     "MALLOC_LARGE": 34.95,
+     "MALLOC_SMALL": 11.34,
+     "totalMB": 32.63,
+     "untagged (VM_ALLOCATE)": 1.06
+    },
+    "vmObjectDirtyMB": 32.63,
+    "windowServerMB": 2131
+   },
+   "open": {
+    "attempts": 1,
+    "footprintMB": 51.72,
+    "gpuInUseMB": 1037.2,
+    "gpuSpreadMB": 362.9,
+    "load": 7.79,
+    "pressureLevel": 1,
+    "systemAnonymousWiredCompressedMB": 19893.9,
+    "systemWiredMB": 3736.1,
+    "vmObjectDirtyCategoriesMB": {
+     "CG raster data": 9.78,
+     "CoreAnimation": 9.77,
+     "IOAccelerator": 0.08,
+     "MALLOC_LARGE": 19.56,
+     "MALLOC_SMALL": 7.92,
+     "totalMB": 51.75,
+     "untagged (VM_ALLOCATE)": 1.05
+    },
+    "vmObjectDirtyMB": 51.75,
+    "windowServerMB": 2101
+   },
+   "steps": {
+    "footprintMBClose": -19,
+    "footprintMBOpen": 39.6,
+    "gpuInUseMBClose": -10.2,
+    "gpuInUseMBOpen": 10.3,
+    "systemAnonymousWiredCompressedMBClose": -13.6,
+    "systemAnonymousWiredCompressedMBOpen": 268.5,
+    "systemWiredMBClose": -16,
+    "systemWiredMBOpen": -65.8,
+    "vmObjectDirtyMBClose": -19.1,
+    "vmObjectDirtyMBOpen": 39.6,
+    "windowServerMBClose": 30,
+    "windowServerMBOpen": 28
+   }
+  }
+ ],
+ "imageMB": 9.77,
+ "loadAverageAtEnd": [
+  7.56,
+  11.16,
+  11.03
+ ],
+ "loadAverageAtStart": [
+  7.61,
+  12.15,
+  11.34
+ ],
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 3.17,
+  "freeGB": 0.27,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtStart": {
+  "compressorOccupiesGB": 2.4,
+  "freeGB": 0.9,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "settleSeconds": 4,
+ "summary": {
+  "footprintMB": {
+   "closeStepMedian": -28.9,
+   "closeSteps": [
+    -28.9,
+    -29,
+    -19
+   ],
+   "meanOfOpenAndMinusClose": 24.4,
+   "openStepMedian": 20,
+   "openSteps": [
+    20,
+    19.9,
+    39.6
+   ],
+   "perWidget": 24.435
+  },
+  "gpuInUseMB": {
+   "closeStepMedian": -16.1,
+   "closeSteps": [
+    -16.7,
+    -16.1,
+    -10.2
+   ],
+   "meanOfOpenAndMinusClose": 15.7,
+   "openStepMedian": 15.2,
+   "openSteps": [
+    16,
+    15.2,
+    10.3
+   ],
+   "perWidget": 15.65
+  },
+  "systemAnonymousWiredCompressedMB": {
+   "closeStepMedian": 157.4,
+   "closeSteps": [
+    157.4,
+    466.4,
+    -13.6
+   ],
+   "meanOfOpenAndMinusClose": 67.6,
+   "openStepMedian": 268.5,
+   "openSteps": [
+    -897.8,
+    601.6,
+    268.5
+   ],
+   "perWidget": 67.6
+  },
+  "systemWiredMB": {
+   "closeStepMedian": -16,
+   "closeSteps": [
+    -12.1,
+    -31.1,
+    -16
+   ],
+   "meanOfOpenAndMinusClose": 14.8,
+   "openStepMedian": 7.6,
+   "openSteps": [
+    17.6,
+    7.6,
+    -65.8
+   ],
+   "perWidget": 14.85
+  },
+  "vmObjectDirtyMB": {
+   "closeStepMedian": -28.9,
+   "closeSteps": [
+    -28.9,
+    -28.9,
+    -19.1
+   ],
+   "meanOfOpenAndMinusClose": 24.4,
+   "openStepMedian": 20,
+   "openSteps": [
+    20,
+    19.9,
+    39.6
+   ],
+   "perWidget": 24.43
+  },
+  "windowServerMB": {
+   "closeStepMedian": 5,
+   "closeSteps": [
+    2,
+    5,
+    30
+   ],
+   "meanOfOpenAndMinusClose": 4.5,
+   "openStepMedian": 25,
+   "openSteps": [
+    11,
+    25,
+    28
+   ],
+   "perWidget": 4.5
+  }
+ },
+ "windowColorSpace": "default"
+}
