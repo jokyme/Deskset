@@ -100,4 +100,71 @@ func runStudioPartIssuesTests(_ t: TestRunner) {
         let symbols = StudioSymbolIndex.all.map(\.symbol)
         t.equal(Set(symbols).count, symbols.count, "no symbol twice")
     }
+
+    t.suite("Studio add: data shown as a number, a bar, a ring, a graph") {
+        func ini(_ sections: [EditorComponents.Section], head: String = "") -> String {
+            "[Rainmeter]\nUpdate=1000\n" + head + sections.map { s in
+                "\n[\(s.name)]\n" + s.options.map { "\($0.key)=\($0.value)" }.joined(separator: "\n") + "\n"
+            }.joined()
+        }
+        let number = StudioAddCatalog.sections(data: "cpu", look: .number, x: 10, y: 20, existing: [], variables: [])
+        t.equal(number.map(\.name), ["MeasureCPU", "MeterCPU"])
+        t.equal(number[1].options.first { $0.key == "Text" }?.value, "%1%")
+        t.equal(number[1].options.first { $0.key == "X" }?.value, "10")
+        let (skin, _) = try makeSkin(t, ini(number))
+        skin.update()
+        t.check(text(skin, "MeterCPU").hasSuffix("%"), "the number reads the CPU: \(text(skin, "MeterCPU"))")
+        let ring = StudioAddCatalog.sections(data: "memory", look: .ring, x: 0, y: 0, existing: ["measurememory"],
+                                             variables: ["accentcolor"])
+        t.equal(ring.map(\.name), ["MeasureMemory2", "MeterMemoryRingTrack", "MeterMemoryRing", "MeterMemoryRingValue"],
+                "names the widget does not have yet")
+        t.equal(ring[2].options.first { $0.key == "LineColor" }?.value, "#AccentColor#", "the widget's own accent")
+        t.equal(ring[3].options.first { $0.key == "Text" }?.value, "%1B")
+        let reused = StudioAddCatalog.sections(data: "cpu", look: .bar, x: 0, y: 0, existing: [], variables: [],
+                                               reuse: "MeasureProcessor")
+        t.equal(reused.map(\.name), ["MeterCPUBar"], "the widget's own measure: no new one")
+        t.equal(reused[0].options.first { $0.key == "MeasureName" }?.value, "MeasureProcessor")
+        let disk = StudioAddCatalog.sections(data: "disk", look: .number, x: 0, y: 0, existing: [], variables: [])
+        t.check(disk[1].options.contains { $0.key == "Percentual" && $0.value == "1" }, "disk used in percent")
+        for item in StudioAddCatalog.data {
+            for look in item.looks {
+                let s = StudioAddCatalog.sections(data: item.id, look: look, x: 0, y: 0, existing: [], variables: [])
+                t.check(s.contains { $0.options.contains { $0.key == "Meter" } }, "\(item.id) as \(look): a part")
+            }
+        }
+    }
+
+    t.suite("Studio add: parts, symbols, the widget's own data, search") {
+        for part in StudioAddCatalog.Part.allCases {
+            let s = StudioAddCatalog.sections(part: part, x: 4, y: 8, existing: [], variables: [])
+            t.check(s.contains { $0.options.contains { $0.key == "Meter" } }, "\(part): a part")
+            t.check(EditorComponents.component(part.dragComponent) != nil, "\(part) drags a known ghost")
+        }
+        let symbol = StudioAddCatalog.symbolSections("umbrella.fill", x: 0, y: 0, existing: ["metersymbol"], variables: [])
+        t.equal(symbol.first?.name, "MeterSymbol2")
+        t.equal(symbol.first?.options.first { $0.key == "ImageName" }?.value, "sf:umbrella.fill")
+        let ini = """
+            [Rainmeter]
+            Update=1000
+
+            [MeasureProcessor]
+            Measure=CPU
+
+            [MeasureRAMTotal]
+            Measure=PhysicalMemory
+            Total=1
+
+            [MeasureDown]
+            Measure=NetIn
+            """
+        let (skin, _) = try makeSkin(t, ini)
+        t.equal(StudioAddCatalog.existingMeasure(for: "cpu", in: skin), "MeasureProcessor", "Processor=0 is the default")
+        t.equal(StudioAddCatalog.existingMeasure(for: "memory", in: skin), nil, "a total is not the memory used")
+        t.equal(StudioAddCatalog.existingMeasure(for: "download", in: skin), "MeasureDown")
+        t.equal(StudioAddCatalog.existingMeasure(for: "time", in: skin), nil, "only this Mac's data is shared")
+        t.equal(StudioAddCatalog.search("net").map(\.id), ["download", "upload"])
+        t.equal(StudioAddCatalog.search("内存").map(\.id), ["memory"])
+        t.equal(StudioAddCatalog.search("weather").map(\.id), ["temperature"])
+        t.equal(StudioAddCatalog.search("").count, StudioAddCatalog.data.count)
+    }
 }
