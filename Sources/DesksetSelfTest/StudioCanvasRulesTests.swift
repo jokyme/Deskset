@@ -100,3 +100,81 @@ func runStudioCanvasRulesTests(_ t: TestRunner) {
         t.equal(StudioHitRule.pick([])?.name, nil)
     }
 }
+
+func runStudioEverySettingTests(_ t: TestRunner) {
+    t.suite("Studio every setting: rows in the order of the box") {
+        let ini = """
+            [Rainmeter]
+            Update=1000
+
+            [MeasureCPU]
+            Measure=CPU
+
+            [MeterValue]
+            Meter=String
+            MeasureName=MeasureCPU
+            Text=%1%
+            FontSize=20
+            FontColor=20,20,20
+            StringEffect=Shadow
+            FontEffectColor=0,0,0,90
+            SolidColor=240,240,240
+            BevelType=1
+            Padding=2,3,4,5
+            X=20
+            Y=20
+            LeftMouseUpAction=["https://example.com"]
+            """
+        let (skin, _) = try makeSkin(t, ini)
+        skin.update()
+        guard let m = skin.meter(named: "MeterValue") else { return t.check(false, "the meter") }
+        let groups = StudioEverySetting.groups(meter: m)
+        let sections = groups.map(\.section)
+        t.equal(sections, StudioEverySetting.Section.allCases.filter { sections.contains($0) }, "in the order of the box")
+        t.equal(sections.first, .content)
+        t.check(sections.contains(.pointer), "the clicks are with the pointer")
+        let keys = groups.flatMap(\.rows).map { $0.key.lowercased() }
+        t.equal(Set(keys).count, keys.count, "each setting once")
+        for key in ["measurename", "text", "fontsize", "fontcolor", "x", "y", "solidcolor", "padding", "leftmouseupaction"] {
+            t.check(keys.contains(key), "\(key) is on the page")
+        }
+        let size = groups.flatMap(\.rows).first { $0.key == "FontSize" }
+        t.equal(size?.written, "20")
+        t.equal(size?.isSet, true)
+        let weight = groups.flatMap(\.rows).first { $0.key == "FontWeight" }
+        t.equal(weight?.isSet, false, "not written: its default")
+        t.check(StudioEverySetting.count(groups) > 20, "\(StudioEverySetting.count(groups)) settings")
+        // The box, from outside in.
+        let box = StudioEverySetting.box(m)
+        t.equal(box.margin, nil, "an INI part has no margin")
+        t.equal(box.shadow, RGBA(r: 0, g: 0, b: 0, a: 90), "a text's shadow")
+        t.equal(box.background, RGBA(r: 240, g: 240, b: 240))
+        t.equal(box.border, 1)
+        t.equal(box.padding, SkinInsets(left: 2, top: 3, right: 4, bottom: 5))
+    }
+
+    t.suite("Studio every setting: the filter answers to Rainmeter names") {
+        let (skin, _) = try makeSkin(t, """
+            [Rainmeter]
+            Update=1000
+
+            [MeterValue]
+            Meter=String
+            Text=Hello
+            FontColor=20,20,20
+            """)
+        skin.update()
+        guard let m = skin.meter(named: "MeterValue") else { return t.check(false, "the meter") }
+        let found = StudioEverySetting.groups(meter: m, filter: "FontColor").flatMap(\.rows)
+        let color = found.first { $0.key == "FontColor" }
+        t.check(color != nil, "filtering FontColor keeps the Color row: \(found.map(\.key))")
+        t.equal(color?.item.field.en, "Color")
+        t.equal(color?.via, .rainmeter("FontColor"), "found by its Rainmeter name, which the row says")
+        let byLabel = StudioEverySetting.groups(meter: m, filter: "color").flatMap(\.rows)
+        t.check(byLabel.contains { $0.key == "FontColor" && $0.via == nil }, "found by its label: nothing to say")
+        let byAlias = StudioEverySetting.groups(meter: m, filter: "字色").flatMap(\.rows)
+        t.check(byAlias.contains { $0.key == "FontColor" }, "Chinese words find it too")
+        t.equal(StudioEverySetting.groups(meter: m, filter: "zzzz").count, 0, "nothing matches: no sections")
+        t.check(StudioEverySetting.groups(meter: m, filter: "  ").count > 3, "an empty filter keeps everything")
+    }
+}
