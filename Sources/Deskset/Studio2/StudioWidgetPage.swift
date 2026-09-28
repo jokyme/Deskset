@@ -231,6 +231,11 @@ final class StudioWidgetPage {
             items.append(.init(title: name, detail: Self.liveValue(m, skin: skin), symbol: StudioWords.symbol(m),
                                enabled: enabled))
         }
+        // A ring whose formulas turn the disk's free space into the space used says so.
+        if let selected, skin.measure(named: row.choices.filter({ skin.measure(named: $0.measure) != nil })[selected].measure)?
+            .type == "freediskspace", StudioPartNames.showsUsedSpace(row.meters.compactMap { skin.meter(named: $0) }, in: skin) {
+            items[selected].title = StudioWords.data("Disk used")
+        }
         if !anyChoice {
             items.append(.init(title: StudioText[.showsOnlyThis], enabled: false))
         }

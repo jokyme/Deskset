@@ -54,6 +54,42 @@ enum StudioPartNames {
         liveMeasure(m, in: skin) ?? shapeData(m, in: skin)
     }
 
+    /// Whether a part shows the used space of a disk its data measures free: a formula on its way to the free space
+    /// takes it from the whole (`1 - Free / Total`, `100 - Free`), as Stationery's rings do.
+    static func showsUsedSpace(_ meters: [Meter], in skin: Skin) -> Bool {
+        var seen: Set<String> = []
+        func references(_ text: String) -> [Measure] {
+            var found: [Measure] = []
+            var rest = Substring(text)
+            while let open = rest.firstIndex(of: "[") {
+                rest = rest[rest.index(after: open)...]
+                let name = rest.prefix { $0 != "]" && $0 != ":" && $0 != "[" }.trimmingCharacters(in: CharacterSet(charactersIn: "&"))
+                if let m = skin.measure(named: name) { found.append(m) }
+            }
+            return found
+        }
+        func inverts(_ measure: Measure, depth: Int) -> Bool {
+            guard depth < 4, seen.insert(measure.name.lowercased()).inserted, measure.type == "calc" else { return false }
+            let formula = (measure.fileOption("Formula") ?? "").lowercased().replacingOccurrences(of: " ", with: "")
+            let free = skin.measures.filter { $0.type == "freediskspace" && formula.contains($0.name.lowercased()) }
+            if free.contains(where: { f in
+                guard let at = formula.range(of: f.name.lowercased()) else { return false }
+                let before = formula[..<at.lowerBound]
+                return before.contains("1-") || before.contains("100-")
+            }) { return true }
+            // Formulas built on others (a ring's angle from the used percent).
+            return skin.measures.contains { other in
+                other !== measure && formula.contains(other.name.lowercased()) && inverts(other, depth: depth + 1)
+            }
+        }
+        for m in meters {
+            var measures = m.measures
+            for i in 1...9 { if let t = m.rawOption(i == 1 ? "Shape" : "Shape\(i)") { measures += references(t) } }
+            if measures.contains(where: { inverts($0, depth: 0) }) { return true }
+        }
+        return false
+    }
+
     /// A shape that draws data is a ring when it has an arc or a circle, else a bar.
     static func shapeKind(_ m: Meter) -> StudioPartKind {
         let text = (1...9).compactMap { m.rawOption($0 == 1 ? "Shape" : "Shape\($0)") }.joined(separator: " ").lowercased()
