@@ -762,9 +762,6 @@ final class GrowingStep {
 // MARK: - What DesktopFollowing.swift uses of the session
 
 extension EditingSession {
-    /// Runs `work` on the desktop copy where it is owned (`desktopSkin`).
-    func runOnDesktopSkin(_ work: @escaping (Skin) -> Void) { desktopSkin(work) }
-
     /// How long the desktop copy took to follow the last step (milliseconds; `lastTimings["desktop"]`).
     func noteDesktopTiming(_ milliseconds: Double) { lastTimings["desktop"] = milliseconds }
 }

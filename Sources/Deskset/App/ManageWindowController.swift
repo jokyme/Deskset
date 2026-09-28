@@ -873,9 +873,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         show(c)
     }
 
+    /// Shows a skin that hid itself, as its own `!ShowFade` would: the bang goes to the skin's runtime, whose window
+    /// model changes first and which draws a first frame for a skin that never drew (StartHidden) before the window is
+    /// ordered in — at once with the main executor, a moment later from the engine thread (the watch of hidden skins
+    /// then redraws the details).
     private func show(_ c: SkinController) {
         guard !c.isStopped, c.isHiddenByBang else { return }
-        c.setHidden(false, fade: true)
+        c.runtime.send(.bang(Bang(name: "showfade", args: []), from: c.config, hops: 0))
         movedWhileHidden = nil
         updateHiddenState()
     }

@@ -57,8 +57,9 @@ final class SourceSnapshot: SourceProvider {
 /// A patch keeps what the desktop copy has shown — its graphs, its counter, variables set by clicks — where a reload
 /// starts them again. It waits for the next turn of the run loop, as the reload does (the canvas draws the step first),
 /// and the steps and undos made before that turn go as one. The desktop copy plans it against its own text, from the
-/// files the steps changed as they are then, on its own thread (`desktopSkin`); a copy that must load again for it
-/// (another variant, or a change it cannot take) is loaded again. A reload waiting for its turn wins: it reads every
+/// files the steps changed as they are then, on its own executor: the patch is a message to its runtime
+/// (`SkinMessage.patch`), whose answer comes back to the main thread; a copy that must load again for it (another
+/// variant, or a change it cannot take) is loaded again. A reload waiting for its turn wins: it reads every
 /// file. A step that moves the widget's window moves it once the copy took the patch.
 extension EditingSession {
     /// After a step, an undo or a redo made `changes` (the Studio's instance took them already): the desktop copy
@@ -94,7 +95,7 @@ extension EditingSession {
     func flushDesktopPatch() {
         guard let pending = follow.take() else { return }
         if hasScheduledDesktopRefresh { return scheduleDesktopRefresh(thenMoveTo: pending.place) }
-        guard let c = runningDesktop, let fileURL, SourceFileID(c.skin.fileURL) == SourceFileID(fileURL) else {
+        guard let c = runningDesktop, let fileURL, SourceFileID(c.fileURL) == SourceFileID(fileURL) else {
             return scheduleDesktopRefresh(thenMoveTo: pending.place)
         }
         var texts: [SourceFileID: String] = [:]
@@ -103,13 +104,11 @@ extension EditingSession {
         let place = pending.place
         // The window that moves after the patch: this copy's (a copy that replaced it meanwhile loaded the files).
         weak var target = c
-        runOnDesktopSkin { [weak self] skin in
-            let start = DispatchTime.now().uptimeNanoseconds
-            let result = StudioSignposts.interval("desktop.patch") { skin.patch(sources: snapshot) }
-            let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- start) / 1e6
+        // Inline with the main executor (the answer too); a copy on the engine thread answers on a later turn.
+        c.runtime.send(.patch(snapshot) { [weak self] result, elapsed in
             let done: () -> Void = { self?.desktopTookPatch(result, elapsed: elapsed, place: place, target: target) }
             if Thread.isMainThread { done() } else { DispatchQueue.main.async(execute: done) }
-        }
+        })
     }
 
     /// The desktop copy took the patch (`result`), or says it must load again for it.

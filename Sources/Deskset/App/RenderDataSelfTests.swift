@@ -215,9 +215,9 @@ enum RenderDataSelfTests {
             """
             let out = t.temporaryDirectory("cover-render-out")
             let settings = t.temporaryDirectory("cover-render-settings")
-            let savedSettings = SkinController.settingsPath
-            SkinController.settingsPath = settings.path + "/"
-            defer { SkinController.settingsPath = savedSettings }
+            let savedSettings = EnvironmentStore.shared.settingsPath
+            EnvironmentStore.shared.settingsPath = settings.path + "/"
+            defer { EnvironmentStore.shared.settingsPath = savedSettings }
             let state = out.appendingPathComponent("state.json")
             let status = RenderCommand.run(["Deskset", "--render", dir.appendingPathComponent("Render.ini").path,
                                             "--out", out.appendingPathComponent("cover.png").path, "--updates", "3",
@@ -273,7 +273,7 @@ enum RenderDataSelfTests {
             t.equal(chinese["Day"], "星期六")
             t.equal(TextDecoding.ansiCodePage, codePage, "the process's code page again")
             let mac = render(["--locale", "system", "--accent-color", "system", "--screen", "system"])
-            let env = SkinController.environment(windowFrame: nil)
+            let env = EnvironmentStore.shared.environment(windowFrame: nil)
             t.equal(mac["Text"], SkinAppearance.format(env.appearance.accentColor) + "|"
                         + NumberFormatting.plain(env.screens[0].area.width, maxDecimals: 0) + "|"
                         + NumberFormatting.plain(env.screens[0].workArea.height, maxDecimals: 0), "the Mac's")

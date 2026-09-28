@@ -232,6 +232,16 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             model.take(facts)
             frames.take(model.facts)
             return true
+        case .patch(let sources, let done):
+            // Answered whatever happens: the Studio waits for it to move the window or load the widget again.
+            guard !isClosed else {
+                done(.needsReload(.closed), 0)
+                return false
+            }
+            let start = DispatchTime.now().uptimeNanoseconds
+            let result = StudioSignposts.interval("desktop.patch") { skin.patch(sources: sources) }
+            done(result, Double(DispatchTime.now().uptimeNanoseconds &- start) / 1e6)
+            return true
         default:
             break
         }
@@ -267,8 +277,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             }
         case .execute(let action, let section):
             skin.executeInput(action, from: section.flatMap { skin.section(named: $0) })
+        case .run(let action):
+            skin.execute(action, from: nil)
         case .inputTextAnswered(let id, let text):
             inputTextAnswers.removeValue(forKey: id)?(text)
+        case .windowSettled(let id):
+            windowFollowers[id]?()
         case .preview(let sections, let variables):
             if !variables.isEmpty { skin.previewVariables(variables) }
             for (section, values) in sections { skin.preview(section: section, values) }
@@ -299,7 +313,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             frames.drawFirstFrame()
         case .frameWanted:
             frames.setNeedsFrame()
-        case .mirrorInput, .windowFacts:
+        case .mirrorInput, .windowFacts, .patch:
             break
         }
         return true
@@ -609,8 +623,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         isClosed = true
         // The window fades out with the last frame.
         frames.stop()
-        // An InputText box still open answers nobody.
+        // An InputText box still open answers nobody, and the window's moves are followed for nobody.
         inputTextAnswers = [:]
+        windowFollowers = [:]
         // What the skin that replaces it goes on from (its Calc Counter), whatever thread that one runs on.
         publishSnapshot()
         request(.closed(ticket))
@@ -670,6 +685,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// The InputText boxes open for the skin's measures, by id: what each measure does with the answer.
     private var inputTextAnswers: [Int: (String?) -> Void] = [:]
+    /// What each watch of the window's moves calls once they stopped, by id.
+    private var windowFollowers: [Int: () -> Void] = [:]
     private var lastCompanionID = 0
 
     // MARK: LiveSkinHost
@@ -910,6 +927,24 @@ extension SkinRuntime: SkinCompanionChannel {
         HostCallAudit.note(self, "cancelInputText")
         guard inputTextAnswers.removeValue(forKey: id) != nil else { return }
         request(.companion(.cancelInputText(id: id)))
+    }
+
+    /// Follows the window's moves: `settled` runs here, on the skin's executor, once they stopped, until the watch ends
+    /// or the skin closes. On the executor.
+    func followWindowMoves(settled: @escaping () -> Void) -> Int {
+        HostCallAudit.note(self, "followWindowMoves")
+        lastCompanionID += 1
+        let id = lastCompanionID
+        windowFollowers[id] = settled
+        request(.companion(.followWindow(id: id)))
+        return id
+    }
+
+    /// Ends the watch `id`. On the executor.
+    func stopFollowingWindow(_ id: Int) {
+        HostCallAudit.note(self, "stopFollowingWindow")
+        guard windowFollowers.removeValue(forKey: id) != nil else { return }
+        request(.companion(.stopFollowingWindow(id: id)))
     }
 }
 

@@ -4,7 +4,9 @@ import DesksetCore
 /// The new Studio window's one way to the widget on the desktop. Everything the window knows or asks of the desktop
 /// copy goes through here — which copy is current (`EditingSession.currentDesktop` / `runningDesktop`), its reloads,
 /// what it wrote itself, where its file is — so a change in how the desktop copy runs (its own thread, a runtime that
-/// takes messages) changes this file only. The window never reads the desktop copy's `Skin` itself.
+/// takes messages) changes this file only. The window never reads the desktop copy's `Skin` itself: the desktop copy
+/// may run on the engine thread (docs/skin-threading.md §15), so what this file reads of it comes from its snapshot
+/// (`SkinRuntime.snapshot`), and what it asks of it goes as a message (`SkinRuntime.send`).
 final class DesktopLink {
     /// What happened to the widget on the desktop.
     enum Change {
@@ -55,16 +57,18 @@ final class DesktopLink {
     func link(_ c: SkinController) -> Bool {
         linked = c
         isUnloaded = false
-        keyValueWrites = c.skin.keyValueWrites
+        keyValueWrites = InspectorWindowController.keyValueWrites(of: c)
         let otherFile = session.bind(desktop: c)
         if session.studioSkin == nil || otherFile { session.reloadStudioSkin(notify: false) }
         return otherFile
     }
 
     /// The widgets on the desktop changed (one loaded, reloaded or unloaded): when it is this widget, the session
-    /// follows the new copy. After a reload the session asked for only the link changes, and what the widget wrote as
-    /// it loaded is its own; after any other (its menu's Refresh, `!Refresh`, another variant) the Studio's instance
-    /// loads again too.
+    /// follows the new copy once it has started (on the engine thread a new copy is listed before it loaded; the app
+    /// says so again when it started). After a reload the session asked for (the copy carries its ticket,
+    /// `EditingSession.isOwnReload`) only the link changes, and what the widget wrote as it reloaded is its own — taken
+    /// when the reload ends (`EditingSession.absorbDesktopWrites`); after any other (its menu's Refresh, `!Refresh`,
+    /// another variant) the Studio's instance loads again too.
     func desktopChanged() {
         guard let now = session.currentDesktop, !now.isStopped else {
             guard !isUnloaded, linked != nil else { return }
@@ -72,14 +76,13 @@ final class DesktopLink {
             onChange?(.unloaded)
             return
         }
-        guard now !== linked else { return }
+        guard now !== linked, !now.isStarting else { return }
         isUnloaded = false
-        let own = session.takeOwnReload(now)
+        let own = session.isOwnReload(now)
         linked = now
-        keyValueWrites = now.skin.keyValueWrites
+        keyValueWrites = InspectorWindowController.keyValueWrites(of: now)
         let otherFile = session.bind(desktop: now)
         if own && !otherFile {
-            session.absorbDesktopWrites()
             onChange?(.reloaded(own: true))
             return
         }
@@ -95,13 +98,14 @@ final class DesktopLink {
     var config: String { session.config }
 
     /// The file the desktop runs (the widget's main .ini).
-    var fileURL: URL? { session.runningDesktop.map { $0.skin.fileURL } ?? session.studioSkin?.fileURL }
+    var fileURL: URL? { session.runningDesktop.map(\.fileURL) ?? session.studioSkin?.fileURL }
 
     /// Whether the desktop copy wrote its files itself (`!WriteKeyValue`) since the files were last looked at: such a
-    /// change does not reload the widget (Rainmeter does not refresh for it either).
+    /// change does not reload the widget (Rainmeter does not refresh for it either). Read from the copy's snapshot: as
+    /// of its last piece of work.
     func takeOwnWrites() -> Bool {
         guard let c = session.runningDesktop else { return false }
-        let writes = c.skin.keyValueWrites
+        let writes = InspectorWindowController.keyValueWrites(of: c)
         defer { keyValueWrites = writes }
         return writes != keyValueWrites
     }
@@ -151,18 +155,18 @@ final class DesktopLink {
     }
 
     /// Does for real what the Studio's instance held back (Interact's "Open"): the widget on the desktop runs it, in
-    /// its own place (its thread, its policy: none).
+    /// its own place (its thread, its policy: none), as a message to its runtime.
     func perform(_ recorded: StudioActionPolicy.Recorded) {
-        guard recorded.kind != .file, let skin = session.runningDesktop?.skin else { return }
+        guard recorded.kind != .file, let c = session.runningDesktop else { return }
         let action = recorded.kind == .execute ? "[\"\(recorded.name)\"]" : "[\(recorded.text)]"
-        let run = { skin.execute(action, from: nil) }
-        if skin.executor.isCurrent { run() } else { skin.async(run) }
+        c.runtime.send(.run(action))
     }
 
     // MARK: Changes that reach beyond the widget's own files
 
     /// The desktop runs another variant of the widget (`Small.ini`, `Large.ini`): loaded in place of this one; the
-    /// session follows it (`desktopChanged`). False when the variant is not there.
+    /// session follows it (`desktopChanged`, once it started: at once with the main executor). False when the variant
+    /// is not there.
     @discardableResult
     func switchVariant(to file: String) -> Bool {
         guard session.fileURL?.lastPathComponent.caseInsensitiveCompare(file) != .orderedSame else { return false }

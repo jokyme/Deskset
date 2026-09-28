@@ -42,6 +42,9 @@ enum SkinMessage {
     case bang(Bang, from: String, hops: Int)
     /// An action run for the person from a section (by name): a context menu item (`Skin.executeInput`).
     case execute(String, section: String?)
+    /// An action the widget runs on its own behalf, not as input another instance should follow (`Skin.execute`): the
+    /// Studio's Interact running what its own instance held back.
+    case run(String)
 
     // MARK: The Studio
 
@@ -51,6 +54,10 @@ enum SkinMessage {
     case endPreview
     /// Where the skin tells of the input it took (`Skin.inputMirror`; nil: nowhere).
     case mirrorInput(((SkinInput) -> Void)?)
+    /// A step of the Studio as a patch of the running skin (`Skin.patch(sources:)`), from the text `sources` gives:
+    /// `done` hears what it did and how long it took (milliseconds), on the skin's executor. A closed skin answers that
+    /// it must be loaded again.
+    case patch(SourceProvider, done: (SkinPatchResult, Double) -> Void)
 
     // MARK: The window
 
@@ -87,6 +94,8 @@ enum SkinMessage {
 
     /// What the person typed into InputText's box `id` (nil: they dismissed it): the measure's answer runs here.
     case inputTextAnswered(id: Int, text: String?)
+    /// The window's moves stopped for watch `id` (`SkinCompanionRequest.followWindow`): its measure hears it here.
+    case windowSettled(id: Int)
 
     // MARK: Frames
 
@@ -232,6 +241,11 @@ enum SkinCompanionRequest {
     case showInputText(id: Int, settings: InputTextSettings, skinSize: CGSize)
     /// The box `id` closes without an answer (its measure went, or asked again).
     case cancelInputText(id: Int)
+    /// The window's moves, changes of screen and of the displays' arrangement are followed for watch `id`
+    /// (`WindowMoveWatch`, Chameleon's `CropDesktop=Skin`): once they stop, `SkinMessage.windowSettled` comes back.
+    case followWindow(id: Int)
+    /// Watch `id` ends (its measure closed).
+    case stopFollowingWindow(id: Int)
 }
 
 /// The main-thread side of a runtime: the skin's window (`SkinWindowController`), or a self-test's stand-in.

@@ -270,9 +270,13 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     private var recheck = false
     /// Why the last check did not read the desktop picture (it is kept where macOS would ask), for the log.
     private(set) var skippedProtected = false
-    /// The skin window's moves, while `CropDesktop=Skin` samples under it. The box is the measure's; what it holds is
-    /// the main thread's.
+    /// The skin window's moves, while `CropDesktop=Skin` samples under it: a watch the widget's runtime keeps with its
+    /// window on the main thread (`SkinCompanionChannel.followWindowMoves`; its id), or for the Studio's instance, which
+    /// has no window, a watch of the desktop copy's window (the box is the measure's; what it holds is the main
+    /// thread's).
     private let windowWatch = WindowWatchBox()
+    private weak var channel: SkinCompanionChannel?
+    private var followID: Int?
     private var watchRequested = false
     private var closed = false
 
@@ -337,6 +341,10 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
 
     func skinWillClose() {
         closed = true
+        if let id = followID {
+            followID = nil
+            channel?.stopFollowingWindow(id)
+        }
         let box = windowWatch
         let stop = { box.watch?.stop(); box.watch = nil }
         if Thread.isMainThread { stop() } else { DispatchQueue.main.async(execute: stop) }
@@ -499,20 +507,26 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     }
 
     /// Asks the main thread to follow the skin window's moves (once), when the skin runs in the app with a window: the
-    /// widget on the desktop, or the Studio's instance, which follows the desktop copy's window.
+    /// widget on the desktop (its runtime's window companion: no plugin reaches the window itself), or the Studio's
+    /// instance, which follows the desktop copy's window.
     private func watchWindowIfNeeded() {
         guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
+        // The widget on the desktop, on whatever executor it runs: the settled moves come back as a message.
+        if let channel = skin.host as? SkinCompanionChannel {
+            self.channel = channel
+            followID = channel.followWindowMoves { [weak self] in self?.windowSettled() }
+            return
+        }
+        // The Studio's instance runs on the main thread, with the desktop copy's window controller (never its skin).
+        guard let studio = skin.host as? StudioHost else { return }
         // The window's moves come back like a service's news, and lead to a new sample of the desktop picture (a skin
         // window only: never in a render, so never in virtual time).
         let hop = skin.backgroundHop(.desktopImage)
-        // The widget's window controller, or the Studio's host (whose desktop copy has the window).
-        let controller = self.controller
-        let studio = skin.host as? StudioHost
         let box = windowWatch
         let start = { [weak self] in
             guard box.watch == nil else { return }
-            guard let window: NSWindow = controller?.window ?? studio?.desktop?.window else {
+            guard let window: NSWindow = studio.desktop?.window else {
                 // No window yet (the Studio's instance before its desktop copy is known): asked again at the next update.
                 hop.post { [weak self] in self?.watchRequested = false }
                 return
@@ -534,8 +548,8 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         refreshImage(force: true)
     }
 
-    /// Whether the skin window's moves are followed (tests; main thread).
-    var followsWindow: Bool { windowWatch.watch != nil }
+    /// Whether the skin window's moves are followed (tests; main thread, with the skin on the main executor).
+    var followsWindow: Bool { windowWatch.watch != nil || followID != nil }
 
     /// The desktop picture setting and the frame of the display the skin's window is on (the Studio's instance: the
     /// desktop copy's window; the display comes with the window's facts), else the main screen; nil without a screen or
@@ -612,6 +626,8 @@ final class WindowWatchBox {
 /// Follows a window's moves, changes of screen and the displays' arrangement, and calls `settled` (main thread) once
 /// they have stopped for `delay` seconds: a drag re-samples once, when it ends.
 final class WindowMoveWatch {
+    /// The window followed.
+    private(set) weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
     private var pending: DispatchWorkItem?
     private let delay: TimeInterval
@@ -621,6 +637,7 @@ final class WindowMoveWatch {
     init(window: NSWindow, delay: TimeInterval = 0.3, settled: @escaping () -> Void) {
         self.delay = delay
         self.settled = settled
+        self.window = window
         let center = NotificationCenter.default
         for name in [NSWindow.didMoveNotification, NSWindow.didChangeScreenNotification, NSWindow.didResizeNotification] {
             observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
