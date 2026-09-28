@@ -245,15 +245,25 @@ enum DeskServiceWords {
     }
 
     /// The author's own text inside a card's Markdown: characters Markdown would read as formatting are escaped
-    /// (`*`, `_`, `` ` ``, braces, brackets), so the text shows as written.
-    static func quoted(_ text: String) -> L {
+    /// (`*`, `_`, `` ` ``, braces, brackets), so the text shows as written. A text longer than `limit` characters
+    /// is cut there with `…` (a card has no room for a 32k text, and escaping it all would cost as much as the file).
+    static func quoted(_ text: String, limit: Int = 200) -> L {
         var out = ""
+        var count = 0
         for c in text {
-            if "\\`*_{}[]<>#|".contains(c) { out.append("\\") }
+            if count == limit {
+                out.append("…")
+                break
+            }
+            if let ascii = c.asciiValue, markdownSpecials.contains(ascii) { out.append("\\") }
             out.append(c)
+            count += 1
         }
         return L("“\(out)”", "“\(out)”")
     }
+
+    /// The ASCII characters `quoted` escapes.
+    private static let markdownSpecials = Set("\\`*_{}[]<>#|".utf8)
 
     static let since = L("Since", "引入版本")
     static let macOnly = L("Mac only", "Mac 专有")

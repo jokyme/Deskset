@@ -633,12 +633,22 @@ extension DeskSnapshot {
 
     // MARK: Helpers
 
-    /// The first line of a node's text (the rest of a multi-line node shown as `…`), at most 120 characters.
+    /// The first line of a node's text (the rest of a multi-line node shown as `…`), at most 120 characters. Only
+    /// the start of a long line is read: a hover on a 32k text costs no more than one on a short one.
     static func codeLine(of node: PositionedNode, in tree: SyntaxTree) -> String {
-        let text = self.text(of: node, in: tree)
-        var line = String(text.prefix { $0 != "\n" && $0 != "\r" })
-        let multiLine = line.count < text.count
+        let range = node.quickTextRange
+        let bytes = tree.lines.bytes
+        guard range.lowerBound >= 0, range.upperBound <= bytes.count else { return "" }
+        // The first line ends at a LF or a CR (of a CR LF too).
+        var end = range.lowerBound
+        while end < range.upperBound, bytes[end] != 0x0A, bytes[end] != 0x0D { end += 1 }
+        let multiLine = end < range.upperBound
+        // 120 characters fit in far fewer bytes, unless they are long clusters.
+        var cut = min(end, range.lowerBound + 4_096)
+        while cut > range.lowerBound, cut < end, bytes[cut] & 0xC0 == 0x80 { cut -= 1 }
+        var line = String(decoding: bytes[range.lowerBound..<cut], as: UTF8.self)
         if line.count > 120 { line = String(line.prefix(119)) + "…" }
+        else if cut < end { line += "…" }
         else if multiLine { line += line.hasSuffix("{") ? " … }" : " …" }
         return line.trimmingCharacters(in: .whitespaces)
     }
@@ -646,7 +656,7 @@ extension DeskSnapshot {
     /// A node's text without its outer trivia.
     static func text(of node: PositionedNode, in tree: SyntaxTree) -> String {
         let range = node.quickTextRange
-        let bytes = Array(tree.text.utf8)
+        let bytes = tree.lines.bytes
         guard range.lowerBound >= 0, range.upperBound <= bytes.count else { return "" }
         return String(decoding: bytes[range], as: UTF8.self)
     }
