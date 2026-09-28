@@ -170,13 +170,14 @@ func q1Screen() -> JSON {
     for space in [WindowSpace.default, .srgb] {
         let suffix = space == .default ? "" : "@srgb"
         func add(_ name: String, _ m: Mode, surfaceBase: Bool = false, scratch: Bool = false,
-                 windowSpaceBase: Bool = false) {
+                 windowSpaceBase: Bool = false, cgImages: Bool = false) {
             var c = Config(mode: m)
             c.format = format
             c.windowSpace = space
             c.baseSurface = surfaceBase
             c.scratch = scratch
             c.baseInWindowSpace = windowSpaceBase
+            c.cgImages = cgImages
             configs.append(c)
             names.append(name + suffix)
         }
@@ -193,7 +194,12 @@ func q1Screen() -> JSON {
             // The partition with its base (and scratch) bitmap in the window's color space, like B's own bitmap.
             add("EPw", .EP, windowSpaceBase: true)
             add("EPxw", .EP, scratch: true, windowSpaceBase: true)
+            // C: our own bitmaps (in the window's color space) as the contents, like B but per layer.
+            add("CPw", .DP, windowSpaceBase: true, cgImages: true)
+            add("CPxw", .DP, scratch: true, windowSpaceBase: true, cgImages: true)
         }
+        add("C1", .D1, cgImages: true)
+        add("CP", .DP, cgImages: true)
         add("OVE", .OVE)
         add("OVD", .OVD)
     }
@@ -219,7 +225,9 @@ func q1Screen() -> JSON {
         }
     }
     pairs["DP(CGImage base) vs D1"] = comparison(shot("DP(CGImage base)"), shot("D1"), groups: boxes)
-    for (a, b) in [("EPw", "E1"), ("EPw", "B"), ("EPxw", "E1"), ("EPxw", "B"), ("EPw", "A")] {
+    for (a, b) in [("EPw", "E1"), ("EPw", "B"), ("EPxw", "E1"), ("EPxw", "B"), ("EPw", "A"), ("C1", "B"),
+                   ("CPw", "B"), ("CPxw", "B"), ("C1@srgb", "E1@srgb"), ("CP@srgb", "E1@srgb"), ("CP@srgb", "C1@srgb"),
+                   ("C1@srgb", "B"), ("C1", "E1"), ("CPw", "EPw")] {
         pairs["\(a) vs \(b)"] = comparison(shot(a), shot(b), groups: boxes)
     }
     // Across window color spaces: what a person would see change against today's A.

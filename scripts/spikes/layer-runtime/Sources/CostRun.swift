@@ -63,10 +63,11 @@ func costRun() -> JSON {
     var config = Config(mode: mode)
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
-    config.baseSurface = mode == .DP
+    config.baseSurface = mode == .DP && !flag("--cgimage")
     config.baseInWindowSpace = flag("--window-space-base")
     config.scratch = flag("--scratch")
     config.keptPictures = flag("--kept")
+    config.cgImages = flag("--cgimage")
 
     let (make, count, interval): (() -> Widget, Int, Double) = {
         switch scenario {
@@ -273,11 +274,16 @@ func costRun() -> JSON {
     }
     // B+kept: what the last frame copied and drew, and its picture against a full drawing (Deskset allows 8 levels:
     // copied pictures composite like direct drawing, but each 8-bit step rounds).
+    // The widgets stop for it (a 60 Hz widget would otherwise move on between its last picture and the check).
     if let w = windows.first, let v = w.drawView, v.keptPictures {
+        for w in windows { w.stop() }
+        pump(0.2)
         let k = v.keptStats
         j["keptPicturesLastFrame"] = ["picturesCopied": k.copied, "picturesMade": k.made, "elementsDrawn": k.drawn,
                                       "elements": w.widget.elements.count]
         if let c = v.keptCheck(tick: w.tick) { j["keptPicturesVsFullDrawing"] = c }
+        for w in windows { w.start(interval: interval) }
+        pump(0.5)
     }
 
     // 3. The end of the scenario: memory after all phases, 60 Hz pacing, close.
@@ -393,10 +399,11 @@ func memTrace() -> JSON {
     var config = Config(mode: mode)
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
-    config.baseSurface = mode == .DP
+    config.baseSurface = mode == .DP && !flag("--cgimage")
     config.baseInWindowSpace = flag("--window-space-base")
     config.scratch = flag("--scratch")
     config.keptPictures = flag("--kept")
+    config.cgImages = flag("--cgimage")
     let (make, count, scenarioInterval): (() -> Widget, Int, Double) = {
         switch scenario {
         case "design": return ({ Widgets.design() }, 1, 1.0)
@@ -476,10 +483,11 @@ func windowServerMemoryRun() -> JSON {
     var config = Config(mode: mode)
     config.format = choice("--format", FormatChoice.rgba8)
     config.windowSpace = choice("--window-cs", WindowSpace.default)
-    config.baseSurface = mode == .DP
+    config.baseSurface = mode == .DP && !flag("--cgimage")
     config.baseInWindowSpace = flag("--window-space-base")
     config.scratch = flag("--scratch")
     config.keptPictures = flag("--kept")
+    config.cgImages = flag("--cgimage")
     let mb = 1024.0 * 1024.0
     /// Medians of 5 samples: WindowServer's footprint (`top`) and resident size (`ps`), the GPU's memory in use.
     func sample() -> (mem: Double?, rss: Double?, gpu: Double?) {

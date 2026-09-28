@@ -57,14 +57,18 @@ struct Config {
     var scratch = false
     /// B: keep pictures of unchanged runs of elements, like Deskset's SkinBitmapDrawing.
     var keptPictures = false
+    /// D1 / DP: our own bitmap contexts (two used in turn) whose images become the contents, in the window's color
+    /// space, instead of sRGB IOSurfaces ("C1" / "CP" in the results).
+    var cgImages = false
 
     var label: String {
         var s = mode.rawValue
         if mode.isLayered && !mode.isD && format != .rgba8 { s += "/\(format.rawValue)" }
         if mode.isD && (dDisplaySpace || dHalfFloat) { s += "/\(dDisplaySpace ? "display" : "srgb")\(dHalfFloat ? "-16f" : "-8")" }
+        if mode.isD && cgImages { s += "+cgimage" }
         if (mode == .EP || mode == .DP) && baseSurface { s += "+surfaceBase" }
         if (mode == .EP || mode == .DP) && scratch { s += "+scratch" }
-        if mode == .EP && baseInWindowSpace { s += "+windowSpaceBase" }
+        if (mode == .EP || mode == .DP) && baseInWindowSpace { s += "+windowSpaceBase" }
         if mode == .B && keptPictures { s += "+kept" }
         if displayBeforeAttach { s += "+displayBeforeAttach" }
         if windowSpace != .default { s += "@\(windowSpace.rawValue)" }
@@ -360,16 +364,38 @@ final class SurfacePool {
     let space: CGColorSpace
     private var surfaces: [(surface: IOSurface, context: CGContext)] = []
     private let limit = 3
+    /// C (`images`): two plain bitmap contexts used in turn instead of IOSurfaces; the layer gets an image of the
+    /// one just drawn (like B's own bitmaps).
+    let images: Bool
+    private var contexts: [CGContext] = []
+    private var nextContext = 0
 
-    init(width: Int, height: Int, space: CGColorSpace, halfFloat: Bool) {
+    init(width: Int, height: Int, space: CGColorSpace, halfFloat: Bool, images: Bool = false) {
         self.width = width
         self.height = height
         self.space = space
         self.halfFloat = halfFloat
+        self.images = images
     }
 
-    var count: Int { surfaces.count }
-    var bytes: Int { surfaces.reduce(0) { $0 + $1.surface.allocationSize } }
+    var count: Int { images ? contexts.count : surfaces.count }
+    var bytes: Int {
+        images ? contexts.reduce(0) { $0 + $1.bytesPerRow * $1.height }
+            : surfaces.reduce(0) { $0 + $1.surface.allocationSize }
+    }
+
+    /// C: the context to draw the next frame into.
+    func nextImageContext() -> CGContext? {
+        if contexts.isEmpty {
+            contexts = (0..<2).compactMap { _ in
+                CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                          bitmapInfo: bgraInfo)
+            }
+        }
+        guard contexts.count == 2 else { return nil }
+        defer { nextContext = 1 - nextContext }
+        return contexts[nextContext]
+    }
 
     func next() -> (surface: IOSurface, context: CGContext)? {
         if let free = surfaces.first(where: { !$0.surface.isInUse }) { return free }
@@ -692,6 +718,10 @@ final class SkinWindow {
     }
 
     private func makePool(_ w: Int, _ h: Int) -> SurfacePool {
+        if config.cgImages {
+            return SurfacePool(width: w, height: h, space: panel.colorSpace?.cgColorSpace ?? sRGB, halfFloat: false,
+                               images: true)
+        }
         let space = config.dDisplaySpace ? (panel.screen?.colorSpace?.cgColorSpace ?? sRGB)
             : (config.dHalfFloat ? CGColorSpace(name: CGColorSpace.extendedSRGB)! : sRGB)
         return SurfacePool(width: w, height: h, space: space, halfFloat: config.dHalfFloat)
@@ -758,6 +788,21 @@ final class SkinWindow {
     private func drawGroupD(_ i: Int) {
         guard let p = part, let base else { return }
         let g = p.groups[i]
+        if pools[i].images {
+            // C: our own bitmap, then an image of it as the contents.
+            guard let ctx = pools[i].nextImageContext() else { return }
+            if config.scratch, let crop = scratchImage?.cropping(to: g.box.cg) {
+                ctx.saveGState()
+                ctx.setBlendMode(.copy)
+                ctx.interpolationQuality = .none
+                ctx.draw(crop, in: CGRect(x: 0, y: 0, width: g.box.width, height: g.box.height))
+                ctx.restoreGState()
+            } else {
+                drawGroup(widget, g, base: base, scale: scale, tick: tick, into: ctx, baseCrop: baseCrops[g.id])
+            }
+            groupSurfaceLayers[i].contents = ctx.makeImage()
+            return
+        }
         guard let (s, ctx) = pools[i].next() else { return }
         s.lock(options: [], seed: nil)
         if config.scratch, let crop = scratchImage?.cropping(to: g.box.cg) {
@@ -775,6 +820,17 @@ final class SkinWindow {
     }
 
     private func drawSingleD() {
+        if let pool = singlePool, pool.images {
+            guard let ctx = pool.nextImageContext() else { return }
+            ctx.saveGState()
+            ctx.clear(CGRect(x: 0, y: 0, width: pool.width, height: pool.height))
+            ctx.translateBy(x: 0, y: CGFloat(pool.height))
+            ctx.scaleBy(x: scale, y: -scale)
+            widget.draw(ctx, tick: tick)
+            ctx.restoreGState()
+            single?.contents = ctx.makeImage()
+            return
+        }
         guard let pool = singlePool, let (s, ctx) = pool.next() else { return }
         s.lock(options: [], seed: nil)
         ctx.saveGState()
