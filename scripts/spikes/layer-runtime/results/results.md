@@ -15,8 +15,9 @@ what changed; new measurements are in `q1-stepped.json`, `q5-review-search*.json
 
 On 2026-09-27, while this experiment ran, Deskset itself stopped drawing skins with `draw(_:)` (called **A** below)
 and started drawing each skin window on the main thread into a bitmap of its own, in the window's color space, that
-becomes the view's layer contents, keeping pictures of meters that did not change (**B**). The plan's baseline is A;
-this document measures against both and calls B "today". The second measurement campaign (2026-09-28) added B and
+becomes the view's layer contents, keeping pictures of meters that did not change (B with kept pictures, **B+kept**,
+is what Deskset ships; B drawn in full is the same without the pictures). The plan's baseline is A; this document
+measures against both and calls B+kept "today". The second measurement campaign (2026-09-28) added B and
 E layers in B's color space.
 
 ## Conditions
@@ -30,9 +31,11 @@ E layers in B's color space.
   desktop apps and the owner's own Deskset widgets ran at the same time, and WindowServer used 45–56 % of one core
   with none of the spike's windows on screen. Every CPU phase records the 1-minute load average at its start and end:
   3.4–12.5 (median 5.5) in the first campaign's cost runs, 4.1–21.0 (median 7.8) in the second's; 7 of 51 and 59 of
-  99 cost runs, and 23 of 69 WindowServer CPU runs, had a phase above 8. **Numbers from runs with a load above 8 are
-  marked provisional** (an asterisk in the tables, with how many of the rounds were affected). Memory and pixel results
-  do not depend on the load.
+  99 cost runs, and 23 of 69 WindowServer CPU runs, had a phase above 8. The runs added after review had 5.6–43 (50 of
+  the 66 interleaved cost runs, 211 of 300 paired WindowServer phases above 8). **Numbers from runs with a load above
+  8 are marked provisional** (an asterisk in the tables, with how many of the rounds were affected); comparisons after
+  review rely on interleaving and on pairing within one process. Memory and pixel results do not depend on the
+  load.
 - Memory pressure (corrected after review): **not** level 1 in every run. `memoryPressureAfterSettle.pressureLevel`
   was 2 in 5 of 51 first-campaign cost runs and 36 of 99 second-campaign runs (every round of `ten-A`, `ten-B`,
   `ten-Bkept` and `ten-E1`, and rounds 1–2 of most design and sixty combinations), with 0.05–8.5 GB free. The level
