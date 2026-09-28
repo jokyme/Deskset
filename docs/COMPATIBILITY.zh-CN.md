@@ -103,16 +103,16 @@ Deskset 从不主动请求“辅助功能”权限（只在你已经授予时才
 
 | 功能（皮肤选项） | macOS 权限 | 何时请求 | 如果拒绝 |
 | --- | --- | --- | --- |
-| AudioLevel `Port=Output`（可视化频谱），macOS 14.2 及以上 | 系统录音（“屏幕与系统录音” → “仅系统录音”） | 频谱类皮肤第一次运行时 | macOS 只提供静音：电平读数为 0，`DeviceStatus` 仍为 1。如果其他 App 正在播放声音而频谱皮肤约 10 秒都没有声音，皮肤会得到一条指向该权限的兼容性提示 |
-| AudioLevel `Port=Output`，macOS 13 – 14.1 | 屏幕录制，授权后需重启 Deskset | 频谱类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志 |
-| AudioLevel `Port=Input` | 麦克风（采集时显示橙色指示点） | 输入电平类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志。每 10 秒重试一次，之后再授权无需重启 |
+| AudioLevel `Port=Output`（可视化频谱），macOS 14.2 及以上 | 系统录音（“屏幕与系统录音” → “仅系统录音”）；紫色指示点只在其他 App 播放声音时显示 | 频谱类皮肤运行期间，其他 App 第一次播放声音时 | macOS 只提供静音：电平读数为 0。如果同一个 App 一直在播放声音而频谱皮肤约 20 秒都没有声音，`MacPermission` 变为 1（Deskset 扩展），皮肤还会得到一条指向该权限的兼容性提示 |
+| AudioLevel `Port=Output`，macOS 13 – 14.1 | 屏幕录制，授权后需重启 Deskset | 频谱类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，`MacPermission` 为 1，记录一行日志 |
+| AudioLevel `Port=Input` | 麦克风（采集时显示橙色指示点） | 输入电平类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，`MacPermission` 为 1，记录一行日志。每 10 秒重试一次，之后再授权无需重启 |
 | AppVolume `NumberType=Peak`、AppVolume 静音 | 系统录音 | 第一次使用峰值 / 静音时 | 峰值为 0；静音无效 |
-| NowPlaying、iTunes、WebNowPlaying 的数据与命令；未授予辅助功能时 MediaKey 的切歌键 | 自动化 → Music / Spotify | 第一次轮询*正在运行*的播放器，或第一次向它发送命令时 | 播放器显示为已关闭；命令不起作用。每 30 秒重新检查一次，之后再授权无需重启 |
+| NowPlaying、iTunes、WebNowPlaying 的数据与命令；未授予辅助功能时 MediaKey 的切歌键 | 自动化 → Music / Spotify | 第一次轮询*正在运行*的播放器，或第一次向它发送命令时 | 播放器显示为已关闭；命令不起作用；皮肤可通过 `PlayerType=MacPermission` 得知（Deskset 扩展）。每 30 秒重新检查一次，之后再授权无需重启 |
 | WiFiStatus `SSID`、`LIST` | 定位服务（macOS 只把 Wi-Fi 名称提供给这类 App） | 第一次加载含 SSID / LIST measure 的皮肤时 | SSID 和网络列表为空；信号质量、速率、加密方式仍可用 |
 | MacWeather / MacSun `Location=auto`（Deskset 扩展） | 定位服务（降低精度；取整到约 1 公里，只保存在内存中） | 含 `Location=auto` 的皮肤第一次在皮肤窗口中运行时 | `Status` 为 5 并显示一条提示；可改用地名 |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`、FileView `Properties` | 自动化 → 访达 | 第一次使用时 | 不清空废纸篓 / 不打开“显示简介”窗口 |
 | RecycleManager `RecycleType=Size` | 完全磁盘访问权限（没有弹窗；需在“系统设置 → 隐私与安全性”中手动开启） | — | 大小读数为 0；兼容性提示和日志会说明在哪里授权。`Count` 不需要权限 |
-| 皮肤使用桌面、文稿、下载、可移除卷或网络卷中的任何文件（Quote、FolderInfo、FileView、Lua `io`、图片以及皮肤指定的其他文件） | 文件与文件夹 | 第一次访问该文件夹时 | 数值为空、图片不显示；Lua 的 `io.open` 返回 nil 和错误信息 |
+| 皮肤使用桌面、文稿、下载、可移除卷或网络卷中的任何文件（Quote、FolderInfo、FileView、Lua `io`、图片以及皮肤指定的其他文件） | 文件与文件夹 | 第一次访问该文件夹时 | 数值为空、图片不显示；Lua 的 `io.open` 返回 nil 和错误信息。Chameleon `Type=Desktop` 从不读取放在这些位置的壁纸，因此从不询问（改用后备颜色） |
 | 以真实媒体键事件发送 MediaKey（音量 HUD、任意播放器） | 辅助功能（从不主动请求） | — | 切歌键通过自动化发给 Music / Spotify；音量键直接修改音量（不显示 HUD） |
 | GetActiveTitle 读取窗口标题 | 辅助功能或屏幕录制（从不主动请求） | — | 显示最前面 App 的名称，而不是窗口标题 |
 | WebParser 或 Ping 访问本地网络中的设备 | 本地网络 | 第一次发出这类请求时 | 请求失败 |
@@ -137,7 +137,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | --- | --- | --- |
 | ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
-| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频）或输入设备；RMS、Peak、FFT、Bands；需要权限 |
+| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；需要权限；`Type=MacPermission` 表示缺少哪个权限 |
 | CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
 | FolderInfo | 模拟实现 | 后台扫描；使用 Mac 的隐藏 / 系统文件规则 |
@@ -360,7 +360,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   Studio 和安装器。写回的文件（`!WriteKeyValue`、Skin Studio、重新安装时保留的变量）保持该代码页；
   该代码页无法表示的文字会让文件改为带 BOM 的 UTF-16 LE（Skin Studio 的代码视图会先询问）。无论语言如何，都先检测 BOM、
   UTF-16 和有效的 UTF-8；在该代码页中无效的文件按 Windows-1252 读取。命令行模式同样如此（`--render` 遵循
-  `-AppleLanguages`）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
+  `-AppleLanguages` 或 `--languages`；带 `--clock` 时按 1252 读取，除非 `--languages` 另行指定）；`--self-test` 保持 1252。Deskset 0.1.0 把所有 ANSI 文件都按 Windows-1252 读取。
 - **原因：** macOS 没有系统代码页，Mac 的语言最接近 Windows 的区域设置（取舍判断：只看第一个语言）。
 - **对皮肤的影响：** 与你的语言代码页相同的 ANSI 皮肤能正确显示文字和字体名（在设为简体中文的 Mac 上，
   `FontFace=微软雅黑` 的 GBK 皮肤用苹方 PingFang SC 绘制）。其他代码页的 ANSI 皮肤会显示错误的字符，就像在设为其他区域的
@@ -478,6 +478,14 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **原因：** macOS 自带的是 ICU，而不是 PCRE。
 - **对皮肤的影响：** 常见写法如 `(?siU)<tag>(.*)</tag>` 行为相同；冷门的 PCRE 特性可能无法匹配。
 - **状态：** 完全一致（常见写法）/ 部分支持（冷门 PCRE 特性）
+
+#### 运行 Windows 程序
+- **Windows：** `["Program.exe"]` 和 `!Execute ["…"]` 会运行程序、脚本或快捷方式，常常是皮肤自带的。
+- **Mac：** 网址、文件、文件夹和 Mac App 照常打开；Windows 程序、脚本或快捷方式（`.exe`、`.bat`、`.cmd`、`.lnk`、`.vbs`、
+  `.ps1` 等）不会打开，即使文件存在，皮肤日志里会说明。
+- **原因：** macOS 运行不了它们；交给访达只会弹出“macOS 不支持 Microsoft Windows 应用程序”的提示。
+- **对皮肤的影响：** 皮肤自带的小工具（语音、设置程序）不起作用；同一动作里的其他部分照常执行。
+- **状态：** 不支持
 
 #### 更新间隔与 Counter
 - **Windows：** `Update` 最小 16 ms，-1 表示只更新一次；Calc 的 `Counter` 只有在皮肤卸载后才重置。
@@ -637,12 +645,22 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   `BarImage` 和皮肤的 `Background`。符号是白色的，因此 ImageTint 为它上色，ImageAlpha、Greyscale、ColorMatrix、翻转、旋转、
   裁剪、Tile 和 ScaleMargins 都有效；它按实际覆盖的像素渲染，始终清晰。`MacSymbolSize`（默认 16）决定没有 W / H 时的尺寸，
   `MacSymbolWeight` 决定字重（Ultralight … Black），`MacSymbolRendering` 为 Monochrome（默认）、Hierarchical（同一种颜色的
-  不同深浅）或 Multicolor（符号自带的颜色，无色部分为白色）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1；
+  不同深浅）、Multicolor（符号自带的颜色，无色部分为白色）或 Palette（皮肤自选的颜色，见下一条）。设置了 W 和 H 时保持原有比例（PreserveAspectRatio 默认为 1；
   设置了 ScaleMargins 时默认为 0，此时按 ScaleMargins 九宫格拉伸）。Button 在所有状态下都显示该符号，按下时为半透明。未知的
   名称会给出兼容性提示（measure 的值改为已知名称后提示随之撤回）；只写 `sf:`（measure 还没有值时的 `sf:%1` 或
   `sf:[Measure]`）表示没有图片，不绘制，也不提示。Bitmap、Rotator 和 Histogram 不能使用符号（给出提示，不绘制任何内容）。
 - **原因：** Deskset 扩展：Mac 自带的图标集，无需图片文件。
 - **对皮肤的影响：** 对 Windows 皮肤没有影响；在 Windows 上这些图片找不到。
+- **状态：** 仅 Mac
+
+#### 调色板符号（`MacSymbolRendering=Palette`、`MacSymbolColors`）
+- **Windows：** 没有 SF Symbols。
+- **Mac：** `MacSymbolRendering=Palette` 配合 `MacSymbolColors=c1|c2|c3`，把符号的第一、第二、第三层分别画成这些颜色（含透明度；
+  可以用变量、公式和 measure 的值）。哪一部分在哪一层由 Apple 的设计决定（`cloud.sun.fill`：先是云，再是太阳）。层数多于颜色时，
+  多出的层用最后一种颜色；不是颜色的项为白色；一种颜色都没有时按 Monochrome 绘制；其他绘制方式忽略这个选项。ImageTint 与颜色相乘
+  （保持白色即可），ImageAlpha 让它变淡。MacWeather 的 `Type=SymbolPalette` 给出当前天气符号的颜色。
+- **原因：** Deskset 扩展：Multicolor 在任何外观下都把天气符号的云画成白色；调色板可以在浅色和深色背景上都画出黄色太阳加文字颜色的云。
+- **对皮肤的影响：** 对 Windows 皮肤没有影响。
 - **状态：** 仅 Mac
 
 #### 按绘制尺寸解码图片（`MacDecodeSize=Drawn`）
@@ -766,7 +784,10 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会忽略不认识的选项，所以用到它们的皮肤在 Rainmeter 中照样能
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
 变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
-（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)）。
+（[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)），
+NowPlaying 的 `PlayerType=MacPermission` 写在音乐播放器一节（[§10.4](#104-音乐播放器nowplayingituneswebnowplayingmediakey)），
+AudioLevel 的 `Type=MacPermission` 写在音频插件一节（[§10.1](#101-audiolevel频谱与电平表)），Chameleon 的 `CropDesktop=Skin`
+写在桌面相关插件一节（[§10.7](#107-窗口桌面与颜色插件第三方)）。
 Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
@@ -905,7 +926,8 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 
 #### StartHidden
 - **Windows：** 皮肤启动时隐藏；`!Show` 显示它。
-- **Mac：** 相同（也可来自 `DefaultStartHidden`）；隐藏的皮肤继续更新并执行其动作。
+- **Mac：** 相同（也可来自 `DefaultStartHidden`）；隐藏的皮肤继续更新并执行其动作。管理窗口会标出它处于隐藏状态，并可以把它
+  显示出来（[§7.3](#73-菜单与管理窗口)）。
 - **原因：** —
 - **对皮肤的影响：** 无。
 - **状态：** 完全一致
@@ -1028,6 +1050,18 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
 
+#### 已加载但被隐藏的皮肤（管理窗口）
+- **Windows：** 管理窗口列出已激活的皮肤及其坐标、位置、加载顺序、透明度等设置；手册没有说那里会标出被 `!Hide` 或 StartHidden
+  隐藏的皮肤。`!Show` 可以让它重新显示。
+- **Mac：** 被皮肤动作（`!Hide`、`!HideFade`、`!Toggle` 及其 Group 形式，或来自其他皮肤的 bang）或 StartHidden 隐藏的已加载
+  皮肤会被标出：它那一行显示一只划掉的眼睛，状态为“已加载，已隐藏”（Loaded, hidden），并有一条提示说明它已加载、仍在运行，
+  只是不在桌面上；提示里的“显示”（Show）按钮会像 `!ShowFade` 一样把它显示出来（这一行的右键菜单里也有“显示”）。给隐藏的皮肤输入
+  坐标时，它会移到新位置但仍然看不见，坐标下方的提示会说明它仍处于隐藏状态。“显示”不改变任何设置：会自己隐藏的皮肤之后还会再隐藏
+  （例如开启“静音时隐藏”的 Stationery 频谱长条，下次安静下来时），设置了 StartHidden 的皮肤下次加载时也会再次隐藏。
+- **原因：** 自己隐藏起来的皮肤（例如没有内容可显示时）看起来就像丢了：没有窗口，也没有菜单，移动它也不能让它出现。
+- **对皮肤的影响：** 无。
+- **状态：** Mac 专有
+
 #### 默认皮肤与首次启动
 - **Windows：** Rainmeter 自带 illustro 皮肤，首次安装后会加载。
 - **Mac：** Deskset 自带的原创皮肤（Stationery「文房」套件）在首次启动时复制到皮肤文件夹，新版 Deskset 带来新的默认皮肤时
@@ -1102,15 +1136,82 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
-  间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac
-  自己的设置）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+  [--state out.json] [--color-space device|srgb] [--locale ID|system] [--languages LIST|system]
+  [--accent-color R,G,B[,A]|system] [--wallpaper FILE] [--at X,Y] [--screen WxH|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、
+  每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--wallpaper`
+  指定一张图片代替桌面壁纸（Chameleon 从它取样，皮肤下方的部分画在皮肤背后），屏幕为 1512 × 982 点（带 `--clock` 时为
+  1920 × 1080；`--screen` 可另行指定），皮肤左上角位于 `--at`（默认 0,0）；不给 `--wallpaper` 时，`--background` 代表一张该颜色的
+  纯色壁纸。有替身壁纸时，皮肤看到的就是这一块屏幕。`--clock`
+  让皮肤从给定时刻起在虚拟时间里运行：第 i 次更新发生在给定时间加 i 个间隔，时区为 UTC，除非 `--time-zone` 指定别的时区
+  （只给 `--time-zone` 则只改时区）；`!Delay`、ActionTimer 等定时器在各自的虚拟时刻执行，不做任何真实等待。皮肤自己目录树里的
+  文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取，渲染的设置文件夹、`--data` 文件所在的
+  文件夹和 `--wallpaper` 所在的文件夹也一样；超出这些范围的工作（别的文件夹，比如“下载”，以及网络、外部程序、实时系统状态）照常执行，最多等一个间隔拿回
+  结果，并在 stderr 中标为无法验证；皮肤直接读取、又没有替身的服务（系统数据、电池、传感器、播放器、音频、Wi-Fi、前台窗口、
+  系统颜色、废纸篓）也会这样标出。带 `--clock` 时，皮肤看到的其余环境也固定下来：en_US_POSIX 区域（星期名、`%Z`、
+  `locale-date`、天气的 `Units=Auto`）、首选语言英语（旧的 ANSI 文件按代码页 1252 读取）、macOS 的蓝色强调色
+  （`#MACACCENTCOLOR#`）和一块 1920×1080 的屏幕（`#SCREENAREAWIDTH#`、`#WORKAREAHEIGHT#`…），除非用 `--locale`、
+  `--languages`、`--accent-color` 或 `--screen` 另行指定（`system` 表示用 Mac 自己的；不带 `--clock` 时这些都是 Mac 自己的，替身壁纸的屏幕除外）。
+  `--seed` 让皮肤的随机数（Calc 的 `Random`、QuotePlugin、Lua 的 `math.random`、`os.tmpname`…）每次运行都相同；渲染时
+  Swift 的哈希是确定的，集合和字典的顺序也每次相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
+  预乘的 sRGB 位图（参考图比较用的色彩空间）。开发版还接受 `--legacy`：由一份冻结的渲染器副本来测量和绘制皮肤（渲染代码搬动期间，
+  渲染器要和它逐字节比较）；发布版不接受这个选项。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
-  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
+  （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目，`=refused` 模拟正在运行但拒绝了自动化权限的 Music；它的封面和 `--data` 给出的封面一样放在渲染的设置文件夹的 `Caches`
+  里，从不写进 App 的缓存）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
   读取皮肤文件夹和设置文件夹的限制（[§11.1](#111-webparser)）只在 App 中生效。`Deskset --help`（或 `-h`）列出所有命令行模式；
   无法识别的 `--` 选项会打印这份列表并以状态码 2 退出，而不会启动菜单栏 App。
 - **原因：** 无需权限提示或可见屏幕即可得到可重复的截图。
+- **对皮肤的影响：** 无（开发者工具）。
+- **状态：** 仅 Mac
+
+#### 用给定的数据渲染（`--data`、`--state`）
+- **Windows：** 没有对应功能。
+- **Mac：** `--data` 给出皮肤读到的 Mac 数据：一个 JSON 对象（或存放它的文件路径；其中的路径相对于该文件所在的文件夹；
+  事件脚本则读取其中的 `data` 对象）。没有给出的键保持实时；`null` 表示没有这一项：
+  - `system`：帧列表（或 `{"frames": […]}`、单个帧、存放它们的文件路径），每次更新一帧——第一次更新用第 1 帧，之后每次更新
+    前换到下一帧，最后一帧保持不变。帧可给出 `cpu`（`[整体, 核 1, 核 2…]`，0–100）、`memory`（`physicalTotal`、
+    `physicalUsed`、`swapTotal`、`swapUsed`，字节）、`network`（`{"en0": {"received": …, "sent": …}}`，累计字节）、
+    `bestInterface`、`disks`（按挂载点：`{"/": {"total", "free", "available", "label", "kind"}}`）、`uptime`（秒）、
+    `processes`（`[{"name", "pid", "cpu": 占整台 Mac 的比例 0–100, "memory": 字节}]`：Process、UsageMonitor、AdvancedCPU、
+    PerfMon）、`sysInfo`（`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`）、`cpuFrequency`（Hz）和 `graphicsAdapter`；帧里
+    没写的沿用上一帧。给出 `system` 时这些读数一概不取自 Mac：没有任何帧给出的读数为 0、空或未知。
+  - `battery`：`{"level", "charging", "onAC", "timeRemaining"}`（分钟）；`null`：没有电池的 Mac。
+  - `sensors`：按 MacSensors 键给出，如 `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}`；
+    没写的传感器即这台 Mac 没有。
+  - `nowPlaying`：`{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",
+    "position", "duration", "cover": 图片文件, "volume", "shuffle", "repeat": "off"|"one"|"all", "rating"}`；
+    `null`：所有播放器都关着。
+  - `audio`：`{"frames": [{"rms": [左, 右], "peak": [左, 右], "bands": [[…], […]], "fft": …}], "deviceName",
+    "sampleRate", "channels"}`（或文件路径）：每个 AudioLevel 父 measure 报告的电平，0–1，乘增益之前，每次更新一帧；
+    单个值或单个列表表示所有声道。`null`：没有音频设备。
+  - `weather`：MET Norway locationforecast 2.0 响应（服务收到的原样）的文件路径，或
+    `{"forecast": 路径, "location": [纬度, 经度] | null, "status": 200}`；`null`：断网。渲染的皮肤算作实时；
+    `Location=auto` 是预报自己的地点（除非 `location` 另有指定），`Location=timezone` 是皮肤时区（`--time-zone`）的城市。
+  - `wifi`：`{"ssid", "rssi", "transmitRate", "encryption", "auth", "phy", "networks": [...]}`；`null`：没有 Wi-Fi。
+  - `desktopImage`：桌面图片（Chameleon 的 `Type=Desktop`、注册表的 Wallpaper）；`null`：没有。
+  - `programs`：`{"命令行的一部分": "它的输出" | ["行", …]}`：RunCommand 不启动任何程序；每个程序立即结束，输出为命令行
+    包含的最长一项的内容（都不包含则没有输出）；皮肤自己的文件写入（`!WriteKeyValue` 等）写进其文件的副本。
+  - `trash`：`{"count": 3, "size": 2048}`（字节；`"size": null` 表示读不到大小）或一个数量：RecycleManager 的每次读数；
+    `null`：空的废纸篓。（Deskset 新增。）
+
+  再加上 `--clock` 和 `--seed`，每次渲染、在每台 Mac 上都相同，除了标为无法验证的部分和少数仍从 Mac 读取的内容
+  （SysColor 的颜色、FileView 的日期格式、已安装的字体）。数据有误时指出是哪个键并停止渲染。`--state` 把皮肤最后的状态（尺寸；
+  每个 measure 的数值、字符串、是否禁用或暂停；每个 meter 的框、是否隐藏和文字；变量）写成 JSON。x86_64 版在 Rosetta 下
+  画文字和形状边缘与 arm64 版略有不同（每个通道差几级，满级 255），三角函数的结果也可能在最后一位不同，两者请用
+  `--state` 比较，而不是逐字节比较。
+- **原因：** 可重复的渲染，用于让绘制代码和自身对照，在任何 Mac 上都一样，不联网、不碰播放器、不请求权限。
+- **对皮肤的影响：** 无（开发者工具）。
+- **状态：** 仅 Mac
+
+#### 测量皮肤的开销（`--benchmark`）
+- **Windows：** 没有对应功能。
+- **Mac：** `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` 在没有窗口的情况下按皮肤自己的 `Update` 频率运行每个皮肤，每次更新后像皮肤窗口一样绘制画面，
+  然后打印一次更新和一次绘制的耗时，以及主线程和整个进程的 CPU 时间（占单个核心的百分比）。不会请求任何权限：
+  `DESKSET_AUDIO_DEMO=1` 为频谱皮肤提供演示信号。Core Animation 和窗口服务器之后的工作不计入。
+- **原因：** 不打开窗口就能比较改动前后皮肤的开销。
 - **对皮肤的影响：** 无（开发者工具）。
 - **状态：** 仅 Mac
 
@@ -1312,7 +1413,8 @@ Mac 路径以及少数在 Mac 上没有意义的函数。详细说明：[`compat
 
 #### `os.date`、`os.clock` 及其他 `os` 函数
 - **Windows：** 微软 C 库（`%#d` 去掉前导零；`clock()` 是挂钟时间）。
-- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同。
+- **Mac：** 模拟了 `%#x` 标志；`os.clock` 返回挂钟秒数（Mac 的 C 库会返回 CPU 时间）；`math.random` 的序列不同；
+  `os.tmpname` 创建 `/tmp/lua_XXXXXX`，名字取自皮肤的随机数。
 - **原因：** 脚本用 `os.clock` 为动画计时。
 - **对皮肤的影响：** 预计无。
 - **状态：** 模拟实现
@@ -1614,10 +1716,12 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   PreviousFolder、ContextMenu、Properties；Type=Icon 写出 `.ico` 文件。
 - **Mac：** 模型相同；默认路径为 `/Volumes/`（已装载的卷）；排序与访达类似（`..`、文件夹、文件；自然排序）；FileDate 使用
   用户的区域格式；路径使用 `/`。`Type=Icon` 在后台按 IconSize 写出访达的图标：路径为 `.ico` 且不超过 256 像素时是真正的
-  `.ico` 文件，否则写入 PNG 数据（Image meter 两者都能读取），IconPath 中缺少的文件夹会被创建。ContextMenu 在访达中显示该
-  项目（无法显示另一个 App 中访达的上下文菜单）；Properties 打开访达的“显示简介”窗口（需要自动化权限）。
-- **原因：** macOS 的路径和 API。
-- **对皮肤的影响：** 右键菜单变为“在访达中显示”；从路径中解析 `\` 的皮肤需要改用 `/`。
+  `.ico` 文件，否则写入 PNG 数据（Image meter 两者都能读取），IconPath 中缺少的文件夹会被创建。符号链接和访达替身使用它
+  指向的项目的图标，不带访达的箭头（无法解析的保留自己的图标）。ContextMenu 在访达中显示该项目（无法显示另一个 App 中
+  访达的上下文菜单）；Properties 打开访达的“显示简介”窗口（需要自动化权限）。
+- **原因：** macOS 的路径和 API；手册没有说明链接的图标怎么画，而在 macOS 26 上 `/Applications/Safari.app` 是一个链接。
+- **对皮肤的影响：** 右键菜单变为“在访达中显示”；从路径中解析 `\` 的皮肤需要改用 `/`。指向桌面、文稿或下载文件夹中
+  项目的链接或替身可能让 macOS 询问一次该文件夹的访问权限。
 - **状态：** 部分支持
 
 #### RecycleManager
@@ -1753,7 +1857,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Mac：** 原生实现（`AudioLevel`、`AudioLevel.dll`、`Plugins\AudioLevel.dll`）。一个共享的采集引擎服务所有皮肤：无论多少
   皮肤使用同一个音频流，都只采集一次；皮肤窗口中第一个父 measure 第一次更新时开始（只是检查皮肤——管理窗口检查未加载的
   皮肤——或用 `--render` 绘制皮肤时从不开始），最后一个消失 3 秒后停止；皮肤更新暂停期间（睡眠、显示器睡眠、其他用户的
-  会话）采集也会暂停。在 Apple 芯片上，典型频谱皮肤占用单个核心的 0.1–0.3 %。
+  会话）采集也会暂停；系统音频只在其他 App 播放声音时采集（见下文）。在 Apple 芯片上，典型频谱皮肤占用单个核心的
+  0.1–0.3 %。
 - **原因：** macOS 上没有 WASAPI。
 - **对皮肤的影响：** 对皮肤作者没有影响。
 - **状态：** 模拟实现
@@ -1764,9 +1869,18 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   音频流。输出设备、设备列表或采样率变化时会重新创建（约 0.3 秒的间断）。同时带有输入的输出设备（USB 声卡、耳机）不会加入
   采集用的聚合设备，因此频谱皮肤绝不会录下麦克风，也不会让蓝牙耳机切换到通话模式。
 - **原因：** 进程 tap 是采集系统音频的公开 API。
-- **对皮肤的影响：** macOS 会询问一次 **系统录音** 权限，频谱皮肤运行期间显示紫色的录音指示点。如果拒绝，macOS 只提供静音
-  （电平为 0）。当系统音频流在相隔 10 秒的两次检查中都只有数字静音、而其他 App 正在播放声音时，皮肤会得到一条指向该权限的
-  兼容性提示（有声音后提示消失）。
+- **对皮肤的影响：** macOS 会询问一次 **系统录音** 权限，tap 运行期间显示紫色的录音指示点。如果拒绝，macOS 只提供静音
+  （电平为 0）；`MacPermission` 为 1（见下文）表示 Deskset 怀疑权限被拒绝。
+- **状态：** 模拟实现
+
+#### 系统音频只在其他 App 播放时采集（macOS 14.2 及以上）
+- **Windows：** 皮肤加载期间一直环回采集，界面上没有任何提示。
+- **Mac：** 只有当其他进程正在输出音频时才建立系统音频的 tap（通过 Core Audio 的进程对象及其监听器得知，不轮询）。最后一个
+  进程停止后，tap 再保留 5 秒然后关闭——紫色录音指示点和被占用的输出设备也随之消失；下一个声音出现时立即重新开始。其间电平
+  读数为 0，`DeviceStatus` 为 1。因此权限弹窗出现在频谱皮肤加载后第一次有声音播放时。macOS 13 – 14.1 和 `Port=Input`
+  不受影响。
+- **原因：** 静止的频谱皮肤不应看起来像在录音，也不应让输出设备一直保持唤醒。
+- **对皮肤的影响：** 没有影响；系统提示音会让 tap 运行约 5 秒。
 - **状态：** 模拟实现
 
 #### macOS 13 – 14.1 上的 `Port=Output`
@@ -1780,7 +1894,7 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Windows：** 采集默认（或 `ID` 指定的）输入端点。
 - **Mac：** 直接采集输入设备，并跟随默认输入的变化；需要 **麦克风** 权限。
 - **原因：** —
-- **对皮肤的影响：** 采集期间显示橙色麦克风指示点；被拒绝时为 0，`DeviceStatus` 为 0，并有一条兼容性提示。Deskset 每 10 秒
+- **对皮肤的影响：** 采集期间显示橙色麦克风指示点；被拒绝时为 0，`DeviceStatus` 为 0，`MacPermission` 为 1，并有一条兼容性提示。Deskset 每 10 秒
   重试一次，因此授予麦克风权限后电平会开始工作（提示也会消失）。
 - **状态：** 完全一致（权限界面不同）
 
@@ -1796,8 +1910,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Windows：** 父 measure 负责采集；子 measure（`Parent=`）读取数值；只有 Type、Channel、FFTIdx 和 BandIdx 可以动态修改。
 - **Mac：** 相同（父 measure 的选项只读取一次）。取舍判断：无效的 `Port` 视为 Output；父 measure 自身的值为 0，除非它有
   `Type`；父 measure 缺失或错误、Type 或 Channel 未知的子 measure 读数为 0 / Sum，并给出一条警告；加载时被禁用的父
-  measure 在启用前不会开始采集，之后才用 `!DisableMeasure` 禁用的父 measure 会继续采集（录音指示点也保持显示），直到皮肤
-  刷新或卸载。
+  measure 在启用前不会开始采集，之后才用 `!DisableMeasure` 禁用的父 measure 会放开它的采集（若没有其他父 measure 使用，
+  音频流 3 秒后停止，子 measure 读数为 0），直到 `!EnableMeasure`。
 - **原因：** 手册对此没有规定。
 - **对皮肤的影响：** 对有效的皮肤没有影响。
 - **状态：** 完全一致
@@ -1831,11 +1945,29 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 
 #### `Type=Format`、`DeviceStatus`、`DeviceName`、`DeviceID`、`DeviceList`
 - **Windows：** 格式文字、状态 0 / 1、名称 / ID、设备 ID 列表。
-- **Mac：** Format 形如 `48000 Hz, 32-bit float, 2 channels`；采集期间 DeviceStatus 为 1（无法检测系统录音权限被拒绝，
-  因此仍为 1）；Mac 的设备名称和 UID，采集开始前即可读取；DeviceList 每行一个 `UID: 名称`。
+- **Mac：** Format 形如 `48000 Hz, 32-bit float, 2 channels`；采集期间或系统音频等待声音期间 DeviceStatus 为 1（疑似
+  权限被拒绝时也是 1：设备是在的），否则为 0；Mac 的设备名称和 UID，采集开始前即可读取；DeviceList 每行一个 `UID: 名称`。
 - **原因：** 这些格式没有文档。
 - **对皮肤的影响：** 措辞不同；解析 Windows 列表格式的皮肤无法匹配。
-- **状态：** 模拟实现 / 部分支持（DeviceStatus）
+- **状态：** 模拟实现
+
+#### `Type=MacPermission`：缺少的权限
+- **Windows：** 没有对应；Windows 采集音频不需要任何权限。
+- **Mac：** 被拒绝的权限让音频流只有静音时为 1，macOS 还在等用户回答时（麦克风的弹窗）为 2，否则为 0；字符串是权限的名称
+  （`System Audio Recording`、`Screen Recording`、`Microphone`）。麦克风和屏幕录制被拒绝在开始采集时就能知道。系统录音被
+  拒绝则表现为一个只传来数字静音的 tap：当 tap 在相隔 10 秒的两次检查中都只有数字静音、而同一个 App 每次都在播放（有 Dock
+  图标的 App，包括它的辅助进程；不算守护进程和代理程序），并且自 Deskset 启动以来没有任何系统音频 tap 传来过声音时，
+  `MacPermission` 变为 1，皮肤还会得到一条兼容性提示。这个判断在 tap 等待声音期间以及之后的 tap 中都保持，直到某个 tap 传来
+  声音（10 秒内清除）。判断成立期间只要有 App 在播放，前 3 分钟每次检查（每 10 秒）都重新建立一次 tap；之后保留 tap，
+  只在判断后约 4 分 40 秒和 9 分 40 秒各重建一次，然后不再重建，直到另一个 App 开始播放（一切重新开始）。离开或退出
+  “系统设置”、macOS 的权限弹窗消失、Deskset 变为活跃或不活跃时都会立即重建一次（但不重建建立不到 2 秒的 tap），
+  因此授权后几秒内采集就能拿到声音。`DeviceStatus` 保持为 1。
+- **原因：** Deskset 扩展：没有它，权限缺失时皮肤只能显示“没有在播放”。快速重建：一个丢失授权的 ad-hoc 构建在用户重新授权后
+  好几分钟都没有动静。
+- **对皮肤的影响：** 不使用它的皮肤不受影响。这只是推测：一个从 Deskset 启动起就只向输出发送数字静音的 App 看起来也一样。
+  Deskset 的频谱（卡片和长条）和录音棚 VU 表会显示“允许‘系统录音’”（macOS 14.2 之前为“允许‘屏幕录制’”），并打开
+  “隐私与安全性”。
+- **状态：** 仅 Mac
 
 ### 10.2 Win7Audio（音量、静音、输出设备）
 
@@ -1908,6 +2040,17 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **原因：** macOS 播放器提供的数据。
 - **对皮肤的影响：** Music.app 完全相同；Spotify 缺少流派 / 年份 / 歌词 / 评分（Windows 上也是如此）。
 - **状态：** 完全一致（Music）/ 部分支持（Spotify）
+
+#### NowPlaying：`PlayerType=MacPermission`（自动化权限被拒绝）
+- **Windows：** 没有对应功能；Windows 上的播放器不需要权限。
+- **Mac：** 针对 measure 会显示的那个播放器：首选播放器在运行时是它，否则是另一个。该播放器正在运行且拒绝了自动化权限时为 1；
+  还没被询问过时为 2（macOS 的提示可能正显示在屏幕上）；否则为 0。因此另一个播放器的拒绝只在首选播放器没有运行时才算。
+  measure 正在显示另一个播放器的曲目时保持 0；被拒绝的播放器已关闭时也为 0。字符串是这个数值所指的播放器（`Music`、`Spotify`；为 0 时是 measure 正在显示的播放器）。读取它从不弹出提示；
+  拒绝后每 30 秒重新检查一次，之后在系统设置中允许，数值会回到 0。WebNowPlaying 也接受这个类型。
+- **原因：** Deskset 扩展：被拒绝的播放器对其他所有 PlayerType 来说都像是已关闭，皮肤只能显示“未在播放”。
+- **对皮肤的影响：** 对其他皮肤没有影响。Deskset 自带的媒体小组件会显示“允许访问”，并打开“隐私与安全性”›“自动化”
+  （`x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`）。
+- **状态：** 仅 Mac
 
 #### NowPlaying：歌词与封面
 - **Windows：** 歌词从歌词网站下载；Cover 是图片文件的路径。
@@ -2031,10 +2174,21 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Windows：** 从壁纸（`Type=Desktop`）或图片（`Type=File`）中取色：Background1/2、Foreground1/2、Light1–4、Dark1–4、
   Average、Luminance。
 - **Mac：** 使用皮肤所在屏幕的壁纸（轮换壁纸的文件夹 → 其中第一张图片）或指定文件，在其变化时于后台取样。颜色来自 Deskset 自己
-  的聚类方法（原插件的算法没有公开）。ContextAwareColors 和 ForceIcon 被忽略；不是图片文件的动态 / 航拍壁纸使用后备颜色。
-- **原因：** 无法得知原插件的方法。
+  的聚类方法（原插件的算法没有公开）。动态壁纸（Sonoma 等）按当前外观取其浅色或深色那一张。放在桌面、文稿、下载、iCloud 云盘或
+  其他卷上的壁纸从不读取（macOS 会先询问），改用后备颜色。ContextAwareColors 和 ForceIcon 被忽略；不是图片文件的壁纸（航拍、
+  下载的 `.madesktop` 壁纸）使用后备颜色。
+- **原因：** 无法得知原插件的方法；不为用户没有交给 Deskset 的文件夹弹出询问。
 - **对皮肤的影响：** 颜色思路相似，但不完全相同。
 - **状态：** 模拟实现
+
+#### Chameleon `CropDesktop=Skin`（皮肤下方的壁纸）
+- **Windows：** 没有对应功能（`CropDesktop` 只有 1 或 0）。
+- **Mac：** `Type=Desktop` 的父 measure 只取皮肤窗口下方那部分壁纸，按 macOS 铺放壁纸的方式计算（填充、适合、拉伸、居中），
+  位置来自窗口所在处（不截屏），窗口停止移动后立即重新取样；颜色变化时，它的子 measure 立即更新（`UpdateDivider=-1` 的除外），
+  因此它们的 OnChangeAction 会执行。`CropX/Y/W/H` 优先。
+- **原因：** Deskset 扩展：没有卡片的皮肤必须判断它背后实际的壁纸。
+- **对皮肤的影响：** Rainmeter 中不可用；皮肤在那里照样能加载。详见 [`compat/media-ui.md`](compat/media-ui.md)。
+- **状态：** Mac 专有
 
 #### IsFullScreen
 - **Windows：** 焦点窗口全屏时为 1；字符串 = 其进程名（`chrome.exe`）。
@@ -2068,12 +2222,13 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **Windows：** 没有对应物；皮肤用 WebParser 读取天气网站（其中大多数服务已停止）。
 - **Mac：** 来自 MET Norway Locationforecast 2.0 的任意地点天气预报：一个 measure 写 `Location=`（城镇名，如 `Oslo, NO`、
   `Springfield, IL`；`纬度,经度`；`auto`；或 `timezone`），其余用 `Parent=` 和 `Type=`（Temperature、FeelsLike、High、Low、Condition、
-  Symbol、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
+  Symbol、SymbolPalette、Humidity、Pressure、UVIndex、WindSpeed、WindCardinal、Beaufort、Precipitation、PrecipitationChance、
   ThunderChance、TemperatureColor、TemperatureCurve、Time、Sunrise、Sunset、Place、UpdatedAt、Status、Attribution、
   LocationSource……），
   配合 `Hour=` 0–47 或 `Day=` 0–9。`Units=Auto` 跟随 Mac 的温度单位设置和地区；也可用 `Metric`、`Imperial` 或单独覆盖某个量的
   单位。另有 `Decimals`、`UnavailableText`、`TimeZone`（按小时写时就是相对 UTC 的小时数，与 Time measure 不同，不加本机的夏令时，
-  除非 `DaylightSavingTime=1`）、`Format`；FinishAction、OnConnectErrorAction、OnLocationErrorAction；
+  除非 `DaylightSavingTime=1`）、`Format`、`ScaleColor`（让 TemperatureColor 对所有温度都给出这一种颜色，而不是色阶）；
+  FinishAction、OnConnectErrorAction、OnLocationErrorAction；
   `!CommandMeasure … Refresh` / `Locate`；节变量函数 `[&M:Now(Humidity)]`、`[&M:Hour(3, Temperature)]`、`[&M:Day(1, High)]`。
   “一天”按该地点时区从午夜到午夜计算。
 - **原因：** Deskset 扩展：被抓取的服务都已消失；MET Norway 的数据可用于任何用途，无需密钥。
@@ -2118,8 +2273,11 @@ Rainmeter 没有天气插件；Windows 皮肤用 WebParser 抓取天气网站。
 - **Windows：** 皮肤自带图标图片，按所用服务的代码命名。
 - **Mac：** `Type=Symbol` 为 MET 的 83 个天气代码各给出一个 SF Symbol 名称（分白天和夜晚，macOS 13 上都有）：用 `ImageName=sf:%1`
   绘制（见[把 SF Symbols 用作图片](#把-sf-symbols-用作图片imagenamesfcpufill)），`MacSymbolRendering=Multicolor` 为彩色。
-  `Type=SymbolCode` 给出 MET 自己的代码，供自带图片的皮肤使用。
-- **原因：** 不需要附带图片文件。
+  `Type=SymbolCode` 给出 MET 自己的代码，供自带图片的皮肤使用。`Type=SymbolPalette`（以及 `Hour(n, SymbolPalette)`、
+  `Day(n, SymbolPalette)`）给出 `MacSymbolRendering=Palette` 用的颜色，当前符号每层一种，按这一层画的是什么来定：云、月亮、雪和
+  闪电用 `PaletteInk`，太阳用 `PaletteSun`，雨滴和雨夹雪用 `PaletteRain`（默认是 Multicolor 在深色模式下的白、黄、青），只需在
+  写了地点的 measure 上设一次。
+- **原因：** 不需要附带图片文件；用调色板是因为 Multicolor 的云在任何背景上都是白的。
 - **对皮肤的影响：** 无。
 - **状态：** 仅 Mac
 
@@ -2427,6 +2585,14 @@ MeterStyle 名称（Enigma 的阅读器和便笺标签页）在加载时记录 �
 提示——PowershellRM（FluentDash11 的 3 个皮肤）、ActiveNet（HMNmeter2 的 2 个皮肤，其中一个还有 `Current Bandwidth`）、
 Nelamint 和 Simple Clean 的 Winamp 播放器，以及 FluentDash11 GPU 的两个 Windows 注册表显存值。MSI Afterburner 的提示已经
 消失。在 Deskset 没有完全磁盘访问权限时，PogPack 的 Garbage 皮肤还会提示其废纸篓大小需要该权限（§4）。
+
+**2026-09-28 重新测试**，此前的改动包括新的绘制方式（皮肤窗口保留未变化 meter 的图片）、按用户语言的代码页读取旧式 ANSI 文件、
+皮肤运行 Windows 程序时改为记录日志而不再打开：每一轮（普通、演示音频、英文和中文语言、安装后的副本，以及每秒一次共 5 次更新的
+慢速一轮）都是 390 个中 390 个渲染成功，没有崩溃也没有卡死（60 秒上限）；9 个皮肤共 11 条提示——即 2026-09-27 的 10 条加上
+废纸篓那一条。绘制检查（`Deskset --verify-drawing-cache`）在全部 390 个皮肤中没有发现任何一帧与完整绘制不同。在中文系统的 Mac
+上，语料中 162 个旧式 ANSI 文件没有一个能按 GBK 解码，因此读取结果与以前相同。这次测试发现并修复了两个问题：绘制检查会跳过直接
+放在根配置文件夹里的皮肤；RecycleManager 的 Size measure 放在 Count measure 之后时，在每秒一次的更新下从不读取废纸篓大小
+（PogPack 的 Garbage）。原始数据：[`compat/retest-2026-09-28.md`](compat/retest-2026-09-28.md)。
 
 ---
 

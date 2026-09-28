@@ -5,6 +5,9 @@
 
 [Variables]
 OpenAction=[!CommandMeasure MeasureTitle "OpenPlayer"]
+; MeasureAccess, MeasureAccessOn, MeasureAccessPlayer: whether macOS lets Deskset read the player. A refusal leaves the
+; header on "Spectrum" and the bars at work; at rest the label says so and opens the privacy pane
+@IncludeMediaPermission=#@#Media/Permission.inc
 
 [MeasureTitle]
 ; the main measure: every command goes here

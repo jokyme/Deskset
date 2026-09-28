@@ -1,0 +1,9 @@
+// DK8608 folderTooLarge
+//== expect: DK8608
+//== file: Clip.desk
+//== folder-generate: largeFolder
+info { name: "Clip" }
+widget { Text("Ready") }
+//== negative
+info { name: "Clip" }
+widget { Text("Ready") }

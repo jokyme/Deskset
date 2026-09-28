@@ -166,15 +166,18 @@ enum DrawingCacheCheck {
         body()
     }
 
-    /// Every skin file in a Skins folder: `Root/Config…/Skin.ini`, not in `@Resources` (included files, not skins).
+    /// Every skin file in a Skins folder: `Root/Skin.ini` (a skin in its root config, as many packages have it) or
+    /// `Root/Config…/Skin.ini`, not in `@Resources` (included files, not skins) and not loose in the Skins folder.
     static func skinFiles(in root: URL) -> [URL] {
         guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return [] }
         var files: [URL] = []
-        let rootCount = root.standardizedFileURL.pathComponents.count
-        for case let url as URL in walker where url.pathExtension.lowercased() == "ini" {
-            let components = url.standardizedFileURL.pathComponents
-            guard components.count >= rootCount + 3,
-                  !components.contains(where: { $0.caseInsensitiveCompare("@Resources") == .orderedSame }) else { continue }
+        for case let url as URL in walker {
+            if url.lastPathComponent.caseInsensitiveCompare("@Resources") == .orderedSame {
+                walker.skipDescendants()
+                continue
+            }
+            // Level 1 is the Skins folder's own entries, so a skin in a root config is at level 2.
+            guard walker.level >= 2, url.pathExtension.lowercased() == "ini" else { continue }
             files.append(url)
         }
         return files.sorted { $0.path < $1.path }

@@ -298,7 +298,15 @@ extension Checker {
             out.secret = l.secret || r.secret
             return out
         }
-        if l.error || r.error { return .error }
+        if l.error || r.error {
+            // `"CPU: " + cpu.usage + "%"`: the addition of text goes on, and the whole chain is rewritten at once.
+            let leftRange = range(leftNode)
+            if op.kind == .plus, l.error, !r.error, leftNode.kind == .binaryExpr, hasReported(.textPlus, at: leftRange) {
+                diagnostics.removeAll { $0.id == .textPlus && $0.range == leftRange && $0.file == file }
+                reportTextPlus(node)
+            }
+            return .error
+        }
         let kind = op.kind
         // Text is never added (D25).
         if kind == .plus && (l.type.isStringLike || r.type.isStringLike) {

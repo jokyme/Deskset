@@ -39,7 +39,7 @@ enum PerfKind {
 }
 
 /// What a counter reads.
-enum PerfField: Equatable {
+enum PerfField: Hashable {
     // Processor (per core)
     case coreIdle, coreUser, coreSystem, coreBusyPercent, coreFrequency, constant(Double)
     // Process (per process)
@@ -56,7 +56,7 @@ enum PerfField: Equatable {
     case unavailable
 }
 
-struct PerfCounterSpec: Equatable {
+struct PerfCounterSpec: Hashable {
     var category: PerfCategory
     var counter: String
     var kind: PerfKind
@@ -69,6 +69,18 @@ struct PerfCounterSpec: Equatable {
              .processThreads, .processPid, .processElapsed, .processPriority, .processFaults, .processRead,
              .processWrite, .processIO, .pageFaults, .diskRead, .diskWrite, .diskIO, .contextSwitches, .systemCalls,
              .processCount:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Reads counters only `proc_taskinfo` has, which samples carry only while someone needs them
+    /// (`ProcessSnapshot.details`).
+    var needsDetails: Bool {
+        switch field {
+        case .processVirtual, .processThreads, .processPriority, .processFaults, .pageFaults, .contextSwitches,
+             .systemCalls:
             return true
         default:
             return false

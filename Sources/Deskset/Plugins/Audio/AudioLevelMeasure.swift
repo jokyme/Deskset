@@ -10,14 +10,18 @@ import DesksetCore
 //   child of itself).
 // - A child (`Parent=Name`) reads Type, Channel, FFTIdx and BandIdx on every option read (these may change with
 //   !SetOption / DynamicVariables) and asks its parent's analyzer. Children and parents live in the same skin.
-// - Values: RMS, Peak, FFT, Band 0…1; FFTFreq / BandFreq in Hz; DeviceStatus 1 / 0. Format, DeviceName,
-//   DeviceID and DeviceList are strings (number 0). Device IDs are Core Audio UIDs (e.g. "BuiltInSpeakerDevice");
+// - Values: RMS, Peak, FFT, Band 0…1; FFTFreq / BandFreq in Hz; DeviceStatus 1 / 0. Deskset's MacPermission: 1 while
+//   a refused permission keeps the source silent (for System Audio Recording, the silence watchdog's suspicion), 2
+//   while macOS waits for an answer, else 0; its string names the permission (`AudioSourceStatus.macPermission`).
+//   Format, DeviceName, DeviceID and DeviceList are strings (number 0). Device IDs are Core Audio UIDs (e.g. "BuiltInSpeakerDevice");
 //   a Windows ID ({0.0.0.00000000}.{…}) matches nothing and falls back to the default device.
 
 /// `Type=` of an AudioLevel measure.
 enum AudioLevelType: String, CaseIterable {
     case rms, peak, fft, fftFreq = "fftfreq", band, bandFreq = "bandfreq", format, deviceStatus = "devicestatus"
     case deviceName = "devicename", deviceID = "deviceid", deviceList = "devicelist"
+    /// Deskset extension: a missing macOS permission (`AudioSourceStatus.macPermission`).
+    case macPermission = "macpermission"
 
     static func parse(_ raw: String) -> AudioLevelType? {
         AudioLevelType(rawValue: raw.trimmingCharacters(in: .whitespaces).lowercased())
@@ -117,6 +121,9 @@ struct AudioLevelChildOptions: Equatable {
 }
 
 final class AudioLevelMeasure: Measure {
+    /// Reads the Mac's audio (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.audio] }
+
     /// Parent options, set by the first option read of a measure without `Parent=`.
     private(set) var parentOptions: AudioLevelParentOptions?
     private(set) var analyzer: AudioAnalyzer?
@@ -126,7 +133,10 @@ final class AudioLevelMeasure: Measure {
     private(set) var pluginString: String?
 
     /// Replaced in tests.
-    var engine = AudioCaptureEngine.shared
+    var engine: AudioLevelEngine = AudioLevelMeasure.sharedEngine()
+    /// Where AudioLevel measures made from now on take their levels: the capture engine, or the levels of a
+    /// `--render --data` (`ScriptedAudioLevels`).
+    static var sharedEngine: () -> AudioLevelEngine = { AudioCaptureEngine.shared }
     /// The audio devices (tests replace it): `sharedSystem`, looked up at every read.
     var system: () -> AudioSystemSnapshot = { AudioLevelMeasure.sharedSystem() }
     /// Where every AudioLevel measure reads the audio devices unless its own `system` is replaced. The app never
@@ -158,6 +168,7 @@ final class AudioLevelMeasure: Measure {
         switch child.type {
         case .fftFreq?: return max(sourceSampleRate() / 2, 1)
         case .bandFreq?: return parentMeasure()?.parentOptions?.analysis.freqMax ?? 1
+        case .macPermission?: return 2
         default: return 1
         }
     }
@@ -180,12 +191,20 @@ final class AudioLevelMeasure: Measure {
         analyzer = AudioAnalyzer(settings: options.analysis)
     }
 
+    /// `!DisableMeasure` on a parent releases its capture (the source stops 3 s after its last analyzer left, and with it
+    /// the recording indicator); its children then read 0. `!EnableMeasure` subscribes it again at its next update.
+    override func disabledStateChanged() {
+        guard disabled, subscribed, let analyzer else { return }
+        subscribed = false
+        engine.unsubscribe(analyzer)
+    }
+
     /// Subscribes a parent's analyzer at the parent's first update, not when its options are read: the Manage window
     /// reads the options of skins that are not loaded (their compatibility notes), and that must not start a capture.
     /// A skin outside a skin window never captures (`mayCapture`).
     private func subscribeIfNeeded() {
         guard !subscribed, let options = parentOptions, let analyzer else { return }
-        guard mayCapture(skin) else {
+        guard engine.capturesNothing || mayCapture(skin) else {
             logOnce("[\(name)] AudioLevel: no capture outside a skin window "
                     + "(DESKSET_AUDIO_DEMO=1 plays a demo signal)", level: .notice)
             return
@@ -271,7 +290,10 @@ final class AudioLevelMeasure: Measure {
         case .bandFreq:
             return (analyzer.bandFrequency(index: child.bandIndex), nil)
         case .deviceStatus:
-            return (status.running ? 1 : 0, nil)
+            return (Double(status.deviceStatus), nil)
+        case .macPermission:
+            let permission = status.macPermission
+            return (Double(permission.number), permission.name)
         case .format:
             if !status.format.isEmpty { return (0, status.format) }
             // Not capturing: the device's nominal format (bit depth unknown).

@@ -1218,8 +1218,8 @@ extension InspectorWindowController {
     // MARK: Kinds that need the skin
 
     /// The absolute path of an image option's file (ImagePath / MaskImagePath prefix, skin folder); for an SF Symbol,
-    /// its path with the section's MacSymbolSize, MacSymbolWeight and MacSymbolRendering (a mask uses them too), as the
-    /// engine draws it.
+    /// its path with the section's MacSymbolSize, MacSymbolWeight, MacSymbolRendering and MacSymbolColors (a mask uses
+    /// them too), as the engine draws it.
     func imagePath(ctxSection section: String, key: String, resolved: String) -> String? {
         guard let skin else { return nil }
         let owner = skin.section(named: section)
@@ -1453,10 +1453,10 @@ extension InspectorWindowController {
             func option(_ key: String) -> String? { s?.option(key) }
             switch kind {
             case .time:
-                let zone = TimeFormatting.timeZone(forOption: option("TimeZone"),
-                                                   daylightSavingTime: OptionValue.bool(option("DaylightSavingTime") ?? "1") ?? true)
-                let locale = TimeFormatting.locale(fromOption: option("FormatLocale")) ?? Locale(identifier: "en_US_POSIX")
-                return TimeFormatting.format(Date(), format: format, timeZone: zone, locale: locale)
+                let zone = MacTimeFormatting.timeZone(forOption: option("TimeZone"),
+                                                      daylightSavingTime: OptionValue.bool(option("DaylightSavingTime") ?? "1") ?? true)
+                let locale = MacTimeFormatting.locale(fromOption: option("FormatLocale")) ?? Locale(identifier: "en_US_POSIX")
+                return MacTimeFormatting.format(Date(), format: format, timeZone: zone, locale: locale)
             case .uptime:
                 return UptimeFormatting.format(seconds: ProcessInfo.processInfo.systemUptime, format: format,
                                                addDaysToHours: OptionValue.bool(option("AddDaysToHours") ?? "1") ?? true)

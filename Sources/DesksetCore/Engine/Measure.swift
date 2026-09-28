@@ -119,6 +119,8 @@ open class Measure: SkinSection {
     private var onChangeAction = ""
     private var lastValue: Double?
     private var lastString: String?
+    /// Whether `liveInputs` were noted (virtual time).
+    private var notedInputs = false
 
     /// Upper bound for `AverageSize` (a larger window is pointless and would cost memory).
     static let maxAverageSize = 10_000
@@ -141,6 +143,12 @@ open class Measure: SkinSection {
 
     /// Reads type-specific options. Called after the common options.
     open func readMeasureOptions() {}
+
+    /// The shared services outside the skin this measure reads directly at its updates (the Mac's system data, its
+    /// battery and sensors, a player, the audio…). In virtual time each is noted at the first update
+    /// (`Skin.noteService`): the skin cannot be verified unless the service is faked. Empty for measures that read
+    /// only the skin, its clock and random numbers, or their own background work (`Skin.startBackground`).
+    open var liveInputs: [BackgroundWorkKind] { [] }
 
     /// Computes the raw number value for this update; may set `rawString`.
     open func computeValue() -> Double { 0 }
@@ -308,6 +316,10 @@ open class Measure: SkinSection {
             return
         }
         if paused { return }
+        if !notedInputs {
+            notedInputs = true
+            if skin.runsInVirtualTime { for kind in liveInputs { skin.noteService(kind) } }
+        }
         computedPlaceholder = false
         var v = computeValue()
         if !v.isFinite { v = 0 }
@@ -457,8 +469,14 @@ open class Measure: SkinSection {
         } else if disabled {
             needsOptionRead = true
         }
+        let changed = flag != disabled
         disabled = flag
+        if changed { disabledStateChanged() }
     }
+
+    /// Called when the measure has just been disabled or enabled (a bang, or its `Disabled` option): a measure that
+    /// holds something while it runs can let it go (AudioLevel releases its audio capture).
+    open func disabledStateChanged() {}
 
     /// `!PauseMeasure` / `!UnpauseMeasure`: a paused measure keeps its values.
     func setPaused(_ flag: Bool) {

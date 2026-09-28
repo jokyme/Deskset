@@ -478,6 +478,25 @@ enum StudioSessionSelfTests {
     }
 
     /// Every desktop copy of `config` seen while the run loop runs for `seconds` (kept alive, so none is counted twice).
+    /// Reloads of `config` until `done` holds (at most `timeout` seconds; a slow CI runner may need several), and during
+    /// `extra` seconds after that, to see a second reload that should not happen.
+    static func reloads(_ app: AppController, _ config: String, until done: () -> Bool, timeout: TimeInterval = 20,
+                        extra: TimeInterval = 0.3) -> Int {
+        var seen: [SkinController] = app.controller(for: config).map { [$0] } ?? []
+        func look() { if let c = app.controller(for: config), !seen.contains(where: { $0 === c }) { seen.append(c) } }
+        let deadline = Date().addingTimeInterval(timeout)
+        while !done() && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            look()
+        }
+        let end = Date().addingTimeInterval(extra)
+        while Date() < end {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            look()
+        }
+        return seen.count - 1
+    }
+
     static func reloads(_ app: AppController, _ config: String, during seconds: TimeInterval) -> Int {
         var seen: [SkinController] = app.controller(for: config).map { [$0] } ?? []
         let end = Date().addingTimeInterval(seconds)
@@ -685,7 +704,7 @@ enum StudioSessionSelfTests {
             // A burst of steps: one patch.
             let patched = session.desktopPatchCounts.applied
             editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
-            t.equal(reloads(app, "Studio\\Later", during: 0.3), 0, "no reload")
+            t.equal(reloads(app, "Studio\\Later", until: { !session.hasPendingDesktopPatch }), 0, "no reload")
             t.check(!session.hasPendingDesktopPatch)
             t.equal(session.desktopPatchCounts.applied - patched, 1, "one patch for both steps")
             t.check(app.controller(for: "Studio\\Later") === c, "the same desktop copy")
@@ -711,7 +730,7 @@ enum StudioSessionSelfTests {
             t.check(editor.pendingDiskCheck, "changes on disk wait for it")
             // A burst of steps: one reload.
             editor.commit([.init(section: "Rainmeter", key: "ContextTitle", value: "Two", own: true)], name: "Change Title")
-            t.equal(reloads(app, "Studio\\Later", during: 0.3), 1, "one reload for both steps")
+            t.equal(reloads(app, "Studio\\Later", until: { !session.hasScheduledDesktopRefresh }), 1, "one reload for both steps")
             t.check(!session.hasScheduledDesktopRefresh)
             t.equal(title(), "Two")
             let before = app.controller(for: "Studio\\Later")

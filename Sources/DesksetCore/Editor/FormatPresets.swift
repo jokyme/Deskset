@@ -153,7 +153,8 @@ public enum FormatPresets {
     /// The Format menu at `date` (a clock shows the current time).
     public static func timePresets(at date: Date, timeZone: TimeZone = .current,
                                    locale: Locale = Locale(identifier: "en_US_POSIX")) -> [TimePreset] {
-        timeFormats.map { TimePreset(title: TimeFormatting.format(date, format: $0, timeZone: timeZone, locale: locale),
+        timeFormats.map { TimePreset(title: TimeFormatting.format(date, format: $0, timeZone: timeZone, locale: locale,
+                                                                  systemLocale: locale),
                                      format: $0) }
     }
 }

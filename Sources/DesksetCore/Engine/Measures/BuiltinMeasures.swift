@@ -79,8 +79,8 @@ public final class CalcMeasure: Measure {
     private func nextRandom() -> Double {
         let lo = min(lowBound, highBound)
         let hi = max(lowBound, highBound)
-        guard uniqueRandom, hi - lo <= 65_535 else { return Double(Int.random(in: Int(lo)...Int(hi))) }
-        if uniquePool.isEmpty { uniquePool = stride(from: lo, through: hi, by: 1).shuffled() }
+        guard uniqueRandom, hi - lo <= 65_535 else { return Double(skin.random.int(in: Int(lo)...Int(hi))) }
+        if uniquePool.isEmpty { uniquePool = skin.random.shuffled(Array(stride(from: lo, through: hi, by: 1))) }
         return uniquePool.popLast() ?? lo
     }
 }
@@ -90,7 +90,8 @@ public final class CalcMeasure: Measure {
 public final class TimeMeasure: Measure {
     private var format = TimeFormatting.defaultFormat
     private var hasFormatOption = false
-    private var timeZone = TimeZone.current
+    /// The skin's time zone until the options are read (`TimeZone=` or local, see `readMeasureOptions`).
+    private lazy var timeZone = skin.skinClock.timeZone()
     private var locale = TimeFormatting.defaultLocale
     private var timeStampText = ""
     private var timeStampFormat: String?
@@ -106,18 +107,26 @@ public final class TimeMeasure: Measure {
         let tz = option("TimeZone").map { raw -> String in
             OptionValue.number(raw).map { NumberFormatting.plain($0) } ?? raw
         }
-        timeZone = TimeFormatting.timeZone(forOption: tz, daylightSavingTime: bool("DaylightSavingTime", true))
-        locale = TimeFormatting.locale(fromOption: option("FormatLocale")) ?? TimeFormatting.defaultLocale
+        let clock = skin.skinClock
+        let systemLocale = skin.locale
+        timeZone = TimeFormatting.timeZone(forOption: tz, daylightSavingTime: bool("DaylightSavingTime", true),
+                                           at: clock.now(), localTimeZone: clock.timeZone())
+        locale = TimeFormatting.locale(fromOption: option("FormatLocale"), local: systemLocale)
+            ?? TimeFormatting.defaultLocale
         timeStampText = string("TimeStamp").trimmingCharacters(in: .whitespaces)
         timeStampFormat = option("TimeStampFormat")
-        timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"))
+        timeStampLocale = TimeFormatting.locale(fromOption: option("TimeStampLocale"), local: systemLocale)
     }
 
     public override func computeValue() -> Double {
+        let clock = skin.skinClock
+        let systemLocale = skin.locale
         if timeStampText.isEmpty {
-            timestamp = TimeFormatting.measureValue(for: Date(), timeZone: timeZone)
+            timestamp = TimeFormatting.measureValue(for: clock.now(), timeZone: timeZone)
         } else if let parsed = TimeFormatting.parseTimeStamp(timeStampText, format: timeStampFormat,
-                                                              locale: timeStampLocale) {
+                                                              locale: timeStampLocale, now: clock.now(),
+                                                              localTimeZone: clock.timeZone(),
+                                                              systemLocale: systemLocale) {
             timestamp = parsed
         } else {
             if !loggedTimeStampError {
@@ -127,7 +136,7 @@ public final class TimeMeasure: Measure {
             timestamp = 0
         }
         let text = TimeFormatting.format(windowsTimestamp: timestamp, format: format, locale: locale,
-                                         nameTimeZone: timeZone)
+                                         nameTimeZone: timeZone, systemLocale: systemLocale)
         rawString = text
         return hasFormatOption ? TimeFormatting.numberValue(ofFormatted: text) : timestamp
     }
@@ -139,6 +148,9 @@ public final class TimeMeasure: Measure {
 /// the string value is `Format` (default `%4!i!d %3!i!:%2!02i!`). `SecondsValue` replaces the uptime with any
 /// number of seconds (e.g. `SecondsValue=([MeasureNow:] - [MeasureLogon:])` with DynamicVariables).
 public final class UptimeMeasure: Measure {
+    /// Reads the Mac's uptime unless `SecondsValue` gives one (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { secondsValue == nil ? [.system] : [] }
+
     private var format = UptimeFormatting.defaultFormat
     private var addDaysToHours = false
     private var secondsValue: Double?
@@ -160,6 +172,9 @@ public final class UptimeMeasure: Measure {
 
 /// `Measure=CPU`: `Processor=0` (default) is the average of all cores, N a specific core; 0…100.
 public final class CPUMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var processor = 0
 
     public override var automaticMaxValue: Double { 100 }
@@ -184,6 +199,9 @@ public final class CPUMeasure: Measure {
 /// amount (`InvertMeasure=1`) is the free RAM counted twice plus the free swap and never exceeds the total of the
 /// two parts. `Free=1` (not in the manual, kept for compatibility) gives total − used.
 public final class MemoryMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     public enum Kind { case total, physical, swap }
     private var kind = Kind.total
     private var totalMode = false
@@ -242,6 +260,9 @@ public final class MemoryMeasure: Measure {
 /// - `Cumulative=1` gives the interface counters since the system started (Deskset keeps no statistics across
 ///   restarts; `!ResetStats` is the host's business).
 public final class NetMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     public enum Direction { case incoming, outgoing, total }
     private var direction = Direction.total
     private var interfaceName: String?
@@ -339,6 +360,9 @@ public final class NetMeasure: Measure {
 /// - `IgnoreRemovable=1` (default): removable media measure as 0 (Type and Label still work).
 /// - `DiskQuota` is Windows-only; the free space is what the current user can use.
 public final class FreeDiskSpaceMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var path = "/"
     private var totalMode = false
     private var labelMode = false
@@ -531,6 +555,9 @@ public final class StringMeasure: Measure {
 /// `Measure=Process` (also `Plugin=Process`): 1 while `ProcessName` (e.g. `Firefox.exe`; `.exe` is dropped) runs,
 /// -1 otherwise.
 public final class ProcessMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var processName = ""
 
     public override var automaticMinValue: Double { -1 }
@@ -559,6 +586,9 @@ public final class ProcessMeasure: Measure {
 /// VIRTUAL_SCREEN_TOP/LEFT with SysInfoData give that monitor's position; TIMEZONE_ISDST is -1 for zones without
 /// daylight saving time.
 public final class SysInfoMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     private var infoType = ""
     private var infoData = ""
     /// The last value asked for a documented type that has no answer on the Mac (e.g. USER_SID, ADAPTER_GUID).
@@ -623,7 +653,8 @@ public final class SysInfoMeasure: Measure {
             return monitorValue(skin.currentEnvironment().screens)
         case "TIMEZONE_ISDST", "TIMEZONE_BIAS", "TIMEZONE_STANDARD_BIAS", "TIMEZONE_DAYLIGHT_BIAS",
              "TIMEZONE_STANDARD_NAME", "TIMEZONE_DAYLIGHT_NAME":
-            return SysInfoMeasure.timeZoneValue(infoType, zone: TimeZone.current, at: Date())
+            return SysInfoMeasure.timeZoneValue(infoType, zone: skin.skinClock.timeZone(), at: skin.skinClock.now(),
+                                                locale: skin.locale)
         default:
             return nil
         }
@@ -659,8 +690,9 @@ public final class SysInfoMeasure: Measure {
 
     /// Windows semantics: "UTC = standard local time + bias" (minutes); daylight bias is the extra offset while
     /// daylight saving time is in effect (usually -60).
-    static func timeZoneValue(_ infoType: String, zone: TimeZone,
-                              at date: Date) -> (number: Double, string: String?)? {
+    /// `locale`: the language of the names (the system locale).
+    static func timeZoneValue(_ infoType: String, zone: TimeZone, at date: Date,
+                              locale: Locale) -> (number: Double, string: String?)? {
         func number(_ v: Double) -> (number: Double, string: String?) { (v, nil) }
         func text(_ s: String) -> (number: Double, string: String?) { (0, s) }
         let isDST = zone.isDaylightSavingTime(for: date)
@@ -678,9 +710,9 @@ public final class SysInfoMeasure: Measure {
             }
             return number(-dstOffset / 60)
         case "TIMEZONE_STANDARD_NAME":
-            return text(zone.localizedName(for: .standard, locale: .current) ?? zone.identifier)
+            return text(zone.localizedName(for: .standard, locale: locale) ?? zone.identifier)
         case "TIMEZONE_DAYLIGHT_NAME":
-            return text(zone.localizedName(for: .daylightSaving, locale: .current) ?? zone.identifier)
+            return text(zone.localizedName(for: .daylightSaving, locale: locale) ?? zone.identifier)
         default: return nil
         }
     }
@@ -717,6 +749,10 @@ public final class SysInfoMeasure: Measure {
 /// - `Hz` / `MHz`: rated CPU frequency when the system reports one (Intel Macs), else the CPU's current clock from the
 ///   hardware sensors (`frequency.cpu`, Apple silicon), else 0.
 public final class PowerPluginMeasure: Measure {
+    /// Reads the battery, and the CPU's frequency for `PowerState=MHz` / `Hz` (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.battery, .system] }
+
     private var state = "PERCENT"
     private var format = "%H:%M"
 
@@ -761,7 +797,8 @@ public final class PowerPluginMeasure: Measure {
             }
             let seconds = min(minutes, 1e7) * 60
             let date = Date(timeIntervalSince1970: seconds)
-            rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current)
+            rawString = TimeFormatting.format(date, format: format, timeZone: TimeZone(secondsFromGMT: 0) ?? .current,
+                                              systemLocale: skin.locale)
             return seconds
         case "HZ":
             return cpuHertz()

@@ -583,6 +583,35 @@ final class AudioAnalyzer {
         }
     }
 
+    /// Publishes levels given as data (`ScriptedAudioLevels`) instead of analysed ones: `rms` and `peak` per channel
+    /// (0–1, before the gains; the Sum row is the channels' mean, as the analysis makes it), `bands` and `fft` per
+    /// channel (a single list is every channel's), padded or cut to this analyzer's `Bands` and `FFTSize`.
+    func publishGiven(channels ch: Int, sampleRate sr: Double, rms: [Double], peak: [Double], bands: [[Double]],
+                      fft: [[Double]]) {
+        let ch = min(max(ch, 1), AudioAnalyzer.maxChannels)
+        func row(_ list: [Double], _ c: Int) -> Double { c < list.count ? list[c] : (list.last ?? 0) }
+        func rows(_ lists: [[Double]], count: Int) -> [[Float]] {
+            guard count > 0 else { return Array(repeating: [], count: ch + 1) }
+            var out: [[Float]] = (0..<ch).map { c in
+                let list = lists.isEmpty ? [] : lists[min(c, lists.count - 1)]
+                return (0..<count).map { i in Float(i < list.count ? list[i] : 0) }
+            }
+            out.append((0..<count).map { i in out.reduce(0) { $0 + $1[i] } / Float(ch) })
+            return out
+        }
+        var meanSquare = (0..<ch).map { c in pow(row(rms, c), 2) }
+        meanSquare.append(meanSquare.reduce(0, +) / Double(ch))
+        var peaks = (0..<ch).map { c in row(peak, c) }
+        peaks.append(peaks.reduce(0, +) / Double(ch))
+        let s = settings
+        let output = AudioAnalysisOutput(channels: ch, sampleRate: sr, meanSquare: meanSquare, peak: peaks,
+                                         fft: rows(fft, count: s.fftSize > 0 ? s.fftSize / 2 + 1 : 0),
+                                         bands: rows(bands, count: s.fftSize > 0 ? s.bands : 0))
+        lock.lock()
+        self.output = output
+        lock.unlock()
+    }
+
     // MARK: Reading (any thread)
 
     /// Channel count and sample rate of the stream analysed (0 before the first audio arrives).

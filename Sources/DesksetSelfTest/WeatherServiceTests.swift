@@ -860,7 +860,7 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(string(skin, "MeasurePlace"), "Oslo")
         t.equal(string(skin, "MeasureAttribution"), "Based on data from MET Norway")
         t.equal(string(skin, "MeasureSourceURL"), "https://api.met.no/")
-        let updated = TimeFormatting.format(WeatherFixtures.clock, format: "%H:%M", timeZone: .current)
+        let updated = TimeFormatting.format(WeatherFixtures.clock, format: "%H:%M", timeZone: .current, systemLocale: .autoupdatingCurrent)
         t.equal(string(skin, "MeasureStatus"), "Updated \(updated)")
         t.equal(string(skin, "MeasureUpdated"), updated)
         t.check(text(skin, "MeterAttribution").hasPrefix("Based on data from MET Norway  ·  Updated"))
@@ -1168,6 +1168,11 @@ func runWeatherMeasureTests(_ t: TestRunner) {
             Plugin=MacWeather
             Parent=W
             Type=Sunrise
+            [P]
+            Measure=Plugin
+            Plugin=MacWeather
+            Parent=W
+            Type=SymbolPalette
             """)
             for _ in 0..<20 {
                 WeatherService.shared.drain()
@@ -1181,6 +1186,7 @@ func runWeatherMeasureTests(_ t: TestRunner) {
         t.equal(string(skin, "S"), "Set a location")
         t.equal(string(skin, "W"), "--")
         t.equal(string(skin, "Sun"), "--", "no place, no sun: UnavailableText")
+        t.equal(string(skin, "P"), "", "no palette without a symbol (as Symbol: never UnavailableText)")
         (skin, host) = try status("Location=Atlantis")
         t.equal(value(skin, "S"), 4)
         t.equal(string(skin, "S"), "Can't find “Atlantis”")
@@ -1761,6 +1767,125 @@ func runWeatherSymbolImageTests(_ t: TestRunner) {
         let plain = outline.imagePath.flatMap { MacSymbol(path: $0) }
         t.equal(plain?.name, String(name.dropLast(5)), "SymbolStyle=Outline drops .fill")
         t.check(!host.logs.contains { $0.contains("Unable to open image") }, "no missing-file warnings: \(host.logs)")
+        skin.close()
+    }
+
+    t.suite("Weather: SymbolPalette gives the colors of the symbol's layers; ScaleColor replaces the scale") {
+        // Every symbol MacWeather names has its layers in the table, the same filled and outline.
+        let names = Set(WeatherCondition.all.flatMap { [$0.daySymbol, $0.nightSymbol] } + ["cloud.fill"])
+        for name in names {
+            let roles = WeatherSymbols.paletteRoles(name)
+            t.check(!roles.isEmpty && roles.count <= MacSymbol.maxColors, name)
+            t.equal(WeatherSymbols.paletteRoles(String(name.dropLast(5))), roles, "\(name) outline")
+            t.check(name == "cloud.fill" || roles != [.ink], "\(name) is in the table (only the plain cloud is one layer)")
+        }
+        t.equal(WeatherSymbols.paletteRoles("cloud.sun.rain.fill"), [.ink, .sun, .rain])
+        t.equal(WeatherSymbols.paletteRoles("cloud.moon.rain"), [.ink, .ink, .rain])
+        t.equal(WeatherSymbols.paletteRoles("sun.max.fill"), [.sun])
+        t.equal(WeatherSymbols.paletteRoles("cloud.bolt.rain.fill"), [.ink, .rain], "the bolt is in the cloud's layer")
+        t.equal(WeatherSymbols.paletteRoles("cloud.snow.fill"), [.ink, .ink])
+        t.equal(WeatherSymbols.paletteRoles("tornado"), [.ink], "an unknown name: ink")
+
+        let previous = WeatherService.shared.environment
+        defer { WeatherService.install(previous) }
+        var env = weatherTestEnvironment(t)
+        env.isLive = { _ in false }
+        env.demo = true
+        env.demoNow = WeatherFixtures.clock
+        WeatherService.install(env)
+        let (skin, host) = try makeSkin(t, """
+        [Rainmeter]
+        [Variables]
+        Ink=0,0,0,153
+        [W]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91,10.75
+        Type=Symbol
+        PaletteInk=#Ink#
+        PaletteSun=FFCC00
+        PaletteRain=0,82,118
+        ScaleColor=255,255,255,200
+        [P]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=SymbolPalette
+        [Outline]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=SymbolPalette
+        SymbolStyle=Outline
+        [Own]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=SymbolPalette
+        PaletteInk=255,0,0
+        PaletteSun=not a color
+        [Defaults]
+        Measure=Plugin
+        Plugin=MacWeather
+        Location=59.91,10.75
+        Type=SymbolPalette
+        [Color]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=W
+        Type=TemperatureColor
+        [Scale]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Defaults
+        Type=TemperatureColor
+        [BadScale]
+        Measure=Plugin
+        Plugin=MacWeather
+        Parent=Defaults
+        Type=TemperatureColor
+        ScaleColor=hot pink
+        [Icon]
+        Meter=Image
+        MeasureName=W
+        ImageName=sf:%1
+        MacSymbolRendering=Palette
+        MacSymbolColors=[P]
+        DynamicVariables=1
+        """)
+        skin.update()
+        skin.update()
+        let name = string(skin, "W")
+        func expected(_ name: String, ink: String = "0,0,0,153", sun: String = "255,204,0", rain: String = "0,82,118")
+            -> String {
+            WeatherSymbols.paletteRoles(name).map { $0 == .ink ? ink : $0 == .sun ? sun : rain }.joined(separator: "|")
+        }
+        t.check(name.hasSuffix(".fill"), name)
+        t.equal(string(skin, "P"), expected(name), "the root's palette options, inherited")
+        t.equal(value(skin, "P"), value(skin, "W"), "the number is the condition's, as Symbol's")
+        t.equal(string(skin, "Outline"), expected(String(name.dropLast(5))))
+        t.equal(string(skin, "Own"), expected(name, ink: "255,0,0", sun: "255,214,0"),
+                "its own options; a color that is not one is the default")
+        t.equal(string(skin, "Defaults"), expected(name, ink: "255,255,255", sun: "255,214,0", rain: "60,211,254"),
+                "without options: Multicolor's Dark Mode colors")
+        // Section variables: now, an hour, a day, for the symbol at that time.
+        func call(_ f: String) -> String { skin.resolve("[&W:\(f)]", in: nil, sectionVariables: true) }
+        t.equal(call("Now(SymbolPalette)"), string(skin, "P"))
+        t.equal(call("Hour(3, SymbolPalette)"), expected(call("Hour(3, Symbol)")))
+        t.equal(call("Day(2, SymbolPalette)"), expected(call("Day(2, Symbol)")))
+        t.check(!call("Day(2, SymbolPalette)").isEmpty)
+        // The Image meter draws the symbol in those colors.
+        let icon = (skin.meter(named: "Icon") as? ImageMeter)?.imagePath.flatMap { MacSymbol(path: $0) }
+        t.equal(icon?.name, name)
+        t.equal(icon?.style.rendering, .palette)
+        t.equal(icon?.style.colors, MacSymbol.colors(parsing: expected(name)))
+        // ScaleColor: every temperature that color, as R,G,B (skins add their own alpha); the number stays.
+        t.equal(string(skin, "Color"), "255,255,255")
+        t.equal(value(skin, "Color"), value(skin, "Scale"), "the temperature itself")
+        t.equal(string(skin, "Scale").split(separator: ",").count, 3)
+        t.check(string(skin, "Scale") != "255,255,255", string(skin, "Scale"))
+        t.equal(string(skin, "BadScale"), string(skin, "Scale"), "a ScaleColor that is not a color: the scale")
+        t.check(!host.logs.contains { $0.contains("not a MacWeather type") }, "\(host.logs)")
         skin.close()
     }
 }

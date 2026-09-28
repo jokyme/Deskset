@@ -53,7 +53,7 @@ public enum SyntaxMessageKeys {
     public static let fixItTitles: [String] = [
         "insert", "insertParentheses", "replaceWith", "replaceWithSpace", "remove", "removeText", "removeSpace",
         "addQuotes", "showBackslash", "rewrite", "joinLines", "newLine", "jumpToLine", "moveNameToInfo",
-        "removeClosureParameter",
+        "removeClosureParameter", "changeTo",
     ]
     /// The syntax layer reports every bracket problem at the opener, so it needs no secondary locations.
     public static let notes: [String] = []

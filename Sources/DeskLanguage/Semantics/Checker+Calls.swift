@@ -476,6 +476,7 @@ extension Checker {
     @discardableResult
     func coerce(_ v: Val, _ node: PositionedNode, to type: DeskType, what: DiagnosticArgument, _ context: ExprContext,
                 range allowed: ClosedRange<Double>? = nil, param: ParamSpec? = nil) -> Bool {
+        if type == .imageSource { noteImageUse(v, node) }
         if v.error { return true }
         let r = range(node)
         if let slot = v.open, slot < openSlots.count, openFits(openSlots[slot].kind, type) {
@@ -592,6 +593,31 @@ extension Checker {
             }
         }
         return true
+    }
+
+    /// A value where a picture is expected: its literal paths are recorded (both branches of `?:`, parentheses);
+    /// anything else means the file's pictures cannot all be known (§8.3).
+    func noteImageUse(_ v: Val, _ node: PositionedNode) {
+        guard mute == 0 else { return }
+        func literals(_ node: PositionedNode) -> [(String, Range<Int>)]? {
+            switch node.kind {
+            case .stringLiteral:
+                return StringLiteralSyntax.literalValue(of: node.node).map { [($0, range(node))] }
+            case .parenExpr:
+                return node.childNodes.first.flatMap(literals)
+            case .ternaryExpr:
+                let ternary = TernaryExprSyntax(unchecked: node)
+                guard let a = literals(ternary.then.node), let b = literals(ternary.otherwise.node) else { return nil }
+                return a + b
+            default:
+                return nil
+            }
+        }
+        guard !v.error, let found = literals(node) else {
+            assetUses.computedImages = true
+            return
+        }
+        for (path, r) in found { assetUses.images.append(AssetUses.Site(path: path, file: file, range: r)) }
     }
 
     func isLengthType(_ t: DeskType) -> Bool {

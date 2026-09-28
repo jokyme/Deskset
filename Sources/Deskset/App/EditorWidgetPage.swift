@@ -1340,7 +1340,7 @@ extension InspectorWindowController {
         var views: [NSView] = []
         for p in EditorSchema.visibleGroups(groups, values: lookup).flatMap(\.properties)
             where ["BackgroundMode", "SolidColor", "SolidColor2", "GradientAngle", "Background", "BackgroundMargins",
-                   "MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering"].contains(p.key) {
+                   "MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering", "MacSymbolColors"].contains(p.key) {
             let item = propertyRow(p, section: "Rainmeter", row: row(for: p, in: rainmeter), groups: groups)
             views.append(stackedLabel(p.label, key: p.key))
             views.append(item.control)
@@ -1863,8 +1863,9 @@ extension InspectorWindowController {
         if v.raw.contains("%") {
             // Examples of the date as each format shows it; Custom… for the format as written.
             let example = { (f: String) in
-                TimeFormatting.format(Date(timeIntervalSince1970: 1_790_000_000), format: f,
-                                      timeZone: TimeZone(identifier: "UTC") ?? .current, locale: Locale(identifier: "en_US_POSIX"))
+                MacTimeFormatting.format(Date(timeIntervalSince1970: 1_790_000_000), format: f,
+                                         timeZone: TimeZone(identifier: "UTC") ?? .current,
+                                         locale: Locale(identifier: "en_US_POSIX"))
             }
             let id = "widget/format/\(name)"
             if inspectorState.disclosures.contains(id) {

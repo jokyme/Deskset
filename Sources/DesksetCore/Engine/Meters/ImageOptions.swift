@@ -17,8 +17,8 @@ import Foundation
 ///
 /// Judgment calls where the manual is silent: flip is applied before rotation (so the rotation happens on screen,
 /// in the direction written); crop and rotate happen after the EXIF orientation.
-public struct ImageOptions: Hashable {
-    public enum Flip: Hashable {
+public struct ImageOptions: Hashable, Sendable {
+    public enum Flip: Hashable, Sendable {
         case none, horizontal, vertical, both
 
         public var horizontal: Bool { self == .horizontal || self == .both }
@@ -36,7 +36,7 @@ public struct ImageOptions: Hashable {
     }
 
     /// `ImageCrop=X, Y, W, H, Origin`.
-    public struct Crop: Hashable {
+    public struct Crop: Hashable, Sendable {
         public var x: Double
         public var y: Double
         public var width: Double
@@ -84,7 +84,8 @@ public struct ImageOptions: Hashable {
     /// Degrees, clockwise (negative = counter-clockwise).
     public var rotate = 0.0
     public var useExifOrientation = false
-    /// `MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`: how an `sf:` image is drawn (see `MacSymbol`).
+    /// `MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`: how an `sf:` image is drawn (see
+    /// `MacSymbol`).
     public var symbol = MacSymbol.Style()
 
     public init() {}

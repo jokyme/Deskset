@@ -26,7 +26,7 @@ import Foundation
 /// - PrimaryImageRotate and the ColorMatrix options are not supported (reported as compatibility issues).
 public final class HistogramMeter: Meter {
     /// One of PrimaryImage / SecondaryImage / BothImage with its image options.
-    public struct HistogramImage: Equatable {
+    public struct HistogramImage: Equatable, Sendable {
         public var path: String
         /// `ImageCrop=X,Y,W,H[,Origin]`.
         public var crop: [Double]?
@@ -56,7 +56,7 @@ public final class HistogramMeter: Meter {
         }
     }
 
-    public enum Part { case primary, secondary, both }
+    public enum Part: Sendable { case primary, secondary, both }
 
     public private(set) var primaryMeasure: Measure?
     public private(set) var secondaryMeasure: Measure?

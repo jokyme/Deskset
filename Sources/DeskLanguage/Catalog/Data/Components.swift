@@ -99,7 +99,7 @@ extension CatalogData {
     static let content: [ComponentSpec] = [
         component("Text", .text, .content, "Text", "文字", [sig(
             pos("content", .any, role: .display, translatable: true, preview: #""Wednesday, 30 September""#,
-                "What it shows: text in quotes, data, or text with {data} in it", "显示的内容：引号里的文字、数据，或放了 {数据} 的文字",
+                "What it shows: text in quotes, data, or text with data in braces", "显示的内容：引号里的文字、数据，或放了 {数据} 的文字",
                 page: page(.content, "Text", "文字", .textField, .essential, long: #""Wednesday, 30 September 2026""#),
                 rm: [meter("String", "Text"), meter("String", "MeasureName"), meter("String", "Prefix"),
                      meter("String", "Postfix")]))],
@@ -276,7 +276,7 @@ extension CatalogData {
                 "它显示并修改的是/否值",
                 page: page(.content, "Changes", "修改的值", .dataPicker, .essential)))],
                   backing: .native,
-                  doc: doc("A system switch bound to a Bool", "系统开关，绑定一个是/否值",
+                  doc: doc("A system switch bound to a yes-or-no value", "系统开关，绑定一个是/否值",
                            #"Toggle("Show seconds", options.showSeconds)"#,
                            keywords: ["switch", "checkbox", "toggle", "on off", "开关", "复选框"], mac: true, rank: 45)),
         component("Slider", .slider, .controls, "Slider", "滑块", [sig(

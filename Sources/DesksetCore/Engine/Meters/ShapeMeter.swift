@@ -29,9 +29,41 @@ public final class ShapeMeter: Meter {
     private var hitRegionsRevision = -1
     static let maxNaturalSize = 16_384.0
 
+    /// What `shapes` were parsed from: the `Shape`, `Shape2`… values and every option the parser looked up by name
+    /// (a Path's definition, an `Extend`ed list of modifiers, a gradient). Parsing is a function of these alone, so
+    /// options read again with the same values keep the parsed shapes: a dynamic meter read at every update (a
+    /// ring whose arc moves every other second, a meter updated for its tooltip) is not parsed again for nothing.
+    private struct ParsedFrom: Equatable {
+        struct Option: Equatable {
+            let index: Int
+            let value: String
+        }
+        struct Lookup: Equatable {
+            let key: String
+            let value: String?
+        }
+        var options: [Option]
+        var lookups: [Lookup]
+    }
+    private var parsedFrom: ParsedFrom?
+    /// Times the shapes were parsed (tests).
+    public private(set) var parseCount = 0
+
     public override func readMeterOptions() {
-        var parser = ShapeParser(lookup: { [unowned self] in self.option($0) })
-        let parsed = parser.items(from: numberedOptions("Shape"))
+        let options = numberedOptions("Shape").map { ParsedFrom.Option(index: $0.index, value: $0.value) }
+        if let parsedFrom, parsedFrom.options == options,
+           parsedFrom.lookups.allSatisfy({ option($0.key) == $0.value }) {
+            return
+        }
+        var lookups: [ParsedFrom.Lookup] = []
+        var parser = ShapeParser(lookup: { [unowned self] key in
+            let value = self.option(key)
+            lookups.append(ParsedFrom.Lookup(key: key, value: value))
+            return value
+        })
+        let parsed = parser.items(from: options.map { (index: $0.index, value: $0.value) })
+        parseCount += 1
+        parsedFrom = ParsedFrom(options: options, lookups: lookups)
         for warning in parser.warnings where loggedWarnings.count < 200 && loggedWarnings.insert(warning).inserted {
             skin.log("[\(name)] \(warning)", level: .warning)
         }

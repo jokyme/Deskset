@@ -1,0 +1,11 @@
+// DK8606 fileLink
+//== expect: DK8606
+//== also: DK4029
+//== file: Frame.desk
+info { name: "Frame" }
+widget { Image("photo.png") }
+//== link: photo.png -> ../../Pictures/photo.png
+//== negative
+info { name: "Frame" }
+widget { Image("photo.png") }
+//== asset: photo.png 32x32

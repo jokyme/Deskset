@@ -301,7 +301,7 @@ func runEditorSchemaV2Tests(_ t: TestRunner) {
         t.equal(S.choice(for: "7.25", in: choices), nil, "an offset nobody uses is accepted, but not listed")
         // What the engine does with each listed value: that many hours from UTC (local for `local`).
         for c in choices where c.value != "local" {
-            let tz = TimeFormatting.timeZone(forOption: c.value, daylightSavingTime: false)
+            let tz = TimeFormatting.timeZone(forOption: c.value, daylightSavingTime: false, at: Date(), localTimeZone: .current)
             t.equal(Double(tz.secondsFromGMT()) / 3600, Double(c.value), c.title)
         }
     }

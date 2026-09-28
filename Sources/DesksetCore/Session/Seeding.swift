@@ -118,11 +118,12 @@ extension Skin {
         assertOwned()
         var state = SkinRuntimeState(relation: relation, counter: parts.contains(.counter) ? counter : nil)
         if parts.contains(.variables) || parts.contains(.measures) {
-            let (values, definitions) = runtimeVariables
+            let definitions = variableDefinitions.values
             state.definitions = definitions
             if parts.contains(.variables) {
-                for (key, value) in values where definitions[key] != value {
-                    state.variables[key] = SkinRuntimeState.Variable(value: value, definition: definitions[key])
+                for variable in runtimeVariables where definitions[variable.name] != variable.value {
+                    state.variables[variable.name] = SkinRuntimeState.Variable(value: variable.value,
+                                                                               definition: definitions[variable.name])
                 }
             }
         }
@@ -158,7 +159,7 @@ extension Skin {
     public func seed(from state: SkinRuntimeState) {
         assertOwned()
         if let counter = state.counter { seedCounter(counter, mirroring: state.relation == .mirror) }
-        let defined = runtimeVariables.definitions
+        let defined = variableDefinitions.values
         for (key, variable) in state.variables where defined[key] == variable.definition {
             seedVariable(key, variable.value)
         }

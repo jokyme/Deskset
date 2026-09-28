@@ -1304,6 +1304,8 @@ struct Lexer {
         let windows = false
         let diagnosticsBefore = diagnostics.count
         var sawInterpolation = false
+        // `${` in a template literal: its `$` goes with the backquotes (DK1003), or it would be shown.
+        var dollars: [Range<Int>] = []
         append(Token(kind: .stringStart, text: text(start, start + openLength), leadingTrivia: leading, flags: flags),
                start: start)
         let startIndex = tokens.count - 1
@@ -1353,6 +1355,7 @@ struct Lexer {
                 let interpolationLimit = min(lineEnd(from: i), contentLimit)
                 if depth < Lexer.maxStringDepth, !failedInterpolations.contains(i), interpolationWork < interpolationBudget,
                    let end = lexInterpolation(at: i, lineLimit: interpolationLimit, depth: depth + 1) {
+                    if style == .backquote, i > start + openLength, bytes[i - 1] == 0x24 { dollars.append((i - 1)..<i) }
                     i = end
                     segment = end
                     sawInterpolation = true
@@ -1400,8 +1403,10 @@ struct Lexer {
         switch style {
         case .single, .backquote:
             var edits = [edit(openerRange, "\"")]
+            for dollar in dollars { edits.append(edit(dollar, "")) }
             if let c = closerRange { edits.append(edit(c, "\"")) }
-            let content = text(start + openLength, closerRange?.lowerBound ?? result.end)
+            var content = text(start + openLength, closerRange?.lowerBound ?? result.end)
+            if !dollars.isEmpty { content = content.replacingOccurrences(of: "${", with: "{") }
             report(.wrongQuoteStyle, .error, start..<result.end, ["text": .code(content)],
                    fixIts: [FixIt(titleKey: "replaceWith", titleArguments: ["text": .code("\"")], edits: edits)])
         default:

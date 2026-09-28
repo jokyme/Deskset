@@ -109,11 +109,39 @@ enum WiFiStatusFormat {
     }
 }
 
+/// What WiFiStatus measures read: the shared CoreWLAN reader, or fixed values (`--render --data`, `FixedWiFi`).
+/// Any thread; answers at once.
+protocol WiFiReading: AnyObject {
+    /// The current connection of interface `index` (nil = no such interface / Wi-Fi off).
+    func info(interface index: Int) -> WiFiNetworkInfo?
+    /// The visible networks of interface `index`.
+    func networks(interface index: Int) -> [WiFiNetworkInfo]
+}
+
+/// `--render --data`'s `wifi`: one interface with the given connection and visible networks; `.none`: no Wi-Fi
+/// interface. Never asks CoreWLAN or Location Services.
+final class FixedWiFi: WiFiReading {
+    let current: WiFiNetworkInfo?
+    let visible: [WiFiNetworkInfo]
+
+    init(_ wifi: SkinInputData.Given<SkinInputData.WiFi>) {
+        func info(_ n: SkinInputData.WiFiNetwork) -> WiFiNetworkInfo {
+            WiFiNetworkInfo(ssid: n.ssid, rssi: n.rssi, transmitRate: n.transmitRate, encryption: n.encryption,
+                            auth: n.auth, phy: n.phy)
+        }
+        current = wifi.value.map { info($0.current) }
+        visible = wifi.value?.networks.map(info) ?? []
+    }
+
+    func info(interface index: Int) -> WiFiNetworkInfo? { index == 0 ? current : nil }
+    func networks(interface index: Int) -> [WiFiNetworkInfo] { index == 0 ? visible : [] }
+}
+
 /// Shared CoreWLAN reader (one per app). Any thread: measures of skins on different threads read the latest values
 /// under a lock (docs/skin-threading.md §4.6). What the worker read is stored under that lock on the main thread, as
 /// before skins could leave it: between the updates of the skins that run there (today every skin), so one update
 /// never sees half of a new reading (the old SSID with the new signal).
-final class WiFiCenter {
+final class WiFiCenter: WiFiReading {
     static let shared = WiFiCenter()
 
     let worker = MediaUIWorker(name: "Deskset WiFiStatus")
@@ -241,6 +269,9 @@ final class WiFiCenter {
 
 /// `Measure=WiFiStatus` / `Plugin=WiFiStatus`.
 final class WiFiStatusMeasure: MediaUIMeasure {
+    /// Reads the Wi-Fi (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.wifi] }
+
     enum InfoType: String {
         case ssid, quality, txrate, rxrate, encryption, auth, phy, list
     }
@@ -258,7 +289,9 @@ final class WiFiStatusMeasure: MediaUIMeasure {
     private var interfaceIndex = 0
     private var listStyle = 0
     private var listLimit = 5
-    var center: WiFiCenter = .shared
+    var center: WiFiReading = WiFiStatusMeasure.sharedCenter()
+    /// What WiFiStatus measures made from now on read: the CoreWLAN reader, or a `--render --data`'s `FixedWiFi`.
+    static var sharedCenter: () -> WiFiReading = { WiFiCenter.shared }
 
     override var automaticMaxValue: Double { infoType == .quality ? 100 : 1 }
 

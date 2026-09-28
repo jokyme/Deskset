@@ -512,13 +512,16 @@ extension Checker {
 
     /// The canonical key of a string: its text segments as written and each interpolation as its tokens, printed the
     /// formatter's way (§8.6).
-    func translationKey(_ string: StringLiteralSyntax) -> String {
+    func translationKey(_ string: StringLiteralSyntax) -> String { Checker.translationKey(of: string) }
+
+    /// `translationKey` without a checker (the language service rewrites translations with it).
+    static func translationKey(of string: StringLiteralSyntax) -> String {
         var key = ""
         for segment in string.segments {
             switch segment {
             case .text(let token, _): key += token.token.text
             case .interpolation(let i): key += "{" + Checker.canonicalTokens(i.node.tokens.dropFirst().dropLast()) + "}"
-            case .foreign(let n): key += text(n)
+            case .foreign(let n): key += n.node.trimmedText
             }
         }
         return key

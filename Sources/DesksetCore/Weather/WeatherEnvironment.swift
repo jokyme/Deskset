@@ -151,6 +151,24 @@ public protocol DeviceLocationSource: AnyObject {
     func requestFix(_ completion: @escaping (Result<RoundedCoordinate, DeviceLocationError>) -> Void)
 }
 
+/// A device location that never asks macOS (`--render --data`, verification runs): a fixed rounded coordinate, or
+/// none (Location Services give nothing, as when the user said no).
+public final class FixedDeviceLocation: DeviceLocationSource {
+    public let coordinate: RoundedCoordinate?
+
+    public init(_ coordinate: RoundedCoordinate?) {
+        self.coordinate = coordinate
+    }
+
+    public var authorization: DeviceLocationAuthorization { coordinate == nil ? .denied : .authorized }
+
+    public func cachedFix(maxAge: TimeInterval) -> RoundedCoordinate? { coordinate }
+
+    public func requestFix(_ completion: @escaping (Result<RoundedCoordinate, DeviceLocationError>) -> Void) {
+        completion(coordinate.map { .success($0) } ?? .failure(.denied))
+    }
+}
+
 // MARK: - Environment
 
 public struct WeatherEnvironment {

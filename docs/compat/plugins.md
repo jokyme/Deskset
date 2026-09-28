@@ -277,9 +277,13 @@ plugin's source code.
 
 ### Sampling
 - Windows (Rainmeter): one thread per Category gathers data once a second regardless of Update / UpdateDivider.
-- Mac (Deskset): one shared background sampler takes a sample of all processes and cores once a second while any
-  measure needs it (a few milliseconds per sample) and stops when none does; Process / Processor counters use its last
-  two samples; memory / network / disk-space counters are read at the measure's update.
+- Mac (Deskset): one shared background sampler takes a sample of the processes and cores once a second while any
+  measure needs it and stops when none does; Process / Processor counters use its last two samples; memory / network /
+  disk-space counters are read at the measure's update. A sample reads only the user's own processes, the ones macOS
+  lets an app read (the others are the synthetic `System` process either way), and reads their virtual size, threads,
+  page faults, context switches, system calls and priority only while a measure uses one of those counters: about
+  0.2 ms of a performance core per sample. Measures that differ only in Index or Name (a "top 5" list) share one
+  ranking per sample.
 - Why: —
 - Skin impact: none.
 - Status: identical
@@ -517,6 +521,21 @@ plugin's source code.
 - Why: extracting icons needs AppKit.
 - Skin impact: none in the app and in `--render` (both install the writer, `FileViewIconWriter.install()`); in
   core-only contexts (DesksetSelfTest) the icon values stay empty.
+- Status: emulated
+
+### Icons of links and aliases (judgment)
+- Windows (Rainmeter): the manual does not say how the icon of a shortcut or link is drawn.
+- Mac (Deskset): a symbolic link or Finder alias gets the icon of the item it leads to
+  (`FileViewIcons.resolvedSource`): links are followed through every component, aliases are resolved without any
+  dialog and without mounting volumes, and chains of both are followed. macOS would otherwise draw the link's own icon
+  with Finder's arrow. A link or alias that cannot be followed (broken, a loop, an original that was deleted or is on
+  a volume that is not mounted) keeps its own icon. Only `Type=Icon` follows them: names and the other types still
+  describe the link or alias itself, as Finder does (links to folders are listed as folders, see "Listing rules").
+- Why: judgment where the manual is silent. On recent macOS versions (seen on macOS 26) `/Applications/Safari.app` is
+  a link into a system volume, so a launcher listing it would show Safari with an arrow, unlike the Dock.
+- Skin impact: launchers and file lists show linked apps and aliases like the Dock does. Following a link or alias to
+  an item inside Desktop, Documents or Downloads reads that item, so macOS may ask for access to that folder once, as
+  it does when a skin lists the folder itself.
 - Status: emulated
 
 ### Commands

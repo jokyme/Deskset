@@ -17,6 +17,9 @@ import Foundation
 /// number"; REG_DWORD / REG_QWORD values are numbers without a string of their own (a String meter formats them
 /// with its NumOfDecimals / AutoScale options).
 public final class RegistryMeasure: Measure {
+    /// Reads the Mac's system data (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.system] }
+
     /// One emulated registry value.
     public enum Value: Equatable {
         case string(String)

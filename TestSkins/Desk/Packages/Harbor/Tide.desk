@@ -1,0 +1,33 @@
+info {
+    name: "Tide"
+    description: "The next high tide."
+    size: .small
+    category: .weather
+}
+
+options {
+    showWaves = Toggle("Show waves", default: true)
+    look = Picker("Look", [Choice(.calm, "Calm"), Choice(.stormy, "Stormy")])
+    height = Slider("Wave height", min: 10, max: 60, step: 5, default: 30)
+        .hidden(if: not options.showWaves)
+    accent = ColorPicker("Tide color", default: .blue)
+}
+
+widget {
+    Column(spacing: 8) {
+        Text("Tide").style(heading)
+        Text(options.metric ? "2.4 m" : "7.9 ft").font("Harbor Sans", 20).color(options.accent)
+        Image(options.look == .calm ? "images/waves.png" : "images/buoy.gif")
+            .height(options.height)
+            .hidden(if: not options.showWaves)
+    }
+    .style(card)
+}
+
+translations {
+    "zh-Hans" {
+        "Tide": "潮位"
+        "The next high tide.": "下一次涨潮。"
+        "Show waves": "显示波浪"
+    }
+}

@@ -333,17 +333,56 @@ extension Checker {
 
     /// The "Add" fix-it of DK8101: edits `info`, creating it when needed.
     func addPermissionFix(_ permission: String) -> FixIt {
-        if let field = infoFields["permissions"], field.value.kind == .listLiteral {
-            let list = ListLiteralSyntax(unchecked: field.value)
-            let close = list.rBracket.textRange.lowerBound
-            let insert = list.elements.isEmpty ? ".\(permission)" : ", .\(permission)"
-            return fix("add", [edit(close..<close, insert)])
+        if let field = infoFields["permissions"], field.value.kind == .listLiteral,
+           let edits = Checker.listAppend(".\(permission)", to: field.value, bytes: tree.lines.bytes) {
+            return fix("add", edits.map { edit($0.range, $0.text) })
         }
         if let insertion = infoFieldInsertion("permissions: [.\(permission)]") {
             return fix("add", [insertion])
         }
         let start = widgetBlock.map { textStart($0) } ?? 0
         return fix("add", [edit(start..<start, "info { permissions: [.\(permission)] }" + lineBreak + lineBreak)])
+    }
+
+    /// The insertions that add an element at the end of a list literal the way it is written: after a trailing
+    /// comma (`[.location,]`), and in a list written over several lines on a line of its own, with the last
+    /// element's indent, after any comment ending the last element's line. Nil when the list is not closed.
+    static func listAppend(_ element: String, to list: PositionedNode, bytes: [UInt8]) -> [(range: Range<Int>, text: String)]? {
+        let tokens = list.childTokens
+        guard let open = tokens.first, let close = tokens.last, close.kind == .rBracket, !close.token.isMissing,
+              open.textRange.upperBound <= close.textStart else { return nil }
+        guard let last = list.significantChildNodes.last(where: { !$0.textRange.isEmpty }) else {
+            return [(close.textStart..<close.textStart, element)]
+        }
+        let lastEnd = last.textRange.upperBound
+        let comma = tokens.last { $0.kind == .comma && !$0.token.isMissing && $0.textStart >= lastEnd && $0.textStart < close.textStart }
+        func isBreak(_ b: UInt8) -> Bool { b == 0x0A || b == 0x0D }
+        func lineStart(_ at: Int) -> Int {
+            var k = min(at, bytes.count)
+            while k > 0, !isBreak(bytes[k - 1]) { k -= 1 }
+            return k
+        }
+        let lastLine = lineStart(last.textRange.lowerBound)
+        let multiLine = bytes[open.textRange.upperBound..<close.textStart].contains(where: isBreak)
+            && lineStart(open.textStart) != lastLine && lineStart(close.textStart) != lineStart(lastEnd)
+        guard multiLine else {
+            if let comma { return [(comma.textRange.upperBound..<comma.textRange.upperBound, " " + element + ",")] }
+            return [(lastEnd..<lastEnd, ", " + element)]
+        }
+        var indentEnd = lastLine
+        while indentEnd < bytes.count, bytes[indentEnd] == 0x20 || bytes[indentEnd] == 0x09 { indentEnd += 1 }
+        let indent = String(decoding: bytes[lastLine..<indentEnd], as: UTF8.self)
+        let newline = bytes.firstIndex(of: 0x0D).map { $0 + 1 < bytes.count && bytes[$0 + 1] == 0x0A ? "\r\n" : "\r" }
+            ?? "\n"
+        // The end of the line the element (and its comma) ends: the new element goes after a comment there.
+        let after = comma?.textRange.upperBound ?? lastEnd
+        var lineEnd = after
+        while lineEnd < bytes.count, !isBreak(bytes[lineEnd]) { lineEnd += 1 }
+        let rest = String(decoding: bytes[after..<lineEnd], as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        let at = rest.isEmpty || rest.hasPrefix("//") ? (rest.isEmpty ? after : lineEnd) : after
+        if comma != nil { return [(at..<at, newline + indent + element + ",")] }
+        if at == after { return [(at..<at, "," + newline + indent + element)] }
+        return [(lastEnd..<lastEnd, ","), (at..<at, newline + indent + element)]
     }
 
     /// DK8103 / DK8104.
@@ -355,10 +394,9 @@ extension Checker {
                 continue
             }
             var edits: [TextEdit] = []
-            if let field = infoFields["network"], field.value.kind == .listLiteral {
-                let list = ListLiteralSyntax(unchecked: field.value)
-                let close = list.rBracket.textRange.lowerBound
-                edits.append(edit(close..<close, list.elements.isEmpty ? "\"\(host)\"" : ", \"\(host)\""))
+            if let field = infoFields["network"], field.value.kind == .listLiteral,
+               let added = Checker.listAppend("\"\(host)\"", to: field.value, bytes: tree.lines.bytes) {
+                edits += added.map { edit($0.range, $0.text) }
             } else if let insertion = infoFieldInsertion("network: [\"\(host)\"]") {
                 edits.append(insertion)
             } else {

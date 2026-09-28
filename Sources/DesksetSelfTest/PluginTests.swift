@@ -19,6 +19,7 @@ func runPluginTests(_ t: TestRunner) {
     runPluginSensorTests(t)
     runPluginPerfCounterTests(t)
     runPluginUsageTests(t)
+    runPluginSamplingCostTests(t)
     runPluginPingTests(t)
     runPluginRunCommandTests(t)
     runPluginQuoteTests(t)
@@ -782,6 +783,174 @@ private func runPluginUsageTests(_ t: TestRunner) {
     }
 }
 
+// MARK: - What a process sample costs
+
+/// Processes whose CPU time grows by a fixed step at every sample, and two cores (tests of the shared sampler).
+private final class SteppingProcessData: ProcessDataProvider {
+    private let lock = NSLock()
+    private var step = 0.0
+    private(set) var detailsAsked: [Bool] = []
+
+    func readProcesses() -> (visible: [ProcessRecord], total: Int) { readProcesses(details: true) }
+
+    func readProcesses(details: Bool) -> (visible: [ProcessRecord], total: Int) {
+        lock.lock(); defer { lock.unlock() }
+        detailsAsked.append(details)
+        step += 1
+        let rows: [(Int32, String, Double)] = [(10, "Alpha", 3), (11, "Beta", 2), (12, "Gamma", 1), (13, "Delta", 0.5)]
+        let list = rows.map { ProcessRecord(pid: $0.0, name: $0.1, start: 1, userTime: $0.2 * 1_000_000 * step,
+                                            threads: details ? 4 : 0) }
+        return (list, list.count + 3)
+    }
+
+    func readCores() -> [CoreTicks] {
+        lock.lock(); defer { lock.unlock() }
+        // 8 M busy and 12 M idle per sample: the four processes use 6.5 M, other users' ("System") 1.5 M.
+        let n = step + 1
+        return [CoreTicks(user: 3_000_000 * n, system: 1_000_000 * n, idle: 6_000_000 * n, nice: 0),
+                CoreTicks(user: 4_000_000 * n, system: 0, idle: 6_000_000 * n, nice: 0)]
+    }
+}
+
+private func runPluginSamplingCostTests(_ t: TestRunner) {
+    t.suite("Plugin: a process sample reads only this user's processes") {
+        let all = ProcessNames.allPids()
+        let readable = ProcessNames.readablePids()
+        if geteuid() == 0 {
+            t.check(readable == nil, "root reads every process")
+            return
+        }
+        guard let readable else {
+            t.check(false, "the user's processes are listed")
+            return
+        }
+        t.check(readable.contains(getpid()), "this process is one of them")
+        t.check(readable.count <= all.count + 20, "\(readable.count) of \(all.count)")
+        // Listed after all of them, so a process of another user that the kernel lets this one read would show here.
+        let mine = Set(readable)
+        func readsUsage(_ pid: pid_t) -> Bool {
+            var usage = rusage_info_v2()
+            return withUnsafeMutablePointer(to: &usage) {
+                $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V2, $0) == 0 }
+            }
+        }
+        let others = all.filter { $0 > 0 && !mine.contains($0) }
+        let readOthers = others.filter(readsUsage)
+        t.check(readOthers.count <= 2, "no other user's process can be read: \(readOthers.prefix(5))")
+
+        let data = DarwinProcessData()
+        let plain = data.readProcesses(details: false)
+        let own = plain.visible.first { $0.pid == getpid() }
+        t.check(own != nil, "this process is read")
+        t.equal(own?.name, ProcessInfo.processInfo.processName)
+        t.check((own?.cpuTime ?? 0) > 0 && (own?.footprintBytes ?? 0) > 0 && (own?.start ?? 0) > 0)
+        t.equal(own?.threads, 0, "no proc_taskinfo without details")
+        t.check(plain.total >= plain.visible.count && plain.total >= all.count - 50, "every process is counted")
+        t.check(plain.visible.map(\.pid) == plain.visible.map(\.pid).sorted(), "sorted by pid")
+        let detailed = data.readProcesses(details: true)
+        let ownDetailed = detailed.visible.first { $0.pid == getpid() }
+        t.check((ownDetailed?.threads ?? 0) >= 1 && (ownDetailed?.virtualBytes ?? 0) > 0, "details: proc_taskinfo")
+        t.equal(ownDetailed?.name, own?.name, "the same name, from the cache")
+
+        t.equal(ProcessNames.lastPathComponent("/Applications/Safari.app/Contents/MacOS/Safari"), "Safari")
+        t.equal(ProcessNames.lastPathComponent("/usr/bin/Google Chrome Helper (Renderer)"),
+                "Google Chrome Helper (Renderer)")
+        t.equal(ProcessNames.lastPathComponent("/a/b/"), "b")
+        t.equal(ProcessNames.lastPathComponent("plain"), "plain")
+        t.equal(ProcessNames.lastPathComponent("/"), "/")
+        t.equal(ProcessNames.lastPathComponent(""), "")
+        for path in ["/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent",
+                     "/a/b/", "/x", "名字/进程"] {
+            t.equal(ProcessNames.lastPathComponent(path), (path as NSString).lastPathComponent, path)
+        }
+    }
+
+    t.suite("Plugin: the sampler reads proc_taskinfo only while a measure needs it") {
+        let savedProvider = ProcessSampler.provider
+        let fake = SteppingProcessData()
+        ProcessSampler.provider = fake
+        defer { ProcessSampler.provider = savedProvider }
+        let savedInterval = ProcessSampler.interval
+        // The timer's sample at the start, then only the test's.
+        ProcessSampler.interval = 3600
+        defer { ProcessSampler.interval = savedInterval }
+        let sampler = ProcessSampler()
+        let cpu = NSObject(), threads = NSObject()
+        sampler.subscribe(cpu, details: false)
+        defer { sampler.unsubscribe(cpu); sampler.unsubscribe(threads) }
+        t.check(!sampler.readsDetails)
+        let end = Date().addingTimeInterval(30)
+        while sampler.samples().latest == nil && Date() < end { usleep(1000) }
+        sampler.sampleNow()
+        t.equal(fake.detailsAsked.last, false)
+        t.equal(sampler.samples().latest?.details, false)
+        t.check(sampler.samples(details: true).latest == nil, "a sample without them is no sample for a reader of them")
+        sampler.subscribe(threads, details: true)
+        t.check(sampler.readsDetails)
+        sampler.sampleNow()
+        t.equal(fake.detailsAsked.last, true)
+        let first = sampler.samples(details: true)
+        t.equal(first.latest?.details, true)
+        t.check(first.previous == nil, "the sample before has none: no interval yet for a rate of them")
+        t.check(sampler.samples().previous != nil, "a reader of CPU times keeps its interval")
+        sampler.sampleNow()
+        t.check(sampler.samples(details: true).previous != nil)
+        sampler.unsubscribe(threads)
+        t.check(!sampler.readsDetails, "the last reader of them left")
+        sampler.subscribe(cpu, details: true)
+        t.check(sampler.readsDetails, "subscribing again changes what a subscriber needs")
+
+        func spec(_ category: String, _ counter: String) -> PerfCounterSpec { PerfCounters.spec(category: category, counter: counter)! }
+        t.check(spec("Process", "Thread Count").needsDetails)
+        t.check(spec("Process", "Virtual Bytes").needsDetails)
+        t.check(spec("Process", "Page Faults/sec").needsDetails)
+        t.check(spec("System", "Context Switches/sec").needsDetails)
+        t.check(spec("Memory", "Page Faults/sec").needsDetails)
+        t.check(!spec("Process", "% Processor Time").needsDetails)
+        t.check(!spec("Process", "Working Set - Private").needsDetails)
+        t.check(!spec("Process", "IO Data Bytes/sec").needsDetails)
+        t.check(!spec("Process", "Elapsed Time").needsDetails)
+    }
+
+    t.suite("Plugin: UsageMonitor ranks once per sample for the measures that differ only in Index") {
+        let savedProvider = ProcessSampler.provider, savedInterval = ProcessSampler.interval
+        ProcessSampler.provider = SteppingProcessData()
+        // One timer sample at the start; the test takes the others.
+        ProcessSampler.interval = 3600
+        defer { ProcessSampler.provider = savedProvider; ProcessSampler.interval = savedInterval }
+        t.check(!ProcessSampler.shared.isRunning, "no other test left it running")
+        var ini = ""
+        for i in 1...4 { ini += "[Top\(i)]\nMeasure=Plugin\nPlugin=UsageMonitor\nAlias=CPU\nIndex=\(i)\n" }
+        ini += "[Mine]\nMeasure=Plugin\nPlugin=UsageMonitor\nAlias=CPU\nIndex=1\nBlacklist=_Total|Idle|System\n"
+        ini += "[Threads]\nMeasure=Plugin\nPlugin=UsageMonitor\nCategory=Process\nCounter=Thread Count\nName=Beta\n"
+        let (skin, _) = try makeSkin(t, ini)
+        let tops = (1...4).map { measure(skin, "Top\($0)", UsageMonitorMeasure.self) }
+        let mine = measure(skin, "Mine", UsageMonitorMeasure.self)
+        let threads = measure(skin, "Threads", UsageMonitorMeasure.self)
+        let all: [UsageMonitorMeasure] = tops + [mine, threads]
+        defer { for m in all { m.skinWillClose() } }
+        t.check(ProcessSampler.shared.readsDetails, "Thread Count needs proc_taskinfo")
+        let end = Date().addingTimeInterval(30)
+        while ProcessSampler.shared.samples().latest == nil && Date() < end { usleep(1000) }
+        ProcessSampler.shared.sampleNow()
+        ProcessSampler.shared.sampleNow()
+        let made = UsageMonitorMeasure.rankingsMade
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 3, "one for the four, one for the other lists, one by Name")
+        t.equal(tops.map(\.stringValue), ["Alpha", "Beta", "System", "Gamma"])
+        t.close(tops[0].value, 15, accuracy: 1e-6, "3 M of 20 M: the whole machine is 100 %")
+        t.close(tops[2].value, 7.5, accuracy: 1e-6)
+        t.equal(mine.stringValue, "Alpha")
+        t.equal(threads.value, 4)
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 3, "the same sample again: nothing ranked")
+        ProcessSampler.shared.sampleNow()
+        for m in all { update(m) }
+        t.equal(UsageMonitorMeasure.rankingsMade - made, 6, "a new sample: ranked again")
+        t.equal(tops.map(\.stringValue), ["Alpha", "Beta", "System", "Gamma"])
+    }
+}
+
 // MARK: - Ping
 
 private func runPluginPingTests(_ t: TestRunner) {
@@ -1094,7 +1263,7 @@ private func runPluginRunCommandTests(_ t: TestRunner) {
         t.check(spin(5) { !locale.isRunning })
         t.check(!locale.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 "programs get a locale (UTF-8 output)")
-        t.check(RunCommandJob.defaultLanguage.hasSuffix(".UTF-8"))
+        t.check(RunCommandJob.defaultLanguage(for: .current).hasSuffix(".UTF-8"))
     }
 }
 
@@ -1456,7 +1625,7 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.check(!tree.isReading, "PreviousFolder is disabled with Recursive=2")
     }
 
-    t.suite("Plugin: FileView icons through the app's writer") {
+    t.suite("Plugin: FileView icons through the app's renderer") {
         let (skin, host) = try makeSkin(t, """
         [P]
         Measure=Plugin
@@ -1480,19 +1649,135 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.equal(i.stringValue, "")
         t.check(host.logs.contains { $0.contains("icons are not available") })
         var requests: [(String, Int, String)] = []
-        FileViewIcons.writer = { source, size, destination in
-            requests.append((source, size, destination))
-            return (try? "png".write(toFile: destination, atomically: true, encoding: .utf8)) != nil
+        FileViewIcons.renderer = { source, size, pathExtension in
+            requests.append((source, size, pathExtension))
+            return Data("png".utf8)
         }
-        defer { FileViewIcons.writer = nil }
+        defer { FileViewIcons.renderer = nil }
         update(i)
         t.check(spin { !i.stringValue.isEmpty })
         t.equal(requests.count, 1)
         t.check(requests.first?.0.hasSuffix("/file.txt") == true)
         t.equal(requests.first?.1, 48)
+        t.equal(requests.first?.2, "ico", "the extension of the file it goes to")
         t.equal(i.stringValue, skin.directory.appendingPathComponent("icon1.ico").path)
+        t.equal(try? String(contentsOfFile: i.stringValue, encoding: .utf8), "png", "written there")
         update(i)
         t.equal(requests.count, 1, "an icon is written once")
+    }
+
+    t.suite("Plugin: FileView icons follow links and Finder aliases") {
+        let fm = FileManager.default
+        let dir = t.temporaryDirectory("links")
+        let doc = dir.appendingPathComponent("Doc.txt")
+        writeFile(doc, "x")
+        let folder = dir.appendingPathComponent("Folder", isDirectory: true)
+        writeFile(folder.appendingPathComponent("inside.txt"), "y")
+        let app = dir.appendingPathComponent("Tool.app", isDirectory: true)
+        writeFile(app.appendingPathComponent("Contents/Info.plist"), "<plist version=\"1.0\"><dict/></plist>")
+        func path(_ name: String) -> String { dir.appendingPathComponent(name).path }
+        func link(_ name: String, to destination: String) throws {
+            try fm.createSymbolicLink(atPath: path(name), withDestinationPath: destination)
+        }
+        /// A Finder alias file, as Finder's Make Alias writes one (bookmark data with the alias flag).
+        func alias(_ name: String, to target: URL) throws {
+            let data = try target.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil,
+                                               relativeTo: nil)
+            try URL.writeBookmarkData(data, to: dir.appendingPathComponent(name))
+        }
+        /// The same file-system item (device and inode), and not itself a link: the path may be spelt differently
+        /// (the temporary folder is under /var, a link to /private/var).
+        func isItem(_ resolved: String, _ target: URL) -> Bool {
+            var a = stat(), b = stat()
+            guard lstat(resolved, &a) == 0, lstat(target.path, &b) == 0 else { return false }
+            return (a.st_mode & S_IFMT) != S_IFLNK && a.st_dev == b.st_dev && a.st_ino == b.st_ino
+        }
+
+        try link("file link.txt", to: doc.path)
+        try link("folder link", to: folder.path)
+        try link("relative.app", to: "Tool.app")
+        try link("chain", to: path("file link.txt"))
+        try alias("Doc alias", to: doc)
+        try alias("Folder alias", to: folder)
+        try alias("Tool alias", to: app)
+        try link("link to alias", to: path("Doc alias"))
+        try alias("alias to link", to: URL(fileURLWithPath: path("folder link")))
+        try alias("alias to alias", to: URL(fileURLWithPath: path("Tool alias")))
+        try link("private tmp", to: "/private/tmp")
+        try link("broken.app", to: path("Nothing.app"))
+        try link("loop A", to: path("loop B"))
+        try link("loop B", to: path("loop A"))
+        try link("self", to: path("self"))
+        let gone = dir.appendingPathComponent("Gone.txt")
+        writeFile(gone, "z")
+        try alias("Gone alias", to: gone)
+        try fm.removeItem(at: gone)
+
+        try link("startup disk", to: "/")
+        let r = FileViewIcons.resolvedSource
+        t.equal(r(path("startup disk") + "/"), "/", "a link to / (the startup disk's entry in /Volumes is one)")
+        t.check(isItem(r(path("file link.txt")), doc), "a link to a file")
+        t.check(isItem(r(path("folder link")), folder), "a link to a folder")
+        t.check(isItem(r(path("folder link") + "/"), folder), "FileView's folder paths end with /: \(r(path("folder link") + "/"))")
+        t.check(isItem(r(path("relative.app") + "/"), app), "a relative link to an app")
+        t.check(isItem(r(path("chain")), doc), "a link to a link")
+        t.check(isItem(r(path("Doc alias")), doc), "a Finder alias to a file: \(r(path("Doc alias")))")
+        t.check(isItem(r(path("Folder alias")), folder), "a Finder alias to a folder")
+        t.check(isItem(r(path("Tool alias")), app), "a Finder alias to an app")
+        t.check(isItem(r(path("link to alias")), doc), "a link to an alias")
+        t.check(isItem(r(path("alias to link")), folder), "an alias to a link")
+        t.check(isItem(r(path("alias to alias")), app), "an alias to an alias")
+        t.equal(r(path("private tmp")), "/private/tmp", "never shortened to the link /tmp")
+        // What cannot be followed keeps its own path, exactly as given (the link's own icon is shown).
+        t.equal(r(path("broken.app")), path("broken.app"), "a broken link")
+        t.equal(r(path("loop A")), path("loop A"), "a loop")
+        t.equal(r(path("self")), path("self"))
+        t.equal(r(path("Gone alias")), path("Gone alias"), "an alias whose original was deleted")
+        // Everything else is passed through untouched.
+        t.equal(r(doc.path), doc.path)
+        t.equal(r(folder.path + "/"), folder.path + "/", "a folder keeps its trailing slash")
+        t.equal(r(app.path + "/"), app.path + "/")
+        t.equal(r(path("Missing.txt")), path("Missing.txt"))
+        t.equal(r(""), "")
+        // macOS 26 ships Safari as a link into the system's cryptex: its icon is the app's, without Finder's arrow.
+        var safari = stat()
+        if lstat("/Applications/Safari.app", &safari) == 0, (safari.st_mode & S_IFMT) == S_IFLNK {
+            let resolved = r("/Applications/Safari.app/")
+            t.check(resolved.hasSuffix("/Safari.app") && !resolved.hasPrefix("/Applications/"), resolved)
+            t.check(isItem(resolved, URL(fileURLWithPath: "/Applications/Safari.app").resolvingSymlinksInPath()))
+        }
+
+        // FileView hands the renderer the item as listed; the renderer follows the link.
+        let (skin, _) = try makeSkin(t, """
+        [P]
+        Measure=Plugin
+        Plugin=FileView
+        Path=\(dir.path)
+        WildcardSearch=Tool alias
+        ShowDotDot=0
+        [I]
+        Measure=Plugin
+        Plugin=FileView
+        Path=[P]
+        Type=Icon
+        IconPath=#CURRENTPATH#alias.png
+        """)
+        let p = measure(skin, "P", FileViewMeasure.self, read: false)
+        let i = measure(skin, "I", FileViewMeasure.self, read: false)
+        if !registryWired { i.parentResolver = { $0.lowercased() == "p" ? p : nil } }
+        p.readOptionsIfNeeded(); i.readOptionsIfNeeded()
+        update(p)
+        t.check(spin { !p.isReading })
+        var sources: [String] = []
+        FileViewIcons.renderer = { source, _, _ in
+            sources.append(FileViewIcons.resolvedSource(source))
+            return Data("png".utf8)
+        }
+        defer { FileViewIcons.renderer = nil }
+        update(i)
+        t.check(spin { !i.stringValue.isEmpty })
+        t.equal(sources.count, 1)
+        t.check(sources.first.map { isItem($0, app) } == true, "\(sources)")
     }
 }
 
@@ -1508,6 +1793,61 @@ private func runPluginRecycleTests(_ t: TestRunner) {
         t.equal(TrashMonitor.entryCount(dir.path), 2, ".DS_Store is not an item")
         t.equal(TrashMonitor.size(of: dir.path), 9)
         t.check(TrashMonitor.size(of: dir.appendingPathComponent("missing").path) == nil)
+    }
+
+    t.suite("Plugin: RecycleManager reads the size although a Count measure's reading is in flight") {
+        // A skin with a Count measure before a Size measure: at each update (a second apart) the Count measure starts
+        // a reading without the size, and the Size measure asks while that reading is still running. The size used to
+        // be dropped then, at every update: it kept an old value (or 0), and a Trash macOS does not let Deskset list
+        // was never noted.
+        let dir = t.temporaryDirectory("trash-order")
+        writeFile(dir.appendingPathComponent("a"), String(repeating: "x", count: 1234))
+        final class Gate: @unchecked Sendable {
+            let lock = NSLock()
+            var closed = false
+            let opened = DispatchSemaphore(value: 0)
+            func pass() {
+                lock.lock(); let wait = closed; lock.unlock()
+                if wait { opened.wait() }
+            }
+            func close() { lock.lock(); closed = true; lock.unlock() }
+            func open() { lock.lock(); closed = false; lock.unlock(); opened.signal() }
+        }
+        let gate = Gate()
+        let saved = TrashMonitor.folders
+        TrashMonitor.folders = { gate.pass(); return [dir.path] }
+        defer { TrashMonitor.folders = saved }
+        let (skin, _) = try makeSkin(t, """
+        [Count]
+        Measure=RecycleManager
+        [Size]
+        Measure=RecycleManager
+        RecycleType=Size
+        """)
+        let count = measure(skin, "Count", RecycleManagerMeasure.self)
+        let size = measure(skin, "Size", RecycleManagerMeasure.self)
+        spin(for: 0.6) // past the half second in which a finished reading is reused
+        gate.close()
+        update(count)
+        update(size) // the Count measure's reading is held in flight
+        gate.open()
+        t.check(spin { TrashMonitor.shared.latest.size == 1234 }, "the size follows: \(TrashMonitor.shared.latest)")
+        t.check(spin { size.value == 1234 }, "the Size measure's first reading waits for it: \(size.value)")
+        update(count); update(size)
+        t.equal(count.value, 1)
+        t.equal(size.value, 1234)
+
+        // The Trash changes: the next update round reads the new size, again behind the Count measure's reading.
+        writeFile(dir.appendingPathComponent("b"), String(repeating: "y", count: 766))
+        spin(for: 0.6)
+        gate.close()
+        update(count)
+        update(size)
+        gate.open()
+        t.check(spin { TrashMonitor.shared.latest.size == 2000 }, "a changed Trash is measured again")
+        update(count); update(size)
+        t.equal(count.value, 2)
+        t.equal(size.value, 2000)
     }
 
     t.suite("Plugin: RecycleManager measures and Finder commands") {

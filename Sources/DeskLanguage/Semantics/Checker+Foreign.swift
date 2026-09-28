@@ -328,7 +328,36 @@ extension Checker {
 
     func enrichCss(_ d: Diagnostic) -> Diagnostic? {
         var copy = d
+        // `.font-size(14)`: the property and its value as the parser found them.
+        if case .code(let name)? = d.arguments["cssName"], case .code(let value)? = d.arguments["cssValue"] {
+            copy.arguments["cssName"] = nil
+            copy.arguments["cssValue"] = nil
+            if let (desk, exact) = cssDesk(forDeclaration: "\(name): \(value);") {
+                copy.arguments["desk"] = .code(desk)
+                if exact, desk.hasPrefix("."), !desk.contains("{"), !desk.contains("…"), copy.fixIts.isEmpty {
+                    copy.fixIts = [fix("replace", [edit(d.range, desk)])]
+                }
+            } else {
+                let camel = DidYouMean.lowerCamel(from: name)
+                copy.arguments["desk"] = .code("." + (catalog.modifier(named: camel) != nil ? camel : name.split(separator: "-").first.map(String.init) ?? name) + "(…)")
+            }
+            return copy
+        }
         let line = lineText(at: d.range.lowerBound)
+        if let (desk, exact) = cssDesk(forDeclaration: line) {
+            copy.arguments["desk"] = .code(desk)
+            // A modifier only where it attaches to an element (N3): not as the first statement of a block.
+            if exact && !desk.contains("{") && copy.fixIts.isEmpty && (!desk.hasPrefix(".") || previousStatementIsElement(before: d.range.lowerBound)) {
+                copy.fixIts = [fix("replace", [edit(lineRange(at: d.range.lowerBound), desk)])]
+            }
+            return copy
+        }
+        copy.arguments["desk"] = .code("Column { … } or Row { … }")
+        return copy
+    }
+
+    /// The Desk spelling of one CSS declaration (`color: red;` → `.color(.red)`), and whether it is exact.
+    func cssDesk(forDeclaration line: String) -> (desk: String, exact: Bool)? {
         for row in catalog.foreign where row.diagnostic == .cssDeclaration {
             guard case .line(let regex) = row.pattern,
                   let regexObject = try? NSRegularExpression(pattern: regex) else { continue }
@@ -350,15 +379,38 @@ extension Checker {
                     desk = desk.replacingOccurrences(of: "{0}", with: value)
                 }
             }
-            copy.arguments["desk"] = .code(desk)
-            // A modifier only where it attaches to an element (N3): not as the first statement of a block.
-            if row.exact && !desk.contains("{") && copy.fixIts.isEmpty && (!desk.hasPrefix(".") || previousStatementIsElement(before: d.range.lowerBound)) {
-                copy.fixIts = [fix("replace", [edit(lineRange(at: d.range.lowerBound), desk)])]
-            }
-            return copy
+            return (desk, row.exact)
         }
-        copy.arguments["desk"] = .code("Column { … } or Row { … }")
-        return copy
+        return nil
+    }
+
+    /// CSS written as a style's name (`.style("color: red; font-size: 14px")`, §6.2): the modifiers it stands for,
+    /// with a fix that writes them in place of `.style(…)` when every declaration has an exact Desk spelling.
+    func reportCssStyleString(_ s: String, _ node: PositionedNode) -> Bool {
+        let declarations = s.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !declarations.isEmpty, declarations.allSatisfy({ $0.contains(":") }) else { return false }
+        var modifiers: [String] = []
+        var exact = true
+        for declaration in declarations {
+            guard let (desk, isExact) = cssDesk(forDeclaration: declaration + ";") else { return false }
+            modifiers.append(desk)
+            exact = exact && isExact && desk.hasPrefix(".") && !desk.contains("{") && !desk.contains("…")
+        }
+        let desk = modifiers.joined()
+        let r = range(node)
+        var fixIts: [FixIt] = []
+        // `.style(` before the text and `)` after it: the whole modifier is replaced.
+        let bytes = tree.lines.bytes
+        var before = r.lowerBound
+        while before > 0, bytes[before - 1] == 0x20 || bytes[before - 1] == 0x09 { before -= 1 }
+        var after = r.upperBound
+        while after < bytes.count, bytes[after] == 0x20 || bytes[after] == 0x09 { after += 1 }
+        let lead = Array(".style(".utf8)
+        if exact, before >= lead.count, Array(bytes[(before - lead.count)..<before]) == lead, after < bytes.count, bytes[after] == 0x29 {
+            fixIts.append(fix("replace", [edit((before - lead.count)..<(after + 1), desk)]))
+        }
+        report(.cssDeclaration, r, ["desk": .code(desk)], fixIts: fixIts)
+        return true
     }
 
     // MARK: - Names
@@ -699,6 +751,11 @@ extension Checker {
                 desk = desk.replacingOccurrences(of: ", {design}", with: design.isEmpty ? "" : ", " + design)
                 if let f = innerValues.first { desk = desk.replacingOccurrences(of: "{0}", with: f) }
             }
+        }
+        // `.fontColor(255, 0, 0)`: a color written R,G,B goes into a color's place as `rgb(…)`.
+        if desk.contains("{0}"), !desk.contains("{1}"), desk.hasPrefix("."),
+           modifierTakesColor(String(desk.dropFirst().prefix { $0.isLetter || $0.isNumber })), let rgb = rgbRewrite(arguments) {
+            values = [rgb]
         }
         for (i, value) in values.enumerated() { desk = desk.replacingOccurrences(of: "{\(i)}", with: value) }
         if case .modifierWithArgument(_, let argument) = row.pattern, argument == "width" {

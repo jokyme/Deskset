@@ -21,29 +21,50 @@ import DesksetCore
 enum CommandLineTools {
     /// Flags that select a mode (in none of them does audio capture start: `AudioCaptureEngine.captureAllowed`).
     static let modeFlags = ["--render", "--self-test", "--snapshot-ui", "--system-report", "--make-icon",
-                            "--cover-lookup", "--weather-report", "--verify-drawing-cache"]
+                            "--cover-lookup", "--weather-report", "--verify-drawing-cache", "--benchmark"]
     /// Flags that go with a mode (`--render`'s and `--snapshot-ui`'s options).
     static let optionFlags: Set<String> = ["--out", "--updates", "--interval", "--scale", "--background", "--skins-dir",
                                            "--settings-dir",
                                            "--dark", "--appearance", "--select", "--size", "--zoom",
                                            "--clock-hours", "--first-weekday", "--temperature-unit",
+                                           "--clock", "--time-zone", "--seed", "--color-space", "--data", "--state",
+                                           "--locale", "--languages", "--accent-color", "--screen",
+                                           "--wallpaper", "--at",
                                            // The skin editor, library, code editor and Settings snapshots.
                                            "--mode", "--tab", "--code-below", "--inspector-width", "--config",
                                            "--category", "--search", "--pane",
+                                           // The Manage window snapshot.
+                                           "--hidden", "--coordinates",
                                            // States of the skin editor (docs/editor-friendly.md §14.0).
                                            "--hover", "--drag", "--expert", "--tip", "--expand", "--edit-text", "--scroll",
                                            // --weather-report.
-                                           "--location", "--units", "--offline", "--now"]
+                                           "--location", "--units", "--offline", "--now",
+                                           // --benchmark.
+                                           "--seconds", "--warmup"]
+    /// Option flags of development builds only (not in the usage): `--render --legacy` draws with the frozen renderer.
+    #if DEBUG
+    static let debugOptionFlags: Set<String> = ["--legacy"]
+    #else
+    static let debugOptionFlags: Set<String> = []
+    #endif
 
     static let usage = """
         usage: Deskset                   start the menu bar app
                Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S]
                       [--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--skins-dir DIR]
                       [--clock-hours 12|24|system] [--first-weekday 0-6|system] [--temperature-unit C|F|system]
-                      [--settings-dir DIR]
-                                        draw a skin without a window into a PNG
+                      [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+                      [--state out.json] [--color-space device|srgb] [--settings-dir DIR]
+                      [--locale ID|system] [--languages LIST|system] [--accent-color R,G,B[,A]|system]
+                      [--wallpaper FILE] [--at X,Y] [--screen WxH|system]
+                                        draw a skin without a window into a PNG (--wallpaper: a picture that
+                                        stands in for the desktop, drawn behind the skin at --at; --background
+                                        alone stands in for a desktop of one color)
                Deskset --verify-drawing-cache SkinsFolder|Skin.ini… [--updates N] [--scale S] [--skins-dir DIR]
                                         check that skin windows' kept pictures match full drawings
+               Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+                      [--skins-dir DIR]
+                                        run skins without a window and print what an update and a drawing cost
                Deskset --self-test [filter]
                                         run the app's self-tests
                Deskset --snapshot-ui manage|inspector|settings|codeeditor|library|install|install-zip|icon|menubar
@@ -51,7 +72,7 @@ enum CommandLineTools {
                       [--mode design|split|code] [--tab add|layers|live] [--code-below] [--inspector-width N]
                       [--config NAME] [--category NAME] [--search TEXT] [--pane general|editor]
                       [--hover NAME] [--drag NAME:DX,DY] [--expert] [--tip N] [--expand NAME] [--edit-text NAME]
-                      [--scroll "CARD TITLE"]
+                      [--scroll "CARD TITLE"] [--hidden] [--coordinates X,Y]
                                         draw app UI off-screen into a PNG
                Deskset --system-report   print every system reading skins can get
                Deskset --weather-report [--location PLACE|LAT,LON|timezone] [--units auto|metric|imperial]
@@ -81,15 +102,15 @@ enum CommandLineTools {
     static func validate(_ arguments: [String]) -> Validation {
         let args = Array(arguments.dropFirst())
         if args.contains(where: { $0 == "--help" || $0 == "-h" }) { return .help }
-        let known = Set(modeFlags).union(optionFlags)
+        let known = Set(modeFlags).union(optionFlags).union(debugOptionFlags)
         let unknown = args.filter { $0.hasPrefix("--") && !known.contains($0) }
         if !unknown.isEmpty {
             let shown = unknown.prefix(5).map { $0.count > 60 ? String($0.prefix(60)) + "…" : $0 }
             return .invalid("unknown option" + (unknown.count == 1 ? " " : "s ") + shown.joined(separator: ", "))
         }
         if args.contains(where: { modeFlags.contains($0) }) { return .mode }
-        if let option = args.first(where: { optionFlags.contains($0) }) {
-            return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report")
+        if let option = args.first(where: { optionFlags.contains($0) || debugOptionFlags.contains($0) }) {
+            return .invalid("\(option) needs one of --render, --snapshot-ui, --weather-report, --benchmark")
         }
         return .app
     }
@@ -99,16 +120,48 @@ enum CommandLineTools {
     /// Rainmeter uses the Windows locale's. It applies to the menu bar app (with the Skin Studio and the installer) and
     /// to every command-line mode. nil under `--self-test`: the checks keep the core's 1252 so they read the same on
     /// every Mac, and suites that need another code page set it and restore it.
-    static func ansiCodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) -> Int? {
+    static func ansiCodePage(for arguments: [String],
+                             preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) -> Int? {
         if arguments.dropFirst().contains("--self-test") { return nil }
         return TextDecoding.defaultANSICodePage(preferredLanguages: preferredLanguages)
     }
 
     /// Sets `TextDecoding.ansiCodePage` for these arguments (see `ansiCodePage(for:)`). Called first thing at startup:
     /// the setting is not synchronised, so it must be in place before any skin loads, on any thread.
-    static func useANSICodePage(for arguments: [String], preferredLanguages: [String] = Locale.preferredLanguages) {
+    static func useANSICodePage(for arguments: [String],
+                                preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) {
         if let codePage = ansiCodePage(for: arguments, preferredLanguages: preferredLanguages) {
             TextDecoding.ansiCodePage = codePage
+        }
+    }
+
+    /// `--render` runs again as a new process image with `SWIFT_DETERMINISTIC_HASHING=1` when that is not set yet:
+    /// Swift seeds the order of every set and dictionary at random in each process (and for each instance), and a few
+    /// places still let that order reach a skin (Chameleon's colors of equal weight), so without it two renders with
+    /// the same `--clock`, `--seed` and `--data` could differ. Called first thing at startup; returns only when there is
+    /// nothing to do or the new image could not be started (the render then goes on with the process's own seed).
+    static func makeHashingDeterministic(for arguments: [String]) {
+        guard arguments.dropFirst().contains("--render"),
+              ProcessInfo.processInfo.environment["SWIFT_DETERMINISTIC_HASHING"] == nil,
+              let path = Bundle.main.executablePath else { return }
+        setenv("SWIFT_DETERMINISTIC_HASHING", "1", 1)
+        var argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) }
+        argv.append(nil)
+        execv(path, &argv)
+        unsetenv("SWIFT_DETERMINISTIC_HASHING")
+    }
+
+    /// Temporary settings folders more than a day old: left by a mode that was killed or crashed before it could remove
+    /// its own (both spellings, since earlier builds named them "Deskset-settings-…").
+    static func removeStaleHeadlessSettingsFolders(now: Date = Date()) {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+        guard let names = try? fm.contentsOfDirectory(atPath: root.path) else { return }
+        for name in names where name.hasPrefix("DesksetSettings-") || name.hasPrefix("Deskset-settings-") {
+            let url = root.appendingPathComponent(name)
+            guard let modified = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date,
+                  now.timeIntervalSince(modified) > 24 * 3600 else { continue }
+            try? fm.removeItem(at: url)
         }
     }
 
@@ -118,8 +171,11 @@ enum CommandLineTools {
     static func useHeadlessSettingsFolder(_ folder: String?) -> URL? {
         let fm = FileManager.default
         let temporary = folder == nil
+        if temporary { removeStaleHeadlessSettingsFolders() }
         let url = folder.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }
-            ?? fm.temporaryDirectory.appendingPathComponent("Deskset-settings-\(UUID().uuidString)", isDirectory: true)
+            // Not "Deskset-…": the core self-tests count those in the shared temporary folder as their own leftovers, and a
+            // render running next to them would show up there.
+            ?? fm.temporaryDirectory.appendingPathComponent("DesksetSettings-\(UUID().uuidString)", isDirectory: true)
         try? fm.createDirectory(at: url, withIntermediateDirectories: true)
         let suiteFile = url.appendingPathComponent(DefaultSkins.stationeryFileName)
         if !fm.fileExists(atPath: suiteFile.path) {
@@ -158,6 +214,10 @@ enum CommandLineTools {
         if arguments.contains("--verify-drawing-cache") {
             prepareHeadless()
             return DrawingCacheCheck.run(arguments)
+        }
+        if arguments.contains("--benchmark") {
+            prepareHeadless()
+            return SkinBenchmark.run(arguments)
         }
         if arguments.contains("--make-icon") {
             guard let dir = value(after: "--make-icon") else {

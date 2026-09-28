@@ -1201,11 +1201,11 @@ extension InspectorWindowController {
         guard let skin, let m = skin.meter(named: name), let measure = m.measures.first else { return "none" }
         var parts: [String] = [measure.name, showsDetails ? "details" : ""]
         if isTime(measure) {
-            let zone = TimeFormatting.timeZone(forOption: measure.option("TimeZone"))
+            let zone = MacTimeFormatting.timeZone(forOption: measure.option("TimeZone"))
             let current = measure.option("Format") ?? "%H:%M:%S"
             let presets = FormatPresets.timePresets(at: Date(), timeZone: zone)
             parts += ["time", measure.rawOption("Format") ?? "", current, presets.map { "\($0.title)=\($0.format)" }.joined(separator: "|"),
-                      presets.contains { $0.format == current } ? "" : TimeFormatting.format(Date(), format: current, timeZone: zone),
+                      presets.contains { $0.format == current } ? "" : MacTimeFormatting.format(Date(), format: current, timeZone: zone),
                       inspectorState.disclosures.contains("time-custom/\(measure.name.lowercased())") ? "custom" : ""]
         } else {
             let presets = numberPresets(for: measure, skin: skin, section: section)
