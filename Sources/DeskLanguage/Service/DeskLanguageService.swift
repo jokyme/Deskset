@@ -503,6 +503,8 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let blockRanges = DeskLazy<[Range<Int>]>()
     /// The stack a request may need (`stackNeeded`).
     let stackNeeded = DeskLazy<Int>()
+    /// Whether each quick fix tried does what it says (`fixWorks`).
+    let fixTrials = DeskLazyMap<DeskFixTrial, Bool>()
 }
 
 /// A value built once, on first use, under a lock (a second reader waits for the first).
@@ -599,10 +601,10 @@ public struct DeskCheckedText: Sendable {
     public let generation: Int
     let tree: SyntaxTree
     let checked: CheckedFile
-}
-
     /// How long the check took.
     public let milliseconds: Double
+}
+
 extension CheckedFile {
     /// A file with only what parsing found: the tree's diagnostics (or `diagnostics`), no names, types or elements.
     init(syntaxOf tree: SyntaxTree, diagnostics: [Diagnostic]? = nil) {
@@ -627,7 +629,6 @@ extension CheckedFile {
         }
         self.init(syntaxOf: tree, diagnostics: all)
     }
-}
 
     /// `init(syntaxOf:context:)`, with what the check of the text before an edit found where the edit did not reach:
     /// its diagnostics (moved by the edit), the file's options, styles and named elements, and the declarations'
@@ -677,3 +678,4 @@ extension CheckedFile {
         }
         declarationTypes = types
     }
+}

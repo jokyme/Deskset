@@ -41,6 +41,7 @@ func runDeskServiceActionTests(_ t: TestRunner) {
         var applied: [DeskCodeActionKind: Int] = [:]
         var fixturesWithActions = 0
         var doubledGroups = Set<String>()
+        var withoutPreferred: [String] = []
         for fixture in fixtures where fixture.generate == nil && fixture.folderGenerate == nil {
             let label = fixture.id
             if fixture.isFolder {
@@ -87,11 +88,14 @@ func runDeskServiceActionTests(_ t: TestRunner) {
                     }
                 }
             }
-            // The first fix-it of each diagnostic is the preferred one; titles in Chinese have no ids either.
+            // The first fix-it that works is the preferred one, and comes first; titles in Chinese have no ids either.
             for d in snapshot.diagnostics where !d.fixIts.isEmpty {
                 let own = snapshot.codeActions(for: d).filter { $0.kind == .quickFix }
-                t.equal(own.first?.isPreferred, true, "\(label): preferred fix of \(d.id.rawValue)")
-                t.equal(own.filter(\.isPreferred).count, 1, "\(label): one preferred fix of \(d.id.rawValue)")
+                let preferred = own.filter(\.isPreferred)
+                t.check(preferred.count <= 1, "\(label): one preferred fix of \(d.id.rawValue)")
+                if preferred.isEmpty { withoutPreferred.append("\(label) \(d.id.rawValue)") } else {
+                    t.equal(own.first?.isPreferred, true, "\(label): the preferred fix of \(d.id.rawValue) comes first")
+                }
             }
             let chinese = service.setMessageLanguage(.simplifiedChinese)
             for action in deskAllActions(chinese) {
@@ -101,6 +105,7 @@ func runDeskServiceActionTests(_ t: TestRunner) {
         let summary = DeskCodeActionKind.allCases.map { "\($0.rawValue) \(applied[$0] ?? 0)" }.joined(separator: ", ")
         print("    \(fixturesWithActions) fixtures with fixes; actions applied: \(summary)")
         print("    groups fixed all at once in fixtures written twice: \(doubledGroups.sorted().joined(separator: ", "))")
+        print("    diagnostics with no fix that works (none preferred): \(withoutPreferred.count) \(withoutPreferred.prefix(20))")
         t.check((applied[.quickFix] ?? 0) >= 150, "only \(applied[.quickFix] ?? 0) quick fixes applied")
         t.check((applied[.fixAll] ?? 0) > 0 && (applied[.fixForeign] ?? 0) > 0 && (applied[.formatDocument] ?? 0) > 0
                 && (applied[.addMissingPermissions] ?? 0) > 0, "every kind of action was applied")

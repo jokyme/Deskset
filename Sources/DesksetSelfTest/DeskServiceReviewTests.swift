@@ -267,4 +267,109 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
             }
         }
     }
+
+    t.suite("Desk: service — file names match as a Mac matches them") {
+        let package = "package { name: \"Pack\" }\nstyle card { .padding(8) }\n"
+        let a = "info { name: \"A\" }\nwidget { Text(\"A\").style(card) }\n"
+        let b = "info { name: \"B\" }\nwidget { Text(\"B\").style(card) }\n"
+        // `Package.desk` is the package, in the service and in the folder model.
+        let files = [DeskFileID("Package.desk"): package, DeskFileID("A.desk"): a, DeskFileID("B.DESK"): b]
+        let widget = DeskLanguageService(openFile: DeskFileID("A.desk"), files: files).snapshot
+        t.equal(widget.packageFile, DeskFileID("Package.desk"))
+        let all = widget.folder.keys.sorted { $0.path < $1.path }.flatMap { file in
+            widget.folderDiagnostics(of: file).map { "\(file.path) \($0.id.rawValue) \($0.message)" }
+        }
+        t.equal(all, [], "the style resolves, the package is no widget, no widget is missing")
+        t.equal(widget.packageCheck().uses.styles["card"]?.widgets.map(\.path), ["A.desk", "B.DESK"])
+        let opened = DeskLanguageService(openFile: DeskFileID("Package.desk"), files: files)
+        t.check(opened.isEditingPackage)
+        t.equal(opened.snapshot.diagnostics.map(\.id.rawValue), [])
+        var model = DeskPackage()
+        for (file, text) in files { model = model.settingText(text, of: file) }
+        t.equal(model.packageFile, DeskFileID("Package.desk"))
+        t.equal(model.manifest?.name, "Pack")
+        t.equal(model.widgetFiles.map(\.path), ["A.desk", "B.DESK"])
+        t.equal(DeskPackagePath.kind(of: "PACKAGE.DESK"), .package)
+        t.equal(CheckedDeskPackage(package: model).allDiagnostics.map { "\($0.file.path) \($0.id.rawValue)" }, [])
+        // `B.DESK` is found by references and changed by a rename.
+        t.equal(deskNavReferences(widget, "card", includeDeclaration: false), ["A.desk 2:26 card", "B.DESK 2:26 card"])
+        if case .success(let rename) = widget.rename(at: deskNavPosition(widget, "card"), to: "tile") {
+            t.equal(rename.edit.changedFiles.map(\.path).sorted(), ["A.desk", "B.DESK", "Package.desk"])
+        } else {
+            t.check(false, "card is renamed")
+        }
+        // Loaded from a folder.
+        var folder = InMemoryPackageSource()
+        for (file, text) in files { folder.add(file.path, text: text) }
+        let loaded = (try? PackageLoader.load(folder)) ?? DeskPackage()
+        t.equal(loaded.packageFile, DeskFileID("Package.desk"))
+        t.equal(CheckedDeskPackage(package: loaded).allDiagnostics.map { "\($0.file.path) \($0.id.rawValue)" }, [])
+    }
+
+    t.suite("Desk: service — renaming a saved value says the saved values stay behind") {
+        let text = "info { name: \"T\" }\nwidget {\n    saved threshold = 80%\n    Text(\"{threshold}\").onClick { threshold = threshold + 1% }\n}\n"
+        for language in [DiagnosticLanguage.english, .simplifiedChinese] {
+            let snapshot = deskNavService(text, language: language).snapshot
+            guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, "threshold"), to: "limit") else {
+                t.check(false, "threshold is renamed")
+                continue
+            }
+            t.equal(rename.notes, [language == .english
+                ? "Values people’s widgets saved under “threshold” are not carried over: saved values are kept by name."
+                : "各人的小组件以“threshold”保存的值不会带过去：保存的值按名字存放。"])
+            t.equal(deskMessageLeaks(rename.notes[0]), [])
+        }
+        let variable = deskNavService(text.replacingOccurrences(of: "saved", with: "variable")).snapshot
+        if case .success(let rename) = variable.rename(at: deskNavPosition(variable, "threshold"), to: "limit") {
+            t.equal(rename.notes, [], "a variable keeps nothing")
+        }
+    }
+
+    t.suite("Desk: service — a snapshot checked in the background keeps the last check's results meanwhile") {
+        let file = DeskFileID("Big.desk")
+        var lines = ["info { name: \"Big\" }", "options { accent = ColorPicker(\"Accent\", default: .blue) }", "widget {",
+                     "    Text(\"A\").colr(.red)", "    Text(\"B\").style(card).name(title)"]
+        for k in 0..<40 { lines.append("    Text(\"Line \\(k)\")") }
+        lines += ["    Text(\"C\").color(options)", "    Text(\"D\").style()", "}", "style card { .padding(4) }", ""]
+        let text = lines.joined(separator: "\n")
+        var options = DeskServiceOptions()
+        options.backgroundCheckBytes = 1
+        let service = DeskLanguageService(openFile: file, files: [file: text], options: options)
+        let typo = service.snapshot.diagnostics.first { service.snapshot.text[Range(NSRange(location: $0.range.start.offset, length: 4), in: service.snapshot.text)!] == "colr" }
+        t.check(typo != nil, "the typo is reported: \(service.snapshot.diagnostics.map(\.id.rawValue))")
+        let dot = (text as NSString).range(of: "color(options").location + "color(options".utf16.count
+        _ = service.beginUpdate(changes: [DeskTextChange(range: dot..<dot, text: ".")], version: 1)
+        let syntax = service.snapshot
+        t.check(!syntax.isChecked)
+        t.check(syntax.diagnostics.contains { $0.id == typo?.id && $0.range == typo?.range }, "the squiggle on the typo stays")
+        t.check(syntax.completions(at: syntax.index.position(utf16: dot + 1)).labels.contains("accent"), "options are offered")
+        let style = (syntax.text as NSString).range(of: "style()").location + "style(".utf16.count
+        t.check(syntax.completions(at: syntax.index.position(utf16: style)).labels.contains("card"), "styles are offered")
+        // A second key before the check: still there, moved.
+        _ = service.beginUpdate(changes: [DeskTextChange(range: 0..<0, text: "// top\n")], version: 2)
+        let again = service.snapshot
+        t.check(again.diagnostics.contains { $0.id == typo?.id && $0.range.start.line == (typo?.range.start.line ?? 0) + 1 },
+                "moved by the second edit")
+        // The check replaces them with its own.
+        let fresh = DeskLanguageService(openFile: file, files: [file: again.text]).snapshot
+        let pending = service.beginUpdate(changes: [], version: 3)
+        t.equal(service.accept(pending.run())?.diagnostics, fresh.diagnostics, "the check's own results")
+
+        // A small file whose check takes long is checked in the background too.
+        var slow = DeskServiceOptions()
+        slow.backgroundCheckMilliseconds = 0
+        let small = DeskLanguageService(openFile: file, files: [file: "widget { Text(\"A\") }\n"], options: slow)
+        let queue = DispatchQueue(label: "desk.review.check")
+        let owner = DispatchQueue(label: "desk.review.owner")
+        let delivered = DispatchSemaphore(value: 0)
+        var returned: DeskSnapshot?
+        owner.sync {
+            returned = small.update(changes: [DeskTextChange(range: 0..<0, text: " ")], version: 1, checkingOn: queue,
+                                    deliverOn: owner) { _ in delivered.signal() }
+        }
+        t.check(returned?.isChecked == false, "the syntax snapshot comes first")
+        t.check(delivered.wait(timeout: .now() + 120) == .success, "the check is delivered")
+        owner.sync { t.check(small.snapshot.isChecked) }
+        t.check(small.lastCheckMilliseconds > 0, "the check was timed")
+    }
 }

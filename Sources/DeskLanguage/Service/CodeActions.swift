@@ -65,12 +65,16 @@ extension DeskSnapshot {
         let touching = all.filter { $0.diagnostic.range.meets(range) }
         var out: [DeskCodeAction] = []
         for (d, _) in touching {
-            var first = true
+            // A fix-it that leaves its problem, or brings a new kind of error or more errors, is offered last and
+            // is never the one the Fix button takes.
+            var working: [DeskCodeAction] = []
+            var failing: [DeskCodeAction] = []
             for fix in d.fixIts where !fix.edit.isEmpty {
-                out.append(DeskCodeAction(title: fix.title, kind: .quickFix, edit: fix.edit, isPreferred: first,
-                                          diagnostics: [d], group: fix.group))
-                first = false
+                let action = DeskCodeAction(title: fix.title, kind: .quickFix, edit: fix.edit, diagnostics: [d], group: fix.group)
+                if fixWorks(fix, of: d) { working.append(action) } else { failing.append(action) }
             }
+            if !working.isEmpty { working[0].isPreferred = true }
+            out += working + failing
         }
         // "Fix all" for the groups under the range.
         var groups: [String] = []
@@ -121,6 +125,29 @@ extension DeskSnapshot {
     }
 
     // MARK: Pieces
+
+    /// Files up to this size have their quick fixes tried before one is preferred (a check each).
+    static let maximumTriedFixBytes = 32 * 1024
+
+    /// Whether a quick fix does what it says: applied to the open file and checked again, its diagnostic is fewer,
+    /// and no new kind of error nor more errors appeared. Tried once per fix and snapshot; a fix of other files, or
+    /// of a snapshot whose check is pending or a large file, is taken at its word.
+    func fixWorks(_ fix: DeskServiceFixIt, of d: DeskServiceDiagnostic) -> Bool {
+        guard isChecked, fix.edit.changedFiles == [file], index.bytes.count <= DeskSnapshot.maximumTriedFixBytes else { return true }
+        let key = DeskFixTrial(diagnostic: d.id, range: d.range, edit: fix.edit)
+        return caches.fixTrials.value(for: key) {
+            let text = DeskTextEditU16.apply(fix.edit.edits(for: file), to: self.text)
+            let tree = Desk.parse(text, file: file)
+            let packageContext = isPackage ? nil : package.map { CheckedPackage(file: $0) }
+            let after = Desk.check(tree, context: options.checkContext(package: packageContext, resources: resources)).diagnostics
+            let before = checked.diagnostics
+            let errorsBefore = before.filter { $0.severity == .error }
+            let errorsAfter = after.filter { $0.severity == .error }
+            let newKinds = Set(errorsAfter.map(\.id)).subtracting(errorsBefore.map(\.id))
+            return after.filter { $0.id == d.id }.count < before.filter { $0.id == d.id }.count
+                && newKinds.isEmpty && errorsAfter.count <= errorsBefore.count
+        }
+    }
 
     /// The diagnostics of the open file, the folder's own checks of it when asked, each with the language it
     /// was written in when it is foreign syntax.
@@ -221,6 +248,13 @@ extension DeskSnapshot {
         return DeskCodeAction(title: DeskActionWords.addPermissions(names.count, language: options.messageLanguage),
                               kind: .addMissingPermissions, edit: workspace, diagnostics: missing.map { all[$0.offset] })
     }
+}
+
+/// A quick fix tried on a snapshot (`fixWorks`).
+struct DeskFixTrial: Hashable {
+    var diagnostic: DiagnosticID
+    var range: DeskRange
+    var edit: DeskWorkspaceEdit
 }
 
 /// The titles of the actions the service makes itself.
