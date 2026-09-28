@@ -283,7 +283,9 @@ public final class DeskLanguageService {
 
 /// One state of the open file: its text, tree, checked model and position index, with what the editor asks of it
 /// built on first use and kept. Immutable and `Sendable`: a snapshot never changes after the service made it, so a
-/// result computed from it on any thread stays true for its `version`.
+/// result computed from it on any thread stays true for its `version`. Its requests may be asked from several
+/// threads at once (what they build is kept under locks); a request on a thread whose stack is too small for the
+/// tree's nesting runs on a thread with a larger one (`StackSafety.swift`).
 public final class DeskSnapshot: Sendable {
     /// The text view's version of the text, as given to the service.
     public let version: Int
