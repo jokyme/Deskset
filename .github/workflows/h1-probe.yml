@@ -1,0 +1,67 @@
+name: H1 CARenderer probe
+
+# Question 8 of the H1 experiment (layer runtime): can the CI runners composite Core Animation layer trees offscreen
+# with CARenderer, are the pixels the same as on a Mac at a desk, and how long does a render take? Runs the probe in
+# scripts/spikes/layer-runtime/ci-probe on both runners and compares its pixels with the run committed in
+# scripts/spikes/layer-runtime/results/ci-probe/local-arm64. Only for the experiment's branch and by hand.
+
+on:
+  push:
+    branches: [feature/h1-layer-runtime]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: CARenderer probe (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-26
+          - arch: x86_64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Machine
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+          sysctl -n hw.model machdep.cpu.brand_string kern.hv_vmm_present || true
+          system_profiler SPDisplaysDataType || true
+
+      - name: Probe
+        env:
+          OUT: ${{ runner.temp }}/h1-probe-${{ matrix.arch }}
+        run: |
+          set +e
+          bash scripts/spikes/layer-runtime/ci-probe/run.sh --arch ${{ matrix.arch }} --out "$OUT" \
+            --reference scripts/spikes/layer-runtime/results/ci-probe/local-arm64 --timeout 600
+          code=$?
+          set -e
+          echo "probe exit status: $code"
+          case $code in
+            0) echo "::notice title=CARenderer probe (${{ matrix.arch }})::ran (Metal device present)" ;;
+            4) echo "::notice title=CARenderer probe (${{ matrix.arch }})::no Metal device (not run)" ;;
+            3) echo "::warning title=CARenderer probe (${{ matrix.arch }})::timed out (not run)" ;;
+            *) echo "::error title=CARenderer probe (${{ matrix.arch }})::failed with status $code"; exit 1 ;;
+          esac
+
+      - name: Result
+        if: always()
+        run: cat "${{ runner.temp }}/h1-probe-${{ matrix.arch }}/probe.json" || true
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h1-probe-${{ matrix.arch }}
+          path: ${{ runner.temp }}/h1-probe-${{ matrix.arch }}
+          if-no-files-found: warn
