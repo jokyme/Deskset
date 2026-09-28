@@ -213,8 +213,8 @@ extension InspectorWindowController {
             for r in ordered ? rows : rows.sorted(by: { $0.key.lowercased() < $1.key.lowercased() }) {
                 let values = [r.raw, r.raw.contains("[") ? "" : r.resolved, r.source, r.sourceTip, "\(r.style)"]
                 if let section, case let id = InspectorInPlace.rowID(section, r.key), claims.contains(id) {
-                    add([tag, r.key])
-                    inputs.values[id, default: ""] += values.joined(separator: "\u{1F}")
+                    // Whether it is set at all is the row's own too (a value set on the layer, or taken away).
+                    inputs.values[id, default: ""] += ([tag, r.key] + values).joined(separator: "\u{1F}")
                 } else {
                     add([tag, r.key] + values)
                 }
@@ -240,10 +240,12 @@ extension InspectorWindowController {
         add(["issues"] + skin.issues)
         add(["fonts"] + skin.settings.localFonts)
         addRows("row", rows, section: selectedKind == .variables ? "Variables" : isMultiSelection ? nil : selectedSection)
-        // The selection pages: locks, the layers cut off, the nudge hint's first selections.
+        // The selection pages: locks, the layers cut off (the identity strip's, when it follows in place), the nudge
+        // hint's first selections.
         add(["pages", (app.state.editor.editorLocks[config.lowercased()] ?? []).sorted().joined(separator: ","),
              app.state.editor.unlockedBackgrounds.contains(config.lowercased()), pageState.selections > 3,
-             (isMultiSelection ? selectedMeters : selectedSection.map { [$0] } ?? []).filter(isLayerCutOff).joined(separator: ",")])
+             claims.contains("strip") ? ""
+                : (isMultiSelection ? selectedMeters : selectedSection.map { [$0] } ?? []).filter(isLayerCutOff).joined(separator: ",")])
         if isMultiSelection {
             for name in selectedMeters {
                 if let m = skin.meter(named: name) {

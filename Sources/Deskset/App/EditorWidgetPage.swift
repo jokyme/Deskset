@@ -49,11 +49,12 @@ extension InspectorWindowController {
         lines.append("page \(appliesToAllWidgets) \(inspectorState.separateColors.sorted()) \(showsWidgetTip)")
         for v in valueUsages(skin).values {
             if let name = v.variableName, case let id = InspectorInPlace.rowID("Variables", name), claims.contains(id) {
-                lines.append("value \(v.source) \(v.sections.joined(separator: ",")) \(v.roles.map(\.name))")
-                values[id, default: ""] += "\u{1E}\(v.current)"
+                lines.append("value \(v.source) \(v.sections.joined(separator: ","))")
+                values[id, default: ""] += "\u{1E}\(v.current) \(v.roles.map(\.name))"
                 continue
             }
-            lines.append("value \(v.source) \(v.current) \(v.sections.joined(separator: ",")) \(v.roles.map(\.name))")
+            // (What a value's uses do is said only under a color's row; a text's role names its words as they are now.)
+            lines.append("value \(v.source) \(v.current) \(v.sections.joined(separator: ","))" + (v.kind == .color ? " \(v.roles.map(\.name))" : ""))
         }
         for f in fontSources(skin) {
             lines.append("font \(f.title) \(f.face.raw) \(f.face.current) \(f.size?.raw ?? "") \(f.size?.current ?? "")")

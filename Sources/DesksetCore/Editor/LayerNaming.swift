@@ -1424,13 +1424,16 @@ final class LayerNamer {
     }
 
     /// The data a formula shows as a percentage of another (`A / B * 100`, `100 * A / B`, `[A:] / [B:] * 100`): A.
+    /// A lone 100, and `A / B` (with brackets around either): compiled once (a formula of every data item is looked at).
+    private static let hundred = try? NSRegularExpression(pattern: #"(?<![\d.])100(?![\d.])"#)
+    private static let division = try? NSRegularExpression(pattern: #"([A-Za-z_][\w.]*)\s*\)?\s*/\s*\(?\s*([A-Za-z_][\w.]*)"#)
+
     private func percentPart(of formula: String, among sources: [Measure]) -> Measure? {
         let bare = formula.filter { !"[]:".contains($0) }
-        guard bare.range(of: #"(?<![\d.])100(?![\d.])"#, options: .regularExpression) != nil,
-              let regex = try? NSRegularExpression(pattern: #"([A-Za-z_][\w.]*)\s*\)?\s*/\s*\(?\s*([A-Za-z_][\w.]*)"#) else {
+        let range = NSRange(bare.startIndex..., in: bare)
+        guard bare.contains("100"), Self.hundred?.firstMatch(in: bare, range: range) != nil, let regex = Self.division else {
             return nil
         }
-        let range = NSRange(bare.startIndex..., in: bare)
         for match in regex.matches(in: bare, range: range) {
             guard let a = Range(match.range(at: 1), in: bare), let b = Range(match.range(at: 2), in: bare) else { continue }
             let first = String(bare[a]), second = String(bare[b])

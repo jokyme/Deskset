@@ -76,7 +76,11 @@ final class InspectorInPlace {
     enum Page: Equatable { case none, meter(String), widget }
 
     /// Off: every change builds the page again (`defaults write app.deskset.Deskset StudioInspectorInPlace -bool NO`).
-    static var isEnabled: Bool { UserDefaults.standard.object(forKey: "StudioInspectorInPlace") as? Bool ?? true }
+    static var isEnabled: Bool {
+        !isOffForTests && (UserDefaults.standard.object(forKey: "StudioInspectorInPlace") as? Bool ?? true)
+    }
+    /// Every step builds the page again (self-tests of that setting, without writing the defaults).
+    static var isOffForTests = false
     /// Every in-place update checked against the page built again (`DESKSET_VERIFY_IN_PLACE`).
     static var verifies = ProcessInfo.processInfo.environment["DESKSET_VERIFY_IN_PLACE"].map { $0 != "0" } ?? false
     /// What the checks found (`verifies`).
@@ -118,9 +122,14 @@ final class InspectorInPlace {
     }
 
     func add(_ slot: InspectorSlot) {
-        // A row that wraps a row made by another registration (a special control falling back to the usual one): the
-        // outer one is the row in the grid.
-        if let control = slot.control { slots.removeAll { $0.control === control } }
+        // A row that wraps rows made by other registrations (a special control falling back to the usual one, the Number
+        // row's own settings): the outer one follows, and makes them again with it.
+        if let outer = slot.control ?? slot.part, outer !== slot.part || slot.remakePart != nil {
+            slots.removeAll { inner in
+                guard let view = inner.control ?? inner.part else { return false }
+                return view === outer || view.isDescendant(of: outer)
+            }
+        }
         slots.append(slot)
     }
 }
@@ -469,8 +478,11 @@ extension InspectorWindowController {
             let looks = OptionValue.list(m.rawOption("MeterStyle") ?? "").filter { skin.document.section(named: $0) != nil }
             let location = self.showsDetails ? skin.sources.location(section: name)?.description ?? "" : ""
             let crumbs = self.series(containing: name, in: skin).map { self.countedLayers($0.members, in: skin) } ?? ""
+            // (Its warning when part of it is cut off says which edges.)
+            let cut = Self.cutOffEdges(of: m, in: skin)
             let shape = [layer.title, layer.sentence, layer.symbol, "\(m.hidden)", "\(self.isLayerLocked(name))",
-                         looks.joined(separator: ","), location, crumbs, self.widgetName(skin)]
+                         looks.joined(separator: ","), location, crumbs, self.widgetName(skin), "\(cut)",
+                         self.cutOffSentence(of: name) ?? ""]
             return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "")
         }
         slot.part = strip
@@ -499,8 +511,10 @@ extension InspectorWindowController {
         let slot = InspectorSlot(claims: claims) { [weak self] in
             guard let self, let group = self.inPlaceColorGroup(index) else { return nil }
             let opacity = group.color.a < 254.5 ? "\(Int((group.color.a / 255 * 100).rounded()))%" : ""
-            return InspectorSlot.Shown(shape: [group.name, group.variables.joined(separator: ","), opacity].joined(separator: "\u{1F}"),
-                                       value: "\(group.color)\u{1F}\(self.colorGroupTip(group))")
+            // Its name and what else it changes (the roles of its uses, which name texts by their words now).
+            let shape = [group.name, group.variables.joined(separator: ","), opacity, group.usedRoles.map(\.name).joined(separator: ","),
+                         "\(group.unusedCount)", group.sections.joined(separator: ","), "\(group.isAtLeast)"]
+            return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "\(group.color)\u{1F}\(self.colorGroupTip(group))")
         }
         slot.part = row
         slot.remakePart = { [weak self] in
@@ -587,10 +601,9 @@ extension InspectorWindowController {
                 }
             }
             for p in properties {
-                // (Whether a setting is in use shows as the dot of a row under "More" and in its count: an essential
-                // one's never shows.)
+                // (Whether a setting is in use — the dots and "· 2 in use" of a card's More — is the card's:
+                // `inPlaceCardGuard`.)
                 lines.append(["property", p.key, EditorSchema.isVisible(p, in: groups, values: lookup) ? "visible" : "",
-                              p.level != .essential && isInUse(p, rows: rows, groups: groups) ? "in use" : "",
                               EditorSchema.defaultValue(of: p, in: groups, values: lookup)].joined(separator: "\u{1F}"))
             }
             // (The look behind a card's settings is its title row's: `inPlaceCardTitle`.)
@@ -600,18 +613,22 @@ extension InspectorWindowController {
                           data.map { isTime($0) ? "time" : "" } ?? "", data.map { Self.isTextData($0) ? "words" : "" } ?? "",
                           (raw.w ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? "" : "w",
                           (raw.h ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? "" : "h",
-                          m.type.lowercased() == "shape" ? "\(shapeItems(of: name).count)" : "",
-                          m.type.lowercased() == "string" ? "\(Self.alignParts(m.rawOption("StringAlign") ?? "").v != 0)" : ""]
+                          m.type.lowercased() == "shape" ? "\(shapeItems(of: name).count)" : ""]
                 .joined(separator: "\u{1F}"))
             lines.append("panel\u{1F}\(widgetPanelColor().map { "\($0)" } ?? "")")
         case .widget:
             let groups = widgetColorGroups(skin)
+            // Which colors are rows, in which order (a row says the rest: `inPlaceColorRow`); a color written directly
+            // is part of the structure.
+            // (Same-value colors nothing here uses join a row and leave it with their color: the row says so.)
             for g in groups {
-                lines.append(["color group", g.name, g.variables.joined(separator: ","), g.sections.joined(separator: ","),
-                              g.usedRoles.map(\.name).joined(separator: ","), "\(g.unusedCount)", "\(g.isAtLeast)",
-                              g.sharedFile?.path ?? "", g.members.map(\.variableName).map { $0 ?? "" }.joined(separator: ",")]
+                lines.append(["color group", g.variables.isEmpty ? "\(g.name) \(g.color) \(g.usedRoles.map(\.name))" : "",
+                              g.sharedFile?.path ?? "",
+                              g.members.filter { !$0.uses.isEmpty }.map(\.variableName).map { $0 ?? "" }.joined(separator: ",")]
                     .joined(separator: "\u{1F}"))
             }
+            // The colors only other widgets use (More Widget Options): a color that leaves a row joins them.
+            lines.append("other colors\u{1F}" + valueUsages(skin).colorsOtherWidgetsUse().compactMap(\.variableName).joined(separator: ","))
             lines.append("panel\u{1F}\(widgetPanelColor().map { "\($0)" } ?? "")")
         case .none:
             break
@@ -858,8 +875,9 @@ extension InspectorWindowController {
                 if let p = field.placeholderString, !p.isEmpty { line += " placeholder“\(p)”" }
             }
             if let popup = view as? NSPopUpButton {
-                // (A menu's items can hold examples made when it was built, like the time now.)
-                line += " [\(popup.titleOfSelectedItem ?? "")] \(popup.numberOfItems) items"
+                // What the closed pop-up shows (a menu's items can hold examples made when it was built, like the time
+                // now: only its title is on screen).
+                line += " [\((popup as? CompactPopUpButton)?.shownTitle ?? popup.titleOfSelectedItem ?? "")] \(popup.numberOfItems) items"
             } else if let button = view as? NSButton {
                 line += " ‹\(button.title)› \(button.state.rawValue)\(button.isEnabled ? "" : " disabled")"
             }
@@ -986,5 +1004,75 @@ extension InspectorWindowController {
         }
         inPlace.add(slot)
         return row
+    }
+}
+
+extension InspectorWindowController {
+    /// Registers what a card's "More" shows of its settings (`friendlyCard`): which of them are in use (their dots, "· 2
+    /// in use", and whether it opens by itself). When that changes the page is built again.
+    func inPlaceCardGuard(_ group: EditorSchema.Group, groups: [EditorSchema.Group], section: String, more: [EditorSchema.Property],
+                          extraInUse: [Bool]) {
+        guard inPlace.collecting, inPlace.page == .meter(section) else { return }
+        let slot = InspectorSlot(claims: []) { [weak self] in
+            guard let self else { return nil }
+            let inUse = more.map { self.isInUse($0, rows: self.rows, groups: groups) ? "1" : "0" }.joined()
+            // The extra rows ("Up and down") say whether they are in use themselves: their dots are in their rows.
+            let extra = group.title == "Text" ? self.skin?.meter(named: section).map {
+                Self.alignParts($0.rawOption("StringAlign") ?? "").v != 0 ? "1" : "0" } ?? "" : extraInUse.map { $0 ? "1" : "0" }.joined()
+            return InspectorSlot.Shown(shape: "\(inUse)|\(extra)", value: "")
+        }
+        slot.part = inspectorStack
+        inPlace.add(slot)
+    }
+}
+
+extension InspectorWindowController {
+    /// Registers a special row that is made again whenever what it shows changes (`describe`): the Number and time
+    /// Format of a text showing live data, whose choices show the value as it is now, and Shows.
+    func inPlaceRemadeRow(_ row: InspectorRow, section: String, claims keys: [String], describe: @escaping () -> String?,
+                          remake: @escaping () -> InspectorRow?) -> InspectorRow {
+        guard inPlace.collecting, inPlace.page == .meter(section) else { return row }
+        let slot = InspectorSlot(claims: keys.map { InspectorInPlace.rowID(section, $0) }) {
+            describe().map { InspectorSlot.Shown(shape: $0, value: "") }
+        }
+        slot.label = row.label
+        slot.control = row.control
+        slot.remakeRow = remake
+        inPlace.add(slot)
+        return row
+    }
+
+    /// What the Number row shows (`numberRow`): its choices as they read now, the one chosen, the settings under it.
+    func describeNumberRow(meter name: String, section: String) -> String? {
+        guard let skin, let m = skin.meter(named: name), let measure = m.measures.first else { return "none" }
+        var parts: [String] = [measure.name, showsDetails ? "details" : ""]
+        if isTime(measure) {
+            let zone = TimeFormatting.timeZone(forOption: measure.option("TimeZone"))
+            let current = measure.option("Format") ?? "%H:%M:%S"
+            let presets = FormatPresets.timePresets(at: Date(), timeZone: zone)
+            parts += ["time", measure.rawOption("Format") ?? "", current, presets.map { "\($0.title)=\($0.format)" }.joined(separator: "|"),
+                      presets.contains { $0.format == current } ? "" : TimeFormatting.format(Date(), format: current, timeZone: zone),
+                      inspectorState.disclosures.contains("time-custom/\(measure.name.lowercased())") ? "custom" : ""]
+        } else {
+            let presets = numberPresets(for: measure, skin: skin, section: section)
+            var current: [String: String] = [:]
+            for key in FormatPresets.numberKeys {
+                if let r = rows.first(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame }) { current[key] = r.resolved }
+            }
+            let index = FormatPresets.index(of: current, in: presets)
+            parts += ["number", presets.map(\.title).joined(separator: "|"), index.map(String.init) ?? "custom \((m as? StringMeter)?.text ?? "")",
+                      current.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ","),
+                      inspectorState.disclosures.contains("number-custom/\(section.lowercased())") ? "custom" : ""]
+        }
+        return parts.joined(separator: "\u{1F}")
+    }
+
+    /// What Shows shows (`showsRow`): the data item chosen and its name, or why it is none.
+    func describeShowsRow(_ p: EditorSchema.Property, section: String) -> String? {
+        let c = context(p, section: section, rows: rows)
+        let dynamic = EditorSchema.isDynamicValue(c.raw)
+        let current = (dynamic ? c.resolved : c.raw).trimmingCharacters(in: .whitespaces)
+        let name = skin.flatMap { skin in skin.measure(named: current).map { dataName($0, in: skin) } } ?? "-"
+        return [c.key, c.raw, current, name, dynamic ? "dynamic" : "", showsDetails ? "details" : ""].joined(separator: "\u{1F}")
     }
 }

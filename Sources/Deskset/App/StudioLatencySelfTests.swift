@@ -222,7 +222,6 @@ enum StudioLatencySelfTests {
         guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return t.check(false, "canvas") }
         func frame() { canvas.cacheDisplay(in: canvas.bounds, to: rep) }
         frame()
-        print("    TEMP canvas \(canvas.bounds.size) zoom \(canvas.zoom)")
         let written = editor.skin?.meter(named: target)?.rawOption(run.key)
 
         var edits: [Double] = [], undos: [Double] = []

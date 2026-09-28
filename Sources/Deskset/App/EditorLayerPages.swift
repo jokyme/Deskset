@@ -561,7 +561,13 @@ extension InspectorWindowController {
         let stack = EditorStyle.vstack(views, spacing: 3)
         popup.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         let label = EditorStyle.rowLabel(ctx.property.label, key: showsDetails ? ctx.key : nil, tooltip: "The live data it shows")
-        return InspectorRow(label: label, control: stack)
+        let p = ctx.property, name = m.name
+        return inPlaceRemadeRow(InspectorRow(label: label, control: stack), section: section, claims: [key],
+                                describe: { [weak self] in self?.describeShowsRow(p, section: section) },
+                                remake: { [weak self] in
+                                    guard let self, let m = self.skin?.meter(named: name) else { return nil }
+                                    return self.showsRow(self.context(p, section: section, rows: self.rows), meter: m, rightNow: rightNow)
+                                })
     }
 
     /// The Shows menu (docs/editor-friendly.md §8.3): IN THIS WIDGET (repeated data folded: "Sound bands ▸"), then
@@ -779,6 +785,17 @@ extension InspectorWindowController {
     }
 
     func numberRow(_ ctx: PropertyContext, meter m: Meter, skin: Skin) -> InspectorRow? {
+        guard let row = makeNumberRow(ctx, meter: m, skin: skin) else { return nil }
+        let name = m.name, section = ctx.section, p = ctx.property
+        return inPlaceRemadeRow(row, section: section, claims: FormatPresets.numberKeys,
+                                describe: { [weak self] in self?.describeNumberRow(meter: name, section: section) },
+                                remake: { [weak self] in
+                                    guard let self, let skin = self.skin, let m = skin.meter(named: name) else { return nil }
+                                    return self.makeNumberRow(self.context(p, section: section, rows: self.rows), meter: m, skin: skin)
+                                })
+    }
+
+    func makeNumberRow(_ ctx: PropertyContext, meter m: Meter, skin: Skin) -> InspectorRow? {
         guard let measure = m.measures.first else { return nil }
         if isTime(measure) { return timeFormatRow(measure, skin: skin) }
         let presets = numberPresets(for: measure, skin: skin, section: ctx.section)

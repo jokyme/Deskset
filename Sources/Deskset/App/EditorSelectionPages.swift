@@ -753,6 +753,7 @@ extension InspectorWindowController {
             }
         }
         let inUse = more.filter { isInUse($0, rows: rows, groups: groups) }.count + options.extraMore.filter(\.inUse).count
+        inPlaceCardGuard(group, groups: groups, section: section, more: more, extraInUse: options.extraMore.map(\.inUse))
         if !more.isEmpty || !options.extraMore.isEmpty {
             let open = isMoreOpen(group, section: section, inUse: inUse)
             views.append(moreRow(group, section: section, inUse: inUse, open: open))

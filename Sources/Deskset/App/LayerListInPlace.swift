@@ -65,12 +65,18 @@ extension InspectorWindowController {
         let visible = outline.rows(in: outline.visibleRect)
         for row in 0..<outline.numberOfRows {
             guard let item = outline.item(atRow: row) as? Item, !item.isGroup else { continue }
-            if before[ObjectIdentifier(item)] != LayerRowLook(item, skin: skin) {
+            let look = LayerRowLook(item, skin: skin)
+            if before[ObjectIdentifier(item)] != look {
                 changed.insert(row)
                 continue
             }
             guard visible.contains(row), let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? LayerCell
             else { continue }
+            // Hidden is the running skin's, which the step already changed: the cell says what it showed.
+            if item.kind == .meter, !item.isSkin, cell.isLayerHidden != look.hidden {
+                changed.insert(row)
+                continue
+            }
             let picture: NSImage?
             if item.isSkin {
                 picture = sidebar.thumbnails.widgetThumbnail(of: skin, panel: panelColor(for: skin), dark: isSidebarDark)
