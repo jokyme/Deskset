@@ -358,8 +358,12 @@ enum FriendlySidebarSelfTests {
             // Hidden from its row: the picture it had.
             guard let shown = cell(editor, row(editor, "MeterText"))?.thumbnail.image else { return t.check(false, "picture") }
             editor.setLayersHidden(["MeterText"], hidden: true)
-            t.check(editor.skin !== skin, "the widget reloaded")
+            t.check(editor.skin === skin, "the widget took it without loading again")
             t.check(cell(editor, row(editor, "MeterText"))?.thumbnail.image === shown, "the picture it had while shown")
+            // Loaded again: the pictures of the old skin go, the hidden layer's stays.
+            editor.refreshClicked()
+            t.check(editor.skin !== skin, "the widget reloaded")
+            t.check(cell(editor, row(editor, "MeterText"))?.thumbnail.image === shown, "still the picture it had while shown")
             t.check(editor.sidebar.thumbnailSkin === editor.skin, "pictures of the old skin are not kept")
             // Another widget: the kept pictures go.
             guard let other = app.activate(config: "Deskset\\Clock", file: nil) else { return t.check(false, "Clock") }
