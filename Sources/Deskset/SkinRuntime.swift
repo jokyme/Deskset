@@ -11,8 +11,8 @@ import DesksetCore
 /// Every skin runs on the main executor so far (phase 2 of the design moves the desktop's skins to an engine thread
 /// later), so messages and requests run inline and in the order they always did.
 ///
-/// Its life is messages too: `.load` loads and starts the skin and reports `.started` (or `.failed`) to the main thread,
-/// which places and shows the window; `.close` runs OnCloseAction and reports `.closed`. Whoever must wait for the close
+/// Its life is messages too: `.load` loads and starts the skin and reports `.loaded` and `.started` (or `.failed`) to the
+/// main thread, which places and shows the window; `.close` runs OnCloseAction and reports `.closed`. Whoever must wait for the close
 /// (quitting, the installer) waits for the runtime (`whenClosed`, `waitUntilClosed`), which outlives its window half if
 /// need be.
 ///

@@ -520,9 +520,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// loaded again - not when the skin is refreshed".
     ///
     /// The window controller and its runtime are made and registered at once (bangs for the config queue behind the
-    /// load on the skin's executor); the runtime loads and starts the skin and reports `.started` (`skinStarted`: the
-    /// window is placed and shown, the Studio attached, the app told) or `.failed` (`skinFailed`: the config is marked
-    /// inactive). With the main executor all of it happens before this returns, and a skin that cannot be loaded
+    /// load on the skin's executor); the runtime loads and starts the skin and reports `.loaded` (the window's settings
+    /// apply) and `.started` (`skinStarted`: the window is placed and shown, the Studio attached, the app told), or
+    /// `.failed` (`skinFailed`: the config is marked inactive). With the main executor all of it happens before this returns, and a skin that cannot be loaded
     /// returns nil.
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
