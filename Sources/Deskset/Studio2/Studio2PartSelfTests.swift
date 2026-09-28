@@ -82,6 +82,7 @@ enum Studio2PartSelfTests {
             t.equal(page.title, "CPU usage", "named by its data")
             t.equal(page.crumbs, ["System", "CPU"], "the way back")
             t.check(page.subtitle.hasPrefix("Now 21%"), page.subtitle)
+            t.check(page.subtitle.hasSuffix("the CPU number"), "whose number, not how many: \(page.subtitle)")
             t.equal(page.scope?.text, "This number only")
             t.equal(page.scope?.link, "Apply to All 4 Numbers")
             t.equal(page.sections.map(\.id), ["shows", "text", "layout", "clicks"])

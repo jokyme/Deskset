@@ -846,6 +846,10 @@ enum Studio2AuditSelfTests {
             t.equal(StudioText.format(.scopeApplyAll, 4, "数字"), "应用到全部 4 个数字")
             t.equal(StudioText.format(.confirmMoved, "MeterCPU值"), "已移动 MeterCPU值", "the value itself is as written")
             t.equal(StudioText.format(.subtitleOf, "数字", "CPU"), "CPU 的数字")
+            StudioText.languageOverride = .english
+            t.equal(StudioText.format(.subtitleOf, "number", "CPU"), "the CPU number", "not a count of CPUs")
+            t.equal(StudioText.format(.subtitleOf, "ring", "Memory"), "the Memory ring")
+            StudioText.languageOverride = .chinese
             t.equal(StudioText.spacedFormat("%@%%", ["23"]), "23%", "a percent sign is not a specifier")
             // Titles in Songti SC; New York in English.
             t.equal(StudioPageStyle.titleFont().familyName, "Songti SC")

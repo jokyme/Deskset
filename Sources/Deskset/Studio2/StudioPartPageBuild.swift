@@ -114,7 +114,7 @@ extension StudioPartPage {
         return result
     }
 
-    /// "Now 21% · the number of CPU".
+    /// "Now 21% · the CPU number" (never "the number of CPU", which reads as how many there are).
     func subtitle(_ m: Meter, kind: StudioPartKind, skin: Skin) -> String {
         var parts: [String] = []
         let now = nowValue(m)

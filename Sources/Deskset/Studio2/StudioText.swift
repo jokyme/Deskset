@@ -898,7 +898,7 @@ enum StudioText {
         .kindPart: ("part", "部件"),
         .kindParts: ("parts", "部件"),
         .nowValue: ("Now %@", "现在 %@"),
-        .subtitleOf: ("the %@ of %@", "%2$@ 的%1$@"),
+        .subtitleOf: ("the %2$@ %1$@", "%2$@ 的%1$@"),
         .subtitleSays: ("says “%@”", "写着“%@”"),
         .subtitleKind: ("a %@", "一个%@"),
         .everySettingCount: ("every setting · %d", "所有设置 · %d 项"),
