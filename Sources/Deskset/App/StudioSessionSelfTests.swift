@@ -1026,8 +1026,11 @@ extension StudioSessionSelfTests {
                 guard let session = w.session else { return t.check(false, "session") }
                 let editor = w.editor, url = w.url
                 t.check(w.desktop?.runtime.executor !== MainSkinExecutor.shared, "the desktop copy runs on a thread")
+                // A step the desktop copy loads again for (a value step is a patch: nothing closes).
                 editor.select(section: "MeterTitle")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
+                               .init(section: "Rainmeter", key: "ContextTitle", value: "Seeded", own: true)],
+                              name: "Change Font Size")
                 t.check(read(url).contains("FontSize=20\n"), "written")
                 t.check(w.settle(), "the reload ends once the old copy closed and the new one started")
                 t.check(!read(url).contains("Seed=0\n"), "and the old copy wrote its seed as it closed")
@@ -1055,7 +1058,9 @@ extension StudioSessionSelfTests {
                 let gate = SkinLifecycleSelfTests.Gate()
                 gate.hold(w.threads[0])
                 editor.select(section: "MeterTitle")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
+                               .init(section: "Rainmeter", key: "ContextTitle", value: "Seeded", own: true)],
+                              name: "Change Font Size")
                 let toast = editor.toastText
                 t.check(toast.hasPrefix("Changed"), toast)
                 t.check(AppSelfTest.spin(timeout: 30) { w.desktop !== old && w.desktop?.isStarted == true },
@@ -1159,27 +1164,49 @@ extension StudioSessionSelfTests {
                 let app = w.app, editor = w.editor, url = w.url
                 app.defersDesktopUpdates = true
                 defer { app.defersDesktopUpdates = false }
+                // A value step reaches the desktop copy on the next turn as a patch: a message its thread runs, whose
+                // answer comes back to the main thread.
+                func fontSize() -> String? { w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") } ?? nil }
                 editor.select(section: "MeterTitle")
                 editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
                 t.check(read(url).contains("FontSize=20\n"), "written")
                 t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20", "the canvas shows the step at once")
+                t.check(session.hasPendingDesktopPatch, "the desktop copy takes it on the next turn, as a patch")
+                t.check(!session.hasScheduledDesktopRefresh, "not a reload")
+                let patched = session.desktopPatchCounts.applied
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+                t.equal(reloads(app, w.config, until: { session.desktopPatchCounts.applied > patched }), 0, "no reload")
+                t.equal(session.desktopPatchCounts.applied - patched, 1, "one patch for both steps")
+                t.check(w.desktop === c, "the same desktop copy, on its thread")
+                t.equal(fontSize(), "21")
+                t.equal(w.live { $0.sourceGeneration }, 1, "as a patch")
+                t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
+                editor.window?.undoManager?.undo()
+                t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
+                t.check(AppSelfTest.spin(timeout: 30) { session.desktopPatchCounts.applied > patched + 1 },
+                        "the undo is a patch too")
+                t.check(w.desktop === c, "still the same desktop copy")
+                t.equal(fontSize(), "12")
+
+                // A step the desktop copy must load again for (a `[Rainmeter]` option) reloads it on the next turn.
+                editor.commit([.init(section: "Rainmeter", key: "ContextTitle", value: "One", own: true)], name: "Change Title")
+                t.check(read(url).contains("ContextTitle=One\n"), "written")
                 t.check(w.desktop === c, "the desktop copy loads it on the next turn")
                 t.check(session.hasScheduledDesktopRefresh)
                 editor.checkFilesOnDisk()
                 t.check(editor.pendingDiskCheck, "changes on disk wait for it")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+                editor.commit([.init(section: "Rainmeter", key: "ContextTitle", value: "Two", own: true)], name: "Change Title")
                 t.equal(reloads(app, w.config, during: 0.3), 1, "one reload for both steps")
                 t.check(!session.hasScheduledDesktopRefresh)
                 t.check(w.settle(), "the new copy started")
-                t.equal(w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "21")
-                t.check((session.lastTimings["desktop"] ?? 0) > 0, "timed: \(session.lastTimings)")
+                t.equal(w.live { $0.rainmeterSection?.rawOption("ContextTitle") }, "Two")
                 let before = w.desktop
                 editor.window?.undoManager?.undo()
-                t.equal(editor.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "12", "undone on the canvas at once")
                 t.check(w.desktop === before, "the desktop copy on the next turn")
                 t.check(AppSelfTest.spin(timeout: 5) { !session.hasScheduledDesktopRefresh }, "reloaded")
                 t.check(w.settle(), "the new copy started")
-                t.equal(w.live { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "12")
+                t.check(w.desktop !== before)
+                t.equal(w.live { $0.rainmeterSection?.rawOption("ContextTitle") }, .some(nil), "undone")
 
                 // A gesture: the previews are messages to the desktop copy, at most 20 a second, always the latest values.
                 guard let box = editor.skin?.meter(named: "MeterBox") else { return t.check(false, "box") }
@@ -1224,7 +1251,9 @@ extension StudioSessionSelfTests {
                 let gate = SkinLifecycleSelfTests.Gate()
                 gate.hold(w.threads[0])
                 w.editor.select(section: "MeterTitle")
-                w.editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
+                w.editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
+                                 .init(section: "Rainmeter", key: "ContextTitle", value: "Host", own: true)],
+                                name: "Change Font Size")
                 t.check(w.desktop !== c && w.desktop?.isStarted == false, "the new copy waits to load")
                 t.equal(w.editor.skin.map { host.environment(for: $0).windowFrame.x }, 321, "the Studio's instance keeps the place")
                 t.check(w.editor.isWidgetRunning, "the widget counts as on the desktop meanwhile")
@@ -1241,7 +1270,10 @@ extension StudioSessionSelfTests {
                 let gate = SkinLifecycleSelfTests.Gate()
                 gate.hold(w.threads[0])
                 let place = WidgetPosition(x: 150, y: 170)
+                // (A `[Rainmeter]` option: the desktop copy loads again for it.)
                 try session.apply("Move", [.setValue(file: w.url, section: "MeterTitle", key: "FontSize", value: "18",
+                                                     afterIncludes: false),
+                                           .setValue(file: w.url, section: "Rainmeter", key: "ContextTitle", value: "Moved",
                                                      afterIncludes: false)],
                                   commands: [.moveWidget(from: WidgetPosition(x: 100, y: 100), to: place)])
                 guard let fresh = w.desktop, fresh !== c else { return t.check(false, "a new copy") }

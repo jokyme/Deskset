@@ -755,7 +755,8 @@ enum EngineThreadSelfTests {
             let folder = app.skinsDirectory.appendingPathComponent("Studio/EngineSeeded")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = folder.appendingPathComponent("EngineSeeded.ini")
-            try StudioSessionSelfTests.seeded.write(to: url, atomically: true, encoding: .utf8)
+            try (StudioSessionSelfTests.seeded + "\n[Metadata]\nName=Before\n").write(to: url, atomically: true,
+                                                                                    encoding: .utf8)
             try write(app, ["Plain": plain])
             app.rescanLibrary()
             let config = "Studio\\EngineSeeded"
@@ -785,9 +786,11 @@ enum EngineThreadSelfTests {
                 t.check(c.runtime.executor === engine, "the desktop copy stays on the engine thread")
                 t.check(editor.skin?.executor === MainSkinExecutor.shared, "the Studio's own instance runs on main")
 
-                // A step reloads the desktop copy with a ticket; what it writes as it reloads is its own.
+                // A step the desktop copy must load again for (a `[Rainmeter]` option) reloads it with a ticket; what it
+                // writes as it reloads is its own.
                 editor.select(section: "MeterTitle")
-                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)],
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true),
+                               .init(section: "Rainmeter", key: "ContextTitle", value: "Engine", own: true)],
                               name: "Change Font Size")
                 t.check(StudioSessionSelfTests.read(url).contains("FontSize=20\n"), "written")
                 t.check(AppSelfTest.spin(timeout: 60) {
@@ -803,6 +806,22 @@ enum EngineThreadSelfTests {
                 t.equal(StudioSessionSelfTests.reloads(app, config, during: 1.5), 0, "no reload follows")
                 t.equal(editor.toastText, toast, "the step's toast stays")
                 t.check(!editor.toastText.contains("changed on disk"), editor.toastText)
+
+                // A value step reaches the copy on the engine thread as a patch: a message the thread runs (as a piece
+                // of the skin's work: its snapshot follows), the same copy, the answer back on the main thread.
+                let copy = app.controller(for: config)
+                let patched = session.desktopPatchCounts.applied
+                t.equal(copy?.runtime.snapshot.metadata["Name"], "Before")
+                editor.select(section: "MeterTitle")
+                editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "24", own: true),
+                               .init(section: "Metadata", key: "Name", value: "After", own: true)],
+                              name: "Change Font Size")
+                t.check(AppSelfTest.spin(timeout: 60) { session.desktopPatchCounts.applied > patched }, "patched")
+                t.equal(session.desktopPatchCounts.refused, 0, "not refused")
+                t.check(app.controller(for: config) === copy, "the same copy")
+                t.equal(copy?.runtime.exclusive(timeout: 30) { $0.meter(named: "MeterTitle")?.rawOption("FontSize") }, "24",
+                        "in effect on the engine thread")
+                t.equal(copy?.runtime.snapshot.metadata["Name"], "After", "the snapshot was built again after the patch")
                 editor.window?.close()
                 app.inspector?.window?.close()
                 app.deactivate(config: config)
