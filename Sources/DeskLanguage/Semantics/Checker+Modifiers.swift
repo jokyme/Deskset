@@ -786,11 +786,13 @@ extension Checker {
         case .identifierExpr:
             let name = IdentifierExprSyntax(unchecked: node).name
             if let loop = loopStack.last(where: { $0.name == name }) {
+                symbols[id(node)] = .loopVariable(loop.id)
                 var v = loop.val
                 v.deps.insert(.loopVariable(name))
                 return v
             }
             if let decl = decls[name] {
+                symbols[id(node)] = .declaration(decl.id)
                 let v = declarationValue(decl)
                 if v.type == .bool {
                     // `showOrHide(isOpen)` with a yes/no value.
@@ -818,7 +820,8 @@ extension Checker {
             return .error
         case .stringLiteral:
             let v = inferValue(node, context, expected: .string)
-            if let s = v.stringLiteral, preName(named: s) != nil, Checker.isIdentifier(s) {
+            if let s = v.stringLiteral, let element = preName(named: s), Checker.isIdentifier(s) {
+                symbols[id(node)] = .element(id(element.call))
                 let callee = context.callee ?? "show"
                 report(.quotedOwnName, r, ["fixed": .code("\(callee)(\(s))")],
                        fixIts: [fix("removeQuotes", [edit(r, s)], group: "quotedOwnName")])
