@@ -68,7 +68,7 @@ public enum PackageLoader {
     private static func singleFile(name: String, size: Int, link: String?, data: Data?, limits: CatalogLimits) -> DeskPackage {
         let id = DeskFileID(path: name)
         var package = DeskPackage(isSingleFile: true)
-        let kind: DeskPackageFileKind = name == DeskPackage.packageFileName ? .package : .widget
+        let kind: DeskPackageFileKind = DeskPackagePath.isPackageFile(name) ? .package : .widget
         package.files = [DeskPackageFile(path: name, kind: kind, size: size, linkDestination: link)]
         if let link {
             package.diagnostics.append(linkDiagnostic(path: name, destination: link, catalog: .current))

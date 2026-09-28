@@ -127,7 +127,7 @@ extension DeskSnapshot {
         var out = [file]
         if !isPackage, folder[packageFile] != nil { out.append(packageFile) }
         for other in folder.keys.sorted(by: { $0.path < $1.path })
-        where other != file && other != packageFile && other.path.hasSuffix(".desk") {
+        where other != file && other != packageFile && DeskPackagePath.isDeskFile(other.path) {
             out.append(other)
         }
         return out

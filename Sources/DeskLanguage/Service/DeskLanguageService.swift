@@ -61,7 +61,13 @@ public final class DeskLanguageService {
         self.openFile = openFile
         self.package = package
         let folder = (openFile.path as NSString).deletingLastPathComponent
-        packageFile = DeskFileID(path: folder.isEmpty ? "package.desk" : folder + "/package.desk")
+        // `package.desk` as the folder spells it (`Package.desk`: a Mac finds names without regard to case).
+        let exact = DeskFileID(path: folder.isEmpty ? DeskPackage.packageFileName : folder + "/" + DeskPackage.packageFileName)
+        let spelled = files.keys.filter {
+            ($0.path as NSString).deletingLastPathComponent == folder
+                && DeskPackagePath.isPackageFile(($0.path as NSString).lastPathComponent)
+        }.min { DeskPackagePath.precedes($0.path, $1.path) }
+        packageFile = files[exact] != nil ? exact : spelled ?? exact
         self.resources = resources
         self.options = options
         var others = files
@@ -398,7 +404,7 @@ public final class DeskSnapshot: Sendable {
             var widgets: [(tree: SyntaxTree, checked: CheckedFile?)] = []
             if !isPackage { widgets.append((tree, checked)) }
             for (file, text) in folder.sorted(by: { $0.key.path < $1.key.path })
-                where file != self.file && file != packageFile && file.path.hasSuffix(".desk") {
+                where file != self.file && file != packageFile && DeskPackagePath.isDeskFile(file.path) {
                 if let known = siblings?.checked(file, text: text, packageVersion: packageVersion) {
                     widgets.append((known.tree, known))
                 } else {

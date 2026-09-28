@@ -406,7 +406,7 @@ final class Checker {
         self.catalog = context.catalog
         self.index = context.catalog.index
         self.context = context
-        self.isPackage = (tree.file.path as NSString).lastPathComponent == "package.desk"
+        self.isPackage = DeskPackagePath.foldedKey((tree.file.path as NSString).lastPathComponent) == DeskPackage.packageFileName
         self.lines = tree.lines
     }
 

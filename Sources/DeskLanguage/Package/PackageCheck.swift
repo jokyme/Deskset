@@ -47,7 +47,7 @@ public struct DeskPackageUses: Sendable, Hashable {
         /// The widgets that use it (not `package.desk`).
         public var widgets: [DeskFileID] {
             var seen = Set<DeskFileID>()
-            return uses.map(\.file).filter { $0.path != DeskPackage.packageFileName && seen.insert($0).inserted }
+            return uses.map(\.file).filter { !DeskPackagePath.isPackageFile($0.path) && seen.insert($0).inserted }
         }
     }
 

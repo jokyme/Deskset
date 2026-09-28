@@ -10,7 +10,7 @@ public enum PackageValidator {
                                 catalog: DeskCatalog = .current) -> [Diagnostic] {
         var out: [Diagnostic] = []
         func severity(_ id: DiagnosticID) -> Severity { catalog.diagnostic(id)?.severity ?? .error }
-        let packageID = DeskFileID(path: DeskPackage.packageFileName)
+        let packageID = package.packageFile ?? DeskFileID(path: DeskPackage.packageFileName)
 
         // DK8601: no widget file at all.
         if !package.isTruncated, package.files(.widget).isEmpty {

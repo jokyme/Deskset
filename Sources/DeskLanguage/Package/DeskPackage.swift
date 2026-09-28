@@ -184,10 +184,12 @@ public struct DeskPackage: Sendable, Hashable {
         self.isTruncated = isTruncated
     }
 
-    /// `package.desk` when the folder has it and it was read.
+    /// `package.desk` when the folder has it and it was read, spelled as the folder spells it (`Package.desk`: a
+    /// Mac finds names without regard to case).
     public var packageFile: DeskFileID? {
         let id = DeskFileID(path: Self.packageFileName)
-        return texts[id] != nil ? id : nil
+        if texts[id] != nil { return id }
+        return texts.keys.filter { DeskPackagePath.isPackageFile($0.path) }.min { DeskPackagePath.precedes($0.path, $1.path) }
     }
 
     /// The widget files that were read, in file order.
@@ -214,8 +216,8 @@ public struct DeskPackage: Sendable, Hashable {
     /// when it no longer applies to a text.
     public func settingText(_ text: String?, of file: DeskFileID) -> DeskPackage {
         var copy = self
-        let isPackage = file.path == Self.packageFileName
-        let isTopDesk = !file.path.contains("/") && file.path.lowercased().hasSuffix(".desk")
+        let isPackage = DeskPackagePath.isPackageFile(file.path)
+        let isTopDesk = !file.path.contains("/") && DeskPackagePath.isDeskFile(file.path)
         guard isTopDesk else { return copy }
         copy.files.removeAll { DeskPackagePath.sameBytes($0.path, file.path) }
         copy.diagnostics.removeAll { $0.file == file && ($0.id == .invalidEncoding || $0.id == .fileTooLarge) }
@@ -244,6 +246,16 @@ public struct DeskPackage: Sendable, Hashable {
 /// Paths inside a widget folder: `/`-separated, relative, compared by their bytes (Swift's `==` treats the NFC and
 /// NFD spellings of a name as equal, which a folder may hold side by side).
 public enum DeskPackagePath {
+    /// Whether a path is the folder's `package.desk`, compared as a Mac compares names (`Package.desk` is).
+    public static func isPackageFile(_ path: String) -> Bool {
+        !path.contains("/") && foldedKey(path) == DeskPackage.packageFileName
+    }
+
+    /// Whether a path names a `.desk` file, its extension in any case (`B.DESK`).
+    public static func isDeskFile(_ path: String) -> Bool {
+        path.utf8.count >= 5 && path.lowercased().hasSuffix(".desk")
+    }
+
     /// Whether two paths are the same bytes.
     public static func sameBytes(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
 
@@ -311,7 +323,7 @@ public enum DeskPackagePath {
         let ext = (name as NSString).pathExtension.lowercased()
         if ext == "desk" {
             guard parts.count == 1 else { return .other }
-            return name == DeskPackage.packageFileName ? .package : .widget
+            return isPackageFile(name) ? .package : .widget
         }
         if imageExtensions.contains(ext) { return .image }
         if fontExtensions.contains(ext) { return .font }
