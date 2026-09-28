@@ -277,6 +277,7 @@ enum StudioLatencySelfTests {
         // about 20 times a second) and the canvas draws a frame.
         var gestureFrames: [Double] = []
         let sentBefore = session.desktopPreviewsSent
+        let gestureStart = now()
         if gesture, let meter = editor.skin?.meter(named: target) {
             editor.canvasSelectionChanged([target])
             let start = NSPoint(x: canvas.origin.x + CGFloat(meter.frame.x + min(meter.frame.width, 4) / 2),
@@ -293,8 +294,11 @@ enum StudioLatencySelfTests {
             EditorWindowSelfTests.settle()
         }
         let sent = session.desktopPreviewsSent - sentBefore
-        t.check(gestureFrames.isEmpty || sent <= gestureFrames.count / 2 + 1,
-                "\(name): the desktop copy got \(sent) of \(gestureFrames.count) previews")
+        // At most about 20 a second, or half the frames (a loaded machine draws fewer frames in that time: the rate is
+        // what is bounded).
+        let seconds = ms(since: gestureStart) / 1000
+        t.check(gestureFrames.isEmpty || sent <= max(gestureFrames.count / 2 + 1, Int((seconds * 20).rounded(.up)) + 2),
+                "\(name): the desktop copy got \(sent) of \(gestureFrames.count) previews in \(String(format: "%.2f", seconds)) s")
         t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): a cancelled drag writes nothing")
 
         let edit = Stat(samples: edits), undo = Stat(samples: undos)
