@@ -1711,7 +1711,9 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         try alias("Gone alias", to: gone)
         try fm.removeItem(at: gone)
 
+        try link("startup disk", to: "/")
         let r = FileViewIcons.resolvedSource
+        t.equal(r(path("startup disk") + "/"), "/", "a link to / (the startup disk's entry in /Volumes is one)")
         t.check(isItem(r(path("file link.txt")), doc), "a link to a file")
         t.check(isItem(r(path("folder link")), folder), "a link to a folder")
         t.check(isItem(r(path("folder link") + "/"), folder), "FileView's folder paths end with /: \(r(path("folder link") + "/"))")
