@@ -161,6 +161,8 @@ enum StudioSessionSelfTests {
             for _ in 0..<5 { studio.update() }
             let shown = samples(studio), counter = studio.counter
             t.check(shown.allSatisfy { $0.count >= 5 }, "the graphs have samples: \(shown)")
+            // Selected first, so the canvas draws the same selection in every picture below.
+            editor.select(section: "MeterTitle")
             let canvas = editor.canvas
             canvas.updateSize()
             func graphPixels() -> Data? {
@@ -174,7 +176,6 @@ enum StudioSessionSelfTests {
             let drawn = graphPixels()
             t.check(drawn != nil, "the canvas draws the graphs")
 
-            editor.select(section: "MeterTitle")
             editor.commit([.init(section: "MeterTitle", key: "FontSize", value: "20", own: true)], name: "Change Font Size")
             t.check(read(url).contains("FontSize=20\n"), "written")
             t.check(editor.skin === studio, "the Studio's instance took the step without loading again")
