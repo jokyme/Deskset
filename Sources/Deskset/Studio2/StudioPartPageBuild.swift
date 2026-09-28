@@ -280,7 +280,7 @@ extension StudioPartPage {
         let pt = TextStyle.pixelSize(points: s.style.fontSize)
         var size = StudioPage.Row(label: StudioText[.rowTextSize], control: .number(.init(
             text: StudioNumberInput.text((pt * 2).rounded() / 2), value: pt, unit: StudioText.language == .chinese ? "点" : "pt",
-            defaultText: nil, steppers: true, width: 64, minimum: 1, maximum: 400)))
+            defaultText: nil, steppers: true, width: 72, minimum: 1, maximum: 400)))
         size.detail = showsIniNames ? "FontSize" : nil
         items.append(.init(id: "text.size", kind: .row(size)))
         rows["text.size"] = StudioPartRow(key: "FontSize", kind: .fontSize, name: StudioText[.undoTextSize],
@@ -750,7 +750,7 @@ extension StudioPartPage {
             if p.key.caseInsensitiveCompare("FontSize") == .orderedSame, let s = m as? StringMeter {
                 let pt = TextStyle.pixelSize(points: s.style.fontSize)
                 control = .number(.init(text: StudioNumberInput.text((pt * 2).rounded() / 2), value: pt,
-                                        unit: chinese ? "点" : "pt", width: 70))
+                                        unit: chinese ? "点" : "pt", width: 76))
                 rowSpec(.fontSize)
             } else {
                 control = .number(.init(text: written, value: Double(value), placeholder: value, width: 70))

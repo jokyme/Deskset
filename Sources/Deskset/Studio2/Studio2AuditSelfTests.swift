@@ -796,8 +796,9 @@ enum Studio2AuditSelfTests {
         var cut: [String] = []
         func walk(_ v: NSView) {
             guard !v.isHiddenOrHasHiddenAncestor else { return }
-            if let f = v as? NSTextField, !f.isEditable, !f.stringValue.isEmpty, f.maximumNumberOfLines == 1,
-               f.lineBreakMode == .byTruncatingTail || f.lineBreakMode == .byTruncatingMiddle,
+            // A number box's text is cut too when its box is too narrow ("14.5" as "14…").
+            if let f = v as? NSTextField, !f.stringValue.isEmpty, f.maximumNumberOfLines <= 1, f.cell?.wraps != true,
+               f.lineBreakMode == .byTruncatingTail || f.lineBreakMode == .byTruncatingMiddle || f.isEditable,
                f.frame.width > 1, f.fittingSize.width > f.frame.width + 1.5 {
                 cut.append("“\(f.stringValue)” (\(Int(f.fittingSize.width)) in \(Int(f.frame.width)))")
             }
@@ -839,8 +840,8 @@ enum Studio2AuditSelfTests {
             for v in variants {
                 with(v.language, dark: v.dark) {
                     let label = name(v.language, v.dark)
-                    for screen in ["03-customize-changed", "04-part", "07-layers", "09-every-setting", "10-preview",
-                                   "13b-compat"] {
+                    for screen in ["03-customize-changed", "03b-weather", "04-part", "07-layers", "09-every-setting",
+                                   "10-preview", "13b-compat", "17-show-on-desktop"] {
                         guard let base = StudioScreen.named(screen), let opened = StudioSnapshot.open(base) else {
                             t.check(false, "\(screen) opens")
                             continue

@@ -882,10 +882,15 @@ private final class Builder {
             guard taken.insert(key).inserted else { return }
             result.append(o)
         }
+        let widgetWord = String(skin.config.split(separator: "\\").last ?? "").lowercased()
         func label(_ name: String) -> String {
             var words = ValueUsageIndex.humanizedVariable(name)
             for suffix in [" color", " colour", " alpha", " opacity"] where words.lowercased().hasSuffix(suffix) {
                 words = String(words.dropLast(suffix.count))
+            }
+            // The widget's own name in front says nothing on its own page ("System fourth ring" → "Fourth ring").
+            if !widgetWord.isEmpty, words.lowercased().hasPrefix(widgetWord + " "), words.count > widgetWord.count + 1 {
+                words = String(words.dropFirst(widgetWord.count + 1))
             }
             return words.prefix(1).uppercased() + words.dropFirst()
         }

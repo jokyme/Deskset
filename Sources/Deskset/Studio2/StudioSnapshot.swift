@@ -61,8 +61,12 @@ enum StudioSnapshot {
             }
             size = NSSize(width: parts[0], height: parts[1])
         }
-        // The weather widgets show a sample forecast: nothing is fetched and no place is asked for.
+        // The weather widgets show a sample forecast: nothing is fetched and no place is asked for; its clock is late
+        // morning in Hangzhou (the design's), and times and temperatures are written the same on every Mac (a 24-hour
+        // clock, °C).
         setenv("DESKSET_WEATHER_DEMO", "1", 1)
+        setenv("DESKSET_WEATHER_DEMO_NOW", "2026-09-27T03:30:00Z", 0)
+        MacRegional.fix(.standard)
         WeatherWiring.installPreview()
         if arguments.contains("--on-screen") {
             let explicit = arguments.contains("--size")
@@ -70,7 +74,8 @@ enum StudioSnapshot {
         }
         guard let opened = open(screen, size: size) else { return .success(nil) }
         defer { opened.close() }
-        return .success(render(opened.controller)?.representation(using: .png, properties: [:]))
+        let rep = screen.showOnDesktop ? renderShowingDesktop(opened.controller) : render(opened.controller)
+        return .success(rep?.representation(using: .png, properties: [:]))
     }
 
     /// Opens the new Studio on `screen`'s widget, headless, in the screen's state. nil when the fixture is not found
@@ -324,6 +329,74 @@ enum StudioSnapshot {
     }
 
     static let windowCornerRadius: CGFloat = 18
+
+    /// Show on Desktop, off screen: the desktop's picture (the stand-in hills) over the whole frame, the Studio window
+    /// on it faded almost away, the widget on the right as the desktop shows it (its glass a stand-in) with the ring,
+    /// and the capsule under it.
+    static func renderShowingDesktop(_ controller: StudioWindowController) -> NSBitmapImageRep? {
+        guard let content = controller.window?.contentView, let studio = render(controller),
+              // The Studio's instance: the same widget, with the screen's readings (the desktop copy has its own).
+              let skin = controller.skin ?? controller.session?.currentDesktop?.skin else { return nil }
+        let size = content.bounds.size
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
+                                         pixelsHigh: Int(size.height * scale), bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        rep.size = size
+        let dark = StudioPageStyle.isDark(content.effectiveAppearance)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.cgContext.scaleBy(x: scale, y: scale)
+        content.effectiveAppearance.performAsCurrentDrawingAppearance {
+            // The desktop's picture.
+            let desktop = StudioBackdropView(frame: NSRect(origin: .zero, size: size))
+            desktop.appearance = content.effectiveAppearance
+            desktop.kind = .desktop
+            desktop.usesStandInDesktop = true
+            if let part = desktop.bitmapImageRepForCachingDisplay(in: desktop.bounds) {
+                desktop.cacheDisplay(in: desktop.bounds, to: part)
+                part.draw(in: desktop.bounds, from: .zero, operation: .copy, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            // The Studio window, faded almost away, on the left.
+            let windowRect = NSRect(x: 24, y: 40, width: size.width * 0.48, height: size.height * 0.78)
+            studio.draw(in: windowRect, from: .zero, operation: .sourceOver, fraction: StudioDesktopView.fadedAlpha,
+                        respectFlipped: true, hints: nil)
+            NSColor(white: 1, alpha: 0.35).setStroke()
+            let outline = NSBezierPath(roundedRect: windowRect, xRadius: windowCornerRadius, yRadius: windowCornerRadius)
+            outline.lineWidth = 1
+            outline.stroke()
+            // The widget, as the desktop shows it, on the right.
+            let w = CGFloat(max(skin.width, 1)), h = CGFloat(max(skin.height, 1))
+            let card = NSRect(x: size.width - w - 40, y: (size.height - h) / 2, width: w, height: h)
+            let cg = context.cgContext
+            cg.saveGState()
+            cg.translateBy(x: card.minX, y: card.maxY)
+            cg.scaleBy(x: 1, y: -1)
+            SkinRenderer.draw(skin, in: cg, glass: .placeholder(dark: dark))
+            cg.restoreGState()
+            // Its ring.
+            let ring = StudioRingView(frame: card.insetBy(dx: -8, dy: -8))
+            if let part = ring.bitmapImageRepForCachingDisplay(in: ring.bounds) {
+                ring.cacheDisplay(in: ring.bounds, to: part)
+                part.draw(in: ring.frame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            // The capsule under it.
+            let capsule = StudioDesktopCapsule()
+            capsule.appearance = content.effectiveAppearance
+            let c = capsule.fittingSize
+            capsule.frame = NSRect(x: card.midX - c.width / 2, y: card.minY - 24 - c.height, width: c.width, height: c.height)
+            capsule.layoutSubtreeIfNeeded()
+            drawGlass(capsule.frame, dark: dark)
+            if let part = capsule.bitmapImageRepForCachingDisplay(in: capsule.bounds) {
+                capsule.cacheDisplay(in: capsule.bounds, to: part)
+                part.draw(in: capsule.frame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true,
+                          hints: nil)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
 
     /// Draws `view`'s visible part where it is in `content`.
     static func draw(_ view: NSView, in content: NSView) {

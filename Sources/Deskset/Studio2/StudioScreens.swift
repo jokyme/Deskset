@@ -81,6 +81,9 @@ struct StudioScreen {
     var caret: (path: String, line: Int)?
     /// The code header's file menu is open.
     var fileMenu = false
+    /// Show on Desktop is on: off screen the desktop is drawn as a stand-in — the picture, the Studio window faded
+    /// almost away, the widget with its ring and the capsule under it.
+    var showOnDesktop = false
     /// What the design shows that the window does not have yet: listed with the differences.
     var later: [String] = []
 
@@ -136,7 +139,7 @@ struct StudioScreen {
                      zoom: 1.65, hoverSwatch: "part:0",
                      later: ["wallpaper backdrop", "the city row (city search)", "the Colors scope sentence for two copies",
                              "Accent among the colors"]),
-        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: ProcessInfo.processInfo.environment["DBGSEL"] ?? "MeterCPUValue",
+        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
                      scopeHover: true, updates: 4, pinned: systemReadings,
                      later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
                              "Shows examples (the number is written by the widget's data, not the part)",
@@ -156,9 +159,10 @@ struct StudioScreen {
                      pinned: ["measurecpu": (23, nil)],
                      later: ["Tracking, Line height, Digits, Nudge, Turn (settings an INI text does not have)",
                              "Pointed at presets", "the rule's source chip on Color"]),
-        StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5, backdrop: .bright, data: .level(1), frozen: true,
-                     previewPopover: true,
-                     later: ["part page with the contrast card", "selection of the caption", "Build's layers"]),
+        StudioScreen(name: "10-preview", fixture: .cpu, zoom: 2.5, selection: "MeterCaption", backdrop: .bright,
+                     data: .level(1), frozen: true, previewPopover: true,
+                     later: ["the contrast card under the caption's color (contrast estimates: S4)",
+                             "the Language row (an INI widget has no translations)"]),
         // The two typos are typed in the code (so the desktop keeps the last working version); the caret rests on the
         // first, the file menu is open.
         StudioScreen(name: "12b-code-ini", fixture: .nocturne, zoom: 1.5, pinned: nocturneReadings,
@@ -175,8 +179,8 @@ struct StudioScreen {
                      later: ["needs attention and its marks on the canvas", "Changed to fit the Mac",
                              "the Shows rows the design leaves out", "every part and data item of the fixture listed"]),
         StudioScreen(name: "17-show-on-desktop", fixture: .system, edits: [systemDemo], zoom: 1,
-                     updates: 4,
-                     later: ["show on desktop: the window fades and the widget on the desktop comes up"]),
+                     updates: 4, showOnDesktop: true,
+                     later: ["off screen the desktop is a stand-in: the other widgets on it and the menu bar are not drawn"]),
     ]
 
     /// The time snapshots show: 27 September 2026, 10:09.

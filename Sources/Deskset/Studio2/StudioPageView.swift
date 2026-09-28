@@ -1597,7 +1597,10 @@ enum StudioFontMenu {
         case "system rounded": return "SF Pro Rounded"
         case "system mono": return "SF Mono"
         case "system serif": return "New York"
-        default: return face
+        default:
+            // A Windows font macOS does not have is called by the face drawn in its place ("Segoe UI" → SF Pro).
+            if let sub = Fonts.substitution(for: face) { return sub == "System Font" ? title("System") : sub }
+            return face
         }
     }
 
