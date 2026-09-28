@@ -157,15 +157,6 @@ public final class HistogramMeter: Meter {
         imageSize ?? (0, 0)
     }
 
-    /// Takes `other`'s samples: a new instance of a widget then shows the graph the one already running shows
-    /// (`Skin.takeGraphs(from:)`).
-    func takeHistory(from other: HistogramMeter) {
-        primaryHistory = other.primaryHistory
-        secondaryHistory = other.secondaryHistory
-        computeAutoRange()
-        noteDrawChange()
-    }
-
     /// Without AutoScale the columns are scaled by the measures' MinValue and MaxValue as they are when drawn (a Net
     /// measure learns its maximum as it updates, which the meter may do less often).
     public override func hashDrawInputs(into hasher: inout Hasher) {
@@ -235,5 +226,18 @@ public final class HistogramMeter: Meter {
         return (p > common ? g.column(age: age, from: common, to: p) : empty,
                 s > common ? g.column(age: age, from: common, to: s) : empty,
                 common > 0 ? g.column(age: age, from: 0, to: common) : empty)
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension HistogramMeter {
+    /// Takes the samples of another instance's meter: a new instance of a widget then shows the graph the one already
+    /// running shows (`Skin.seedGraphs(from:)`).
+    func seedHistory(primary: GraphHistory, secondary: GraphHistory) {
+        primaryHistory = primary
+        secondaryHistory = secondary
+        computeAutoRange()
+        noteDrawChange()
     }
 }

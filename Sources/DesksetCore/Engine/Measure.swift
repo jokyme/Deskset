@@ -458,3 +458,34 @@ open class Measure: SkinSection {
         paused = flag
     }
 }
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension Measure {
+    /// What this measure has seen so far, for a new instance of the widget (`SkinRuntimeState.MeasureState`).
+    var runtimeSnapshot: SkinRuntimeState.MeasureState {
+        SkinRuntimeState.MeasureState(
+            type: type, kind: String(describing: Swift.type(of: self)), own: own, value: value, rawString: rawString,
+            average: averageSize > 1 && !history.isEmpty
+                ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
+            observedMin: observedMin, observedMax: observedMax, webParser: nil)
+    }
+
+    /// Takes what the same measure of another instance of the widget has seen (loaded, before the first update): its
+    /// value and string, the samples it averages (when it averages as many) and the range it observed. The first update
+    /// then computes the next value from there.
+    func seed(_ state: SkinRuntimeState.MeasureState) {
+        value = state.value.isFinite ? state.value : 0
+        rawString = state.rawString
+        if let average = state.average, averageSize > 1, !average.samples.isEmpty,
+           average.samples.count <= averageSize {
+            history = average.samples
+            historyNext = min(max(average.next, 0), averageSize - 1)
+        }
+        if tracksValueRange {
+            observedMin = state.observedMin
+            observedMax = state.observedMax
+            refreshRange()
+        }
+    }
+}

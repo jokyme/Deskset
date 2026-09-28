@@ -2323,3 +2323,29 @@ extension Skin {
         updateSize(force: true)
     }
 }
+
+// MARK: - What seeding reads and sets (Session/Seeding.swift)
+
+extension Skin {
+    /// The variables as the skin runs them — without an editor preview's values: what the preview replaced — and the
+    /// `[Variables]` definitions as last resolved, by lowercased name.
+    var runtimeVariables: (values: [String: String], definitions: [String: String]) {
+        var values = variables
+        for (key, saved) in previewSavedVariables {
+            if let saved { values[key] = saved } else { values.removeValue(forKey: key) }
+        }
+        return (values, definedVariables)
+    }
+
+    /// Before the first update: the Calc `Counter` goes on from `counter` — its next update computes it again when the
+    /// source keeps running beside this instance (`mirroring`, as `mirrorCounter(of:)`), else the one after it (as
+    /// `continueCounter(from:)`).
+    func seedCounter(_ counter: Int, mirroring: Bool) {
+        counterBase = mirroring ? max(counter, 1) - 1 : counter
+    }
+
+    /// A variable set while another instance of the widget ran (`SkinRuntimeState`), as `!SetVariable` sets it.
+    func seedVariable(_ key: String, _ value: String) {
+        variables[key] = value
+    }
+}

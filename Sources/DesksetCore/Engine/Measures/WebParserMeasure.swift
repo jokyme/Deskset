@@ -631,3 +631,32 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         skin.log(message, level: .warning)
     }
 }
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension WebParserMeasure {
+    /// What this measure read (nil before anything was read): its result, captures and observed range, and — for a
+    /// parent whose last page arrived — where it is in its UpdateRate cycle.
+    var runtimeWebParserState: SkinRuntimeState.WebParser? {
+        guard fetchCount > 0 && !fetchInFlight || !resultString.isEmpty || !captures.isEmpty else { return nil }
+        return SkinRuntimeState.WebParser(
+            result: resultString, number: resultNumber, captures: captures, substringCount: substringCount,
+            observedMin: observedMin, observedMax: observedMax,
+            updateCounter: parentName == nil && fetchCount > 0 && !fetchInFlight ? updateCounter : nil)
+    }
+
+    /// Takes what the same measure of another instance of the widget read (loaded, before the first update): it shows
+    /// that result at once, and a parent fetches again only when the source would have (its cycle goes on).
+    func seed(webParser state: SkinRuntimeState.WebParser) {
+        resultString = state.result
+        resultNumber = state.number
+        captures = state.captures
+        substringCount = state.substringCount
+        observedMin = state.observedMin
+        observedMax = state.observedMax
+        if !hasMinOption { minValue = automaticMinValue }
+        if !hasMaxOption { maxValue = automaticMaxValue }
+        if !disabled && !paused { rawString = resultString }
+        if let counter = state.updateCounter, parentName == nil { updateCounter = counter }
+    }
+}

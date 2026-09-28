@@ -84,14 +84,6 @@ public final class LineMeter: Meter {
         computeRange()
     }
 
-    /// Takes the samples of `other`'s lines, line by line: a new instance of a widget then shows the graph the one
-    /// already running shows (`Skin.takeGraphs(from:)`).
-    func takeHistory(from other: LineMeter) {
-        for i in lines.indices where i < other.lines.count { lines[i].history = other.lines[i].history }
-        computeRange()
-        noteDrawChange()
-    }
-
     private func computeRange() {
         var lo = Double.infinity, hi = -Double.infinity
         for line in lines {
@@ -136,5 +128,17 @@ public final class LineMeter: Meter {
         return (1..<divisions).map { k in
             (g.valueCoordinate(length * Double(k) / Double(divisions)) - 0.5).rounded(.down) + 0.5
         }
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension LineMeter {
+    /// Takes the samples of another instance's meter, line by line: a new instance of a widget then shows the graph
+    /// the one already running shows (`Skin.seedGraphs(from:)`).
+    func seedHistory(_ histories: [GraphHistory]) {
+        for i in lines.indices where i < histories.count { lines[i].history = histories[i] }
+        computeRange()
+        noteDrawChange()
     }
 }
