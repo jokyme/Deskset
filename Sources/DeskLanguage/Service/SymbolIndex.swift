@@ -357,6 +357,112 @@ final class DeskSymbolIndex: Sendable {
             }
         }
 
+        // 3a. Members of values and nested namespaces, from types worked out along each chain (the innermost first).
+        // Nested members start at the same place and share the checker's key, so a key's recorded type is the
+        // outermost node's; the rest come from the catalog: a namespace's members, a record's fields, a list's
+        // projected fields, the members of text, lists, dates and colors.
+        var valueTypes: [Int: DeskType] = [:]
+        var namespaceOf: [Int: String] = [:]
+        func recorded(_ i: Int) -> DeskType? {
+            let id = table.id(i)
+            guard table.indexes(of: id).first == i else { return nil }
+            return checked.types[id]?.type
+        }
+        func eventRecord(_ i: Int) -> String? {
+            for a in table.ancestors(of: i) where table.entries[a].kind == .modifierApp {
+                let tokens = table.entries[a].positioned.childTokens
+                if tokens.count >= 2, let spec = catalog.modifier(named: tokens[1].token.name), let event = spec.event {
+                    return event.eventRecord ?? "Event"
+                }
+            }
+            return "Event"
+        }
+        for i in table.entries.indices.reversed() {
+            let entry = table.entries[i]
+            switch entry.kind {
+            case .identifierExpr:
+                let token = IdentifierExprSyntax(unchecked: entry.positioned).token
+                guard !token.token.isMissing else { continue }
+                switch checked.symbols[table.id(i)] {
+                case .builtIn(.namespace(let n))?:
+                    namespaceOf[i] = n
+                    if let ns = catalog.namespace(named: n) { valueTypes[i] = ns.value?.type ?? ns.instanceOf.map { .record($0) } }
+                case .declaration(let d)?:
+                    valueTypes[i] = checked.declarationTypes[d]?.type ?? recorded(i)
+                case .event?:
+                    valueTypes[i] = eventRecord(i).map { .record($0) }
+                default:
+                    valueTypes[i] = recorded(i)
+                }
+            case .callExpr:
+                guard let callee = table.children(of: i).first else { continue }
+                var result: DeskType?
+                if table.entries[callee].kind == .identifierExpr {
+                    let name = IdentifierExprSyntax(unchecked: table.entries[callee].positioned).token.token.name
+                    if let f = catalog.function(named: name) {
+                        if let data = f.data { result = data.type }
+                        else if case .fixed(let t)? = f.signatures.first?.result { result = t }
+                    }
+                } else if let t = valueTypes[callee] {
+                    result = t
+                }
+                valueTypes[i] = recorded(i) ?? result
+            case .memberExpr:
+                let tokens = entry.positioned.childTokens
+                guard let token = tokens.last(where: { $0.kind != .dot }), !token.token.isMissing,
+                      let base = table.children(of: i).first else { continue }
+                let name = token.token.name
+                let isCall = entry.parent >= 0 && table.entries[entry.parent].kind == .callExpr
+                    && table.children(of: entry.parent).first == i
+                var path: CatalogPath?
+                var kind = DeskNameKind.member
+                var type: DeskType?
+                if let ns = namespaceOf[base] {
+                    let nested = ns + "." + name
+                    if ns == "options" {
+                        type = checked.options[name]?.type ?? recorded(i)
+                    } else if let inner = catalog.namespace(named: nested) {
+                        namespaceOf[i] = nested
+                        path = .namespace(nested)
+                        kind = .namespace
+                        type = inner.value?.type ?? inner.instanceOf.map { .record($0) }
+                    } else if let member = catalog.index.member(ns, name) {
+                        path = .member(namespace: ns, name: name)
+                        type = member.type
+                    }
+                } else if let baseType = valueTypes[base] ?? recorded(base) {
+                    switch baseType {
+                    case .record(let record) where catalog.record(record)?.field(named: name) != nil:
+                        path = .recordField(record: record, name: name)
+                        type = catalog.record(record)?.field(named: name)?.type
+                    case .list(.record(let record)) where !isCall && catalog.record(record)?.field(named: name) != nil
+                                                           && catalog.index.typeMember("List", name, call: false) == nil:
+                        path = .recordField(record: record, name: name)
+                        type = catalog.record(record)?.field(named: name).map { .list($0.type) }
+                    default:
+                        if let valueType = DeskCatalog.valueTypeName(of: baseType),
+                           let member = catalog.index.typeMember(valueType, name, call: isCall) {
+                            path = .typeMember(type: valueType, name: name)
+                            type = member.type
+                            if case .list(let element) = baseType, ["first", "last", "item"].contains(name), !isCall { type = element }
+                        } else if let member = catalog.index.typeMember("Any", name, call: isCall) {
+                            path = .typeMember(type: "Any", name: name)
+                            type = member.type
+                        } else if baseType == .json {
+                            type = .json
+                        }
+                    }
+                }
+                valueTypes[i] = type ?? recorded(i)
+                if let path {
+                    add(DeskOccurrence(range: token.textRange, name: name, kind: kind, role: .read, key: .builtIn(path), path: path),
+                        replacing: false)
+                }
+            default:
+                break
+            }
+        }
+
         // 3. Built-in names the checker does not record: components, controls, modifiers, labels, fields, units.
         for (i, entry) in table.entries.enumerated() {
             let node = entry.positioned
@@ -402,32 +508,19 @@ final class DeskSymbolIndex: Sendable {
                 }
                 add(DeskOccurrence(range: token.textRange, name: name, kind: kind, role: .read,
                                    key: path.map { .builtIn($0) }, path: path), replacing: false)
-            case .memberExpr:
-                // A field or member of a value the checker typed (`month.title`, `day.isToday`, `name.count`).
-                let tokens = node.childTokens
-                guard let token = tokens.last(where: { $0.kind != .dot }), !token.token.isMissing,
-                      let base = table.children(of: i).first,
-                      let type = checked.types[table.id(base)]?.type else { continue }
+            case .callExpr:
+                // A control or component written as a value (`Choice(.mono, "One color")` in a Picker's choices).
+                guard let callee = table.children(of: i).first, table.entries[callee].kind == .identifierExpr else { continue }
+                let token = IdentifierExprSyntax(unchecked: table.entries[callee].positioned).token
+                guard !token.token.isMissing, checked.symbols[table.id(callee)] == nil else { continue }
                 let name = token.token.name
-                let isCall = entry.parent >= 0 && table.entries[entry.parent].kind == .callExpr
-                    && table.children(of: entry.parent).first == i
-                var path: CatalogPath?
-                switch type {
-                case .record(let record) where catalog.record(record)?.field(named: name) != nil:
-                    path = .recordField(record: record, name: name)
-                case .list(.record(let record)) where catalog.record(record)?.field(named: name) != nil:
-                    path = .recordField(record: record, name: name)
-                default:
-                    if let valueType = DeskCatalog.valueTypeName(of: type),
-                       catalog.index.typeMember(valueType, name, call: isCall) != nil {
-                        path = .typeMember(type: valueType, name: name)
-                    } else if catalog.index.typeMember("Any", name, call: isCall) != nil {
-                        path = .typeMember(type: "Any", name: name)
-                    }
+                if catalog.control(named: name) != nil {
+                    add(DeskOccurrence(range: token.textRange, name: name, kind: .control, role: .read,
+                                       key: .builtIn(.control(name)), path: .control(name)), replacing: false)
+                } else if catalog.component(named: name) != nil {
+                    add(DeskOccurrence(range: token.textRange, name: name, kind: .component, role: .read,
+                                       key: .builtIn(.component(name)), path: .component(name)), replacing: false)
                 }
-                guard let path else { continue }
-                add(DeskOccurrence(range: token.textRange, name: name, kind: .member, role: .read, key: .builtIn(path),
-                                   path: path), replacing: false)
             case .numberLiteral:
                 guard let token = node.childTokens.first, let unit = token.token.unit, !unit.text.isEmpty else { continue }
                 let written = token.token.text.utf8.count - token.token.numberText.utf8.count
