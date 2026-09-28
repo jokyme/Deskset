@@ -58,7 +58,7 @@ struct StudioScreen {
                              "what-it-paints outline"]),
         StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
                      later: ["part page", "scope sentence", "breadcrumb"]),
-        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.5,
+        StudioScreen(name: "07-layers", fixture: .system, depth: .build, zoom: 1.9,
                      later: ["layers", "connect menu"]),
         StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3,
                      later: ["workbench backdrop", "every-setting page", "distances"]),
