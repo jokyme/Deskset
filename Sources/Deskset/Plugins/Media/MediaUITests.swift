@@ -22,6 +22,7 @@ enum MediaUITests {
         wifiTests(t)
         frostedGlassTests(t)
         chameleonTests(t)
+        ChameleonDesktopSelfTests.run(t)
         desktopInfoTests(t)
         testSkinTests(t)
         wiredSkinTests(t)

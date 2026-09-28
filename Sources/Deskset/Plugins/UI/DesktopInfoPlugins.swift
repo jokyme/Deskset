@@ -506,14 +506,20 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
             guard let self, !self.closed, self.windowWatch == nil,
                   let window = ChameleonMeasure.window(of: host) else { return }
             self.windowWatch = WindowMoveWatch(window: window) {
-                hop.post { [weak self] in
-                    guard let self, !self.closed, self.samplesUnderSkin else { return }
-                    self.refreshImage(force: true)
-                }
+                hop.post { [weak self] in self?.windowSettled() }
             }
         }
         if Thread.isMainThread { start() } else { DispatchQueue.main.async(execute: start) }
     }
+
+    /// The skin window stopped moving (or changed screen): samples under it again at once. Skin's executor.
+    func windowSettled() {
+        guard !closed, samplesUnderSkin else { return }
+        refreshImage(force: true)
+    }
+
+    /// Whether the skin window's moves are followed (tests).
+    var followsWindow: Bool { windowWatch != nil }
 
     /// The window a live skin is drawn in (main thread): its own, or for the Studio's instance the desktop copy's.
     static func window(of host: SkinHost?) -> NSWindow? {

@@ -92,6 +92,8 @@ enum ProtectedLocations {
     /// touched). At most 32 links; a loop counts as guarded.
     static func guards(_ path: String, home: String = NSHomeDirectory()) -> Bool {
         guard path.hasPrefix("/") else { return false }
+        // The home folder as the links below resolve it (a home reached through a link).
+        let home = realHome(home)
         var pending = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         var resolved: [String] = []
         var links = 0
@@ -124,6 +126,23 @@ enum ProtectedLocations {
         }
         return false
     }
+}
+
+extension ProtectedLocations {
+    /// `home` with its links resolved (`realpath`: the home folder's own ancestors, none of them guarded), kept for the
+    /// last one asked.
+    static func realHome(_ home: String) -> String {
+        if let known = resolvedHome.access({ $0 }), known.home == home { return known.real }
+        var real = home
+        if let resolved = realpath(home, nil) {
+            real = String(cString: resolved)
+            free(resolved)
+        }
+        resolvedHome.access { $0 = (home, real) }
+        return real
+    }
+
+    private static let resolvedHome = Guarded<(home: String, real: String)?>(nil)
 }
 
 // MARK: - Dynamic desktop pictures
