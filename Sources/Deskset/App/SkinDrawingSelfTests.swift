@@ -585,8 +585,9 @@ enum SkinDrawingSelfTests {
             checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "the first frame")
             runtime.send(.firstFrame)
             t.equal(frames.framesDrawn, 1, "only the first time")
+            endTurn()
 
-            // Ordered in: one frame (the view was displayed when its window was ordered in).
+            // Ordered in on a later turn: one frame (the view was displayed when its window was ordered in).
             w.show(true)
             endTurn()
             t.equal(frames.framesDrawn, 2, "ordered in: one frame")
@@ -827,6 +828,12 @@ enum SkinDrawingSelfTests {
             c.willOrderIn = nil
             t.equal(presentedAtOrderIn, 1, "the first frame exists before the window is ordered in")
             t.check(!c.window.isVisible, "(headless: the window stays out)")
+            // Shown in the same turn (as `start` shows it): the first frame is the one it shows.
+            c.visibilityForTesting = true
+            endTurn()
+            t.equal(frames.framesDrawn, 1, "ordered in right after its first frame: nothing drawn again")
+            c.visibilityForTesting = false
+            endTurn()
 
             // Shown and uncovered as far as the frames go.
             c.visibilityForTesting = true

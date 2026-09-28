@@ -336,6 +336,8 @@ final class SkinFrameProducer {
     private var isUnoccluded = false
     /// Ordered in since the last turn ended: seen before the occlusion state says so.
     private var justOrderedIn = false
+    /// A frame was drawn in this turn (the first frame, right before the window is ordered in).
+    private var drewThisTurn = false
     /// What the provider was told last.
     private var toldVisible: Bool?
 
@@ -417,7 +419,8 @@ final class SkinFrameProducer {
         }
         if facts.isOrderedIn && !isOrderedIn {
             justOrderedIn = true
-            redraw = true
+            // Unless the first frame was drawn for it right now.
+            if !drewThisTurn { redraw = true }
         }
         isOrderedIn = facts.isOrderedIn
         isUnoccluded = facts.isVisible
@@ -450,6 +453,7 @@ final class SkinFrameProducer {
         }
         drawIfSeen()
         justOrderedIn = false
+        drewThisTurn = false
     }
 
     private func drawIfSeen() {
@@ -475,6 +479,7 @@ final class SkinFrameProducer {
         guard let picture else { return }
         provider.present(SkinFrame(image: picture, scale: scale))
         framesDrawn += 1
+        drewThisTurn = true
     }
 
     /// Runs `body` with the appearance named `name` as the thread's drawing appearance.
