@@ -23,6 +23,13 @@ struct RenderOptions: Equatable {
     var clockHours: Int? = MacRegionalSettings.standard.clockHours
     var firstWeekday: Int? = MacRegionalSettings.standard.firstWeekday
     var temperatureUnit: TemperatureUnit? = MacRegionalSettings.standard.temperatureUnit
+    /// `--clock`: the time the skin sees at its first update (nil: the Mac's clock). Update i sees this time plus i
+    /// intervals, whatever the machine's speed; the monotonic clock steps the same way.
+    var clock: Date?
+    /// `--time-zone`: the skin's local time zone (nil: UTC with `--clock`, else the Mac's).
+    var timeZone: TimeZone?
+    /// `--seed`: the skin's random numbers come from a generator with this seed (nil: the system's).
+    var seed: UInt64?
     var warnings: [String] = []
 
     enum Appearance: String, Equatable {
@@ -37,7 +44,8 @@ struct RenderOptions: Equatable {
 
     static let usage = "usage: Deskset --render Skin.ini [--out out.png] [--updates N] [--interval ms] [--scale S] "
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
-        + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--skins-dir DIR]"
+        + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
+        + "[--seed N] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -112,7 +120,68 @@ struct RenderOptions: Equatable {
             default: return nil
             }
         }
+        // The skin's clock, time zone and random numbers (the Mac's own unless given).
+        if let raw = value("--time-zone") {
+            if let zone = timeZone(raw) { o.timeZone = zone } else {
+                o.warnings.append("--time-zone \"\(raw)\" is not a time zone (such as Europe/Oslo or UTC); using "
+                                  + "the default")
+            }
+        } else if arguments.contains("--time-zone") {
+            o.warnings.append("--time-zone needs a value; using the default")
+        }
+        if let raw = value("--clock") {
+            if let date = date(raw, zone: o.timeZone ?? TimeZone(identifier: "UTC")!) { o.clock = date } else {
+                o.warnings.append("--clock \"\(raw)\" is not an ISO 8601 date and time or a Unix time; using the "
+                                  + "Mac's clock")
+            }
+        } else if arguments.contains("--clock") {
+            o.warnings.append("--clock needs a value; using the Mac's clock")
+        }
+        if let raw = value("--seed") {
+            let text = raw.trimmingCharacters(in: .whitespaces)
+            if let v = UInt64(text) { o.seed = v } else if let v = Int64(text) { o.seed = UInt64(bitPattern: v) } else {
+                o.warnings.append("--seed \"\(raw)\" is not a whole number; using the system's random numbers")
+            }
+        } else if arguments.contains("--seed") {
+            o.warnings.append("--seed needs a value; using the system's random numbers")
+        }
         return o
+    }
+
+    /// An IANA time zone name (`Europe/Oslo`), `UTC` / `GMT`, or an abbreviation macOS knows (`CET`).
+    static func timeZone(_ raw: String) -> TimeZone? {
+        let name = raw.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        return TimeZone(identifier: name) ?? TimeZone(abbreviation: name)
+    }
+
+    /// `--clock`: seconds since 1970 (`1790000000`, `1790000000.5`), or an ISO 8601 date and time with or without a
+    /// UTC offset and fractional seconds (`2026-12-31T23:59:58+08:00`, `2026-12-31T23:59:58Z`,
+    /// `2026-12-31T23:59:58` in `zone`), or a date alone (midnight in `zone`).
+    static func date(_ raw: String, zone: TimeZone) -> Date? {
+        let text = raw.trimmingCharacters(in: .whitespaces)
+        if let seconds = Double(text), seconds.isFinite, abs(seconds) < 1e11 { return Date(timeIntervalSince1970: seconds) }
+        let internet = ISO8601DateFormatter()
+        internet.formatOptions = [.withInternetDateTime]
+        if let d = internet.date(from: text) { return d }
+        internet.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = internet.date(from: text) { return d }
+        let local = DateFormatter()
+        local.locale = Locale(identifier: "en_US_POSIX")
+        local.calendar = Calendar(identifier: .gregorian)
+        local.timeZone = zone
+        for format in ["yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
+            local.dateFormat = format
+            if let d = local.date(from: text) { return d }
+        }
+        return nil
+    }
+
+    /// The clock the skin reads (`--clock`, `--time-zone`): a stepped one with `--clock`, else the Mac's with the
+    /// given zone, else nil (the Mac's own).
+    func skinClock() -> SteppedSkinClock? {
+        guard let clock else { return nil }
+        return SteppedSkinClock(start: clock, timeZone: timeZone ?? TimeZone(identifier: "UTC")!)
     }
 
     /// The settings the skin sees, with `system` ones taken from `mac`.
@@ -135,12 +204,16 @@ struct RenderOptions: Equatable {
 ///
 ///     Deskset --render path/to/Skins/Root/Config/Skin.ini --out skin.png [--updates 3] [--interval 1000]
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
-///            [--temperature-unit F] [--skins-dir path/to/Skins]
+///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
+///            [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
 /// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise, and a 24-hour clock,
 /// weeks from Sunday and °C unless `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise.
+/// `--clock` gives the skin a clock of its own (update i sees the given time plus i intervals; its time zone is UTC
+/// unless `--time-zone` says otherwise), `--time-zone` alone only changes the zone, and `--seed` makes its random
+/// numbers (Calc Random, QuotePlugin, Lua's math.random…) the same in every run.
 enum RenderCommand {
     static func run(_ arguments: [String]) -> Int32 {
         guard let o = RenderOptions.parse(arguments) else {
@@ -169,6 +242,14 @@ enum RenderCommand {
         let host = RenderHost()
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir, system: SystemMonitor.shared,
                         host: host)
+        // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
+        let stepped = o.skinClock()
+        if let stepped {
+            skin.skinClock = stepped.clock
+        } else if let zone = o.timeZone {
+            skin.skinClock.timeZone = { zone }
+        }
+        if let seed = o.seed { skin.random = SkinRandom(seed: seed) }
         do {
             try skin.load()
         } catch {
@@ -177,7 +258,9 @@ enum RenderCommand {
         }
         Fonts.registerFonts(for: skin)
         for i in 0..<o.updates {
-            if i > 0 { wait(milliseconds: o.interval) }
+            if i > 0 { wait(milliseconds: o.interval, stepping: stepped) }
+            // Update i sees the start plus i intervals, however long the waits really took.
+            stepped?.elapsed = Double(i) * o.interval / 1000
             skin.update()
         }
 
@@ -244,9 +327,15 @@ enum RenderCommand {
 
     /// Waits between updates while letting queued main-thread work run (!Delay, asynchronous results). The run
     /// loop returns at once when nothing is scheduled, so the rest of the time is slept rather than spun.
-    static func wait(milliseconds: Double) {
-        let until = Date().addingTimeInterval(max(milliseconds, 0) / 1000)
+    /// `stepping` (`--clock`): the skin's clock moves on with the real time waited, up to the interval, so that timers
+    /// firing meanwhile see time pass; the next update sets it exactly.
+    static func wait(milliseconds: Double, stepping clock: SteppedSkinClock? = nil) {
+        let seconds = max(milliseconds, 0) / 1000
+        let start = Date()
+        let startElapsed = clock?.elapsed ?? 0
+        let until = start.addingTimeInterval(seconds)
         repeat {
+            if let clock { clock.elapsed = startElapsed + min(max(Date().timeIntervalSince(start), 0), seconds) }
             if !RunLoop.main.run(mode: .default, before: until) {
                 let left = until.timeIntervalSinceNow
                 if left > 0 { Thread.sleep(forTimeInterval: min(left, 0.01)) }

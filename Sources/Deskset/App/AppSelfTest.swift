@@ -487,6 +487,41 @@ enum AppSelfTest {
             let color = RenderOptions.parse(["P", "--render", "a.ini", "--background", "40,40,50"])
             t.equal(color?.background, RGBA(r: 40, g: 40, b: 50, a: 255))
 
+            // --clock, --time-zone and --seed (the skin's clock and random numbers).
+            t.equal(d?.clock, nil)
+            t.equal(d?.timeZone, nil)
+            t.equal(d?.seed, nil)
+            t.check(d?.skinClock() == nil, "no --clock: the Mac's clock")
+            let fixed = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-12-31T23:59:58+08:00",
+                                             "--seed", "7"])
+            t.equal(fixed?.clock?.timeIntervalSince1970, 1_798_732_798)
+            t.equal(fixed?.seed, 7)
+            t.equal(fixed?.warnings, [])
+            t.equal(fixed?.skinClock()?.timeZone.identifier, "GMT", "UTC unless --time-zone says otherwise")
+            let unix = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "1790000000.5", "--seed", "-1"])
+            t.equal(unix?.clock?.timeIntervalSince1970, 1_790_000_000.5)
+            t.equal(unix?.seed, UInt64.max)
+            let zoned = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01T12:00:00",
+                                             "--time-zone", "Europe/Oslo"])
+            t.equal(zoned?.clock?.timeIntervalSince1970, 1_782_900_000, "a time without an offset is in --time-zone")
+            t.equal(zoned?.skinClock()?.timeZone.identifier, "Europe/Oslo")
+            let day = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01", "--time-zone", "UTC"])
+            t.equal(day?.clock?.timeIntervalSince1970, 1_782_864_000, "a date alone is midnight")
+            let wrong = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "soon", "--time-zone", "Mars/Base",
+                                             "--seed", "x"])
+            t.equal(wrong?.clock, nil)
+            t.equal(wrong?.timeZone, nil)
+            t.equal(wrong?.seed, nil)
+            t.equal(wrong?.warnings.count, 3)
+            let stepped = SteppedSkinClock(start: Date(timeIntervalSince1970: 1_000), timeZone: TimeZone(identifier: "UTC")!)
+            let clock = stepped.clock
+            t.equal(clock.now().timeIntervalSince1970, 1_000)
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime)
+            stepped.elapsed = 2.5
+            t.equal(clock.now().timeIntervalSince1970, 1_002.5, "update i sees the start plus i intervals")
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime + 2.5)
+            t.check(!clock.nowIsLive && !clock.uptimeIsLive && !clock.timeZoneIsLive)
+
             let (root, config) = RenderCommand.locate(URL(fileURLWithPath: "/x/Skins/Suite/Clock/Clock.ini"), skinsDir: nil)
             t.equal(root.path, "/x/Skins")
             t.equal(config, "Suite\\Clock")
