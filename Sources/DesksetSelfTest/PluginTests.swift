@@ -1494,6 +1494,116 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         update(i)
         t.equal(requests.count, 1, "an icon is written once")
     }
+
+    t.suite("Plugin: FileView icons follow links and Finder aliases") {
+        let fm = FileManager.default
+        let dir = t.temporaryDirectory("links")
+        let doc = dir.appendingPathComponent("Doc.txt")
+        writeFile(doc, "x")
+        let folder = dir.appendingPathComponent("Folder", isDirectory: true)
+        writeFile(folder.appendingPathComponent("inside.txt"), "y")
+        let app = dir.appendingPathComponent("Tool.app", isDirectory: true)
+        writeFile(app.appendingPathComponent("Contents/Info.plist"), "<plist version=\"1.0\"><dict/></plist>")
+        func path(_ name: String) -> String { dir.appendingPathComponent(name).path }
+        func link(_ name: String, to destination: String) throws {
+            try fm.createSymbolicLink(atPath: path(name), withDestinationPath: destination)
+        }
+        /// A Finder alias file, as Finder's Make Alias writes one (bookmark data with the alias flag).
+        func alias(_ name: String, to target: URL) throws {
+            let data = try target.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil,
+                                               relativeTo: nil)
+            try URL.writeBookmarkData(data, to: dir.appendingPathComponent(name))
+        }
+        /// The same file-system item (device and inode), and not itself a link: the path may be spelt differently
+        /// (the temporary folder is under /var, a link to /private/var).
+        func isItem(_ resolved: String, _ target: URL) -> Bool {
+            var a = stat(), b = stat()
+            guard lstat(resolved, &a) == 0, lstat(target.path, &b) == 0 else { return false }
+            return (a.st_mode & S_IFMT) != S_IFLNK && a.st_dev == b.st_dev && a.st_ino == b.st_ino
+        }
+
+        try link("file link.txt", to: doc.path)
+        try link("folder link", to: folder.path)
+        try link("relative.app", to: "Tool.app")
+        try link("chain", to: path("file link.txt"))
+        try alias("Doc alias", to: doc)
+        try alias("Folder alias", to: folder)
+        try alias("Tool alias", to: app)
+        try link("link to alias", to: path("Doc alias"))
+        try alias("alias to link", to: URL(fileURLWithPath: path("folder link")))
+        try alias("alias to alias", to: URL(fileURLWithPath: path("Tool alias")))
+        try link("broken.app", to: path("Nothing.app"))
+        try link("loop A", to: path("loop B"))
+        try link("loop B", to: path("loop A"))
+        try link("self", to: path("self"))
+        let gone = dir.appendingPathComponent("Gone.txt")
+        writeFile(gone, "z")
+        try alias("Gone alias", to: gone)
+        try fm.removeItem(at: gone)
+
+        let r = FileViewIcons.resolvedSource
+        t.check(isItem(r(path("file link.txt")), doc), "a link to a file")
+        t.check(isItem(r(path("folder link")), folder), "a link to a folder")
+        t.check(isItem(r(path("folder link") + "/"), folder), "FileView's folder paths end with /: \(r(path("folder link") + "/"))")
+        t.check(isItem(r(path("relative.app") + "/"), app), "a relative link to an app")
+        t.check(isItem(r(path("chain")), doc), "a link to a link")
+        t.check(isItem(r(path("Doc alias")), doc), "a Finder alias to a file: \(r(path("Doc alias")))")
+        t.check(isItem(r(path("Folder alias")), folder), "a Finder alias to a folder")
+        t.check(isItem(r(path("Tool alias")), app), "a Finder alias to an app")
+        t.check(isItem(r(path("link to alias")), doc), "a link to an alias")
+        t.check(isItem(r(path("alias to link")), folder), "an alias to a link")
+        t.check(isItem(r(path("alias to alias")), app), "an alias to an alias")
+        // What cannot be followed keeps its own path, exactly as given (the link's own icon is shown).
+        t.equal(r(path("broken.app")), path("broken.app"), "a broken link")
+        t.equal(r(path("loop A")), path("loop A"), "a loop")
+        t.equal(r(path("self")), path("self"))
+        t.equal(r(path("Gone alias")), path("Gone alias"), "an alias whose original was deleted")
+        // Everything else is passed through untouched.
+        t.equal(r(doc.path), doc.path)
+        t.equal(r(folder.path + "/"), folder.path + "/", "a folder keeps its trailing slash")
+        t.equal(r(app.path + "/"), app.path + "/")
+        t.equal(r(path("Missing.txt")), path("Missing.txt"))
+        t.equal(r(""), "")
+        // macOS 26 ships Safari as a link into the system's cryptex: its icon is the app's, without Finder's arrow.
+        var safari = stat()
+        if lstat("/Applications/Safari.app", &safari) == 0, (safari.st_mode & S_IFMT) == S_IFLNK {
+            let resolved = r("/Applications/Safari.app/")
+            t.check(resolved.hasSuffix("/Safari.app") && !resolved.hasPrefix("/Applications/"), resolved)
+            t.check(isItem(resolved, URL(fileURLWithPath: "/Applications/Safari.app").resolvingSymlinksInPath()))
+        }
+
+        // FileView hands the writer the item as listed; the writer follows the link.
+        let (skin, _) = try makeSkin(t, """
+        [P]
+        Measure=Plugin
+        Plugin=FileView
+        Path=\(dir.path)
+        WildcardSearch=Tool alias
+        ShowDotDot=0
+        [I]
+        Measure=Plugin
+        Plugin=FileView
+        Path=[P]
+        Type=Icon
+        IconPath=#CURRENTPATH#alias.png
+        """)
+        let p = measure(skin, "P", FileViewMeasure.self, read: false)
+        let i = measure(skin, "I", FileViewMeasure.self, read: false)
+        if !registryWired { i.parentResolver = { $0.lowercased() == "p" ? p : nil } }
+        p.readOptionsIfNeeded(); i.readOptionsIfNeeded()
+        update(p)
+        t.check(spin { !p.isReading })
+        var sources: [String] = []
+        FileViewIcons.writer = { source, _, destination in
+            sources.append(FileViewIcons.resolvedSource(source))
+            return (try? "png".write(toFile: destination, atomically: true, encoding: .utf8)) != nil
+        }
+        defer { FileViewIcons.writer = nil }
+        update(i)
+        t.check(spin { !i.stringValue.isEmpty })
+        t.equal(sources.count, 1)
+        t.check(sources.first.map { isItem($0, app) } == true, "\(sources)")
+    }
 }
 
 // MARK: - RecycleManager

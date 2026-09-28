@@ -4,7 +4,8 @@ import DesksetCore
 import UniformTypeIdentifiers
 
 /// The app side of FileView's `Type=Icon` child measures (`FileViewIcons.writer` in DesksetCore): the Finder icon of
-/// a file or folder (NSWorkspace), rendered at the pixel size the measure asks for and written to its `IconPath`.
+/// a file or folder (NSWorkspace; for a link or alias, of the item it leads to), rendered at the pixel size the measure
+/// asks for and written to its `IconPath`.
 ///
 /// Manual (FileView plugin): the icon is saved as an .ico file (default `icon<Index>.ico` in the skin folder) that an
 /// Image meter shows. Here the file is a real Windows icon file (ImageIO's ICO encoder) when the path ends in .ico
@@ -28,14 +29,16 @@ enum FileViewIconWriter {
     /// be drawn on two threads at the same time.
     private static let renderLock = NSLock()
 
-    /// Renders and writes the icon; false when nothing could be written.
+    /// Renders and writes the icon; false when nothing could be written. A symbolic link or Finder alias gets the icon
+    /// of what it leads to (`FileViewIcons.resolvedSource`), without the arrow Finder draws on links.
     static func write(source: String, pixelSize: Int, destination: String) -> Bool {
         guard !source.isEmpty, !destination.isEmpty else { return false }
         let side = min(max(pixelSize, 1), maxPixelSize)
+        let file = FileViewIcons.resolvedSource(source)
         let rendered: CGImage? = {
             renderLock.lock()
             defer { renderLock.unlock() }
-            return render(NSWorkspace.shared.icon(forFile: source), side: side)
+            return render(NSWorkspace.shared.icon(forFile: file), side: side)
         }()
         guard let image = rendered,
               let data = encode(image, pathExtension: (destination as NSString).pathExtension) else { return false }

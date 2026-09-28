@@ -432,6 +432,45 @@ extension AppSelfTest {
             t.check(results.allSatisfy { ($0 as? Bool) == true })
             t.equal(Images.cgImage(atPath: dir.appendingPathComponent("many/icon11.ico").path)?.width, 43)
 
+            // Links and Finder aliases get the icon of what they lead to, without the arrow Finder draws on them.
+            let app = dir.appendingPathComponent("Tool.app", isDirectory: true)
+            try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"),
+                                                    withIntermediateDirectories: true)
+            try Data("<plist version=\"1.0\"><dict/></plist>".utf8)
+                .write(to: app.appendingPathComponent("Contents/Info.plist"))
+            let links = dir.appendingPathComponent("links", isDirectory: true)
+            try FileManager.default.createDirectory(at: links, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(at: links.appendingPathComponent("Tool link.app"),
+                                                       withDestinationURL: app)
+            try FileManager.default.createSymbolicLink(at: links.appendingPathComponent("Folder link"),
+                                                       withDestinationURL: dir.appendingPathComponent("sub"))
+            let bookmark = try app.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil,
+                                                relativeTo: nil)
+            try URL.writeBookmarkData(bookmark, to: links.appendingPathComponent("Tool alias"))
+            func pixels(_ source: String, _ name: String) -> Data? {
+                let out = links.appendingPathComponent("icons/\(name).png").path
+                guard FileViewIconWriter.write(source: source, pixelSize: 64, destination: out),
+                      let image = Images.cgImage(atPath: out) else { return nil }
+                return image.dataProvider?.data as Data?
+            }
+            let appIcon = pixels(app.path, "app")
+            t.check(appIcon != nil)
+            t.equal(pixels(links.appendingPathComponent("Tool link.app").path + "/", "link"), appIcon,
+                    "a link to an app (as FileView lists it, with a slash) has the app's icon")
+            t.equal(pixels(links.appendingPathComponent("Tool alias").path, "alias"), appIcon,
+                    "a Finder alias to an app has the app's icon")
+            let folderIcon = pixels(dir.appendingPathComponent("sub").path + "/", "folder")
+            t.check(folderIcon != nil)
+            t.equal(pixels(links.appendingPathComponent("Folder link").path + "/", "folder link"), folderIcon)
+            // Without following it, macOS draws the link's own icon (with the arrow on macOS 26): shown for reference.
+            let raw: CGImage? = {
+                let icon = NSWorkspace.shared.icon(forFile: links.appendingPathComponent("Tool link.app").path)
+                return FileViewIconWriter.render(icon, side: 64)
+            }()
+            if (raw?.dataProvider?.data as Data?) == appIcon {
+                print("    (note: this macOS draws a link's icon like its original's even without following it)")
+            }
+
             // End to end: a FileView child with Type=Icon in a running skin.
             guard let app = try makeApp(t) else { return }
             let skinDir = app.skinsDirectory.appendingPathComponent("IconRoot/Files", isDirectory: true)
