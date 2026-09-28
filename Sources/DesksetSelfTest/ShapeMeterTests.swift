@@ -904,4 +904,39 @@ private func runShapeMeterReviewTests(_ t: TestRunner) {
         t.equal(bad.shapes.count, 0, "no numbers at all, missing parameters and * are still errors")
         t.equal(badHost.logs.filter { $0.contains("needs 4 numeric parameters") }.count, 3)
     }
+
+    t.suite("ShapeMeter: options read again with the same values keep the parsed shapes") {
+        let (skin, m, _) = try loadShape(t, """
+        DynamicVariables=1
+        Shape=Arc 30,3.5,30,56.5,26.5,26.5,0,0,#Large# | StrokeWidth 7 | Stroke Color #Ring#
+        Shape2=Path Mark | Extend Look
+        Mark=0,0 | LineTo 10,0 | LineTo 10,#Tall#
+        Look=Fill Color 1,2,3
+        """, extra: "[Variables]\nLarge=0\nRing=10,20,30\nTall=10\n")
+        let first = m.parseCount
+        let revision = m.revision
+        t.equal(m.shapes.count, 2)
+        skin.update()
+        skin.update()
+        t.equal(m.parseCount, first, "the same values: not parsed again")
+        t.equal(m.revision, revision)
+        skin.execute("[!SetVariable Ring 40,50,60]", from: nil)
+        skin.update()
+        t.equal(m.parseCount, first + 1, "a value in a Shape option changed")
+        t.equal(m.shapes.first?.stroke, .color(RGBA(r: 40, g: 50, b: 60, a: 255)))
+        skin.execute("[!SetVariable Tall 30]", from: nil)
+        skin.update()
+        t.equal(m.parseCount, first + 2, "a path the parser looked up changed")
+        closeRect(t, m.shapes.last?.bounds, 0, 0, 10, 30)
+        skin.execute("[!SetOption M Look \"Fill Color 4,5,6\"]", from: nil)
+        skin.update()
+        t.equal(m.parseCount, first + 3, "a list of modifiers the parser looked up changed")
+        t.equal(m.shapes.last?.fill, .color(RGBA(r: 4, g: 5, b: 6, a: 255)))
+        skin.execute("[!SetOption M Shape3 \"Rectangle 0,0,5,5\"]", from: nil)
+        skin.update()
+        t.equal(m.shapes.count, 3, "a new numbered shape")
+        let parsed = m.parseCount
+        skin.update()
+        t.equal(m.parseCount, parsed)
+    }
 }
