@@ -110,6 +110,8 @@ final class StudioPartPage {
     var movedOut: [String] = []
     /// What each row of the page shown writes.
     var rows: [String: StudioPartRow] = [:]
+    /// The scope choices worked out for the Studio's instance of the widget.
+    private var scopeCache: (skin: Skin?, choices: [String: [WriteScopeChoice]]) = (nil, [:])
 
     init(window: StudioWindowController) {
         self.window = window
@@ -236,7 +238,14 @@ final class StudioPartPage {
     /// The scopes a change of the part can take, narrowest first.
     func scopeChoices(_ m: Meter, key: String? = nil) -> [WriteScopeChoice] {
         guard let skin else { return [] }
-        return WriteScopes.choices(meter: m.name, key: key ?? StudioPartKind(m).mainKey, in: skin)
+        let k = key ?? StudioPartKind(m).mainKey
+        // Worked out once per instance of the widget (which widgets read a shared file walks the whole suite).
+        if scopeCache.skin !== skin { scopeCache = (skin, [:]) }
+        let id = "\(m.name.lowercased())|\(k.lowercased())"
+        if let cached = scopeCache.choices[id] { return cached }
+        let choices = WriteScopes.choices(meter: m.name, key: k, in: skin)
+        scopeCache.choices[id] = choices
+        return choices
     }
 
     /// The scope a change of `key` is written with, following the page's scope: the same style, variable or file when

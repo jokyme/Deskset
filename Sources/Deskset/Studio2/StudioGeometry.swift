@@ -73,11 +73,15 @@ final class StudioGeometry {
                 set("Y", base.raw.y, dy, fallback: nil)
                 return v
             }
-            var dx = target.x - f.x, dy = target.y - f.y
+            // Whole points: the canvas rounds the frames it asks for, and a centred text's frame sits on a half point —
+            // that half point is not a move (a drag across must not rewrite Y).
+            var dx = (target.x - f.x).rounded(.toNearestOrEven), dy = (target.y - f.y).rounded(.toNearestOrEven)
             var v = compute(dx, dy)
             session.preview(section: base.meter, v)
-            let ex = target.x - m.frame.x, ey = target.y - m.frame.y
-            if abs(ex) >= 0.5 || abs(ey) >= 0.5 {
+            var ex = target.x - m.frame.x, ey = target.y - m.frame.y
+            ex = abs(ex) >= 1 ? ex.rounded() : 0
+            ey = abs(ey) >= 1 ? ey.rounded() : 0
+            if ex != 0 || ey != 0 {
                 dx += ex
                 dy += ey
                 let first = v
