@@ -522,11 +522,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The window controller and its runtime are made and registered at once (bangs for the config queue behind the
     /// load on the skin's executor); the runtime loads and starts the skin and reports `.loaded` (the window's settings
     /// apply) and `.started` (`skinStarted`: the window is placed and shown, the Studio attached, the app told), or
-    /// `.failed` (`skinFailed`: the config is marked inactive). With the main executor all of it happens before this returns, and a skin that cannot be loaded
-    /// returns nil.
+    /// `.failed` (`skinFailed`: the config is marked inactive). With the main executor all of it happens before this
+    /// returns, and a skin that cannot be loaded returns nil.
+    ///
+    /// `ticket`: a reload the Studio asked for (`SkinReloadTicket`). It rides on the close of the running copy and the
+    /// load of the new one, and the widget's editing session hears of each (`studioReload`). `place`: where the new
+    /// copy's window goes once it started (a step that moves the widget with its files).
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
-                  continuing previous: SkinRuntime? = nil) -> SkinWindowController? {
+                  continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
+                  thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
         guard !isTerminating else { return nil }
         guard let entry = config(named: rawConfig) else {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
@@ -539,7 +544,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let firstLoad = state.skin(entry.name) == nil
         if let running = controllers[key] {
             controllers[key] = nil
-            running.stop()
+            running.stop(ticket: ticket)
         }
         state.update(entry.name) {
             $0.file = chosen
@@ -548,8 +553,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: skinExecutor(entry.name))
         controllers[key] = c
         c.restacksWhenStarted = restack
+        c.moveWhenStarted = place
         let order = SkinLoadOrder(state: c.state, firstLoad: firstLoad, continuing: previous,
-                                  presentsWindows: presentsWindows, paused: updatesPaused)
+                                  presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket)
+        if let ticket { studioReload(ticket, .loading, c) }
         c.load(order, fadeIn: fade && !replacing)
         return c.loadFailed ? nil : c
     }
@@ -669,9 +676,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return entry.files[(index + 1) % entry.files.count]
     }
 
+    /// Loads `c`'s skin again (a new window controller and runtime), when it is the one running for its config.
     func refresh(_ c: SkinWindowController) {
+        refresh(c, ticket: nil, thenMoveTo: nil)
+    }
+
+    /// `refresh` for a reload the Studio asked for (`ticket`), and where the window goes once the new copy started
+    /// (`place`; see `activate`).
+    func refresh(_ c: SkinWindowController, ticket: SkinReloadTicket?, thenMoveTo place: WidgetPosition?) {
         guard controller(for: c.config) === c else { return }
-        activate(config: c.config, file: c.file, continuing: c.runtime)
+        activate(config: c.config, file: c.file, continuing: c.runtime, ticket: ticket, thenMoveTo: place)
+    }
+
+    /// A copy of a widget went through a step of a reload the Studio asked for (`SkinReloadEvent`): the widget's
+    /// editing session hears of it, whenever and in whatever order the copies get there. Main thread.
+    func studioReload(_ ticket: SkinReloadTicket, _ event: SkinReloadEvent, _ c: SkinWindowController) {
+        studioSessions[SkinLibrary.normalizedConfigName(c.config).lowercased()]?.reload(ticket, event, from: c)
     }
 
     /// "Refresh all": image files are decoded again (a skin author may have edited them), font folders are read

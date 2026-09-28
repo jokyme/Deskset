@@ -104,6 +104,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// A change on disk came in while a gesture, a color or the code's commit was being written: looked at again on the
     /// next tick.
     var pendingDiskCheck = false
+    /// The desktop copy's work in progress when files changed has run (`checkFilesOnDisk`).
+    var diskCheckCaughtUp = false
     /// The desktop copy wrote its files while the session reloaded it, during a gesture, a color or the code's commit:
     /// the Studio's instance follows on the next tick (`followDesktopWrites`).
     var pendingStudioReload = false
@@ -1356,23 +1358,21 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         for part in attachParts(c) { part.work() }
     }
 
-    /// The widget on the desktop was loaded again (a new controller). After a reload the session asked for (a step,
-    /// an undo, a live reload: `EditingSession.takeOwnReload`) only the link changes — and what the widget wrote to its
-    /// files as it loaded is taken as its own (`absorbDesktopWrites`); after any other refresh (the widget's menu,
-    /// `!Refresh`, Refresh All, another variant) the Studio's instance loads again too, as the editor showed the
-    /// refreshed widget before (an image may have changed). Either way the widget's writes so far are its own
+    /// The widget on the desktop was loaded again (a new controller, which has started). After a reload the session
+    /// asked for (a step, an undo, a live reload: the controller carries its ticket, `EditingSession.isOwnReload`) only
+    /// the link changes — what the widget wrote to its files as it reloaded is taken as its own when the reload ends
+    /// (`EditingSession.absorbDesktopWrites`), and the Studio's instance follows then; after any other refresh (the
+    /// widget's menu, `!Refresh`, Refresh All, another variant) the Studio's instance loads again too, as the editor
+    /// showed the refreshed widget before (an image may have changed). Either way the widget's writes so far are its own
     /// (`keyValueWrites`).
     func desktopReloaded(_ c: SkinController) {
         guard let session else { return }
-        let own = session.takeOwnReload(c)
+        let own = session.isOwnReload(c)
         controller = c
         config = c.config
-        keyValueWrites = Self.keyValueWrites(of: c) ?? keyValueWrites
+        keyValueWrites = Self.keyValueWrites(of: c)
         let otherFile = session.bind(desktop: c)
-        if own && !otherFile {
-            session.absorbDesktopWrites()
-            return
-        }
+        if own && !otherFile { return }
         session.absorbDesktopWrites(notify: false)
         session.reloadStudioSkin()
     }
@@ -1390,7 +1390,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             session.undoStack.hasPendingEdits = { [weak self] in self?.hasPendingVisualEdits ?? false }
         }
         let otherFile = session.bind(desktop: c)
-        keyValueWrites = Self.keyValueWrites(of: c) ?? keyValueWrites
+        keyValueWrites = Self.keyValueWrites(of: c)
         if session.studioSkin == nil || otherFile { session.reloadStudioSkin(notify: false) }
     }
 
@@ -1504,7 +1504,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             editor.fitIfAutomatic()
             editor.refreshInlineTextEditor()
             editor.updateCanvasOverlays()
-            editor.keyValueWrites = Self.keyValueWrites(of: c) ?? editor.keyValueWrites
+            editor.keyValueWrites = Self.keyValueWrites(of: c)
             editor.startTimers()
         }
         part("code") { editor in
@@ -1523,9 +1523,11 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         return c.runtime.exclusive(body)
     }
 
-    /// How many `!WriteKeyValue` writes the widget on the desktop made (nil when it cannot be asked now).
-    static func keyValueWrites(of c: SkinController) -> Int? {
-        c.runtime.exclusive { $0.keyValueWrites }
+    /// How many `!WriteKeyValue` writes the widget on the desktop made, as of the end of its last piece of work (its
+    /// snapshot).
+    static func keyValueWrites(of c: SkinController) -> Int {
+        SnapshotAudit.check("keyValueWrites", c.runtime, snapshot: c.runtime.snapshot.keyValueWrites,
+                            live: { $0.keyValueWrites })
     }
 
     /// The name the window shows: the skin's `[Metadata] Name`, else its folder.
@@ -1976,6 +1978,10 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// a save does (an image or a font it uses may have changed). Put off while a gesture, a color or the code's commit
     /// is being written, and while a reload the session asked for is on its way (what the widget writes as it loads is
     /// its own): the next tick looks again.
+    ///
+    /// The widget's own writes are counted in its snapshot once the piece of work that made them ended; FSEvents may
+    /// report a write of a copy on another thread before that. So the files are looked at once the work that copy has
+    /// now (running and queued) has run: at once on the main executor.
     func checkFilesOnDisk() {
         guard let session, let c = controller, !c.isStopped else { return }
         guard geometryBases.isEmpty, colorValue == nil, !committingCode, !session.isAwaitingOwnReload else {
@@ -1983,10 +1989,19 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             return
         }
         pendingDiskCheck = false
+        guard diskCheckCaughtUp || c.runtime.executor.isCurrent else {
+            c.runtime.whenCaughtUp { [weak self] in
+                guard let self else { return }
+                self.diskCheckCaughtUp = true
+                defer { self.diskCheckCaughtUp = false }
+                self.checkFilesOnDisk()
+            }
+            return
+        }
         let changed = session.filesChangedOnDisk()
         let touched = session.filesTouchedOnDisk()
         guard !changed.isEmpty || !touched.isEmpty else { return }
-        let written = Self.keyValueWrites(of: c) ?? keyValueWrites
+        let written = Self.keyValueWrites(of: c)
         let skinWroteThem = written != keyValueWrites
         keyValueWrites = written
         session.takeChangesFromDisk()

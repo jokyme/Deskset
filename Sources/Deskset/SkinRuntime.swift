@@ -119,7 +119,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             isClosing = true
             isClosed = true
             frames.stop()
-            request(.failed(String(describing: error)))
+            request(.failed(String(describing: error), ticket: order.ticket))
             markClosed()
             return
         }
@@ -141,7 +141,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         // A window about to be shown never shows before its skin has drawn (a skin that stays hidden draws when shown).
         if order.presentsWindows && !model.settings.hidden { frames.drawFirstFrame() }
         let snapshot = self.snapshot
-        request(.started(SkinStartReport(size: snapshot.size, metadata: snapshot.metadata)))
+        request(.started(SkinStartReport(size: snapshot.size, metadata: snapshot.metadata, ticket: order.ticket)))
     }
 
     // MARK: Messages
@@ -273,8 +273,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.fontsDidChange()
         case .appearanceChanged:
             skin.appearanceDidChange()
-        case .close:
-            close()
+        case .close(_, let ticket):
+            close(ticket: ticket)
         case .firstFrame:
             frames.drawFirstFrame()
         case .frameWanted:
@@ -341,6 +341,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func exclusive<T>(timeout: TimeInterval = SkinRuntime.defaultExclusiveTimeout, _ body: (Skin) -> T) -> T? {
         let skin: Skin = self.skin
         return skin.executor.exclusive(timeout: timeout) { body(skin) }
+    }
+
+    /// Runs `body` on the main thread once the work the skin's executor has now — the piece it is running and what is
+    /// queued behind it — has run, so the snapshot counts what that work did: at once on the executor. Main thread.
+    func whenCaughtUp(_ body: @escaping () -> Void) {
+        if executor.isCurrent { return body() }
+        executor.async { DispatchQueue.main.async(execute: body) }
     }
 
     // MARK: Requests
@@ -568,8 +575,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     /// Stops the clock and closes the skin: OnCloseAction runs while the skin can still handle bangs (it cannot reload
-    /// or unload itself any more). Then the main thread hears of it (`.closed`), and whoever waits for the close.
-    private func close() {
+    /// or unload itself any more). Then the main thread hears of it (`.closed`, with the ticket of the reload the close is
+    /// part of), and whoever waits for the close.
+    private func close(ticket: SkinReloadTicket?) {
         guard !isClosing else { return }
         timer?.cancel()
         timer = nil
@@ -582,7 +590,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         inputTextAnswers = [:]
         // What the skin that replaces it goes on from (its Calc Counter), whatever thread that one runs on.
         publishSnapshot()
-        request(.closed)
+        request(.closed(ticket))
         markClosed()
     }
 

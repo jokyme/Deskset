@@ -57,6 +57,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// How the window is shown once the skin started: fading in, and whether the windows are stacked again.
     private var startFade = false
     var restacksWhenStarted = true
+    /// The reload the Studio asked for that made this window (`SkinReloadTicket`, from the load order): the Studio's
+    /// editing session knows the copy as its own by it.
+    private(set) var reloadTicket: SkinReloadTicket?
+    /// Where the window goes once the skin started (top-left, as `moveTo` takes it): a step of the Studio that moves the
+    /// widget with its files. Applied right after the window is placed, before it is shown.
+    var moveWhenStarted: WidgetPosition?
     /// The skin's updates are paused (as the runtime's: `pauseUpdates` / `resumeUpdates`): no hover tracking meanwhile.
     private var updatesPaused = false
     /// Updates stopped by `pauseUpdates()` (sleep, locked screens) until `resumeUpdates`.
@@ -167,6 +173,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     func load(_ order: SkinLoadOrder, fadeIn: Bool) {
         startFade = fadeIn
         updatesPaused = order.paused
+        reloadTicket = order.ticket
         runtime.send(.load(order))
     }
 
@@ -185,16 +192,19 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         prepareToShow()
     }
 
-    /// `.started`: the skin made its first update. The window is placed and shown; then the app hears of it.
+    /// `.started`: the skin made its first update. The window is placed and shown; then the app hears of it, and the
+    /// Studio of its reload (after the Studio followed the new copy: `AppController.skinStarted`).
     private func started(_ report: SkinStartReport) {
         guard !isStopped, isLoaded, !isStarted else { return }
         isStarted = true
         show(fadeIn: startFade, size: report.size)
         app.skinStarted(self)
+        if let ticket = report.ticket { app.studioReload(ticket, .started, self) }
     }
 
-    /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config.
-    private func failed(_ error: String) {
+    /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config, and the
+    /// Studio hears of its reload.
+    private func failed(_ error: String, ticket: SkinReloadTicket?) {
         guard !loadFailed, !isLoaded else { return }
         loadFailed = true
         holdsFacts = false
@@ -205,6 +215,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         companions.tearDown()
         content.teardown()
         app.skinFailed(self, error: error)
+        if let ticket { app.studioReload(ticket, .failed, self) }
     }
 
     /// Self-tests: starts a window whose skin loaded at once (`init(config:file:app:)`): the first update, placement,
@@ -231,11 +242,15 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// does not start hidden). Self-tests.
     private(set) var showCount = 0
 
-    /// Places the window for a skin of `size` and shows it with its first frame (fading in when `fadeIn`), unless it
-    /// starts hidden.
+    /// Places the window for a skin of `size` (then where a step of the Studio moves it: `moveWhenStarted`) and shows
+    /// it with its first frame (fading in when `fadeIn`), unless it starts hidden.
     private func show(fadeIn: Bool, size: CGSize) {
         showCount += 1
         placeWindow(size: size)
+        if let place = moveWhenStarted {
+            moveWhenStarted = nil
+            moveTo(x: place.x, y: place.y)
+        }
         if app.presentsWindows && !isHiddenByBang {
             let target = targetAlpha
             let duration = fadeIn ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
@@ -245,9 +260,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         publishFacts()
     }
 
-    /// `.closed`: OnCloseAction has run.
-    private func closed() {
+    /// `.closed`: OnCloseAction has run. The Studio hears of it when the close was part of a reload it asked for.
+    private func closed(ticket: SkinReloadTicket?) {
         hasClosed = true
+        if let ticket { app.studioReload(ticket, .closed, self) }
     }
 
     /// Self-tests: told right before the window is ordered in (`orderIn`).
@@ -265,14 +281,21 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     /// Stops updating, runs OnCloseAction (the runtime reports `.closed` when it has: `runtime.whenClosed`) and
-    /// closes the window (fading out when `fadeOut`), with its companions.
-    func stop(fadeOut: Bool = false) {
+    /// closes the window (fading out when `fadeOut`), with its companions. `ticket`: the reload the Studio asked for
+    /// that this close is part of (the Studio hears of the close, then of `.closed`).
+    func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil) {
         guard !isStopped, !isClosing else { return }
         hoverTimer?.invalidate()
         hoverTimer = nil
+        // A copy a reload of the Studio's made, stopped before it started, will never report its start.
+        if let own = reloadTicket, !isStarted, !loadFailed { app.studioReload(own, .abandoned, self) }
+        if let ticket { app.studioReload(ticket, .closing, self) }
         // OnCloseAction runs while the skin can still handle bangs (it cannot reload or unload itself any more).
         isClosing = true
-        runtime.send(.close(fadeOut: fadeOut))
+        runtime.send(.close(fadeOut: fadeOut, ticket: ticket))
+        // The Studio hears of the close through this window half (`.closed(ticket)`): it stays until the skin has
+        // closed (at once on the main executor).
+        if ticket != nil { runtime.whenClosed { withExtendedLifetime(self) {} } }
         isStopped = true
         endDragPress(moved: false)
         holdsFacts = false
@@ -694,10 +717,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             loaded(report)
         case .started(let report):
             started(report)
-        case .failed(let error):
-            failed(error)
-        case .closed:
-            closed()
+        case .failed(let error, let ticket):
+            failed(error, ticket: ticket)
+        case .closed(let ticket):
+            closed(ticket: ticket)
         case .resize(let size):
             resize(to: size)
         case .glass(let regions):
@@ -850,6 +873,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     var visibilityForTesting: Bool? {
         didSet { publishFacts() }
     }
+
+    /// The window as this controller last told its runtime (`publishFacts`): its copy of the runtime's window model —
+    /// the frame, screen and display, and the window settings. Kept once the skin stopped. Main thread.
+    var publishedFacts: SkinWindowFacts? { sentFacts }
 
     /// What the window is now, for the runtime.
     var facts: SkinWindowFacts {

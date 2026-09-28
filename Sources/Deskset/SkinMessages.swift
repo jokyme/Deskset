@@ -79,9 +79,9 @@ enum SkinMessage {
     case fontsChanged
     /// The appearance or a regional setting changed (`Skin.appearanceDidChange`).
     case appearanceChanged
-    /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction), then reports `.closed`. The window
-    /// fades out when `fadeOut`.
-    case close(fadeOut: Bool)
+    /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction), then reports `.closed` with `ticket`
+    /// (a reload the Studio asked for, which this close is part of). The window fades out when `fadeOut`.
+    case close(fadeOut: Bool, ticket: SkinReloadTicket? = nil)
 
     // MARK: Window companions
 
@@ -121,6 +121,45 @@ struct SkinLoadOrder {
     /// The app's skins are paused (sleep, locked screens): the skin loads and makes its first update, but its clock
     /// waits for a resume.
     var paused: Bool
+    /// A reload the Studio asked for, which this load is part of: it comes back with `.started` or `.failed`.
+    var ticket: SkinReloadTicket? = nil
+}
+
+/// A reload of a widget that the Studio's editing session asked for (docs/skin-threading.md §8.5). It rides on the
+/// reload: in the load order of the new copy and in the close of the old one, whose runtimes report it back
+/// (`.started(ticket)` or `.failed(ticket)`, `.closed(ticket)`) whenever their work gets there. So the session knows the
+/// copy that starts, and what the widget writes to its files meanwhile, as its own, however late and in whatever order
+/// the reports come in.
+struct SkinReloadTicket: Hashable, CustomStringConvertible {
+    let id: Int
+
+    /// Main thread.
+    private static var last = 0
+
+    /// A new ticket (main thread).
+    static func next() -> SkinReloadTicket {
+        last += 1
+        return SkinReloadTicket(id: last)
+    }
+
+    var description: String { "reload #\(id)" }
+}
+
+/// What happened to a copy of a widget in a reload the Studio asked for (`SkinReloadTicket`), as the app tells the
+/// widget's editing session (`AppController.studioReload`). Main thread.
+enum SkinReloadEvent: Equatable {
+    /// The old copy was sent `.close` with the ticket: its `.closed` is to come.
+    case closing
+    /// The old copy's OnCloseAction has run.
+    case closed
+    /// The new copy was made and sent `.load` with the ticket: its `.started` or `.failed` is to come.
+    case loading
+    /// The new copy made its first update (OnRefreshAction has run), and its window was placed and shown.
+    case started
+    /// The new copy could not be loaded.
+    case failed
+    /// The new copy was stopped before it started (a later reload replaced it, or it was unloaded): it will not report.
+    case abandoned
 }
 
 /// What a runtime reports once its skin loaded, before its first update (`SkinRequest.loaded`).
@@ -140,6 +179,8 @@ struct SkinStartReport {
     var size: CGSize
     /// `[Metadata]`.
     var metadata: [String: String]
+    /// The reload the load order carried (`SkinLoadOrder.ticket`).
+    var ticket: SkinReloadTicket? = nil
 }
 
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
@@ -149,10 +190,10 @@ enum SkinRequest {
     case loaded(SkinLoadReport)
     /// The skin made its first update: the main thread places and shows the window.
     case started(SkinStartReport)
-    /// The skin could not be loaded (the error, as text): the main thread unloads it.
-    case failed(String)
-    /// The skin closed (`SkinMessage.close`): OnCloseAction has run.
-    case closed
+    /// The skin could not be loaded (the error, as text): the main thread unloads it. With the load order's ticket.
+    case failed(String, ticket: SkinReloadTicket? = nil)
+    /// The skin closed (`SkinMessage.close`): OnCloseAction has run. With the close's ticket.
+    case closed(SkinReloadTicket? = nil)
     /// The skin's size changed: the window follows (points; the top-left corner stays). Its frames go to the content
     /// provider from the skin's executor.
     case resize(CGSize)

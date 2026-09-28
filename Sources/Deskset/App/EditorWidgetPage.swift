@@ -948,10 +948,17 @@ extension InspectorWindowController {
 
     // MARK: On your desktop (§8.1.3)
 
-    /// Whether the edited widget is the one on the desktop now.
-    var isWidgetRunning: Bool {
-        guard let c = controller, !c.isStopped else { return false }
-        return app.controller(for: c.config) === c
+    /// Whether the edited widget is the one on the desktop now — or its reload by a step is on its way (a copy on
+    /// another thread starts later; the Studio follows it once it did).
+    var isWidgetRunning: Bool { desktopCopy != nil }
+
+    /// The widget's window on the desktop: the edited copy while it runs, else the copy a reload of the session's made
+    /// that has not started yet.
+    var desktopCopy: SkinController? {
+        guard let c = controller else { return nil }
+        if !c.isStopped, app.controller(for: c.config) === c { return c }
+        guard let now = app.controller(for: c.config), !now.isStopped, session?.isOwnReload(now) == true else { return nil }
+        return now
     }
 
     func desktopCard() -> NSView {
@@ -1047,7 +1054,7 @@ extension InspectorWindowController {
         opacity.field.isEnabled = running
         var dragStart: SkinState?
         opacity.onChange = { [weak self] raw, finished in
-            guard let self, let c = self.controller, self.isWidgetRunning, let v = Int(raw) else { return }
+            guard let self, let c = self.desktopCopy, let v = Int(raw) else { return }
             if dragStart == nil { dragStart = c.state }
             if finished, let start = dragStart {
                 dragStart = nil
@@ -1137,7 +1144,7 @@ extension InspectorWindowController {
 
     /// Changes the running widget's desktop settings (never its file) as one named undo step with a toast.
     func changeDesktop(_ name: String, toast: String, from start: SkinState? = nil, _ change: (inout SkinState) -> Void) {
-        guard let c = controller, isWidgetRunning else { return }
+        guard let c = desktopCopy else { return }
         let before = start ?? c.state
         app.changeSettings(of: c, change)
         inspectorState.desktopShown = c.state
