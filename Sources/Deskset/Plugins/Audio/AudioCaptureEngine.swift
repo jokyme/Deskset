@@ -34,7 +34,7 @@ struct AudioSourceKey: Hashable {
     var deviceID: String?
 }
 
-/// What skins can learn about a source (`Type=DeviceStatus`, `DeviceName`, `DeviceID`, `Format`).
+/// What skins can learn about a source (`Type=DeviceStatus`, `MacPermission`, `DeviceName`, `DeviceID`, `Format`).
 struct AudioSourceStatus: Equatable {
     var running = false
     var deviceName = ""
@@ -52,14 +52,35 @@ struct AudioSourceStatus: Equatable {
     var standby = false
     /// The silence watchdog suspects a refused permission (`AudioCaptureEngine.silenceNote`).
     var refusalSuspected = false
+    /// A macOS permission known to keep the source from running: refused (`permissionNote` says so in words), or not
+    /// decided yet (`permissionUndecided`: macOS's prompt may be on screen). nil when nothing is known to be missing.
+    /// A suspected refusal of System Audio Recording is `refusalSuspected` instead.
+    var missingPermission: AudioPermission?
+    var permissionUndecided = false
 
-    /// `Type=DeviceStatus`: 1 while the capture runs or waits for sound, 2 instead when the silence watchdog suspects a
-    /// refused permission, 0 when nothing can be captured (no device, a refused microphone or Screen Recording,
-    /// command-line mode).
-    var deviceStatus: Int {
-        guard running || standby else { return 0 }
-        return refusalSuspected ? 2 : 1
+    /// `Type=DeviceStatus`, Rainmeter's 0 or 1: 1 while the capture runs or waits for sound (also while the silence
+    /// watchdog suspects a refused permission: the device is there), 0 when nothing can be captured (no device, a
+    /// refused microphone or Screen Recording, command-line mode).
+    var deviceStatus: Int { running || standby ? 1 : 0 }
+
+    /// `Type=MacPermission` (Deskset extension): 1 while a permission keeps the source from being heard (for System
+    /// Audio Recording: suspected by the silence watchdog), 2 while macOS has not had an answer yet (its prompt may be
+    /// on screen), else 0. The string names the permission as System Settings does ("" for 0).
+    var macPermission: (number: Int, name: String) {
+        if refusalSuspected { return (1, AudioPermission.systemAudioRecording.rawValue) }
+        guard let missing = missingPermission else { return (0, "") }
+        return (permissionUndecided ? 2 : 1, missing.rawValue)
     }
+}
+
+/// A macOS permission audio capture needs, by its name in System Settings › Privacy & Security.
+enum AudioPermission: String {
+    /// macOS 14.2+, `Port=Output`: "Screen & System Audio Recording" › "System Audio Recording Only".
+    case systemAudioRecording = "System Audio Recording"
+    /// macOS 13 – 14.1, `Port=Output` (ScreenCaptureKit).
+    case screenRecording = "Screen Recording"
+    /// `Port=Input`.
+    case microphone = "Microphone"
 }
 
 /// Whether a process other than Deskset plays sound, and when that changes (HAL queue only). A system-audio capture
@@ -262,7 +283,10 @@ final class AudioRingBuffer {
 final class AudioCaptureEngine {
     static let shared: AudioCaptureEngine = {
         let engine = AudioCaptureEngine()
-        if captureAllowed { engine.outputActivity = CoreAudioOutputActivity.makeIfSupported() }
+        if captureAllowed {
+            engine.outputActivity = CoreAudioOutputActivity.makeIfSupported()
+            engine.watchPermissionChanges = AudioPermissions.watchSystemSettings
+        }
         return engine
     }()
 
@@ -278,7 +302,7 @@ final class AudioCaptureEngine {
 
     /// `DESKSET_AUDIO_DEMO=1`: every stream is a generated demo signal (SyntheticAudioBackend), also in
     /// command-line modes — no permission involved. `=silent`: the demo stream carries only digital silence.
-    /// `=refused`: silence, with the silence watchdog's verdict already given (`DeviceStatus` 2), as a refused System
+    /// `=refused`: silence, with the silence watchdog's verdict already given (`MacPermission` 1), as a refused System
     /// Audio Recording shows it (renders of a visualizer's refused state).
     static let demoSignal = ["1", "silent", "refused"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
     static let demoSilence = ["silent", "refused"].contains(ProcessInfo.processInfo.environment["DESKSET_AUDIO_DEMO"] ?? "")
@@ -311,8 +335,20 @@ final class AudioCaptureEngine {
     /// Screen Recording before macOS 14.2): the user may allow it in System Settings at any time and macOS sends no
     /// notification, so the source is started again until it runs. 0 = never.
     var permissionRetryInterval: TimeInterval = 10
-    /// Whether another process plays audio right now (HAL queue; replaced in tests).
-    var otherProcessPlaysAudio: () -> Bool = { AudioProcesses.othersRunOutput() }
+    /// The apps other than Deskset that play audio right now (HAL queue; replaced in tests): the silence watchdog's
+    /// evidence. Only apps the user runs count, by the pid of the app a playing process works for (a browser's audio
+    /// helper counts as the browser); daemons and agents that keep an output open (system sounds, speech, call
+    /// services, audio routers) do not. See `AudioProcesses.appsRunningOutput`.
+    var appsPlayingAudio: () -> Set<pid_t> = { AudioProcesses.appsRunningOutput() }
+    /// While the silence watchdog's verdict stands, a look that still finds silence while an app plays takes a new
+    /// tap (a permission given in System Settings may reach only a new one): the first this many seconds after the
+    /// verdict, each next one the next delay after the one before. After the last, none until another app starts
+    /// playing or the user leaves System Settings (`watchPermissionChanges`), which start the delays again.
+    var retapDelays: [TimeInterval] = [10, 30, 60, 180, 300]
+    /// Calls its argument (any thread) whenever the user may have changed a permission, such as when System Settings
+    /// is left or quits: a source whose verdict stands then takes a new tap at once. Set up at the first verdict; nil
+    /// watches nothing (tests, command-line modes).
+    var watchPermissionChanges: ((@escaping () -> Void) -> Void)?
     /// When set, system audio (`Port=Output`) is captured only while another process plays sound: at rest there is no
     /// tap, so no purple recording indicator and no output device kept running for nothing. Its source then waits in
     /// `standby`. The shared engine uses Core Audio's process objects (macOS 14.2 and later); nil captures for as long
@@ -342,6 +378,8 @@ final class AudioCaptureEngine {
     /// a later silence while other apps run their output (a call app between calls, a paused video) is not taken for a
     /// refusal.
     private var heardSystemAudio = false
+    /// HAL queue only: `watchPermissionChanges` has been set up.
+    private var watchingPermissionChanges = false
 
     final class Source {
         let key: AudioSourceKey
@@ -364,8 +402,15 @@ final class AudioCaptureEngine {
         /// Analysis queue: a non-zero sample arrived since the capture started.
         var heardLocally = false
         private var _heardAudio = false
-        /// HAL queue: looks at a silent stream while another app played sound (see `silenceNote`).
+        /// HAL queue: looks in a row at a silent stream while the same app played sound (see `silenceNote`).
         var silentLooks = 0
+        /// HAL queue: the apps that played at every look counted in `silentLooks`.
+        var lookPlayers: Set<pid_t> = []
+        /// HAL queue, while the verdict stands: new taps taken since the verdict (or since the delays started again),
+        /// the uptime before which no other may be taken, and the apps seen playing meanwhile (see `retapDelays`).
+        var retaps = 0
+        var nextRetap: TimeInterval = 0
+        var retapPlayers: Set<pid_t> = []
         /// HAL queue: the watchdog's verdict (see `silenceNote`). It outlasts the capture: a source that waits for sound
         /// (`standby`) keeps it, until a stream of this source carries sound.
         var refusalSuspected = false
@@ -527,8 +572,8 @@ final class AudioCaptureEngine {
         }
     }
 
-    /// Stops the capture of a source that waits for sound: its status says so (`Type=DeviceStatus` 1, or 2 while the
-    /// watchdog's verdict stands) and its values are 0.
+    /// Stops the capture of a source that waits for sound: its status says so (`Type=DeviceStatus` 1, and
+    /// `Type=MacPermission` 1 while the watchdog's verdict stands) and its values are 0.
     private func enterStandby(_ source: Source) {
         source.pendingStandby?.cancel()
         source.pendingStandby = nil
@@ -540,6 +585,8 @@ final class AudioCaptureEngine {
         status.message = nil
         status.refusalSuspected = false
         status.permissionNote = nil
+        status.missingPermission = nil
+        status.permissionUndecided = false
         setStatus(withVerdict(status, of: source), for: source.key)
     }
 
@@ -599,6 +646,7 @@ final class AudioCaptureEngine {
         source.ring.clear()
         source.heardAudio = false
         source.silentLooks = 0
+        source.lookPlayers = []
         analysisQueue.async { [weak source] in source?.heardLocally = false }
         let key = source.key
         let events = AudioBackendEvents(
@@ -637,11 +685,12 @@ final class AudioCaptureEngine {
     }
 
     /// Looks every `silenceCheckInterval` seconds (at most `remaining` more times) whether a stream that may be
-    /// silenced by a refused permission has carried any sound yet. Two looks in a row with nothing heard while
-    /// another process was playing audio are the verdict: `permissionNote` and `refusalSuspected` (`Type=DeviceStatus`
-    /// 2). Not once a system-audio stream has carried sound since Deskset started (the permission was given then).
-    /// Sound clears the verdict. While it stands, a look that still finds silence while another app plays starts the
-    /// capture again, so a permission granted in System Settings reaches a new tap within a look or two.
+    /// silenced by a refused permission has carried any sound yet. Two looks in a row with nothing heard while the
+    /// same app played audio (`appsPlayingAudio`) are the verdict: `permissionNote` and `refusalSuspected`
+    /// (`Type=MacPermission` 1). Not once a system-audio stream has carried sound since Deskset started (the permission
+    /// was given then). Sound clears the verdict. While it stands, a look that still finds silence while an app plays
+    /// may start the capture again, so a permission granted in System Settings reaches a new tap: after the delays of
+    /// `retapDelays`, and at once when the user leaves System Settings. The tap is kept between those.
     private func scheduleSilenceLook(_ source: Source, backend: AudioCaptureBackend, remaining: Int) {
         guard remaining > 0, silenceCheckInterval > 0 else { return }
         AudioHAL.queue.asyncAfter(deadline: .now() + silenceCheckInterval) { [weak self, weak source, weak backend] in
@@ -650,20 +699,65 @@ final class AudioCaptureEngine {
                 self.noteSound(source)
                 return
             }
-            let hadVerdict = source.refusalSuspected
-            source.silentLooks = self.otherProcessPlaysAudio() ? source.silentLooks + 1 : 0
-            if source.silentLooks >= 2 && !hadVerdict && !self.heardSystemAudio {
+            let players = self.appsPlayingAudio()
+            if players.isEmpty {
+                source.silentLooks = 0
+                source.lookPlayers = []
+            } else if source.silentLooks > 0 && !source.lookPlayers.isDisjoint(with: players) {
+                source.silentLooks += 1
+                source.lookPlayers.formIntersection(players)
+            } else {
+                source.silentLooks = 1
+                source.lookPlayers = players
+            }
+            let now = ProcessInfo.processInfo.systemUptime
+            if source.silentLooks >= 2 && !source.refusalSuspected && !self.heardSystemAudio {
                 source.refusalSuspected = true
+                self.restartRetaps(source, players: players, now: now)
                 self.setStatus(self.withVerdict(self.status(for: source.key), of: source), for: source.key)
-            } else if hadVerdict && source.silentLooks > 0 {
-                // Still silent while another app plays: a permission given since may only reach a new tap, so the
+                self.watchPermissionChangesIfNeeded()
+            } else if source.refusalSuspected && !players.isEmpty {
+                // Another app started playing since the delays started: they start again.
+                if !players.isSubset(of: source.retapPlayers) {
+                    self.restartRetaps(source, players: source.retapPlayers.union(players), now: now)
+                }
+                // Still silent while an app plays: a permission given since may only reach a new tap, so the
                 // capture starts again (the verdict stays until a tap carries sound, and the new tap looks again).
-                self.scheduleRestart(source.key)
-                return
+                if source.retaps < self.retapDelays.count && now >= source.nextRetap - self.silenceCheckInterval / 2 {
+                    source.retaps += 1
+                    let next = self.retapDelays[min(source.retaps, self.retapDelays.count - 1)]
+                    source.nextRetap = now + next
+                    self.scheduleRestart(source.key)
+                    return
+                }
             }
             // Keeps looking after the verdict, so it is cleared once sound arrives.
             let remainingNext = source.refusalSuspected ? remaining : remaining - 1
             self.scheduleSilenceLook(source, backend: backend, remaining: remainingNext)
+        }
+    }
+
+    /// Starts `retapDelays` again for a source whose verdict stands (HAL queue).
+    private func restartRetaps(_ source: Source, players: Set<pid_t>, now: TimeInterval) {
+        source.retaps = 0
+        source.nextRetap = now + (retapDelays.first ?? 0)
+        source.retapPlayers = players
+    }
+
+    /// Sets up `watchPermissionChanges` once (HAL queue).
+    private func watchPermissionChangesIfNeeded() {
+        guard !watchingPermissionChanges, let watch = watchPermissionChanges else { return }
+        watchingPermissionChanges = true
+        watch { [weak self] in AudioHAL.queue.async { self?.permissionMayHaveChanged() } }
+    }
+
+    /// The user may have changed a permission (left System Settings): a source whose verdict stands takes a new tap at
+    /// once if it captures, and `retapDelays` start again (HAL queue; tests call it directly).
+    func permissionMayHaveChanged() {
+        let now = ProcessInfo.processInfo.systemUptime
+        for source in sources.values where source.refusalSuspected {
+            restartRetaps(source, players: [], now: now)
+            if source.backend != nil && !suspended { scheduleRestart(source.key) }
         }
     }
 
@@ -674,6 +768,8 @@ final class AudioCaptureEngine {
         var status = self.status(for: source.key)
         let hadVerdict = source.refusalSuspected || status.refusalSuspected
         source.refusalSuspected = false
+        source.retaps = 0
+        source.retapPlayers = []
         if hadVerdict || status.permissionNote == AudioCaptureEngine.silenceNote {
             status.refusalSuspected = false
             if status.permissionNote == AudioCaptureEngine.silenceNote { status.permissionNote = nil }

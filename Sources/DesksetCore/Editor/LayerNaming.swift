@@ -1348,6 +1348,8 @@ final class LayerNamer {
             return DataName(name: input ? "Input devices" : "Output devices", short: "Devices", subtitle: "")
         case "devicestatus":
             return DataName(name: "Sound device status", short: "Status", subtitle: "")
+        case "macpermission":
+            return DataName(name: "Sound recording permission", short: "Permission", subtitle: "")
         case "format":
             return DataName(name: "Sound format", short: "Format", subtitle: "")
         case "bandfreq":

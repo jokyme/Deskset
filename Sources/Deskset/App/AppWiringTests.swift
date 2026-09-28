@@ -589,7 +589,7 @@ extension AppSelfTest {
             engine.stopDelay = 0
             engine.silenceCheckInterval = 0.05
             var playing = true
-            engine.otherProcessPlaysAudio = { playing }
+            engine.appsPlayingAudio = { playing ? [4242] : [] }
             engine.makeBackend = { _ in backend }
             let key = AudioSourceKey(kind: .output, deviceID: nil)
             let a = AudioAnalyzer(settings: AudioAnalysisSettings())
@@ -685,7 +685,7 @@ extension AppSelfTest {
             watch.isCaptureAllowed = true
             watch.stopDelay = 0
             watch.silenceCheckInterval = 0.05
-            watch.otherProcessPlaysAudio = { true }
+            watch.appsPlayingAudio = { [4242] }
             watch.makeBackend = { _ in silent }
             let out = parent(outSection, watch)
             watch.drain()

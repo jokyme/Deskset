@@ -1622,6 +1622,7 @@ public enum EditorSchema {
         Choice("BandFreq", "Band frequency"), Choice("DeviceName", "Output device name"), Choice("FFT", "One frequency slice"),
         Choice("FFTFreq", "Slice frequency"), Choice("Format", "Sound format"), Choice("DeviceStatus", "Device status"),
         Choice("DeviceID", "Device ID"), Choice("DeviceList", "Device list"),
+        Choice("MacPermission", "Missing permission"),
     ]
 
     static let audioLevelSettings: [Property] = {

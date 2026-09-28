@@ -836,9 +836,13 @@ enum AudioSelfTests {
             always.drain()
         }
 
-        t.suite("App: Audio DeviceStatus 2 is the silence watchdog's verdict") {
+        t.suite("App: Audio MacPermission 1 is the silence watchdog's verdict") {
             let activity = FakeActivity()
             activity.playing = true
+            // The apps playing at each look (by the pid of the app they work for).
+            let appsLock = NSLock()
+            var apps: Set<pid_t> = [501]
+            func setApps(_ value: Set<pid_t>) { appsLock.lock(); apps = value; appsLock.unlock() }
             var latest: AppSelfTest.SilenceBackend?
             var made = 0
             let lock = NSLock()
@@ -848,7 +852,11 @@ enum AudioSelfTests {
             engine.silenceCheckInterval = 0.05
             engine.standbyDelay = 0.05
             engine.outputActivity = activity
-            engine.otherProcessPlaysAudio = { activity.playing }
+            engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
+            // No new tap in the first part: the delays come later.
+            engine.retapDelays = [3600]
+            var watching = 0
+            engine.watchPermissionChanges = { _ in watching += 1 }
             engine.makeBackend = { _ in
                 let b = AppSelfTest.SilenceBackend()
                 lock.lock(); latest = b; made += 1; lock.unlock()
@@ -858,15 +866,18 @@ enum AudioSelfTests {
             func starts() -> Int { lock.lock(); defer { lock.unlock() }; return made }
             let key = AudioSourceKey(kind: .output, deviceID: nil)
 
-            // Measures: a parent and its DeviceStatus child.
+            // Measures: a parent, its DeviceStatus child and its MacPermission child.
             let skin = try makeSkin(t, "[Rainmeter]\nUpdate=1000\n[Audio]\nMeasure=Plugin\nPlugin=AudioLevel\n"
-                                    + "[Status]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=DeviceStatus\n",
+                                    + "[Status]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=DeviceStatus\n"
+                                    + "[Access]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=MacPermission\n",
                                     config: "AudioVerdict")
             guard let parentSection = skin.document.section(named: "Audio"),
-                  let statusSection = skin.document.section(named: "Status") else { return }
+                  let statusSection = skin.document.section(named: "Status"),
+                  let accessSection = skin.document.section(named: "Access") else { return }
             let parent = AudioLevelMeasure(name: "Audio", section: parentSection, skin: skin, type: "audiolevel")
             let status = AudioLevelMeasure(name: "Status", section: statusSection, skin: skin, type: "audiolevel")
-            for m in [parent, status] {
+            let access = AudioLevelMeasure(name: "Access", section: accessSection, skin: skin, type: "audiolevel")
+            for m in [parent, status, access] {
                 m.engine = engine
                 m.system = { fakeSnapshot() }
                 m.prepareSystem = {}
@@ -874,37 +885,57 @@ enum AudioSelfTests {
                 m.parentLookup = { $0 == "Audio" ? parent : nil }
                 m.readOptions()
             }
+            func read(_ m: AudioLevelMeasure) -> String { "\(Int(m.computeValue())) \(m.pluginString ?? "nil")" }
+            t.equal(access.automaticMaxValue, 2)
             _ = parent.computeValue()   // the first update subscribes
             engine.drain()
             t.check(engine.status(for: key).running)
             t.equal(status.computeValue(), 1, "capturing")
-            t.check(wait { engine.status(for: key).deviceStatus == 2 }, "silence at two looks while another app plays")
-            t.equal(status.computeValue(), 2)
+            t.equal(read(access), "0 ", "nothing is missing")
+
+            // Silence while a different app plays at each look is no verdict: the same app must play at both.
+            var turn: pid_t = 600
+            t.check(!wait(timeout: 0.6) {
+                turn += 1
+                setApps([turn])
+                return engine.status(for: key).refusalSuspected
+            }, "a different app at every look")
+            setApps([501])
+            t.check(wait { engine.status(for: key).refusalSuspected }, "silence at two looks while the same app plays")
+            t.equal(read(access), "1 System Audio Recording")
+            t.equal(status.computeValue(), 1, "DeviceStatus stays Rainmeter's 0 or 1: the device is there")
             t.equal(engine.status(for: key).permissionNote, AudioCaptureEngine.silenceNote)
             _ = parent.computeValue()
             t.check(skin.issues.contains(AudioCaptureEngine.silenceNote), "a compatibility note too")
+            t.check(wait { watching == 1 }, "the verdict watches for a permission given in System Settings")
 
-            // Still silent while another app plays: the capture starts again (a permission given since may only
-            // reach a new tap), and the verdict stands.
-            let before = starts()
-            t.check(wait { starts() > before && engine.status(for: key).running }, "a new tap while refused")
-            t.equal(status.computeValue(), 2)
+            // The verdict keeps the tap between looks (no new tap until the first delay is over).
+            let kept = starts()
+            Thread.sleep(forTimeInterval: 0.3)
+            t.equal(starts(), kept, "the tap is kept")
 
             // The verdict outlasts the capture: waiting for sound, and in the next capture.
             activity.playing = false
             t.check(wait { engine.isWaitingForSound(key) }, "nothing plays: waits")
-            t.equal(status.computeValue(), 2, "still refused while it waits")
+            t.equal(read(access), "1 System Audio Recording", "still refused while it waits")
+            t.equal(status.computeValue(), 1)
             let waiting = starts()
             activity.playing = true
             t.check(wait { starts() > waiting && engine.status(for: key).running }, "captures again")
-            t.equal(status.computeValue(), 2, "and the verdict stands from the start")
+            t.equal(read(access), "1 System Audio Recording", "and the verdict stands from the start")
+
+            // Leaving System Settings takes a new tap at once.
+            let beforeSettings = starts()
+            AudioHAL.queue.sync { engine.permissionMayHaveChanged() }
+            t.check(wait { starts() > beforeSettings && engine.status(for: key).running }, "a new tap after System Settings")
 
             // Sound: the permission is there.
             t.check(wait {
                 backend()?.feed(0.25)
-                return engine.status(for: key).deviceStatus == 1
+                return !engine.status(for: key).refusalSuspected
             }, "sound clears the verdict")
             t.check(engine.status(for: key).permissionNote == nil)
+            t.equal(read(access), "0 ")
             t.equal(status.computeValue(), 1)
             _ = parent.computeValue()
             t.check(!skin.issues.contains(AudioCaptureEngine.silenceNote), "the note is taken back")
@@ -916,9 +947,52 @@ enum AudioSelfTests {
             activity.playing = true
             t.check(wait { starts() > heard && engine.status(for: key).running })
             Thread.sleep(forTimeInterval: 0.4)
-            t.equal(engine.status(for: key).deviceStatus, 1, "no verdict after sound was heard")
+            t.equal(read(access), "0 ", "no verdict after sound was heard")
             t.equal(starts(), heard + 1, "and no new taps")
-            withExtendedLifetime((parent, status)) {}
+            withExtendedLifetime((parent, status, access)) {}
+        }
+
+        t.suite("App: Audio new taps while the verdict stands come further and further apart, then stop") {
+            let appsLock = NSLock()
+            var apps: Set<pid_t> = [501]
+            func setApps(_ value: Set<pid_t>) { appsLock.lock(); apps = value; appsLock.unlock() }
+            var made = 0
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
+            engine.retapDelays = [0.2, 0.6]
+            engine.makeBackend = { _ in
+                lock.lock(); made += 1; lock.unlock()
+                return AppSelfTest.SilenceBackend()
+            }
+            func starts() -> Int { lock.lock(); defer { lock.unlock() }; return made }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: key)
+            engine.drain()
+            t.check(wait { engine.status(for: key).refusalSuspected }, "the verdict")
+            let verdict = Date()
+            let first = starts()
+            t.check(wait { starts() == first + 1 }, "a first new tap")
+            let firstGap = Date().timeIntervalSince(verdict)
+            t.check(firstGap >= 0.12, "after the first delay: \(firstGap)")
+            let second = Date()
+            t.check(wait { starts() == first + 2 }, "a second one")
+            let secondGap = Date().timeIntervalSince(second)
+            t.check(secondGap >= 0.45, "after the longer delay: \(secondGap)")
+            // The delays are used up: no more new taps while the same app plays.
+            Thread.sleep(forTimeInterval: 1.0)
+            t.equal(starts(), first + 2, "no more new taps")
+            t.check(engine.status(for: key).refusalSuspected, "the verdict stands")
+            // Another app starts playing: the delays start again.
+            setApps([501, 502])
+            t.check(wait { starts() == first + 3 }, "another app plays: a new tap")
+            engine.unsubscribe(a)
+            engine.drain()
+            engine.drain()
         }
 
         t.suite("App: Audio !DisableMeasure releases the capture") {
