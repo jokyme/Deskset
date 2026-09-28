@@ -2017,8 +2017,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// the running skin sets (`!SetOption`, often on every update) are updated in place, and nothing is rebuilt while
     /// a menu is open or a control follows the mouse. The sidebar's live values follow too, whatever is selected
     /// (`refreshSidebarValues`).
-    func refreshLiveValues() {
-        defer { refreshSidebarValues() }
+    func refreshLiveValues(sidebar: Bool = true) {
+        defer { if sidebar { refreshSidebarValues() } }
         guard let skin, let name = selectedSection else { return }
         headerSubtitle?.stringValue = Self.summary(of: name, kind: selectedKind, in: skin)
         let fresh = currentRows()

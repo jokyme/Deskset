@@ -7,6 +7,9 @@ import DesksetCore
 /// the page is made of still makes it again.
 enum InspectorInPlaceSelfTests {
     static func run(_ t: AppTestRunner) {
+        // As on screen: names follow a turn after the canvas (`followUpInPlace`).
+        InspectorInPlace.defersNamingForTests = true
+        defer { InspectorInPlace.defersNamingForTests = nil }
         pixelTests(t)
         structureTests(t)
     }
@@ -65,6 +68,8 @@ enum InspectorInPlaceSelfTests {
     /// What the step shows now, compared with the page and the list made again (in the same turn of the run loop, so
     /// the widget's live values are the same).
     static func compare(_ t: AppTestRunner, _ editor: InspectorWindowController, _ what: String) {
+        // What waits for the next turn (names) first: the step as it is once it settled.
+        editor.flushInPlaceFollowUp()
         let followed = shown(editor)
         let rebuilds = editor.inspectorRebuildCount
         editor.rebuildInspectorKeepingFocus(keepScroll: true)

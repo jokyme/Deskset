@@ -77,6 +77,9 @@ extension InspectorWindowController {
         }))
         // One naming of the layers for every part (the list's names, the identity strip, the live values): the skin does
         // not change while they follow it.
+        // What is named from the whole widget follows on the next turn, once the canvas drew the step (on screen).
+        inPlace.defersNaming = defersInPlaceNaming
+        defer { inPlace.defersNaming = false }
         LayerNaming.sharingWork(for: skin) {
             for part in attachParts(c) where part.label != "widget" { phases.run(windowPart: part) }
         }

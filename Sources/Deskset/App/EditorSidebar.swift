@@ -226,6 +226,9 @@ extension InspectorWindowController: NSOutlineViewDataSource, NSOutlineViewDeleg
             sidebar.thumbnails.forgetShown()
             sidebar.thumbnailConfig = config.lowercased()
         }
+        // A step on screen: the names follow on the next turn (LayerListInPlace.swift).
+        if followListWithoutNames(skin: skin) { return }
+        inPlace.pendingList = false
         let catalog = LayerNaming.catalog(of: skin)
         sidebar.catalog = catalog
         let previous = allItems

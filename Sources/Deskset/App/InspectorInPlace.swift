@@ -53,6 +53,9 @@ final class InspectorSlot {
     weak var part: NSView?
     /// The control the setter sets (inside `control`).
     weak var inner: NSView?
+    /// What it shows is named from the whole widget (the names of layers and data, the roles of its colors): after a
+    /// step on screen it follows on the next turn of the run loop, once the canvas has drawn it (`followUpInPlace`).
+    var isLate = false
 
     init(claims: [String], describe: @escaping () -> Shown?) {
         self.claims = claims
@@ -105,6 +108,17 @@ final class InspectorInPlace {
     /// Rows of other sections than the selected one, read once per update.
     var rowCache: [String: [InspectorWindowController.Row]] = [:]
 
+    /// A step's canvas first, names on the next turn (`followUpInPlace`): while a patched step is followed with this on,
+    /// what is named from the whole widget waits.
+    var defersNaming = false
+    /// Whether windows on screen follow names a turn later: the app's own windows do; off screen (self-tests), unless a
+    /// test says so.
+    static var defersNamingForTests: Bool?
+    /// The work left for the next turn: the layer list's names, the late slots.
+    var pendingList = false
+    var pendingSlots = false
+    var followUpScheduled = false
+
     // What happened (self-tests, the latency suite).
     var updates = 0
     var setters = 0
@@ -139,6 +153,8 @@ extension InspectorWindowController {
 
     /// A page is about to be built: its slots are collected when it is a page that follows values in place.
     func beginInPlaceBuild() {
+        // The page is built whole: nothing of the last one waits for the next turn.
+        inPlace.pendingSlots = false
         inPlace.reset()
         inPlace.page = .none
         if !isMultiSelection, let skin {
@@ -184,6 +200,8 @@ extension InspectorWindowController {
         slot.label = row.label
         slot.control = row.control
         slot.inner = control
+        // A color is named after its role in the widget (`colorName`).
+        if case .color = p.kind { slot.isLate = true }
         slot.remakeRow = { [weak self] in
             guard let self else { return nil }
             let fresh = self.row(for: p, in: self.inPlaceRows(of: section))
@@ -412,6 +430,8 @@ extension InspectorWindowController {
         slot.label = row.label
         slot.control = row.control
         slot.inner = row.control as? ValueField
+        // The live data's tags are named.
+        slot.isLate = data
         slot.remakeRow = { [weak self] in
             guard let self, let m = self.skin?.meter(named: name) else { return nil }
             return self.textRow(self.context(p, section: name, rows: self.rows), meter: m, data: data)
@@ -486,6 +506,7 @@ extension InspectorWindowController {
             return InspectorSlot.Shown(shape: shape.joined(separator: "\u{1F}"), value: "")
         }
         slot.part = strip
+        slot.isLate = true
         slot.remakePart = { [weak self] in
             guard let self, let skin = self.skin, let m = skin.meter(named: name) else { return nil }
             return self.layerStrip(m, skin: skin)
@@ -667,10 +688,124 @@ extension InspectorWindowController {
             }
             return false
         }
+        // Late slots wait for the next turn when names follow then (`followUpInPlace`).
+        let deferring = state.defersNaming
+        let slots = deferring ? state.slots.filter { !$0.isLate } : state.slots
+        guard followSlots(slots) else { return false }
+        if deferring, state.slots.contains(where: \.isLate) {
+            state.pendingSlots = true
+            scheduleInPlaceFollowUp()
+        } else {
+            state.pendingSlots = false
+        }
+        state.built = now
+        state.updates += 1
+        state.lastFallback = nil
+        lastInspectorInputs = now.text
+        // (The layer list's live values are named: with the names, on the next turn.)
+        refreshLiveValues(sidebar: !deferring)
+        inspectorState.liveUpdates.forEach { $0() }
+        if InspectorInPlace.verifies {
+            flushInPlaceFollowUp()
+            verifyInPlaceUpdate()
+        }
+        return true
+    }
+
+    // MARK: Names on the next turn
+
+    /// Whether a patched step on screen names things on the next turn (`followUpInPlace`).
+    var defersInPlaceNaming: Bool { InspectorInPlace.defersNamingForTests ?? app.presentsWindows }
+
+    func scheduleInPlaceFollowUp() {
+        let state = inPlace
+        guard !state.followUpScheduled else { return }
+        state.followUpScheduled = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in self?.followUpInPlace() }
+    }
+
+    /// Runs what waits for the next turn now (self-tests; a page checked against the page built again).
+    func flushInPlaceFollowUp() {
+        let state = inPlace
+        guard state.pendingList || state.pendingSlots else { return }
+        followUpInPlace()
+    }
+
+    /// The step's names, a turn after its canvas (design §9.5, the inspector following in place): the layer list's
+    /// names, then the slots whose words are named from the whole widget — color names, data tags, the identity strip.
+    /// The skin does not change in between but for its live values, which a page built now would show too.
+    func followUpInPlace() {
+        let state = inPlace
+        state.followUpScheduled = false
+        guard state.pendingList || state.pendingSlots else { return }
+        guard let skin else {
+            state.pendingList = false
+            state.pendingSlots = false
+            return
+        }
+        LayerNaming.sharingWork(for: skin) {
+            if state.pendingList {
+                state.pendingList = false
+                rebuildSidebar()
+            }
+            if state.pendingSlots {
+                state.pendingSlots = false
+                guard state.builtSkin === skin, !inspectorState.isRebuilding, inspectorState.partSteps == nil else { return }
+                if !followSlots(state.slots.filter(\.isLate)) { rebuildInspectorKeepingFocus(keepScroll: true) }
+            }
+        }
+    }
+
+    /// The layer list on a step whose names follow on the next turn (`rebuildSidebar`): the rows keep their names; the
+    /// ones whose state changed (hidden, locked, cut off) are loaded again and the others take their new picture. False
+    /// when the list must follow at once (another widget, another tab, rows still being added).
+    func followListWithoutNames(skin: Skin) -> Bool {
+        let state = inPlace
+        guard state.defersNaming, InspectorInPlace.isEnabled, state.listSkin === skin, sidebarTab == .layers,
+              sidebar.rowLimit == nil, sidebar.pendingRowLimit == nil, !listItems.isEmpty else { return false }
+        var changed = IndexSet()
+        let visible = outline.rows(in: outline.visibleRect)
+        for row in visible.lowerBound..<visible.upperBound {
+            guard let item = outline.item(atRow: row) as? Item, !item.isGroup,
+                  let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? LayerCell else { continue }
+            if item.isSkin {
+                let picture = sidebar.thumbnails.widgetThumbnail(of: skin, panel: panelColor(for: skin), dark: isSidebarDark)
+                if cell.thumbnail.image !== picture { cell.thumbnail.image = picture }
+                continue
+            }
+            guard item.kind == .meter else { continue }
+            let names = item.seriesMembers ?? [item.title]
+            let meters = names.compactMap { skin.meter(named: $0) }
+            let hidden = !meters.isEmpty && meters.allSatisfy(\.hidden)
+            let locked = !names.isEmpty && names.allSatisfy { isLayerLocked($0) }
+            let cut = names.contains { isLayerCutOff($0) }
+            if cell.isLayerHidden != hidden || item.isLocked != locked || item.isCutOff != cut {
+                item.isLocked = locked
+                item.isCutOff = cut
+                changed.insert(row)
+                continue
+            }
+            let picture = thumbnail(for: item, meters: meters, skin: skin)
+            if cell.thumbnail.image !== picture { cell.thumbnail.image = picture }
+        }
+        if !changed.isEmpty {
+            clearListHover()
+            outline.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integer: 0))
+            restoreListHover()
+        }
+        state.pendingList = true
+        scheduleInPlaceFollowUp()
+        return true
+    }
+
+    /// Follows `slots` whose description changed: set in place, else the row or the part made again; the pictures of
+    /// the running widget are drawn anew. False when one of them could do none of these (the page is built again).
+    func followSlots(_ slots: [InspectorSlot]) -> Bool {
+        let state = inPlace
         enum Action { case set, row, part, refresh }
         var plan: [(InspectorSlot, InspectorSlot.Shown, Action)] = []
         let described: Bool = namingShared {
-            for slot in state.slots {
+            for slot in slots {
                 guard let shown = slot.describe() else {
                     state.lastFallback = "a slot of \(slot.claims.joined(separator: ",")) cannot tell"
                     return false
@@ -738,13 +873,6 @@ extension InspectorWindowController {
             state.lastFallback = "a row could not be made again"
             return false
         }
-        state.built = now
-        state.updates += 1
-        state.lastFallback = nil
-        lastInspectorInputs = now.text
-        refreshLiveValues()
-        inspectorState.liveUpdates.forEach { $0() }
-        if InspectorInPlace.verifies { verifyInPlaceUpdate() }
         return true
     }
 
@@ -1002,6 +1130,8 @@ extension InspectorWindowController {
         }
         slot.label = row.label
         slot.control = row.control
+        // Its colors are named (`widgetColors`).
+        slot.isLate = true
         slot.set = { [weak self, weak slot] in
             guard let self, let skin = self.skin, let m = skin.meter(named: name),
                   let popup = slot?.control?.findSubview(where: { $0.identifier?.rawValue == "\(name)/\(key)/color" }) as? CompactPopUpButton
@@ -1041,12 +1171,13 @@ extension InspectorWindowController {
 extension InspectorWindowController {
     /// Registers a special row that is made again whenever what it shows changes (`describe`): the Number and time
     /// Format of a text showing live data, whose choices show the value as it is now, and Shows.
-    func inPlaceRemadeRow(_ row: InspectorRow, section: String, claims keys: [String], describe: @escaping () -> String?,
-                          remake: @escaping () -> InspectorRow?) -> InspectorRow {
+    func inPlaceRemadeRow(_ row: InspectorRow, section: String, claims keys: [String], late: Bool = false,
+                          describe: @escaping () -> String?, remake: @escaping () -> InspectorRow?) -> InspectorRow {
         guard inPlace.collecting, inPlace.page == .meter(section) else { return row }
         let slot = InspectorSlot(claims: keys.map { InspectorInPlace.rowID(section, $0) }) {
             describe().map { InspectorSlot.Shown(shape: $0, value: "") }
         }
+        slot.isLate = late
         slot.label = row.label
         slot.control = row.control
         slot.remakeRow = remake

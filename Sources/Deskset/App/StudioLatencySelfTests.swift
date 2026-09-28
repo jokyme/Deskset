@@ -170,7 +170,7 @@ enum StudioLatencySelfTests {
     static let phaseOrder = ["plan", "apply", "write", "studio", "studio.patch", "studio.reload", "studio.load",
                              "studio.update", "window", "window.widget",
                              "window.canvas", "window.layers", "window.inspector", "window.live values", "window.code",
-                             "frame", "desktop"]
+                             "frame", "names", "desktop"]
 
     /// "plan 0.7/0.9, apply 0.2/0.3, …": p50 / p95 of each phase measured.
     static func breakdown(_ phases: [String: [Double]]) -> String {
@@ -188,6 +188,10 @@ enum StudioLatencySelfTests {
         defer { editor.window?.close() }
         app.defersDesktopUpdates = true
         defer { app.defersDesktopUpdates = false }
+        // As on screen: what is named from the whole widget follows a turn after the canvas (`followUpInPlace`), timed
+        // as a phase of its own (`names`).
+        InspectorInPlace.defersNamingForTests = true
+        defer { InspectorInPlace.defersNamingForTests = nil }
         guard let skin = editor.skin, editor.session != nil else { return t.check(false, "\(config) opens") }
         guard let target = skin.meters.first(where: { $0 is StringMeter })?.name ?? skin.meters.first?.name else {
             return t.check(false, "\(config) has a layer")
@@ -238,6 +242,9 @@ enum StudioLatencySelfTests {
             frame()
             edits.append(ms(since: start))
             phases["frame", default: []].append(ms(since: committed))
+            let framed = now()
+            editor.flushInPlaceFollowUp()
+            phases["names", default: []].append(ms(since: framed))
             // The desktop copy reloads on the next turn: its phase is taken once it ran.
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
@@ -254,6 +261,9 @@ enum StudioLatencySelfTests {
             frame()
             undos.append(ms(since: start))
             undoPhases["frame", default: []].append(ms(since: undone))
+            let framed = now()
+            editor.flushInPlaceFollowUp()
+            undoPhases["names", default: []].append(ms(since: framed))
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { undoPhases[phase, default: []].append(time) }
