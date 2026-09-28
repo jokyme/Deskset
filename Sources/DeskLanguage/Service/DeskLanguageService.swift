@@ -367,6 +367,8 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let folder = DeskLazy<[DeskFileID: CheckedFile]>()
     let packageCheck = DeskLazy<CheckedDeskPackage>()
     let fileIndexes = DeskLazyMap<DeskFileID, DeskTextIndex>()
+    let nodeTable = DeskLazy<DeskNodeTable>()
+    let symbolIndexes = DeskLazyMap<DeskFileID, DeskSymbolIndex>()
 }
 
 /// A value built once, on first use, under a lock (a second reader waits for the first).
