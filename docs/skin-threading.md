@@ -1602,17 +1602,19 @@ suite's `TestThreadExecutor`.
      exclusive access and a 50 ms timeout, else from the snapshot. A chosen item is an `.execute` message.
    - NowPlaying asks the runtime whether updates are paused; Chameleon gets the window's screen from the window facts
      (`DesktopInputs` published per display).
-   - **Done (2026-09-28):** `SkinMessage.load(SkinLoadOrder)` and `.inputTextAnswered`; `SkinRequest.started(
-     SkinStartReport)`, `.failed`, `.closed` and the `.companion` cases; `SkinCompanions.swift` (`SkinCompanionChannel`,
+   - **Done (2026-09-28):** `SkinMessage.load(SkinLoadOrder)` and `.inputTextAnswered`; `SkinRequest.loaded`,
+     `.started`, `.failed`, `.closed` and the `.companion` cases; `SkinCompanions.swift` (`SkinCompanionChannel`,
      the runtime's side for plugins; `SkinCompanionHost` and `SkinWindowCompanions`, the window's side); the runtime's
      `whenClosed` / `waitUntilClosed`; `AppController.skinStarted` / `skinFailed` / `whenClosed(_:timeout:_:)`;
      `LiveSkinHost.windowDisplay` and `DesktopInputs.displayDesktops`; `AppController.menuFacts`. Differences from the
      plan:
-     - `.started` carries a report, not window facts: the size after the first update, the first load's `Default…`
-       options, whether the window stays hidden (StartHidden, or the skin's own `!Show` / `!Hide` in its first update),
-       the fonts and notes loading found, the metadata. The runtime seeds its window model with the `Default…` options
-       before the first update (`#CURRENTCONFIGZPOS#`); `AppState` gets them when the start is reported, and until then
-       the window's facts wait (the first ones excepted) and the debug comparison skips the environment.
+     - The start is reported in two parts, with values rather than window facts: `.loaded` (the first load's
+       `Default…` options, the fonts and notes loading found), after which the main thread saves the seeded settings
+       and applies StartHidden and the window settings, as it did before the first update; then `.started` (the size
+       after the first update, the metadata), after which it places and shows the window. The runtime seeds its window
+       model itself before the first update (`#CURRENTCONFIGZPOS#`); until `.loaded` arrives the window's facts wait
+       (the first ones excepted) and the debug comparison skips the environment. With the main executor both arrive
+       where the old code did these things, so the debug comparisons run as before.
      - A pause at the time of loading travels in the load order (the first update happens, the clock waits), instead of
        a `.pause` after the start. `AppController` had no `executor.isCurrent` branch left (step 1 took them out);
        screens need no message: the store publishes them and the window's facts follow the new placement.
