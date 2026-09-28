@@ -71,7 +71,7 @@ func runInputDataTests(_ t: TestRunner) {
         """#
         try text.write(to: dir.appendingPathComponent("data.json"), atomically: true, encoding: .utf8)
         let d = try SkinInputData.load("data.json", directory: dir)
-        t.equal(d.givenKeys, SkinInputData.keys)
+        t.equal(d.givenKeys, SkinInputData.keys.filter { $0 != "programs" })
         t.equal(d.unknownKeys, ["later"], "a key of a newer format is reported, not an error")
         t.equal(d.system?.count, 2)
         t.equal(d.system?[0].cpu, [20, 10, 30])
@@ -135,6 +135,42 @@ func runInputDataTests(_ t: TestRunner) {
         t.equal(failure("list.json"), "the data is not a JSON object")
         t.check(failure("{nope").hasPrefix("not JSON"), failure("{nope"))
         t.check(failure("nothing-here.json").hasPrefix("cannot read"), "a path that does not exist")
+    }
+
+    t.suite("Seams: --data: programs, the weather transport and the device location") {
+        let dir = t.temporaryDirectory("programs")
+        let d = try SkinInputData.load(#"""
+        {"programs": {"sysctl": "1\n", "sysctl -n hw.ncpu": "8\n", "profiler": ["a=1", "b=2"]}}
+        """#, directory: dir)
+        t.equal(d.programOutput(for: "/usr/sbin/sysctl -n hw.ncpu"), "8\n", "the longest match wins")
+        t.equal(d.programOutput(for: "/usr/sbin/sysctl -n hw.memsize"), "1\n")
+        t.equal(d.programOutput(for: "system_profiler SPPowerDataType"), "a=1\nb=2\n", "a list of lines")
+        t.equal(d.programOutput(for: "echo hi"), "", "a program the data does not give writes nothing")
+        t.equal(d.givenKeys, ["programs"])
+        t.check((try? SkinInputData.load(#"{"programs": {"x": 1}}"#, directory: dir)) == nil, "output must be text")
+
+        let request = METNorway.request(endpoint: METNorway.endpoint,
+                                        for: RoundedCoordinate(latitude: 59.91, longitude: 10.75),
+                                        userAgent: "test", lastModified: nil)
+        let transport = FixtureWeatherTransport(body: Data("{}".utf8), status: 203)
+        var answer: Result<WeatherHTTPResponse, WeatherTransportError>?
+        transport.get(request) { answer = $0 }
+        t.equal(try answer?.get().status, 203, "answered before get returns")
+        t.equal(transport.requests, 1)
+        let offline = FixtureWeatherTransport(body: nil)
+        offline.get(request) { answer = $0 }
+        if case .failure(.network)? = answer {} else { t.check(false, "no body: offline") }
+
+        let here = FixedDeviceLocation(RoundedCoordinate(latitude: 59.91, longitude: 10.75))
+        t.equal(here.authorization, .authorized)
+        var fix: Result<RoundedCoordinate, DeviceLocationError>?
+        here.requestFix { fix = $0 }
+        t.equal(try fix?.get().latitude, 59.91)
+        let nowhere = FixedDeviceLocation(nil)
+        t.equal(nowhere.authorization, .denied)
+        nowhere.requestFix { fix = $0 }
+        t.equal(fix.map { if case .failure(.denied) = $0 { return true } else { return false } }, true)
+        t.equal(nowhere.cachedFix(maxAge: 1e9), nil)
     }
 
     t.suite("Seams: --data: the scripted system readings") {
