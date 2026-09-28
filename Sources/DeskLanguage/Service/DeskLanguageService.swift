@@ -148,7 +148,8 @@ public final class DeskLanguageService {
         checkGeneration += 1
         let tree = reparse(text)
         let state = isEditingPackage ? nil : currentPackageState()
-        snapshot = publish(tree: tree, version: version, checked: CheckedFile(syntaxOf: tree), isChecked: false, state: state)
+        let syntax = CheckedFile(syntaxOf: tree, context: options.checkContext(package: state?.wrapped, resources: resources))
+        snapshot = publish(tree: tree, version: version, checked: syntax, isChecked: false, state: state)
         return DeskPendingCheck(generation: checkGeneration, snapshot: snapshot, options: options, resources: resources,
                                 package: state?.wrapped, isEditingPackage: isEditingPackage)
     }
@@ -569,5 +570,22 @@ extension CheckedFile {
         self.init(tree: tree, diagnostics: diagnostics ?? tree.diagnostics, symbols: [:], types: [:], elements: [:],
                   dataUses: [], dependencies: [:], reactions: [], freeformOrders: [:], stringTable: [],
                   requirements: Requirements())
+    }
+
+    /// A file with only what parsing found, its diagnostics worded as a check words them: the parser leaves the
+    /// Desk spelling of code written in another language's way to the checker (which fills it in from the catalog),
+    /// and without it some messages would be empty. Fix-its that need the checked file (an option's name) come with
+    /// the check. At most as many diagnostics as a check keeps.
+    init(syntaxOf tree: SyntaxTree, context: CheckContext) {
+        let checker = Checker(tree: tree, context: context)
+        checker.enrichParserDiagnostics()
+        var all = tree.diagnostics.map { checker.replacedParserDiagnostics[checker.diagnosticKey($0)] ?? $0 }
+        let limit = context.catalog.limits.maximumDiagnosticsPerFile
+        if all.count > limit, limit > 0 {
+            let last = all[limit - 1]
+            all = Array(all.prefix(limit)) + [Diagnostic(id: .tooManyProblems, severity: .info, file: tree.file, range: last.range,
+                                                         arguments: ["count": .number(all.count - limit)])]
+        }
+        self.init(syntaxOf: tree, diagnostics: all)
     }
 }
