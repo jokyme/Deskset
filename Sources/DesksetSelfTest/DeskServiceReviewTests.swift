@@ -592,4 +592,33 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         }
         t.check(snapshot.hover(at: deskNavPosition(snapshot, "Look.calm", into: 1))?.paragraphs.first?.en.contains("`.storm`") == true)
     }
+
+    t.suite("Desk: service — the preferred fix of code written in another language's way leaves no error") {
+        let cases: [(String, String)] = [
+            ("Text(\"CPU\").style(\"color: red; font-size: 14px\")", "Text(\"CPU\").color(.red).font(14)"),
+            ("Text(\"CPU\").fontColor(255, 0, 0)", "Text(\"CPU\").color(rgb(255, 0, 0))"),
+            ("Text(\"CPU\").FontColor(\"255,0,0\")", "Text(\"CPU\").color(rgb(255, 0, 0))"),
+            ("Text(\"CPU: \" + cpu.usage + \"%\")", "Text(\"CPU: {cpu.usage}%\")"),
+            ("Text(\"CPU\").font-size(14)", "Text(\"CPU\").font(14)"),
+            ("Text(`${cpu.usage}%`)", "Text(\"{cpu.usage}%\")"),
+        ]
+        for (body, expected) in cases {
+            let text = "info { name: \"T\" }\nwidget {\n    \(body)\n}\n"
+            let snapshot = deskNavService(text).snapshot
+            let whole = snapshot.index.range(utf16: 0..<(text as NSString).length)
+            let actions = snapshot.codeActions(in: whole, source: false).filter { $0.kind == .quickFix }
+            t.equal(actions.filter(\.isPreferred).count >= 1, true, "\(body): a preferred fix: \(actions)")
+            guard let preferred = actions.first(where: \.isPreferred) else { continue }
+            let fixed = DeskTextEditU16.apply(preferred.edit.edits(for: snapshot.file), to: text)
+            t.check(fixed.contains(expected), "\(body) → \(fixed)")
+            let after = deskNavService(fixed).snapshot
+            t.equal(after.diagnostics.filter { $0.severity == .error }.map(\.id.rawValue), [], "\(body) → \(fixed)")
+        }
+        // A style that can't be named so is not offered to be created.
+        let quoted = deskNavService("info { name: \"T\" }\nwidget {\n    Text(\"a\").style(\"my card\")\n}\n").snapshot
+        t.check(!quoted.diagnostics.flatMap(\.fixIts).contains { $0.title.hasPrefix("Create") }, "\(quoted.diagnostics)")
+        // `.font -size(14)` with a space is not CSS.
+        let spaced = deskNavService("info { name: \"T\" }\nwidget {\n    Text(\"a\").font -size(14)\n}\n").snapshot
+        t.check(!spaced.diagnostics.contains { $0.id == .cssDeclaration }, "\(spaced.diagnostics.map(\.id.rawValue))")
+    }
 }

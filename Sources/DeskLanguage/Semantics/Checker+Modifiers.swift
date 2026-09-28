@@ -221,6 +221,12 @@ extension Checker {
         let modifierRange = range(modifier.node)
         let nodeID = id(modifier.node)
         guard !nameToken.token.isMissing else { return result }
+        // `.font-size(14)`: CSS, reported with what Desk writes (DK9202); its values are only read.
+        if modifier.node.childNodes.first?.kind == .unexpected {
+            quietlyCheckArguments(modifier, element: element, context)
+            element?.facts.dropped.append(.modifier(nodeID))
+            return result
+        }
         guard let spec = catalog.modifier(named: name), spec.context != .option || element == nil && styleName == nil && context.place == .options else {
             reportUnknownModifier(modifier, element: element, context)
             quietlyCheckArguments(modifier, element: element, context)
@@ -617,9 +623,49 @@ extension Checker {
         var fixIts: [FixIt] = []
         if let best = suggestion.names.first {
             arguments["suggestion"] = .code(best)
-            if suggestion.fixable { fixIts.append(fix("fix", [edit(nameRange, best)])) }
+            if suggestion.fixable {
+                // `.FontColor("255,0,0")`: a color written R,G,B becomes `rgb(…)` with the name.
+                if modifierTakesColor(best), let clause = modifier.arguments, clause.rParen.kind == .rParen,
+                   let rgb = rgbRewrite(clause.arguments) {
+                    fixIts.append(fix("fix", [edit(nameRange, best), edit(range(clause.node), "(" + rgb + ")")]))
+                } else {
+                    fixIts.append(fix("fix", [edit(nameRange, best)]))
+                }
+            }
         }
         report(.unknownModifier, nameRange, arguments, fixIts: fixIts, dropped: .modifier(id(modifier.node)))
+    }
+
+    /// Whether a modifier's first value is a color (`.color`, `.fill`, `.background`).
+    func modifierTakesColor(_ name: String) -> Bool {
+        guard let spec = catalog.modifier(named: name) else { return false }
+        return spec.signatures.contains { signature in
+            guard let first = signature.params.first, first.label == nil else { return false }
+            return first.type.components.contains(.color) || first.type.components.contains(.paint)
+        }
+    }
+
+    /// A color written the Rainmeter or CSS way, R,G,B[,A] (`255, 0, 0` as three values, or `"255,0,0"`), as
+    /// `rgb(255, 0, 0)`; an alpha of 0–255 (or 0–1) becomes the opacity. Nil for anything else.
+    func rgbRewrite(_ arguments: [ArgumentSyntax]) -> String? {
+        var parts: [String] = []
+        if arguments.count == 1, arguments[0].label == nil, let s = StringLiteralSyntax(arguments[0].value.node)?.literalValue {
+            parts = s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        } else if arguments.count == 3 || arguments.count == 4, arguments.allSatisfy({ $0.label == nil && $0.value.node.kind == .numberLiteral }) {
+            parts = arguments.map { text($0.value.node) }
+        }
+        guard parts.count == 3 || parts.count == 4 else { return nil }
+        let channels = parts.prefix(3).compactMap { Int($0) }
+        guard channels.count == 3, channels.allSatisfy({ (0...255).contains($0) }) else { return nil }
+        var out = "rgb(\(channels[0]), \(channels[1]), \(channels[2])"
+        if parts.count == 4 {
+            guard let alpha = Double(parts[3]), alpha >= 0 else { return nil }
+            let percent = alpha <= 1 && parts[3].contains(".") ? alpha * 100 : alpha / 255 * 100
+            guard percent <= 100 else { return nil }
+            let rounded = Int(percent.rounded())
+            if rounded < 100 { out += ", \(rounded)%" }
+        }
+        return out + ")"
     }
 
     // MARK: - Special modifiers
@@ -748,6 +794,7 @@ extension Checker {
         case .stringLiteral:
             guard let s = StringLiteralSyntax(unchecked: node).literalValue else { return .error }
             name = s
+            if styles[s] == nil, s.contains(":"), reportCssStyleString(s, node) { return .error }
             if styles[s] != nil {
                 report(.quotedOwnName, r, ["fixed": .code(".style(\(s))")],
                        fixIts: [fix("removeQuotes", [edit(r, s)], group: "quotedOwnName")])
@@ -767,8 +814,11 @@ extension Checker {
                 fixIts.append(fix("didYouMean", [edit(r, best)], ["text": .code(best)]))
                 if mute == 0 { styles[best]?.used = true }
             }
-            let insertAt = tree.text.utf8.count
-            fixIts.append(fix("createStyle", [edit(insertAt..<insertAt, lineBreak + "style \(name) { }" + lineBreak)]))
+            // A new style only under a name a style can have.
+            if Checker.isIdentifier(name) {
+                let insertAt = tree.text.utf8.count
+                fixIts.append(fix("createStyle", [edit(insertAt..<insertAt, lineBreak + "style \(name) { }" + lineBreak)]))
+            }
             report(.unknownStyle, r, ["name": .code(name)], fixIts: fixIts)
             return .error
         }

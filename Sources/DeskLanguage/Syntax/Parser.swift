@@ -1124,13 +1124,35 @@ struct Parser {
             children.append(missing(.identifier))
             expected(.memberName)
         }
+        // `.font-size(14)`: a CSS property written as a modifier (§6.2). The `-size` parts stay in the modifier; the
+        // checker says what Desk writes (DK9202).
+        var cssName: String?
+        if name != nil {
+            var j = i
+            while kind(j) == .minus, textStart(j) == textEnd(j - 1), kind(j + 1) == .identifier, textStart(j + 1) == textEnd(j) {
+                j += 2
+            }
+            if j > i {
+                cssName = text(i - 1, j - 1)
+                var parts: [SyntaxChild] = []
+                while i < j { parts.append(take()) }
+                children.append(.node(node(.unexpected, parts)))
+            }
+        }
         var hasArguments = false
         var ofArgument: ClosedRange<Int>?
+        let clauseStart = i
         if kind(i) == .lParen && sameLine(i) {
             let clause = parseArgumentClause()
             children.append(.node(clause.node))
             ofArgument = clause.labeled["of"]
             hasArguments = true
+        }
+        if let cssName {
+            let value = hasArguments && i - 1 > clauseStart + 1 ? text(clauseStart + 1, i - 2) : ""
+            report(.cssDeclaration, .error, starts[start]..<(hasArguments ? textEnd(i - 1) : textEnd(clauseStart - 1)),
+                   ["cssName": .code(cssName), "cssValue": .code(value)])
+            if !hasArguments { return node(.modifierApp, children) }
         }
         var hasBlock = false
         if kind(i) == .lBrace {
