@@ -10,6 +10,7 @@ enum DefaultSkinsSelfTests {
         installTests(t)
         stationeryFileTests(t)
         upgradeTests(t)
+        shippedStateTests(t)
     }
 
     /// A bundle's default skins in a temporary folder: `files` maps paths (`Root/Config/Skin.ini`, `FirstRun.ini`) to
@@ -215,6 +216,38 @@ enum DefaultSkinsSelfTests {
             t.check(FileManager.default.fileExists(atPath: url.path), "a deleted file comes back empty")
             t.equal(DefaultSkins.variables(in: url), nil)
         }
+    }
+
+    // MARK: What the widgets keep in their own files
+
+    /// Widgets that keep a state of their own in their files (`!WriteKeyValue`) ship it at rest: the Turntable's tempo
+    /// is Rest (an update a second) until a record plays. A self-test that ran a widget in the repository's folder while a
+    /// player was playing once left it at Live, and every new install then ran 30 updates a second until the deck noticed.
+    static func shippedStateTests(_ t: AppTestRunner) {
+        t.suite("App: default skins: the widgets ship their own state at rest") {
+            guard let source = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let url = source.appendingPathComponent("Stationery/Turntable/Large.ini")
+            let variables = IniDocument.parse((try? String(contentsOf: url, encoding: .utf8)) ?? "")
+                .section(named: "Variables")
+            t.equal(variables?.value(forKey: "Tempo"), "Rest", "the Turntable's tempo")
+            t.equal(variables?.value(forKey: "TempoLive"), "0")
+        }
+    }
+
+    /// The repository's default skins, file by file (path under DefaultSkins → contents); empty outside the repository.
+    static func fingerprint() -> [String: Data] {
+        guard let root = Paths.repositoryFolder("DefaultSkins"),
+              let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey])
+        else { return [:] }
+        var result: [String: Data] = [:]
+        let prefix = root.resolvingSymlinksInPath().path.count
+        for case let url as URL in files where (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+            result[String(url.resolvingSymlinksInPath().path.dropFirst(prefix))] = try? Data(contentsOf: url)
+        }
+        return result
     }
 
     // MARK: Upgrades

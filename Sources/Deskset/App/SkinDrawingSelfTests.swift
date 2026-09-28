@@ -1034,10 +1034,14 @@ enum SkinDrawingSelfTests {
 
     static func memoryTests(_ t: AppTestRunner) {
         t.suite("App: skin drawing: the first-run widgets redrawn 30 times keep memory flat") {
-            guard let root = Paths.repositoryFolder("DefaultSkins") else {
+            guard let repository = Paths.repositoryFolder("DefaultSkins") else {
                 print("    (skipped: DefaultSkins not found; run from the repository)")
                 return
             }
+            // A copy: skins may write their own files.
+            let root = t.temporaryDirectory("drawing-memory")
+            try FileManager.default.copyItem(at: repository.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
             guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return }
             var skins: [Skin] = []
             for (config, file) in [("Clock", "Small.ini"), ("Calendar", "Small.ini"), ("Weather", "Medium.ini"),

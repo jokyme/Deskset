@@ -21,6 +21,8 @@ enum AppSelfTest {
         // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
         // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
         MediaUICache.root = t.temporaryDirectory("caches")
+        // Suites copy the repository's skins before running them in an app: skins write their own files.
+        let shipped = DefaultSkinsSelfTests.fingerprint()
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
@@ -79,6 +81,11 @@ enum AppSelfTest {
         SensorSelfTests.run(t)
         // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
         StudioLatencySelfTests.run(t)
+        t.suite("App: default skins: no suite changed the repository's default skins") {
+            let now = DefaultSkinsSelfTests.fingerprint()
+            let changed = Set(shipped.keys).union(now.keys).filter { shipped[$0] != now[$0] }.sorted()
+            t.equal(changed, [], "changed, added or removed while the suites ran")
+        }
         return t.finish()
     }
 
