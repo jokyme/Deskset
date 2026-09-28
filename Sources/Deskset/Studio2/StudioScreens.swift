@@ -127,6 +127,12 @@ struct StudioScreen {
                      pinned: systemReadings,
                      later: ["INI layers are flat: no columns or rows, no shared styles or calculated values",
                              "the ring's page (Show as, Center) and the connect menu"]),
+        // The Add page (the design's 08 drags "Disk used" onto a row of rings: INI widgets are free, so no drop sentence).
+        StudioScreen(name: "08-add", fixture: .system, depth: .build, zoom: 2, updates: 4, pinned: systemReadings,
+                     sidebarPage: .add,
+                     later: ["the drag under way: its sentence, the row making room, the container's page",
+                             "Layout (Column, Row, Grid, Free): INI widgets place parts freely",
+                             "Calendar, Web and Command data"]),
         StudioScreen(name: "09-every-setting", fixture: .cpu, zoom: 3, selection: "MeterValue", everySetting: true,
                      distances: true, scrubbing: "every:FontSize", backdrop: .workbench, updates: 2,
                      pinned: ["measurecpu": (23, nil)],

@@ -721,6 +721,16 @@ extension StudioWindowController {
         let menu = NSMenu()
         let title = partPage.partTitle(m, skin: skin)
         menu.addItem(ClosureMenuItem(StudioText.format(.menuHide, title)) { [weak self] in self?.hide(part: m.name) })
+        menu.addItem(.separator())
+        let index = skin.meters.firstIndex { $0 === m } ?? 0
+        menu.addItem(ClosureMenuItem(StudioText[.axBringForward], enabled: index + 1 < skin.meters.count) { [weak self] in
+            self?.bringForward(m.name)
+        })
+        menu.addItem(ClosureMenuItem(StudioText[.axSendBackward], enabled: index > 0) { [weak self] in
+            self?.sendBackward(m.name)
+        })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem(StudioText[.axDelete]) { [weak self] in self?.delete(part: m.name) })
         return menu
     }
 

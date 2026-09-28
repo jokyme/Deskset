@@ -279,7 +279,7 @@ public enum StudioAddCatalog {
         }
     }
 
-    static func fold(_ s: String) -> String {
+    public static func fold(_ s: String) -> String {
         s.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
     }
 }

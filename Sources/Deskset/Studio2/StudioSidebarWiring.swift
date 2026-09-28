@@ -11,6 +11,10 @@ final class StudioSidebarState {
     var liveTimer: Timer?
     /// Return moved the focus from the canvas to the inspector: Esc there brings it back to the part.
     var focusFromCanvas = false
+    /// The Add page's live values.
+    var addValues = StudioAddValues(live: false)
+    /// The last menu the Add page opened (how to show a data item, the symbols).
+    var lookMenu: NSMenu?
     /// Rainmeter details as the pages last showed them (Settings may change them too).
     var shownDetails: Bool?
     var observers: [NSObjectProtocol] = []
@@ -41,6 +45,8 @@ extension StudioWindowController {
             self?.updateToolbar()
             self?.refreshLayers()
         }
+        sidebarState.addValues = StudioAddValues(live: app.presentsWindows)
+        wireAdd()
         let canvas = canvasController.canvas
         canvas.isLocked = { [weak self] name in self?.lockedParts.contains(name.lowercased()) ?? false }
         canvas.onDelete = { [weak self] in
@@ -82,6 +88,7 @@ extension StudioWindowController {
         layers.show(lists, details: showsRainmeterDetails)
         syncLayersSelection()
         canvasAccess.rebuild()
+        if !sidebarItem.isCollapsed, sidebarController.page == .add { refreshAddPage() }
     }
 
     /// The Layers list selects what the canvas and the inspector show.
@@ -100,8 +107,12 @@ extension StudioWindowController {
         guard app.presentsWindows else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, self.window?.isVisible == true, self.skin != nil else { return }
-            if !self.sidebarItem.isCollapsed, self.sidebarController.page == .layers { self.refreshLayers() }
-            else { self.canvasAccess.refreshValues() }
+            if !self.sidebarItem.isCollapsed, self.sidebarController.page == .layers {
+                self.refreshLayers()
+            } else {
+                self.canvasAccess.refreshValues()
+                if !self.sidebarItem.isCollapsed { self.sidebarController.addView.refreshValues() }
+            }
         }
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)

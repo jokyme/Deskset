@@ -154,6 +154,7 @@ enum StudioSnapshot {
         if screen.depth == .build {
             controller.sidebarController.show(screen.sidebarPage)
             controller.refreshLayers()
+            controller.updateToolbar()
             controller.window?.contentView?.layoutSubtreeIfNeeded()
             controller.sidebarController.layout()
             controller.sidebarController.layersView.layoutSubtreeIfNeeded()
