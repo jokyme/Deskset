@@ -6,7 +6,8 @@ import Foundation
 // every offset of sampled corpus snippets.
 //
 // `DESK_COMPLETE_DUMP='widget { Text("a").| }'` prints the context and the first items at the `|` (with
-// `DESK_COMPLETE_FILE=package.desk` for a package file, `DESK_COMPLETE_ALL=1` for every item).
+// `DESK_COMPLETE_FILE=package.desk` for a package file, `DESK_COMPLETE_ALL=1` for every item, `DESK_COMPLETE_DEBUG=1`
+// for every node and token with the types the service sees).
 
 /// A text with `|` at the cursor, and the position of the cursor in the text without it.
 func deskCursorText(_ marked: String) -> (text: String, offset: Int) {

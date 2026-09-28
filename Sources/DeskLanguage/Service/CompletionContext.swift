@@ -278,7 +278,9 @@ extension DeskSnapshot {
         // The token the cursor is in, or right after.
         var word: DeskTokenTable.Entry?
         var wordIndex: Int?
-        if let i = tokens.lastStarting(before: offset) {
+        if var i = tokens.lastStarting(before: offset) {
+            // Missing tokens take no room: look past them.
+            while i > 0, !tokens.entries[i].isPresent, tokens.entries[i].kind != .eof { i -= 1 }
             let e = tokens.entries[i]
             if e.isPresent, e.textStart < offset, offset <= e.textEnd || (e.kind == .stringText && e.token.flags.contains(.unterminated)) {
                 word = e
@@ -1224,7 +1226,8 @@ extension DeskSnapshot {
     private func formatOptionStart(offset: Int, word: Int?, _ scan: DeskCompletionScan) -> DeskCompletionScan {
         var s = scan
         let table = nodeTable
-        var i = tokenTable.entries[tokenTable.previousPresent(endingAtOrBefore: word.map { tokenTable.entries[$0].textStart } ?? offset)!].parent
+        guard let before = tokenTable.previousPresent(endingAtOrBefore: word.map { tokenTable.entries[$0].textStart } ?? offset) else { return s }
+        var i = tokenTable.entries[before].parent
         while i >= 0, table.entries[i].kind != .interpolation { i = table.entries[i].parent }
         guard i >= 0 else { return s }
         s.context.place = .formatOption

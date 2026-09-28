@@ -904,8 +904,11 @@ struct DeskCompletionBuilder {
 
     private mutating func addActions() {
         let context = scan.context
+        let hasNamedElement = snapshot.checked.elements.values.contains { $0.name != nil }
         for (spec, t) in templates.functions where spec.kind == .action {
             if spec.userInitiatedOnly && !context.userInitiated { continue }
+            // `show`, `hide` and `showOrHide` name an element: offered once one has a name.
+            if !hasNamedElement, spec.signatures.contains(where: { $0.params.contains { $0.role == .elementName } }) { continue }
             add(t, tier: 2)
         }
         addControlFlow()
