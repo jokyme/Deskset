@@ -277,7 +277,7 @@ private struct OutlineBuilder {
 
     /// The item of the top-level node that starts at `offset` (nil for one the outline does not show).
     func item(forTopLevelAt offset: Int, node: SyntaxNode) -> DeskOutlineItem? {
-        guard let i = table.children(of: 0).first(where: { table.entries[$0].offset == offset && table.entries[$0].node === node })
+        guard let i = table.topLevelEntry(at: offset, node: node)
         else { return nil }
         // The outline recurses once or twice per nested block: hostile nesting runs where the stack is large enough
         // (a background thread has 512 KiB).
@@ -525,7 +525,7 @@ private struct FoldingBuilder {
     /// first. A range never crosses a top-level block: a run of comment lines lies in one token's leading trivia.
     func ranges(ofTopLevelAt offset: Int, node: SyntaxNode) -> [(kind: DeskFoldingKind, range: Range<Int>)] {
         let table = snapshot.nodeTable
-        guard let top = table.children(of: 0).first(where: { table.entries[$0].offset == offset && table.entries[$0].node === node })
+        guard let top = table.topLevelEntry(at: offset, node: node)
         else { return [] }
         var out: [(kind: DeskFoldingKind, range: Range<Int>)] = []
         func add(_ kind: DeskFoldingKind, _ r: Range<Int>) {

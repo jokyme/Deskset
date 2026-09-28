@@ -1069,7 +1069,7 @@ extension DeskSnapshot {
             }
         }
         // The widget's declarations and named elements.
-        for top in table.children(of: 0) where table.entries[top].kind == .widgetBlock {
+        for top in table.topLevel where table.entries[top].kind == .widgetBlock {
             guard let block = table.children(of: top).first(where: { table.entries[$0].kind == .block }) else { continue }
             for statement in table.children(of: block) where table.entries[statement].kind == .declaration {
                 let declaration = DeclarationSyntax(unchecked: table.entries[statement].positioned)

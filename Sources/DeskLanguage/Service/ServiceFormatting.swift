@@ -73,7 +73,7 @@ extension DeskSnapshot {
         var found: Range<Int>?
         while true {
             var next: Int?
-            for child in table.children(of: current) {
+            for child in table.children(of: current, near: offset) {
                 let entry = table.entries[child]
                 guard entry.offset <= offset, offset < entry.offset + entry.node.byteLength else { continue }
                 // Leading trivia belongs to the node's first token but not to its text.

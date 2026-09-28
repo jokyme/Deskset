@@ -784,7 +784,7 @@ struct DeskCompletionBuilder {
 
     private mutating func addTopLevel() {
         let table = snapshot.nodeTable
-        let present = Set(table.children(of: 0).map { table.entries[$0].kind })
+        let present = Set(table.topLevel.map { table.entries[$0].kind })
         let isPackage = snapshot.isPackage
         if isPackage {
             if !present.contains(.packageBlock) {
@@ -1460,7 +1460,7 @@ struct DeskCompletionBuilder {
     /// The file keeps Rainmeter details (`info { convertedFrom: … }`): `.rainmeter(…)` may be written.
     var isConvertedFile: Bool {
         let table = snapshot.nodeTable
-        for top in table.children(of: 0) where table.entries[top].kind == .infoBlock {
+        for top in table.topLevel where table.entries[top].kind == .infoBlock {
             for block in table.children(of: top) where table.entries[block].kind == .block {
                 for field in table.children(of: block) where table.entries[field].kind == .field {
                     if table.entries[field].positioned.firstChild(.label)?.childTokens.first?.token.name == "convertedFrom" { return true }
@@ -1530,7 +1530,7 @@ struct DeskCompletionBuilder {
     /// The block of `info { }`.
     var infoBody: Int? {
         let table = snapshot.nodeTable
-        for top in table.children(of: 0) where table.entries[top].kind == .infoBlock {
+        for top in table.topLevel where table.entries[top].kind == .infoBlock {
             return table.children(of: top).first { table.entries[$0].kind == .block }
         }
         return nil
@@ -1570,7 +1570,7 @@ struct DeskCompletionBuilder {
                 edit = (open.textRange.upperBound..<close.textStart, " permissions: [.\(permission)] ")
             }
         } else {
-            let start = table.children(of: 0).first { table.entries[$0].kind.isTopLevelBlock }.map { table.entries[$0].textStart } ?? 0
+            let start = table.topLevel.first { table.entries[$0].kind.isTopLevelBlock }.map { table.entries[$0].textStart } ?? 0
             edit = (start..<start, "info { permissions: [.\(permission)] }\n\n")
         }
         guard let (r, text) = edit, r.upperBound <= scan.utf8Range.lowerBound || r.lowerBound >= scan.utf8Range.upperBound else { return [] }

@@ -189,9 +189,12 @@ extension DeskSnapshot {
     public func semanticTokens() -> DeskSemanticTokens {
         guard hasStackRoom else { return onLargeStack { semanticTokens() } }
         return caches.semanticTokens.value {
-            var tokens: [DeskSemanticToken] = []
-            for k in semanticBlockRanges.indices { tokens += semanticTokens(ofBlock: k) }
-            return DeskSemanticTokens(tokens: tokens, index: index)
+            // Every block's runs converted in one pass: thousands of blocks may share one long line.
+            let pieces = semanticBlockRanges.indices.map { k -> (DeskSemanticBlock, ArraySlice<DeskSemanticBlock.Run>) in
+                let block = semanticBlock(k)
+                return (block, block.runs[...])
+            }
+            return DeskSemanticTokens(tokens: semanticTokens(of: pieces), index: index)
         }
     }
 
@@ -298,20 +301,33 @@ extension DeskSnapshot {
             while last < block.runs.count, block.offset + block.runs[last].start <= near.upperBound { last += 1 }
             runs = block.runs[low..<last]
         }
+        return semanticTokens(of: [(block, runs)])
+    }
+
+    /// Runs of blocks in file order as tokens, every offset converted in one pass.
+    private func semanticTokens(of pieces: [(block: DeskSemanticBlock, runs: ArraySlice<DeskSemanticBlock.Run>)]) -> [DeskSemanticToken] {
         var offsets: [Int] = []
-        offsets.reserveCapacity(runs.count * 2)
-        for run in runs {
-            offsets.append(block.offset + run.start)
-            offsets.append(block.offset + run.end)
+        offsets.reserveCapacity(pieces.reduce(0) { $0 + $1.runs.count } * 2)
+        for (block, runs) in pieces {
+            for run in runs {
+                offsets.append(block.offset + run.start)
+                offsets.append(block.offset + run.end)
+            }
         }
         let positions = index.positions(ofAscendingUTF8: offsets)
-        return runs.indices.map { r in
-            let i = r - runs.startIndex
-            let (s, e) = (positions[2 * i], positions[2 * i + 1])
-            return DeskSemanticToken(range: DeskRange(start: DeskPosition(offset: s.utf16, line: s.line, column: s.column),
-                                                      end: DeskPosition(offset: e.utf16, line: e.line, column: e.column)),
-                                     type: runs[r].type, modifiers: runs[r].modifiers)
+        var tokens: [DeskSemanticToken] = []
+        tokens.reserveCapacity(offsets.count / 2)
+        var i = 0
+        for (_, runs) in pieces {
+            for run in runs {
+                let (s, e) = (positions[2 * i], positions[2 * i + 1])
+                tokens.append(DeskSemanticToken(range: DeskRange(start: DeskPosition(offset: s.utf16, line: s.line, column: s.column),
+                                                                 end: DeskPosition(offset: e.utf16, line: e.line, column: e.column)),
+                                                type: run.type, modifiers: run.modifiers))
+                i += 1
+            }
         }
+        return tokens
     }
 
     /// What classification reads besides the tree: built once per snapshot. A snapshot with only the syntax
@@ -420,7 +436,7 @@ struct DeskSemanticClassifier {
             return DeskSemanticBlock(node: nil, offset: offset, length: token.utf8Length, runs: shifted(runs, by: offset))
         case .node(let node):
             // The table entry of this top-level node.
-            let entry = table.children(of: 0).first { table.entries[$0].offset == offset && table.entries[$0].node === node }
+            let entry = table.topLevelEntry(at: offset, node: node)
             if let entry { classifyEntries(from: entry, into: &runs) }
             return DeskSemanticBlock(node: node, offset: offset, length: node.byteLength, runs: shifted(runs, by: offset))
         }

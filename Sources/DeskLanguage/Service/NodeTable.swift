@@ -25,6 +25,8 @@ struct DeskNodeTable: Sendable {
 
     let version: Int
     let entries: [Entry]
+    /// The indexes of the file's top-level nodes, in order (a file of stray braces has thousands).
+    let topLevel: [Int]
     /// Node indexes by the checker's key. Nested nodes of one kind may start at the same place (`a.b.c`), so a key
     /// may name several; outermost first.
     let byID: [NodeID: [Int]]
@@ -84,6 +86,28 @@ struct DeskNodeTable: Sendable {
         }
         self.entries = entries
         self.byID = byID
+        var top: [Int] = []
+        var i = 1
+        while i < entries.count {
+            top.append(i)
+            i = entries[i].end
+        }
+        topLevel = top
+    }
+
+    /// The top-level node `node` that starts (with its leading trivia) at `offset`.
+    func topLevelEntry(at offset: Int, node: SyntaxNode) -> Int? {
+        var low = 0, high = topLevel.count
+        while low < high {
+            let mid = (low + high) / 2
+            if entries[topLevel[mid]].offset < offset { low = mid + 1 } else { high = mid }
+        }
+        // Nodes of no length share an offset with the next one.
+        while low < topLevel.count, entries[topLevel[low]].offset == offset {
+            if entries[topLevel[low]].node === node { return topLevel[low] }
+            low += 1
+        }
+        return nil
     }
 
     /// The nodes a checker key may name, outermost first (empty for a key of another tree).
@@ -123,6 +147,22 @@ struct DeskNodeTable: Sendable {
         return out
     }
 
+    /// The direct child nodes of `index` whose full range (trivia included) holds `offset` or ends at it, in order.
+    /// The file's top-level nodes are found by binary search (a file of stray braces has thousands of them).
+    func children(of index: Int, near offset: Int) -> [Int] {
+        guard index == 0 else { return children(of: index) }
+        var low = 0, high = topLevel.count
+        while low < high {
+            let mid = (low + high) / 2
+            if entries[topLevel[mid]].offset <= offset { low = mid + 1 } else { high = mid }
+        }
+        // `low` is the first top-level node that starts after `offset`; the ones before it that reach `offset` are
+        // the candidates (nodes never overlap, so they are the last few).
+        var first = low
+        while first > 0, entries[topLevel[first - 1]].offset + entries[topLevel[first - 1]].node.byteLength >= offset { first -= 1 }
+        return Array(topLevel[first..<low])
+    }
+
     /// The innermost node whose text (trivia excluded) holds `offset` or ends at it, walking down from the file.
     /// A node whose text ends at `offset` counts only when no node's text holds it (a cursor right after a name).
     func innermost(at offset: Int, where accept: (Entry) -> Bool = { _ in true }) -> Int? {
@@ -131,7 +171,7 @@ struct DeskNodeTable: Sendable {
         while true {
             var next: Int?
             var touching: Int?
-            for child in children(of: current) {
+            for child in children(of: current, near: offset) {
                 let e = entries[child]
                 if e.textStart <= offset && offset < e.textEnd { next = child; break }
                 if e.textEnd == offset && e.textStart < e.textEnd { touching = child }
