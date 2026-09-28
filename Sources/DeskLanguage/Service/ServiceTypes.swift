@@ -64,14 +64,14 @@ public struct DeskRange: Sendable, Hashable, CustomStringConvertible {
 extension DeskTextIndex {
     /// The position of a UTF-16 offset, clamped to the text and to the start of a scalar.
     public func position(utf16 offset: Int) -> DeskPosition {
-        let o = clampedUTF16(offset)
-        let (line, column) = lineAndColumn(ofUTF16: o)
-        return DeskPosition(offset: o, line: line, column: column)
+        let p = position(ofUTF16: offset)
+        return DeskPosition(offset: p.utf16, line: p.line, column: p.column)
     }
 
     /// The position of a UTF-8 offset (the tree's and the checker's), clamped likewise.
     public func position(utf8 offset: Int) -> DeskPosition {
-        position(utf16: utf16Offset(ofUTF8: offset))
+        let p = position(ofUTF8: offset)
+        return DeskPosition(offset: p.utf16, line: p.line, column: p.column)
     }
 
     /// The position of a 0-based line and UTF-16 column (clamped as `utf16Offset(line:column:)` clamps them).
@@ -86,7 +86,8 @@ extension DeskTextIndex {
 
     /// The range of UTF-8 offsets, each clamped.
     public func range(utf8 range: Range<Int>) -> DeskRange {
-        self.range(utf16: utf16Range(ofUTF8: range))
+        let start = position(utf8: range.lowerBound)
+        return DeskRange(start: start, end: range.upperBound <= range.lowerBound ? start : position(utf8: range.upperBound))
     }
 
     /// A text view's range, clamped to the text; nil for `NSNotFound` or a negative length.

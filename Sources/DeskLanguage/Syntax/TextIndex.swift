@@ -8,7 +8,8 @@ import Foundation
 /// Every conversion clamps: an offset before the start or past the end goes to the start or the end, an offset inside
 /// a scalar (inside its UTF-8 bytes, or between the two halves of a surrogate pair) goes to the start of that scalar,
 /// and a column past the end of its line goes to the end of the line's content (before its line break). Lines of
-/// ASCII text convert by arithmetic; other lines are walked from their start.
+/// ASCII text convert by arithmetic; other lines are walked from their start or from the nearest checkpoint before
+/// the offset (one about every 256 bytes), so a conversion on a long line of emoji or CJK walks at most that far.
 public struct DeskTextIndex: Sendable {
     /// The UTF-8 bytes of the text.
     let bytes: [UInt8]
@@ -20,6 +21,11 @@ public struct DeskTextIndex: Sendable {
     let asciiLines: [Bool]
     /// The length of the text in UTF-16 units.
     public let utf16Count: Int
+    /// Scalar starts about every `checkpointBytes` bytes: their UTF-8 offsets and the UTF-16 offsets they are at
+    /// (both start with 0; both increase).
+    let checkpoints8: [Int]
+    let checkpoints16: [Int]
+    static let checkpointBytes = 256
 
     public init(_ text: String) {
         self.init(bytes: Array(text.utf8))
@@ -35,13 +41,21 @@ public struct DeskTextIndex: Sendable {
         var starts8 = [0]
         var starts16 = [0]
         var asciiLines: [Bool] = []
+        var checkpoints8 = [0]
+        var checkpoints16 = [0]
         var units = 0
         bytes.withUnsafeBufferPointer { buffer in
             let n = buffer.count
             var lineIsASCII = true
+            var next = Self.checkpointBytes
             var i = 0
             while i < n {
                 let b = buffer[i]
+                if i >= next, b & 0xC0 != 0x80 {
+                    checkpoints8.append(i)
+                    checkpoints16.append(units)
+                    next = i + Self.checkpointBytes
+                }
                 if b < 0x80 {
                     units += 1
                     if b == 0x0A || b == 0x0D {
@@ -67,6 +81,8 @@ public struct DeskTextIndex: Sendable {
         self.starts16 = starts16
         self.asciiLines = asciiLines
         self.utf16Count = units
+        self.checkpoints8 = checkpoints8
+        self.checkpoints16 = checkpoints16
     }
 
     /// The length of the text in UTF-8 bytes.
@@ -92,14 +108,26 @@ public struct DeskTextIndex: Sendable {
     /// The UTF-16 offset of a UTF-8 offset.
     public func utf16Offset(ofUTF8 offset: Int) -> Int {
         let o = clampedUTF8(offset)
-        let line = line(ofUTF8: o)
-        return starts16[line] + utf16Length(from: starts8[line], to: o, ascii: asciiLines[line])
+        return utf16Offset(ofScalarStart: o, line: line(ofUTF8: o))
+    }
+
+    /// The UTF-16 offset of a UTF-8 offset at a scalar start on `line`: by arithmetic on an ASCII line, otherwise
+    /// walked from the line's start or from the last checkpoint before it, whichever is nearer.
+    private func utf16Offset(ofScalarStart o: Int, line: Int) -> Int {
+        if asciiLines[line] { return starts16[line] + (o - starts8[line]) }
+        let k = Self.search(checkpoints8, o)
+        if checkpoints8[k] > starts8[line] { return checkpoints16[k] + utf16Length(from: checkpoints8[k], to: o, ascii: false) }
+        return starts16[line] + utf16Length(from: starts8[line], to: o, ascii: false)
     }
 
     /// The UTF-8 offset of a UTF-16 offset.
     public func utf8Offset(ofUTF16 offset: Int) -> Int {
         let o = max(0, min(offset, utf16Count))
         let line = line(ofUTF16: o)
+        if !asciiLines[line] {
+            let k = Self.search(checkpoints16, o)
+            if checkpoints8[k] > starts8[line] { return utf8Offset(from: checkpoints8[k], units: checkpoints16[k], to: o) }
+        }
         return utf8Offset(inLine: line, utf16Column: o - starts16[line])
     }
 
@@ -129,7 +157,21 @@ public struct DeskTextIndex: Sendable {
     public func lineAndColumn(ofUTF8 offset: Int) -> (line: Int, column: Int) {
         let o = clampedUTF8(offset)
         let line = line(ofUTF8: o)
-        return (line, utf16Length(from: starts8[line], to: o, ascii: asciiLines[line]))
+        return (line, utf16Offset(ofScalarStart: o, line: line) - starts16[line])
+    }
+
+    /// The UTF-16 offset, 0-based line and UTF-16 column of a UTF-8 offset, clamped as `utf16Offset(ofUTF8:)` clamps
+    /// it: one conversion for all three.
+    public func position(ofUTF8 offset: Int) -> (utf16: Int, line: Int, column: Int) {
+        let o = clampedUTF8(offset)
+        let line = line(ofUTF8: o)
+        let u = utf16Offset(ofScalarStart: o, line: line)
+        return (u, line, u - starts16[line])
+    }
+
+    /// The same for a UTF-16 offset (clamped to the text and to the start of a surrogate pair).
+    public func position(ofUTF16 offset: Int) -> (utf16: Int, line: Int, column: Int) {
+        position(ofUTF8: utf8Offset(ofUTF16: offset))
     }
 
     /// The UTF-16 offset of a 0-based line and UTF-16 column. A line past the last is the end of the text; a line
@@ -248,6 +290,13 @@ public struct DeskTextIndex: Sendable {
     private func utf8Offset(inLine line: Int, utf16Column column: Int) -> Int {
         let start = starts8[line]
         if asciiLines[line] { return min(start + max(0, column), bytes.count) }
+        return utf8Offset(from: start, units: starts16[line], to: starts16[line] + column)
+    }
+
+    /// The UTF-8 offset of the UTF-16 offset `target`, walked from the scalar start `start` (at UTF-16 offset
+    /// `startUnits`); an offset inside a surrogate pair goes to the pair's start.
+    private func utf8Offset(from start: Int, units startUnits: Int, to target: Int) -> Int {
+        let column = target - startUnits
         var units = 0
         var i = start
         bytes.withUnsafeBufferPointer { buffer in
