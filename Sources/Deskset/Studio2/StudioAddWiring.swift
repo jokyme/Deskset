@@ -23,7 +23,7 @@ final class StudioAddValues {
         switch item.id {
         case "cpu": return "\(Int(system.cpuUsage(processor: 0).rounded()))%"
         case "memory":
-            return ByteCountFormatter.string(fromByteCount: Int64(system.memoryStatus().physicalUsed), countStyle: .memory)
+            return StudioText.bytes(Double(system.memoryStatus().physicalUsed), style: .memory)
         case "disk":
             guard let d = system.diskSpace(path: "/"), d.total > 0 else { return nil }
             return "\(Int(((d.total - d.free) / d.total * 100).rounded()))%"
@@ -41,7 +41,7 @@ final class StudioAddValues {
                 return nil
             }
             let v = item.id == "download" ? speeds.down : speeds.up
-            return ByteCountFormatter.string(fromByteCount: Int64(max(v, 0)), countStyle: .file) + "/s"
+            return StudioText.bytes(v, style: .file) + "/s"
         case "battery": return system.battery().map { "\(Int($0.percent.rounded()))%" }
         case "time":
             let f = DateFormatter()

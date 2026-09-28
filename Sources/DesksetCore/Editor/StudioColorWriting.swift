@@ -45,9 +45,10 @@ public enum StudioColorWriting {
             guard done.insert("\(section.lowercased())|\(key.lowercased())").inserted,
                   let replaced = ValueUsageIndex.replacingColor(role.color, with: color, in: raw, key: key) else { continue }
             // A part only a shared file defines can't change for this widget alone: never written from here.
-            guard let target = skin.localTarget(section: section, key: key) else { continue }
+            guard let target = skin.widgetTarget(section: section, key: key) else { continue }
             // Overriding what an included file gives the section: after the block's @Include lines, so it wins.
-            let overrides = !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
+            let overrides = skin.localTarget(section: section, key: key) != nil
+                && !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
             ops.append(.setValue(file: target.file, section: target.section, key: key, value: replaced,
                                  afterIncludes: overrides))
         }
@@ -58,7 +59,7 @@ public enum StudioColorWriting {
     /// leaves them as they are (the page says so).
     public static func sharedParts(_ role: StudioWidgetFacts.ColorRole, skin: Skin) -> [String] {
         var result: [String] = []
-        for (section, key, _) in literalPlaces(role, skin: skin) where skin.localTarget(section: section, key: key) == nil {
+        for (section, key, _) in literalPlaces(role, skin: skin) where skin.widgetTarget(section: section, key: key) == nil {
             if !result.contains(where: { $0.caseInsensitiveCompare(section) == .orderedSame }) { result.append(section) }
         }
         return result

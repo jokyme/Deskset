@@ -870,6 +870,63 @@ enum Studio2AuditSelfTests {
             t.check(StudioPageStyle.titleFont().familyName != "Songti SC", "not Songti in English")
         }
 
+        t.suite("Studio2: audit: the Chinese screens speak Chinese") {
+            Studio2SelfTests.prepare(t)
+            with(.chinese, dark: false) {
+                // 07: Layers and Data in Chinese, values written the Chinese way, never "Zero KB".
+                guard let opened = open(t, "07-layers") else { return }
+                let studio = opened.controller
+                if let lists = studio.sidebarController.layersView.lists {
+                    let titles = (lists.parts + lists.data).map(\.title)
+                    for english in ["Computer name", "Uptime text", "Disk text", "Time since startup", "Disk name"] {
+                        t.check(!titles.contains(english), "no “\(english)”: \(titles)")
+                    }
+                    t.check(titles.contains("电脑名称") && titles.contains("开机时长") && titles.contains("磁盘名称"),
+                            "the catalog's words: \(titles)")
+                    let values = lists.data.compactMap(\.value)
+                    t.check(!values.contains { $0.contains("Zero") }, "no word for zero: \(values)")
+                    t.check(values.contains { $0.hasSuffix("小时") }, "a duration in Chinese: \(values)")
+                } else {
+                    t.check(false, "the layers")
+                }
+                // 04: the click's app by its Chinese name; Fit is 跟随内容 everywhere.
+                studio.select(part: "MeterCPUValue")
+                if case .row(let size)? = studio.partPage.page?.item("layout.size")?.kind, case .pair(let pair) = size.control,
+                   case .number(let w)? = pair.first {
+                    t.equal(w.placeholder, "跟随内容")
+                }
+                let actions = (studio.partPage.page?.sections ?? []).flatMap(\.items).compactMap { item -> String? in
+                    guard item.id == "clicks.action", case .row(let r) = item.kind else { return nil }
+                    if case .text(let text) = r.control { return text }
+                    if case .popup(let p) = r.control { return p.items.first?.title }
+                    return nil
+                }
+                if let action = actions.first, action.contains("打开") {
+                    t.check(action.contains("活动监视器") || !action.contains("Activity Monitor"),
+                            "the app by its Chinese name: \(action)")
+                }
+                t.equal(StudioWords.action("Opens Activity Monitor"), "打开“活动监视器”")
+                t.equal(StudioWords.shapeKind(.ellipse), "椭圆")
+                opened.close()
+                // 03b: the temperature unit is 单位.
+                let previousWeather = WeatherService.shared.environment
+                var weather = WeatherWiring.previewEnvironment(demo: true,
+                                                              demoNow: METNorway.parseISO8601("2026-09-27T03:30:00Z"))
+                weather.transport = WeatherSelfTests.ForbiddenTransport()
+                WeatherService.install(weather)
+                defer { WeatherService.install(previousWeather) }
+                guard let w = open(t, "03b-weather") else { return }
+                defer { w.close() }
+                let labels = (w.controller.widgetPage.page?.section("options")?.items ?? []).compactMap { item -> String? in
+                    if case .row(let r) = item.kind { return r.label }
+                    return nil
+                }
+                t.equal(labels.first, "单位", "\(labels)")
+            }
+            t.equal(StudioText.duration(seconds: 14 * 86_400 + 5 * 3600), "14 d 5 h")
+            t.check(!StudioText.bytes(0, style: .memory).contains("Zero"), StudioText.bytes(0, style: .memory))
+        }
+
         t.suite("Studio2: audit: no label is cut") {
             Studio2SelfTests.prepare(t)
             for v in variants {

@@ -123,9 +123,10 @@ extension StudioWindowController {
     func deleteParts(_ names: [String]) -> Bool {
         guard let skin else { return false }
         let meters = names.compactMap { skin.meter(named: $0) }
+        // Parts a file other widgets read defines are theirs too (a file only this widget reads is its own).
         let shared = meters.filter { m in
-            guard let file = skin.sources.location(section: m.name)?.file else { return false }
-            return !skin.isOwnFile(file)
+            guard let file = skin.sources.location(section: m.name)?.file, !skin.isOwnFile(file) else { return false }
+            return skin.widgetTarget(section: m.name, key: "Meter") == nil
         }
         let own = meters.filter { m in !shared.contains { $0 === m } }
         if let first = shared.first, own.isEmpty {

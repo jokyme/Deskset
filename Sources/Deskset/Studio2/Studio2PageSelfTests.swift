@@ -13,6 +13,7 @@ enum Studio2PageSelfTests {
         stepTests(t)
         revertKeepsOptionsTests(t)
         textSizeCommandTests(t)
+        rainmeterPageTests(t)
         popoverTests(t)
         wordTests(t)
     }
@@ -357,6 +358,36 @@ enum Studio2PageSelfTests {
             session.undoStack.undo()
             studio.studioTextSmaller(nil)
             t.check(size() < before, "smaller")
+        }
+    }
+
+    /// 13b: a Rainmeter skin with its Rainmeter names: the credit from its [Metadata], Shows menus never squeezed by
+    /// the names beside them, and the clock's hours saying why there is no Auto.
+    static func rainmeterPageTests(_ t: AppTestRunner) {
+        t.suite("Studio2: page: a Rainmeter skin with its names") {
+            Studio2SelfTests.prepare(t)
+            guard let opened = open(t, "13b-compat") else { return }
+            defer { opened.close() }
+            let studio = opened.controller, view = studio.inspectorController.pageView
+            t.equal(studio.widgetPage.page?.subtitle, "From Mira’s Rainmeter skin · 2.1 · CC BY-NC-SA 4.0")
+            t.check(studio.showsRainmeterDetails, "Rainmeter names on")
+            view.layoutSubtreeIfNeeded()
+            for item in studio.widgetPage.page?.section("shows")?.items ?? [] {
+                guard let row = view.itemView(item.id) as? StudioRowView, case .popup = row.row.control,
+                      let popup = row.subviews.first(where: { $0 is NSPopUpButton }) as? NSPopUpButton else { continue }
+                let needed = StudioRowView.chosenWidth(popup)
+                t.check(popup.frame.width + 1 >= needed,
+                        "\(item.id): the chosen data is shown whole (\(Int(popup.frame.width)) for \(Int(needed)))")
+            }
+            if case .row(let clock)? = studio.widgetPage.page?.section("options")?.items.first(where: {
+                if case .row(let r) = $0.kind, case .segmented = r.control { return true }
+                return false
+            })?.kind {
+                t.equal(clock.tooltip, StudioText[.clockNoAuto], "why there is no Auto")
+                t.equal(clock.detail, "from %H")
+            } else {
+                t.check(false, "the clock's hours")
+            }
         }
     }
 

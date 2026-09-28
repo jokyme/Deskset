@@ -523,7 +523,7 @@ extension StudioPartPage {
         var list = kinds
         if !list.contains(spec.kind) { list.insert(spec.kind, at: 0) }
         var row = StudioPage.Row(label: StudioText[.rowKind], control: .popup(.init(
-            items: list.map { StudioPage.MenuItem(title: $0.title, symbol: $0.symbol) },
+            items: list.map { StudioPage.MenuItem(title: StudioWords.shapeKind($0), symbol: $0.symbol) },
             selected: list.firstIndex(of: spec.kind))))
         row.detail = showsIniNames ? "Shape" : nil
         items.append(.init(id: "shape.kind", kind: .row(row)))

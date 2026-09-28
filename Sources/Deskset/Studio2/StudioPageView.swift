@@ -718,7 +718,29 @@ final class StudioRowView: NSView, StudioPageItemView {
         needsLayout = true
     }
 
-    func height(forWidth width: CGFloat) -> CGFloat { dense ? 23.5 : 24 }
+    func height(forWidth width: CGFloat) -> CGFloat {
+        if detailUnderControl(width: width) { return 24 + Self.detailLine }
+        return dense ? 23.5 : 24
+    }
+
+    static let detailLine: CGFloat = 14
+
+    /// With Rainmeter names on, a menu the name beside it would squeeze (its choice cut to "GPU…"): the name goes
+    /// on a line of its own under the menu, which keeps its width.
+    func detailUnderControl(width: CGFloat) -> Bool {
+        guard !detailLabel.isHidden, case .popup(let popup) = row.control, popup.width == nil else { return false }
+        let detail = min(ceil(detailLabel.intrinsicContentSize.width) + 4, 116)
+        let x = row.labelWidth + (row.labelWidth > 0 ? 8 : 0)
+        return width - detail - 6 - x < Self.chosenWidth(controlView as? NSPopUpButton)
+    }
+
+    /// The width a menu needs to show its chosen item whole: its words, its symbol, the arrows.
+    static func chosenWidth(_ popup: NSPopUpButton?) -> CGFloat {
+        guard let popup, let item = popup.selectedItem else { return 0 }
+        let font = popup.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        let words = item.attributedTitle?.size().width ?? (item.title as NSString).size(withAttributes: [.font: font]).width
+        return ceil(words) + (item.image.map { $0.size.width + 6 } ?? 0) + 40
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -734,7 +756,9 @@ final class StudioRowView: NSView, StudioPageItemView {
 
     override func layout() {
         super.layout()
-        let h = bounds.height
+        let under = detailUnderControl(width: bounds.width)
+        // The name under the menu: the row's first 24 points are laid out as usual.
+        let h = under ? bounds.height - Self.detailLine : bounds.height
         let wraps = labelWraps
         label.maximumNumberOfLines = wraps ? 2 : 1
         label.lineBreakMode = wraps ? .byWordWrapping : .byTruncatingTail
@@ -755,8 +779,12 @@ final class StudioRowView: NSView, StudioPageItemView {
         if !detailLabel.isHidden {
             // A little slack: drawn at 2x, the monospaced names come out a hair wider than measured.
             let w = min(ceil(detailLabel.intrinsicContentSize.width) + 4, 116)
-            detailLabel.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
-            right -= w + 6
+            if under {
+                detailLabel.frame = NSRect(x: x, y: h, width: w, height: 14)
+            } else {
+                detailLabel.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
+                right -= w + 6
+            }
         }
         if !sourceChip.isHidden {
             let w = sourceChip.intrinsicContentSize.width
@@ -1427,8 +1455,19 @@ final class StudioNoteView: NSView, StudioPageItemView {
     }
 
     func height(forWidth width: CGFloat) -> CGFloat {
-        StudioPageStyle.height(of: note.text, font: StudioPageStyle.noteFont, width: width - 17)
+        if linkBeside(width: width) != nil { return max(StudioPageStyle.height(of: note.text, font: StudioPageStyle.noteFont,
+                                                                             width: width - 17), 16) }
+        return StudioPageStyle.height(of: note.text, font: StudioPageStyle.noteFont, width: width - 17)
             + (note.link == nil ? 0 : 18)
+    }
+
+    /// Where the link goes on the text's own line, when both fit on one ("This widget only   All 23 Widgets"); nil:
+    /// the link goes under the text.
+    private func linkBeside(width: CGFloat) -> CGFloat? {
+        guard note.link != nil else { return nil }
+        let words = ceil((note.text as NSString).size(withAttributes: [.font: StudioPageStyle.noteFont]).width) + 2
+        let link = ceil(linkButton.intrinsicContentSize.width)
+        return 17 + words + 12 + link <= width ? 17 + words + 12 : nil
     }
 
     override func layout() {
@@ -1436,7 +1475,13 @@ final class StudioNoteView: NSView, StudioPageItemView {
         let th = StudioPageStyle.height(of: note.text, font: StudioPageStyle.noteFont, width: bounds.width - 17)
         icon.frame = NSRect(x: 0, y: 1, width: 12, height: 13)
         text.frame = NSRect(x: 17, y: 0, width: bounds.width - 17, height: th)
-        linkButton.frame = NSRect(x: 17, y: th + 2, width: ceil(linkButton.intrinsicContentSize.width), height: 16)
+        let lw = ceil(linkButton.intrinsicContentSize.width)
+        if let x = linkBeside(width: bounds.width) {
+            text.frame.size.width = x - 12 - 17
+            linkButton.frame = NSRect(x: x, y: (th - 16) / 2, width: lw, height: 16)
+        } else {
+            linkButton.frame = NSRect(x: 17, y: th + 2, width: lw, height: 16)
+        }
     }
 }
 

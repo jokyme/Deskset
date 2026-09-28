@@ -131,7 +131,7 @@ public enum WriteScopes {
     /// offers the shared file's scope instead (the old Studio's rule: "comes from a shared file").
     public static func isLocal(meter: String, key: String, in skin: Skin) -> Bool {
         guard let m = skin.meter(named: meter) else { return false }
-        return skin.localTarget(section: m.name, key: key) != nil
+        return skin.widgetTarget(section: m.name, key: key) != nil
     }
 
     /// The meters that take `key` from the style `style` (their own files do not set it), in file order.
@@ -151,10 +151,11 @@ public enum WriteScopes {
     public static func ops(_ scope: WriteScope, meter: String, key: String, value: String, in skin: Skin) -> [EditOp] {
         switch scope {
         case .element:
-            // Never a shared file: a part only one defines has no scope of its own here (`isLocal`).
-            guard let m = skin.meter(named: meter), let t = skin.localTarget(section: m.name, key: key) else { return [] }
+            // Never a file other widgets read: a part only one defines has no scope of its own here (`isLocal`).
+            guard let m = skin.meter(named: meter), let t = skin.widgetTarget(section: m.name, key: key) else { return [] }
             // Overriding a value an included file gives the section: after the block's @Include lines, so it wins.
-            let overrides = !skin.isOwnFile(skin.ownTarget(section: m.name, key: key).file)
+            let overrides = skin.localTarget(section: m.name, key: key) != nil
+                && !skin.isOwnFile(skin.ownTarget(section: m.name, key: key).file)
             return [.setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: overrides)]
         case .style(let style):
             let name = skin.styleSection(named: style)?.name ?? style
@@ -185,5 +186,18 @@ public enum WriteScopes {
         guard !inner.isEmpty, !inner.contains("#"), !inner.contains("["), !inner.contains("]"),
               !inner.contains(where: \.isWhitespace), !inner.hasPrefix("*") else { return nil }
         return String(inner)
+    }
+}
+
+extension Skin {
+    /// Where a change meant for this widget alone writes `key` of `section`: `localTarget`, or — for a section only a
+    /// shared file defines — that file when no other widget reads it (a suite's parts of one widget, which its sizes
+    /// share: `@Resources/Weather/Left.inc`). nil when other widgets read the file: writing there would change them too.
+    public func widgetTarget(section name: String, key: String) -> SkinEditTarget? {
+        if let t = localTarget(section: name, key: key) { return t }
+        let t = ownTarget(section: name, key: key)
+        let mine = config.replacingOccurrences(of: "/", with: "\\").lowercased()
+        let readers = configsIncluding(t.file).map { $0.replacingOccurrences(of: "/", with: "\\").lowercased() }
+        return readers.allSatisfy({ $0 == mine }) ? t : nil
     }
 }

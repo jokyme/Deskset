@@ -14,12 +14,39 @@ enum StudioWords {
             "GPU usage": "GPU 占用率", "GPU temperature": "GPU 温度", "CPU temperature": "CPU 温度",
             "Fan speed": "风扇转速", "Power": "功率", "Battery": "电池", "Download speed": "下载速度",
             "Upload speed": "上传速度", "Network speed": "网速", "Total memory": "内存总量", "Swap used": "交换用量",
-            "Disk used": "磁盘用量", "Time": "时间", "Date": "日期", "Uptime": "开机时间",
+            "Disk used": "磁盘用量", "Time": "时间", "Date": "日期", "Uptime": "开机时长",
+            "Time since startup": "开机时长", "Computer name": "电脑名称", "Disk name": "磁盘名称", "User name": "用户名",
+            "Memory free": "可用内存", "Swap free": "可用交换", "Total swap": "交换总量",
+            "Total memory and swap": "内存和交换总量", "Memory and swap free": "可用内存和交换",
+            "Battery level": "电量", "Battery status": "电池状态", "Battery time left": "电池剩余时间",
+            "Charger connected": "已接电源", "Network use in total": "网络总用量", "Downloaded in total": "下载总量",
+            "Uploaded in total": "上传总量", "Date and time": "日期和时间", "Time with seconds": "带秒的时间",
+            "Hours and minutes": "时和分", "Minutes and seconds": "分和秒", "Now playing": "正在播放",
+            "Song title": "歌名", "Song artist": "歌手", "Album": "专辑", "Album cover": "专辑封面",
+            "Processor speed": "处理器速度", "Random number": "随机数", "Calculated number": "计算出的数",
+            "Day of the month": "日", "Day of the year": "一年中的第几天", "Month name": "月份", "Weekday": "星期",
+            "Week number": "周数", "Year": "年份", "Month and year": "年月", "Sound level": "音量电平",
+            "Temperature": "温度", "Weather": "天气",
         ]
         if let t = table[name] { return t }
         if name.hasPrefix("Free space on ") { return String(name.dropFirst("Free space on ".count)) + " 的可用空间" }
         if name.hasPrefix("Size of ") { return String(name.dropFirst("Size of ".count)) + " 的容量" }
-        return name
+        return suffixed(name) ?? name
+    }
+
+    /// A data word with the kind of thing after it ("Uptime text" → "开机时长文字"), nil when it is not one.
+    static func suffixed(_ title: String) -> String? {
+        let suffixes: [(String, String)] = [(" text", "文字"), (" label", "标签"), (" bar", "进度条"), (" ring", "圆环"),
+                                            (" graph", "曲线"), (" shape", "形状"), (" picture", "图片"),
+                                            (" icon", "图标"), (" fill", "填充"), (" value", "数值")]
+        for (suffix, zh) in suffixes where title.lowercased().hasSuffix(suffix) && title.count > suffix.count {
+            let head = String(title.dropLast(suffix.count))
+            let h = short(head) != head ? short(head) : data(head)
+            guard h != head || head.uppercased() == head else { return nil }
+            let ascii = h.unicodeScalars.allSatisfy(\.isASCII)
+            return ascii ? "\(h) \(zh)" : h + zh
+        }
+        return nil
     }
 
     /// A short name of data or of what a color paints ("Memory" → "内存"; the long "Precipitation" is "Rain").
@@ -32,7 +59,7 @@ enum StudioWords {
             "Temperature": "温度", "Fan": "风扇", "Power": "功率", "Swap": "交换", "Memory + swap": "内存和交换",
             "Precipitation": "降水", "Rain": "降水", "Sun": "太阳", "Bars": "进度条", "Graphs": "曲线", "Rings": "圆环",
             "Tracks": "轨道", "Outline": "描边", "Accent": "强调色", "Text": "文字", "Ink": "文字", "Glass": "玻璃",
-            "Panel": "面板", "Line": "线条", "Uptime": "开机时间",
+            "Panel": "面板", "Line": "线条", "Uptime": "开机时长", "CPU": "CPU", "GPU": "GPU",
         ]
         return table[word] ?? word
     }
@@ -86,6 +113,12 @@ enum StudioWords {
             "Changes one of its settings": "更改它的一个设置",
         ]
         if let zh = fixed[sentence] { return zh }
+        // An app opened: by the name the Mac gives it in Chinese, in Chinese quotes (打开“活动监视器”).
+        if sentence.hasPrefix("Opens ") {
+            let what = String(sentence.dropFirst("Opens ".count)).trimmingCharacters(in: CharacterSet(charactersIn: "“”\""))
+            let app = appName(what)
+            if app != what || !what.contains("/") { return "打开“\(app)”" }
+        }
         let patterns: [(String, String)] = [
             (#"^Runs (\d+) commands$"#, "执行 $1 个命令"),
             (#"^Shows or hides the widget (.+)$"#, "显示或隐藏小组件$1"),
@@ -129,6 +162,79 @@ enum StudioWords {
         formatter.locale = Locale(identifier: StudioText.language == .chinese ? "zh_CN" : "en_US")
         return formatter.string(from: names) ?? names.joined(separator: ", ")
     }
+
+    /// A layer's name the Core gives in English ("Uptime text" → "开机时长文字", "Background" → "背景"): the data names,
+    /// the plain names of parts, and a data word with the kind of part after it. The widget's own names stay.
+    static func layer(_ title: String) -> String {
+        guard chinese else { return title }
+        let named = data(title)
+        if named != title { return named }
+        let fixed: [String: String] = [
+            "Background": "背景", "Color block": "色块", "Line graph": "折线图", "Bar graph": "柱状图", "Rectangle": "矩形",
+            "Rounded rectangle": "圆角矩形", "Circle": "圆", "Ellipse": "椭圆", "Line": "线条", "Shape": "形状",
+            "Picture": "图片", "Button": "按钮", "Fixed text": "固定文字", "Empty text": "空文字", "Clock face": "表盘",
+            "Hour hand": "时针", "Dial": "刻度盘", "Moving block": "移动的方块", "Cover": "封面", "Text": "文字",
+            "Bar": "进度条", "Gauge": "仪表", "Layer": "图层", "Formula shape": "算式形状", "Number picture": "数字图片",
+            "Web picture": "网络图片",
+        ]
+        return fixed[title] ?? title
+    }
+
+    /// A shape's kind in the Studio's language ("Ellipse" / "椭圆").
+    static func shapeKind(_ kind: ShapeSpec.Kind) -> String {
+        guard chinese else { return kind.title }
+        switch kind {
+        case .rectangle: return "矩形"
+        case .ellipse: return "椭圆"
+        case .line: return "线条"
+        case .arc: return "弧"
+        case .curve: return "曲线"
+        case .path: return "路径"
+        case .path1: return "路径（填充内部）"
+        case .combine: return "组合"
+        }
+    }
+
+    /// An option's label: the words the design uses for the suite's settings ("Units", "单位"), else the widget's own
+    /// words for it.
+    static func option(_ o: StudioWidgetFacts.Option) -> String {
+        let table: [String: (String, String)] = [
+            "tempunit": ("Units", "单位"), "temperatureunit": ("Units", "单位"), "clockhours": ("Clock", "时钟"),
+            "weekstart": ("Week Starts On", "每周第一天"), "netunit": ("Speeds In", "网速单位"),
+            "location": ("City", "城市"), "language": ("Language", "语言"), "locale": ("Region", "地区"),
+        ]
+        if let v = o.variable?.lowercased(), let words = table[v] { return chinese ? words.1 : words.0 }
+        if o.label == "Clock" { return StudioText[.clock] }
+        return o.label
+    }
+
+    /// An app's name as the Mac shows it in the Studio's language ("Activity Monitor" → "活动监视器"), from the app's
+    /// own localized names; the name as given when the app is not found.
+    static func appName(_ name: String) -> String {
+        guard chinese else { return name }
+        if let cached = appNames[name] { return cached }
+        var result = name
+        let folders = ["/System/Applications", "/System/Applications/Utilities", "/Applications", "/Applications/Utilities"]
+        if let url = folders.lazy.map({ URL(fileURLWithPath: $0).appendingPathComponent(name + ".app") })
+            .first(where: { FileManager.default.fileExists(atPath: $0.path) }), let bundle = Bundle(url: url) {
+            if let table = bundle.url(forResource: "InfoPlist", withExtension: "loctable"),
+               let all = NSDictionary(contentsOf: table) as? [String: Any],
+               let zh = (all["zh_CN"] ?? all["zh-Hans"]) as? [String: Any],
+               let n = (zh["CFBundleDisplayName"] ?? zh["CFBundleName"]) as? String, !n.isEmpty {
+                result = n
+            } else if let strings = bundle.path(forResource: "InfoPlist", ofType: "strings", inDirectory: nil,
+                                                forLocalization: "zh_CN") ?? bundle.path(forResource: "InfoPlist",
+                                                ofType: "strings", inDirectory: nil, forLocalization: "zh-Hans"),
+                      let d = NSDictionary(contentsOfFile: strings) as? [String: String],
+                      let n = d["CFBundleDisplayName"] ?? d["CFBundleName"], !n.isEmpty {
+                result = n
+            }
+        }
+        appNames[name] = result
+        return result
+    }
+
+    private static var appNames: [String: String] = [:]
 
     /// "1 part", "4 parts".
     static func parts(_ n: Int) -> String {

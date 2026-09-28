@@ -187,7 +187,10 @@ func runWriteScopeTests(_ t: TestRunner) {
         }
         let main = skins.appendingPathComponent("Root/Sub/Skin.ini")
         let parts = skins.appendingPathComponent("Root/@Resources/Parts.inc")
-        let mainText = "[Variables]\n@Include=#@#Parts.inc\n\n[MeterZ]\nMeter=String\n@Include=#@#Z.inc\nText=z\n"
+        let mainText = "[Variables]\n@Include=#@#Parts.inc\n@Include2=#@#Mine.inc\n\n[MeterZ]\nMeter=String\n@Include=#@#Z.inc\nText=z\n"
+        // A part of a file only this widget reads (its sizes' shared parts): this widget's own to change.
+        let mine = skins.appendingPathComponent("Root/@Resources/Mine.inc")
+        try Data("[MeterMine]\nMeter=String\nText=mine\n".utf8).write(to: mine)
         try Data(mainText.utf8).write(to: main)
         try Data("[MeterBackground]\nMeter=Image\nW=100\nH=50\nSolidColor=0,0,0\n".utf8).write(to: parts)
         try Data("[MeterZ]\nFontSize=20\n".utf8).write(to: skins.appendingPathComponent("Root/@Resources/Z.inc"))
@@ -208,6 +211,10 @@ func runWriteScopeTests(_ t: TestRunner) {
                                       in: skin)
         t.equal(package, [.setValue(file: parts, section: "MeterBackground", key: "SolidColor", value: "1,2,3",
                                     afterIncludes: false)])
+        t.check(WriteScopes.isLocal(meter: "MeterMine", key: "FontSize", in: skin), "only this widget reads Mine.inc")
+        t.equal(WriteScopes.ops(.element, meter: "MeterMine", key: "FontSize", value: "9", in: skin),
+                [.setValue(file: mine, section: "MeterMine", key: "FontSize", value: "9", afterIncludes: false)])
+        t.equal(WriteScopes.choices(meter: "MeterMine", key: "FontSize", in: skin).map(\.scope), [.element])
         // The header is this widget's, the value an include's: written after the block's @Include, so it wins.
         t.check(WriteScopes.isLocal(meter: "MeterZ", key: "FontSize", in: skin))
         let z = WriteScopes.ops(.element, meter: "MeterZ", key: "FontSize", value: "24", in: skin)

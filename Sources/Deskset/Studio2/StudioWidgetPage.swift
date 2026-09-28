@@ -132,7 +132,7 @@ final class StudioWidgetPage {
         plan = Self.plan(facts)
         let root = skin?.rootConfig ?? ""
         var page = StudioPage(id: "widget", title: StudioBuiltInWords.name(facts.name, root: root),
-                              subtitle: StudioBuiltInWords.sentence(facts.information, root: root))
+                              subtitle: credit() ?? StudioBuiltInWords.sentence(facts.information, root: root))
         if let s = optionsSection(facts) { page.sections.append(s) }
         if let s = showsSection(facts) { page.sections.append(s) }
         page.sections.append(colorsSection(facts))
@@ -149,6 +149,18 @@ final class StudioWidgetPage {
             page.tight = true
         }
         return page
+    }
+
+    /// A Rainmeter skin's credit line from its `[Metadata]` ("From Mira’s Rainmeter skin · 2.1 · CC BY-NC-SA"); nil
+    /// for other widgets (their sentence says what they are).
+    func credit() -> String? {
+        guard let skin, case .rainmeter(let author)? = window.link?.provenance else { return nil }
+        var parts = [StudioText.format(.creditRainmeter, author)]
+        for key in ["Version", "License"] {
+            if let value = ManageModel.metadataValue(skin.metadata, key)?.trimmingCharacters(in: .whitespaces),
+               !value.isEmpty { parts.append(value) }
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: Options
@@ -171,7 +183,7 @@ final class StudioWidgetPage {
     static func key(_ o: StudioWidgetFacts.Option) -> String { o.variable ?? o.measure ?? o.label }
 
     func optionRow(_ o: StudioWidgetFacts.Option) -> StudioPage.Row {
-        let label = o.label == "Clock" ? StudioText[.clock] : o.label
+        let label = StudioWords.option(o)
         var row = StudioPage.Row(label: label, control: .text(o.current))
         row.detail = showsIniNames ? (o.variable ?? "Format") : nil
         switch o.kind {
@@ -196,6 +208,9 @@ final class StudioWidgetPage {
             }
         case .hours(let twentyFour):
             row.control = .segmented(.init(items: [StudioText[.hours12], StudioText[.hours24]], selected: twentyFour ? 1 : 0))
+            // No Auto: the format is the skin's own text, which can't read the Mac's setting (the tip says so).
+            row.tooltip = StudioText[.clockNoAuto]
+            if showsIniNames { row.detail = StudioText.format(.clockFrom, twentyFour ? "%H" : "%I") }
         }
         return row
     }
@@ -261,12 +276,11 @@ final class StudioWidgetPage {
             let s = m.string("Sensor").lowercased()
             return s.contains("usage") ? "\(Int(v.rounded()))%" : NumberFormatting.plain((v * 10).rounded() / 10)
         case "physicalmemory", "memory", "swapmemory", "freediskspace":
-            return ByteCountFormatter.string(fromByteCount: Int64(max(v, 0)), countStyle: .memory)
+            return StudioText.bytes(v, style: .memory)
         case "netin", "netout", "nettotal":
-            return ByteCountFormatter.string(fromByteCount: Int64(max(v, 0)), countStyle: .file) + "/s"
+            return StudioText.bytes(v, style: .file) + "/s"
         case "uptime":
-            let days = Int(v) / 86_400, hours = Int(v) % 86_400 / 3600, minutes = Int(v) % 3600 / 60
-            return days > 0 ? "\(days) d \(hours) h" : hours > 0 ? "\(hours) h \(minutes) min" : "\(minutes) min"
+            return StudioText.duration(seconds: v)
         default: return NumberFormatting.plain((v * 10).rounded() / 10)
         }
     }
@@ -523,8 +537,8 @@ final class StudioWidgetPage {
 
     func writeOption(_ o: StudioWidgetFacts.Option, value: String, shown: String, item: String) {
         guard let variable = o.variable else { return }
-        writeVariable(variable, value: value, name: o.label,
-                      confirm: StudioText.format(.confirmOption, o.label, shown), item: item, section: "options")
+        writeVariable(variable, value: value, name: StudioWords.option(o),
+                      confirm: StudioText.format(.confirmOption, StudioWords.option(o), shown), item: item, section: "options")
     }
 
     /// Writes a `[Variables]` entry for this widget: in its own file, after its includes (so it wins over a shared
@@ -627,8 +641,9 @@ final class StudioWidgetPage {
     /// includes when it overrides an included value). nil for a part only a shared file defines: the widget page never
     /// changes the other widgets that read that file (`WriteScopes.isLocal`).
     static func own(_ section: String, key: String, value: String, skin: Skin) -> EditOp? {
-        guard let t = skin.localTarget(section: section, key: key) else { return nil }
-        let overrides = !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
+        guard let t = skin.widgetTarget(section: section, key: key) else { return nil }
+        let overrides = skin.localTarget(section: section, key: key) != nil
+            && !skin.isOwnFile(skin.ownTarget(section: section, key: key).file)
         return .setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: overrides)
     }
 
@@ -706,7 +721,7 @@ final class StudioWidgetPage {
         switch id {
         case "options.all":
             for o in facts.options.dropFirst(plan.options.count) {
-                menu.addItem(ClosureMenuItem("\(o.label) — \(o.current)", enabled: false) {})
+                menu.addItem(ClosureMenuItem("\(StudioWords.option(o)) — \(o.current)", enabled: false) {})
             }
         case "options.variables":
             for v in skin.valueUsages().values {

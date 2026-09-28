@@ -133,7 +133,7 @@ enum StudioPartNames {
                 return StudioText[.addSymbol]
             }
         }
-        return (names?.layer(m.name) ?? LayerNaming.layer(m, in: skin)).title
+        return StudioWords.layer((names?.layer(m.name) ?? LayerNaming.layer(m, in: skin)).title)
     }
 
     /// A data item's everyday name: a formula or text built from other data is named after that data ("GPU usage" for

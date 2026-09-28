@@ -596,6 +596,9 @@ enum StudioText {
         case alignWidgetsHint = "align.widgetsHint"
         case arrangeWidgetsLater = "align.arrangeLater"
         case menuTextBigger = "menu.textBigger"
+        case creditRainmeter = "widget.creditRainmeter"
+        case clockNoAuto = "widget.clockNoAuto"
+        case clockFrom = "widget.clockFrom"
         case announceDone = "announce.done"
         case codeNotSavedTitle = "code.notSaved.title"
         case codeNotSavedTheCode = "code.notSaved.theCode"
@@ -931,7 +934,7 @@ enum StudioText {
         .rowSymbolColors: ("Colors", "颜色"),
         .textColor: ("Text color", "文字颜色"),
         .followsLightDark: ("follows Light/Dark", "跟随浅色 / 深色"),
-        .fit: ("Fit", "自适应"),
+        .fit: ("Fit", "跟随内容"),
         .widthPrefix: ("W", "宽"),
         .heightPrefix: ("H", "高"),
         .alignLeft: ("Left", "左对齐"),
@@ -1180,6 +1183,10 @@ enum StudioText {
         .arrangeWidgetsLater: ("Arrange Widgets comes in a later version: for now, drag the widgets on your desktop",
                                "“整理小组件”会在以后的版本里加入：现在请在桌面上拖动小组件"),
         .menuTextBigger: ("Make Text Bigger", "放大文字"),
+        .creditRainmeter: ("From %@’s Rainmeter skin", "来自%@的 Rainmeter 皮肤"),
+        .clockNoAuto: ("A Rainmeter skin’s time format can’t follow the Mac’s own setting: choose 12 or 24 hours",
+                       "Rainmeter 皮肤的时间格式无法跟随 Mac 的设置：请选 12 小时或 24 小时"),
+        .clockFrom: ("from %@", "取自 %@"),
         .announceDone: ("Saved. Closing the Studio.", "已存储。正在关闭 Studio。"),
         .codeNotSavedTitle: ("Your changes to %@ couldn’t be saved", "你对%@的修改无法存储"),
         .codeNotSavedTheCode: ("the code", "代码"),
@@ -1215,6 +1222,24 @@ enum StudioText {
     ]
 
     static subscript(_ key: Key) -> String { string(key, in: language) }
+
+    /// A size in bytes, as the Mac writes it ("20.4 GB"; nothing is "Zero KB": "0 KB").
+    static func bytes(_ value: Double, style: ByteCountFormatter.CountStyle) -> String {
+        let f = ByteCountFormatter()
+        f.countStyle = style
+        f.allowsNonnumericFormatting = false
+        return f.string(fromByteCount: Int64(max(value.isFinite ? value : 0, 0)))
+    }
+
+    /// A time since something, in days and hours ("14 d 5 h" / "14 天 5 小时"), hours and minutes, or minutes.
+    static func duration(seconds v: Double) -> String {
+        let s = Int(max(v.isFinite ? v : 0, 0))
+        let days = s / 86_400, hours = s % 86_400 / 3600, minutes = s % 3600 / 60
+        if language == .chinese {
+            return days > 0 ? "\(days) 天 \(hours) 小时" : hours > 0 ? "\(hours) 小时 \(minutes) 分钟" : "\(minutes) 分钟"
+        }
+        return days > 0 ? "\(days) d \(hours) h" : hours > 0 ? "\(hours) h \(minutes) min" : "\(minutes) min"
+    }
 
     static func string(_ key: Key, in language: StudioLanguage) -> String {
         guard let entry = table[key] else { return key.rawValue }
