@@ -101,7 +101,8 @@ extension EditingSession {
         for file in pending.files { texts[file] = buffers.buffer(file.url)?.text }
         let snapshot = SourceSnapshot(texts)
         let place = pending.place
-        let target = ObjectIdentifier(c)
+        // The window that moves after the patch: this copy's (a copy that replaced it meanwhile loaded the files).
+        weak var target = c
         runOnDesktopSkin { [weak self] skin in
             let start = DispatchTime.now().uptimeNanoseconds
             let result = StudioSignposts.interval("desktop.patch") { skin.patch(sources: snapshot) }
@@ -113,7 +114,7 @@ extension EditingSession {
 
     /// The desktop copy took the patch (`result`), or says it must load again for it.
     private func desktopTookPatch(_ result: SkinPatchResult, elapsed: Double, place: WidgetPosition?,
-                                  target: ObjectIdentifier) {
+                                  target: SkinController?) {
         noteDesktopTiming(elapsed)
         switch result {
         case .needsReload(let reason):
@@ -122,7 +123,7 @@ extension EditingSession {
             scheduleDesktopRefresh(thenMoveTo: place)
         case .applied:
             follow.desktopPatches += 1
-            guard let place, let c = runningDesktop, ObjectIdentifier(c) == target else { return }
+            guard let place, let c = runningDesktop, c === target else { return }
             c.moveTo(x: place.x, y: place.y)
         }
     }
