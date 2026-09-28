@@ -68,6 +68,12 @@ public enum StudioSchemaChinese {
     }
 
     static let labels: [String: String] = [
+        "Icon cloud color": "图标的云颜色",
+        "Icon rain color": "图标的雨颜色",
+        "Icon sun color": "图标的太阳颜色",
+        "Layer colors": "图层颜色",
+        "Temperature color instead": "改用温度颜色",
+        "Wallpaper part": "墙纸的部分",
         "Above": "高于",
         "Adapter": "网络适配器",
         "Address": "地址",
@@ -355,6 +361,11 @@ public enum StudioSchemaChinese {
     ]
 
     static let choices: [String: String] = [
+        "Missing permission": "缺少权限",
+        "The whole picture": "整张图片",
+        "Under the widget": "小组件下面",
+        "Weather icon colors": "天气图标颜色",
+        "What the screen shows": "屏幕上显示的",
         "32 / 64 bit": "32 / 64 位",
         "Accent": "强调色",
         "Acrylic": "亚克力",
