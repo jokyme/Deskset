@@ -37,17 +37,18 @@ extension AppSelfTest {
             inspector.canvas.setZoom(100)
             t.close(Double(inspector.canvas.zoom), Double(SkinCanvasView.maxZoom), "zoom is clamped")
 
-            // Edit a variable: written to Variables.inc, the skin reloads, the inspector follows it.
+            // Edit a variable: written to Variables.inc, the widget on the desktop takes it (on purpose: as a patch, the
+            // same copy), the inspector follows it.
             inspector.select(section: "Variables")
             inspector.write(key: "PanelWidth", value: "300")
             let inc = c.skin.resourcesDirectory.appendingPathComponent("Variables.inc")
             t.check((try? String(contentsOf: inc, encoding: .utf8))?.contains("PanelWidth=300") == true,
                     "written where the variable is defined")
-            guard let reloaded = app.controller(for: "Deskset\\System"), reloaded !== c else {
-                return t.check(false, "skin refreshed")
+            guard let reloaded = app.controller(for: "Deskset\\System"), reloaded === c else {
+                return t.check(false, "the desktop copy took the step without loading again")
             }
-            t.check(c.isStopped)
-            t.close(Double(inspector.canvas.zoom), Double(SkinCanvasView.maxZoom), "zoom kept across a refresh")
+            t.check(!c.isStopped)
+            t.close(Double(inspector.canvas.zoom), Double(SkinCanvasView.maxZoom), "zoom kept across the step")
             t.equal(inspector.selectedSection, "Variables", "selection kept")
             t.equal(reloaded.skin.variable("PanelWidth"), "300")
             t.equal(inspector.rows.first { $0.key == "PanelWidth" }?.raw, "300")
