@@ -134,12 +134,15 @@ final class MediaUIWorker {
     }
 }
 
-/// Main-thread hop that tests can make synchronous.
+/// Main-thread hop that tests can make synchronous. A skin thread only ever queues: debug builds stop one that would run
+/// the main thread's work inline (tests that make hops synchronous put their skins on the main thread), which in the
+/// app would mean waiting for the main thread (docs/skin-threading.md §5.2).
 enum MediaUIMainHop {
     static var runsInline = false
 
     static func async(_ block: @escaping () -> Void) {
         if runsInline {
+            SkinThreadExecutor.assertNotWaiting(on: "the main thread (MediaUIMainHop runs inline)")
             block()
         } else {
             DispatchQueue.main.async(execute: block)
@@ -151,7 +154,10 @@ enum MediaUIMainHop {
     /// (today every skin) sees the command carried out before its next line, as before; a skin on a thread of its own
     /// never waits for the main thread (docs/skin-threading.md §5.2).
     static func run(_ block: @escaping () -> Void) {
-        if runsInline || Thread.isMainThread {
+        if Thread.isMainThread {
+            block()
+        } else if runsInline {
+            SkinThreadExecutor.assertNotWaiting(on: "the main thread (MediaUIMainHop runs inline)")
             block()
         } else {
             DispatchQueue.main.async(execute: block)

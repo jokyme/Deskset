@@ -145,7 +145,16 @@ enum CodeEditorRouter {
     /// when no skin owns it (not a skin file, or an included file of a skin that is not loaded).
     @discardableResult
     static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil) -> Bool {
+        // A skin that has just been loaded on the engine thread is edited once it started (at once with the main
+        // executor).
         func show(_ c: SkinWindowController) {
+            guard c.isStarting else { return showStarted(c) }
+            c.whenStarted { [weak c] in
+                guard let c, app.controller(for: c.config) === c else { return }
+                showStarted(c)
+            }
+        }
+        func showStarted(_ c: SkinWindowController) {
             if let inspector = app.inspector, inspector.controller === c {
                 // Already editing this skin (the editor is open: it forgets its skin when it closes): no re-attach (it
                 // would rebuild the layers and the inspector), but the window comes in front of the other apps'

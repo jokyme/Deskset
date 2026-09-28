@@ -692,7 +692,11 @@ enum AppSelfTest {
     /// Stops the skins of the apps made so far, whose suites are over: they would go on updating on the main thread
     /// through the suites that follow (the editor-opening suites time its steps).
     static func stopEarlierSkins() {
-        for app in retainedApps { app.stopAllForTermination() }
+        for app in retainedApps {
+            app.stopAllForTermination()
+            // Ends after the closes queued on it.
+            app.endEngineThread()
+        }
     }
 
     /// A headless app over a temporary Skins folder holding TestSkins/App and TestSkins/Deskset (the example skins of

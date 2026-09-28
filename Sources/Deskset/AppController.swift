@@ -27,9 +27,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     /// What the skins know of each other: the running ones and the configs a bang is loading (`SkinDirectory`).
     let skinDirectory = SkinDirectoryStore()
-    /// Where a config's skin runs. The main executor; a self-test puts some on threads of their own (the engine thread
-    /// of a later step of docs/skin-threading.md's phase 2 comes in here).
-    var skinExecutor: (String) -> SkinExecutor = { _ in MainSkinExecutor.shared }
+    /// Where the desktop skins run (the `SkinThreading` default, read once at launch; `.main` for the self-tests and
+    /// every headless mode).
+    let threading: SkinThreading
+    /// The engine thread every desktop skin shares with `SkinThreading=engine` (docs/skin-threading.md §15, phase 2):
+    /// made with the first skin it runs. nil with `.main`, and before then.
+    private(set) var engineThread: SkinThreadExecutor?
+    /// Where a config's skin runs: the engine thread with `SkinThreading=engine`, else the main executor. Self-tests put
+    /// some skins on threads of their own. The Studio's own instance of a widget, the Manage window's dry runs and
+    /// thumbnails are not desktop skins: they always run on the main executor (§8.5, §8.7).
+    lazy var skinExecutor: (String) -> SkinExecutor = { [unowned self] _ in
+        switch self.threading {
+        case .main: return MainSkinExecutor.shared
+        case .engine: return self.sharedEngineThread()
+        }
+    }
     /// Last position of each config in this session (used on refresh when SavePosition is off).
     var sessionPositions: [String: (Double, Double)] = [:]
     private var statusItem: NSStatusItem?
@@ -72,7 +84,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
-         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true) {
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main) {
+        self.threading = threading
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
@@ -85,6 +98,24 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         super.init()
     }
 
+    /// The engine thread, made the first time a skin needs it. Main thread.
+    private func sharedEngineThread() -> SkinThreadExecutor {
+        if let engineThread { return engineThread }
+        let thread = SkinThreadExecutor(name: "Deskset skin engine", qualityOfService: .userInitiated)
+        engineThread = thread
+        return thread
+    }
+
+    /// Ends the engine thread once the work queued on it has run (the skins on it must have closed: self-tests, after
+    /// `stopAllForTermination`). A later skin gets a new one.
+    func endEngineThread() {
+        engineThread?.stop()
+        engineThread = nil
+    }
+
+    /// Said in the log at launch about the `SkinThreading` default (an unknown value; the engine thread).
+    var threadingNote: String?
+
     // MARK: Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -93,6 +124,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Log.rotateIfNeeded()
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
                   + ProcessInfo.processInfo.operatingSystemVersionString)
+        if let threadingNote { Log.write(threadingNote, level: threading == .main ? .warning : .notice) }
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
         if !Paths.isAppBundle { NSApp.applicationIconImage = AppIcon.image(size: 512) }
@@ -533,6 +565,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                   continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
                   thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
         guard !isTerminating else { return nil }
+        activating += 1
+        defer { activating -= 1 }
         guard let entry = config(named: rawConfig) else {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
             return nil
@@ -565,7 +599,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// to it when it edits the config, the windows are stacked again and the app hears of it.
     func skinStarted(_ c: SkinWindowController) {
         if let inspector, inspector.config.lowercased() == c.config.lowercased() { inspector.attach(c) }
-        if c.restacksWhenStarted { restack() }
+        if c.restacksWhenStarted {
+            restack()
+        } else if activating == 0 {
+            // Started after the batch that loaded it stacked the windows (a skin on the engine thread): stacked again
+            // once for all the skins that start in this turn.
+            restackSoon()
+        }
         Log.write("Loaded \(c.config)\\\(c.file)")
         notifyChanged()
     }
@@ -709,6 +749,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notifyChanged()
     }
 
+    /// `activate` calls under way (a skin of the main executor starts inside them).
+    private var activating = 0
+    private var restackPending = false
+
+    /// `restack` on the next turn, once for everything asking before then.
+    private func restackSoon() {
+        guard !restackPending else { return }
+        restackPending = true
+        later { app in
+            app.restackPending = false
+            app.restack()
+        }
+    }
+
     /// Orders skins that share a Position by load order (higher in front), without moving them relative to
     /// other applications' windows.
     func restack() {
@@ -811,6 +865,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// to the front once it is ready to be shown (its panes, toolbar and the widget on the canvas: `whenReadyToShow`);
     /// the rest of it is built while it shows.
     func showInspector(for c: SkinWindowController) {
+        // A skin loading on the engine thread has no place and no first update yet: the Studio opens once it started
+        // (at once with the main executor, where `activate` returns a started skin).
+        guard !c.isStarting else {
+            return c.whenStarted { [weak self, weak c] in
+                guard let self, let c, self.controller(for: c.config) === c else { return }
+                self.showInspector(for: c)
+            }
+        }
         if let inspector {
             inspector.attach(c)
             return bringToFront(inspector)
@@ -1344,5 +1406,28 @@ final class CustomMenuAction: NSObject {
     init(controller: SkinWindowController, action: String) {
         self.controller = controller
         self.action = action
+    }
+}
+
+/// Where the app runs its desktop skins (docs/skin-threading.md §15, phase 2): the `SkinThreading` default, read once
+/// at launch (`main.swift`). `perSkin` (a thread for each skin) comes in phase 3.
+///
+///     defaults write app.deskset.Deskset SkinThreading engine     (or -SkinThreading engine for one launch)
+enum SkinThreading: String {
+    /// Every skin on the main thread, as the app always ran them: the default for now, and for debugging later.
+    case main
+    /// The desktop skins on one engine thread; the Studio's own instances, dry runs and thumbnails stay on main.
+    case engine
+
+    static let defaultsKey = "SkinThreading"
+
+    /// The mode `defaults` asks for, and what to say about it in the log: an unknown value means `main`.
+    static func chosen(in defaults: UserDefaults) -> (mode: SkinThreading, note: String?) {
+        guard let raw = defaults.object(forKey: defaultsKey) else { return (.main, nil) }
+        let text = (raw as? String ?? "\(raw)").trimmingCharacters(in: .whitespaces)
+        if let mode = SkinThreading(rawValue: text.lowercased()) {
+            return (mode, mode == .engine ? "Desktop skins run on the engine thread (\(defaultsKey)=engine)" : nil)
+        }
+        return (.main, "Unknown \(defaultsKey) value \"\(text)\" (main or engine): skins run on the main thread")
     }
 }

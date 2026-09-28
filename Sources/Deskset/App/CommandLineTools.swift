@@ -65,6 +65,11 @@ enum CommandLineTools {
 
         Every mode gives skins a temporary #SETTINGSPATH# (removed at exit) unless --settings-dir DIR names one, so
         skins that keep settings or caches there never read or write the app's real settings folder.
+
+        The menu bar app reads the SkinThreading default once at launch: main (the default) runs every skin on the
+        main thread; engine runs the desktop skins on one engine thread of their own (defaults write
+        app.deskset.Deskset SkinThreading engine, or -SkinThreading engine for one launch). The modes above always
+        run skins on the main thread.
         """
 
     enum Validation: Equatable {

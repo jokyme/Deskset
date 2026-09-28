@@ -49,6 +49,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     private(set) var isStarted = false
     /// The runtime reported `.failed`: the skin could not be loaded, and the window was never shown.
     private(set) var loadFailed = false
+    /// The runtime was sent `.load` (`load(_:fadeIn:)`).
+    private var loadSent = false
+    /// What waits for `.started` (`whenStarted`).
+    private var startWaiters: [() -> Void] = []
     /// The runtime reported `.closed`: OnCloseAction has run.
     private(set) var hasClosed = false
     /// Until the skin loaded, the window's facts wait (the first ones excepted): the runtime seeds its model with the
@@ -171,6 +175,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// placed and shown, fading in over FadeDuration when `fadeIn`) or `.failed`. With the main executor all of it
     /// happens before this returns.
     func load(_ order: SkinLoadOrder, fadeIn: Bool) {
+        loadSent = true
         startFade = fadeIn
         updatesPaused = order.paused
         reloadTicket = order.ticket
@@ -200,6 +205,21 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         show(fadeIn: startFade, size: report.size)
         app.skinStarted(self)
         if let ticket = report.ticket { app.studioReload(ticket, .started, self) }
+        let waiters = startWaiters
+        startWaiters = []
+        for body in waiters { body() }
+    }
+
+    /// The runtime was sent `.load` and has reported neither `.started` nor `.failed` yet, and the window was not stopped
+    /// meanwhile: a skin on a thread of its own is loading (with the main executor, never once `activate` returned).
+    var isStarting: Bool { loadSent && !isStarted && !loadFailed && !isStopped }
+
+    /// Runs `body` on the main thread once the skin has started and its window is placed (`.started`): at once unless it
+    /// is starting (`isStarting`). Dropped when it never starts (the load failed, or the window was stopped first). What
+    /// uses the window right after `activate` waits with it (the Studio opening on a skin it just loaded).
+    func whenStarted(_ body: @escaping () -> Void) {
+        guard isStarting else { return body() }
+        startWaiters.append(body)
     }
 
     /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config, and the
@@ -207,6 +227,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     private func failed(_ error: String, ticket: SkinReloadTicket?) {
         guard !loadFailed, !isLoaded else { return }
         loadFailed = true
+        startWaiters = []
         holdsFacts = false
         isStopped = true
         hasClosed = true
@@ -285,6 +306,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// that this close is part of (the Studio hears of the close, then of `.closed`).
     func stop(fadeOut: Bool = false, ticket: SkinReloadTicket? = nil) {
         guard !isStopped, !isClosing else { return }
+        startWaiters = []
         hoverTimer?.invalidate()
         hoverTimer = nil
         // A copy a reload of the Studio's made, stopped before it started, will never report its start.

@@ -1,3 +1,4 @@
+import DesksetCore
 import Foundation
 
 // State that shared services keep for every skin, which skins are to read from threads of their own
@@ -34,6 +35,8 @@ final class Guarded<Value> {
 ///   nothing was published yet, it also asks the main thread to work it out again (one request at a time), so a later
 ///   read sees the change: a skin never waits for the main thread (§5.2).
 /// - Before anything is published, other threads get `initial`.
+/// - Debug builds stop a skin thread that would work the value out itself (`refresh`): only the main thread may, and a
+///   skin thread could get it done only by waiting for the main thread (§5.2).
 final class MainPublished<Value> {
     private let lock = NSLock()
     private var published: (value: Value, time: TimeInterval)?
@@ -77,6 +80,7 @@ final class MainPublished<Value> {
     /// Main thread: works the value out and publishes it.
     @discardableResult
     func refresh() -> Value {
+        SkinThreadExecutor.assertNotWaiting(on: "the main thread to work a MainPublished value out")
         let value = compute()
         publish(value)
         return value
