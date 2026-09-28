@@ -7,7 +7,8 @@ import DesksetCore
 /// - Commit model: the code pane's buffer is committed through `perform("Edit Code")` — one step of the widget's
 ///   editing session: the text in memory takes it (the whole file's text, in its encoding), the file is written, one
 ///   undo step on the widget's undo stack, the widget loaded again. Every visual edit commits a dirty buffer first
-///   (`flushCode`), and after every reload the clean buffers re-read the session's text (`readData`), keeping caret
+///   (`flushCode`). After a step, an undo or a redo the clean buffers make the step's edits (`followCodeEdits`); after
+///   any other reload, or when an edit cannot be followed, they re-read the session's text (`readData`), keeping caret
 ///   and scroll.
 /// - Selection sync is origin-tagged: selecting a layer, data source, style or the skin scrolls the code to its
 ///   section (switching files when an @Include file defines it) and tints the block, without taking the focus; the
@@ -56,6 +57,11 @@ extension InspectorWindowController {
     func syncCodePane(reveal: Bool, otherSkin: Bool = false) {
         guard let skin, isCodeVisible else {
             codeStale = true
+            return
+        }
+        // A step, an undo or a redo: the code makes the step's edits, character by character, when it can.
+        if let edits = codeEditsToFollow, !otherSkin, !codeStale, followCodeEdits(edits, in: skin) {
+            if reveal { revealSelectionInCode() } else { tintSelectionInCode() }
             return
         }
         let files = skin.sourceFiles

@@ -212,6 +212,9 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     var builtInOverride = false
     /// The code pane has not seen the latest refresh (it was hidden).
     var codeStale = true
+    /// The edits the step the window follows made to the text of the widget's files (`SessionChange`), while it
+    /// follows it: the code pane makes them in its copy instead of reading the files again (`followCodeEdits`).
+    var codeEditsToFollow: SourceTextEdits?
     /// Selection changes made by the caret in the code pane (they tint the code instead of scrolling it).
     var selectionFromCode = false
     /// The code pane's commit is being written: its refresh must not scroll the code or commit it again.

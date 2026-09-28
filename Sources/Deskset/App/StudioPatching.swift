@@ -13,17 +13,22 @@ extension EditingSession {
     /// again (`reloadStudioSkin`), taking the counter and the Line and Histogram graphs of the old instance, and the
     /// window hears `reloaded`.
     ///
+    /// `undo`: the text went back from what `changes` left to what they started from (an undo, or a step taken back);
+    /// the Studio window hears the edits in that direction (`SourceTextEdits`), for the code pane to make them too.
+    ///
     /// Timed in `reloadPhases`: `studio.patch` (also when the patch found it must load again), `studio.reload`, and the
     /// window's parts. Returns the instance that shows the text now (the old one when the widget's file cannot be read).
     @discardableResult
-    func applyToStudio(_ changes: [SourceChange]) -> Skin? {
+    func applyToStudio(_ changes: [SourceChange], undo: Bool = false) -> Skin? {
         follow.studioPatched = nil
         guard let skin = studioSkin else { return nil }
         reloadPhases.reset()
+        let edits = SourceTextEdits(undo ? changes.reversed().map(\.reversed) : changes, in: buffers)
         // A file the instance reads another way (a script, a data file) is read again only by a load.
         let sources = Set(skin.sourceFiles.map(SourceFileID.init))
         if let other = changes.first(where: { !sources.contains($0.file) }) {
-            return reloadStudioSkinKeepingGraphs(because: "\(other.file.url.lastPathComponent) is not a source file")
+            return reloadStudioSkinKeepingGraphs(because: "\(other.file.url.lastPathComponent) is not a source file",
+                                                 edits: edits)
         }
         let stamps = diskSync.modificationDates()
         let result = reloadPhases.measure("studio.patch") {
@@ -31,12 +36,12 @@ extension EditingSession {
         }
         switch result {
         case .needsReload(let reason):
-            return reloadStudioSkinKeepingGraphs(because: reason.description)
+            return reloadStudioSkinKeepingGraphs(because: reason.description, edits: edits)
         case .applied(let summary):
             follow.studioPatched = changes
             // What a changed measure's actions wrote while it updated (they write to a private copy: nothing should).
             takeOwnWrites(since: stamps)
-            reloadPhases.measure("window") { client?.session(self, didChange: .patched(summary)) }
+            reloadPhases.measure("window") { client?.session(self, didChange: .patched(summary, edits)) }
             return skin
         }
     }
@@ -45,7 +50,7 @@ extension EditingSession {
     /// showed (`runtimeSeed`: the counter, variables set by clicks, the measures' state, the graphs), before the Studio
     /// window follows it. Timed as `studio.reload`, next to what was measured before it (the patch that could not be
     /// applied).
-    private func reloadStudioSkinKeepingGraphs(because reason: String) -> Skin? {
+    private func reloadStudioSkinKeepingGraphs(because reason: String, edits: SourceTextEdits?) -> Skin? {
         let tried = reloadPhases.take()
         let old = studioSkin
         let start = DispatchTime.now().uptimeNanoseconds
@@ -57,7 +62,7 @@ extension EditingSession {
         guard let skin, skin !== old else { return skin }
         reloadPhases.add(["studio.reload": Double(DispatchTime.now().uptimeNanoseconds &- start) / 1e6])
         Log.write("Studio: loaded the widget's instance again: \(reason)", level: .debug, source: config)
-        reloadPhases.measure("window") { client?.session(self, didChange: .reloaded) }
+        reloadPhases.measure("window") { client?.session(self, didChange: .reloaded(edits)) }
         return skin
     }
 }

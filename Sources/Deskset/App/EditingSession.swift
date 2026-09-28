@@ -5,12 +5,14 @@ import os
 /// What happened in an editing session, for the Studio window that shows it.
 enum SessionChange {
     /// The Studio's instance of the widget was loaded again: after a step, an undo or redo, a change on disk, a refresh
-    /// of the widget. Whatever showed the old one follows the new one.
-    case reloaded
+    /// of the widget. Whatever showed the old one follows the new one. With a step, an undo or a redo, the edits it made
+    /// to each file's text (the code pane makes them in its own copy); nil when they are not known (a change on disk, a
+    /// refresh: the code pane reads the files again).
+    case reloaded(SourceTextEdits?)
     /// The Studio's instance took a step, an undo or a redo without loading again (`applyToStudio`): the same object
     /// shows the new text and keeps what it has shown (graphs, the counter, values set by clicks). Whatever showed it
-    /// follows it as after `reloaded`.
-    case patched(SkinPatchSummary)
+    /// follows it as after `reloaded`, the code pane by the edits made to each file's text.
+    case patched(SkinPatchSummary, SourceTextEdits?)
     /// A step was made: in memory, on disk, on the desktop, on the undo stack.
     case applied(Transaction)
     /// A step was undone (`undo`) or redone.
@@ -208,7 +210,7 @@ final class EditingSession {
         startUpdates(skin)
         old?.close()
         watcher.watch(skin.sourceFiles)
-        if notify { reloadPhases.measure("window") { client?.session(self, didChange: .reloaded) } }
+        if notify { reloadPhases.measure("window") { client?.session(self, didChange: .reloaded(nil)) } }
         return skin
     }
 
@@ -319,7 +321,7 @@ final class EditingSession {
         if let verify, let reloaded, !verify(reloaded) {
             try? buffers.apply(changes, reverse: true)
             try? write()
-            if studioSkin != nil { applyToStudio(changes) }
+            if studioSkin != nil { applyToStudio(changes, undo: true) }
             throw SessionError.notInEffect
         }
 
@@ -388,7 +390,7 @@ final class EditingSession {
         var place: WidgetPosition?
         for case .moveWidget(let from, let to) in t.commands { place = undo ? from : to }
         let t0 = DispatchTime.now().uptimeNanoseconds
-        if studioSkin != nil { applyToStudio(t.changes) }
+        if studioSkin != nil { applyToStudio(t.changes, undo: undo) }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         // The window moves with the files once the desktop copy took them (next turn).
