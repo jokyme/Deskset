@@ -284,6 +284,15 @@ enum StudioLatencySelfTests {
         t.equal(patches.refused - patchesBefore.refused, 0, "\(name): the desktop copy took every step as a patch")
         t.check(patches.applied - patchesBefore.applied >= 2, "\(name): \(patches.applied - patchesBefore.applied) patches")
 
+        // With the code pane open: typed code reaches the canvas once typing pauses (not written, no step).
+        var typed: [Double] = []
+        var typedPhases: [String: [Double]] = [:]
+        if run.mode == .split, let code = editor.loadedCodeView {
+            measureTypedCode(t, name: name, run: run, target: target, samples: samples, editor: editor, code: code,
+                             frame: frame, times: &typed, phases: &typedPhases)
+            t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): the typed code undone too")
+        }
+
         // A drag of the layer: every mouse event previews it (in the Studio's instance at once, on the desktop at most
         // about 20 times a second) and the canvas draws a frame.
         var gestureFrames: [Double] = []
@@ -323,6 +332,11 @@ enum StudioLatencySelfTests {
             print("    LATENCY \(name) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
                   + "\(sent) of \(gestureFrames.count)")
         }
+        let code = Stat(samples: typed)
+        if !typed.isEmpty {
+            print("    LATENCY \(name) | code → canvas, after the pause | \(code.text)")
+            print("    LATENCY \(name) | code phases, p50/p95 ms | \(breakdown(typedPhases))")
+        }
         // One line to compare runs with: the step's p50 / p95 and the p50 of the phases that matter most.
         func p50(_ phase: String, in phases: [String: [Double]]) -> Double {
             phases[phase].map { Stat(samples: $0).p50 } ?? 0
@@ -332,15 +346,85 @@ enum StudioLatencySelfTests {
                      name, edit.p50, edit.p95, p50("window.inspector", in: phases), p50("window.layers", in: phases),
                      p50("studio.patch", in: phases), p50("studio.load", in: phases), p50("studio.update", in: phases),
                      p50("window.code", in: phases), p50("frame", in: phases), undo.p50, undo.p95,
-                     p50("desktop", in: phases)))
+                     p50("desktop", in: phases))
+              + (typed.isEmpty ? "" : String(format: " | code → canvas p50 %.0f / p95 %.0f ms", code.p50, code.p95)))
         // A value edit and its undo reach the Studio's instance as a patch: it never loads again.
         t.check(phases["studio.reload"] == nil && undoPhases["studio.reload"] == nil,
                 "\(name): the Studio's instance took the edits and the undos without loading again")
         // A sanity bound only: a step that takes seconds is broken, whatever the machine.
         t.check(edit.p95 < 5_000 && undo.p95 < 5_000, "\(name): \(edit.text); undo \(undo.text)")
+        t.check(typedPhases["studio.reload"] == nil, "\(name): typed code reached the Studio's instance as a patch")
         if let budget {
             t.check(edit.p95 <= budget, "\(name): edit p95 \(edit.p95) ms over the budget of \(budget) ms")
             t.check(undo.p95 <= budget, "\(name): undo p95 \(undo.p95) ms over the budget of \(budget) ms")
+            if !typed.isEmpty {
+                t.check(code.p95 <= budget, "\(name): code → canvas p95 \(code.p95) ms over the budget of \(budget) ms")
+            }
+        }
+    }
+
+    /// Typed code, `samples` times: the layer's value typed over in the code pane (after one step gives it its own), and
+    /// from the end of the pause (`CodeEditorView.fireTypedText`) to a frame of the canvas showing it. Nothing is
+    /// written meanwhile and no step is made; the commit then writes one "Edit Code" step, and both steps are undone.
+    static func measureTypedCode(_ t: AppTestRunner, name: String, run: Run, target: String, samples: Int,
+                                 editor: InspectorWindowController, code: CodeEditorView, frame: () -> Void,
+                                 times: inout [Double], phases: inout [String: [Double]]) {
+        guard let session = editor.session, let skin = editor.skin else { return t.check(false, "\(name): a session") }
+        let written = skin.meter(named: target)?.rawOption(run.key)
+        editor.commit([.init(section: target, key: run.key, value: run.value(written, 0), own: true)], name: run.undoName)
+        EditorWindowSelfTests.settle()
+        session.flushDesktopPatch()
+        session.flushDesktopRefresh()
+        guard let file = editor.skin?.sources.location(section: target)?.file else {
+            return t.check(false, "\(name): where \(target) is written")
+        }
+        code.show(file: editor.codeFile(for: file))
+        let bytes = (try? Data(contentsOf: file)) ?? Data()
+        let step = session.undoStack.undoActionName
+        /// The value of the layer's own `key=` line in the code.
+        func valueRange() -> NSRange? {
+            guard let lines = code.lineRange(ofSection: target) else { return nil }
+            let text = code.text as NSString
+            let document = CodeDocument(text: code.text)
+            let prefix = run.key.lowercased() + "="
+            for line in lines {
+                let range = document.range(ofLine: line)
+                guard text.substring(with: range).lowercased().hasPrefix(prefix) else { continue }
+                let length = (prefix as NSString).length
+                return NSRange(location: range.location + length, length: range.length - length)
+            }
+            return nil
+        }
+        for i in 1...samples {
+            let value = run.value(written, i)
+            guard let range = valueRange() else { return t.check(false, "\(name): \(run.key) of \(target) in the code") }
+            code.textView.setSelectedRange(range)
+            code.textView.insertText(value, replacementRange: range)
+            let start = now()
+            guard code.fireTypedText() else { return t.check(false, "\(name): the pause is waited for") }
+            frame()
+            times.append(ms(since: start))
+            for (phase, time) in session.reloadPhases.phases { phases[phase, default: []].append(time) }
+            t.equal(editor.skin?.meter(named: target)?.rawOption(run.key), value, "\(name): typed code \(i) shows")
+            EditorWindowSelfTests.settle()
+        }
+        // The last value typed is the one the step wrote (they alternate): one more, not timed, to have typing to commit.
+        if !code.isDirty, let range = valueRange() {
+            code.textView.setSelectedRange(range)
+            code.textView.insertText(run.value(written, 1), replacementRange: range)
+            code.fireTypedText()
+        }
+        t.equal((try? Data(contentsOf: file)) ?? Data(), bytes, "\(name): typed code is not written")
+        t.equal(session.undoStack.undoActionName, step, "\(name): typed code makes no step")
+        t.check(code.fireIdleCommit(), "\(name): the typed code is committed")
+        EditorWindowSelfTests.settle()
+        t.equal(session.undoStack.undoActionName, "Edit Code", "\(name): as one step")
+        t.check((try? Data(contentsOf: file)) != bytes, "\(name): written")
+        for _ in 0..<2 {
+            editor.window?.undoManager?.undo()
+            EditorWindowSelfTests.settle()
+            session.flushDesktopPatch()
+            session.flushDesktopRefresh()
         }
     }
 }
