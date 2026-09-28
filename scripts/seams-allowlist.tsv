@@ -5,10 +5,12 @@
 #
 # count: how many lines of that kind the file may have; * allows any number (UI and tooling code that never runs inside
 # a skin).
-# A new direct use makes `swift scripts/check-seams.swift --check` fail: route it through a seam (the skin's clock,
-# random source or executor, a service protocol with a fake), or raise the count here with a note saying why.
-# `--update` rewrites the counts from the sources and keeps the notes and the * entries. The kinds and what each one
-# matches: `swift scripts/check-seams.swift --kinds`.
+# A new direct use makes `swift scripts/check-seams.swift --check` fail (CI runs it): route it through a seam (the
+# skin's clock, random source or executor, background work, SideEffects, a service protocol with a fake), or raise the
+# count here with a note saying why. The list only shrinks: --check also fails on a count above the uses, a * entry
+# for a kind the file no longer uses, and an entry without a note. `--update` rewrites the counts from the sources and
+# keeps the notes and the * entries still in use. The kinds and what each one matches:
+# `swift scripts/check-seams.swift --kinds`.
 
 mono.C	Sources/CLua/deskset_lua.c	2	os.clock's process clock (the live branch) and the script time limits; with an injected clock os.clock reads SkinClock.uptime through the time source
 random.C	Sources/CLua/deskset_lua.c	2	the shim's math.random and math.randomseed, live branch: C rand() and srand() as in Lua 5.1; SkinRandom through the time source when seeded

@@ -9,7 +9,8 @@
 //     swift scripts/check-seams.swift                  every use, grouped by class, with file:line and the code
 //     swift scripts/check-seams.swift --summary        counts per class and per kind
 //     swift scripts/check-seams.swift --markdown       the same inventory as Markdown tables
-//     swift scripts/check-seams.swift --check          exit 1 when a file uses a kind more often than the allow list says
+//     swift scripts/check-seams.swift --check          exit 1 when a file uses a kind more often than the allow list says,
+//                                                      or the list allows more than the sources use (CI runs this)
 //     swift scripts/check-seams.swift --update         rewrite the allow list with today's counts (keeps the notes)
 //     swift scripts/check-seams.swift --kinds          the kinds this script knows, with their patterns
 //
@@ -23,9 +24,12 @@
 // The allow list (scripts/seams-allowlist.tsv) has one line per kind and file: `kind<TAB>file<TAB>count<TAB>note`.
 // `count` is how many lines of that kind the file may have; `*` allows any number (UI and tooling code that never runs
 // inside a skin). `--check` fails when a file has more lines of a kind than allowed (a new direct call: route it
-// through a seam, or add it to the list with a reason) and reports allowances that are higher than needed, so the
-// list can be tightened as seams replace direct calls (`--update` does that, keeping the notes and the * entries).
-// Exit status: 0 fine, 1 new uses (--check), 2 a usage error or an unreadable file or allow list.
+// through a seam, or add it to the list with a reason), and also when an allowance is higher than needed (a count
+// above today's uses, a * entry or an entry for a kind the file no longer uses, a file that is gone) or has no note:
+// the list only shrinks as seams replace direct calls. `--update` rewrites the counts, keeping the notes and the
+// * entries still in use; a new entry it adds has no note until someone writes one.
+// Exit status: 0 fine, 1 a new use or a stale or unexplained allowance (--check), 2 a usage error or an unreadable
+// file or allow list.
 import Foundation
 
 // MARK: - Kinds
@@ -460,10 +464,12 @@ let allowListHeader = """
 #
 # count: how many lines of that kind the file may have; * allows any number (UI and tooling code that never runs inside
 # a skin).
-# A new direct use makes `swift scripts/check-seams.swift --check` fail: route it through a seam (the skin's clock,
-# random source or executor, a service protocol with a fake), or raise the count here with a note saying why.
-# `--update` rewrites the counts from the sources and keeps the notes and the * entries. The kinds and what each one
-# matches: `swift scripts/check-seams.swift --kinds`.
+# A new direct use makes `swift scripts/check-seams.swift --check` fail (CI runs it): route it through a seam (the
+# skin's clock, random source or executor, background work, SideEffects, a service protocol with a fake), or raise the
+# count here with a note saying why. The list only shrinks: --check also fails on a count above the uses, a * entry
+# for a kind the file no longer uses, and an entry without a note. `--update` rewrites the counts from the sources and
+# keeps the notes and the * entries still in use. The kinds and what each one matches:
+# `swift scripts/check-seams.swift --kinds`.
 
 
 """
@@ -574,11 +580,19 @@ func markdown(_ hits: [Hit]) {
     }
 }
 
+/// Fails on a new direct use (a file uses a kind more often than allowed), and — so that the list only ever shrinks —
+/// on an allowance that is no longer needed in full: a count above today's uses, a * entry for a kind the file no
+/// longer uses, an entry for a file or kind that is gone, an entry listed twice, or an entry without a note.
 func check(_ hits: [Hit]) -> Int32 {
     let now = counts(hits)
     let allowances = readAllowList()
     var allowed: [Key: Allowance] = [:]
-    for a in allowances { allowed[Key(kind: a.kind, file: a.file)] = a }
+    var duplicates: [String] = []
+    for a in allowances {
+        let key = Key(kind: a.kind, file: a.file)
+        if allowed[key] != nil { duplicates.append("   \(a.kind) in \(a.file): listed more than once") }
+        allowed[key] = a
+    }
     var failures: [String] = []
     for (key, count) in now.sorted(by: { $0.key < $1.key }) {
         let allowance = allowed[key]
@@ -590,24 +604,44 @@ func check(_ hits: [Hit]) -> Int32 {
             failures.append("   \(key.kind) in \(key.file): \(count) uses, \(limit) allowed\n\(lines)")
         }
     }
-    var loose: [String] = []
+    let knownKinds = Set(kinds.map(\.id))
+    var stale: [String] = duplicates
+    var unnoted: [String] = []
     for a in allowances {
-        guard let limit = a.count else { continue }
         let count = now[Key(kind: a.kind, file: a.file)] ?? 0
-        if count < limit { loose.append("   \(a.kind) in \(a.file): \(count) uses, \(limit) allowed") }
+        if !knownKinds.contains(a.kind) {
+            stale.append("   \(a.kind) in \(a.file): no such kind (swift scripts/check-seams.swift --kinds)")
+        } else if !FileManager.default.fileExists(atPath: root.appendingPathComponent(a.file).path) {
+            stale.append("   \(a.kind) in \(a.file): no such file")
+        } else if let limit = a.count, count < limit {
+            stale.append("   \(a.kind) in \(a.file): \(count) uses, \(limit) allowed")
+        } else if a.count == nil && count == 0 {
+            stale.append("   \(a.kind) in \(a.file): no uses, any number allowed")
+        } else if a.count == 0 {
+            stale.append("   \(a.kind) in \(a.file): an allowance of 0")
+        }
+        if a.note.trimmingCharacters(in: .whitespaces).isEmpty {
+            unnoted.append("   \(a.kind) in \(a.file)")
+        }
     }
-    if !loose.isEmpty {
-        write("Allowances higher than needed (lower them, or run --update):")
-        loose.forEach(write)
-    }
-    if failures.isEmpty {
-        write("Seams: no direct uses beyond the allow list (\(hits.count) uses known).")
+    if failures.isEmpty && stale.isEmpty && unnoted.isEmpty {
+        write("Seams: no direct uses beyond the allow list, and no allowance beyond them (\(hits.count) uses known).")
         return 0
     }
-    write("Seams: new direct uses of clocks, random sources, timers, background work or system callbacks.")
-    write("Route them through a seam (the skin's clock, random source or executor, or a service with a fake), or")
-    write("add them to scripts/seams-allowlist.tsv with a note saying why:")
-    failures.forEach(write)
+    if !failures.isEmpty {
+        write("Seams: new direct uses of clocks, random sources, timers, background work, system callbacks or outside")
+        write("effects. Route them through a seam (the skin's clock, random source or executor, background work,")
+        write("SideEffects, or a service with a fake), or add them to scripts/seams-allowlist.tsv with a note saying why:")
+        failures.forEach(write)
+    }
+    if !stale.isEmpty {
+        write("Seams: allowances higher than needed. The list only shrinks: lower or remove them (--update does it):")
+        stale.forEach(write)
+    }
+    if !unnoted.isEmpty {
+        write("Seams: allowances without a note. Say which seam will replace each use, or why it stays:")
+        unnoted.forEach(write)
+    }
     return 1
 }
 
