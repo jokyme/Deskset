@@ -2001,3 +2001,27 @@ the same outcome.
     ("App: engine thread: …" in `EngineReloadSelfTests.swift` and "App: skin drawing: a covered window lets go…") pass
     in both modes where they compare them. Main Thread Checker reports nothing for the full runs of both programs. The
     threads stress suites ("App: threads") pass on their own too (82 checks).
+
+**The merge of main (2026-09-29).** Main had moved on by 423 commits (Stationery P1, the ANSI code page, Windows
+programs not opened, the runtime's M0a seams, the Desk language service, Studio S1 and S2a); everything it added that
+talks to a desktop skin now goes through this phase's architecture. The old `SkinController.swift` is gone: the
+Windows-program rule of `executePlan` lives in `SkinRuntime.executePlan`, and `settingsPath` and `environment` come
+from `EnvironmentStore`. S1's desktop following is a message: a step's patch goes to the desktop copy's runtime as
+`SkinMessage.patch` with the text it needs (`SourceSnapshot`), runs on the copy's executor and answers on the main
+thread, and the session counts a patch in flight until that answer (a refused one reloads the copy then, with a
+ticket). `Skin.patch` is a piece of the skin's work (`beginWork` / `endWork`) and notes a snapshot change, so the
+snapshot's metadata, source files and hit map follow a patch as they follow a load. The Studio's first instance is
+seeded from a `SkinRuntimeState` taken with exclusive access (`seedTimeout`), not from a skin that must be on the main
+thread. S2a's `DesktopLink` reads the desktop copy's snapshot (`keyValueWrites`, the file), follows a new copy once it
+has started, decides "own reload" by its ticket (the writes are taken when the reload ends), and runs Interact's held
+actions as a `.run` message (an action that is not mirrored back to the Studio). Chameleon's `CropDesktop=Skin`
+follows its window through a window companion (`followWindow`; the settled moves come back as `.windowSettled`);
+the Studio's instance still watches the desktop copy's window on the main thread. The Manage window's Show sends
+`!ShowFade` to the runtime, so the model changes first and a skin that never drew draws its first frame on its
+executor before the window is ordered in. Window facts now let the next read outside a piece of work (exclusive
+access) see the window's new place (`Skin.hostFactsChanged`): main's locale reads fill the environment cache during
+updates. The desktop-picture inputs publish every screen's desktop too (`allScreenDesktops`), with the per-display
+ones. The seam check holds with the phase's files in its allow list, each with a note (the runtime, window
+controller, frame producer and engine thread). Suites that stepped the Studio with a value edit to make the desktop
+copy reload now change a `[Rainmeter]` option as main's do, and new checks cover a patch on the engine thread (the
+same copy; the snapshot's metadata follows), a patch on a test thread, and Chameleon on the engine thread.
