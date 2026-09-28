@@ -613,13 +613,15 @@ Rules for committing off the main thread:
    - `commit()`, then `flush()`.
 
    Without `setDisableActions(true)`, a contents change fades over 0.25 s. The flush is needed on threads without a
-   run loop, and it is harmless on the dedicated threads.
+   run loop, and it is harmless on the dedicated threads. The frames of the skins that draw in one turn of a run loop
+   share one such transaction (§15, review), so skins that update together cost one commit, not one each.
 3. **Size changes.**
    - The skin sets the content layer's bounds in the same transaction as the new frame, anchored top-left under the
      flipped view layer.
    - It also asks the main thread to resize the window. The main thread keeps the top-left corner fixed, as
      `skinNeedsDisplay` does today.
-   - For one frame the window can be larger (transparent) or smaller (clipped) than the content, never stretched.
+   - Until the main thread has followed (one frame while it is free, longer while it is busy) the window can be larger
+     (transparent) or smaller (clipped) than the content, never stretched.
 4. **Occlusion and visibility.**
    - The main thread publishes "visible / occluded / hidden" into the runtime.
    - A skin that cannot be seen keeps updating but skips drawing, as today's `displayPending` does.
@@ -1350,9 +1352,9 @@ the installer) no longer stalls skins, and `SkinThreading=main` switches back. T
 
 **Delivery rules.** These keep `SkinThreading=main` exactly as it is today, while the same code queues its work
 when a skin runs on the engine thread.
-- A message to a runtime runs **inline when the sender is on the runtime's executor**; otherwise it is queued there,
-  first in, first out (hover and window facts are coalesced to the latest). With the main executor every UI event
-  still reaches the skin synchronously and in the same order.
+- A message to a runtime runs **inline when the sender is on the runtime's executor**, once the runtime's `.load` has
+  run; otherwise it is queued there, first in, first out (hover and window facts are coalesced to the latest). With
+  the main executor every UI event still reaches the skin synchronously and in the same order.
 - A request to the main thread runs inline on the main thread. From anywhere else it is queued with
   `DispatchQueue.main.async`, the queue of `AppController.later`, so lifecycle bangs keep their order.
 - Inline delivery hands back what the live skin answered (whether a mouse event was handled). The view uses that
@@ -1384,10 +1386,11 @@ when a skin runs on the engine thread.
   seen again it draws one frame. The first frame is drawn before the window is first shown.
 - `LayerContentProvider`: `contentLayer` is a sublayer of `SkinView`'s layer, anchored top-left under the flipped
   view, with no implicit actions. Its bounds are always the size of the frame it shows, so nothing is stretched.
-  `present` sets bounds and contents in an explicit transaction (§7.3, rule 2; `flush` only off the main thread).
+  `present` sets bounds and contents in an explicit transaction (§7.3, rule 2; `flush` only off the main thread). Since
+  the review below, the frames of one turn of a run loop share one transaction.
 - A size change: the content layer's bounds change in the same transaction as the frame, and the window is resized
-  by a `.resize` request (top-left corner fixed, as now). For at most one frame the window clips the frame or leaves
-  a transparent margin; it never stretches it.
+  by a `.resize` request (top-left corner fixed, as now). Until the main thread gets to it (the next turn while it is
+  free, later while it is busy) the window clips the frame or leaves a transparent margin; it never stretches it.
 - `SkinView` keeps `draw(_:)`, for `cacheDisplay` snapshots, and gives its own layer no contents.
 
 **The snapshot** (§5.5) is built when a piece of top-level work ends. The engine gets one new host callback,
@@ -1549,7 +1552,8 @@ suite's `TestThreadExecutor`.
        when the window is ordered in right after its first one.
      - `LayerContentProvider.setScale` and `setVisible` only take note: the layer's `contentsScale` changes with the
        next frame, drawn at the new scale (changed earlier, it would show the old frame at another size), and skipping
-       frames is the producer's. The seam is there for the layer runtime.
+       frames is the producer's. The seam is there for the layer runtime. (The review below adds an optional fifth
+       call, `releaseContents`, for a window ordered out for a while.)
      - `.resize` is sent only when the skin's size changes (the runtime remembers the size it asked for: AppKit rounds a
        window's frame to whole points, so the window model's size is not the skin's). A skin that redraws without
        changing size posts nothing to the main thread (`App: skin snapshot: a skin redrawing 60 times a second…`).
@@ -1670,7 +1674,8 @@ suite's `TestThreadExecutor`.
        5-second deadline bounds it either way. A copy of the session's latest reload that starts after the deadline is
        still its own, and what it wrote is taken then.
      - A window half stopped with a ticket keeps itself until its skin has closed (`runtime.whenClosed`), so the
-       `.closed(ticket)` of a skin on another thread still finds it.
+       `.closed(ticket)` of a skin on another thread still finds it. (Since the review below, every stopped window half
+       does.)
      - The move after a step is made right after the new copy's window is placed, before it is shown, so the window
        does not jump. With the main executor it is still made inside `app.refresh`, now just before the writes are
        taken rather than after.
@@ -1784,8 +1789,9 @@ suite's `TestThreadExecutor`.
      thread's 8 MB stack; the slideshows show a version of their photo; the font-heavy skin measures with its own
      font; the writers' keys reach their file; no weather request.
    - Debug builds also fail every suite, not only this one, in which the engine called a runtime from another thread
-     than its skin's executor (`HostCallAudit`: the runtime's `SkinHost`, its image queries and its companion
-     channel; exclusive access counts as the owner's). No suite made such a call.
+     than its skin's executor (`HostCallAudit`: the runtime's `SkinHost` and its companion channel; exclusive access
+     counts as the owner's; the image queries, which read only `Images`, since the review below). No suite made such a
+     call.
    - Cost: about 42 s on an M4 Pro (debug build), 54 s under Main Thread Checker (nothing reported), 115 s as the
      x86_64 build under Rosetta, 210 s under `taskpolicy -b`. `DESKSET_THREADS_SOAK=N` multiplies the loads and the
      main thread's work.
@@ -1868,3 +1874,82 @@ suite's `TestThreadExecutor`.
      the temporary folder, which counted other processes' `Deskset-Sandbox-…` and `Deskset-settings-…` folders there
      (Foundation's temporary folder is the user's, whatever `TMPDIR` says) and now count only the installer's own
      work folders.
+
+**The review of phase 2 (2026-09-29)**
+
+A review of the phase found the problems below on the engine thread. Each fix has a suite that fails when the fix is
+undone (checked by undoing it). "Both modes" means the suite runs with `SkinThreading=main` and `engine` and requires
+the same outcome.
+
+1. **Bangs behind a skin's load.** A message runs inline when its sender is on the runtime's thread. A skin that
+   `activate` had registered but whose `.load` was still queued could be reached that way: another skin's `[!Update B]`
+   in its OnRefreshAction during Refresh All, a timer, a queued click. It then ran on the empty skin: its first update
+   came before the load's, so OnRefreshAction never ran, and a skin without DynamicWindowSize kept a size of 0 (a
+   1-point window). A runtime now takes messages inline only once its `.load` has run (`SkinRuntime.isLoadQueued`);
+   until then they queue behind the load. `activate` lists a skin that loads on another thread in the directory once
+   its load is queued, in one change with the copy it replaces, so the config is never missing in between. Suite "…a
+   bang from another skin waits for a skin's load, which stays its first update".
+2. **OnCloseAction's bangs for the app.** `stop` marked the window stopped at once, and on the engine thread
+   OnCloseAction runs later: its config, menu and system bangs were dropped. Once nothing held the window half (an
+   unload without a fade, any refresh, the installer), so were what it opened and its bangs for configs that were
+   loading. A stopped window now applies what its skin asked for until the skin has closed (`whileClosing` still keeps
+   a closing skin from reloading or unloading itself), and every stopped window half stays until `.closed`. Suite
+   "…OnCloseAction's config bangs and what it opens are carried out, on unload and on refresh" (both modes). It drains
+   the autorelease pool around the unload, as the run loop does after a turn, because AppKit keeps the window's
+   delegate there while it closes the window.
+3. **Reloads asked for together, one after another.** Only the launch loaded one after another (`activateInOrder`).
+   Refresh All, `!Refresh *`, `!RefreshApp`, `!RefreshGroup`, the `[!Refresh]` of every skin that follows the
+   appearance, and the installer loading a suite again registered every new copy before any of them had loaded.
+   Enigma's Dock, refreshed before its Menu, then unloaded the Menu's new copy and saved it as inactive.
+   `AppController.inTurn` now runs each such load once the one before it has settled (`whenSettled`); with the main
+   executor at once, as before. `activateInOrder` uses it. What skins' bangs ask of the app meanwhile (`later`) waits
+   until the last of those loads has settled. That is how it ran on the main thread, where a batch of loads ran in
+   one turn and those bangs after it. Suites "…Refresh All, !Refresh * and an appearance change reload the skins one
+   after another…" and "…an installer reloads a suite's skins one after another…" (both modes).
+4. **The installer's fallback.** The installer decided whether the package's skin had loaded from `activate`'s
+   return, which on the engine thread comes before the load. It now decides once that load has settled, and brings
+   back the variant that was running when the load failed. Suite "…an installer whose package skin cannot be loaded
+   brings back what was running" (both modes).
+5. **A Button's pixels from the main thread.** The snapshot's hit map asks a Button's image for its pixels from the
+   main thread, through the runtime. The audit counted that as a stray call, although it reads only `Images`, which is
+   thread-safe. The image queries are no longer audited. Suite "…hovering and clicking a Button image…".
+6. **No blink on a reload.** A reload on the engine thread closed the old window at once and showed the new one when
+   it started, tens of milliseconds later (longer for a Lua skin or a busy thread). Every refresh, Refresh All, each
+   Studio step and each Dark Mode switch made widgets vanish for that long. The old window now stays, showing its last
+   frame, until the new copy has started, failed or been unloaded (`replacedWindow`, `closeReplacedWindow`); the new
+   window takes its place in the stacking. A copy replaced before it started hands the old window on. Suites "…a reload
+   keeps the old window…" and "…a replaced window goes at once on the main thread, and when the new copy fails".
+7. **Frames.**
+   - The first frame was drawn twice on the engine thread: the facts saying the window is ordered in come a turn after
+     the first frame, and the redraw for a window just ordered in did not know that the frame it had was drawn for this
+     showing. It now keeps that frame unless the skin redrew since (`drawnForShowing`). Suite "…a window ordered in a
+     turn after its first frame shows that frame…"; the frame suite's own case now expects the same on a later turn.
+   - `!Show` of a skin that never drew (StartHidden) draws its first frame on the skin's executor before it asks the
+     main thread to show the window, as the start does. On the engine thread the window's `.firstFrame` came a turn
+     later, and the window showed an empty layer meanwhile. Suite "…!Show draws a hidden skin's first frame…".
+   - A window that cannot be seen for 10 s (`SkinFrameProducer.releaseDelay`) lets go of its kept pictures and both
+     bitmaps: a 1000×800-point panel at 2× held about 77 MB for as long as it stayed hidden. Ordered out, it also lets go
+     of its frame, through an optional fifth call of the seam, `ContentProvider.releaseContents`. The next frame is
+     drawn in full, and a window shown again gets its frame before it is ordered in. Suites "…a covered window lets go
+     of its kept pictures after a while…" (the producer) and "…a window hidden for a while lets go…" (the engine thread).
+   - The frames of one turn of a run loop go to the render server in one Core Animation transaction. One run-loop
+     observer per run loop (`SkinFrameTurn`) lets every producer on it draw, and the turn commits once
+     (`SkinFrameBatch`, flushed off the main thread). Before, every frame was a transaction of its own. Suite "…the
+     frames of one turn go to the render server in one transaction" (two skins, one commit).
+8. **Smaller things.**
+   - `skinNeedsDisplay` read the screens at every redraw (on the main executor it enumerated `NSScreen.screens`). The
+     window model reads them only when a resized window must be kept on screen. The screens and the appearance, which
+     are published on every change, have an age limit of a minute instead of 5 s and 1 s, so skins on the engine
+     thread no longer wake the main thread for them.
+   - `!SetWallpaper` publishes the new desktop pictures at once, for Chameleon on the engine thread.
+   - Two compatibility notes, in `docs/compat/engine.md` and both summaries. App, menu and system bangs run after the
+     sending action. Mouse decisions use the skin's last finished state while the engine thread is busy (§8.3
+     accepted this, but nothing told skin authors). Not done: waiting for a busy thread before deciding a right click
+     or a drag. The snapshot lags only while the thread is busy, and then for as long as it stays busy (seconds), so a
+     short wait would not help.
+   - The window's size and MacGlass follow a change of the skin's size when the main thread gets to the request: on
+     its next turn while it is free, later while it is busy (the Studio opens in steps of 270–350 ms). Meanwhile the
+     frame is presented from the engine thread, clipped or with a transparent margin, never stretched.
+   - A test run had committed the Turntable's own `Tempo` lines at `Live`, so a new install ran 30 updates a second
+     until the deck noticed. They are back at `Rest`, and the app suite now fails when any suite changes the
+     repository's `DefaultSkins`.
