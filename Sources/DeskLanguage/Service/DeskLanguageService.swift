@@ -408,4 +408,11 @@ final class DeskLazyMap<Key: Hashable, Value>: @unchecked Sendable {
         stored[key] = made
         return made
     }
+
+    /// The value for a key if it was built.
+    func peek(_ key: Key) -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored[key]
+    }
 }

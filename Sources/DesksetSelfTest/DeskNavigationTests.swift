@@ -91,6 +91,7 @@ func runDeskNavigationTests(_ t: TestRunner) {
     }
     runDeskNavigationGoldenTests(t)
     runDeskNavigationPropertyTests(t)
+    runDeskNavigationSweep(t)
 }
 
 /// Every place a file writes an own name, found from the tree alone (independently of the service): declared names
@@ -875,5 +876,124 @@ func runDeskNavigationGoldenTests(_ t: TestRunner) {
         service.update(changes: [DeskTextChange(range: 0..<0, text: "// note\n")], version: 1)
         t.equal(service.snapshot.range(of: old), nil, "a reference of an older snapshot")
         t.equal(service.snapshot.elements()[2].range.start.line, 20, "the element moved down a line")
+    }
+}
+
+// MARK: - Sweep
+
+/// Every text the sweep asks about: each fixture file (the diagnostic fixtures split into their positive, negative
+/// and package parts, with the package given to the parts), the design documents' examples, the Harbor files in
+/// their folder, the generated inputs and a mix of line breaks, a byte order mark, CJK and surrogate pairs.
+func deskNavSweepTexts() -> [(label: String, file: String, files: [String: String])] {
+    var out: [(String, String, [String: String])] = []
+    for fixtureFile in deskFixtureFiles() where !fixtureFile.path.hasPrefix("Packages/") {
+        let name = (fixtureFile.path as NSString).lastPathComponent
+        guard fixtureFile.path.hasPrefix("Diagnostics/") else {
+            out.append((fixtureFile.path, name == "package.desk" ? "package.desk" : "Test.desk",
+                        [name == "package.desk" ? "package.desk" : "Test.desk": fixtureFile.text]))
+            continue
+        }
+        let fixture = DeskDiagnosticFixture.parse(path: fixtureFile.path, text: fixtureFile.text)
+        let file = fixture.fileName
+        var parts = [fixture.generate.map(deskGeneratedText) ?? fixture.positive]
+        if let negative = fixture.negative { parts.append(negative) }
+        for (k, part) in parts.enumerated() {
+            var files = [file: part]
+            if let package = fixture.package, file != "package.desk" { files["package.desk"] = package }
+            for extra in fixture.folderFiles where extra.name.hasSuffix(".desk") { files[extra.name] = extra.text }
+            out.append(("\(fixture.id)\(k == 0 ? "+" : "-")", file, files))
+        }
+        if let package = fixture.package { out.append(("\(fixture.id) package", "package.desk", ["package.desk": package])) }
+    }
+    for (k, example) in deskExampleCorpus().enumerated() {
+        out.append(("example \(k)", "Test.desk", ["Test.desk": example]))
+    }
+    let harbor = deskHarbor()
+    for file in harbor.texts.keys.sorted(by: { $0.path < $1.path }) {
+        out.append(("Harbor/\(file.path)", file.path, Dictionary(uniqueKeysWithValues: harbor.texts.map { ($0.key.path, $0.value) })))
+    }
+    let month = deskNavFixture("Acceptance/MonthView.desk")
+    let mixed = "\u{FEFF}" + month.replacingOccurrences(of: "\n", with: "\r\n")
+        .replacingOccurrences(of: "Month View", with: "月历 😀 𝄞").replacingOccurrences(of: "monthsFromNow", with: "months")
+    out.append(("mixed line breaks and scripts", "Mixed.desk", ["Mixed.desk": mixed]))
+    out.append(("lone CRs", "Mixed.desk", ["Mixed.desk": month.replacingOccurrences(of: "\n", with: "\r")]))
+    return out
+}
+
+/// Whether a location is inside the file it names (a picture: an empty range at its start).
+func deskNavInside(_ location: DeskLocation, _ files: [DeskFileID: String]) -> Bool {
+    let r = location.range
+    guard r.start.offset >= 0, r.start.offset <= r.end.offset else { return false }
+    guard let text = files[location.file] else { return r.start.offset == 0 && r.end.offset == 0 }
+    return r.end.offset <= (text as NSString).length
+}
+
+func runDeskNavigationSweep(_ t: TestRunner) {
+    t.suite("Desk: service — navigation sweep") {
+        var positions = 0
+        var renames = 0
+        for (label, file, texts) in deskNavSweepTexts() {
+            var files: [DeskFileID: String] = [:]
+            for (path, text) in texts { files[DeskFileID(path: path)] = text }
+            let service = DeskLanguageService(openFile: DeskFileID(path: file), files: files)
+            let snapshot = service.snapshot
+            let length = (snapshot.text as NSString).length
+            var problems: [String] = []
+            func inside(_ range: DeskRange, _ what: String) {
+                if !(0 <= range.start.offset && range.start.offset <= range.end.offset && range.end.offset <= length) {
+                    problems.append("\(what) \(range)")
+                }
+            }
+            func inside(_ locations: [DeskLocation], _ what: String) {
+                for location in locations where !deskNavInside(location, snapshot.folder) { problems.append("\(what) \(location)") }
+            }
+            // Every token's start and end, and the very ends of the text.
+            var offsets = Set([0, length])
+            for token in deskNavTokenStarts(snapshot.tree) {
+                offsets.insert(snapshot.index.utf16Offset(ofUTF8: token.lowerBound))
+                offsets.insert(snapshot.index.utf16Offset(ofUTF8: token.upperBound))
+            }
+            for offset in offsets.sorted() {
+                positions += 1
+                let position = snapshot.index.position(utf16: offset)
+                if let info = snapshot.symbol(at: position) { inside(info.range, "symbol") }
+                inside(snapshot.definition(at: position), "definition")
+                inside(snapshot.references(at: position), "references")
+                for highlight in snapshot.documentHighlights(at: position) { inside(highlight.range, "highlight") }
+                if let hit = snapshot.elementAt(position) {
+                    inside(hit.range, "element")
+                    inside(hit.callRange, "call")
+                    if let loop = hit.loopRange { inside(loop, "loop") }
+                }
+                guard case .success(let place) = snapshot.prepareRename(at: position) else { continue }
+                inside(place.range, "rename place")
+                guard place.range.start.offset == offset else { continue }   // once per name
+                renames += 1
+                if case .success(let rename) = snapshot.rename(at: position, to: "sweptName") {
+                    for changed in rename.edit.changedFiles {
+                        let text = snapshot.folder[changed] ?? ""
+                        let count = (text as NSString).length
+                        for edit in rename.edit.edits(for: changed) where edit.range.end.offset > count {
+                            problems.append("rename edit \(changed.path) \(edit)")
+                        }
+                        _ = DeskTextEditU16.apply(rename.edit.edits(for: changed), to: text)
+                    }
+                }
+            }
+            func walk(_ items: [DeskDocumentSymbol]) {
+                for item in items {
+                    inside(item.range, "outline")
+                    inside(item.selectionRange, "outline selection")
+                    walk(item.children)
+                }
+            }
+            walk(snapshot.documentSymbols())
+            for fold in snapshot.foldingRanges() { inside(fold.range, "folding") }
+            for element in snapshot.elements() where snapshot.range(of: element.element) != element {
+                problems.append("element \(element.component) not found again")
+            }
+            t.equal(problems, [], label)
+        }
+        print("    \(positions) positions and \(renames) renames swept")
     }
 }

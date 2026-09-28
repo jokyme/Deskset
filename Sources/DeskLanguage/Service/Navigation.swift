@@ -91,6 +91,7 @@ extension DeskSnapshot {
     /// The symbol index of a file of the folder: the open file's from this snapshot's check, `package.desk`'s from
     /// its own check, another widget's from `folderResults()`. Nil for a file the folder does not have.
     func symbolIndex(of file: DeskFileID) -> DeskSymbolIndex? {
+        if let known = caches.symbolIndexes.peek(file) { return known }
         let checkedFile: CheckedFile
         if file == self.file {
             checkedFile = checked
@@ -100,12 +101,11 @@ extension DeskSnapshot {
             guard folder[file] != nil, let result = folderResults()[file] else { return nil }
             checkedFile = result
         }
-        let names = packageNames
-        let hasPackage = isPackage || package != nil
         return caches.symbolIndexes.value(for: file) {
-            DeskSymbolIndex(checked: checkedFile, table: file == self.file ? nodeTable : nil,
-                            packageFile: hasPackage ? packageFile : nil, packageStyles: names.styles,
-                            packageOptions: names.options, catalog: options.catalog)
+            let names = packageNames
+            return DeskSymbolIndex(checked: checkedFile, table: file == self.file ? nodeTable : nil,
+                                   packageFile: isPackage || package != nil ? packageFile : nil, packageStyles: names.styles,
+                                   packageOptions: names.options, catalog: options.catalog)
         }
     }
 
