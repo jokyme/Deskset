@@ -129,6 +129,20 @@ enum Studio2PageSelfTests {
             } else {
                 t.check(false, "the option row")
             }
+            // The view: the amber mark with the value as written, and where a value comes from in an icon and a word.
+            let lone = StudioPageView(frame: NSRect(x: 0, y: 0, width: 318, height: 400))
+            var units = StudioPage.Row(label: "Units", control: .segmented(.init(items: ["°C", "°F"], selected: -1)))
+            units.invalid = "K"
+            units.source = .live
+            lone.apply(StudioPage(id: "p", title: "T", subtitle: "", sections: [
+                .init(id: "s", title: "S", items: [.init(id: "r", kind: .row(units))])]))
+            lone.layoutSubtreeIfNeeded()
+            guard let rowView = lone.itemView("r") as? StudioRowView else { return t.check(false, "the row") }
+            rowView.layoutSubtreeIfNeeded()
+            t.check(!rowView.sourceChip.isHidden, "the source chip")
+            t.equal(rowView.sourceChip.accessibilityLabel(), "Live")
+            let shown = Studio2PageSelfTests.words(in: rowView)
+            t.check(shown.contains("“K”"), "the value as written: \(shown)")
         }
     }
 

@@ -638,24 +638,55 @@ private final class Builder {
 
     /// The words of a color: a short one for its swatch and a title for its popover.
     func words(for g: ValueUsageIndex.ColorGroup, meters: [String], variable: String?) -> (String, String, String?) {
-        // A data part: the data's short name, and the part's kind ("Memory", "Memory ring").
-        for m in meters {
-            guard let meter = skin.meter(named: m), Self.drawsData.contains(meter.type), let data = followedData(meter),
-                  let measure = skin.measure(named: data) else { continue }
-            let short = StudioWidgetFacts.dataName(measure, in: skin, names: names).short
-            return (short, "\(short) \(Self.kindNoun(meter))", Self.kindNoun(meter))
-        }
         func capitalized(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
+        let role = Self.plainRole(g.role)
+        // Data parts: one data item names it ("Memory", "Memory ring"); several of one kind are named by the kind
+        // ("Bars"); the empty part behind them is their track.
+        var data: [String] = []
+        var kinds: Set<String> = []
+        for m in meters {
+            guard let meter = skin.meter(named: m), Self.drawsData.contains(meter.type), let d = followedData(meter) else {
+                continue
+            }
+            if !data.contains(where: { $0.caseInsensitiveCompare(d) == .orderedSame }) { data.append(d) }
+            kinds.insert(Self.kindNoun(meter))
+        }
+        let track = role.lowercased().hasPrefix("empty part")
+        if data.count == 1, !track, let measure = skin.measure(named: data[0]), let kind = kinds.first {
+            let short = StudioWidgetFacts.dataName(measure, in: skin, names: names).short
+            return (short, "\(short) \(kind)", kind)
+        }
+        if data.count > 1, kinds.count == 1, let kind = kinds.first {
+            let plural = capitalized(Self.plural(kind))
+            return track ? ("Tracks", "\(capitalized(kind)) tracks", nil) : (plural, plural, nil)
+        }
         if let variable {
             var words = ValueUsageIndex.humanizedVariable(variable)
             for suffix in [" text color", " color", " colour", " tint", " rgb"] where words.lowercased().hasSuffix(suffix) {
                 words = String(words.dropLast(suffix.count))
             }
-            let short = words.isEmpty ? g.name : capitalized(words)
+            let short = words.isEmpty ? role : capitalized(words)
             return (short, short, nil)
         }
-        let title = capitalized(g.name)
-        return (title.split(separator: " ").first.map(String.init) ?? title, title, nil)
+        let title = capitalized(role)
+        // A long role in one word: its last ("Background panel outline" → "Outline").
+        let label = title.count <= 12 ? title : capitalized(String(title.split(separator: " ").last ?? Substring(title)))
+        return (label, title, nil)
+    }
+
+    /// A role without its count and the word "color" ("Bar color and 2 more" → "Bar").
+    static func plainRole(_ role: String) -> String {
+        var r = role
+        if let range = r.range(of: #" and \d+ more$"#, options: .regularExpression) { r.removeSubrange(range) }
+        for suffix in [" color", " colour"] where r.lowercased().hasSuffix(suffix) { r = String(r.dropLast(suffix.count)) }
+        return r
+    }
+
+    static func plural(_ kind: String) -> String {
+        switch kind {
+        case "graph", "ring", "bar", "gauge", "shape", "picture": return kind + "s"
+        default: return kind
+        }
     }
 
     // MARK: Shows

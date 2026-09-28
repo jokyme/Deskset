@@ -21,13 +21,16 @@ enum StudioWords {
         return name
     }
 
-    /// A short name of data or of what a color paints ("Memory" → "内存").
+    /// A short name of data or of what a color paints ("Memory" → "内存"; the long "Precipitation" is "Rain").
     static func short(_ word: String) -> String {
+        let everyday: [String: String] = ["Precipitation": "Rain", "Precipitation text": "Rain"]
+        let word = everyday[word] ?? word
         guard chinese else { return word }
         let table: [String: String] = [
             "Memory": "内存", "Disk": "磁盘", "Network": "网络", "Download": "下载", "Upload": "上传", "Battery": "电池",
             "Temperature": "温度", "Fan": "风扇", "Power": "功率", "Swap": "交换", "Memory + swap": "内存和交换",
-            "Precipitation": "降水", "Sun": "太阳", "Accent": "强调色", "Text": "文字", "Ink": "文字", "Glass": "玻璃",
+            "Precipitation": "降水", "Rain": "降水", "Sun": "太阳", "Bars": "进度条", "Graphs": "曲线", "Rings": "圆环",
+            "Tracks": "轨道", "Outline": "描边", "Accent": "强调色", "Text": "文字", "Ink": "文字", "Glass": "玻璃",
             "Panel": "面板", "Line": "线条", "Uptime": "开机时间",
         ]
         return table[word] ?? word
@@ -46,7 +49,10 @@ enum StudioWords {
 
     /// What a color paints, as a title ("Memory ring" / "内存环").
     static func title(short word: String, kind noun: String?) -> String {
-        guard let noun, !noun.isEmpty, noun != "text", noun != "picture" else { return short(word) }
+        guard let noun, !noun.isEmpty, noun != "text", noun != "picture" else {
+            // A title of several words ("Bar tracks") is the widget's own; one word is looked up.
+            return word.contains(" ") && !chinese ? word : short(word)
+        }
         guard chinese else { return "\(word) \(noun)" }
         let s = short(word)
         let ascii = s.unicodeScalars.allSatisfy(\.isASCII)

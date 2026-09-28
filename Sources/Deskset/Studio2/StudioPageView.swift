@@ -250,7 +250,7 @@ final class StudioPageView: NSView {
         put(titleLabel, NSRect(x: m, y: y, width: inner, height: titleHeight))
         y += titleHeight + 3
         if !page.subtitle.isEmpty {
-            let h = min(StudioPageStyle.height(of: page.subtitle, font: StudioPageStyle.noteFont, width: inner), 32)
+            let h = min(StudioPageStyle.height(of: page.subtitle, font: StudioPageStyle.noteFont, width: inner - 4) + 4, 36)
             put(subtitleLabel, NSRect(x: m, y: y, width: inner, height: h))
             y += h
         }
@@ -323,6 +323,10 @@ final class StudioRowView: NSView, StudioPageItemView {
     private let detailLabel = StudioPageStyle.label("", font: StudioPageStyle.monospaced(10.5),
                                                     color: StudioPageStyle.quietInk)
     private let percentLabel = StudioPageStyle.label("", font: .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular))
+    /// Where the value comes from: an icon and a word in a quiet capsule.
+    let sourceChip = StudioSourceChip()
+    /// A value the control cannot show, as written.
+    private let invalidText = StudioPageStyle.label("", font: StudioPageStyle.monospaced(11), color: StudioPageStyle.attentionText)
 
     override var isFlipped: Bool { true }
 
@@ -335,6 +339,8 @@ final class StudioRowView: NSView, StudioPageItemView {
         addSubview(invalidMark)
         addSubview(detailLabel)
         addSubview(percentLabel)
+        addSubview(sourceChip)
+        addSubview(invalidText)
         controlView = makeControl(row.control)
         addSubview(controlView)
         update(.row(row))
@@ -406,6 +412,10 @@ final class StudioRowView: NSView, StudioPageItemView {
         label.toolTip = row.tooltip
         invalidMark.isHidden = row.invalid == nil
         invalidMark.toolTip = row.invalid.map { StudioText.format(.invalidValue, $0) }
+        invalidText.stringValue = row.invalid.map { "“\($0)”" } ?? ""
+        invalidText.isHidden = row.invalid == nil || { if case .text = row.control { return true }; return false }()
+        sourceChip.source = row.source
+        sourceChip.isHidden = row.source == nil
         detailLabel.stringValue = row.detail ?? ""
         detailLabel.isHidden = row.detail == nil
         percentLabel.isHidden = true
@@ -488,9 +498,19 @@ final class StudioRowView: NSView, StudioPageItemView {
             detailLabel.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
             right -= w + 6
         }
+        if !sourceChip.isHidden {
+            let w = sourceChip.intrinsicContentSize.width
+            sourceChip.frame = NSRect(x: right - w, y: (h - 18) / 2, width: w, height: 18)
+            right -= w + 6
+        }
         if !invalidMark.isHidden {
             invalidMark.frame = NSRect(x: x, y: (h - 14) / 2, width: 14, height: 14)
             x += 18
+            if !invalidText.isHidden {
+                let w = min(ceil(invalidText.intrinsicContentSize.width) + 4, 70)
+                invalidText.frame = NSRect(x: x, y: (h - 15) / 2, width: w, height: 15)
+                x += w + 4
+            }
         }
         switch row.control {
         case .segmented(let seg):
@@ -515,6 +535,58 @@ final class StudioRowView: NSView, StudioPageItemView {
 }
 
 // MARK: - Swatches
+
+/// Where a value comes from, always an icon and a word: an option (slider icon), live data (radio waves, in the
+/// accent color), a rule (a branch), a shared style (a brush).
+final class StudioSourceChip: NSView {
+    var source: StudioValueSource? { didSet { refresh() } }
+    private let icon = NSImageView()
+    private let word = StudioPageStyle.label("", font: .systemFont(ofSize: 11, weight: .medium))
+
+    override var isFlipped: Bool { true }
+    override var wantsUpdateLayer: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 9
+        layer?.borderWidth = 0.5
+        addSubview(icon)
+        addSubview(word)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    private func refresh() {
+        guard let source else { return }
+        let live = source == .live
+        let tint: NSColor = live ? .controlAccentColor : NSColor.labelColor.withAlphaComponent(0.78)
+        icon.image = StudioPageStyle.symbol(source.symbol, size: 9.5, weight: .semibold, color: tint)
+        word.stringValue = source.word
+        word.textColor = tint
+        setAccessibilityLabel(source.word)
+        needsDisplay = true
+        needsLayout = true
+    }
+
+    override func updateLayer() {
+        let live = source == .live
+        layer?.backgroundColor = (live ? NSColor.controlAccentColor.withAlphaComponent(0.12) : StudioPageStyle.fieldFill).cgColor
+        layer?.borderColor = NSColor.labelColor.withAlphaComponent(live ? 0 : 0.08).cgColor
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 7 + 12 + 4 + ceil(word.intrinsicContentSize.width) + 7, height: 18)
+    }
+
+    override func layout() {
+        super.layout()
+        icon.frame = NSRect(x: 7, y: 3, width: 12, height: 12)
+        word.frame = NSRect(x: 23, y: 1.5, width: bounds.width - 28, height: 15)
+    }
+}
 
 /// One swatch: a circle of the color (a rounded square for the card), half light and half dark while Text and Card
 /// follow the look, a dashed circle for More…; the name under it; a ring in the accent color while it is open.
@@ -733,11 +805,20 @@ final class StudioSwatchBlockView: NSView, StudioPageItemView {
         needsLayout = true
     }
 
-    /// Everything on one line when the parts and the pair fit four cells; else the parts, then the pair.
-    var oneRow: Bool { swatches.parts.count + swatches.pair.count <= 4 }
+    /// Everything on one line when the parts and the pair fit four cells and the note fits beside them; else the
+    /// parts, then the pair.
+    func oneRow(width: CGFloat) -> Bool {
+        let cells = swatches.parts.count + swatches.pair.count
+        guard cells <= 4 else { return false }
+        guard swatches.followNote != nil else { return true }
+        let note = ceil(followNote.intrinsicContentSize.width) + 6
+        return CGFloat(cells) * Self.cell + (swatches.parts.isEmpty ? 0 : 5) + note <= width
+    }
+
+    var oneRow: Bool { oneRow(width: bounds.width) }
 
     func height(forWidth width: CGFloat) -> CGFloat {
-        let rows: CGFloat = oneRow || swatches.parts.isEmpty ? 1 : 2
+        let rows: CGFloat = oneRow(width: width) || swatches.parts.isEmpty ? 1 : 2
         var h = rows * Self.cellHeight + (rows - 1) * 8
         if swatches.caption != nil { h += 8 + 15 }
         return h

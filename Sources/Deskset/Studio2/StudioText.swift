@@ -223,6 +223,11 @@ enum StudioText {
         case hours24 = "widget.hours24"
         case unitsAuto = "widget.units.auto"
         case onLabel = "widget.on"
+        case refreshSecond = "widget.refresh.second"
+        case refreshTwoSeconds = "widget.refresh.twoSeconds"
+        case refreshMinute = "widget.refresh.minute"
+        case undoRefresh = "undo.refresh"
+        case confirmRefresh = "confirm.refresh"
         // Undo names and the confirmations under a changed control.
         case undoColor = "undo.color"
         case undoFont = "undo.font"
@@ -438,6 +443,11 @@ enum StudioText {
         .hours24: ("13:30", "13:30"),
         .unitsAuto: ("Auto", "自动"),
         .onLabel: ("On", "开"),
+        .refreshSecond: ("Refresh Every Second", "每 1 秒刷新"),
+        .refreshTwoSeconds: ("Refresh Every 2 Seconds", "每 2 秒刷新"),
+        .refreshMinute: ("Refresh Every Minute", "每分钟刷新"),
+        .undoRefresh: ("Refresh", "刷新"),
+        .confirmRefresh: ("Now: %@", "现在：%@"),
         .undoColor: ("Color", "颜色"),
         .undoFont: ("Font", "字体"),
         .undoTextSize: ("Text Size", "字号"),

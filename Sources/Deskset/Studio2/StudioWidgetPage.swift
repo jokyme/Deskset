@@ -349,6 +349,11 @@ final class StudioWidgetPage {
                   selected: value.caseInsensitiveCompare(look.current) == .orderedSame)
         }
         items.append(.init(id: "look", kind: .thumbnails(.init(tiles: tiles))))
+        // The look is the suite's: choosing one changes every widget that reads it (package scope).
+        if look.widgets > 1 {
+            items.append(.init(id: "look.scope", kind: .note(.init(
+                text: StudioText.format(.lookShared, look.widgets, skin?.rootConfig ?? ""), symbol: "square.stack"))))
+        }
         if !plan.sizeInFonts { items.append(.init(id: "size", kind: .row(sizeRow(facts)))) }
         return StudioPage.Section(id: "look", title: StudioText[.sectionLookAndSize], items: items)
     }
@@ -490,10 +495,8 @@ final class StudioWidgetPage {
         case .variable(let variable, let value):
             writeVariable(variable, value: value, name: StudioText[.undoShows], confirm: confirm, item: item, section: "shows")
         case .rebind(let meters):
-            let ops: [EditOp] = meters.compactMap { meter in
-                let target = skin.localTarget(section: meter, key: "MeasureName") ?? skin.ownTarget(section: meter, key: "MeasureName")
-                return .setValue(file: target.file, section: target.section, key: "MeasureName", value: choice.measure,
-                                 afterIncludes: false)
+            let ops: [EditOp] = meters.map { meter in
+                Self.own(meter, key: "MeasureName", value: choice.measure, skin: skin)
             }
             apply(StudioText[.undoShows], ops, confirm: confirm, item: item, section: "shows")
         }
@@ -535,10 +538,7 @@ final class StudioWidgetPage {
             guard let t = skin.localTarget(section: look, key: "FontFace") else { return [] }
             return [.setValue(file: t.file, section: t.section, key: "FontFace", value: face, afterIncludes: false)]
         case .meters(let meters):
-            return meters.map { m in
-                let t = skin.localTarget(section: m, key: "FontFace") ?? skin.ownTarget(section: m, key: "FontFace")
-                return .setValue(file: t.file, section: t.section, key: "FontFace", value: face, afterIncludes: false)
-            }
+            return meters.map { Self.own($0, key: "FontFace", value: face, skin: skin) }
         }
     }
 
@@ -558,12 +558,21 @@ final class StudioWidgetPage {
                 guard let t = skin.localTarget(section: look, key: "FontSize") else { continue }
                 ops.append(.setValue(file: t.file, section: t.section, key: "FontSize", value: text, afterIncludes: false))
             case .meter(let m):
-                let t = skin.localTarget(section: m, key: "FontSize") ?? skin.ownTarget(section: m, key: "FontSize")
-                ops.append(.setValue(file: t.file, section: t.section, key: "FontSize", value: text, afterIncludes: false))
+                ops.append(Self.own(m, key: "FontSize", value: text, skin: skin))
             }
         }
         apply(StudioText[.undoTextSize], ops, confirm: StudioText[step > 0 ? .confirmBigger : .confirmSmaller],
               item: "fonts.top", section: "fonts")
+    }
+
+    /// An option of one part, written for this widget: where `Skin.localTarget` says when the part is the widget's
+    /// own, else where `ScopeResolver` puts the part's own value.
+    static func own(_ section: String, key: String, value: String, skin: Skin) -> EditOp {
+        if let t = skin.localTarget(section: section, key: key) {
+            return .setValue(file: t.file, section: t.section, key: key, value: value, afterIncludes: false)
+        }
+        let t = ScopeResolver(skin: skin).target(section: section, key: key, selection: [section])
+        return .setValue(file: t.file, section: t.section, key: t.key, value: value, afterIncludes: false)
     }
 
     /// A size one step on: to a quarter point, at least a quarter point further, never below 1.
@@ -614,10 +623,54 @@ final class StudioWidgetPage {
     }
 
     private func link(_ id: String) {
+        guard let facts, let skin else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
         switch id {
-        case "options.variables", "options.all", "shows.all", "more-settings": break
-        default: break
+        case "options.all":
+            for o in facts.options.dropFirst(plan.options.count) {
+                menu.addItem(ClosureMenuItem("\(o.label) — \(o.current)", enabled: false) {})
+            }
+        case "options.variables":
+            for v in skin.valueUsages().values {
+                guard let name = v.variableName, v.origin != .none else { continue }
+                menu.addItem(ClosureMenuItem("\(name) = \(v.raw)", enabled: false) {})
+            }
+        case "shows.all":
+            for row in facts.shows.dropFirst(plan.shows.count) {
+                let name = skin.measure(named: row.measure).map { StudioWidgetFacts.dataName($0, in: skin).name } ?? row.measure
+                menu.addItem(ClosureMenuItem(StudioWords.kind(row.kind) + (row.number > 0 ? " \(row.number)" : "")
+                                             + " — " + StudioWords.data(name), enabled: false) {})
+            }
+        case "more-settings":
+            // How often the widget refreshes ([Rainmeter] Update), for this widget.
+            let current = skin.settings.update
+            for (ms, key) in [(1000, StudioText.Key.refreshSecond), (2000, .refreshTwoSeconds), (60000, .refreshMinute)] {
+                let item = ClosureMenuItem(StudioText[key]) { [weak self] in self?.setUpdate(ms) }
+                item.state = current == ms ? .on : .off
+                menu.addItem(item)
+            }
+        default: return
         }
+        guard app.presentsWindows, menu.numberOfItems > 0 else { return }
+        let view: NSView? = id == "more-settings" ? window.inspectorController.pageView.footerView(id)
+            : window.inspectorController.pageView.itemView(id)
+        guard let view else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 2), in: view)
+    }
+
+    /// How often the widget refreshes, for this widget.
+    func setUpdate(_ milliseconds: Int) {
+        guard let skin, let t = skin.localTarget(section: "Rainmeter", key: "Update") else { return }
+        let shown: String
+        switch milliseconds {
+        case 1000: shown = StudioText[.refreshSecond]
+        case 2000: shown = StudioText[.refreshTwoSeconds]
+        default: shown = StudioText[.refreshMinute]
+        }
+        apply(StudioText[.undoRefresh], [.setValue(file: t.file, section: t.section, key: "Update",
+                                                   value: String(milliseconds), afterIncludes: false)],
+              confirm: StudioText.format(.confirmRefresh, shown), item: "more-settings", section: "look")
     }
 
     // MARK: Colors
