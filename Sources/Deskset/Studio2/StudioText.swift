@@ -603,7 +603,7 @@ enum StudioText {
         .scopeOnly: ("This %@ only", "只改这个%@"),
         .scopeApplyAll: ("Apply to All %d %@", "应用到全部 %d 个%@"),
         .scopeAll: ("All %d %@", "全部 %d 个%@"),
-        .scopeOnlyThis: ("Only This %@", "只改这一个"),
+        .scopeOnlyThis: ("Only This %@", "只改这一个%@"),
         .scopeShareStyle: ("%d %@ share one style", "%d 个%@共用一个样式"),
         .scopeShareValue: ("%d parts use this value", "%d 个部件用这个值"),
         .scopeWidgets: ("This widget · all %d", "这个小组件 · 全部 %d 个"),

@@ -417,7 +417,7 @@ final class StudioWidgetPage {
         case .hoverSwatch(_, let swatch):
             guard activeSwatch == nil else { return }
             hoveredSwatch = swatch
-            window.canvasController.canvas.relatedNames = swatch.flatMap { facts.flatMap(colorRoles)?[$0]?.meters } ?? []
+            showDraws(swatch)
             refresh()
         case .thumbnail(_, let index): chooseLook(index)
         case .link(let id): link(id)
@@ -426,6 +426,15 @@ final class StudioWidgetPage {
         case .undo, .topUndo: session?.undoStack.undo()
         case .suggestion, .number, .crumb, .scopeLink, .scopeHover, .tokenData, .example, .hoverItem, .filter: break
         }
+    }
+
+    /// What the pointed-at swatch paints, framed on the canvas (the frames fade when the pointer leaves).
+    func showDraws(_ swatch: String?) {
+        let overlay = window.canvasController.overlay
+        guard let swatch, let facts, let skin, let role = colorRoles(facts)[swatch] else { return overlay.showFrames(nil) }
+        let shown = role.meters.filter { skin.meter(named: $0).map { !$0.hidden } ?? false }
+        overlay.showFrames(.init(names: shown, tag: StudioText.format(.paints, Self.title(role), StudioWords.parts(role.parts)),
+                                 ink: StudioCanvasOverlay.ink(for: skin)))
     }
 
     func option(_ item: String) -> StudioWidgetFacts.Option? {
@@ -730,6 +739,7 @@ final class StudioWidgetPage {
         activeSwatch = swatch
         hoveredSwatch = nil
         window.canvasController.canvas.relatedNames = []
+        window.canvasController.overlay.clearFramesNow()
         let written = StudioColorWriting.currentText(role, skin: skin)
         let target = StudioColorPopover.Target(title: Self.title(role),
                                                color: role.color, written: written, parts: role.parts,

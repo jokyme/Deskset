@@ -149,6 +149,7 @@ enum StudioSnapshot {
             StudioColorPopover.recentInMemory = screen.recentColors
             controller.widgetPage.openColor(role, swatch: swatch)
         }
+        if let swatch = screen.hoverSwatch { controller.widgetPage.handle(.hoverSwatch(item: "colors", swatch: swatch)) }
         // The part's page, as the screen has it.
         if let part = screen.selection {
             StudioPartPage.rememberedInMemory = []

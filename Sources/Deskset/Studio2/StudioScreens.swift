@@ -61,6 +61,8 @@ struct StudioScreen {
     var pinned: [String: (value: Double, text: String?)] = [:]
     /// The swatch the color popover is open on ("part:1": the second part color).
     var colorPopover: String?
+    /// The swatch the pointer is on (the canvas frames what it paints).
+    var hoverSwatch: String?
     /// The recent colors the popover lists.
     var recentColors: [RGBA] = []
     /// What the design shows that the window does not have yet: listed with the differences.
@@ -99,9 +101,9 @@ struct StudioScreen {
                                       replace: "Location=Hangzhou"),
                              FileEdit(path: "@Resources/Variables.inc", find: "LocationConfirmed=0",
                                       replace: "LocationConfirmed=1")],
-                     zoom: 1.65,
+                     zoom: 1.65, hoverSwatch: "part:0",
                      later: ["wallpaper backdrop", "the city row (city search)", "the Colors scope sentence for two copies",
-                             "what-it-paints outline", "Accent among the colors"]),
+                             "Accent among the colors"]),
         StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
                      scopeHover: true, updates: 4, pinned: systemReadings,
                      later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
