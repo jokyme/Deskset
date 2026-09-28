@@ -1,9 +1,9 @@
 # Skin threading: running every skin off the main thread
 
 > Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, and phase 1,
-> thread-safe shared services and the stress suite, are done (2026-09-26, §15). Every skin still runs on the main
-> thread. Phase 2 is planned step by step in §15 (2026-09-28); §8.5 was revised for the Studio's own instance of the
-> widget it edits.
+> thread-safe shared services and the stress suite, are done (2026-09-26, §15). Phase 2 is done (2026-09-28, §15): the
+> desktop skins run on one engine thread by default (`SkinThreading=engine`; `SkinThreading=main` keeps every skin on
+> the main thread, for debugging). §8.5 was revised for the Studio's own instance of the widget it edits.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
@@ -1316,7 +1316,7 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
   `SkinController` (idle in the suite); a NowPlaying measure read on demand still asks its `SkinController` whether
   updates are paused (`currentSnapshot`), a main-thread object (§4.6).
 
-### Phase 2: plan (2026-09-28)
+### Phase 2: done (2026-09-28)
 
 The goal is §10's: every desktop skin runs on one shared engine thread, the UI (menus, the Manage window, the Studio,
 the installer) no longer stalls skins, and `SkinThreading=main` switches back. The plan is for the code as it is on
@@ -1400,9 +1400,9 @@ when a skin runs on the engine thread.
   background; a Button's image, frames and flips). `Meter.isHit`, `ShapeMeter.hitTest` and `ButtonMeter.hitTest` use
   the same values, so there is one hit test, not two that could drift apart.
 
-**Not in these steps** (a later pass does them): stress runs on the engine thread, §10's measurements (Deskset and
-WindowServer CPU for ten skins, a visualizer's frame pacing while the Studio is open, energy), the soak, and making
-`engine` the default.
+**Not in these steps** (the later pass at the end of this section does them): stress runs on the engine thread, §10's
+measurements (Deskset and WindowServer CPU for ten skins, a visualizer's frame pacing while the Studio is open,
+energy), the soak, and making `engine` the default.
 
 **Steps.** Every step ends with all of these passing:
 - `swift build` and `swift run DesksetSelfTest`;
