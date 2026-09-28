@@ -275,6 +275,7 @@ final class StudioCanvasViewController: NSViewController {
     func updateGlass() {
         let dark = backdropView.showsDarkBackdrop
         glassPlane.darkBackdrop = dark
+        glassPlane.darkAppearance = StudioPageStyle.isDark(view.effectiveAppearance)
         neighboursView.darkBackdrop = dark
         glassPlane.regions = glassRegions(skinProvider()?.glassRegions ?? [], dark)
     }

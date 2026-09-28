@@ -25,9 +25,11 @@ final class StudioLookThumbnails {
     /// Draws the widget in each of `look`'s looks (nothing when they are already drawn from the same text).
     func render(session: EditingSession, look: StudioWidgetFacts.Look, skinsDirectory: URL) {
         guard let studio = session.studioSkin, let file = look.file else { return }
+        // The preview's look, else the Mac's (as the Studio's instance sees it).
+        let dark = session.host.appearance?.isDark ?? MacAppearance.current.value().isDark
         let key = ([studio.fileURL] + studio.includedFiles).map { url -> String in
             session.buffers.buffer(url).map { "\($0.text.hashValue)" } ?? url.path
-        }.joined(separator: "|") + "|\(look.current)|\(String(describing: session.host.appearance?.isDark))"
+        }.joined(separator: "|") + "|\(look.current)|\(dark)"
         guard key != madeFrom else { return }
         madeFrom = key
         images = [:]
@@ -42,7 +44,7 @@ final class StudioLookThumbnails {
             skin.measureValues = session.measureValues
             do { try skin.load() } catch { continue }
             skin.update()
-            if let image = Self.draw(skin, dark: session.host.appearance?.isDark ?? false) {
+            if let image = Self.draw(skin, dark: dark) {
                 images[value.lowercased()] = image
             }
             skin.close()

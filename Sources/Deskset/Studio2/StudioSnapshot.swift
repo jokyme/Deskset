@@ -354,6 +354,7 @@ enum StudioSnapshot {
             NSRect(x: r.minX, y: r.minY, width: 1, height: r.height).fill()
             // The page itself (a scroll view's own drawing is not what the window shows off screen).
             draw(controller.inspectorController.pageView, in: content)
+            redrawSegments(in: controller.inspectorController.pageView, content: content)
         }
         if !controller.sidebarItem.isCollapsed {
             let pane = controller.sidebarController.view
@@ -465,6 +466,49 @@ enum StudioSnapshot {
 
     /// A segmented control as the window in front draws it: a capsule track, the chosen segment filled with the accent
     /// color and its words white (off screen the control draws the grey of a window behind others).
+    /// Draws the segmented controls under `view` again as a key window shows them: a control in a window that is not
+    /// the active app's draws its chosen segment grey, so a copy outside any window (which draws as active: the chosen
+    /// segment in the accent color) is drawn over each.
+    static func redrawSegments(in view: NSView, content: NSView) {
+        for sub in view.subviews {
+            if let control = sub as? NSSegmentedControl {
+                guard !control.isHiddenOrHasHiddenAncestor, control.bounds.width > 0, control.bounds.height > 0,
+                      !control.visibleRect.intersection(control.bounds).isEmpty else { continue }
+                let copy = detachedCopy(of: control)
+                guard let part = copy.bitmapImageRepForCachingDisplay(in: copy.bounds) else { continue }
+                copy.cacheDisplay(in: copy.bounds, to: part)
+                part.draw(in: control.convert(control.bounds, to: content), from: .zero, operation: .sourceOver,
+                          fraction: 1, respectFlipped: true, hints: nil)
+            } else {
+                redrawSegments(in: sub, content: content)
+            }
+        }
+    }
+
+    /// A copy of `control` in no window, with its segments, widths, choice, font and colors.
+    static func detachedCopy(of control: NSSegmentedControl) -> NSSegmentedControl {
+        let copy = NSSegmentedControl(frame: NSRect(origin: .zero, size: control.bounds.size))
+        copy.appearance = control.effectiveAppearance
+        copy.segmentCount = control.segmentCount
+        copy.trackingMode = control.trackingMode
+        copy.segmentStyle = control.segmentStyle
+        copy.segmentDistribution = control.segmentDistribution
+        copy.controlSize = control.controlSize
+        copy.font = control.font
+        copy.selectedSegmentBezelColor = control.selectedSegmentBezelColor
+        copy.isEnabled = control.isEnabled
+        for i in 0..<control.segmentCount {
+            copy.setLabel(control.label(forSegment: i) ?? "", forSegment: i)
+            copy.setImage(control.image(forSegment: i), forSegment: i)
+            copy.setWidth(control.width(forSegment: i), forSegment: i)
+            copy.setEnabled(control.isEnabled(forSegment: i), forSegment: i)
+            copy.setSelected(control.isSelected(forSegment: i), forSegment: i)
+        }
+        copy.frame = NSRect(origin: .zero, size: control.bounds.size)
+        copy.layoutSubtreeIfNeeded()
+        return copy
+    }
+
     static func drawSegments(_ control: NSSegmentedControl, in content: NSView, dark: Bool) {
         guard !control.isHiddenOrHasHiddenAncestor else { return }
         let r = control.convert(control.bounds, to: content).insetBy(dx: 0, dy: 0.5)

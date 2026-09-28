@@ -92,12 +92,16 @@ enum StudioPageStyle {
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config)
     }
 
-    /// The height of `text` in `font` wrapped at `width`.
+    /// The height a wrapping label needs for `text` in `font` at `width` (measured by a label's own cell: a label
+    /// draws a line taller than the font's leading says, so a height worked out from the text alone cuts the last
+    /// line).
     static func height(of text: String, font: NSFont, width: CGFloat) -> CGFloat {
         guard !text.isEmpty else { return 0 }
-        let r = (text as NSString).boundingRect(with: NSSize(width: max(width, 1), height: 10_000),
-                                                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                                                attributes: [.font: font])
-        return ceil(r.height)
+        measuring.font = font
+        measuring.stringValue = text
+        let size = measuring.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: max(width, 1), height: 10_000))
+        return ceil(size?.height ?? 0)
     }
+
+    private static let measuring = NSTextField(wrappingLabelWithString: "")
 }

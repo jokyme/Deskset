@@ -382,9 +382,12 @@ final class StudioColorLabelView: NSView {
         super.layout()
         let h = bounds.height
         swatch.frame = NSRect(x: 0, y: (h - 18) / 2, width: 18, height: 18)
-        let tw = ceil(title.intrinsicContentSize.width) + 4
-        title.frame = NSRect(x: 25, y: (h - 16) / 2, width: min(tw, bounds.width - 25), height: 16)
-        let nx = 25 + tw + 6
+        let tw = ceil(title.intrinsicContentSize.width)
+        title.frame = NSRect(x: 23, y: (h - 16) / 2, width: min(tw, bounds.width - 23), height: 16)
+        let nx = 23 + tw + 3
+        // The note in the smaller size when the usual one would be cut ("follows Light / Dark" in full).
+        note.font = StudioPageStyle.noteFont
+        if ceil(note.intrinsicContentSize.width) > bounds.width - nx { note.font = StudioPageStyle.smallFont }
         note.frame = NSRect(x: nx, y: (h - 15) / 2, width: max(bounds.width - nx, 0), height: 15)
     }
 

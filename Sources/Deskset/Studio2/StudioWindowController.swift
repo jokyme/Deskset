@@ -595,8 +595,7 @@ final class StudioRunningViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func loadView() {
-        titleLabel.font = NSFont(descriptor: NSFont.systemFont(ofSize: 15, weight: .semibold).fontDescriptor
-            .withDesign(.serif) ?? NSFont.systemFont(ofSize: 15).fontDescriptor, size: 15)
+        titleLabel.font = StudioPageStyle.titleFont(15)
         pathLabel.font = .systemFont(ofSize: 12)
         pathLabel.lineBreakMode = .byTruncatingMiddle
         pathLabel.isSelectable = true

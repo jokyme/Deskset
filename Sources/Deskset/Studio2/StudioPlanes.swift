@@ -20,6 +20,8 @@ final class StudioGlassPlane: NSView {
     var zoom: CGFloat = 1 { didSet { if zoom != oldValue { update() } } }
     /// The stand-ins' look: over a dark backdrop or a light one.
     var darkBackdrop = false { didSet { if darkBackdrop != oldValue { needsDisplay = true } } }
+    /// The preview is in Dark Mode: glass darkens what is behind it (the stand-ins get a dark veil under their body).
+    var darkAppearance = false { didSet { if darkAppearance != oldValue { needsDisplay = true } } }
 
     init(standIns: Bool) {
         usesStandIns = standIns
@@ -60,7 +62,19 @@ final class StudioGlassPlane: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard usesStandIns, let ctx = NSGraphicsContext.current?.cgContext else { return }
-        GlassPlaceholder.draw(placedRegions, in: ctx, dark: darkBackdrop)
+        let placed = placedRegions
+        if darkAppearance {
+            for region in placed {
+                guard let path = GlassPlaceholder.path(region) else { continue }
+                ctx.saveGState()
+                if let clip = region.clip { ctx.clip(to: clip.cgRect) }
+                ctx.addPath(path)
+                ctx.setFillColor(CGColor(srgbRed: 0.05, green: 0.04, blue: 0.10, alpha: region.style == .clear ? 0.22 : 0.42))
+                ctx.fillPath()
+                ctx.restoreGState()
+            }
+        }
+        GlassPlaceholder.draw(placed, in: ctx, dark: darkBackdrop)
     }
 }
 

@@ -42,10 +42,13 @@ final class StudioPreviewPopoverController: NSViewController {
             control.action = #selector(changed)
             control.translatesAutoresizingMaskIntoConstraints = false
             control.widthAnchor.constraint(equalToConstant: 340).isActive = true
-            // Equal segments, as wide as the row allows.
-            for i in 0..<control.segmentCount {
-                control.setWidth((340 - 8) / CGFloat(control.segmentCount), forSegment: i)
-            }
+            // Segments as wide as the row allows: each its label's width, the room left shared out equally (so
+            // "Tinted (Mac setting)" is never cut).
+            let font = control.font ?? .systemFont(ofSize: 11.5)
+            let labels = (0..<control.segmentCount).map { ceil((control.label(forSegment: $0) ?? "")
+                .size(withAttributes: [.font: NSFont.systemFont(ofSize: font.pointSize, weight: .medium)]).width) + 16 }
+            let spare = max(0, 340 - 8 - labels.reduce(0, +)) / CGFloat(max(control.segmentCount, 1))
+            for i in 0..<control.segmentCount { control.setWidth(labels[i] + spare, forSegment: i) }
         }
         appearanceControl.selectedSegment = initial.appearance.rawValue
         glassControl.selectedSegment = initial.glass.rawValue
@@ -92,12 +95,9 @@ final class StudioPreviewPopoverController: NSViewController {
     }
 }
 
-/// The Studio's fonts: New York for titles (the serif signature), the system font elsewhere.
+/// The Studio's fonts: New York for titles (the serif signature; Songti SC in Chinese), the system font elsewhere.
 enum StudioFonts {
-    static func title(_ size: CGFloat, weight: NSFont.Weight = .semibold) -> NSFont {
-        let base = NSFont.systemFont(ofSize: size, weight: weight)
-        return base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) } ?? base
-    }
+    static func title(_ size: CGFloat) -> NSFont { StudioPageStyle.titleFont(size) }
 }
 
 /// The menus of the preview bar: Backdrop ▾ and Data ▾. Their items call back with what was chosen.
