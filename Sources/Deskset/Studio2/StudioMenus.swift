@@ -407,6 +407,7 @@ extension StudioWindowController {
         session.takeChangesFromDisk()
         session.reloadStudioSkin()
         session.scheduleDesktopRefresh()
+        releaseOthers()
         refreshDiagnostics()
     }
 

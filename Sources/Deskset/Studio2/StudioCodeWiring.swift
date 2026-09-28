@@ -20,6 +20,10 @@ final class StudioCodeState {
     var diagnostics: [IniDiagnostic] = []
     /// The diagnostics of the widget's instance they were worked out for (the hold asks for them too).
     var checked: [IniDiagnostic] = []
+    /// The red problems of the version the desktop runs (nil: not known yet): only a new one holds the desktop.
+    var desktopProblems: Set<String>?
+    /// Files other widgets share, written while the desktop was held: those widgets load again once it is not.
+    var othersWaiting: [URL] = []
     weak var checkedSkin: Skin?
     var checkTimer: Timer?
     var committing = false
@@ -119,8 +123,17 @@ extension StudioWindowController {
         codeState.checked = []
         codeState.checkedSkin = nil
         codeState.saveError = nil
+        codeState.desktopProblems = nil
+        codeState.othersWaiting = []
         session.holdsDesktop = { [weak self] skin in self?.holdsDesktop(skin) ?? false }
         session.willApply = { [weak self] in self?.flushCode() }
+    }
+
+    /// The red problems the desktop's version has: those of the widget's instance as the window takes it (the version
+    /// the desktop runs; asked once the instance is there).
+    func noteDesktopProblems() {
+        guard codeState.desktopProblems == nil, let skin else { return }
+        codeState.desktopProblems = Self.redKeys(diagnostics(of: skin))
     }
 
     func codeDetached(_ session: EditingSession) {
@@ -129,6 +142,11 @@ extension StudioWindowController {
         if codeController.isViewLoaded, codeView.hasUncommittedChanges { codeView.commitNow(explicit: true) }
         session.holdsDesktop = nil
         session.willApply = nil
+        // Still held: the desktop keeps its last working version (the files have the problem), and nothing waits
+        // for a reload that no one will release.
+        session.endHold()
+        codeState.othersWaiting = []
+        codeState.desktopProblems = nil
     }
 
     // MARK: Panes
@@ -359,9 +377,24 @@ extension StudioWindowController {
         return found
     }
 
-    /// The editing session's hold: the desktop copy keeps its version while the widget cannot draw a part.
+    /// The editing session's hold: the desktop copy keeps its version while the widget cannot draw a part — for a red
+    /// problem the desktop's version does not have already (a skin with a missing image still reaches the desktop
+    /// with each step). Not held: the desktop takes this version, whose problems become the desktop's.
     func holdsDesktop(_ skin: Skin) -> Bool {
-        IniDiagnostics.hasProblems(diagnostics(of: skin))
+        let red = Self.redKeys(diagnostics(of: skin))
+        let known = codeState.desktopProblems ?? red
+        if red.subtracting(known).isEmpty {
+            codeState.desktopProblems = red
+            return false
+        }
+        return true
+    }
+
+    /// Red problems as the hold compares them: what and where, not the line (typing moves lines).
+    static func redKeys(_ diagnostics: [IniDiagnostic]) -> Set<String> {
+        Set(diagnostics.filter { $0.severity == .problem }.map { d in
+            "\(SourceFileID(d.file).url.path.lowercased())|\(d.kind)|\(d.meters.map { $0.lowercased() }.sorted())"
+        })
     }
 
     /// Typing: the check runs once it pauses for 0.3 seconds (never moving the caret).

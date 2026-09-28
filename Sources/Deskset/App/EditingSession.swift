@@ -569,6 +569,18 @@ final class EditingSession {
     /// A reload of the desktop copy waits because `holdsDesktop` held it.
     private(set) var isHoldingDesktop = false
 
+    /// The window that held the desktop copy lets go (it closes, or shows another widget): the desktop keeps the last
+    /// working version it runs (the files still have the problem), nothing waits for a reload any more, and a move
+    /// that waited for it is made now.
+    func endHold() {
+        guard isHoldingDesktop || placeAfterRefresh != nil else { return }
+        isHoldingDesktop = false
+        if scheduledRefresh == nil, let place = placeAfterRefresh {
+            placeAfterRefresh = nil
+            runningDesktop?.moveTo(x: place.x, y: place.y)
+        }
+    }
+
     /// Whether a reload of the desktop copy waits for its turn.
     var hasScheduledDesktopRefresh: Bool { scheduledRefresh != nil }
 

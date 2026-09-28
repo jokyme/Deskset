@@ -15,6 +15,71 @@ enum Studio2CodeSelfTests {
         menuTests(t)
         duplicateDeleteTests(t)
         closingTests(t)
+        knownProblemTests(t)
+    }
+
+    /// Only a red problem the desktop's version does not have holds it: a skin that already misses a picture still
+    /// reaches the desktop with each step; a new problem holds it, and the other widgets reading a shared file written
+    /// meanwhile load again once the hold ends.
+    static func knownProblemTests(_ t: AppTestRunner) {
+        t.suite("Studio2: code: a problem the desktop already has does not hold it") {
+            Studio2SelfTests.prepare(t)
+            let ini = ["[Rainmeter]", "Update=1000", "", "[Variables]", "@Include=#@#Shared.inc", "",
+                       "[MeterPic]", "Meter=Image", "ImageName=missing.png", "W=20", "H=20", "",
+                       "[MeterTitle]", "Meter=String", "Text=Hello", "FontColor=255,255,255", "X=30", "",
+                       "[MeterBar]", "Meter=Bar", "MeterStyle=StyleBar", "Y=30", ""].joined(separator: "\n")
+            guard let (app, c, _) = try Studio2SelfTests.loadSkin(t, "HoldKnown", ini) else { return }
+            let shared = app.skinsDirectory.appendingPathComponent("Studio2/@Resources/Shared.inc")
+            try FileManager.default.createDirectory(at: shared.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "[StyleBar]\nW=(#BarWidth#)\nH=6\n\n[Variables]\nBarWidth=100\n".write(to: shared, atomically: true,
+                                                                                         encoding: .utf8)
+            let otherFolder = app.skinsDirectory.appendingPathComponent("Studio2/HoldOther")
+            try FileManager.default.createDirectory(at: otherFolder, withIntermediateDirectories: true)
+            try "[Variables]\n@Include=#@#Shared.inc\n\n[MeterBar]\nMeter=Bar\nMeterStyle=StyleBar\n"
+                .write(to: otherFolder.appendingPathComponent("HoldOther.ini"), atomically: true, encoding: .utf8)
+            guard app.activate(config: "Studio2\\HoldOther", file: "HoldOther.ini") != nil else {
+                return t.check(false, "the other widget")
+            }
+            app.refresh(c)
+            guard let c2 = app.controller(for: "Studio2\\HoldKnown"), let studio = Studio2SelfTests.openNew(app, c2),
+                  let session = studio.session, let skin = studio.skin else { return t.check(false, "opens") }
+            t.check(IniDiagnostics.hasProblems(studio.diagnostics(of: skin)), "the widget misses a picture already")
+            studio.codeView.idleCommitDelay = 60
+            studio.setCodeMode(.alongside)
+            t.check(type(studio, replacing: "FontColor=255,255,255", with: "FontColor=255,0,0"))
+            studio.codeView.commitNow()
+            t.check(!session.isHoldingDesktop, "a problem the desktop has already: not held")
+            t.check(AppSelfTest.spin(timeout: 5) {
+                app.controller(for: "Studio2\\HoldKnown")?.skin.meter(named: "MeterTitle")?.option("FontColor") == "255,0,0"
+            }, "the desktop copy loads the step")
+            AppSelfTest.spin(timeout: 0.05) { false }
+
+            // A new problem in the shared file: this widget is held, and so is the other one reading the file.
+            let other = app.controller(for: "Studio2\\HoldOther")
+            studio.codeView.show(file: shared)
+            t.check(type(studio, replacing: "W=(#BarWidth#)", with: "W=(#BarWidth# *)"))
+            studio.codeView.commitNow()
+            t.check(session.isHoldingDesktop, "a new red problem holds the desktop")
+            AppSelfTest.spin(timeout: 0.3) { false }
+            t.check(app.controller(for: "Studio2\\HoldOther") === other, "the other widget keeps its version too")
+            // Fixed: this widget reloads, and the other one once.
+            AppSelfTest.spin(timeout: 0.05) { false }
+            t.check(type(studio, replacing: "(#BarWidth# *)", with: "(#BarWidth# * 2)"))
+            studio.codeView.commitNow()
+            t.check(!session.isHoldingDesktop)
+            t.check(AppSelfTest.spin(timeout: 5) { app.controller(for: "Studio2\\HoldOther") !== other },
+                    "the other widget loads the fixed file")
+            // Held when the window lets go: nothing waits any more, the desktop keeps what it runs.
+            AppSelfTest.spin(timeout: 0.05) { false }
+            t.check(type(studio, replacing: "(#BarWidth# * 2)", with: "(#BarWidth# *)"))
+            studio.codeView.commitNow()
+            t.check(session.isHoldingDesktop)
+            let held = app.controller(for: "Studio2\\HoldKnown")
+            studio.window?.close()
+            t.check(!session.isHoldingDesktop, "the hold ends with the window")
+            AppSelfTest.spin(timeout: 0.3) { false }
+            t.check(app.controller(for: "Studio2\\HoldKnown") === held, "and the desktop keeps its last working version")
+        }
     }
 
     /// Edits waiting for their pause are made before an undo (the undo takes them back, and Redo stays), and before

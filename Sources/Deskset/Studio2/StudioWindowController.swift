@@ -200,6 +200,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
             codeAttached(session)
         }
         link?.link(c)
+        noteDesktopProblems()
         turnOnRainmeterDetailsTheFirstTime()
         widgetChanged(fit: true)
         preview.attach()
@@ -533,11 +534,23 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         }
     }
 
-    /// A step that changed a file other widgets read too (the suite's look): they load again, whichever way it went.
+    /// A step that changed a file other widgets read too (the suite's look): they load again, whichever way it went —
+    /// unless the desktop is held (half-typed code never reaches the desktop, theirs neither): then once it is not.
     private func refreshOthers(_ t: Transaction) {
         guard let skin else { return }
         let shared = t.files.filter { !skin.isOwnFile($0) }
-        if !shared.isEmpty { link?.refreshOthers(reading: shared) }
+        for f in shared where !codeState.othersWaiting.contains(where: { SourceFileID($0) == SourceFileID(f) }) {
+            codeState.othersWaiting.append(f)
+        }
+        releaseOthers()
+    }
+
+    /// The other widgets waiting for files written while the desktop was held load again, once it is not.
+    func releaseOthers() {
+        guard session?.isHoldingDesktop != true, !codeState.othersWaiting.isEmpty else { return }
+        let files = codeState.othersWaiting
+        codeState.othersWaiting = []
+        link?.refreshOthers(reading: files)
     }
 
     /// Live reload: a file of the widget changed on disk by something other than the session reloads the widget (the
@@ -565,6 +578,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         }
         session.reloadStudioSkin()
         session.scheduleDesktopRefresh()
+        releaseOthers()
     }
 
     // MARK: NSWindowDelegate
