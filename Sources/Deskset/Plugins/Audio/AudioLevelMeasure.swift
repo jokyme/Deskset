@@ -10,7 +10,8 @@ import DesksetCore
 //   child of itself).
 // - A child (`Parent=Name`) reads Type, Channel, FFTIdx and BandIdx on every option read (these may change with
 //   !SetOption / DynamicVariables) and asks its parent's analyzer. Children and parents live in the same skin.
-// - Values: RMS, Peak, FFT, Band 0…1; FFTFreq / BandFreq in Hz; DeviceStatus 1 / 0. Format, DeviceName,
+// - Values: RMS, Peak, FFT, Band 0…1; FFTFreq / BandFreq in Hz; DeviceStatus 1 / 0, and 2 when the silence
+//   watchdog suspects a refused System Audio Recording (`AudioSourceStatus.deviceStatus`). Format, DeviceName,
 //   DeviceID and DeviceList are strings (number 0). Device IDs are Core Audio UIDs (e.g. "BuiltInSpeakerDevice");
 //   a Windows ID ({0.0.0.00000000}.{…}) matches nothing and falls back to the default device.
 
@@ -180,6 +181,14 @@ final class AudioLevelMeasure: Measure {
         analyzer = AudioAnalyzer(settings: options.analysis)
     }
 
+    /// `!DisableMeasure` on a parent releases its capture (the source stops 3 s after its last analyzer left, and with it
+    /// the recording indicator); its children then read 0. `!EnableMeasure` subscribes it again at its next update.
+    override func disabledStateChanged() {
+        guard disabled, subscribed, let analyzer else { return }
+        subscribed = false
+        engine.unsubscribe(analyzer)
+    }
+
     /// Subscribes a parent's analyzer at the parent's first update, not when its options are read: the Manage window
     /// reads the options of skins that are not loaded (their compatibility notes), and that must not start a capture.
     /// A skin outside a skin window never captures (`mayCapture`).
@@ -271,7 +280,7 @@ final class AudioLevelMeasure: Measure {
         case .bandFreq:
             return (analyzer.bandFrequency(index: child.bandIndex), nil)
         case .deviceStatus:
-            return (status.running ? 1 : 0, nil)
+            return (Double(status.deviceStatus), nil)
         case .format:
             if !status.format.isEmpty { return (0, status.format) }
             // Not capturing: the device's nominal format (bit depth unknown).

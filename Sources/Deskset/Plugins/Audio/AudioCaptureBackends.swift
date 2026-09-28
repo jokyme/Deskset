@@ -440,6 +440,89 @@ enum AudioProcesses {
     static func object(for pid: pid_t) -> AudioObjectID? {
         list().first { $0.pid == pid }?.objectID
     }
+
+    /// Core Audio's process objects (HAL queue). Empty before macOS 14.2.
+    static func objects() -> [AudioObjectID] {
+        guard #available(macOS 14.2, *) else { return [] }
+        return AudioHAL.array(AudioObjectID(kAudioObjectSystemObject),
+                              AudioHAL.address(kAudioHardwarePropertyProcessObjectList), of: AudioObjectID.self)
+    }
+
+    static func isRunningOutput(_ object: AudioObjectID) -> Bool {
+        guard #available(macOS 14.2, *) else { return false }
+        return (AudioHAL.get(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput), as: UInt32.self) ?? 0) != 0
+    }
+
+    static func pid(of object: AudioObjectID) -> pid_t? {
+        guard #available(macOS 14.2, *) else { return nil }
+        return AudioHAL.get(object, AudioHAL.address(kAudioProcessPropertyPID), as: pid_t.self)
+    }
+
+    /// Whether a process other than Deskset runs audio output now (HAL queue). Deskset's own capture counts as output
+    /// (its aggregate device runs the output device), so it is left out. Reads one property of most processes.
+    static func othersRunOutput(among objects: [AudioObjectID]? = nil) -> Bool {
+        let me = getpid()
+        return (objects ?? self.objects()).contains { isRunningOutput($0) && pid(of: $0) != me }
+    }
+}
+
+/// `AudioOutputActivity` from Core Audio's process objects (macOS 14.2+): a listener on the process list, and one on
+/// each process's "is running output" (HAL queue only).
+final class CoreAudioOutputActivity: AudioOutputActivity {
+    /// nil where process objects do not exist (before macOS 14.2), for the demo signal, and when ScreenCaptureKit is
+    /// forced (`DESKSET_AUDIO_FORCE_SCK`): those capture while subscribed.
+    static func makeIfSupported() -> CoreAudioOutputActivity? {
+        guard #available(macOS 14.2, *), !AudioCaptureEngine.demoSignal,
+              ProcessInfo.processInfo.environment["DESKSET_AUDIO_FORCE_SCK"] == nil else { return nil }
+        return CoreAudioOutputActivity()
+    }
+
+    private var handler: (() -> Void)?
+    private var listListener: AudioListenerToken?
+    /// The process objects followed, and the listeners on them (a process that cannot be listened to is still looked
+    /// at by `othersPlay` on every other change).
+    private var followed: Set<AudioObjectID> = []
+    private var listeners: [AudioObjectID: AudioListenerToken] = [:]
+
+    func othersPlay() -> Bool {
+        AudioProcesses.othersRunOutput(among: handler == nil ? nil : Array(followed))
+    }
+
+    func observe(_ handler: @escaping () -> Void) {
+        guard #available(macOS 14.2, *) else { return }
+        stopObserving()
+        self.handler = handler
+        listListener = AudioHAL.listen(AudioObjectID(kAudioObjectSystemObject),
+                                       AudioHAL.address(kAudioHardwarePropertyProcessObjectList),
+                                       queue: AudioHAL.queue) { [weak self] in
+            self?.followProcesses()
+            self?.handler?()
+        }
+        followProcesses()
+    }
+
+    func stopObserving() {
+        handler = nil
+        listListener?.remove()
+        listListener = nil
+        listeners.values.forEach { $0.remove() }
+        listeners = [:]
+        followed = []
+    }
+
+    /// Listens to the processes that exist now, and forgets the ones gone.
+    private func followProcesses() {
+        guard #available(macOS 14.2, *), handler != nil else { return }
+        let current = Set(AudioProcesses.objects())
+        for object in followed.subtracting(current) {
+            listeners.removeValue(forKey: object)?.remove()
+        }
+        for object in current.subtracting(followed) {
+            listeners[object] = AudioHAL.listen(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput),
+                                                queue: AudioHAL.queue) { [weak self] in self?.handler?() }
+        }
+        followed = current
+    }
 }
 
 // MARK: - Demo signal

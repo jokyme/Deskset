@@ -12,6 +12,7 @@ enum AudioSelfTests {
         bandTests(t)
         ringTests(t)
         engineTests(t)
+        standbyTests(t)
         measureTests(t)
         captureScopeTests(t)
         win7AudioTests(t)
@@ -709,6 +710,272 @@ enum AudioSelfTests {
             denied.unsubscribe(d)
             denied.unsubscribe(retry)
             denied.drain()
+        }
+    }
+
+    // MARK: Capture only while another app plays (E27)
+
+    /// Another app playing sound or not, as the test says (`AudioOutputActivity`). Setting `playing` tells the engine
+    /// on the HAL queue, as Core Audio's listeners do.
+    final class FakeActivity: AudioOutputActivity {
+        private let lock = NSLock()
+        private var _playing = false
+        /// HAL queue only.
+        private var handler: (() -> Void)?
+        private(set) var observing = false
+
+        var playing: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return _playing }
+            set {
+                lock.lock(); _playing = newValue; lock.unlock()
+                AudioHAL.queue.async { self.handler?() }
+            }
+        }
+
+        var isObserved: Bool { AudioHAL.queue.sync { observing } }
+
+        func othersPlay() -> Bool { playing }
+        func observe(_ handler: @escaping () -> Void) {
+            self.handler = handler
+            observing = true
+        }
+        func stopObserving() {
+            handler = nil
+            observing = false
+        }
+    }
+
+    static func standbyTests(_ t: AppTestRunner) {
+        t.suite("App: Audio system audio is captured only while another app plays") {
+            let activity = FakeActivity()
+            var created: [AudioSourceKey: [FakeBackend]] = [:]
+            let lock = NSLock()
+            let engine = makeEngine { key in
+                let b = FakeBackend()
+                lock.lock(); created[key, default: []].append(b); lock.unlock()
+                return b
+            }
+            engine.outputActivity = activity
+            engine.standbyDelay = 0.05
+            func backends(_ key: AudioSourceKey) -> [FakeBackend] {
+                lock.lock(); defer { lock.unlock() }
+                return created[key] ?? []
+            }
+            let output = AudioSourceKey(kind: .output, deviceID: nil)
+            let input = AudioSourceKey(kind: .input, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            let mic = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: output)
+            engine.subscribe(mic, to: input)
+            engine.drain()
+            t.equal(backends(output).count, 0, "nothing plays: no tap, so no recording indicator")
+            t.check(engine.isWaitingForSound(output))
+            let waiting = engine.status(for: output)
+            t.check(!waiting.running && waiting.standby)
+            t.equal(waiting.deviceStatus, 1, "the device is there: DeviceStatus 1")
+            t.equal(backends(input).count, 1, "an input device is read at once")
+            t.check(activity.isObserved)
+
+            activity.playing = true
+            t.check(wait { backends(output).count == 1 && engine.status(for: output).running },
+                    "captures once another app plays")
+            t.check(!engine.isWaitingForSound(output))
+            t.equal(engine.status(for: output).deviceStatus, 1)
+            t.equal(engine.status(for: output).deviceName, "Fake Speakers")
+            // Another subscriber (a second visualizer) shares the capture.
+            let b = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(b, to: output)
+            engine.drain()
+            t.equal(backends(output).count, 1)
+
+            activity.playing = false
+            t.check(wait { backends(output).first?.stops == 1 && engine.isWaitingForSound(output) },
+                    "stops standbyDelay after the last app stopped")
+            t.check(!engine.status(for: output).running)
+            t.equal(engine.status(for: output).deviceStatus, 1)
+            t.equal(backends(input).first?.stops, 0, "the input device goes on")
+
+            activity.playing = true
+            t.check(wait { backends(output).count == 2 && engine.status(for: output).running }, "captures again")
+            // A gap shorter than standbyDelay (between two tracks) keeps the capture.
+            engine.standbyDelay = 0.3
+            activity.playing = false
+            activity.playing = true
+            Thread.sleep(forTimeInterval: 0.5)
+            engine.drain()
+            t.equal(backends(output).last?.stops, 0, "a short gap keeps the capture")
+            t.check(engine.status(for: output).running)
+
+            // Suspended (the Mac asleep) and resumed while nothing plays: it waits again.
+            activity.playing = false
+            engine.setSuspended(true)
+            engine.drain()
+            t.equal(backends(output).last?.stops, 1)
+            engine.setSuspended(false)
+            engine.drain()
+            t.check(engine.isWaitingForSound(output), "resumed while nothing plays: waits")
+            t.equal(backends(output).count, 2)
+
+            engine.unsubscribe(a)
+            engine.unsubscribe(b)
+            engine.drain()
+            engine.drain()
+            t.check(!engine.activeSourceKeys().contains(output), "last subscriber gone: the source goes")
+            t.check(!activity.isObserved, "and nobody watches the other apps any more")
+            engine.unsubscribe(mic)
+            engine.drain()
+
+            // Without an activity source (macOS before 14.2, the demo signal) system audio is captured at once.
+            let always = makeEngine { _ in FakeBackend() }
+            let c = AudioAnalyzer(settings: AudioAnalysisSettings())
+            always.subscribe(c, to: output)
+            always.drain()
+            t.check(always.status(for: output).running)
+            always.unsubscribe(c)
+            always.drain()
+        }
+
+        t.suite("App: Audio DeviceStatus 2 is the silence watchdog's verdict") {
+            let activity = FakeActivity()
+            activity.playing = true
+            var latest: AppSelfTest.SilenceBackend?
+            var made = 0
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.standbyDelay = 0.05
+            engine.outputActivity = activity
+            engine.otherProcessPlaysAudio = { activity.playing }
+            engine.makeBackend = { _ in
+                let b = AppSelfTest.SilenceBackend()
+                lock.lock(); latest = b; made += 1; lock.unlock()
+                return b
+            }
+            func backend() -> AppSelfTest.SilenceBackend? { lock.lock(); defer { lock.unlock() }; return latest }
+            func starts() -> Int { lock.lock(); defer { lock.unlock() }; return made }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+
+            // Measures: a parent and its DeviceStatus child.
+            let skin = try makeSkin(t, "[Rainmeter]\nUpdate=1000\n[Audio]\nMeasure=Plugin\nPlugin=AudioLevel\n"
+                                    + "[Status]\nMeasure=Plugin\nPlugin=AudioLevel\nParent=Audio\nType=DeviceStatus\n",
+                                    config: "AudioVerdict")
+            guard let parentSection = skin.document.section(named: "Audio"),
+                  let statusSection = skin.document.section(named: "Status") else { return }
+            let parent = AudioLevelMeasure(name: "Audio", section: parentSection, skin: skin, type: "audiolevel")
+            let status = AudioLevelMeasure(name: "Status", section: statusSection, skin: skin, type: "audiolevel")
+            for m in [parent, status] {
+                m.engine = engine
+                m.system = { fakeSnapshot() }
+                m.prepareSystem = {}
+                m.mayCapture = { _ in true }
+                m.parentLookup = { $0 == "Audio" ? parent : nil }
+                m.readOptions()
+            }
+            _ = parent.computeValue()   // the first update subscribes
+            engine.drain()
+            t.check(engine.status(for: key).running)
+            t.equal(status.computeValue(), 1, "capturing")
+            t.check(wait { engine.status(for: key).deviceStatus == 2 }, "silence at two looks while another app plays")
+            t.equal(status.computeValue(), 2)
+            t.equal(engine.status(for: key).permissionNote, AudioCaptureEngine.silenceNote)
+            _ = parent.computeValue()
+            t.check(skin.issues.contains(AudioCaptureEngine.silenceNote), "a compatibility note too")
+
+            // The verdict outlasts the capture: waiting for sound, and in the next capture.
+            activity.playing = false
+            t.check(wait { engine.isWaitingForSound(key) }, "nothing plays: waits")
+            t.equal(status.computeValue(), 2, "still refused while it waits")
+            activity.playing = true
+            t.check(wait { starts() == 2 && engine.status(for: key).running }, "captures again")
+            t.equal(status.computeValue(), 2, "and the verdict stands from the start")
+
+            // Sound: the permission is there.
+            t.check(wait {
+                backend()?.feed(0.25)
+                return engine.status(for: key).deviceStatus == 1
+            }, "sound clears the verdict")
+            t.check(engine.status(for: key).permissionNote == nil)
+            t.equal(status.computeValue(), 1)
+            _ = parent.computeValue()
+            t.check(!skin.issues.contains(AudioCaptureEngine.silenceNote), "the note is taken back")
+
+            // Once sound was heard, silence while other apps run their output is only silence.
+            activity.playing = false
+            t.check(wait { engine.isWaitingForSound(key) })
+            activity.playing = true
+            t.check(wait { starts() == 3 && engine.status(for: key).running })
+            Thread.sleep(forTimeInterval: 0.4)
+            t.equal(engine.status(for: key).deviceStatus, 1, "no verdict after sound was heard")
+            withExtendedLifetime((parent, status)) {}
+        }
+
+        t.suite("App: Audio !DisableMeasure releases the capture") {
+            let ini = """
+            [Rainmeter]
+            Update=1000
+            [MeasureAudio]
+            Measure=Plugin
+            Plugin=AudioLevel
+            RMSAttack=0
+            RMSDecay=3600000
+            [MeasureRMS]
+            Measure=Plugin
+            Plugin=AudioLevel
+            Parent=MeasureAudio
+            Type=RMS
+            """
+            let skin = try makeSkin(t, ini, config: "AudioDisable")
+            var created: [FakeBackend] = []
+            let lock = NSLock()
+            let engine = makeEngine { _ in
+                let b = FakeBackend()
+                lock.lock(); created.append(b); lock.unlock()
+                return b
+            }
+            func backends() -> [FakeBackend] { lock.lock(); defer { lock.unlock() }; return created }
+            guard let parent = skin.measure(named: "MeasureAudio") as? AudioLevelMeasure,
+                  let child = skin.measure(named: "MeasureRMS") as? AudioLevelMeasure else {
+                return t.check(false, "the skin's measures are AudioLevel measures")
+            }
+            for m in [parent, child] {
+                m.engine = engine
+                m.system = { fakeSnapshot() }
+                m.prepareSystem = {}
+                m.mayCapture = { _ in true }
+            }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            skin.update()
+            engine.drain()
+            t.check(parent.subscribed)
+            t.equal(backends().count, 1)
+            guard let ring = backends().first?.ring else { return t.check(false, "the capture started") }
+            let signal = sine(1000, amplitude: 0.5, seconds: 0.05)
+            t.check(wait {
+                signal.withUnsafeBufferPointer { ring.write(interleaved: $0.baseAddress!, frames: signal.count / 2,
+                                                            channels: 2) }
+                skin.update()
+                return child.value > 0.3
+            }, "the child reads the sound: \(child.value)")
+
+            skin.execute("[!DisableMeasure MeasureAudio]", from: nil)
+            engine.drain()
+            engine.drain()
+            t.check(!parent.subscribed, "the parent lets its analyzer go")
+            t.equal(backends().first?.stops, 1, "the capture stops (stopDelay 0 here)")
+            t.check(!engine.activeSourceKeys().contains(key))
+            t.check(wait { skin.update(); return child.value == 0 }, "its children read 0")
+
+            skin.execute("[!EnableMeasure MeasureAudio]", from: nil)
+            skin.update()
+            engine.drain()
+            t.check(parent.subscribed, "enabled: subscribed again at its next update")
+            t.equal(backends().count, 2)
+            t.check(engine.status(for: key).running)
+            skin.close()
+            engine.drain()
+            engine.drain()
         }
     }
 
@@ -1575,6 +1842,26 @@ enum AudioSelfTests {
             t.check(s.outputDevices.allSatisfy { $0.outputChannels > 0 })
             let list = AudioLevelMeasure.deviceList(s.outputDevices)
             t.equal(list.split(separator: "\n").count, s.outputDevices.count)
+
+            // Whether other apps play sound: Core Audio's process objects, read and listened to (nothing captured).
+            t.check(AudioCaptureEngine.shared.outputActivity == nil, "command-line modes capture nothing, so watch nothing")
+            if #available(macOS 14.2, *) {
+                guard let activity = CoreAudioOutputActivity.makeIfSupported() else {
+                    return t.check(false, "process objects exist on macOS 14.2 and later")
+                }
+                // Another app may start or stop playing between the reads, so only that they answer is checked.
+                AudioHAL.queue.sync {
+                    _ = activity.othersPlay()
+                    activity.observe {}
+                    _ = activity.othersPlay()
+                    activity.stopObserving()
+                }
+                let me = getpid()
+                t.check(AudioHAL.queue.sync { AudioProcesses.objects().contains { AudioProcesses.pid(of: $0) == me } },
+                        "Core Audio lists Deskset among its client processes")
+            } else {
+                t.check(CoreAudioOutputActivity.makeIfSupported() == nil)
+            }
         }
     }
 
