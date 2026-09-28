@@ -221,4 +221,45 @@ func runWriteScopeTests(_ t: TestRunner) {
         try reloaded.load()
         t.equal(reloaded.meter(named: "MeterZ")?.option("FontSize"), "24", "the step takes effect: \(written)")
     }
+
+    t.suite("Write scope: which widgets read a shared file, kept between walks") {
+        let skins = t.temporaryDirectory("includemap").appendingPathComponent("Skins")
+        let fm = FileManager.default
+        for dir in ["Root/A", "Root/B", "Root/@Resources"] {
+            try fm.createDirectory(at: skins.appendingPathComponent(dir), withIntermediateDirectories: true)
+        }
+        let shared = skins.appendingPathComponent("Root/@Resources/Shared.inc")
+        try "[Variables]\nX=1\n".write(to: shared, atomically: true, encoding: .utf8)
+        let a = skins.appendingPathComponent("Root/A/A.ini"), b = skins.appendingPathComponent("Root/B/B.ini")
+        try "[Variables]\n@Include=#@#Shared.inc\n".write(to: a, atomically: true, encoding: .utf8)
+        try "[Variables]\n@Include=#@#Shared.inc\n".write(to: b, atomically: true, encoding: .utf8)
+        let skin = Skin(config: "Root\\A", fileURL: a, skinsDirectory: skins, system: FakeSystem(), host: FakeHost())
+        try skin.load()
+        t.equal(skin.configsIncluding(shared), ["root\\a", "root\\b"])
+        // B no longer includes it (a later modification date): walked again, it is gone.
+        try "[Variables]\nY=2\n".write(to: b, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: b.path)
+        t.equal(skin.configsIncluding(shared), ["root\\a"], "a changed file is loaded again")
+        // A new widget shows at once.
+        try fm.createDirectory(at: skins.appendingPathComponent("Root/C"), withIntermediateDirectories: true)
+        try "[Variables]\n@Include=#@#Shared.inc\n".write(to: skins.appendingPathComponent("Root/C/C.ini"),
+                                                             atomically: true, encoding: .utf8)
+        t.equal(skin.configsIncluding(shared), ["root\\a", "root\\c"], "a widget added")
+        // A file an include path depends on: A reads Looks/#Look#.inc, Look set in Shared.inc.
+        let looks = skins.appendingPathComponent("Root/@Resources/Looks")
+        try fm.createDirectory(at: looks, withIntermediateDirectories: true)
+        for name in ["Light", "Dark"] {
+            try "[Variables]\nInk=1\n".write(to: looks.appendingPathComponent("\(name).inc"), atomically: true, encoding: .utf8)
+        }
+        try "[Variables]\nLook=Light\n".write(to: shared, atomically: true, encoding: .utf8)
+        try "[Variables]\n@Include=#@#Shared.inc\n@Include2=#@#Looks/#Look#.inc\n".write(to: a, atomically: true,
+                                                                                         encoding: .utf8)
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(10)], ofItemAtPath: a.path)
+        t.equal(skin.configsIncluding(looks.appendingPathComponent("Light.inc")), ["root\\a"])
+        try "[Variables]\nLook=Dark\n".write(to: shared, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(15)], ofItemAtPath: shared.path)
+        t.equal(skin.configsIncluding(looks.appendingPathComponent("Dark.inc")), ["root\\a"],
+                "the file an include path reads changed: loaded again")
+        t.equal(skin.configsIncluding(looks.appendingPathComponent("Light.inc")), [])
+    }
 }
