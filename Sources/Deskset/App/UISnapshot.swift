@@ -6,8 +6,8 @@ import DesksetCore
 ///
 /// - `manage`: the Manage window over a temporary copy of TestSkins/App and TestSkins/Deskset, the example skins of
 ///   Deskset 0.1 (or `--skins-dir`), with App\Focus and Deskset\Clock loaded and `--select` (default App\Focus)
-///   selected; `--hidden` has the selected skin hide itself (`!Hide`) first, `--coordinates X,Y` types coordinates
-///   for it.
+///   selected (`Config\File.ini` selects one file); `--hidden` loads the selected skin when it is not loaded and has
+///   it hide itself (`!Hide`), `--coordinates X,Y` types coordinates for it.
 /// - `install`: the .rmskin confirmation for a generated package (header image, plugin warning).
 /// - `install-zip`: the confirmation for a plain ZIP archive (no RMSKIN.ini) with fonts.
 /// - `icon`: the app icon at 1024 px.
@@ -157,9 +157,17 @@ enum UISnapshot {
         app.activate(config: "Deskset\\Clock", file: nil)
         let manage = ManageWindowController(app: app)
         if let size { manage.window?.setContentSize(size) }
-        // --hidden: the selected skin hides itself, as a widget that hides while idle does.
-        if hidden { app.controller(for: SkinLibrary.normalizedConfigName(select))?.skin.execute("[!Hide]", from: nil) }
-        manage.select(config: select, file: nil)
+        // --select Config or Config\File.ini.
+        var config = SkinLibrary.normalizedConfigName(select), file: String?
+        if config.lowercased().hasSuffix(".ini"), let cut = config.lastIndex(of: "\\") {
+            file = String(config[config.index(after: cut)...])
+            config = String(config[..<cut])
+        }
+        // --hidden: the selected skin (loaded first when it is not) hides itself, as a widget that hides while idle does.
+        if hidden, let c = app.controller(for: config) ?? app.activate(config: config, file: file), !c.isHiddenByBang {
+            c.skin.execute("[!Hide]", from: nil)
+        }
+        manage.select(config: config, file: file)
         if let coordinates { manage.testTypeCoordinates(x: coordinates.x, y: coordinates.y) }
         let rep = manage.snapshot()
         let data = rep?.representation(using: .png, properties: [:])
