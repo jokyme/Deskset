@@ -1452,8 +1452,24 @@ suite's `TestThreadExecutor`.
      - `.outsidePointerNeedsChanged` became part of `.snapshotChanged`, which carries what changed (tooltip areas,
        notes, metadata, groups, the needs outside the window, size, glass, focus). The "skins changed" notification
        for new notes comes on the next turn, once, not in the middle of the skin's work.
-     - Cost (`App: skin snapshot: what building snapshots costs…`, M4 Pro, `DESKSET_AUDIO_DEMO=1` so the visualizers
-       move; an update here is the engine's alone, without drawing): SNAPSHOT_COST_TABLE
+     - Cost (suite `App: skin snapshot: what building snapshots costs…`; release build on an M4 Pro,
+       `DESKSET_AUDIO_DEMO=1` so the visualizers move; 240 updates; an update here is the engine's alone, without
+       drawing, so the share of a whole frame is smaller still). "After it" is everything `SkinRuntime` does once the
+       update ends: building again when the generation moved, the counters, and the context menu items when a
+       variable changed (System L sets some at every update).
+
+       | Skin | Update | Snapshot work after it | Built again after | One full build |
+       |---|---|---|---|---|
+       | Spectrum (Medium) | 0.049 ms | 0.0010 ms (2.1 %) | 0 of 240 updates | 0.0028 ms (5.8 %) |
+       | Spectrum (Strip) | 0.063 ms | 0.0011 ms (1.8 %) | 0 of 240 | 0.0031 ms (4.9 %) |
+       | Studio VU | 0.074 ms | 0.0016 ms (2.2 %) | 10 of 240 | 0.0057 ms (7.8 %) |
+       | System L | 0.71 ms | 0.025 ms (3.5 %) | 240 of 240 (its tooltips show live values) | 0.013 ms (1.8 %) |
+
+       Under 5 % of an update in every case (debug build: 0.6–2.3 %). The skins post nothing to the main thread while
+       their layout stays: `App: skin snapshot: a skin redrawing 60 times a second…` counts the posts.
+     - Checks: the debug comparison made 3,354 comparisons in the app suite, with no difference. The Core suite
+       `Skin threading: hit map…` covers 131 test and default skins (60 with meters the mouse finds) after updates,
+       state bangs and hidden meters, in about 11 s of the debug run.
 3. **The window model, `EnvironmentStore` and `SkinDirectory`.**
    - A skin's own window bangs change its model at once: KeepOnScreen clamps with the store's screens and
      `!SetWindowPosition` is resolved with them. They then post `.window(model, sequence)`.
