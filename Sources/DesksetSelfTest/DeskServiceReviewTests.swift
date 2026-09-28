@@ -98,4 +98,31 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         }
         t.equal(disagreements, 0, "random edits agree with fresh services")
     }
+
+    t.suite("Desk: service — renaming a quoted element name that is not a name renames its show and hide texts") {
+        let text = """
+        info { name: "T" }
+        widget {
+            Column {
+                Text("A").name("my title")
+                Text("B").onClick { show("my title") }
+                Text("C").onClick { hide("my title") }
+                Text("D").onClick { showOrHide("my title") }
+                Text("my title")
+            }
+        }
+        """
+        let snapshot = deskNavService(text).snapshot
+        guard case .success(let rename) = snapshot.rename(at: deskNavPosition(snapshot, "my title", into: 1), to: "head") else {
+            t.check(false, "my title is renamed")
+            return
+        }
+        let renamed = DeskTextEditU16.apply(rename.edit.edits(for: snapshot.file), to: snapshot.text)
+        t.check(renamed.contains(".name(\"head\")"), renamed)
+        t.check(renamed.contains("show(\"head\")") && renamed.contains("hide(\"head\")") && renamed.contains("showOrHide(\"head\")"),
+                renamed)
+        t.check(renamed.contains("Text(\"my title\")"), "a text that only looks like the name stays")
+        let after = deskNavService(renamed).snapshot
+        t.check(!deskNavIDs(after.diagnostics).contains { $0.contains("DK3002") || $0.contains("unknown") }, "\(deskNavIDs(after.diagnostics))")
+    }
 }

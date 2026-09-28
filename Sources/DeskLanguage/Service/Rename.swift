@@ -66,6 +66,7 @@ extension DeskSnapshot {
                 edits.append(TextEdit(file: file, range: occurrence.range, replacement: newName))
             }
             if case .option = key { edits += localEnumEdits(option: o.name, to: newName, in: [file]) }
+            if o.kind == .element, !Checker.isIdentifier(o.name) { edits += quotedTargetEdits(element: o.name, to: newName) }
             return .success(DeskRename(edit: workspaceEdit(edits), notes: notes))
         case .shared:
             let files = files(searchedFor: key)
@@ -158,6 +159,40 @@ extension DeskSnapshot {
                 guard token.token.name == oldEnum else { continue }
                 edits.append(TextEdit(file: file, range: token.textRange, replacement: newEnum))
             }
+        }
+        return edits
+    }
+
+    /// `show("my title")`, `hide(…)` and `showOrHide(…)` naming an element whose quoted name is not a name
+    /// (`.name("my title")`, §4.10): the checker leaves such text to be looked up while the widget runs, so it is no
+    /// use of the element; a rename changes it with the element's name, or the button would stop working.
+    func quotedTargetEdits(element name: String, to newName: String) -> [TextEdit] {
+        let table = nodeTable
+        var edits: [TextEdit] = []
+        for entry in table.entries where entry.kind == .stringLiteral {
+            guard let inner = RenamePlan.quotedName(entry.positioned),
+                  StringLiteralSyntax(unchecked: entry.positioned).literalValue == name else { continue }
+            // The first argument of a call of show, hide or showOrHide.
+            let argument = entry.parent
+            guard argument >= 0, table.entries[argument].kind == .argument else { continue }
+            let clause = table.entries[argument].parent
+            guard clause >= 0, table.entries[clause].kind == .argumentClause,
+                  table.children(of: clause).first(where: { table.entries[$0].kind == .argument }) == argument else { continue }
+            let call = table.entries[clause].parent
+            guard call >= 0, let callee = table.children(of: call).first, callee != clause else { continue }
+            let calleeName: String?
+            switch table.entries[callee].kind {
+            case .callee:
+                let target = TargetSyntax(unchecked: table.entries[callee].positioned)
+                calleeName = target.members.isEmpty && !target.name.token.isMissing ? target.name.token.name : nil
+            case .identifierExpr:
+                let token = IdentifierExprSyntax(unchecked: table.entries[callee].positioned).token
+                calleeName = token.token.isMissing ? nil : token.token.name
+            default:
+                calleeName = nil
+            }
+            guard let calleeName, ["show", "hide", "showOrHide"].contains(calleeName) else { continue }
+            edits.append(TextEdit(file: file, range: inner, replacement: newName))
         }
         return edits
     }
