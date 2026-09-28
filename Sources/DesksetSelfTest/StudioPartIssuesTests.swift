@@ -162,6 +162,39 @@ func runStudioPartIssuesTests(_ t: TestRunner) {
         t.equal(StudioAddCatalog.existingMeasure(for: "memory", in: skin), nil, "a total is not the memory used")
         t.equal(StudioAddCatalog.existingMeasure(for: "download", in: skin), "MeasureDown")
         t.equal(StudioAddCatalog.existingMeasure(for: "time", in: skin), nil, "only this Mac's data is shared")
+        // Measures of the same data that read something else, or don't run, are not reused.
+        let other = """
+            [Rainmeter]
+            Update=1000
+
+            [MeasureIdle]
+            Measure=CPU
+            InvertMeasure=1
+
+            [MeasureFree]
+            Measure=PhysicalMemory
+            Free=1
+
+            [MeasureTotalDown]
+            Measure=NetIn
+            Cumulative=1
+
+            [MeasureOff]
+            Measure=NetOut
+            Disabled=1
+
+            [MeasureGPUPaused]
+            Measure=Plugin
+            Plugin=MacSensors
+            Sensor=gpu.usage
+            MinValue=0
+            MaxValue=100
+            Paused=1
+            """
+        let (others, _) = try makeSkin(t, other)
+        for id in ["cpu", "memory", "download", "upload", "gpu"] {
+            t.equal(StudioAddCatalog.existingMeasure(for: id, in: others), nil, "\(id): not a measure that reads otherwise")
+        }
         t.equal(StudioAddCatalog.search("net").map(\.id), ["download", "upload"])
         t.equal(StudioAddCatalog.search("内存").map(\.id), ["memory"])
         t.equal(StudioAddCatalog.search("weather").map(\.id), ["temperature"])

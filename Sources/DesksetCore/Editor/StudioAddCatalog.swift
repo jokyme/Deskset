@@ -243,6 +243,10 @@ public enum StudioAddCatalog {
 
     // MARK: The widget's own data
 
+    /// Options of a measure that change what it gives (or stop it): a measure reused for a data item has them as the
+    /// item says, else at their defaults.
+    static let readingOptions = ["Total", "Free", "Cumulative", "InvertMeasure", "Disabled", "Paused"]
+
     /// The measure of the widget that already reads data item `id` (so a new part reads it too), or nil.
     public static func existingMeasure(for id: String, in skin: Skin) -> String? {
         guard let item = dataItem(id), item.category == .mac else { return nil }
@@ -258,11 +262,14 @@ public enum StudioAddCatalog {
                     break
                 }
             }
-            // A measure of the total or free amount reads something else.
-            if same, m.rawOption("Total").map({ $0.trimmingCharacters(in: .whitespaces) == "1" }) == true { same = false }
-            if same, id == "memory" || id == "disk",
-               (m.rawOption("InvertMeasure") ?? "0").trimmingCharacters(in: .whitespaces) != (wanted["invertmeasure"] ?? "0") {
-                same = false
+            // What turns the same data into something else — a total, the free amount, a running sum, the rest of
+            // it (idle CPU, free memory) — or keeps it from updating: at the item's value, else at its default.
+            if same {
+                for key in Self.readingOptions {
+                    let own = (m.rawOption(key) ?? "").trimmingCharacters(in: .whitespaces)
+                    let want = wanted[key.lowercased()] ?? "0"
+                    if (own.isEmpty ? "0" : own).lowercased() != want { same = false; break }
+                }
             }
             if same { return m.name }
         }
