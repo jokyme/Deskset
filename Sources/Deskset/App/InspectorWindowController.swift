@@ -1991,7 +1991,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         pendingStudioReload = false
         let before = skin
         session.reloadStudioSkin()
-        // Not loaded again (no Studio instance, or its file cannot be read now): the code pane re-reads the files.
+        // Not loaded again (no Studio instance, or its file cannot be read now): the code pane re-reads the files. (This
+        // always loads, never patches: the same object means nothing was loaded.)
         if skin === before { codeFilesChangedOnDisk() }
     }
 
