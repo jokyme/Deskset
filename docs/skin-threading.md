@@ -1835,7 +1835,7 @@ suite's `TestThreadExecutor`.
    - The log: no error, no warning and no main-thread step over 250 ms in the hour.
    - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers at 60 frames a second).
 5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac). The machine did not get quiet: other
-   work kept the 1-minute load average at 3.4–5.3 for the whole hour, so the numbers were taken under that load
+   work kept the 1-minute load average at 3.5–6.4 for the whole hour, so the numbers were taken under that load
    (noted). Each copy of the app had a home of its own and the demo audio and player.
    - **CPU and energy, ten typical skins** (the soak's ten: five Stationery widgets, Spectrum among them, and five from
      the corpus, one a visualizer), above other windows (`AlwaysOnTop=1`), averaged over 120 s after 30 s, main and
