@@ -245,6 +245,8 @@ struct DeskCompletionScan {
     var formatValueType: DeskType?
     /// The block holding a statement context.
     var block: Int?
+    /// The value is shown as text (a `Text`'s content, an interpolation): a list can't go there.
+    var displaySlot = false
 }
 
 extension DeskSnapshot {
@@ -830,6 +832,7 @@ extension DeskSnapshot {
             guard let base = table.children(of: parent).first else { return s }
             s.context.place = .member
             s.context.memberBase = memberBase(ofExpression: base)
+            s.displaySlot = isDisplaySlot(parent, offset: offset)
             s.context.inActions = inActionBlock(parent)
             s.context.userInitiated = s.context.inActions && enclosingActionIsUser(parent)
             if s.context.memberBase == nil { s.context.place = .none }
@@ -926,7 +929,26 @@ extension DeskSnapshot {
         }
         if entry.kind == .parenExpr, let inner = table.children(of: e).first { return memberBase(ofExpression: inner) }
         if let type = index.valueTypes[e] ?? recordedType(e)?.type { return .value(type) }
+        // The checker typed nothing (the code around is broken): the names along the chain.
+        if let parts = namePath(e) { return memberBase(ofPath: parts, at: entry.textStart) }
         return nil
+    }
+
+    /// `a.b.c` as names, for a chain of names and members without calls.
+    func namePath(_ e: Int) -> [String]? {
+        let table = nodeTable
+        let entry = table.entries[e]
+        switch entry.kind {
+        case .identifierExpr:
+            let token = IdentifierExprSyntax(unchecked: entry.positioned).token
+            return token.token.isMissing ? nil : [token.token.name]
+        case .memberExpr:
+            guard let base = table.children(of: e).first, let head = namePath(base),
+                  let last = entry.positioned.childTokens.last(where: { $0.kind != .dot }), !last.token.isMissing else { return nil }
+            return head + [last.token.name]
+        default:
+            return nil
+        }
     }
 
     /// What a name path reads from: a namespace (nested ones joined), `options`, `event`, an own name or a named
@@ -1052,6 +1074,8 @@ extension DeskSnapshot {
         s.context.expectedType = slotNode.map { expectedType(forSlotOf: $0, offset: offset) }
             ?? expectedType(inside: parent, offset: offset)
         switch table.entries[parent].kind {
+        case .interpolation:
+            s.displaySlot = true
         case .formatOption:
             s.formatValueType = interpolationValueType(of: parent)
         case .argument:
@@ -1059,6 +1083,7 @@ extension DeskSnapshot {
                 s.callSite = site
                 s.argumentIndex = site.argumentIndex(at: offset)
                 if let param = currentParameter(site, argument: s.argumentIndex) {
+                    s.displaySlot = param.role == .display
                     specialize(&s, param: param, site: site)
                 }
             }
@@ -1094,6 +1119,7 @@ extension DeskSnapshot {
             s.allowsPositionalValue = true
             let param = positional[min(written, positional.count - 1)]
             s.context.expectedType = param.type
+            s.displaySlot = param.role == .display
             specialize(&s, param: param, site: site)
             if s.context.place != .argument { return s }
         }
@@ -1120,6 +1146,27 @@ extension DeskSnapshot {
            param.type == .length || param.type == .lengthSpec || param.type.components.contains(.length) {
             s.geometrySiblings = freeformSiblingNames(ofModifierClause: site.clause)
         }
+    }
+
+    /// Whether the value a member chain makes is shown as text: the chain is an interpolation's value or the
+    /// argument of a display parameter.
+    func isDisplaySlot(_ node: Int, offset: Int) -> Bool {
+        let table = nodeTable
+        var i = node
+        while table.entries[i].parent >= 0 {
+            let p = table.entries[i].parent
+            let kind = table.entries[p].kind
+            if (kind == .memberExpr || kind == .callExpr), table.children(of: p).first == i {
+                i = p
+                continue
+            }
+            if kind == .interpolation { return table.children(of: p).first == i }
+            if kind == .argument, let site = callSite(at: offset) {
+                return currentParameter(site, argument: site.argumentIndex(at: offset))?.role == .display
+            }
+            return false
+        }
+        return false
     }
 
     /// The parameter an argument stands for.

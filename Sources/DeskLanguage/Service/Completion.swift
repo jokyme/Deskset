@@ -79,11 +79,13 @@ public struct DeskCompletionItem: Sendable, Hashable, CustomStringConvertible {
     public var commitCharacters: [String]
     /// The catalog entry, for a hover card of the item.
     public var catalogPath: CatalogPath?
+    /// Other edits the item needs, outside its range: a permission it needs added to `info { permissions: […] }`.
+    public var additionalEdits: [DeskTextEditU16]
 
     public init(label: String, kind: DeskCompletionItemKind, detail: LocalizedText, documentation: LocalizedText?,
                 example: String? = nil, insertText: String, plainText: String, isSnippet: Bool, range: DeskRange,
                 filterText: String, sortText: String, isDeprecated: Bool = false, isAlreadyPresent: Bool = false,
-                commitCharacters: [String] = [], catalogPath: CatalogPath? = nil) {
+                commitCharacters: [String] = [], catalogPath: CatalogPath? = nil, additionalEdits: [DeskTextEditU16] = []) {
         self.label = label
         self.kind = kind
         self.detail = detail
@@ -99,6 +101,7 @@ public struct DeskCompletionItem: Sendable, Hashable, CustomStringConvertible {
         self.isAlreadyPresent = isAlreadyPresent
         self.commitCharacters = commitCharacters
         self.catalogPath = catalogPath
+        self.additionalEdits = additionalEdits
     }
 
     public var description: String { "\(label) (\(kind.rawValue))" }
@@ -163,11 +166,16 @@ struct DeskCompletionTemplate: Sendable {
     var valueType: DeskType?
     /// The snippet's parentheses or braces: left out when the name is followed by `(` already.
     var nameOnly: String?
+    /// The call the snippet writes, when one of its values names something of the file (a variable a control
+    /// changes, a style, an element): written again at the cursor with a name that exists there.
+    var call: DeskSnippetCall?
+    /// The permission it needs (`music` for `music.play()`).
+    var permission: String?
 
     init(label: String, kind: DeskCompletionItemKind, detail: LocalizedText, documentation: LocalizedText? = nil,
          example: String? = nil, snippet: String? = nil, plain: String? = nil, words: [String] = [], rank: Int = 50,
          since: AppVersion = .deskFirstRelease, deprecated: Bool = false, path: CatalogPath? = nil, commit: [String] = [],
-         valueType: DeskType? = nil, nameOnly: String? = nil) {
+         valueType: DeskType? = nil, nameOnly: String? = nil, call: DeskSnippetCall? = nil, permission: String? = nil) {
         self.label = label
         self.kind = kind
         self.detail = detail
@@ -183,6 +191,23 @@ struct DeskCompletionTemplate: Sendable {
         self.commit = commit
         self.valueType = valueType
         self.nameOnly = nameOnly
+        self.call = call.flatMap { c in c.params.contains(where: DeskSnippetCall.namesSomething) ? c : nil }
+        self.permission = permission
+    }
+}
+
+/// A call a snippet writes: its name, the parameters written, and whether a block follows.
+struct DeskSnippetCall: Sendable {
+    var name: String
+    var params: [ParamSpec]
+    var block: Bool
+
+    /// A value that names something of the file: a binding, a style, an element.
+    static func namesSomething(_ p: ParamSpec) -> Bool {
+        if case .binding = p.type { return true }
+        if p.role == .styleRef || p.role == .elementName || p.role == .declaresElementName || p.type == .styleRef { return true }
+        // A preview that reads data needing a permission (`.onChange(music.title)`): an own value may stand in.
+        return p.type == .any && p.previewValue?.contains(".") == true
     }
 }
 
@@ -243,7 +268,9 @@ enum DeskSnippet {
             return catalog.enumeration(id)?.cases.first.map { "." + $0.name } ?? "nil"
         case .list: return "[]"
         case .binding(let inner): return placeholder(for: inner, catalog: catalog)
-        case .oneOf(let types): return types.first.map { placeholder(for: $0, catalog: catalog) } ?? "1"
+        case .oneOf(let types):
+            let preferred = types.first { if case .enumeration = $0 { return true } else { return false } } ?? types.first
+            return preferred.map { placeholder(for: $0, catalog: catalog) } ?? "1"
         default: return "1"
         }
     }
@@ -268,7 +295,7 @@ enum DeskSnippet {
 
     /// `name(args)`, `name(args) {⏎\t$0⏎}` or `name {⏎\t$0⏎}`; tab stops numbered from `first`.
     static func call(_ name: String, params: [ParamSpec], block: Bool, first: Int = 1, forceParentheses: Bool = true,
-                     catalog: DeskCatalog) -> (snippet: String, plain: String) {
+                     catalog: DeskCatalog, values: ((ParamSpec) -> String?)? = nil) -> (snippet: String, plain: String) {
         var snippet = escapeLiteral(name)
         var plain = name
         var n = first
@@ -276,7 +303,7 @@ enum DeskSnippet {
             var s: [String] = []
             var p: [String] = []
             for param in params {
-                let (stopText, plainText) = stop(n, value(of: param, catalog: catalog))
+                let (stopText, plainText) = stop(n, values?(param) ?? value(of: param, catalog: catalog))
                 n += 1
                 if let label = param.label {
                     s.append("\(label): \(stopText)")
@@ -391,7 +418,8 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 label: c.name, kind: .component, detail: L(c.title.en + " " + shape(signature).en, c.title.zh + shape(signature).zh),
                 documentation: docText(c.doc), example: c.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(c.doc, c.name), rank: c.doc.rank, since: c.doc.since, deprecated: c.doc.deprecated != nil,
-                path: .component(c.name), nameOnly: c.name))
+                path: .component(c.name), nameOnly: c.name,
+                call: DeskSnippetCall(name: c.name, params: signature.map(DeskSnippet.params) ?? [], block: hasBlock)))
         }
         self.components = components
 
@@ -429,14 +457,14 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 label: m.name, kind: .modifier, detail: L(m.title.en + " " + shape(signature).en, m.title.zh + shape(signature).zh),
                 documentation: docText(m.doc), example: m.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(m.doc, "." + m.name), rank: m.doc.rank, since: m.doc.since, deprecated: m.doc.deprecated != nil,
-                path: .modifier(m.name), commit: [], nameOnly: m.name)))
+                path: .modifier(m.name), commit: [], nameOnly: m.name, call: DeskSnippetCall(name: m.name, params: params, block: block))))
         }
         self.modifiers = modifiers
 
         // Namespaces and their members.
         var namespaces: [String: DeskCompletionTemplate] = [:]
         var members: [String: [(MemberSpec?, DeskCompletionTemplate)]] = [:]
-        func memberTemplate(_ m: MemberSpec, path: CatalogPath, key: String) -> DeskCompletionTemplate {
+        func memberTemplate(_ m: MemberSpec, path: CatalogPath, key: String, permission: String?) -> DeskCompletionTemplate {
             let signature = firstSignature(m.signatures)
             let kind: DeskCompletionItemKind = m.kind == .action ? .action : m.kind == .function ? .function : .data
             var snippet = DeskSnippet.escapeLiteral(m.name)
@@ -453,7 +481,7 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 documentation: docText(m.doc), example: m.doc.example, snippet: snippet, plain: plain,
                 words: words(m.doc, key), rank: m.doc.rank, since: m.doc.since, deprecated: m.doc.deprecated != nil,
                 path: path, commit: m.kind == .field ? ["."] : [], valueType: m.kind == .action ? nil : m.type,
-                nameOnly: m.name)
+                nameOnly: m.name, permission: permission)
         }
         for ns in catalog.namespaces {
             let parts = ns.name.split(separator: ".").map(String.init)
@@ -468,7 +496,8 @@ final class DeskCompletionCatalog: @unchecked Sendable {
             }
             for m in ns.members {
                 members[ns.name, default: []].append((m, memberTemplate(m, path: .member(namespace: ns.name, name: m.name),
-                                                                        key: "\(ns.name).\(m.name)")))
+                                                                        key: "\(ns.name).\(m.name)",
+                                                                        permission: m.permission ?? ns.permission)))
             }
         }
         self.namespaces = namespaces
@@ -488,7 +517,9 @@ final class DeskCompletionCatalog: @unchecked Sendable {
                 detail: L(f.title.en + " " + shape(signature).en, f.title.zh + shape(signature).zh),
                 documentation: docText(f.doc), example: f.doc.example, snippet: text.snippet, plain: text.plain,
                 words: words(f.doc, f.name), rank: f.doc.rank, since: f.doc.since, deprecated: f.doc.deprecated != nil,
-                path: .function(f.name), valueType: type, nameOnly: f.name)))
+                path: .function(f.name), valueType: type, nameOnly: f.name,
+                call: DeskSnippetCall(name: f.name, params: signature.map(DeskSnippet.params) ?? [], block: f.takesActionBlock),
+                permission: f.permission ?? f.data?.permission)))
         }
         self.functions = functions
 
@@ -628,6 +659,13 @@ struct DeskCompletionBuilder {
         guard seen.insert(key).inserted else { return }
         var snippetText = snippet ?? t.snippet
         var plainText = plain ?? t.plain
+        if let call = t.call, snippet == nil || shown.hasPrefix(".") && !t.label.hasPrefix(".") {
+            let me = self
+            let text = DeskSnippet.call(call.name, params: call.params, block: call.block, catalog: catalog) { me.contextualValue($0) }
+            let lead = snippet != nil ? "." : ""
+            snippetText = lead + text.snippet
+            plainText = lead + text.plain
+        }
         if scan.followedByCall, let name = t.nameOnly {
             // `(` already follows: insert the name only.
             let lead = shown.hasPrefix(".") && !name.hasPrefix(".") ? "." : ""
@@ -642,11 +680,12 @@ struct DeskCompletionBuilder {
         if t.deprecated { tierValue += 10 }
         if alreadyPresent { tierValue += 20 }
         let r = rank ?? t.rank
+        let extra = t.permission.map { permissionEdits($0) } ?? []
         let item = DeskCompletionItem(
             label: shown, kind: kind ?? t.kind, detail: t.detail, documentation: t.documentation, example: t.example,
             insertText: insert, plainText: plainPlaced, isSnippet: insert.contains("$"), range: scan.context.range,
             filterText: ([shown] + t.words).joined(separator: " "), sortText: "", isDeprecated: t.deprecated,
-            isAlreadyPresent: alreadyPresent, commitCharacters: t.commit, catalogPath: t.path)
+            isAlreadyPresent: alreadyPresent, commitCharacters: t.commit, catalogPath: t.path, additionalEdits: extra)
         candidates.append((item, (m, tierValue, nearness, 100 - max(0, min(100, r)), t.since, shown)))
     }
 
@@ -790,7 +829,7 @@ struct DeskCompletionBuilder {
     private mutating func addOptionItems() {
         let taken = Set(snapshot.checked.options.keys).union(snapshot.package?.options.keys.map { $0 } ?? [])
         for t in templates.controls {
-            let isSection = t.snippet.contains("{")
+            let isSection = catalog.control(named: t.label)?.block == .optionItems
             if isSection {
                 add(t, tier: 2, label: t.label)
                 continue
@@ -803,7 +842,7 @@ struct DeskCompletionBuilder {
     }
 
     private mutating func addControls() {
-        for t in templates.controls where !t.snippet.contains("{") { add(t, tier: 1) }
+        for t in templates.controls where catalog.control(named: t.label)?.block != .optionItems { add(t, tier: 1) }
     }
 
     private mutating func addViews() {
@@ -886,6 +925,9 @@ struct DeskCompletionBuilder {
                 guard spec.context != .option else { continue }
             }
             if let kind = context.elementKind, site != .option, !spec.appliesTo.contains(kind) { continue }
+            if spec.name == "rainmeter", !isConvertedFile { continue }
+            if spec.name == "style", !hasUsableStyle { continue }
+            if spec.name == "position", site == .element, let parent = ownerParentKind, parent != .freeform { continue }
             let present = spec.repeatable == .no && scan.presentModifiers.contains(spec.name)
             if scan.dotTyped {
                 add(t, tier: 1, alreadyPresent: present)
@@ -921,6 +963,7 @@ struct DeskCompletionBuilder {
                         // Only settable data may start an action statement.
                         continue
                     }
+                    if !suits(t.valueType, nil) { continue }
                     add(t, tier: 2)
                 }
             }
@@ -947,6 +990,39 @@ struct DeskCompletionBuilder {
             guard m.kind != .action || scan.context.inActions else { continue }
             let key = m.name + (m.kind == .field ? "" : "()")
             guard seenNames.insert(key).inserted else { continue }
+            let signature = m.signatures.min { $0.since < $1.since }
+            // What the member gives, and what its type variable stands for: the value itself (`ifMissing`), or a
+            // list's item (`contains`).
+            var element: DeskType = type
+            if case .list(let inner) = type, catalog.index.typeMember("List", m.name, call: m.kind != .field) != nil { element = inner }
+            var result = m.type
+            switch signature?.result {
+            case .receiver?: result = type
+            case .elementOf?: if case .list(let inner) = type { result = inner }
+            case .fixed(let t)?: result = t
+            default: break
+            }
+            if !suits(result, nil) { continue }
+            let written = signature.map(DeskSnippet.params) ?? []
+            let takesItem = written.contains { if case .typeVar = $0.type { return true } else { return false } }
+            var unwritable = false
+            if takesItem {
+                switch element {
+                case .record, .any, .json, .typeVar: unwritable = true
+                default: break
+                }
+            }
+            let catalog = self.catalog
+            let itemValue: String? = {
+                switch element {
+                case .string, .symbolName, .imageSource, .fontFamily, .folderPath: return nil
+                default: return DeskSnippet.placeholder(for: element, catalog: catalog)
+                }
+            }()
+            let values: (ParamSpec) -> String? = { p in
+                if case .typeVar = p.type { return itemValue }
+                return nil
+            }
             var path: CatalogPath?
             if case .record(let id) = type, catalog.record(id)?.field(named: m.name) != nil {
                 path = .recordField(record: id, name: m.name)
@@ -958,14 +1034,16 @@ struct DeskCompletionBuilder {
             } else {
                 path = .typeMember(type: "Any", name: m.name)
             }
-            let signature = m.signatures.min { $0.since < $1.since }
             var snippet = DeskSnippet.escapeLiteral(m.name)
             var plain = m.name
             if m.kind != .field {
-                let text = DeskSnippet.call(m.name, params: signature.map(DeskSnippet.params) ?? [], block: false, catalog: catalog)
+                let text = DeskSnippet.call(m.name, params: signature.map(DeskSnippet.params) ?? [], block: false, catalog: catalog,
+                                            values: values)
                 snippet = text.snippet
                 plain = text.plain
             }
+            // A value of the list's items can't be written out (records): the member is of no use here.
+            if unwritable { continue }
             let kind: DeskCompletionItemKind = m.kind == .action ? .action : m.kind == .function ? .function : .data
             let tier = path.map { if case .typeMember("Any", _) = $0 { return 3 } else { return 1 } } ?? 2
             add(DeskCompletionTemplate(label: m.name, kind: kind, detail: L(m.title.en + " · " + catalog.displayName(for: m.type).en,
@@ -973,7 +1051,7 @@ struct DeskCompletionBuilder {
                                        documentation: L(m.doc.en, m.doc.zh), example: m.doc.example, snippet: snippet, plain: plain,
                                        words: m.doc.keywords, rank: m.doc.rank, since: m.doc.since,
                                        deprecated: m.doc.deprecated != nil, path: path, commit: m.kind == .field ? ["."] : [],
-                                       valueType: m.type, nameOnly: m.name),
+                                       valueType: result, nameOnly: m.name),
                 tier: tier)
         }
     }
@@ -1045,7 +1123,7 @@ struct DeskCompletionBuilder {
                 add(DeskCompletionTemplate(label: word, kind: .keyword, detail: L("yes or no", "是或否"), valueType: .bool),
                     tier: expected == .bool ? 1 : 6)
             }
-            add(DeskCompletionTemplate(label: "not", kind: .keyword, detail: L("The opposite", "取反"), snippet: "not $0",
+            add(DeskCompletionTemplate(label: "not", kind: .keyword, detail: L("The opposite", "取反"), snippet: "not ",
                                        plain: "not ", valueType: .bool), tier: expected == .bool ? 2 : 7)
         }
         let inStyle = snapshot.nodeTable.innermost(at: offset).map { i in
@@ -1068,6 +1146,7 @@ struct DeskCompletionBuilder {
         }
         for (spec, t) in templates.functions where spec.kind == .function {
             if spec.onlyInActions && !context.inActions { continue }
+            if !suits(t.valueType, expected) { continue }
             add(t, tier: 5, nearness: 5)
         }
     }
@@ -1128,7 +1207,8 @@ struct DeskCompletionBuilder {
     }
 
     private mutating func addStyles() {
-        var names: [(String, Int)] = snapshot.checked.styles.keys.map { ($0, 0) }
+        let current = enclosingStyleName
+        var names: [(String, Int)] = snapshot.checked.styles.keys.filter { $0 != current }.map { ($0, 0) }
         if let package = snapshot.package, !snapshot.isPackage {
             names += package.styles.keys.filter { snapshot.checked.styles[$0] == nil }.map { ($0, 1) }
         }
@@ -1289,7 +1369,164 @@ struct DeskCompletionBuilder {
         }
     }
 
+    /// A value naming something that exists at the cursor, for parameters that name one: a variable or option of
+    /// the right type for a binding, a style, a named element.
+    func contextualValue(_ p: ParamSpec) -> String? {
+        if case .binding(let inner) = p.type {
+            let offset = scan.utf8Range.lowerBound
+            for own in snapshot.visibleOwnNames(at: offset) where own.kind == .variable || own.kind == .saved {
+                if let type = own.type, DeskCompletionBuilder.fits(type, inner) || DeskSnapshot.fits(type, inner) { return own.name }
+            }
+            for (name, facts) in allOptions().sorted(by: { $0.key < $1.key }) where DeskSnapshot.fits(facts.type, inner) {
+                return "options." + name
+            }
+            return nil
+        }
+        if p.role == .styleRef || p.type == .styleRef {
+            let current = enclosingStyleName
+            if let name = snapshot.checked.styles.keys.sorted().first(where: { $0 != current }) { return name }
+            if !snapshot.isPackage, let name = snapshot.package?.styles.keys.sorted().first(where: { $0 != current }) { return name }
+            return nil
+        }
+        if p.role == .elementName {
+            return snapshot.checked.elements.values.compactMap(\.name).sorted().first
+        }
+        if p.role == .declaresElementName {
+            let taken = Set(snapshot.checked.elements.values.compactMap(\.name))
+                .union(snapshot.visibleOwnNames(at: scan.utf8Range.lowerBound).map(\.name))
+            return uniqueName(p.previewValue ?? "title", taken: taken)
+        }
+        if p.type == .any, let preview = p.previewValue, let first = preview.split(separator: ".").first,
+           let ns = catalog.namespace(named: String(first)), ns.permission != nil, !declaredPermissions.contains(ns.permission!) {
+            // A value to watch that needs no permission: an own value of the widget.
+            return snapshot.visibleOwnNames(at: scan.utf8Range.lowerBound).first { $0.kind != .element }?.name
+        }
+        return nil
+    }
+
     // MARK: Helpers
+
+    /// Whether a value of a known type may go where `expected` is wanted: a value that can't (a list in text, a
+    /// color for a font size) is not offered when both are known.
+    func suits(_ type: DeskType?, _ expected: DeskType?) -> Bool {
+        if scan.displaySlot, case .list? = type { return false }
+        guard let type, let expected else { return true }
+        switch expected {
+        case .any, .typeVar, .json, .string, .binding: return !scan.displaySlot || type.components.allSatisfy { if case .list = $0 { return false } else { return true } }
+        default: break
+        }
+        return DeskCompletionBuilder.fits(type, expected) || DeskSnapshot.fits(type, expected)
+    }
+
+    /// A style other than the one being written exists (`.style(…)` has something to name).
+    var hasUsableStyle: Bool {
+        let current = enclosingStyleName
+        if snapshot.checked.styles.keys.contains(where: { $0 != current }) { return true }
+        return !snapshot.isPackage && (snapshot.package?.styles.keys.contains { $0 != current } ?? false)
+    }
+
+    /// The file keeps Rainmeter details (`info { convertedFrom: … }`): `.rainmeter(…)` may be written.
+    var isConvertedFile: Bool {
+        let table = snapshot.nodeTable
+        for top in table.children(of: 0) where table.entries[top].kind == .infoBlock {
+            for block in table.children(of: top) where table.entries[block].kind == .block {
+                for field in table.children(of: block) where table.entries[field].kind == .field {
+                    if table.entries[field].positioned.firstChild(.label)?.childTokens.first?.token.name == "convertedFrom" { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    /// The kind of the container around the element a modifier goes on, when the checker knows it.
+    var ownerParentKind: ElementKind? {
+        guard let owner = scan.modifierOwner, let facts = snapshot.checked.elements[snapshot.nodeTable.id(owner)],
+              let parent = facts.parent else { return nil }
+        return snapshot.checked.elements[parent]?.kind
+    }
+
+    /// The name of the style whose body holds the cursor.
+    var enclosingStyleName: String? {
+        let table = snapshot.nodeTable
+        guard let i = table.innermost(at: scan.utf8Range.lowerBound) ?? scan.block else { return nil }
+        for a in [i] + table.ancestors(of: i) where table.entries[a].kind == .styleDecl {
+            let tokens = table.entries[a].positioned.childTokens
+            return tokens.count >= 2 ? tokens[1].token.name : nil
+        }
+        return nil
+    }
+
+    /// The permissions `info { permissions: […] }` lists.
+    var declaredPermissions: Set<String> {
+        guard let list = permissionsList else { return [] }
+        let table = snapshot.nodeTable
+        var out = Set<String>()
+        for c in table.children(of: list) where table.entries[c].kind == .implicitMemberExpr {
+            if let name = table.entries[c].positioned.childTokens.dropFirst().first, !name.token.isMissing { out.insert(name.token.name) }
+        }
+        return out
+    }
+
+    /// The list of `info { permissions: […] }`.
+    var permissionsList: Int? {
+        let table = snapshot.nodeTable
+        guard let block = infoBody else { return nil }
+        for field in table.children(of: block) where table.entries[field].kind == .field {
+            guard table.entries[field].positioned.firstChild(.label)?.childTokens.first?.token.name == "permissions" else { continue }
+            return table.children(of: field).first { table.entries[$0].kind == .listLiteral }
+        }
+        return nil
+    }
+
+    /// The block of `info { }`.
+    var infoBody: Int? {
+        let table = snapshot.nodeTable
+        for top in table.children(of: 0) where table.entries[top].kind == .infoBlock {
+            return table.children(of: top).first { table.entries[$0].kind == .block }
+        }
+        return nil
+    }
+
+    /// The edits that add a permission the file does not list yet: to the list, as a field of `info`, or as a new
+    /// `info` block. None in `package.desk`, for a permission already listed, or when the edit would touch the
+    /// item's own range.
+    func permissionEdits(_ permission: String) -> [DeskTextEditU16] {
+        guard !snapshot.isPackage, !declaredPermissions.contains(permission) else { return [] }
+        let table = snapshot.nodeTable
+        let bytes = snapshot.index.bytes
+        var edit: (Range<Int>, String)?
+        if let list = permissionsList {
+            let tokens = table.entries[list].positioned.childTokens
+            guard let close = tokens.last, close.kind == .rBracket, !close.token.isMissing else { return [] }
+            let empty = !table.children(of: list).contains { table.entries[$0].kind.isExpression }
+            edit = (close.textStart..<close.textStart, empty ? ".\(permission)" : ", .\(permission)")
+        } else if let block = infoBody {
+            let tokens = table.entries[block].positioned.childTokens
+            guard let open = tokens.first, let close = tokens.last, close.kind == .rBrace, !close.token.isMissing else { return [] }
+            let fields = table.children(of: block).filter { table.entries[$0].kind.isStatement }
+            let multiLine = bytes[open.textRange.upperBound..<close.textStart].contains { $0 == 0x0A || $0 == 0x0D }
+            if let last = fields.last {
+                let end = table.entries[last].textEnd
+                if multiLine {
+                    var start = table.entries[last].textStart
+                    while start > 0, bytes[start - 1] != 0x0A, bytes[start - 1] != 0x0D { start -= 1 }
+                    var indentEnd = start
+                    while indentEnd < bytes.count, bytes[indentEnd] == 0x20 || bytes[indentEnd] == 0x09 { indentEnd += 1 }
+                    let indent = String(decoding: bytes[start..<indentEnd], as: UTF8.self)
+                    edit = (end..<end, "\n" + indent + "permissions: [.\(permission)]")
+                } else {
+                    edit = (end..<end, ", permissions: [.\(permission)]")
+                }
+            } else {
+                edit = (open.textRange.upperBound..<close.textStart, " permissions: [.\(permission)] ")
+            }
+        } else {
+            let start = table.children(of: 0).first { table.entries[$0].kind.isTopLevelBlock }.map { table.entries[$0].textStart } ?? 0
+            edit = (start..<start, "info { permissions: [.\(permission)] }\n\n")
+        }
+        guard let (r, text) = edit, r.upperBound <= scan.utf8Range.lowerBound || r.lowerBound >= scan.utf8Range.upperBound else { return [] }
+        return [DeskTextEditU16(range: snapshot.index.range(utf8: r), newText: text)]
+    }
 
     /// The widget's options and the package's, the widget's first.
     private func allOptions() -> [String: OptionFacts] {
