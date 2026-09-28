@@ -63,6 +63,8 @@ final class EditingSession {
     let host = StudioHost()
     /// Sample data the Studio's instance shows in place of what its measures read (the preview bar; nil: live).
     var measureValues: MeasureValueOverride? { didSet { studioSkin?.measureValues = measureValues } }
+    /// The clock the Studio's instance reads (nil: the Mac's): frozen time in the preview. Taken at the next load.
+    var studioClock: SkinClock?
     /// The Studio's own instance of the widget (nil while no Studio window shows the widget).
     private(set) var studioSkin: Skin?
     /// The widget's main file, as the desktop runs it.
@@ -171,6 +173,7 @@ final class EditingSession {
         skin.sourceProvider = buffers
         skin.actionPolicy = host.policy
         skin.measureValues = measureValues
+        if let studioClock { skin.skinClock = studioClock }
         // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
         host.policy.resetFiles()
         let stamps = diskSync.modificationDates()

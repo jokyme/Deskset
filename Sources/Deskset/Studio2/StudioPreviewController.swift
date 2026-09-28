@@ -110,6 +110,7 @@ final class StudioPreviewController {
         session?.host.appearance = nil
         session?.host.takesPointer = false
         session?.measureValues = nil
+        session?.studioClock = nil
         state.data = .live
         state.time = .live
         state.interacting = false
@@ -121,6 +122,19 @@ final class StudioPreviewController {
 
     /// Applies what changed from `old` to the canvas and the Studio's instance.
     private func stateChanged(from old: StudioPreviewState) {
+        if old.time != state.time, let session {
+            // Frozen time is the instance's own clock (its wall clock stands still; its timers go on): every reader of
+            // the time — clocks, the sun, the weather's hours, scripts — sees it. The instance loads again to take it.
+            switch state.time {
+            case .live: session.studioClock = nil
+            case .frozen(let date):
+                var clock = SkinClock.live
+                clock.now = { date }
+                session.studioClock = clock
+            }
+            state.apply(to: sample)
+            session.reloadStudioSkin()
+        }
         if old.data != state.data || old.time != state.time {
             state.apply(to: sample)
             if let skin = session?.studioSkin {
