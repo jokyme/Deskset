@@ -241,8 +241,8 @@ public final class DeskSnapshot: Sendable {
 
     /// Where a node of one of the snapshot's trees is, its text without trivia.
     public func location(of id: NodeID) -> DeskLocation? {
-        guard let tree = tree(of: id), let node = tree.resolve(id) else { return nil }
-        return location(file: tree.file, utf8: node.textRange)
+        guard let tree = tree(of: id), let node = tree.quickResolve(id) else { return nil }
+        return location(file: tree.file, utf8: node.quickTextRange)
     }
 
     /// Every widget of the folder checked with the package, and the package with what only the whole folder can

@@ -71,12 +71,12 @@ extension DeskSnapshot {
             for child in current.children {
                 guard case .node(let node) = child, node.range.contains(offset) else { continue }
                 // Leading trivia belongs to the node's first token but not to its text.
-                if node.textRange.contains(offset) { next = node }
+                if node.quickTextRange.contains(offset) { next = node }
                 break
             }
             guard let node = next else { return found }
             if node.kind.isStatement || node.kind.isTopLevelBlock || node.kind == .strayStatement {
-                found = node.textRange
+                found = node.quickTextRange
             }
             current = node
         }

@@ -370,6 +370,21 @@ func runDeskServiceTests(_ t: TestRunner) {
         }
         print("    \(compared) diagnostics of \(fixtures.count) fixtures compared")
 
+        // The service's quick tree lookups agree with the tree's own, for every node of the fixtures.
+        var nodes = 0
+        for fixture in fixtures {
+            let tree = Desk.parse(fixture.positive, fileName: "Q.desk")
+            var stack = [tree.rootNode]
+            while let node = stack.popLast() {
+                nodes += 1
+                t.equal(node.quickTextRange, node.textRange, "\(fixture.id): text range of \(node.kind)")
+                let id = tree.id(of: node)
+                t.equal(tree.quickResolve(id)?.range, tree.resolve(id)?.range, "\(fixture.id): resolve \(id)")
+                stack.append(contentsOf: node.childNodes)
+            }
+        }
+        t.check(nodes > 4_000, "only \(nodes) nodes")
+
         // UTF-16 positions after CJK and an emoji; the dropped element's range for the ghost.
         let file = DeskFileID("Ghost.desk")
         let ghostText = "// 中文 😀\ninfo { name: \"G\" }\nwidget {\n    Column {\n        Txt(\"A\")\n        Text(\"B\")\n    }\n}\n"
@@ -491,13 +506,16 @@ func runDeskServiceTests(_ t: TestRunner) {
                 inserted.toggle()
                 service.update(changes: [change], version: version)
             }
-            // A new snapshot of the same check has empty caches: what wording the diagnostics and formatting cost.
-            let diagnostics = best(3) { _ = service.setMessageLanguage(.english).diagnostics }
+            // A new snapshot of the same check has empty caches: what wording the diagnostics and formatting cost
+            // (the diagnostics of a copy with a misspelt component in every block).
             let format = best(3) { _ = service.setMessageLanguage(.english).formatDocument() }
+            let faulty = DeskLanguageService(openFile: file, files: [file: text.replacingOccurrences(of: "Text(\"CPU", with: "Txt(\"CPU")])
+            let problems = faulty.snapshot.checked.diagnostics.count
+            let diagnostics = best(3) { _ = faulty.setMessageLanguage(.english).diagnostics }
             print(String(format: "    Desk service, %@ build, %d lines: one-character edit → new snapshot %.1f ms; "
-                         + "worded diagnostics %.1f ms; formatting %.1f ms",
+                         + "formatting %.1f ms; wording %d diagnostics %.1f ms",
                          build as NSString, text.split(separator: "\n", omittingEmptySubsequences: false).count,
-                         update, diagnostics, format))
+                         update, format, problems, diagnostics))
             // Only a bound that keeps the editor usable (CI machines are slow and stall).
             let bound = (lines == 300 ? 150.0 : 600.0) * factor
             t.check(update < bound, String(format: "a one-character edit of %d lines took %.0f ms (bound %.0f)", lines, update, bound))
