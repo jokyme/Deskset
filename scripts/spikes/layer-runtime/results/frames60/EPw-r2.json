@@ -1,0 +1,767 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--settle",
+  "3",
+  "--pairs",
+  "1",
+  "--seconds",
+  "2",
+  "--ws-cycles",
+  "0",
+  "--no-top",
+  "--frames",
+  "--frames-seconds",
+  "10",
+  "--mode",
+  "EP",
+  "--window-space-base",
+  "--out",
+  "results/frames60/EPw-r2.json"
+ ],
+ "coalesced": false,
+ "command": "cost",
+ "config": "EP+windowSpaceBase",
+ "contexts": {
+  "EP+windowSpaceBase group [skin] kCGContextTypeBitmap Color LCD 8bpc": 36269
+ },
+ "cpu": {
+  "countersOn": {
+   "averageGHz": 3.826,
+   "billedSystemMsPerSecond": 12.068,
+   "cpuPercentOfOneCore": 5.909,
+   "cyclesMillionsPerSecond": 226.11,
+   "cyclesPerInstruction": 0.383,
+   "energyMilliwatts": 212.66,
+   "instructionsMillionsPerSecond": 589.95,
+   "pCoreShareOfCPU": 1,
+   "pCoreShareOfCycles": 1,
+   "pCoreShareOfInstructions": 1,
+   "runnableMsPerSecond": 60.58,
+   "servicedSystemMsPerSecond": 0
+  },
+  "framesPerSecond": 60.03,
+  "idleWakeupsPerSecond": 0,
+  "interruptWakeupsPerSecond": 61,
+  "processPercentOfOneCore": 5.909,
+  "provisional": true,
+  "windowServerPercentOfOneCore": 50.35,
+  "windowServerPercentOfOneCoreIncrease": 0.98,
+  "windowServerPercentOfOneCoreOff": 49.37
+ },
+ "frameCost": {
+  "commitP50us": 206,
+  "commitP99us": 628,
+  "commitThreadCPUp50us": 205,
+  "p50us": 685,
+  "p99us": 869,
+  "threadCPUp50us": 685,
+  "updates": 429,
+  "what": "drawing before the commit"
+ },
+ "frames": {
+  "commitCostP50us": 204,
+  "commitCostP99us": 628,
+  "commits": 120,
+  "frameCostP50us": 683,
+  "frameCostP99us": 845,
+  "intervalMaxMs": 17.62,
+  "intervalP50ms": 16.68,
+  "intervalP99ms": 17.57
+ },
+ "loadAverageAtEnd": [
+  8.67,
+  10.23,
+  10.99
+ ],
+ "memory": {
+  "backingStores": {
+   "CABackingStore [246 44] BGRA8888": 1,
+   "CGImage 14x124 8bpc/32bpp Color LCD": 32,
+   "CGImage 162x12 8bpc/32bpp Color LCD": 1,
+   "CGImage 520x240 8bpc/32bpp Color LCD": 22
+  },
+  "footprintAfterCloseMB": 13.66,
+  "footprintAfterSettleMB": 11.41,
+  "footprintAtEndMB": 12.13,
+  "footprintBeforeMB": 10,
+  "footprintCategoriesAfterSettleMB": {
+   "CG raster data": 0.34,
+   "CoreAnimation": 0.56,
+   "MALLOC metadata": 0.61,
+   "MALLOC_SMALL": 5.72,
+   "MALLOC_TINY": 0.3,
+   "TOTAL": 11,
+   "__DATA": 0.58,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.34,
+   "page table": 0.52,
+   "stack": 0.31,
+   "total": "11 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.28,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintCategoriesBeforeMB": {
+   "MALLOC metadata": 0.58,
+   "MALLOC_SMALL": 5.28,
+   "MALLOC_TINY": 0.28,
+   "TOTAL": 10,
+   "__DATA": 0.56,
+   "__DATA_DIRTY": 1.06,
+   "libdispatch": 0.34,
+   "page table": 0.52,
+   "stack": 0.36,
+   "total": "10 MB (16384 bytes per page)",
+   "untagged (VM_ALLOCATE)": 0.27,
+   "unused dyld shared cache area": 0.26
+  },
+  "footprintIncreaseAtEndPerWidgetMB": 2.125,
+  "footprintIncreaseMB": 1.406,
+  "footprintIncreasePerWidgetMB": 1.406,
+  "layerBitmapsPerWidgetMB": 0.768,
+  "memoryPressureAfterSettle": {
+   "compressorOccupiesGB": 7.04,
+   "freeGB": 0.09,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "memoryPressureBefore": {
+   "compressorOccupiesGB": 7.08,
+   "freeGB": 0.13,
+   "pressureLevel": 1,
+   "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+  },
+  "oneBitmapOfTheWindowMB": 0.476,
+  "ownedBitmapsPerWidgetMB": 0.476,
+  "partitionMinimumMB": 0.737,
+  "windowServerCloseStepsMB": [
+   -2
+  ],
+  "windowServerIncreaseMB": -3,
+  "windowServerIncreasePerWidgetMB": -3,
+  "windowServerOpenStepsMB": [
+   -3
+  ]
+ },
+ "mode": "EP",
+ "offPhases": "windows ordered out, updates stopped",
+ "onScreen": {
+  "distinctFramesSeen": 573,
+  "frameChangeIntervalP50ms": 16.7,
+  "frameChangeIntervalP99ms": 31.9,
+  "framesCommitted": 579,
+  "longestFreeze": {
+   "capturesAround": [
+    {
+     "atMs": 19598.7,
+     "frame": 815
+    },
+    {
+     "atMs": 19601.1,
+     "frame": 815
+    },
+    {
+     "atMs": 19603.5,
+     "frame": 815
+    },
+    {
+     "atMs": 19606.6,
+     "frame": 815
+    },
+    {
+     "atMs": 19608.9,
+     "frame": 815
+    },
+    {
+     "atMs": 19612.4,
+     "frame": 815
+    },
+    {
+     "atMs": 19615.3,
+     "frame": 815
+    },
+    {
+     "atMs": 19617.4,
+     "frame": 815
+    },
+    {
+     "atMs": 19619.4,
+     "frame": 815
+    },
+    {
+     "atMs": 19621.4,
+     "frame": 815
+    },
+    {
+     "atMs": 19623.5,
+     "frame": 815
+    },
+    {
+     "atMs": 19625.6,
+     "frame": 815
+    },
+    {
+     "atMs": 19627.7,
+     "frame": 815
+    },
+    {
+     "atMs": 19630.4,
+     "frame": 815
+    },
+    {
+     "atMs": 19632.8,
+     "frame": 815
+    },
+    {
+     "atMs": 19634.5,
+     "frame": 815
+    },
+    {
+     "atMs": 19636.5,
+     "frame": 815
+    },
+    {
+     "atMs": 19638.7,
+     "frame": 815
+    },
+    {
+     "atMs": 19640.9,
+     "frame": 815
+    },
+    {
+     "atMs": 19642.9,
+     "frame": 815
+    },
+    {
+     "atMs": 19645,
+     "frame": 816
+    },
+    {
+     "atMs": 19647.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19650,
+     "frame": 816
+    },
+    {
+     "atMs": 19652.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19654.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19659.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19661.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19664.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19666.5,
+     "frame": 816
+    },
+    {
+     "atMs": 19668.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19670.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19673.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19678.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19680.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19683.5,
+     "frame": 816
+    },
+    {
+     "atMs": 19685.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19688,
+     "frame": 816
+    },
+    {
+     "atMs": 19690.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19692.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19694.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19696.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19698.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19700.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19702.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19704.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19707,
+     "frame": 816
+    },
+    {
+     "atMs": 19709.1,
+     "frame": 816
+    },
+    {
+     "atMs": 19711.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19713.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19715.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19718.1,
+     "frame": 816
+    },
+    {
+     "atMs": 19720.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19722.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19724.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19727,
+     "frame": 816
+    },
+    {
+     "atMs": 19729.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19731.2,
+     "frame": 816
+    },
+    {
+     "atMs": 19733.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19735.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19737.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19739.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19741.5,
+     "frame": 816
+    },
+    {
+     "atMs": 19743.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19746.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19748.5,
+     "frame": 816
+    },
+    {
+     "atMs": 19750.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19752.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19755,
+     "frame": 816
+    },
+    {
+     "atMs": 19757.1,
+     "frame": 816
+    },
+    {
+     "atMs": 19759.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19761.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19763.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19765.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19767.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19769.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19772.1,
+     "frame": 816
+    },
+    {
+     "atMs": 19774.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19776.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19778.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19781.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19783.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19785.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19787.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19790,
+     "frame": 816
+    },
+    {
+     "atMs": 19792.1,
+     "frame": 816
+    },
+    {
+     "atMs": 19794.3,
+     "frame": 816
+    },
+    {
+     "atMs": 19796.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19798.4,
+     "frame": 816
+    },
+    {
+     "atMs": 19800.6,
+     "frame": 816
+    },
+    {
+     "atMs": 19802.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19804.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19806.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19808.7,
+     "frame": 816
+    },
+    {
+     "atMs": 19810.8,
+     "frame": 816
+    },
+    {
+     "atMs": 19812.9,
+     "frame": 816
+    },
+    {
+     "atMs": 19814.9,
+     "frame": 818
+    },
+    {
+     "atMs": 19817.3,
+     "frame": 822
+    },
+    {
+     "atMs": 19820.8,
+     "frame": 823
+    },
+    {
+     "atMs": 19826.6,
+     "frame": 823
+    },
+    {
+     "atMs": 19828.8,
+     "frame": 823
+    },
+    {
+     "atMs": 19832.9,
+     "frame": 823
+    },
+    {
+     "atMs": 19835.2,
+     "frame": 823
+    },
+    {
+     "atMs": 19837.6,
+     "frame": 824
+    },
+    {
+     "atMs": 19841.2,
+     "frame": 824
+    },
+    {
+     "atMs": 19843.3,
+     "frame": 824
+    },
+    {
+     "atMs": 19845.3,
+     "frame": 824
+    },
+    {
+     "atMs": 19848.8,
+     "frame": 824
+    },
+    {
+     "atMs": 19851,
+     "frame": 824
+    },
+    {
+     "atMs": 19853,
+     "frame": 825
+    },
+    {
+     "atMs": 19857.8,
+     "frame": 825
+    },
+    {
+     "atMs": 19859.9,
+     "frame": 825
+    },
+    {
+     "atMs": 19862,
+     "frame": 825
+    }
+   ],
+   "commitsAround": [
+    {
+     "commitUs": 347,
+     "committedAtMs": 19288.2,
+     "drawUs": 686,
+     "sincePreviousCommitMs": 16.3,
+     "tick": 813
+    },
+    {
+     "commitUs": 205,
+     "committedAtMs": 19305.2,
+     "drawUs": 700,
+     "sincePreviousCommitMs": 17,
+     "tick": 814
+    },
+    {
+     "commitUs": 169,
+     "committedAtMs": 19321.3,
+     "drawUs": 635,
+     "sincePreviousCommitMs": 16,
+     "tick": 815
+    },
+    {
+     "commitUs": 197,
+     "committedAtMs": 19338.5,
+     "drawUs": 660,
+     "sincePreviousCommitMs": 17.2,
+     "tick": 816
+    },
+    {
+     "commitUs": 356,
+     "committedAtMs": 19354.9,
+     "drawUs": 669,
+     "sincePreviousCommitMs": 16.3,
+     "tick": 817
+    },
+    {
+     "commitUs": 325,
+     "committedAtMs": 19371.5,
+     "drawUs": 682,
+     "sincePreviousCommitMs": 16.6,
+     "tick": 818
+    },
+    {
+     "commitUs": 5867,
+     "committedAtMs": 19394.2,
+     "drawUs": 630,
+     "sincePreviousCommitMs": 22.7,
+     "tick": 819
+    },
+    {
+     "commitUs": 92482,
+     "committedAtMs": 19497.4,
+     "drawUs": 611,
+     "sincePreviousCommitMs": 103.3,
+     "tick": 820
+    },
+    {
+     "commitUs": 142010,
+     "committedAtMs": 19647,
+     "drawUs": 639,
+     "sincePreviousCommitMs": 149.5,
+     "tick": 821
+    }
+   ],
+   "frameShown": 816,
+   "fromMs": 19645,
+   "nextFrameSeen": 818,
+   "toMs": 19814.9
+  },
+  "longestSameFrameMs": 169.9,
+  "samples": 3446,
+  "samplesPerSecond": 345,
+  "unreadable": 0
+ },
+ "oneSkinThread": false,
+ "openAllMs": 5.1,
+ "pairs": 1,
+ "partition": {
+  "baseElements": 1,
+  "groupPixels": 68320,
+  "groups": 34,
+  "largestGroupPixels": 10824,
+  "tiles": 22,
+  "windowPixels": 124800
+ },
+ "phaseSeconds": 2,
+ "phases": [
+  {
+   "counters": {
+    "averageGHz": 3.826,
+    "billedSystemMsPerSecond": 12.068,
+    "cpuPercentOfOneCore": 5.909,
+    "cyclesMillionsPerSecond": 226.11,
+    "cyclesPerInstruction": 0.383,
+    "energyMilliwatts": 212.66,
+    "instructionsMillionsPerSecond": 589.95,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 60.58,
+    "servicedSystemMsPerSecond": 0
+   },
+   "framesPerSecond": 60.03,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 61,
+   "loadAverageAfter": [
+    8.66,
+    10.34,
+    11.04
+   ],
+   "loadAverageBefore": [
+    8.66,
+    10.34,
+    11.04
+   ],
+   "phase": "on",
+   "processPercentOfOneCore": 5.909,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 50.35
+  },
+  {
+   "counters": {
+    "averageGHz": 3.778,
+    "billedSystemMsPerSecond": 0,
+    "cpuPercentOfOneCore": 0.035,
+    "cyclesMillionsPerSecond": 1.31,
+    "cyclesPerInstruction": 1.357,
+    "energyMilliwatts": 0.77,
+    "instructionsMillionsPerSecond": 0.96,
+    "pCoreShareOfCPU": 1,
+    "pCoreShareOfCycles": 1,
+    "pCoreShareOfInstructions": 1,
+    "runnableMsPerSecond": 0.37,
+    "servicedSystemMsPerSecond": 0
+   },
+   "framesPerSecond": 0,
+   "idleWakeupsPerSecond": 0,
+   "interruptWakeupsPerSecond": 0.97,
+   "loadAverageAfter": [
+    8.85,
+    10.35,
+    11.04
+   ],
+   "loadAverageBefore": [
+    8.85,
+    10.35,
+    11.04
+   ],
+   "phase": "off",
+   "processPercentOfOneCore": 0.035,
+   "provisional": true,
+   "seconds": 2.07,
+   "windowServerPercentOfOneCore": 49.37
+  }
+ ],
+ "scenario": "sixty",
+ "settleSeconds": 3,
+ "staggered": false,
+ "updateIntervalMs": 16.67,
+ "widgets": 1
+}

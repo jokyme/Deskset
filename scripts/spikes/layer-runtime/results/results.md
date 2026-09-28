@@ -458,23 +458,29 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
   on the update rate (`memtrace/design-A-every-*`: 163–165 MB whether the skin redraws every 16.7 ms or every 1 s) and
   appears after the first redraws: ten System widgets drawn once and never again stayed at +17.8 MB
   (`memtrace/static-A`). This is what made Deskset move to B.
-- **B's own bitmaps are not in its footprint**: two 0.78 MB bitmaps per System widget, yet +0.24 MB per widget (see
-  Conditions: the pages of a bitmap whose image went to the window server leave the process). B+kept's pictures are
-  drawn once and then read every frame when they are copied, so they stay: +3.38 MB per System widget (own bitmaps
-  4.67 MB: the two bitmaps and four pictures), +6.33 MB for the design skin (9.89 MB: two bitmaps and three
-  pictures of 1.98 MB).
+- **B's own bitmaps are not in its footprint while shown**: two 0.78 MB bitmaps per System widget, yet +0.24 MB per
+  widget. That is how phys_footprint attributes pages whose image the window server holds (see Conditions), not a
+  saving: the same pages are back in the footprint while the windows are ordered out. B+kept's pictures stay in it
+  (they are read every frame when copied): +3.38 MB per System widget (own bitmaps 4.67 MB: the two bitmaps and four
+  pictures), +6.33 MB for the design skin (9.89 MB: two bitmaps and three pictures of 1.98 MB).
 - **E layers** are charged as "CoreAnimation" (backing stores; CA gives layers that keep changing a second buffer, and
   marks one of them volatile) and the partition's base bitmap and base crops as "CG raster data". EPw: 2.17 MB per
-  System widget (partition minimum, window + group boxes: 1.25 MB), 2.70 MB for the design skin. The scratch bitmap
-  (EPxw) adds about one window bitmap: 3.44 MB and 5.27 MB.
-- **C**'s bitmaps behave like B's: C1 +0.88 MB per System widget (own bitmaps 1.55 MB), +0.25 MB for the design skin.
-  The partition CPw keeps the base bitmap and two bitmaps per group (own 1.73 MB per System widget): +2.82 MB
-  (one skin thread: 2.46 MB), +2.19 MB for the design skin.
+  System widget (partition minimum, window + group boxes: 1.25 MB), 2.70 MB for the design skin (3.03 MB in its one
+  round at memory pressure level 1). These too are lower bounds: the base bitmap is itself an image made from a
+  bitmap context, and only part of it is charged ("CG raster data" +1.06 MB for a 1.98 MB base in the design skin).
+  The scratch bitmap (EPxw) adds about one window bitmap: 3.44 MB and 5.27 MB.
+- **C**'s bitmaps are attributed like B's: C1 +0.88 MB per System widget by phys_footprint (own bitmaps 1.55 MB),
+  +0.25 MB for the design skin. The partition CPw keeps the base bitmap and two bitmaps per group (own 1.73 MB per
+  System widget): +2.82 MB (one skin thread: 2.46 MB), +2.19 MB for the design skin. These are lower bounds, not
+  costs; the comparison with E is in "After review: memory" above.
 - **D** (first campaign) is charged in full for its IOSurfaces (up to 3 per layer): 2.35 / 3.49 MB per System widget
   (D1 / DP), 4.42 / 5.69 MB for the design skin.
 - Hiding the windows (ordered out for 5 s in `memtrace-b`) raised every mode's footprint while hidden (EPw +2 MB,
-  E1 +8 MB, B +15 MB for 10 widgets) until they were shown again: the spike does not release anything when hidden,
-  unlike the plan, which releases every layer's contents while a skin is hidden.
+  E1 +8 MB, B +15 MB for 10 widgets) until they were shown again. Corrected after review: this is the same pages
+  being attributed to this process again once the window server lets go of them (B: +15.05 MB = two 0.78 MB bitmaps
+  × 10 widgets; design B +3.9 MB = two 1.98 MB bitmaps), not memory the spike failed to release. (The spike does not
+  release contents while hidden; the plan does, and M1 has to measure that release with a method that sees these
+  pages.)
 
 **What the CPU numbers mean**
 
@@ -553,8 +559,19 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
     stands out of its noise (± 0.6–0.9).
   - With 10 widgets updating every second the differences are below what this screen's WindowServer resolves; the
     paired step was run at 60 Hz only.
-- 60 Hz frames: every mode delivered 298–300 of 300 committed frames to the screen in 5 s (the lowest single rounds:
-  EPw 291, CPxw 294), commit intervals p50 16.67 ms, p99 17.1–21.6 ms.
+- 60 Hz frames (corrected after review): the medians were 298–300 of 300 committed frames in 5 s, but **two rounds
+  failed the M1 bar of 298 / 300**: EPw round 3 (291 of 300, one frame on screen for 91.6 ms, load 7.77 at the end:
+  not provisional) and CPxw round 3 (294, 71.1 ms). Commit intervals p50 16.67 ms, p99 17.1–21.6 ms.
+- **Rerun after review (`frames60/`)**: EPw, CPw and B+kept, 10 rounds each, interleaved, 10 s of read-back per round
+  (about 600 frames), the skin thread's commit times logged around the longest freeze. The load stayed high (6.6–26 at
+  the end of the rounds). B+kept: 298.5–300 per 300 in every round, longest freeze 20–39 ms. CPw: 299–299.5 in every
+  round, 23–33 ms. **EPw: 9 rounds at 299–300, one at 296.9 (round 2: 573 of 579 frames, one frame on screen for
+  170 ms).** The log shows where: drawing stayed at 0.6–0.7 ms, but the skin thread's `CATransaction.commit()` plus
+  `flush()` took 5.9 ms, then **92 ms, then 142 ms** for three frames in a row, so the skin thread itself was blocked in
+  the commit and committed only 579 frames in 10 s. So the stall recurs (2 of the 13 EPw rounds so far, none of the
+  13 CPw and 13 B+kept rounds at 60 Hz fell below 298), and it is the commit, not the drawing and not the main thread.
+  One plausible cause, not verified: an E layer's backing store has two buffers, and a commit can wait until the
+  window server lets go of the one to be reused; C hands over a new image every frame and never waits for a buffer.
 - Opening (all widgets built and their first frame committed): 10 System widgets in 46–86 ms in every layered mode
   (A and B 12–31 ms), one design skin or visualizer in 2–15 ms.
 
