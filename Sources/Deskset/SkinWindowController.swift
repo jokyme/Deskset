@@ -931,8 +931,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         runtime.send(.windowFacts(now))
     }
 
+    /// Self-tests: what skins open goes here instead of to the workspace (nil: it opens). Main thread.
+    static var opensForTesting: ((SkinExecutePlan) -> Void)?
+
     /// `["target" arguments…]`: a web page, a file or an app opens.
     private func open(_ plan: SkinExecutePlan) {
+        if let hook = SkinWindowController.opensForTesting { return hook(plan) }
         switch plan {
         case .open(let url):
             NSWorkspace.shared.open(url)

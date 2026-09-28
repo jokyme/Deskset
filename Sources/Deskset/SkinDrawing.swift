@@ -347,6 +347,9 @@ final class SkinFrameProducer {
     private(set) var framesDrawn = 0
     /// Turns that ended with a frame wanted but not drawn because the window could not be seen (tests).
     private(set) var framesSkipped = 0
+    /// Seconds spent drawing frames, in all and the longest frame (tests and measurements; on the executor).
+    private(set) var drawingTime: TimeInterval = 0
+    private(set) var longestFrame: TimeInterval = 0
 
     /// How long a turn may run before a frame asked for in it is drawn anyway (a thread that never waits).
     static let frameInterval: TimeInterval = 1.0 / 60
@@ -473,6 +476,12 @@ final class SkinFrameProducer {
         guard let provider, let skin = skin() else { return }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
         let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
+        let began = ProcessInfo.processInfo.systemUptime
+        defer {
+            let took = ProcessInfo.processInfo.systemUptime - began
+            drawingTime += took
+            longestFrame = max(longestFrame, took)
+        }
         var picture: CGImage?
         // The drawing appearance AppKit set while the view drew.
         SkinFrameProducer.withAppearance(appearance) {

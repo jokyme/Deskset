@@ -18,6 +18,9 @@ enum AppSelfTest {
         FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
                                        contents: Data(DefaultSkins.stationeryFileHeader.utf8))
         EnvironmentStore.shared.settingsPath = settings.path + "/"
+        // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
+        // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
+        MediaUICache.root = t.temporaryDirectory("caches")
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
@@ -60,6 +63,7 @@ enum AppSelfTest {
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)
         ThreadStressSelfTests.run(t)
+        EngineStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
@@ -1276,6 +1280,10 @@ final class AppTestRunner {
             }
             AppSelfTest.closeEditors()
             while let cleanup = suiteCleanups.popLast() { cleanup() }
+        }
+        // Debug builds: a call to a skin's runtime from another thread than the skin's (`HostCallAudit`).
+        for call in HostCallAudit.drain() {
+            record("the engine called a skin's runtime off the skin's executor: \(call)", line: #line)
         }
         let seconds = ProcessInfo.processInfo.systemUptime - start
         durations.append((name, seconds))

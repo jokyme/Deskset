@@ -664,6 +664,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// of the new size goes to the content layer, which clips it or leaves a margin until the window follows, never
     /// stretching it.
     func skinNeedsDisplay(_ skin: Skin) {
+        HostCallAudit.note(self, "skinNeedsDisplay")
         guard !isClosed else { return }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
         model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
@@ -689,6 +690,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// A bang the engine performed with another config's name, or `*` (the engine has performed it here already: every
     /// other running skin follows, in load order).
     func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {
+        HostCallAudit.note(self, "forward \(bang.name)")
         let name = SkinLibrary.normalizedConfigName(config)
         guard name == "*" else { return send(bang, toConfig: name) }
         guard let directory = directoryStore?.directory else {
@@ -703,6 +705,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// engine records a compatibility note). Window bangs change the window model and group bangs go to the group's
     /// skins from here; what the others do is done on the main thread (`SkinWindowController.apply`).
     func skin(_ skin: Skin, handle bang: Bang) -> Bool {
+        HostCallAudit.note(self, "handle \(bang.name)")
         guard !isClosed else { return true }
         guard let kind = HostBangs.kind(of: bang.name) else { return false }
         switch kind {
@@ -726,6 +729,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     /// Lua `SKIN:FadeWindow`: the saved AlphaValue stays; the window model notes what it was faded to.
     func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool {
+        HostCallAudit.note(self, "fadeWindow")
         model.settings.fadedAlpha = SkinFadedAlpha(value: min(max(to, 0), 255), base: model.settings.alphaValue)
         request(.fadeWindow(from: from, to: to))
         return true
@@ -735,17 +739,20 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
 
     func skinDidFinishWork(_ skin: Skin) {
+        HostCallAudit.note(self, "skinDidFinishWork")
         publishSnapshot()
     }
 
     /// MacGlass: the glass views follow the engine's regions (asked right before the redraw that shows the new layout).
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {
+        HostCallAudit.note(self, "skinGlassRegionsChanged")
         guard !isClosed else { return }
         request(.glass(regions))
     }
 
     /// From the window's facts. Debug builds compare with the live window while the skin runs on the main executor.
     func skinWindowTakesPointer(_ skin: Skin) -> Bool {
+        HostCallAudit.note(self, "skinWindowTakesPointer")
         let answer = model.takesPointer
         #if DEBUG
         if SnapshotAudit.isActive(self), let live = window?.liveTakesPointer {
@@ -759,6 +766,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     static let auditSides = (predicted: "the window model", live: "the window")
 
     func skin(_ skin: Skin, execute target: String, arguments: [String]) {
+        HostCallAudit.note(self, "execute")
         switch SkinRuntime.executePlan(skin, target: target, arguments: arguments) {
         case .nothing:
             break
@@ -794,20 +802,24 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     }
 
     func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {
+        HostCallAudit.note(self, "log \(message.prefix(80))")
         Log.write(message, level: level, source: config)
     }
 
     func textSize(_ text: String, style: TextStyle, wrapWidth: Double?, for skin: Skin) -> (width: Double, height: Double) {
-        SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
+        HostCallAudit.note(self, "textSize")
+        return SkinRenderer.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
     }
 
     func imageSize(atPath path: String) -> (width: Double, height: Double)? {
-        Images.size(atPath: path)
+        HostCallAudit.note(self, "imageSize")
+        return Images.size(atPath: path)
     }
 
     /// The environment store's screens, paths and appearance with the window model's place, Z position and screen
     /// (AutoSelectScreen). Debug builds compare it with the live window's while the skin runs on the main executor.
     func environment(for skin: Skin) -> SkinEnvironment {
+        HostCallAudit.note(self, "environment")
         let settings = model.settings
         let env = EnvironmentStore.shared.environment(windowFrame: model.frame, zPosition: settings.zPosition,
                                                       autoSelectScreen: settings.autoSelectScreen)
@@ -821,10 +833,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     // MARK: SkinImageQueries
 
-    func imageExifOrientation(atPath path: String) -> Int { Images.exifOrientation(atPath: path) }
+    func imageExifOrientation(atPath path: String) -> Int {
+        HostCallAudit.note(self, "imageExifOrientation")
+        return Images.exifOrientation(atPath: path)
+    }
 
     func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
-        Images.pixelAlpha(atPath: path, x: x, y: y, oriented: exifOriented)
+        HostCallAudit.note(self, "imagePixelAlpha")
+        return Images.pixelAlpha(atPath: path, x: x, y: y, oriented: exifOriented)
     }
 }
 
@@ -841,12 +857,14 @@ enum SkinExecutePlan: Equatable {
 extension SkinRuntime: SkinCompanionChannel {
     /// On the skin's executor: asked of the main thread in order with the skin's other requests.
     func companion(_ companion: SkinCompanionRequest) {
+        HostCallAudit.note(self, "companion")
         request(.companion(companion))
     }
 
     /// Opens an InputText box over the skin's window; `answered` runs here, on the skin's executor, with what the
     /// person typed (nil: dismissed), unless the box is cancelled or the skin closes first. On the executor.
     func showInputText(_ settings: InputTextSettings, answered: @escaping (String?) -> Void) -> Int {
+        HostCallAudit.note(self, "showInputText")
         lastCompanionID += 1
         let id = lastCompanionID
         inputTextAnswers[id] = answered
@@ -857,7 +875,37 @@ extension SkinRuntime: SkinCompanionChannel {
 
     /// Closes the box `id` without an answer. On the executor.
     func cancelInputText(_ id: Int) {
+        HostCallAudit.note(self, "cancelInputText")
         guard inputTextAnswers.removeValue(forKey: id) != nil else { return }
         request(.companion(.cancelInputText(id: id)))
+    }
+}
+
+/// Calls the engine makes to a runtime (its `SkinHost`, `SkinImageQueries` and companion channel) must come from the
+/// skin's executor, as the engine promises its host: a plugin's background work that logs, redraws or runs an action
+/// without handing it to the skin's executor first would reach the runtime from another thread, where it races the
+/// skin's own work once the skin leaves the main thread. Debug builds note such calls; the self-tests fail the suite in
+/// which one was made (`drain`). Exclusive access counts as the owner's (`executor.isCurrent`).
+enum HostCallAudit {
+    private static let stray = Guarded<[String]>([])
+
+    /// Notes `call` when it does not come from `runtime`'s executor. Debug builds only.
+    @inline(__always)
+    static func note(_ runtime: SkinRuntime, _ call: @autoclosure () -> String) {
+        #if DEBUG
+        guard let skin = runtime.skin, !skin.executor.isCurrent else { return }
+        let thread = Thread.isMainThread ? "the main thread" : (Thread.current.name.flatMap { $0.isEmpty ? nil : $0 }
+                                                                 ?? "another thread")
+        let note = "\(runtime.config): \(call()) on \(thread)"
+        stray.access { if $0.count < 100 { $0.append(note) } }
+        #endif
+    }
+
+    /// The calls noted since the last drain, and forgets them.
+    static func drain() -> [String] {
+        stray.access { calls in
+            defer { calls = [] }
+            return calls
+        }
     }
 }

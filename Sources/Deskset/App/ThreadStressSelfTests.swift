@@ -288,8 +288,6 @@ enum ThreadStressSelfTests {
     /// (`#@#Variables.inc`) and the self-tests' own settings folder (`Stationery.inc`).
     private static func checkDefaultSkins(_ t: AppTestRunner, _ skins: [StressSkin]) {
         t.check(skins.count >= 40, "the default skins: \(skins.count)")
-        let freeForm = ["Almanac.ini": (411.0, 148.0), "Daybreak.ini": (450.0, 262.0), "Strip.ini": (740.0, 110.0)]
-        let sizes = ["Small.ini": (170.0, 170.0), "Medium.ini": (360.0, 170.0), "Large.ini": (360.0, 360.0)]
         var problems: [String] = []
         for skin in skins {
             let r = skin.report.current
@@ -299,7 +297,7 @@ enum ThreadStressSelfTests {
             if !r.loadWarnings.isEmpty { problems.append("\(name): \(r.loadWarnings)") }
             let loud = skin.host.logs.filter { $0.hasPrefix("[Warning]") || $0.hasPrefix("[Error]") }
             if !loud.isEmpty { problems.append("\(name): \(loud.prefix(3))") }
-            if let size = sizes[file] ?? freeForm[file] {
+            if let size = defaultSkinSize(file) {
                 if r.width != size.0 || r.height != size.1 { problems.append("\(name): \(r.width) × \(r.height)") }
             } else {
                 problems.append("\(name): not a card size's name")
@@ -307,6 +305,14 @@ enum ThreadStressSelfTests {
         }
         t.equal(problems, [], "every default skin loads cleanly, at its size")
         print("    \(skins.count) default skins checked for notes, warnings and their size")
+    }
+
+    /// The size of a bundled skin, by its file's name: its card's (Small 170 × 170, Medium 360 × 170, Large 360 × 360)
+    /// or a frameless piece's own; nil for any other name.
+    static func defaultSkinSize(_ file: String) -> (Double, Double)? {
+        let freeForm = ["Almanac.ini": (411.0, 148.0), "Daybreak.ini": (450.0, 262.0), "Strip.ini": (740.0, 110.0)]
+        let sizes = ["Small.ini": (170.0, 170.0), "Medium.ini": (360.0, 170.0), "Large.ini": (360.0, 360.0)]
+        return sizes[file] ?? freeForm[file]
     }
 
     /// What the fixtures in TestSkins/Threads computed on their threads.
