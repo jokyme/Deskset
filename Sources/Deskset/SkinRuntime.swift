@@ -386,6 +386,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             case .config(let name):
                 if name.caseInsensitiveCompare(config) == .orderedSame {
                     ownWindowBang(member)
+                } else if let directory = directoryStore?.directory, directory.runtime(for: name) == nil,
+                          !isLoadPending(name, in: directory) {
+                    // A config that does not run and is not loading: nothing happens (nor is it logged).
                 } else {
                     send(member, toConfig: name)
                 }
