@@ -300,7 +300,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
         let engine = AudioCaptureEngine()
         if captureAllowed {
             engine.outputActivity = CoreAudioOutputActivity.makeIfSupported()
-            engine.watchPermissionChanges = AudioPermissions.watchSystemSettings
+            engine.watchPermissionChanges = { AudioPermissions.watchPermissionChanges($0) }
         }
         return engine
     }()
@@ -360,14 +360,25 @@ final class AudioCaptureEngine: AudioLevelEngine {
     /// services, audio routers) do not. See `AudioProcesses.appsRunningOutput`.
     var appsPlayingAudio: () -> Set<pid_t> = { AudioProcesses.appsRunningOutput() }
     /// While the silence watchdog's verdict stands, a look that still finds silence while an app plays takes a new
-    /// tap (a permission given in System Settings may reach only a new one): the first this many seconds after the
-    /// verdict, each next one the next delay after the one before. After the last, none until another app starts
-    /// playing or the user leaves System Settings (`watchPermissionChanges`), which start the delays again.
+    /// tap (a permission given in System Settings or in macOS's prompt may reach only a new one): at every look for
+    /// the first `quickRetapWindow` seconds, and after that when the delays of `retapDelays` say so (the first this
+    /// many seconds after the verdict, each next one the next delay after the one before; those that fall in the
+    /// window are taken by it). After the last, none until another app starts playing or a permission may have
+    /// changed (`watchPermissionChanges`), which start the window and the delays again.
     var retapDelays: [TimeInterval] = [10, 30, 60, 180, 300]
-    /// Calls its argument (any thread) whenever the user may have changed a permission, such as when System Settings
-    /// is left or quits: a source whose verdict stands then takes a new tap at once. Set up at the first verdict; nil
-    /// watches nothing (tests, command-line modes).
+    /// Seconds after the verdict (or after the delays start again) during which every look takes a new tap: a
+    /// permission is mostly given right after macOS asks, and the sound should then come back within a look, not at
+    /// the next delay. 0 = none.
+    var quickRetapWindow: TimeInterval = 180
+    /// Calls its argument (any thread) whenever the user may have changed a permission: System Settings or macOS's
+    /// prompt goes away, or Deskset becomes active or inactive (`AudioPermissions.watchPermissionChanges`). A source
+    /// whose verdict stands then takes a new tap at once. Set up at the first verdict; nil watches nothing (tests,
+    /// command-line modes).
     var watchPermissionChanges: ((@escaping () -> Void) -> Void)?
+    /// A tap younger than this is not replaced at once when a permission may have changed, but once it is this old:
+    /// taking it may itself have brought macOS's prompt up, and the prompt going away must not start a round of new
+    /// taps and prompts.
+    var permissionRetapMinAge: TimeInterval = 2
     /// When set, system audio (`Port=Output`) is captured only while another process plays sound: at rest there is no
     /// tap, so no purple recording indicator and no output device kept running for nothing. Its source then waits in
     /// `standby`. The shared engine uses Core Audio's process objects (macOS 14.2 and later); nil captures for as long
@@ -425,11 +436,15 @@ final class AudioCaptureEngine: AudioLevelEngine {
         var silentLooks = 0
         /// HAL queue: the apps that played at every look counted in `silentLooks`.
         var lookPlayers: Set<pid_t> = []
-        /// HAL queue, while the verdict stands: new taps taken since the verdict (or since the delays started again),
-        /// the uptime before which no other may be taken, and the apps seen playing meanwhile (see `retapDelays`).
+        /// HAL queue, while the verdict stands: when the delays started (the verdict, or when they started again), the
+        /// delays of `retapDelays` used since then, the uptime before which the next one is not due, and the apps seen
+        /// playing meanwhile (see `retapDelays` and `quickRetapWindow`).
+        var retapStart: TimeInterval = 0
         var retaps = 0
         var nextRetap: TimeInterval = 0
         var retapPlayers: Set<pid_t> = []
+        /// HAL queue: the uptime at which the current capture started (see `permissionRetapMinAge`).
+        var startedAt: TimeInterval = 0
         /// HAL queue: the watchdog's verdict (see `silenceNote`). It outlasts the capture: a source that waits for sound
         /// (`standby`) keeps it, until a stream of this source carries sound.
         var refusalSuspected = false
@@ -679,6 +694,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
                 }
             })
         source.backend = backend
+        source.startedAt = ProcessInfo.processInfo.systemUptime
         let status = backend.start(ring: source.ring, events: events)
         source.sampleRate = status.sampleRate
         setStatus(withVerdict(status, of: source), for: source.key)
@@ -708,8 +724,9 @@ final class AudioCaptureEngine: AudioLevelEngine {
     /// same app played audio (`appsPlayingAudio`) are the verdict: `permissionNote` and `refusalSuspected`
     /// (`Type=MacPermission` 1). Not once a system-audio stream has carried sound since Deskset started (the permission
     /// was given then). Sound clears the verdict. While it stands, a look that still finds silence while an app plays
-    /// may start the capture again, so a permission granted in System Settings reaches a new tap: after the delays of
-    /// `retapDelays`, and at once when the user leaves System Settings. The tap is kept between those.
+    /// may start the capture again, so a permission granted in System Settings or in macOS's prompt reaches a new tap:
+    /// at every look in the first `quickRetapWindow` seconds, then after the delays of `retapDelays`; and at once when
+    /// a permission may have changed (`permissionMayHaveChanged`). The tap is kept between those.
     private func scheduleSilenceLook(_ source: Source, backend: AudioCaptureBackend, remaining: Int) {
         guard remaining > 0, silenceCheckInterval > 0 else { return }
         AudioHAL.queue.asyncAfter(deadline: .now() + silenceCheckInterval) { [weak self, weak source, weak backend] in
@@ -742,10 +759,16 @@ final class AudioCaptureEngine: AudioLevelEngine {
                 }
                 // Still silent while an app plays: a permission given since may only reach a new tap, so the
                 // capture starts again (the verdict stays until a tap carries sound, and the new tap looks again).
-                if source.retaps < self.retapDelays.count && now >= source.nextRetap - self.silenceCheckInterval / 2 {
-                    source.retaps += 1
-                    let next = self.retapDelays[min(source.retaps, self.retapDelays.count - 1)]
-                    source.nextRetap = now + next
+                // Every look in the first quickRetapWindow seconds; after that as the delays say.
+                let slack = self.silenceCheckInterval / 2
+                let quick = self.quickRetapWindow > 0 && now - source.retapStart <= self.quickRetapWindow
+                let due = source.retaps < self.retapDelays.count && now >= source.nextRetap - slack
+                if quick || due {
+                    if due {
+                        source.retaps += 1
+                        let next = self.retapDelays[min(source.retaps, self.retapDelays.count - 1)]
+                        source.nextRetap = now + next
+                    }
                     self.scheduleRestart(source.key)
                     return
                 }
@@ -756,8 +779,9 @@ final class AudioCaptureEngine: AudioLevelEngine {
         }
     }
 
-    /// Starts `retapDelays` again for a source whose verdict stands (HAL queue).
+    /// Starts `quickRetapWindow` and `retapDelays` again for a source whose verdict stands (HAL queue).
     private func restartRetaps(_ source: Source, players: Set<pid_t>, now: TimeInterval) {
+        source.retapStart = now
         source.retaps = 0
         source.nextRetap = now + (retapDelays.first ?? 0)
         source.retapPlayers = players
@@ -770,13 +794,17 @@ final class AudioCaptureEngine: AudioLevelEngine {
         watch { [weak self] in AudioHAL.queue.async { self?.permissionMayHaveChanged() } }
     }
 
-    /// The user may have changed a permission (left System Settings): a source whose verdict stands takes a new tap at
-    /// once if it captures, and `retapDelays` start again (HAL queue; tests call it directly).
+    /// The user may have changed a permission (System Settings or macOS's prompt went away, Deskset became active or
+    /// inactive): a source whose verdict stands takes a new tap at once if it captures — or, when its tap is younger
+    /// than `permissionRetapMinAge`, once it is that old — and `quickRetapWindow` and `retapDelays` start again (HAL
+    /// queue; tests call it directly).
     func permissionMayHaveChanged() {
         let now = ProcessInfo.processInfo.systemUptime
         for source in sources.values where source.refusalSuspected {
             restartRetaps(source, players: [], now: now)
-            if source.backend != nil && !suspended { scheduleRestart(source.key) }
+            guard source.backend != nil && !suspended else { continue }
+            let age = now - source.startedAt
+            scheduleRestart(source.key, after: max(0, permissionRetapMinAge - age))
         }
     }
 
@@ -832,7 +860,9 @@ final class AudioCaptureEngine: AudioLevelEngine {
         }
     }
 
-    private func scheduleRestart(_ key: AudioSourceKey) {
+    /// Stops and starts the source again `restartDelay` seconds (plus `after`) from now; a later call replaces a restart
+    /// that has not run yet.
+    private func scheduleRestart(_ key: AudioSourceKey, after: TimeInterval = 0) {
         guard let source = sources[key] else { return }
         source.pendingRestart?.cancel()
         let item = DispatchWorkItem { [weak self, weak source] in
@@ -841,7 +871,7 @@ final class AudioCaptureEngine: AudioLevelEngine {
             if !source.analyzers.isEmpty { self.startIfWanted(source) }
         }
         source.pendingRestart = item
-        AudioHAL.queue.asyncAfter(deadline: .now() + AudioCaptureEngine.restartDelay, execute: item)
+        AudioHAL.queue.asyncAfter(deadline: .now() + AudioCaptureEngine.restartDelay + after, execute: item)
     }
 
     /// Default device changed or devices came and went: restart the sources whose device is no longer right.
