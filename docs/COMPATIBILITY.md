@@ -808,6 +808,32 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** none.
 - **Status:** emulated
 
+#### App, menu and system bangs (`!SetWallpaper`, `!SetClip`, `!Play…`, `!SkinMenu`, `!Manage`, `!EditSkin`…)
+- **Windows:** an action's bangs run in the order they are written, each before the next.
+- **Mac:** the desktop skins run on a thread of their own (the default). `!SetClip`, `!SetWallpaper`, `!Play`,
+  `!PlayLoop`, `!PlayStop`, `!SkinMenu`, `!SkinCustomMenu`, `!TrayMenu`, `!Manage`, `!About` and `!EditSkin` are
+  carried out by the app's main thread once the skin's thread has finished the action, after its other bangs. The new
+  desktop picture is published at once after `!SetWallpaper`. Config bangs (`!ActivateConfig`, `!Refresh`…) always
+  ran after the action. With `SkinThreading=main` they run in place.
+- **Why:** menus, the pasteboard, the wallpaper and sounds belong to the main thread, which a skin's thread never
+  waits for.
+- **Skin impact:** a later bang of the same action does not see their effect yet (`[!SetWallpaper …][!UpdateMeasure
+  MeasureChameleon]` recolours from the old wallpaper; bangs after `[!SkinMenu]` run while the menu is open). Put
+  what depends on them after a short `!Delay` (`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`).
+- **Status:** emulated
+
+#### Mouse decisions while the engine thread is busy
+- **Windows:** not described; a skin takes a click with its meters as they are when the click comes.
+- **Mac:** the skin window decides at once, from the skin's last finished state, whether a press may drag, whether a
+  right click opens the skin menu, whether a Button is under the pointer and which cursor to show; the click's
+  actions run on the skin's thread. All desktop skins share that thread: while one keeps it busy, the others' hover
+  actions wait, and a click then is decided on the skin as it was before the hover (a button a `MouseOverAction` was
+  about to show is not there yet: a right click opens the skin menu, a press may drag). With `SkinThreading=main`
+  the live skin decides.
+- **Why:** the window must answer macOS at once; waiting for a busy skin thread would freeze the app.
+- **Skin impact:** only while another skin holds the thread longer than a pointer move and a click take.
+- **Status:** emulated
+
 #### Runaway actions
 - **Windows:** no documented limit.
 - **Mac:** actions that keep triggering each other stop after 20 000 steps per update or 16 nesting levels (logged);

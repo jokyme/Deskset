@@ -735,6 +735,28 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
 
+#### 由 App 执行的菜单与系统 bang（`!SetWallpaper`、`!SetClip`、`!Play…`、`!SkinMenu`、`!Manage`、`!EditSkin`……）
+- **Windows：** 一个动作里的 bang 按书写顺序依次执行，前一个执行完才执行下一个。
+- **Mac：** 桌面上的皮肤运行在自己的线程上（默认如此）。`!SetClip`、`!SetWallpaper`、`!Play`、`!PlayLoop`、`!PlayStop`、
+  `!SkinMenu`、`!SkinCustomMenu`、`!TrayMenu`、`!Manage`、`!About` 和 `!EditSkin` 由 App 的主线程在皮肤线程执行完整个动作之后
+  执行，也就是在该动作的其他 bang 之后。`!SetWallpaper` 之后新的桌面图片会立即发布出去。配置类 bang（`!ActivateConfig`、
+  `!Refresh`……）一直都是在动作之后执行。设置 `SkinThreading=main` 时它们在原处执行。
+- **原因：** 菜单、剪贴板、桌面图片和声音归主线程管，而皮肤线程从不等待主线程。
+- **对皮肤的影响：** 同一动作里写在它们后面的 bang 还看不到它们的效果（`[!SetWallpaper …][!UpdateMeasure MeasureChameleon]`
+  取到的仍是旧壁纸的颜色；`[!SkinMenu]` 之后的 bang 会在菜单还开着时执行）。可以把依赖它们的部分放到一个短暂的 `!Delay`
+  之后（`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`）。
+- **状态：** 模拟实现
+
+#### 引擎线程繁忙时的鼠标判断
+- **Windows：** 手册没有描述；皮肤按点击到来那一刻各 meter 的样子来响应点击。
+- **Mac：** 皮肤窗口根据皮肤最近一次完成的状态立即判断：按下时能否拖动窗口、右键是否打开皮肤菜单、指针下是否是 Button、
+  显示哪个光标；点击对应的动作在皮肤线程上执行。所有桌面皮肤共用这个线程：某个皮肤长时间占用它时，其他皮肤的悬停动作要
+  排队，这期间的点击按悬停之前的皮肤来判断（`MouseOverAction` 正要显示的按钮还不存在：右键会打开皮肤菜单，按下可能会拖动
+  窗口）。设置 `SkinThreading=main` 时由实时的皮肤来判断。
+- **原因：** 窗口必须立即回应 macOS；等待繁忙的皮肤线程会让 App 卡住。
+- **对皮肤的影响：** 只在另一个皮肤占用线程的时间超过一次移动指针加点击的时间时才会出现。
+- **状态：** 模拟实现
+
 #### 失控的动作
 - **Windows：** 没有写明限制。
 - **Mac：** 互相触发的动作在每次更新 20 000 步或嵌套 16 层后停止（记录日志）；更新过程中的 `!Update` 会被忽略。

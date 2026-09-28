@@ -841,6 +841,42 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Skin impact: none.
 - Status: partial (see the app's notes for the individual bangs)
 
+### App, menu and system bangs (`!SetWallpaper`, `!SetClip`, `!Play…`, `!SkinMenu`, `!Manage`, `!EditSkin`…)
+- Windows (Rainmeter): an action is a list of bangs (`[!Bang1][!Bang2]…`, /manual/bangs/), carried out in the order
+  they are written, each before the next.
+- Mac (Deskset): the desktop skins run on a thread of their own (the engine thread, the default). The bangs only the
+  app can carry out — `!SetClip`, `!SetWallpaper`, `!Play`, `!PlayLoop`, `!PlayStop`, `!SkinMenu`, `!SkinCustomMenu`,
+  `!TrayMenu`, `!Manage`, `!About`, `!EditSkin` — are handed to the app's main thread, which carries them out once the
+  skin's thread has finished the action (and the work it had queued with it): the action's other bangs have run by
+  then. After `!SetWallpaper` the new desktop picture is published at once, for the next update of a Chameleon
+  measure. Loading, unloading and refreshing configs (`!ActivateConfig`, `!Refresh`…) always happened after the
+  action, in both modes. With `SkinThreading=main` (for debugging) the bangs above run in place.
+- Why: menus, the pasteboard, the wallpaper and sounds belong to the app's main thread, and a skin's thread never
+  waits for it (docs/skin-threading.md §5.2).
+- Skin impact: a bang written after one of these in the same action does not see its effect yet:
+  `[!SetWallpaper "#@#Next.jpg"][!UpdateMeasure MeasureChameleon]` recolours from the old wallpaper, and the bangs
+  after `[!SkinMenu]` run while the menu is open instead of after it closed. Workaround: put what depends on them
+  after a short `!Delay` (`[!SetWallpaper "#@#Next.jpg"][!Delay 100][!UpdateMeasure MeasureChameleon][!Redraw]`).
+- Status: emulated
+
+### Mouse decisions while the engine thread is busy
+- Windows (Rainmeter): the manual does not describe it; a skin takes a click with its meters as they are when the
+  click comes (a meter a `MouseOverAction` has just shown takes it).
+- Mac (Deskset): with the desktop skins on the engine thread (the default), the skin window decides at once, from the
+  skin's last finished state (published after every update, action or mouse event the skin has handled), whether a
+  press may drag the window, whether a right click opens the skin menu, whether a Button is under the pointer and
+  which cursor to show; the skin runs the click's actions on its thread. All desktop skins share that thread, so while
+  one skin keeps it busy (a Lua script or a drawing that takes seconds) the others' hover actions wait, and a click in
+  that time is decided on what the skin looked like before the hover. Example: `MouseOverAction=[!ShowMeter Close]`,
+  and Close has a `RightMouseUpAction` and a `LeftMouseDownAction`. A right click on Close before the hover ran opens
+  the skin menu (and the RightMouseUpAction still runs when the thread gets to it); a left press there may drag the
+  window. With `SkinThreading=main` these decisions are made on the live skin, after the hover.
+- Why: the window has to answer macOS at once; waiting for a busy skin thread would freeze the app (the snapshot, §5.5
+  of docs/skin-threading.md).
+- Skin impact: only while another skin holds the thread for longer than it takes to move the pointer and click; none
+  otherwise.
+- Status: emulated
+
 ### Runaway actions
 - Windows (Rainmeter): no documented limit.
 - Mac (Deskset): actions that keep triggering each other stop after 20 000 steps per update / top-level action or 16
