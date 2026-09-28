@@ -1602,6 +1602,36 @@ suite's `TestThreadExecutor`.
      exclusive access and a 50 ms timeout, else from the snapshot. A chosen item is an `.execute` message.
    - NowPlaying asks the runtime whether updates are paused; Chameleon gets the window's screen from the window facts
      (`DesktopInputs` published per display).
+   - **Done (2026-09-28):** `SkinMessage.load(SkinLoadOrder)` and `.inputTextAnswered`; `SkinRequest.started(
+     SkinStartReport)`, `.failed`, `.closed` and the `.companion` cases; `SkinCompanions.swift` (`SkinCompanionChannel`,
+     the runtime's side for plugins; `SkinCompanionHost` and `SkinWindowCompanions`, the window's side); the runtime's
+     `whenClosed` / `waitUntilClosed`; `AppController.skinStarted` / `skinFailed` / `whenClosed(_:timeout:_:)`;
+     `LiveSkinHost.windowDisplay` and `DesktopInputs.displayDesktops`; `AppController.menuFacts`. Differences from the
+     plan:
+     - `.started` carries a report, not window facts: the size after the first update, the first load's `Default…`
+       options, whether the window stays hidden (StartHidden, or the skin's own `!Show` / `!Hide` in its first update),
+       the fonts and notes loading found, the metadata. The runtime seeds its window model with the `Default…` options
+       before the first update (`#CURRENTCONFIGZPOS#`); `AppState` gets them when the start is reported, and until then
+       the window's facts wait (the first ones excepted) and the debug comparison skips the environment.
+     - A pause at the time of loading travels in the load order (the first update happens, the clock waits), instead of
+       a `.pause` after the start. `AppController` had no `executor.isCurrent` branch left (step 1 took them out);
+       screens need no message: the store publishes them and the window's facts follow the new placement.
+     - The window controller made on its own (`init(config:file:app:)`) still loads at once, for the self-tests that
+       build one; `activate` never uses it. `stopAllForTermination(budget:)` returns the skins that did not close in
+       time. The installer goes on after 10 s even if a skin never closes, and says so in the log.
+     - FrostedGlass asks only when its style changes; the backdrop follows the window from every change the window
+       makes (`publishFacts`) and from its alpha animations, and fades out with the window when it unloads (it used to
+       stay until the fade ended). An InputText box still open when its skin unloads closes without an answer (the
+       skin has closed; before, the closing window dismissed it). A busy skin's menu credits the weather without the
+       time of the data (the snapshot keeps only whether the skin shows it, `usesWeather`).
+     - Checks: new suites "App: skin lifecycle: …" (97 checks) with the skin on a test thread: placed and shown only
+       after `.started`; the seeded settings before the first update; `.failed` and an inactive config (on the main
+       executor `activate` still returns nil); the Calc counter across a refresh; OnCloseActions in reverse load order
+       within the 2 s budget, and a skin that does not close letting quitting go on after its budget; the installer
+       waiting for `.closed` (a mutation that skips the wait fails it); FrostedGlass and InputText through the
+       companions; the menu with the snapshot's items during a 2 s Lua call and the live ones after, a chosen item
+       running on the skin's thread. A `Gate` holds a skin's thread where a test needs it busy; nothing waits for a
+       fixed time. Main Thread Checker reports nothing for them.
 6. **The Studio beside a desktop copy on another executor** (§8.5).
    - Previews are messages. `keyValueWrites` comes from the snapshot. `StudioHost` gets its environment and screen
      from the window controller. The counter and the graphs are copied with exclusive access.
