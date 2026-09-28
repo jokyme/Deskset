@@ -295,6 +295,83 @@ enum MacLookSelfTests {
             t.check(!sizes.contains("nil"))
         }
 
+        t.suite("App: Mac look: palette symbols draw each layer in its color") {
+            guard let (skin, host) = try loadSkin(t, """
+            [Rainmeter]
+            [Palette]
+            ; the cloud (layer 1) blue, the sun (layer 2) yellow
+            Meter=Image
+            ImageName=sf:cloud.sun.fill
+            MacSymbolRendering=Palette
+            MacSymbolColors=0,0,255|255,204,0
+            MacSymbolSize=40
+            [Short]
+            ; three layers, two colors: the rain takes the last one
+            Meter=Image
+            ImageName=sf:cloud.sun.rain.fill
+            MacSymbolRendering=Palette
+            MacSymbolColors=0,0,255|255,0,0
+            MacSymbolSize=40
+            X=60
+            [Tinted]
+            ; ImageTint multiplies the colors; ImageAlpha fades them
+            Meter=Image
+            ImageName=sf:cloud.sun.fill
+            MacSymbolRendering=Palette
+            MacSymbolColors=255,255,255|255,204,0
+            ImageTint=0,255,0
+            ImageAlpha=128
+            MacSymbolSize=40
+            X=120
+            [Plain]
+            ; a palette without colors is white, as Monochrome
+            Meter=Image
+            ImageName=sf:cloud.sun.fill
+            MacSymbolRendering=Palette
+            MacSymbolSize=40
+            X=180
+            [Translucent]
+            ; a color's own alpha
+            Meter=Image
+            ImageName=sf:cloud.fill
+            MacSymbolRendering=Palette
+            MacSymbolColors=0,0,0,153
+            MacSymbolSize=40
+            X=240
+            """, label: "palette") else { return }
+            withExtendedLifetime(host) {
+                t.check(skin.issues.isEmpty, "\(skin.issues)")
+                guard let rep = draw(skin, scale: 2) else { return t.check(false, "draws") }
+                func opaque(_ x: Int) -> [(r: Int, g: Int, b: Int, a: Int)] {
+                    pixels(rep, in: CGRect(x: x, y: 0, width: 110, height: 100)).filter { $0.a > 250 }
+                }
+                let palette = opaque(0)
+                t.check(palette.filter { $0.r < 10 && $0.g < 10 && $0.b > 245 }.count > 1000, "a blue cloud")
+                t.check(palette.filter { $0.r > 245 && abs($0.g - 204) < 6 && $0.b < 10 }.count > 200, "a yellow sun")
+                t.check(!palette.contains { $0.r > 240 && $0.g > 240 && $0.b > 240 }, "nothing white")
+                let short = opaque(120)
+                t.check(short.filter { $0.r > 245 && $0.g < 10 && $0.b < 10 }.count > 300, "sun and rain both red")
+                let tinted = pixels(rep, in: CGRect(x: 240, y: 0, width: 110, height: 100)).filter { $0.a > 100 }
+                t.check(!tinted.isEmpty && tinted.allSatisfy { $0.r < 10 && $0.b < 10 && $0.a <= 130 },
+                        "tinted green and faded: \(tinted.prefix(3))")
+                let plain = opaque(360)
+                t.check(!plain.isEmpty && plain.allSatisfy { $0.r > 240 && $0.g > 240 && $0.b > 240 }, "white")
+                let translucent = pixels(rep, in: CGRect(x: 480, y: 0, width: 110, height: 100)).filter { $0.a > 20 }
+                t.check(!translucent.isEmpty && translucent.allSatisfy { $0.a <= 156 && $0.r < 10 },
+                        "the color's alpha: \(translucent.map(\.a).max() ?? 0)")
+            }
+            // One drawing per set of colors; the same colors share it.
+            let a = MacSymbol(name: "cloud.sun.fill", style: MacSymbol.Style(rendering: .palette, colors: [.black, .white]))
+            let b = MacSymbol(name: "cloud.sun.fill", style: MacSymbol.Style(rendering: .palette, colors: [.white, .black]))
+            t.check(a.path != b.path)
+            if let ia = Images.cgImage(atPath: a.path), let ib = Images.cgImage(atPath: b.path) {
+                t.check(ia !== ib, "two drawings")
+                t.check(Images.cgImage(atPath: a.path) === ia, "cached")
+            } else {
+                t.check(false, "palette symbols render")
+            }
+        }
+
         t.suite("App: Mac look: a symbol drawn far larger than its size stays sharp") {
             // W=H=256 at the default MacSymbolSize (16) on a Retina display: some 27 pixels per point.
             guard let (skin, host) = try loadSkin(t, """

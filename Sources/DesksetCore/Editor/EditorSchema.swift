@@ -411,8 +411,8 @@ public enum EditorSchema {
         return list
     }
 
-    /// How an SF Symbol picture is drawn (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`; Deskset extension,
-    /// Engine/Meters/MacSymbol.swift), shown when the picture option `key` names a symbol (`sf:…`).
+    /// How an SF Symbol picture is drawn (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`;
+    /// Deskset extension, Engine/Meters/MacSymbol.swift), shown when the picture option `key` names a symbol (`sf:…`).
     static func symbolOptions(for key: String) -> [Property] {
         let when: [Condition] = [.contains(key, "sf:")]
         return [
@@ -421,13 +421,17 @@ public enum EditorSchema {
             Property("MacSymbolWeight", "Symbol weight", pick(symbolWeights), default: "Regular", visibleWhen: when),
             Property("MacSymbolRendering", "Colors", pick(symbolRenderings), default: "Monochrome",
                      help: "Tint colors the white parts", visibleWhen: when),
+            Property("MacSymbolColors", "Layer colors", .text, placeholder: "255,204,0 | 0,0,0,153",
+                     help: "One color for each layer, separated by |",
+                     visibleWhen: when + [.equals("MacSymbolRendering", "Palette")]),
         ]
     }
 
     static let symbolWeights: [Choice] = MacSymbol.Weight.allCases.map { Choice($0.optionValue, $0.optionValue) }
     static let symbolRenderings: [Choice] = [Choice("Monochrome", "One color"),
                                              Choice("Hierarchical", "Shades of one color"),
-                                             Choice("Multicolor", "Its own colors")]
+                                             Choice("Multicolor", "Its own colors"),
+                                             Choice("Palette", "Colors you choose")]
 
     /// The fading and edge options of a layer's box (SolidColor2, GradientAngle, BevelType…), for "More" sections.
     static let boxExtras: [Property] = [
