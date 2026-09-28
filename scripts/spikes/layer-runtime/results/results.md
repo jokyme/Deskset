@@ -143,50 +143,55 @@ Two consecutive captures of every window were identical.
 
 ## What this means for the plan's choice (stop point 0)
 
-The plan's table picks E or D from four outcomes. What H1 found for each:
+Rewritten after review. The plan's table picks E or D from four outcomes; H1's own 60 Hz rule (switch to C when E
+exceeds today's B+kept by more than 1 point) is a fifth.
 
 | the plan's condition | found | so |
 |---|---|---|
 | E's context is sRGB 8-bit on sRGB and P3 / XDR screens | No: it is in the **window's** color space (the screen's "Color LCD" by default; sRGB only in an sRGB window). No sRGB screen was available. | The runtime decides it by setting (or not setting) the window's color space. |
-| E's context follows the screen, so copying base sub-rectangles converts colors (→ D) | Only when the base bitmap and the E contexts are in different spaces (max 1 in 48 %). With the base drawn in the window's space: 7 px of translation noise; through a scratch bitmap in that space: 0. | **D is not needed for exact colors.** (D is exact too, but only in an sRGB window.) |
-| memory beyond the plan's targets (→ D with pooling) | D uses the most memory of the layered ways (IOSurfaces charged in full): 3.49 MB per System widget, 5.69 MB for the design skin (over its 4.95 MB limit). | D does not help memory. |
-| the partition still differs from one layer on screen | By 1 level in 7 px (0.003 %) from moving curved paths by whole pixels: within G2's tolerance (≤ 2, ≤ 0.1 %), not the hoped-for 0. 0 with a scratch bitmap, which costs one more window bitmap (+1.2–2.6 MB) and +0.3–0.5 % CPU for 10 widgets. | Use the partition; decide whether G2 expects 0 (scratch bitmap) or accepts the 7 px. |
+| E's context follows the screen, so copying base sub-rectangles converts colors (→ D) | In a steady window, only when the base bitmap and the E contexts are in different spaces (max 1 in 48 %); base drawn in the window's space: 7 px. **When the window's space changes** (simulated from code, side checks): Core Animation redraws the E layers **on the main thread** (10 of 19 groups) and the partition is 52 % off until the runtime redraws the base; the runtime redrawing on the skin thread at once avoided both, by winning a race. A real screen or profile change was not tested. | D is not needed for steady colors. For a space change, contents the runtime sets itself (C or D) cannot be redrawn on the main thread; E can. **Keep C (or D) as the fallback until a person has switched the display's profile once** (`run.sh cschange-person`). |
+| memory beyond the plan's targets (→ D with pooling) | Measured again with `footprint --vmObjectDirty` (sees images handed to the window server): per updating System widget E1 1.9, **EPw 2.1**, CPw 3.1, C1 2.6, B 2.5, **B+kept (today) 5.6 MB**; D (sRGB IOSurfaces) and the design skin in "After review: memory". By bytes too, C holds more than E. | The partition with E is the cheapest layered way and less than half of today's B+kept; C costs about 1 MB more per System widget. D does not help. |
+| the partition still differs from one layer on screen | By 1 level in 7 px (0.003 %) from moving curved paths by whole pixels (2–3 px, max 1–2, offscreen on arm64 and x86_64); 0 with a scratch bitmap (+0.75 MB per System widget). Against what Deskset draws today (B+kept): max 1 in 0.7 %, B+kept's own rounding. | Use the partition; G2 per group (text, images, rectangles 0; curved paths ≤ 1). |
+| (H1's rule) at 60 Hz, E more than 1 point over today's B+kept → try C | **Triggered.** EPw costs this process 1.5–1.6 points more than B+kept (interleaved batch, paired step), and stalled in its commit (2 of 13 rounds below 298 / 300 frames, once for 170 ms). CPw costs 0.2–0.3 points more, 1.3 points less than EPw in total (WindowServer included, which C does not burden more), and never fell below 298 / 300. | Tried: **C for high-rate skins.** |
 
-**Recommendation: E, not D; keep the window's own color space; batch the skins' updates.**
+**Recommendation (revised after review): both group-content paths in M1, E by default, C for skins that update
+many times a second; keep the window's color space; coalesce the updates.**
 
-1. **E, as the threading plan already chose; C is a measured alternative.** C (our own bitmaps, two per group used in
-   turn, whose images become the contents: what B does, per group and from the skin thread) shows exactly E's pixels
-   (C1 = E1 = B; CPw = EPw) and gives the runtime the control over buffers the plan wanted from D, without
-   IOSurfaces. It was cheaper than E at 60 Hz (4.07 vs 5.57 %) and with ten threads updating together (1.24 vs
-   1.51 %), equal on one thread (0.58 vs 0.62 %) and for the design skin (0.09 vs 0.12 %), and it needs a little more
-   memory for skins with many groups (System widget 2.82 vs 2.17 MB; design 2.19 vs 2.70 MB). D (sRGB IOSurfaces)
-   had similar CPU (1.13 %, 4.18 %) but the most memory.
-2. **Color space: leave the window's color space alone and draw the base (and scratch) bitmap in it**, as B does
-   today. Then the partition shows exactly what Deskset shows today (EPxw / CPxw = B: 0 differing pixels; without the
-   scratch bitmap 7 px). The plan's alternative, an sRGB window, makes E equal to D and to the sRGB offline
-   references, but changes today's look by up to 9 levels in 54 % of the pixels on this display (and differs from A
-   by up to 10 in 87 %), not "±2 in about half" as the plan assumed from the review. The cost of the window's space:
-   the base bitmap and every group are drawn again when a window moves to a screen with another color space (B already
-   does this), and the offline references (`--render`, `CARenderer`) must be rendered in the same space to compare
-   byte for byte.
-3. **CPU depends more on how the skins' updates are scheduled than on layers vs one bitmap.** The plan wants 10 widgets
-   updating every second under 1 % of a core. The partition meets it when the updates run one after another on one
-   thread (EPw 0.62 %, CPw 0.58 %; today's B+kept 0.75 %), not with one thread per widget (updates at the same
-   moment: 1.24–1.51 %; spread over the second: 1.03 %, and 13 wakeups per second). The threading plan's one thread
-   per skin should be measured for this in the real engine before building on it (for example, a shared pool of skin
-   threads, or coalescing updates that fall due together).
-4. **Memory, WindowServer, opening, 60 Hz**: the partition meets the design-skin limit (2.2–2.7 MB against 4.95), is
-   at the 2 MB limit for a System-sized widget (1.9–2.8 MB; that limit is for idle widgets, these updated every
-   second), adds no WindowServer memory beyond A or B (+0.1–0.6 MB per widget) and no measurable WindowServer CPU for
-   10 widgets, opens 10 widgets in 55–86 ms and delivers 299–300 of 300 frames at 60 Hz.
+1. **E and C behind one seam, from M1 on.** Both draw with the same `DrawExecutor`: E into the layer's backing store in
+   `draw(in:)`, C into two bitmaps of the runtime's own used in turn, whose images become the contents. Their pixels
+   are identical (C1 = E1, CPw = EPw). **E by default**: it holds the least memory of the layered ways (EPw 2.1 MB per
+   updating System widget, C 3.1 MB; C's bitmaps are copied on write while the window server still holds the previous
+   image), and at 1 Hz the scheduling, not E vs C, decides the CPU. **C for skins that update more often than about
+   10 times a second** (visualizers, animations): at 60 Hz E fails the plan's own 1-point rule against B+kept and
+   stalled in its commit; C does neither. Whether a skin counts as high-rate is decided from its update interval at
+   load. M1 re-measures both against §6.7 with a memory view that sees handed-over images (not phys_footprint while
+   shown).
+2. **Leave the window's color space alone and draw the base (and scratch) bitmap in it**, as B does. The partition
+   then equals one E layer and B drawn in full (7 px without the scratch bitmap) and differs from B+kept only by
+   B+kept's own rounding; images given as contents need no converted copy (in the default window CA makes an
+   8-byte-per-pixel copy of every sRGB image, question 6). An sRGB window would change about 54 % of the pixels by
+   1–2 levels (the draft's estimate; outliers up to 9 in 0.05 %). The cost: when the window's space changes, the base
+   and every group are drawn again on the skin thread, and E layers may be redrawn once on the main thread by Core
+   Animation first (side checks); the offline references stay sRGB on both sides.
+3. **CPU depends on when the updates run, not on layers vs one bitmap and not on the number of threads.** For the
+   same instructions, 10 updates spread over the second take 1.5 times the cycles of 10 updates run back to back, and
+   10 updates at the same moment on ten threads twice as many. With the unaligned timers real skins have, the partition costs what
+   today's B+kept costs (1.1–1.2 % of a core for 10 widgets) and every way wakes 10–15 times a second; coalescing the
+   updates that fall due together (one shared skin thread, one timer, one commit) brings the partition to 0.64–0.71 %
+   and 3–5 wakeups, below B+kept. The threading plan's one thread per skin, with its own timer, cannot meet §6.7's
+   "< 1 %" or "≤ 12 wakeups per process"; it should be measured with coalesced updates in the real engine.
+4. **Memory**: the partition with E meets the design-skin limit and is about at the 2 MB line for an updating System
+   widget (see the targets below); today's B+kept holds 2.5 times as much. WindowServer's memory was not measured.
 5. **What the layer runtime buys over today's B+kept**: drawing and committing on the skin thread (frames arrive
-   while the main thread is blocked; the glass patch's 50 ms bound holds), glass and native views in the same tree,
-   and less memory than B+kept's whole-window pictures (design: 2.2–2.7 MB vs 6.3 MB). With batched updates its CPU
-   is at B+kept's level or below; with one thread per widget it is not.
-6. **CI (question 8)**: the offscreen pixel gate can run on both runners, comparing two trees rendered in the same run
-   (never pixels from another machine), provided the renderer clears the texture before every render, reads back
-   through a managed texture where the GPU has no unified memory, and refuses to pass when a canary image does not
-   come back byte for byte. Its `CARenderer` time is about a minute per runner.
+   while the main thread is blocked; the glass patch's 50 ms bound holds), glass and native views in the same tree, and
+   less than half of B+kept's memory. At 60 Hz it costs more CPU than B+kept (E +1.5, C +0.3 points in this process;
+   more with WindowServer); at 1 Hz with coalesced updates less.
+6. **CI (question 8)**: the offscreen gate can run on both runners, comparing two trees rendered in the same run,
+   provided the renderer clears the texture before every render, reads back through a managed texture where the GPU
+   has no unified memory, and refuses to pass when a canary image does not come back byte for byte. The partition
+   drawn the plan's way was checked offscreen on this Mac only (arm64 and x86_64 under Rosetta); the runners run it
+   on the next push of this branch. Its `CARenderer` time is about 20–50 s on `macos-26` and 65–125 s on
+   `macos-26-intel`.
 
 ## 1. Partitioned layers vs one E layer vs A and B on screen (`q1.json`, crops in `crops/`)
 
@@ -420,6 +425,22 @@ Two campaigns: **2026-09-27** (E and D in sRGB windows, the plan's format, and A
 B+kept, E and C in the window's own color space, A again as the bridge; 10 System widgets also on one shared skin
 thread and with their updates spread over the second). In the tables, `*` marks a CPU number from rounds with a
 1-minute load above 8 (provisional; the last column says how many rounds).
+
+**Memory pressure in these runs** (added after review): the "process MB" column mixes rounds at memory pressure level 1
+and level 2, and the level is confounded with the mode. Rounds at level 2 and the median of the level-1 rounds:
+
+| campaign | combination | level-2 rounds | process MB per widget, all rounds | level-1 rounds only |
+|---|---|---|---|---|
+| 09-27 | design D1 / DP | 1 of 3 each | 4.42 / 5.69 | 4.70 / 5.80 |
+| 09-27 | sixty A / E1 / EP | 1 of 3 each | 3.17 / 1.58 / 1.12 | 3.46 / 1.70 / 1.10 |
+| 09-28 | ten A / B / B+kept / E1 | **3 of 3** | 15.52 / 0.24 / 3.38 / 2.22 | none at level 1 |
+| 09-28 | ten EPw / EPxw | 2 of 3 | 2.17 / 3.44 | 2.17 / 3.47 |
+| 09-28 | design A / B | 1 of 3 | 122.94 / 0.52 | 123.08 / 0.81 |
+| 09-28 | design B+kept / E1 / EPw / EPxw | 2 of 3 | 6.33 / 3.64 / 2.70 / 5.27 | 6.33 / **4.41** / **3.03** / 5.36 |
+| 09-28 | sixty A / B / E1 / EPw / EPxw | 2 of 3 | 3.02 / 1.00 / 1.12 / 1.14 / 1.77 | 3.23 / 1.00 / 1.42 / 1.31 / 1.77 |
+
+(No C run and no thread-variant run reached level 2.) Level-2 rounds read lower, by as much as the differences
+between modes, so the process-MB column is not used to rank modes; see "After review: memory".
 
 **ten: 10 System widgets, Update=1000 (per widget; CPU and wakeups for all 10)**
 
