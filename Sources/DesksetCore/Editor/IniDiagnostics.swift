@@ -211,8 +211,7 @@ private struct Checker {
     /// Measure sections (lowercased name → section).
     var measures: [String: IniSection] = [:]
     var lines: [SourceFileID: (text: String, document: CodeDocument)] = [:]
-    /// The schema's cards of each meter type met so far.
-    var groupsByType: [String: [EditorSchema.Group]] = [:]
+    var texts: [SourceFileID: String?] = [:]
     /// Measure (lowercased) → the meters whose `MeasureName`s name it, in the skin's order.
     var shown: [String: [String]] = [:]
     var found: [IniDiagnostic] = []
@@ -248,7 +247,7 @@ private struct Checker {
             let t = type.trimmingCharacters(in: .whitespaces).lowercased()
             let options = taken(by: section)
             for o in options {
-                if o.key.lowercased().range(of: #"^measurename\d*$"#, options: .regularExpression) != nil {
+                if Self.isNumbered(o.key, "measurename") {
                     let name = resolve(o.value, in: section.name).trimmingCharacters(in: .whitespaces).lowercased()
                     if !(shown[name]?.contains(section.name) ?? false) { shown[name, default: []].append(section.name) }
                 }
@@ -298,13 +297,12 @@ private struct Checker {
             let meters = users.map(\.meter)
             let types = users.map(\.type)
             // A key none of the types using it takes, close to one they all could mean.
-            let groups = types.map { meterGroups($0) }
-            if !groups.contains(where: \.isEmpty),
-               groups.allSatisfy({ !Self.takes(o.key, $0) }) {
-                let candidates = Self.candidateKeys(groups[0])
-                if let suggestion = IniDiagnostics.closest(to: o.key, in: candidates),
-                   groups.allSatisfy({ EditorSchema.property(suggestion, in: $0) != nil }) {
-                    let property = EditorSchema.property(suggestion, in: groups[0])
+            let indexes = types.map { SchemaIndex.meter($0) }
+            // A Shape meter reads options of any name its shapes point at (`Path MyPath`, `Fill LinearGradient G`).
+            if !indexes.contains(where: \.isEmpty), !types.contains("shape"), indexes.allSatisfy({ !$0.takes(o.key) }) {
+                if let suggestion = indexes[0].closest(to: o.key),
+                   indexes.allSatisfy({ $0.property(suggestion) != nil }) {
+                    let property = indexes[0].property(suggestion)
                     add(owner: o.owner, key: o.key, part: .key, kind: .unknownKey(key: o.key,
                         sectionType: Self.typeName(types[0]), suggestion: suggestion), meters: meters,
                         defaultValue: property?.defaultValue, fixText: suggestion)
@@ -312,7 +310,10 @@ private struct Checker {
                 continue
             }
             // Resolved as the first meter taking it resolves it (#CURRENTSECTION# is the meter's).
-            let property = EditorSchema.property(o.key, in: groups.first ?? [])
+            let property = indexes.first?.property(o.key)
+            let isNumber = ["x", "y", "w", "h"].contains(key) || (property?.kind.isNumeric ?? false)
+            // Only colors and numbers are judged: nothing else is resolved (the check runs after every step).
+            guard property?.kind == .color || (isNumber && o.value.contains("(")) else { continue }
             let value = resolve(o.value, in: first.meter)
             if property?.kind == .color {
                 let v = value.trimmingCharacters(in: .whitespaces)
@@ -321,7 +322,6 @@ private struct Checker {
                         meters: meters, defaultValue: property?.defaultValue)
                 }
             }
-            let isNumber = ["x", "y", "w", "h"].contains(key) || (property?.kind.isNumeric ?? false)
             if isNumber, let reason = Self.formulaProblem(value, position: key == "x" || key == "y") {
                 add(owner: o.owner, key: o.key, part: .value,
                     kind: .badFormula(key: o.key, value: o.value, reason: reason), meters: meters)
@@ -329,31 +329,6 @@ private struct Checker {
         }
     }
 
-    /// Whether a type with `groups` takes `key`: one of its options, or a numbered copy of one (`Shape3`, `MeasureName2`,
-    /// `InlineSetting4`: the engine reads any option this way once the first one is set).
-    static func takes(_ key: String, _ groups: [EditorSchema.Group]) -> Bool {
-        if generalKeys.contains(key.lowercased()) || EditorSchema.property(key, in: groups) != nil { return true }
-        let digits = key.reversed().prefix { $0.isASCII && $0.isNumber }.count
-        guard digits > 0, digits < key.count else { return false }
-        return EditorSchema.property(String(key.dropLast(digits)), in: groups) != nil
-    }
-
-    mutating func meterGroups(_ type: String) -> [EditorSchema.Group] {
-        if let cached = groupsByType[type] { return cached }
-        let groups = EditorSchema.meterGroups(type)
-        groupsByType[type] = groups
-        return groups
-    }
-
-    /// Options every meter and measure takes that the schema's cards leave to the inspector (place and size).
-    static let generalKeys: Set<String> = ["x", "y", "w", "h", "meter", "meterstyle", "measure"]
-
-    /// The canonical keys of a type's options (numbered ones by their first name).
-    static func candidateKeys(_ groups: [EditorSchema.Group]) -> [String] {
-        var keys: [String] = []
-        for g in groups { for p in g.properties { keys.append(p.key) } }
-        return keys
-    }
 
     /// A meter type as the manual spells it (`string` → `String`).
     static func typeName(_ type: String) -> String {
@@ -363,6 +338,7 @@ private struct Checker {
     /// Why a number option's value (variables in) cannot be worked out; nil when it can, or when it is not a formula
     /// (a plain number, or text the engine reads its number from).
     static func formulaProblem(_ value: String, position: Bool) -> IniDiagnostic.FormulaReason? {
+        guard value.contains("(") else { return nil }
         var v = withoutSectionVariables(value).trimmingCharacters(in: .whitespaces)
         guard v.hasPrefix("(") else { return nil }
         if position, let last = v.last, last == "r" || last == "R" { v.removeLast() }
@@ -381,6 +357,7 @@ private struct Checker {
 
     /// `[Measure]`, `[Meter:W]`, `[&Script:F()]` and the like: what the widget knows only while it runs, as 1.
     static func withoutSectionVariables(_ value: String) -> String {
+        guard value.contains("[") else { return value }
         var v = value
         for _ in 0..<8 {
             let next = v.replacingOccurrences(of: #"\[[^\[\]!]*\]"#, with: "1", options: .regularExpression)
@@ -395,8 +372,10 @@ private struct Checker {
     mutating func checkReferences(of meter: IniSection, type: String, options: [Taken]) {
         for o in options {
             let key = o.key.lowercased()
+            let isMeasure = Self.isNumbered(key, "measurename"), isImage = Self.imageKeys(type).contains(key)
+            guard isMeasure || isImage || key == "meterstyle" else { continue }
             let value = resolve(o.value, in: meter.name).trimmingCharacters(in: .whitespaces)
-            if key.range(of: #"^measurename\d*$"#, options: .regularExpression) != nil {
+            if isMeasure {
                 if !value.isEmpty, !value.contains("["), !value.contains("#"), measures[value.lowercased()] == nil {
                     add(owner: o.owner, key: o.key, part: .value, kind: .missingMeasure(name: value), meters: [meter.name])
                 }
@@ -408,7 +387,7 @@ private struct Checker {
                         meters: [meter.name])
                 }
             }
-            if Self.imageKeys(type).contains(key), !value.isEmpty, !value.contains("["), !value.contains("#"),
+            if isImage, !value.isEmpty, !value.contains("["), !value.contains("#"),
                !value.lowercased().hasPrefix("sf:") {
                 let imagePath = options.first { $0.key.lowercased() == "imagepath" }
                     .map { resolve($0.value, in: meter.name) } ?? ""
@@ -419,6 +398,20 @@ private struct Checker {
                 }
             }
         }
+    }
+
+    /// `key` is `base` or a numbered copy of it (`MeasureName`, `MeasureName2`), letter case ignored.
+    static func isNumbered(_ key: String, _ base: String) -> Bool {
+        let lower = key.lowercased()
+        guard lower.hasPrefix(base) else { return false }
+        return lower.dropFirst(base.count).allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    /// An action option: its name ends with "Action" (and maybe a number: `IfTrueAction2`, `ContextAction3`).
+    static func isAction(_ key: String) -> Bool {
+        let lower = key.lowercased()
+        let digits = lower.reversed().prefix { $0.isASCII && $0.isNumber }.count
+        return lower.dropLast(digits).hasSuffix("action")
     }
 
     /// The options of a meter type that name an image file.
@@ -442,18 +435,18 @@ private struct Checker {
             let lower = type.lowercased()
             // Add-ons read keys of their own, and a script reads what it likes.
             guard lower != "plugin", lower != "script", EditorSchema.measureType(type: type) != nil else { continue }
-            let groups = EditorSchema.measureGroups(type)
+            let index = SchemaIndex.measure(type)
             let users = metersShowing(section.name)
             var seen: Set<String> = []
             for e in section.entries where seen.insert(e.key.lowercased()).inserted {
                 let key = e.key.lowercased()
                 if key == "measure" { continue }
-                if !Self.takes(e.key, groups) {
-                    if let suggestion = IniDiagnostics.closest(to: e.key, in: Self.candidateKeys(groups)) {
+                if !index.takes(e.key) {
+                    if let suggestion = index.closest(to: e.key) {
                         add(owner: section.name, key: e.key, part: .key,
                             kind: .unknownKey(key: e.key, sectionType: EditorSchema.measureType(type: type)?.name ?? type,
                                               suggestion: suggestion),
-                            meters: users, defaultValue: EditorSchema.property(suggestion, in: groups)?.defaultValue,
+                            meters: users, defaultValue: index.property(suggestion)?.defaultValue,
                             fixText: suggestion)
                     }
                     continue
@@ -488,7 +481,7 @@ private struct Checker {
         for section in document.sections {
             var seen: Set<String> = []
             for e in section.entries where seen.insert(e.key.lowercased()).inserted {
-                guard e.key.range(of: #"action\d*$"#, options: [.regularExpression, .caseInsensitive]) != nil else {
+                guard Self.isAction(e.key) else {
                     continue
                 }
                 for parsed in ActionParser.parseDetailed(e.value) {
@@ -525,7 +518,9 @@ private struct Checker {
         let files = [main] + loaded.includedFiles
         let variables = self.variables, builtins = self.builtins
         for file in files {
-            guard let doc = document(of: file) else { continue }
+            // Most files include nothing: they are not read line by line.
+            guard let raw = source(of: file), Self.mentionsInclude(raw),
+                  let doc = document(of: file) else { continue }
             var section: String?
             for line in 1...max(doc.document.lineCount, 1) {
                 let range = doc.document.range(ofLine: line)
@@ -564,6 +559,28 @@ private struct Checker {
             : main.deletingLastPathComponent().appendingPathComponent(path)
         let root = folder.standardizedFileURL.path.lowercased()
         return url.standardizedFileURL.path.lowercased().hasPrefix(root.hasSuffix("/") ? root : root + "/")
+    }
+
+    /// Whether `text` has "@include" anywhere (letter case ignored): a quick scan of its bytes.
+    static func mentionsInclude(_ text: String) -> Bool {
+        let word: [UInt8] = Array("include".utf8)
+        var bytes = text.utf8.makeIterator()
+        var matched = -1
+        while let b = bytes.next() {
+            if b == 0x40 { // @
+                matched = 0
+                continue
+            }
+            guard matched >= 0 else { continue }
+            let lower = b >= 0x41 && b <= 0x5A ? b + 0x20 : b
+            if lower == word[matched] {
+                matched += 1
+                if matched == word.count { return true }
+            } else {
+                matched = -1
+            }
+        }
+        return false
     }
 
     static func unquoted(_ value: String) -> String {
@@ -653,10 +670,19 @@ private struct Checker {
     mutating func document(of file: URL) -> (text: String, document: CodeDocument)? {
         let id = SourceFileID(file)
         if let cached = lines[id] { return cached }
-        guard let t = text(file) else { return nil }
+        guard let t = source(of: file) else { return nil }
         let entry = (t, CodeDocument(text: t))
         lines[id] = entry
         return entry
+    }
+
+    /// A file's text (read once).
+    mutating func source(of file: URL) -> String? {
+        let id = SourceFileID(file)
+        if let cached = texts[id] { return cached }
+        let t = text(file)
+        texts[id] = t
+        return t
     }
 
     /// `#Variables#` (the file's `[Variables]`, then the built-in ones; `#CURRENTSECTION#` is `section`).
@@ -684,5 +710,102 @@ private struct Checker {
             if a.line != b.line { return a.line < b.line }
             return a.column < b.column
         }
+    }
+}
+
+/// The options a meter or measure type takes, from the schema, indexed once per type (the check asks for every option
+/// of every part).
+private final class SchemaIndex {
+    struct Entry {
+        var kind: EditorSchema.Kind
+        var defaultValue: String
+    }
+
+    /// Lowercased key (legacy spellings too) → the option.
+    let entries: [String: Entry]
+    /// The options' names as the manual writes them (the did-you-mean's candidates).
+    let candidates: [String]
+
+    var isEmpty: Bool { entries.isEmpty }
+
+    /// Options every meter and measure takes that the schema's cards leave to the inspector (place and size), and
+    /// the inline settings of a String meter (their own editor, not the cards).
+    static let generalKeys: Set<String> = ["x", "y", "w", "h", "meter", "meterstyle", "measure", "inlinesetting",
+                                           "inlinepattern"]
+
+    init(_ groups: [EditorSchema.Group]) {
+        var entries: [String: Entry] = [:]
+        var candidates: [String] = []
+        for g in groups {
+            for p in g.properties {
+                let entry = Entry(kind: p.kind, defaultValue: p.defaultValue)
+                if entries[p.key.lowercased()] == nil { entries[p.key.lowercased()] = entry }
+                for legacy in p.legacyKeys where entries[legacy.lowercased()] == nil { entries[legacy.lowercased()] = entry }
+                candidates.append(p.key)
+            }
+        }
+        self.entries = entries
+        self.candidates = candidates
+    }
+
+    /// The option `key` names: itself, or the first of a numbered family (`IfCondition2`, `Shape3`).
+    func property(_ key: String) -> Entry? {
+        let lower = key.trimmingCharacters(in: .whitespaces).lowercased()
+        if let e = entries[lower] { return e }
+        let digits = lower.reversed().prefix { $0.isASCII && $0.isNumber }.count
+        guard digits > 0, digits < lower.count else { return nil }
+        return entries[String(lower.dropLast(digits))]
+    }
+
+    /// Whether the type takes `key`: one of its options, a numbered copy of one (the engine reads any option that way
+    /// once the first one is set), or place and size.
+    func takes(_ key: String) -> Bool {
+        let lower = key.lowercased()
+        // Deskset's own options all start with Mac (some still to come).
+        if lower.hasPrefix("mac") || Self.generalKeys.contains(lower) || property(key) != nil { return true }
+        let digits = lower.reversed().prefix { $0.isASCII && $0.isNumber }.count
+        return digits > 0 && Self.generalKeys.contains(String(lower.dropLast(digits)))
+    }
+
+    private var closestMemo: [String: String?] = [:]
+    private let memoLock = NSLock()
+
+    /// The option a misspelled key most likely means (worked out once per key and type).
+    func closest(to key: String) -> String? {
+        let lower = key.lowercased()
+        memoLock.lock()
+        if let known = closestMemo[lower] {
+            memoLock.unlock()
+            return known
+        }
+        memoLock.unlock()
+        let found = IniDiagnostics.closest(to: key, in: candidates)
+        memoLock.lock()
+        closestMemo[lower] = found
+        memoLock.unlock()
+        return found
+    }
+
+    private static let lock = NSLock()
+    private static var meters: [String: SchemaIndex] = [:]
+    private static var measures: [String: SchemaIndex] = [:]
+
+    static func meter(_ type: String) -> SchemaIndex {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = meters[type] { return cached }
+        let index = SchemaIndex(EditorSchema.meterGroups(type))
+        meters[type] = index
+        return index
+    }
+
+    static func measure(_ type: String) -> SchemaIndex {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = type.lowercased()
+        if let cached = measures[key] { return cached }
+        let index = SchemaIndex(EditorSchema.measureGroups(type))
+        measures[key] = index
+        return index
     }
 }
