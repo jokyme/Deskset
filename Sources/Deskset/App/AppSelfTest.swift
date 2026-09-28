@@ -70,6 +70,12 @@ enum AppSelfTest {
         // The Studio's editing session.
         StudioSessionSelfTests.run(t)
         SensorSelfTests.run(t)
+        VirtualTimeRenderSelfTests.run(t)
+        RenderDataSelfTests.run(t)
+        PluginSideEffectsSelfTests.run(t)
+        #if DEBUG
+        LegacyRenderSelfTests.run(t)
+        #endif
         // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
         StudioLatencySelfTests.run(t)
         return t.finish()
@@ -292,6 +298,10 @@ enum AppSelfTest {
             let reloaded = AppState(fileURL: url)
             t.equal(reloaded.skin("Deskset\\Clock")?.loadOrder, 3)
             t.equal(reloaded.activeConfigs.map(\.config), ["Other\\Skin", "Deskset\\Clock"])
+            // Keys a newer version wrote survive a save by this one, at both levels.
+            t.equal(reloaded.skin("Other\\Skin")?.unknownKeys, ["extra": .number(1)])
+            t.equal(reloaded.data.unknownKeys, ["futureKey": .array([.number(1), .number(2)])])
+            t.equal(reloaded.skin("Deskset\\Clock")?.unknownKeys, [:])
 
             // Unreadable file: defaults, and the file is kept aside.
             let broken = dir.appendingPathComponent("broken.json")
@@ -486,6 +496,75 @@ enum AppSelfTest {
             t.equal(missing?.output, "x.png")
             let color = RenderOptions.parse(["P", "--render", "a.ini", "--background", "40,40,50"])
             t.equal(color?.background, RGBA(r: 40, g: 40, b: 50, a: 255))
+
+            // --clock, --time-zone and --seed (the skin's clock and random numbers).
+            t.equal(d?.clock, nil)
+            t.equal(d?.timeZone, nil)
+            t.equal(d?.seed, nil)
+            t.check(d?.virtualTime() == nil, "no --clock: the Mac's clock and the main executor")
+            let fixed = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-12-31T23:59:58+08:00",
+                                             "--seed", "7"])
+            t.equal(fixed?.clock?.timeIntervalSince1970, 1_798_732_798)
+            t.equal(fixed?.seed, 7)
+            t.equal(fixed?.warnings, [])
+            t.equal(fixed?.virtualTime()?.timeZone.identifier, "GMT", "UTC unless --time-zone says otherwise")
+            let unix = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "1790000000.5", "--seed", "-1"])
+            t.equal(unix?.clock?.timeIntervalSince1970, 1_790_000_000.5)
+            t.equal(unix?.seed, UInt64.max)
+            let zoned = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01T12:00:00",
+                                             "--time-zone", "Europe/Oslo"])
+            t.equal(zoned?.clock?.timeIntervalSince1970, 1_782_900_000, "a time without an offset is in --time-zone")
+            t.equal(zoned?.virtualTime()?.timeZone.identifier, "Europe/Oslo")
+            let day = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01", "--time-zone", "UTC"])
+            t.equal(day?.clock?.timeIntervalSince1970, 1_782_864_000, "a date alone is midnight")
+            let wrong = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "soon", "--time-zone", "Mars/Base",
+                                             "--seed", "x"])
+            t.equal(wrong?.clock, nil)
+            t.equal(wrong?.timeZone, nil)
+            t.equal(wrong?.seed, nil)
+            t.equal(wrong?.warnings.count, 3)
+            let virtual = RenderOptions(input: "a.ini", clock: Date(timeIntervalSince1970: 1_000)).virtualTime()!
+            let clock = virtual.clock
+            t.equal(clock.now().timeIntervalSince1970, 1_000)
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime)
+            virtual.advance(until: 2.5)
+            t.equal(clock.now().timeIntervalSince1970, 1_002.5, "update i sees the start plus i intervals")
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime + 2.5)
+            t.check(!clock.nowIsLive && !clock.uptimeIsLive && !clock.timeZoneIsLive)
+
+            // --color-space: device RGB unless srgb is asked for.
+            t.equal(d?.colorSpace, .device)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "sRGB"])?.colorSpace, .srgb)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "device"])?.colorSpace, .device)
+            let space = RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "p3"])
+            t.equal(space?.colorSpace, .device)
+            t.equal(space?.warnings, ["--color-space \"p3\" is not device or srgb; using device"])
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space"])?.warnings,
+                    ["--color-space needs a value; using device"])
+
+            // The environment: fixed with --clock unless given or `system`; the Mac's without --clock.
+            t.equal(d?.environment, RenderHost.Fixed(), "no --clock: the Mac's")
+            let standard = fixed?.environment
+            t.equal(standard?.locale?.identifier, "en_US_POSIX")
+            t.equal(standard?.preferredLanguages, ["en"])
+            t.equal(standard?.accent, .standard)
+            t.equal(standard?.screens, [SkinScreen(area: SkinRect(width: 1920, height: 1080),
+                                                   workArea: SkinRect(width: 1920, height: 1080))])
+            let given = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "zh-CN",
+                                             "--languages", "zh-Hans, en", "--accent-color", "255,0,0",
+                                             "--screen", "1440x900"])
+            t.equal(given?.warnings, [])
+            t.equal(given?.environment.locale?.identifier, "zh_CN")
+            t.equal(given?.environment.preferredLanguages, ["zh-Hans", "en"])
+            t.equal(given?.environment.accent, .given(RGBA(r: 255, g: 0, b: 0)))
+            t.equal(given?.environment.screens?.first?.workArea.width, 1440)
+            let system = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "system",
+                                              "--languages", "system", "--accent-color", "system", "--screen", "SYSTEM"])
+            t.equal(system?.environment, RenderHost.Fixed(), "system: the Mac's, also with --clock")
+            let odd = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "xx_Nowhere",
+                                           "--screen", "wide", "--accent-color", "blue", "--languages"])
+            t.equal(odd?.warnings.count, 4)
+            t.equal(odd?.environment, standard, "the standard ones")
 
             let (root, config) = RenderCommand.locate(URL(fileURLWithPath: "/x/Skins/Suite/Clock/Clock.ini"), skinsDir: nil)
             t.equal(root.path, "/x/Skins")

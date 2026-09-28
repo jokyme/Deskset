@@ -8,13 +8,13 @@ import Foundation
 //   https://docs.rainmeter.net/manual/skins/rainmeter-section/ (AccurateText)
 // Places where the manual is silent are marked "Judgment:".
 
-public enum HorizontalTextAlign: Hashable { case left, center, right }
-public enum VerticalTextAlign: Hashable { case top, center, bottom }
-public enum StringEffect: Hashable { case none, shadow, border }
+public enum HorizontalTextAlign: Hashable, Sendable { case left, center, right }
+public enum VerticalTextAlign: Hashable, Sendable { case top, center, bottom }
+public enum StringEffect: Hashable, Sendable { case none, shadow, border }
 
 /// Everything the host needs to measure and draw a String meter's text. The host must measure exactly what it
 /// draws: `SkinHost.textSize` and the renderer both work from this value.
-public struct TextStyle: Hashable {
+public struct TextStyle: Hashable, Sendable {
     public var fontFace: String = "Arial"
     /// Rainmeter font size in points at 96 DPI; the host converts to screen points. 0 = invisible text.
     public var fontSize: Double = 10
@@ -186,7 +186,7 @@ public enum TextWrapRules {
 // MARK: - Inline options
 
 /// One `InlineSettingN` applied to a UTF-16 range of the meter text.
-public struct InlineSpan: Hashable {
+public struct InlineSpan: Hashable, Sendable {
     public var location: Int
     public var length: Int
     public var setting: InlineSetting
@@ -200,7 +200,7 @@ public struct InlineSpan: Hashable {
     public var end: Int { location + length }
 }
 
-public struct GradientStop: Hashable {
+public struct GradientStop: Hashable, Sendable {
     public var color: RGBA
     /// 0…1 along the gradient.
     public var position: Double
@@ -211,7 +211,7 @@ public struct GradientStop: Hashable {
     }
 }
 
-public struct InlineGradient: Hashable {
+public struct InlineGradient: Hashable, Sendable {
     /// Degrees; 0 = right to left, 90 = bottom to top, 180 = left to right, 270 = top to bottom (the angle points
     /// at the start of the gradient, measured clockwise from "directly to the right").
     public var angle: Double
@@ -228,12 +228,12 @@ public struct InlineGradient: Hashable {
     }
 }
 
-public enum InlineCase: Hashable {
+public enum InlineCase: Hashable, Sendable {
     case lower, upper, proper, sentence
 }
 
 /// A parsed `InlineSetting` value (`Name | param | param…`).
-public enum InlineSetting: Hashable {
+public enum InlineSetting: Hashable, Sendable {
     case face(String)
     /// Rainmeter points (96 DPI), like FontSize.
     case size(Double)

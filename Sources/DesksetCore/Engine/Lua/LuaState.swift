@@ -64,6 +64,9 @@ final class LuaState {
     var hostHandler: (([LuaValue]) throws -> [LuaValue])?
 
     private var handle: OpaquePointer?
+    /// Where `os.time`, `os.date`, `os.clock` and `math.random` read from, when not the C library (see
+    /// `useTimeSource`); the shim holds it unretained.
+    private var timeSource: LuaTimeSource?
     /// Values (and their string bytes) returned by the last host call, kept alive until the shim has pushed them.
     private var hostResults: UnsafeMutablePointer<deskset_value>?
     private var hostResultStrings: [UnsafeMutableRawPointer] = []
@@ -90,6 +93,36 @@ final class LuaState {
             deskset_lua_close(handle)
         }
         releaseHostResults()
+    }
+
+    /// Makes `os.time` and `os.date` read `clock`'s wall clock and time zone, `os.clock` its monotonic clock, and
+    /// `math.random` / `math.randomseed` the skin's Lua stream of `random` — each only where the clock or the random
+    /// source is not the system's own: those parts keep the C library's behaviour (the process time zone, one `rand()`
+    /// for the whole app), exactly as before. Call before running the script.
+    func useTimeSource(clock: SkinClock, random: SkinRandom) {
+        guard let handle else { return }
+        let wall = !clock.nowIsLive || !clock.timeZoneIsLive
+        let monotonic = !clock.uptimeIsLive
+        let seeded = !random.isLive
+        guard wall || monotonic || seeded else {
+            timeSource = nil
+            deskset_lua_set_time_source(handle, nil)
+            return
+        }
+        let source = LuaTimeSource(clock: clock, random: random)
+        timeSource = source
+        var c = deskset_lua_time_source()
+        c.context = UnsafeMutableRawPointer(Unmanaged.passUnretained(source).toOpaque())
+        if wall {
+            c.wall = luaTimeNow
+            c.zone = luaTimeZone
+        }
+        if monotonic { c.monotonic = luaTimeClock }
+        if seeded {
+            c.uniform = luaRandom
+            c.reseed = luaRandomSeed
+        }
+        deskset_lua_set_time_source(handle, &c)
     }
 
     /// Nil when the state opened correctly, otherwise why it did not.
@@ -280,6 +313,50 @@ final class LuaState {
         hostResults?.deallocate()
         hostResults = nil
     }
+}
+
+/// The skin's clock and random source as the shim's time source reads them (on the skin's thread).
+private final class LuaTimeSource {
+    let clock: SkinClock
+    let random: SkinRandom
+
+    init(clock: SkinClock, random: SkinRandom) {
+        self.clock = clock
+        self.random = random
+    }
+
+    static func from(_ context: UnsafeMutableRawPointer?) -> LuaTimeSource {
+        Unmanaged<LuaTimeSource>.fromOpaque(context!).takeUnretainedValue()
+    }
+}
+
+private let luaTimeNow: @convention(c) (UnsafeMutableRawPointer?) -> Double = { context in
+    LuaTimeSource.from(context).clock.now().timeIntervalSince1970
+}
+
+private let luaTimeZone: @convention(c) (UnsafeMutableRawPointer?, Double, UnsafeMutablePointer<Int32>?,
+                                          UnsafeMutablePointer<CChar>?, Int) -> Int = { context, time, isDST, name, size in
+    let zone = LuaTimeSource.from(context).clock.timeZone()
+    let date = Date(timeIntervalSince1970: time.isFinite ? time : 0)
+    isDST?.pointee = zone.isDaylightSavingTime(for: date) ? 1 : 0
+    if let name, size > 0 {
+        let bytes = Array((zone.abbreviation(for: date) ?? "").utf8.prefix(size - 1))
+        for (i, b) in bytes.enumerated() { name[i] = CChar(bitPattern: b) }
+        name[bytes.count] = 0
+    }
+    return zone.secondsFromGMT(for: date)
+}
+
+private let luaTimeClock: @convention(c) (UnsafeMutableRawPointer?) -> Double = { context in
+    LuaTimeSource.from(context).clock.uptime()
+}
+
+private let luaRandom: @convention(c) (UnsafeMutableRawPointer?) -> Double = { context in
+    LuaTimeSource.from(context).random.luaUnit()
+}
+
+private let luaRandomSeed: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Void = { context, n in
+    LuaTimeSource.from(context).random.luaSeed(n)
 }
 
 private let luaHostCallback: deskset_host_fn = { context, args, count, results, resultCount in

@@ -20,8 +20,8 @@ import Foundation
 /// - `MacSymbolColors` — with Palette: `c1|c2|c3`, the colors of the symbol's primary, secondary and tertiary layers.
 ///   A layer past the last color takes the last color (macOS does this); an entry that is not a color is white; without
 ///   any color, Palette draws as Monochrome.
-public struct MacSymbol: Hashable {
-    public enum Weight: String, CaseIterable, Hashable {
+public struct MacSymbol: Hashable, Sendable {
+    public enum Weight: String, CaseIterable, Hashable, Sendable {
         case ultralight, thin, light, regular, medium, semibold, bold, heavy, black
 
         /// `MacSymbolWeight` as written (any case); anything else is Regular.
@@ -33,7 +33,7 @@ public struct MacSymbol: Hashable {
         public var optionValue: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
     }
 
-    public enum Rendering: String, CaseIterable, Hashable {
+    public enum Rendering: String, CaseIterable, Hashable, Sendable {
         case monochrome, hierarchical, multicolor, palette
 
         /// `MacSymbolRendering` as written (any case); anything else is Monochrome.
@@ -45,7 +45,7 @@ public struct MacSymbol: Hashable {
     }
 
     /// How a meter asks for its symbols (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`).
-    public struct Style: Hashable {
+    public struct Style: Hashable, Sendable {
         public var pointSize = MacSymbol.defaultPointSize
         public var weight = Weight.regular
         public var rendering = Rendering.monochrome {

@@ -1856,8 +1856,9 @@ extension InspectorWindowController {
         if v.raw.contains("%") {
             // Examples of the date as each format shows it; Custom… for the format as written.
             let example = { (f: String) in
-                TimeFormatting.format(Date(timeIntervalSince1970: 1_790_000_000), format: f,
-                                      timeZone: TimeZone(identifier: "UTC") ?? .current, locale: Locale(identifier: "en_US_POSIX"))
+                MacTimeFormatting.format(Date(timeIntervalSince1970: 1_790_000_000), format: f,
+                                         timeZone: TimeZone(identifier: "UTC") ?? .current,
+                                         locale: Locale(identifier: "en_US_POSIX"))
             }
             let id = "widget/format/\(name)"
             if inspectorState.disclosures.contains(id) {

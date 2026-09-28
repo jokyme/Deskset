@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CoreAudio
 import CoreMedia
+import DesksetCore
 import Foundation
 import ScreenCaptureKit
 
@@ -669,3 +670,67 @@ final class SyntheticAudioBackend: AudioCaptureBackend {
         produced += frames
     }
 }
+
+// MARK: - Levels given as data
+
+/// `--render --data`'s `audio`: the levels every AudioLevel parent reports, one frame per update, the same on every
+/// run and every Mac — nothing is captured or analysed. Every port and device is this one source. `advance()` moves to
+/// the next frame (the last one stays).
+final class ScriptedAudioLevels: AudioLevelEngine {
+    let audio: SkinInputData.Audio
+    /// False for `audio: null`: no audio device (the source does not run, every level is 0).
+    let running: Bool
+    private let lock = NSLock()
+    private var index = 0
+    private var analyzers: [AudioAnalyzer] = []
+
+    init(_ given: SkinInputData.Given<SkinInputData.Audio>) {
+        running = given.value != nil
+        audio = given.value ?? SkinInputData.Audio(frames: [SkinInputData.AudioFrame(rms: [0], peak: [0], bands: [],
+                                                                                        fft: [])],
+                                                   deviceName: "", sampleRate: 48000, channels: 2)
+    }
+
+    var capturesNothing: Bool { true }
+
+    func subscribe(_ analyzer: AudioAnalyzer, to key: AudioSourceKey) {
+        lock.lock()
+        if !analyzers.contains(where: { $0 === analyzer }) { analyzers.append(analyzer) }
+        let frame = audio.frames[index]
+        lock.unlock()
+        publish(frame, to: [analyzer])
+    }
+
+    func unsubscribe(_ analyzer: AudioAnalyzer) {
+        lock.lock()
+        analyzers.removeAll { $0 === analyzer }
+        lock.unlock()
+    }
+
+    func status(for key: AudioSourceKey) -> AudioSourceStatus {
+        guard running else { return AudioSourceStatus(message: "no audio device (the data's audio is null)") }
+        return AudioSourceStatus(running: true, deviceName: audio.deviceName, deviceUID: "DesksetDataSignal",
+                          format: AudioHAL.describe(sampleRate: audio.sampleRate, bitsPerChannel: 32, isFloat: true,
+                                                    channels: audio.channels),
+                          sampleRate: audio.sampleRate, channels: audio.channels)
+    }
+
+    /// The next frame, published to every subscribed analyzer.
+    func advance() {
+        lock.lock()
+        if index < audio.frames.count - 1 { index += 1 }
+        let frame = audio.frames[index]
+        let targets = analyzers
+        lock.unlock()
+        publish(frame, to: targets)
+    }
+
+    private func publish(_ frame: SkinInputData.AudioFrame, to targets: [AudioAnalyzer]) {
+        guard running else { return }
+        for a in targets {
+            a.publishGiven(channels: audio.channels, sampleRate: audio.sampleRate, rms: frame.rms, peak: frame.peak,
+                           bands: frame.bands, fft: frame.fft)
+        }
+    }
+}
+

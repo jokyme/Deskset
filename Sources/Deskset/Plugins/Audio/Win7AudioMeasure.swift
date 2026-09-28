@@ -92,6 +92,9 @@ enum Win7AudioCommand: Equatable {
 }
 
 final class Win7AudioMeasure: Measure {
+    /// Reads the Mac's audio devices and volume (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.volume] }
+
     /// Replaced in tests.
     var system: AudioOutputControlling = AudioSystem.shared
     private(set) var pluginString: String?
@@ -122,8 +125,11 @@ final class Win7AudioMeasure: Measure {
             skin.log("[\(name)] Win7Audio: unknown command \"\(command)\"", level: .warning)
             return
         }
-        if let problem = parsed.apply(to: system) {
-            skin.log("[\(name)] Win7Audio: \(problem)", level: .notice)
+        // Through the skin's side effects: done, or only recorded.
+        skin.sideEffects.perform(.audio(parsed.effect)) {
+            if let problem = parsed.apply(to: system) {
+                skin.log("[\(name)] Win7Audio: \(problem)", level: .notice)
+            }
         }
     }
 }

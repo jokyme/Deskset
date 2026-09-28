@@ -72,12 +72,15 @@ public enum WeatherReport {
         }
     }
 
+    /// The report is in English whatever the Mac's language (the zone names of `%Z`, if a format ever uses them).
+    static let reportLocale = Locale(identifier: "en_US_POSIX")
+
     /// Sunrise and sunset of the local day of `now` ("sunrise 07:10, sunset 19:04"; polar day and night in words).
     public static func sunLine(latitude: Double, longitude: Double, zone: TimeZone, now: Date) -> String {
         let day = SolarCalculator.day(containing: now, zone: zone, latitude: latitude, longitude: longitude)
         func t(_ r: SolarEventResult) -> String {
             switch r {
-            case .time(let d): return TimeFormatting.format(d, format: "%H:%M", timeZone: zone)
+            case .time(let d): return TimeFormatting.format(d, format: "%H:%M", timeZone: zone, systemLocale: reportLocale)
             case .alwaysAbove: return "none (the sun stays up)"
             case .alwaysBelow: return "none (the sun stays down)"
             }
@@ -101,13 +104,14 @@ public enum WeatherReport {
                 + u.precipitation.symbol
         }
         func clock(_ d: Date, _ format: String = "%H:%M") -> String {
-            TimeFormatting.format(d, format: format, timeZone: zone)
+            TimeFormatting.format(d, format: format, timeZone: zone, systemLocale: reportLocale)
         }
         var lines: [String] = []
         lines.append("Place:      \(place) (\(coordinate.description)), \(zone.identifier)")
         if let updated = forecast.updatedAt {
             lines.append("Model run:  " + TimeFormatting.format(updated, format: "%Y-%m-%d %H:%M UTC",
-                                                                timeZone: TimeZone(identifier: "UTC") ?? zone))
+                                                                timeZone: TimeZone(identifier: "UTC") ?? zone,
+                                                                systemLocale: reportLocale))
         }
         if let n = WeatherTimeline.nowIndex(forecast, now: now) {
             let s = forecast.steps[n]

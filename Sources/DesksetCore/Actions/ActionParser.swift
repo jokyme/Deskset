@@ -36,7 +36,7 @@ import Foundation
 //   (`[[MeasureLink]]` ≡ the manual's `["[MeasureLink]"]`) and is kept with its brackets.
 
 /// One bang, e.g. `[!SetOption MeterClock Text "Hello World"]`.
-public struct Bang: Equatable {
+public struct Bang: Equatable, Sendable {
     /// Canonical name: lowercased, without the leading `!` and without the legacy `Rainmeter` prefix
     /// (`!RainmeterRefresh` → `refresh`, `!SetOption` → `setoption`).
     public var name: String
@@ -49,7 +49,7 @@ public struct Bang: Equatable {
     }
 }
 
-public enum SkinAction: Equatable {
+public enum SkinAction: Equatable, Sendable {
     case bang(Bang)
     /// A bracketed item that is not a bang: open a URL / file / run a program, e.g. `["https://example.com"]`.
     /// `target` is the program / URL / path (quotes removed); `arguments` the remaining parameters.
@@ -57,7 +57,7 @@ public enum SkinAction: Equatable {
 }
 
 /// How one argument was written.
-public enum ArgumentQuoting: Equatable {
+public enum ArgumentQuoting: Equatable, Sendable {
     /// Bare word (`SomeMeter`, `[Measure]`).
     case none
     /// `"double quoted"`.
@@ -68,7 +68,7 @@ public enum ArgumentQuoting: Equatable {
 }
 
 /// An action together with how each of its arguments was quoted (see `ActionParser.parseDetailed`).
-public struct ParsedAction: Equatable {
+public struct ParsedAction: Equatable, Sendable {
     public var action: SkinAction
     /// One entry per argument: for `.bang` aligned with `args`; for `.execute` the target first, then `arguments`.
     public var quoting: [ArgumentQuoting]

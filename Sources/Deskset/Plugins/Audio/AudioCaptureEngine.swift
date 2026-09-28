@@ -278,9 +278,24 @@ final class AudioRingBuffer {
     }
 }
 
+// MARK: - What measures ask of it
+
+/// What AudioLevel measures ask of the capture engine: the engine itself, or levels given as data (`--render --data`,
+/// `ScriptedAudioLevels`).
+protocol AudioLevelEngine: AnyObject {
+    /// Feeds `analyzer` from the source of `key` from now on (any thread).
+    func subscribe(_ analyzer: AudioAnalyzer, to key: AudioSourceKey)
+    func unsubscribe(_ analyzer: AudioAnalyzer)
+    /// Latest status of a source.
+    func status(for key: AudioSourceKey) -> AudioSourceStatus
+    /// True when subscribing captures nothing at all (levels given as data): a skin outside a skin window may
+    /// subscribe without asking `AudioPlugins.mayCapture(for:)`.
+    var capturesNothing: Bool { get }
+}
+
 // MARK: - Engine
 
-final class AudioCaptureEngine {
+final class AudioCaptureEngine: AudioLevelEngine {
     static let shared: AudioCaptureEngine = {
         let engine = AudioCaptureEngine()
         if captureAllowed {
@@ -324,6 +339,10 @@ final class AudioCaptureEngine {
     static let spectrumIdleAfter: TimeInterval = 1
     /// Without new frames for this long the analyzers decay towards silence.
     static let silenceTimeout: TimeInterval = 0.1
+
+    /// The engine captures (whether a skin may use it, demo signal or not, is `AudioPlugins.mayCapture(for:)`'s
+    /// question).
+    var capturesNothing: Bool { false }
 
     /// Creates the backend for a source (replaced in tests).
     var makeBackend: (AudioSourceKey) -> AudioCaptureBackend? = AudioCaptureEngine.defaultBackend

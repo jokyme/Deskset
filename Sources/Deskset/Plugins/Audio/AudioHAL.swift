@@ -48,15 +48,6 @@ enum AudioHAL {
         return raw.load(as: T.self)
     }
 
-    @discardableResult
-    static func set<T>(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress, _ value: T) -> OSStatus {
-        var a = address
-        var v = value
-        return withUnsafeMutablePointer(to: &v) {
-            AudioObjectSetPropertyData(object, &a, 0, nil, UInt32(MemoryLayout<T>.size), $0)
-        }
-    }
-
     /// A CFString property (name, UID…); the HAL hands out a retained string.
     static func string(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> String? {
         var a = address
@@ -97,10 +88,6 @@ enum AudioHAL {
         guard let id = get(AudioObjectID(kAudioObjectSystemObject), address(selector), as: AudioObjectID.self),
               id != kAudioObjectUnknown else { return nil }
         return id
-    }
-
-    static func setDefaultOutputDevice(_ id: AudioObjectID) -> OSStatus {
-        set(AudioObjectID(kAudioObjectSystemObject), address(kAudioHardwarePropertyDefaultOutputDevice), id)
     }
 
     static func uid(of device: AudioObjectID) -> String? {
@@ -174,22 +161,12 @@ enum AudioHAL {
         has(device, volumeAddress) && isSettable(device, volumeAddress)
     }
 
-    @discardableResult
-    static func setVolume(_ device: AudioObjectID, _ value: Double) -> OSStatus {
-        set(device, volumeAddress, Float32(min(max(value, 0), 1)))
-    }
-
     static func isMuted(_ device: AudioObjectID) -> Bool? {
         get(device, muteAddress, as: UInt32.self).map { $0 != 0 }
     }
 
     static func hasSettableMute(_ device: AudioObjectID) -> Bool {
         has(device, muteAddress) && isSettable(device, muteAddress)
-    }
-
-    @discardableResult
-    static func setMute(_ device: AudioObjectID, _ muted: Bool) -> OSStatus {
-        set(device, muteAddress, UInt32(muted ? 1 : 0))
     }
 
     // MARK: Listeners

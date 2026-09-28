@@ -33,6 +33,11 @@ jobs:
           xcodebuild -version
           swift --version
 
+      # Clocks, random numbers, timers, background work and outside effects go through the engine's seams; a new
+      # direct use, or an allowance the sources no longer need, fails here (scripts/seams-allowlist.tsv).
+      - name: Seam check
+        run: swift scripts/check-seams.swift --check
+
       - name: Build
         run: swift build
 

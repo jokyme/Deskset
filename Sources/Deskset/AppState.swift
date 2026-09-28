@@ -1,3 +1,4 @@
+import DesksetCore
 import Foundation
 
 /// Per-config window settings (Rainmeter keeps these in Rainmeter.ini; see
@@ -29,19 +30,27 @@ struct SkinState: Codable, Equatable {
     /// `AutoSelectScreen`: the monitor of the skin's built-in variables (`#SCREENAREAX#`, `#WORKAREAX#`…) follows
     /// the window instead of being the primary one.
     var autoSelectScreen: Bool = false
+    /// Keys this version does not know (written by a newer one), kept as they were and written back, so that going
+    /// back to an older version and forward again loses nothing.
+    var unknownKeys: [String: JSONValue] = [:]
 
     init(file: String) {
         self.file = file
     }
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case file, active, x, y, alwaysOnTop, draggable, clickThrough, keepOnScreen, snapEdges, alphaValue,
              savePosition, loadOrder, fadeDuration, onHover, startHidden, autoSelectScreen
     }
 
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
+
     /// Tolerant decoding: keys added in later versions (or removed by hand) fall back to their defaults instead of
-    /// making the whole state file unreadable. Out-of-range values are clamped.
+    /// making the whole state file unreadable, and keys this version does not know are kept (`unknownKeys`).
+    /// Out-of-range values are clamped.
     init(from decoder: Decoder) throws {
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?
+            .unknownValues(besides: SkinState.knownKeys) ?? [:]
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = SkinState(file: "")
         func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
@@ -65,6 +74,29 @@ struct SkinState: Codable, Equatable {
         onHover = min(max(value(.onHover, d.onHover), 0), 3)
         startHidden = value(.startHidden, d.startHidden)
         autoSelectScreen = value(.autoSelectScreen, d.autoSelectScreen)
+    }
+
+    /// The keys this version knows, then the ones it kept (`unknownKeys`).
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(file, forKey: .file)
+        try c.encode(active, forKey: .active)
+        try c.encodeIfPresent(x, forKey: .x)
+        try c.encodeIfPresent(y, forKey: .y)
+        try c.encode(alwaysOnTop, forKey: .alwaysOnTop)
+        try c.encode(draggable, forKey: .draggable)
+        try c.encode(clickThrough, forKey: .clickThrough)
+        try c.encode(keepOnScreen, forKey: .keepOnScreen)
+        try c.encode(snapEdges, forKey: .snapEdges)
+        try c.encode(alphaValue, forKey: .alphaValue)
+        try c.encode(savePosition, forKey: .savePosition)
+        try c.encode(loadOrder, forKey: .loadOrder)
+        try c.encode(fadeDuration, forKey: .fadeDuration)
+        try c.encode(onHover, forKey: .onHover)
+        try c.encode(startHidden, forKey: .startHidden)
+        try c.encode(autoSelectScreen, forKey: .autoSelectScreen)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: SkinState.knownKeys)
     }
 
     /// Fades longer than this are clamped (a typo like `!FadeDuration 250000` should not freeze a skin for minutes).
@@ -94,12 +126,20 @@ struct AppStateData: Codable {
     /// False until the file has held editor preferences: the one moment the old UserDefaults live-reload switch is
     /// carried over (see `AppState.migrateLegacyEditorPreferences`). Not stored.
     var hasEditorPreferences = false
+    /// Top-level keys this version does not know (written by a newer one), kept and written back as they were.
+    var unknownKeys: [String: JSONValue] = [:]
 
     init() {}
 
-    private enum CodingKeys: String, CodingKey { case skins, defaultSkinsInstalled, shippedVariables, editor, settingsPane }
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case skins, defaultSkinsInstalled, shippedVariables, editor, settingsPane
+    }
+
+    private static let knownKeys = Set(CodingKeys.allCases.map(\.rawValue))
 
     init(from decoder: Decoder) throws {
+        unknownKeys = (try? decoder.container(keyedBy: AnyCodingKey.self))?
+            .unknownValues(besides: AppStateData.knownKeys) ?? [:]
         let c = try decoder.container(keyedBy: CodingKeys.self)
         skins = ((try? c.decodeIfPresent([String: SkinState].self, forKey: .skins)) ?? nil) ?? [:]
         defaultSkinsInstalled = ((try? c.decodeIfPresent(Int.self, forKey: .defaultSkinsInstalled)) ?? nil) ?? 0
@@ -117,6 +157,8 @@ struct AppStateData: Codable {
         if !shippedVariables.isEmpty { try c.encode(shippedVariables, forKey: .shippedVariables) }
         try c.encode(editor, forKey: .editor)
         try c.encodeIfPresent(settingsPane, forKey: .settingsPane)
+        var other = encoder.container(keyedBy: AnyCodingKey.self)
+        try other.encodeUnknown(unknownKeys, besides: AppStateData.knownKeys)
     }
 }
 

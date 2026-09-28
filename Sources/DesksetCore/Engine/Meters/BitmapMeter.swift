@@ -19,7 +19,7 @@ import Foundation
 ///   `[Rainmeter] TransitionUpdate` ms (default 100), then the new frame is shown. The frames are stepped on the
 ///   skin's executor; closing the skin stops a running transition.
 public final class BitmapMeter: Meter, PluginLifecycle {
-    public enum Align: Hashable { case left, center, right }
+    public enum Align: Hashable, Sendable { case left, center, right }
 
     public private(set) var bitmapImagePath: String?
     public private(set) var imageOptions = ImageOptions()

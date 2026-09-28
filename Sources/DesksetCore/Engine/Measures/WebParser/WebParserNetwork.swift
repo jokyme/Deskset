@@ -229,6 +229,26 @@ final class WebParserNetwork: NSObject, URLSessionDataDelegate {
         return handle
     }
 
+    // MARK: Virtual time
+
+    /// What `start` delivers for a target that stays off the network — a local file, or an unusable URL — worked out
+    /// at once (a fixture in virtual time); nil for http(s), which only the network answers.
+    static func readAtOnce(_ request: WebParserRequest) -> (() -> Result<WebParserResponse, WebParserFetchError>)? {
+        switch request.target {
+        case .invalid(let reason): return { .failure(.connect(reason)) }
+        case .file(let path): return { readFile(path, maxBytes: request.maxBytes) }
+        case .http: return nil
+        }
+    }
+
+    /// A scripted resource (virtual time): its bytes (or text), or a connection failure.
+    static func scripted(_ value: BackgroundFakeValue) -> Result<WebParserResponse, WebParserFetchError> {
+        guard let data = value.bytes else {
+            return .failure(.connect(value.failureMessage ?? "the scripted result is not a resource"))
+        }
+        return .success(WebParserResponse(data: data, charset: nil, statusCode: nil))
+    }
+
     // MARK: Files
 
     static func readFile(_ path: String, maxBytes: Int) -> Result<WebParserResponse, WebParserFetchError> {

@@ -28,6 +28,10 @@ import Foundation
 ///   (`ProcessInfo.thermalState`), 0 nominal, 1 fair, 2 serious, 3 critical, with "Nominal", "Fair", "Serious" or
 ///   "Critical" as the string and 0–3 as the range. It needs no hardware access and is read at every update.
 public final class MacSensorsMeasure: Measure, PluginLifecycle {
+    /// Reads the Mac's sensors, and its CPU and memory use for those keys (virtual time: noted, see
+    /// `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors, .system] }
+
     private var key = SensorKeys.cpu
     private var kind: SensorKind? = .temperature
     private var scale = TemperatureScale.celsius
@@ -92,7 +96,8 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
         rawString = ""
         noReading = true
         if readsThermalState {
-            let state = min(max(MacSensorsMeasure.thermalState(), 0), 3)
+            let given = HardwareSensors.source(for: skin)?.thermalState()
+            let state = min(max(given ?? MacSensorsMeasure.thermalState(), 0), 3)
             noReading = false
             rawString = MacSensorsMeasure.thermalStateNames[state]
             return Double(state)
@@ -126,14 +131,16 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
             skin.log("MacSensors [\(name)]: hardware sensors are not available here", level: .notice)
             return
         }
-        let hop = skin.hop()
         let scale = self.scale
-        sensors.discoverSensors { [weak self] list in
-            let lines = MacSensorsMeasure.listLines(list, values: { sensors.sensorValue($0) }, scale: scale)
-            hop.post {
-                guard let self, !self.closed else { return }
-                for line in lines { self.skin.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
+        // Live hardware: scripted lines stand in for the list in virtual time.
+        let job = BackgroundJob(.sensorList, subject: "List", start: { deliver in
+            sensors.discoverSensors { list in
+                deliver(MacSensorsMeasure.listLines(list, values: { sensors.sensorValue($0) }, scale: scale))
             }
+        }, scripted: { $0.lines ?? [] })
+        skin.startBackground(job) { [weak self] lines in
+            guard let self, !self.closed else { return }
+            for line in lines { self.skin.log("MacSensors [\(self.name)]: \(line)", level: .notice) }
         }
     }
 
@@ -165,6 +172,9 @@ public final class MacSensorsMeasure: Measure, PluginLifecycle {
 /// - `GPU1 …` means the same as `GPU …` (a Mac has one GPU for these values); `GPU2 …` and other names are 0, logged
 ///   once. Names are matched case-insensitively.
 public final class MSIAfterburnerMeasure: Measure {
+    /// Reads the Mac's sensors (virtual time: noted, see `Measure.liveInputs`).
+    public override var liveInputs: [BackgroundWorkKind] { [.sensors] }
+
     enum Source: Equatable {
         case sensor(String)
         case megabytes(String)

@@ -16,15 +16,18 @@ extension TimeFormatting {
     ///   see `parseTimeStamp(_:mask:locale:)`. When `format` (TimeStampFormat) is set, the mask decides: the
     ///   manual says "if the TimeStampFormat mask does not match the format of the TimeStamp option, an error will
     ///   be produced" → nil (a numeric TimeStamp is only read as a number when no TimeStampFormat is set).
+    /// `now`, `localTimeZone` and `systemLocale` (a whole `locale-date` / `locale-time` mask) are the Mac's own
+    /// unless the caller passes them (the engine passes the skin's clock, time zone and locale).
     public static func parseTimeStamp(_ timeStamp: String, format: String?, locale: Locale? = nil,
-                                      now: Date = Date(), localTimeZone: TimeZone = .current) -> Double? {
+                                      now: Date, localTimeZone: TimeZone,
+                                      systemLocale: Locale) -> Double? {
         let raw = timeStamp.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
         if let dst = daylightSavingTimeStamp(raw, now: now, timeZone: localTimeZone) {
             return dst.value
         }
         if let mask = format, !mask.isEmpty {
-            return parseTimeStamp(raw, mask: mask, locale: locale ?? defaultLocale)
+            return parseTimeStamp(raw, mask: mask, locale: locale ?? defaultLocale, systemLocale: systemLocale)
         }
         if let v = Double(raw), v.isFinite { return v }
         return nil
@@ -50,7 +53,8 @@ extension TimeFormatting {
     /// `%y` 69–99 → 19xx, 00–68 → 20xx unless `%C` is given; `%j` sets the date when month and day are absent;
     /// `%I` uses `%p` (default AM); `%u %U %V %w %W %g %G` are read but ignored. Missing month / day → 1,
     /// missing time → 0. Out-of-range values (month 13, February 30, hour 24 …) → nil.
-    public static func parseTimeStamp(_ string: String, mask: String, locale: Locale = Locale(identifier: "en_US_POSIX")) -> Double? {
+    public static func parseTimeStamp(_ string: String, mask: String, locale: Locale = Locale(identifier: "en_US_POSIX"),
+                                      systemLocale: Locale) -> Double? {
         guard string.count <= 4096, mask.count <= 1024 else { return nil }
         // `locale-date` / `locale-time` are listed among the codes "used in the Format and TimeStampFormat
         // options" and "cannot be modified by using TimeStampLocale": a whole mask of either reads the system
@@ -59,8 +63,8 @@ extension TimeFormatting {
         var maskChars = Array(mask)
         if mask.utf8.count == 11 {
             switch mask.lowercased() {
-            case "locale-date": info = LocaleTimeInfo.info(for: .current); maskChars = ["%", "x"]
-            case "locale-time": info = LocaleTimeInfo.info(for: .current); maskChars = ["%", "X"]
+            case "locale-date": info = LocaleTimeInfo.info(for: systemLocale); maskChars = ["%", "x"]
+            case "locale-time": info = LocaleTimeInfo.info(for: systemLocale); maskChars = ["%", "X"]
             default: break
             }
         }

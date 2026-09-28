@@ -70,13 +70,14 @@ public final class PingMeasure: Measure, PluginLifecycle {
         pingCount += 1
         let current = generation
         let host = destination, limit = timeout / 1000
-        let hop = skin.hop()
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let outcome = ICMPEcho.ping(host: host, timeout: limit, cancel: flag)
-            hop.post {
-                guard let self, self.generation == current, !flag.isCancelled else { return }
-                self.finish(outcome)
-            }
+        // Scripted: a number of milliseconds is the reply; anything else is no reply.
+        let job = BackgroundJob(.ping, subject: host, on: DispatchQueue.global(qos: .utility), fixture: false,
+                                scripted: { $0.number.map { .success($0) } ?? .failure(.timeout) }) {
+            ICMPEcho.ping(host: host, timeout: limit, cancel: flag)
+        }
+        skin.startBackground(job) { [weak self] outcome in
+            guard let self, self.generation == current, !flag.isCancelled else { return }
+            self.finish(outcome)
         }
     }
 

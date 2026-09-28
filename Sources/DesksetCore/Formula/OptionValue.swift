@@ -6,7 +6,7 @@ import Foundation
 // parsed by the Actions / TextTransforms modules.
 
 /// A color with components on Rainmeter's 0…255 scale.
-public struct RGBA: Equatable, Hashable {
+public struct RGBA: Equatable, Hashable, Sendable {
     public var r: Double
     public var g: Double
     public var b: Double
@@ -25,8 +25,8 @@ public struct RGBA: Equatable, Hashable {
 }
 
 /// A meter `X=` / `Y=` value.
-public struct PositionValue: Equatable {
-    public enum Mode: Equatable {
+public struct PositionValue: Equatable, Sendable {
+    public enum Mode: Equatable, Sendable {
         /// `X=10` — relative to the skin origin.
         case absolute
         /// `X=10r` — relative to the previous meter's X (or Y).

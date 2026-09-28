@@ -42,7 +42,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
 
     private var state = -1.0
     private var output = ""
-    private var job: RunCommandJob?
+    private var job: SkinProcess?
     private var runGeneration = 0
     private var closed = false
     private var lastStartFailure: TimeInterval?
@@ -51,7 +51,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private var finishing = false
     /// Programs the measure no longer waits for (stopped by Timeout or Close but still running); with State=Hide they
     /// are killed when the skin is unloaded, like the running one.
-    private var detached: [RunCommandJob] = []
+    private var detached: [SkinProcess] = []
     /// Timeouts and Close grace periods waiting on the skin's executor; cancelled when the skin is unloaded.
     private var waits: [SkinScheduledWork] = []
 
@@ -152,10 +152,11 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         var isDirectory: ObjCBool = false
         let directory = FileManager.default.fileExists(atPath: folder, isDirectory: &isDirectory) && isDirectory.boolValue
             ? folder : skin.directory.path
-        let newJob: RunCommandJob
+        let newJob: SkinProcess
         do {
-            newJob = try RunCommandJob.start(shellCommand: line, directory: directory,
-                                             maxOutput: RunCommandMeasure.maxOutput)
+            // The program starts through the skin's side effects: for real, or only recorded.
+            newJob = try skin.sideEffects.startShellCommand(line, directory: directory,
+                                                            maxOutput: RunCommandMeasure.maxOutput, locale: skin.locale)
         } catch RunCommandJob.StartError.pipe {
             output = ""
             setState(106)
@@ -172,11 +173,14 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         output = ""
         setState(0)
         let jobID = ObjectIdentifier(newJob)
-        let hop = skin.hop()
-        newJob.onExit = { [weak self] in
-            hop.post { self?.jobExited(jobID, generation: generation) }
-        }
-        newJob.resume()
+        // No fake in virtual time: a real program runs. A recording's program (`RecordingSideEffects`) starts nothing
+        // and exits as soon as it is resumed, with the output the recording gives it: a fixture.
+        let recorded = !skin.sideEffects.isLive
+        let exit = BackgroundJob<Void>(.runCommandProcess, subject: line, start: { deliver in
+            newJob.onExit = { deliver(()) }
+            newJob.resume()
+        }, inline: recorded ? { newJob.resume() } : nil)
+        skin.startBackground(exit) { [weak self] in self?.jobExited(jobID, generation: generation) }
         if timeout > 0 {
             let seconds = min(timeout, 86_400_000) / 1000
             schedule(after: seconds) { [weak self] in
@@ -194,7 +198,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     }
 
     /// The run finishes without waiting for `job` any longer; a hidden one is still killed on unload.
-    private func detach(_ job: RunCommandJob) {
+    private func detach(_ job: SkinProcess) {
         if hidden && !detached.contains(where: { $0 === job }) { detached.append(job) }
     }
 
@@ -202,7 +206,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private func startFailed() {
         output = ""
         setState(103)
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = skin.clock()
         let repeated = lastStartFailure.map { now - $0 < 1 } ?? false
         lastStartFailure = now
         guard !repeated, !finishAction.isEmpty else { return }
@@ -228,30 +232,33 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         let data = job.outputSnapshot()
         let path = outputFile.isEmpty ? nil : PluginPaths.resolve(outputFile, skin: skin)
         let type = outputType
-        let hop = skin.hop()
-        PluginIO.queue.async { [weak self] in
+        // Written through the skin's side effects: the file itself, or a recording's copy.
+        let effects = skin.sideEffects
+        let destination = path.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
+        // A fixture: it decodes what the program wrote and saves OutputFile, a file of the skin's.
+        let save = BackgroundJob(.runCommandOutput, subject: path ?? "", on: PluginIO.queue, fixture: true) {
+            () -> (text: String, failure: String?) in
             let text = RunCommandMeasure.decode(data)
             var failure: String?
-            if let path {
+            if let path, let destination {
                 do {
-                    let directory = (path as NSString).deletingLastPathComponent
-                    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-                    try RunCommandMeasure.encode(text, type: type).write(to: URL(fileURLWithPath: path), options: .atomic)
+                    try effects.writeFile(RunCommandMeasure.encode(text, type: type), to: destination, makingFolder: true)
                 } catch {
                     failure = "cannot save \(path): \(error.localizedDescription)"
                 }
             }
-            hop.post {
-                guard let self else { return }
-                self.finishing = false
-                guard self.runGeneration == generation, self.job === job else { return }
-                self.job = nil
-                guard !self.closed else { return }
-                if let failure { self.report("file", "RunCommand [\(self.name)]: \(failure)") }
-                self.output = text
-                self.setState(failure == nil ? 1 : 104)
-                if !self.finishAction.isEmpty { self.skin.execute(self.finishAction, from: self) }
-            }
+            return (text, failure)
+        }
+        skin.startBackground(save) { [weak self] text, failure in
+            guard let self else { return }
+            self.finishing = false
+            guard self.runGeneration == generation, self.job === job else { return }
+            self.job = nil
+            guard !self.closed else { return }
+            if let failure { self.report("file", "RunCommand [\(self.name)]: \(failure)") }
+            self.output = text
+            self.setState(failure == nil ? 1 : 104)
+            if !self.finishAction.isEmpty { self.skin.execute(self.finishAction, from: self) }
         }
     }
 
@@ -303,225 +310,6 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         guard reported.insert(key).inserted else { return }
         skin.log(message, level: .warning)
     }
-}
-
-// MARK: - Process
-
-/// A `/bin/sh -c` child in its own process group, with stdout / stderr read on a background queue.
-final class RunCommandJob: @unchecked Sendable {
-    enum StartError: Error { case pipe, spawn(Int32) }
-
-    let pid: pid_t
-    private let queue = DispatchQueue(label: "Deskset.RunCommand")
-    private let lock = NSLock()
-    private var output = Data()
-    private var errors = Data()
-    private let maxOutput: Int
-    private var stdoutSource: DispatchSourceRead?
-    private var stderrSource: DispatchSourceRead?
-    private var exitSource: DispatchSourceProcess?
-    private var exited = false
-    private var stdoutClosed = false
-    private var reaped = false
-    private var stdoutFD: Int32 = -1
-    var onExit: (() -> Void)?
-
-    private init(pid: pid_t, stdout: Int32, stderr: Int32, maxOutput: Int) {
-        self.pid = pid
-        self.maxOutput = maxOutput
-        let out = DispatchSource.makeReadSource(fileDescriptor: stdout, queue: queue)
-        let err = DispatchSource.makeReadSource(fileDescriptor: stderr, queue: queue)
-        let exit = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
-        stdoutFD = stdout
-        // The handlers keep the job alive until its sources are cancelled (end of file / exit).
-        out.setEventHandler { [self] in self.drain(stdout, isOutput: true) }
-        out.setCancelHandler { close(stdout) }
-        err.setEventHandler { [self] in self.drain(stderr, isOutput: false) }
-        err.setCancelHandler { close(stderr) }
-        exit.setEventHandler { [self] in self.processExited() }
-        stdoutSource = out
-        stderrSource = err
-        exitSource = exit
-    }
-
-    static func start(shellCommand: String, directory: String, maxOutput: Int) throws -> RunCommandJob {
-        var outPipe: [Int32] = [-1, -1], errPipe: [Int32] = [-1, -1]
-        guard pipe(&outPipe) == 0 else { throw StartError.pipe }
-        guard pipe(&errPipe) == 0 else {
-            close(outPipe[0]); close(outPipe[1])
-            throw StartError.pipe
-        }
-        // Not inherited by programs other code starts meanwhile (that would keep the pipe open after our child exits).
-        for fd in outPipe + errPipe { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
-        var actions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&actions)
-        defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-        posix_spawn_file_actions_adddup2(&actions, outPipe[1], 1)
-        posix_spawn_file_actions_adddup2(&actions, errPipe[1], 2)
-        posix_spawn_file_actions_addchdir_np(&actions, directory)
-        var attributes: posix_spawnattr_t?
-        posix_spawnattr_init(&attributes)
-        defer { posix_spawnattr_destroy(&attributes) }
-        // Own process group (Close / Kill reach the whole command), default signal handlers, and no inherited file
-        // descriptors except 0-2.
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF
-                                                    | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_CLOEXEC_DEFAULT))
-        posix_spawnattr_setpgroup(&attributes, 0)
-        var allSignals = sigset_t()
-        sigfillset(&allSignals)
-        posix_spawnattr_setsigdefault(&attributes, &allSignals)
-        var noSignals = sigset_t()
-        sigemptyset(&noSignals)
-        posix_spawnattr_setsigmask(&attributes, &noSignals)
-
-        var environment = ProcessInfo.processInfo.environment
-        var path = (environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
-        for extra in ["/usr/local/bin", "/opt/homebrew/bin"] where !path.contains(extra) { path.insert(extra, at: 0) }
-        environment["PATH"] = path.joined(separator: ":")
-        // Apps started from Finder have no locale variables: programs would then write non-ASCII text as `?`.
-        if environment["LANG"] == nil && environment["LC_ALL"] == nil && environment["LC_CTYPE"] == nil {
-            environment["LANG"] = RunCommandJob.defaultLanguage
-        }
-        let envStrings = environment.map { "\($0.key)=\($0.value)" }
-        let args = ["/bin/sh", "-c", shellCommand]
-        var pid: pid_t = 0
-        let result = withCStrings(args) { argv in
-            withCStrings(envStrings) { envp in
-                posix_spawn(&pid, "/bin/sh", &actions, &attributes, argv, envp)
-            }
-        }
-        close(outPipe[1])
-        close(errPipe[1])
-        guard result == 0 else {
-            close(outPipe[0]); close(errPipe[0])
-            throw StartError.spawn(result)
-        }
-        _ = fcntl(outPipe[0], F_SETFL, O_NONBLOCK)
-        _ = fcntl(errPipe[0], F_SETFL, O_NONBLOCK)
-        return RunCommandJob(pid: pid, stdout: outPipe[0], stderr: errPipe[0], maxOutput: maxOutput)
-    }
-
-    /// `ll_CC.UTF-8` of the user's locale when macOS has it (what Terminal sets), else `en_US.UTF-8`.
-    static let defaultLanguage: String = {
-        let identifier = Locale.current.identifier.split(separator: "@").first.map(String.init) ?? ""
-        let candidate = identifier + ".UTF-8"
-        if !identifier.isEmpty, FileManager.default.fileExists(atPath: "/usr/share/locale/" + candidate) { return candidate }
-        return "en_US.UTF-8"
-    }()
-
-    /// Starts reading and watching for the exit (set `onExit` first).
-    func resume() {
-        stdoutSource?.resume()
-        stderrSource?.resume()
-        exitSource?.resume()
-        // The child may have exited before the process source was armed.
-        queue.async { [self] in
-            var status: Int32 = 0
-            lock.lock()
-            let exitedNow = !reaped && waitpid(pid, &status, WNOHANG) == pid
-            if exitedNow { reaped = true }
-            lock.unlock()
-            if exitedNow { processExited() }
-        }
-    }
-
-    /// Sends `sig` to the process group (falls back to the process). False when that failed. Nothing is sent once the
-    /// program has been reaped: its process id may belong to another program by then.
-    @discardableResult
-    func signal(_ sig: Int32) -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        if reaped { return true }
-        if kill(-pid, sig) == 0 { return true }
-        return kill(pid, sig) == 0 || errno == ESRCH
-    }
-
-    func outputSnapshot() -> Data {
-        lock.lock(); defer { lock.unlock() }
-        return output
-    }
-
-    private func drain(_ fd: Int32, isOutput: Bool) {
-        var buffer = [UInt8](repeating: 0, count: 65_536)
-        while true {
-            let n = buffer.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
-            if n > 0 {
-                lock.lock()
-                if isOutput {
-                    if output.count < maxOutput { output.append(contentsOf: buffer.prefix(min(n, maxOutput - output.count))) }
-                } else if errors.count < 65_536 {
-                    errors.append(contentsOf: buffer.prefix(n))
-                }
-                lock.unlock()
-                continue
-            }
-            if n == 0 {
-                // End of file.
-                if isOutput {
-                    stdoutSource?.cancel()
-                    stdoutSource = nil
-                    stdoutClosed = true
-                    finishIfDone()
-                } else {
-                    stderrSource?.cancel()
-                    stderrSource = nil
-                }
-            }
-            return   // EAGAIN / error: wait for the next event
-        }
-    }
-
-    private func processExited() {
-        lock.lock()
-        if !reaped {
-            var status: Int32 = 0
-            if waitpid(pid, &status, WNOHANG) == 0 {
-                // The exit was reported, so the child is about to become reapable.
-                while waitpid(pid, &status, 0) == -1 && errno == EINTR {}
-            }
-            reaped = true
-        }
-        lock.unlock()
-        exited = true
-        exitSource?.cancel()
-        exitSource = nil
-        // A program that left a background child holding the pipe open still counts as finished: read what is there.
-        if stdoutSource != nil, !stdoutClosed {
-            queue.asyncAfter(deadline: .now() + 0.05) { [self] in
-                if !stdoutClosed { drain(stdoutFD, isOutput: true) }
-                if !stdoutClosed {
-                    stdoutSource?.cancel()
-                    stdoutSource = nil
-                    stderrSource?.cancel()
-                    stderrSource = nil
-                    stdoutClosed = true
-                }
-                finishIfDone()
-            }
-            return
-        }
-        finishIfDone()
-    }
-
-    private func finishIfDone() {
-        guard exited, stdoutClosed, let callback = onExit else { return }
-        onExit = nil
-        callback()
-    }
-
-    deinit {
-        stdoutSource?.cancel()
-        stderrSource?.cancel()
-        exitSource?.cancel()
-    }
-}
-
-/// Calls `body` with a NULL-terminated C string array.
-private func withCStrings<R>(_ strings: [String], _ body: ([UnsafeMutablePointer<CChar>?]) -> R) -> R {
-    var pointers: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
-    pointers.append(nil)
-    defer { for p in pointers where p != nil { free(p) } }
-    return body(pointers)
 }
 
 // MARK: - Translation

@@ -563,19 +563,31 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] [--screen WxH] [--skins-dir DIR]` loads the skin
-  without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a
-  side) on a transparent or given background and prints compatibility notes and skin log lines. `--wallpaper` names a
-  picture that stands in for the desktop picture, on a screen of `--screen` points (default 1512 × 982, a 14-inch
-  MacBook Pro's) laid as macOS lays it by default (Fill Screen): Chameleon `Type=Desktop` samples it (a dynamic
-  picture's light or dark one, as the appearance is), and the part under the skin is drawn behind it. `--at` puts the
-  skin window's top-left corner there (default 0,0; `#CURRENTCONFIGX#`, `CropDesktop=Skin`). Without `--wallpaper`,
-  `--background` stands in for a desktop of that one color, so a frameless skin picks the ink the image shows; with
-  neither, Chameleon reads the Mac's own wallpaper. The skin sees the Light appearance (the appearance
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--wallpaper FILE] [--at X,Y]
+  [--screen WxH|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2, 1 000 ms apart),
+  draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given background and prints
+  compatibility notes and skin log lines. `--wallpaper` names a picture that stands in for the desktop picture, on a
+  screen of `--screen` points (default 1512 × 982, a 14-inch MacBook Pro's; 1920 × 1080 with `--clock`) laid as macOS
+  lays it by default (Fill Screen): Chameleon `Type=Desktop` samples it (a dynamic picture's light or dark one, as the
+  appearance is), and the part under the skin is drawn behind it. `--at` puts the skin window's top-left corner there
+  (default 0,0; `#CURRENTCONFIGX#`, `CropDesktop=Skin`). Without `--wallpaper`, `--background` stands in for a desktop
+  of that one color, so a frameless skin picks the ink the image shows; with neither, Chameleon reads the Mac's own
+  wallpaper. With a stand-in desktop the skin sees that one screen (`#SCREENAREAWIDTH#`…); in virtual time the
+  wallpaper is read as a fixture. The skin sees the Light appearance (the appearance
   variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
   24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
   plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`
-  (the Mac's own). There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
+  (the Mac's own). `--clock` runs the skin in virtual time from the given moment (ISO 8601, or seconds since 1970):
+  update i is at that time plus i intervals and the monotonic clock steps with it; `!Delay`, ActionTimer steps,
+  Bitmap transitions and plugin timers run at their own virtual times, and nothing waits in real time. Its time zone
+  is UTC unless `--time-zone` names another (`--time-zone` alone changes only the zone). Background work comes back as
+  ordinary work before the next update: local files (QuotePlugin, FolderInfo, FileView's listing, WebParser `file://`,
+  RunCommand's OutputFile) are read or written as fixtures, the weather service is the preview and NowPlaying's
+  position follows the virtual clock; work that reaches further (the network, programs, file icons, live system
+  state) runs for real, gets up to one interval of real time to come back, and is listed on stderr as "not
+  verifiable in virtual time". `--seed N` makes the skin's
+  random numbers (Calc `Random` / `UniqueRandom`, QuotePlugin, WebParser's temporary file names, Lua `math.random`)
+  the same in every run. There is no window: window, config and app bangs are accepted and ignored (Lua FadeWindow falls back
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
@@ -637,8 +649,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   `--self-test [filter]`, `--snapshot-ui`, `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`;
   `--help` / `-h` prints them (exit status 0). An argument starting with `--` that is none of these flags or their
   options (`--out`, `--updates`, `--interval`, `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`,
-  `--clock-hours`, `--first-weekday`, `--temperature-unit`, `--select`, `--size`, `--zoom`, `--location`, `--units`,
-  `--offline`, `--now`, `--seconds`, `--warmup`), or such an
+  `--clock-hours`, `--first-weekday`, `--temperature-unit`, `--clock`, `--time-zone`, `--seed`, `--wallpaper`, `--at`,
+  `--screen`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`, `--seconds`, `--warmup`),
+  or such an
   option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to
