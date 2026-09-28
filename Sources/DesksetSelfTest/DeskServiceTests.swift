@@ -475,6 +475,11 @@ func runDeskServiceTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: service latency") {
+        // Typing in the code pane: p50 and p95 over random one-character edits of the large test widget, for the
+        // update with its diagnostics and semantic tokens (target under 20 ms at 300 lines in a release build), and
+        // for completion, hover and signature help (under 5 ms each), the outline and folding on the new snapshot.
+        // DESK_SERVICE_LATENCY_BUDGET_MS=20 asserts those targets (the requests get a quarter of the budget);
+        // without it only a generous bound is checked: 10x in debug, 3x more for a slow CI machine.
         #if DEBUG
         let build = "debug"
         let factor = 10.0
@@ -482,43 +487,157 @@ func runDeskServiceTests(_ t: TestRunner) {
         let build = "release"
         let factor = 1.0
         #endif
-        func best(_ runs: Int, _ body: () -> Void) -> Double {
-            var fastest = Double.infinity
-            for _ in 0..<runs {
-                let start = ProcessInfo.processInfo.systemUptime
-                body()
-                fastest = min(fastest, ProcessInfo.processInfo.systemUptime - start)
+        let strict = ProcessInfo.processInfo.environment["DESK_SERVICE_LATENCY_BUDGET_MS"].flatMap(Double.init)
+        func milliseconds(_ body: () -> Void) -> Double {
+            let start = ProcessInfo.processInfo.systemUptime
+            body()
+            return (ProcessInfo.processInfo.systemUptime - start) * 1000
+        }
+        func percentile(_ values: [Double], _ p: Double) -> Double {
+            guard !values.isEmpty else { return 0 }
+            let sorted = values.sorted()
+            return sorted[min(sorted.count - 1, Int((p * Double(sorted.count - 1)).rounded(.up)))]
+        }
+        func figures(_ values: [Double]) -> String {
+            String(format: "p50 %.2f, p95 %.2f", percentile(values, 0.5), percentile(values, 0.95))
+        }
+        let typed = ["a", "e", "x", "1", " ", ".", "(", "\"", "{", "}", "\n"]
+        if ProcessInfo.processInfo.environment["DESK_SERVICE_PROFILE"] != nil {
+            // Where an update's time goes (best of five).
+            for lines in [300, 2_000] {
+                func best(_ body: () -> Void) -> Double { (0..<5).map { _ in milliseconds(body) }.min()! }
+                let text = deskLargeWidget(lines: lines)
+                let file = DeskFileID("Large.desk")
+                let previous = Desk.parse(text, file: file)
+                let at = (text as NSString).range(of: "CPU 1\"").location
+                let edited = (text as NSString).replacingCharacters(in: NSRange(location: at, length: 0), with: "x")
+                var fresh: SyntaxTree!
+                let parse = best { fresh = Desk.parse(edited, file: file) }
+                let old = Array(text.utf8), new = Array(edited.utf8)
+                var shared: SyntaxTree!
+                let share = best { shared = SubtreeReuse.share(fresh, previous: previous, edit: SyntaxTextEdit.between(old, new), newBytes: new, oldBytes: old).tree }
+                let textIndex = best { _ = DeskTextIndex(tree: shared) }
+                let check = best { _ = Desk.check(shared) }
+                let service = DeskLanguageService(openFile: file, files: [file: edited])
+                let table = best { _ = DeskNodeTable(tree: shared) }
+                let index = best { _ = service.setMessageLanguage(.english).symbolIndex }
+                let tokens = best { _ = service.setMessageLanguage(.english).semanticTokens() }
+                let pending = service.beginUpdate(changes: [], version: 1)
+                let syntaxIndex = best { _ = DeskSymbolIndex(checked: pending.snapshot.checked, packageFile: nil, packageStyles: [], packageOptions: [], catalog: .current) }
+                let diagnostics = best { _ = service.setMessageLanguage(.english).diagnostics }
+                print(String(format: "    %d lines: parse %.2f, share %.2f, text index %.2f, check %.2f, node table %.2f, symbol index %.2f "
+                             + "(syntax only %.2f), semantic tokens with index %.2f, diagnostics %.2f ms",
+                             lines, parse, share, textIndex, check, table, index, syntaxIndex, tokens, diagnostics))
             }
-            return fastest * 1000
         }
         for lines in [300, 2_000] {
             let text = deskLargeWidget(lines: lines)
             let file = DeskFileID("Large.desk")
             let service = DeskLanguageService(openFile: file, files: [file: text])
-            let at = (text as NSString).range(of: "CPU 1\"").location + 5
-            var version = 0
-            var inserted = false
-            // Alternately insert and remove one character.
-            let update = best(5) {
-                version += 1
-                let change = inserted ? DeskTextChange(range: at..<(at + 1), text: "")
-                                      : DeskTextChange(range: at..<at, text: "!")
-                inserted.toggle()
-                service.update(changes: [change], version: version)
+            func warm(_ snapshot: DeskSnapshot) {
+                _ = snapshot.diagnostics
+                _ = snapshot.semanticTokens()
+                _ = snapshot.documentSymbols()
+                _ = snapshot.foldingRanges()
             }
-            // A new snapshot of the same check has empty caches: what wording the diagnostics and formatting cost
-            // (the diagnostics of a copy with a misspelt component in every block).
-            let format = best(3) { _ = service.setMessageLanguage(.english).formatDocument() }
-            let faulty = DeskLanguageService(openFile: file, files: [file: text.replacingOccurrences(of: "Text(\"CPU", with: "Txt(\"CPU")])
-            let problems = faulty.snapshot.checked.diagnostics.count
-            let diagnostics = best(3) { _ = faulty.setMessageLanguage(.english).diagnostics }
-            print(String(format: "    Desk service, %@ build, %d lines: one-character edit → new snapshot %.1f ms; "
-                         + "formatting %.1f ms; wording %d diagnostics %.1f ms",
-                         build as NSString, text.split(separator: "\n", omittingEmptySubsequences: false).count,
-                         update, format, problems, diagnostics))
+            warm(service.snapshot)
+            var random = DeskRandom(seed: 0x1A7E_2026 &+ UInt64(lines))
+            var update: [Double] = [], completion: [Double] = [], hover: [Double] = [], signature: [Double] = []
+            var outline: [Double] = [], folding: [Double] = [], phased: [Double] = [], check: [Double] = []
+            var version = 0
+            #if DEBUG
+            let edits = lines == 300 ? 50 : 8
+            #else
+            let edits = 50
+            #endif
+            let reuseBefore = service.totalReuse
+            for k in 0..<edits {
+                // One character typed or deleted at a random place (the widget is ASCII but for "·").
+                let current = service.text as NSString
+                let at = random.int(current.length)
+                let insert = random.chance(75)
+                let change = insert ? DeskTextChange(range: at..<at, text: random.pick(typed))
+                                    : DeskTextChange(range: at..<(at + 1), text: "")
+                let undo = insert ? DeskTextChange(range: at..<(at + (change.text as NSString).length), text: "")
+                                  : DeskTextChange(range: at..<at, text: current.substring(with: NSRange(location: at, length: 1)))
+                version += 1
+                var snapshot: DeskSnapshot!
+                update.append(milliseconds {
+                    snapshot = service.update(changes: [change], version: version)
+                    _ = snapshot.diagnostics
+                    _ = snapshot.semanticTokens()
+                })
+                outline.append(milliseconds { _ = snapshot.documentSymbols() })
+                folding.append(milliseconds { _ = snapshot.foldingRanges() })
+                // Requests near a random line: a modifier after `.`, a name, the arguments of a call.
+                let ns = snapshot.text as NSString
+                let from = ns.lineRange(for: NSRange(location: random.int(ns.length), length: 0)).location
+                func find(_ needle: String) -> Int? {
+                    var r = ns.range(of: needle, range: NSRange(location: from, length: ns.length - from))
+                    if r.location == NSNotFound { r = ns.range(of: needle) }
+                    return r.location == NSNotFound ? nil : r.location
+                }
+                if let dot = find(".font(") {
+                    let position = snapshot.index.position(utf16: dot + 1)
+                    completion.append(milliseconds { _ = snapshot.completions(at: position) })
+                }
+                if let name = find("page") {
+                    let position = snapshot.index.position(utf16: name + 2)
+                    hover.append(milliseconds { _ = snapshot.hover(at: position) })
+                }
+                if let call = find("Text(\"") {
+                    let position = snapshot.index.position(utf16: call + 5)
+                    signature.append(milliseconds { _ = snapshot.signatureHelp(at: position) })
+                }
+                // Back to the widget as it was, with what the Studio asks of each snapshot.
+                version += 1
+                warm(service.update(changes: [undo], version: version))
+                // Two phases, as for a large file: the syntax snapshot with folding and highlighting, then the check.
+                if k % 5 == 0 {
+                    version += 1
+                    var pending: DeskPendingCheck!
+                    phased.append(milliseconds {
+                        pending = service.beginUpdate(changes: [change], version: version)
+                        _ = pending.snapshot.foldingRanges()
+                        _ = pending.snapshot.semanticTokens()
+                    })
+                    var result: DeskCheckedText!
+                    check.append(milliseconds { result = pending.run() })
+                    warm(service.accept(result)!)
+                    version += 1
+                    warm(service.update(changes: [undo], version: version))
+                }
+            }
+            t.equal(service.text, text, "the edits were undone")
+            var reuse = service.totalReuse
+            reuse.nodes -= reuseBefore.nodes
+            reuse.sharedNodes -= reuseBefore.sharedNodes
+            let count = text.split(separator: "\n", omittingEmptySubsequences: false).count
+            print("    Desk service, \(build) build, \(count) lines, \(edits) one-character edits (ms):")
+            print("      update + diagnostics + semantic tokens \(figures(update)); completion \(figures(completion)); "
+                  + "hover \(figures(hover)); signature help \(figures(signature))")
+            print("      outline \(figures(outline)); folding \(figures(folding)); "
+                  + "in two phases: syntax snapshot \(figures(phased)), then the check \(figures(check)); "
+                  + String(format: "%.0f%% of nodes shared", reuse.nodeRate * 100))
+            let p95 = percentile(update, 0.95)
+            let requests = [completion, hover, signature].map { percentile($0, 0.95) }.max() ?? 0
+            if let budget = strict, lines == 300 {
+                t.check(p95 < budget, String(format: "p95 of a one-character update of 300 lines is %.1f ms (budget %.0f)", p95, budget))
+                t.check(requests < budget / 4, String(format: "p95 of a request is %.2f ms (budget %.1f)", requests, budget / 4))
+            }
             // Only a bound that keeps the editor usable (CI machines are slow and stall).
-            let bound = (lines == 300 ? 150.0 : 600.0) * factor
-            t.check(update < bound, String(format: "a one-character edit of %d lines took %.0f ms (bound %.0f)", lines, update, bound))
+            let bound = (lines == 300 ? 20.0 : 200.0) * factor * 3
+            t.check(p95 < bound, String(format: "p95 of a one-character update of %d lines is %.0f ms (bound %.0f)", lines, p95, bound))
+            t.check(requests < 5 * factor * 3 * (lines == 300 ? 1 : 4),
+                    String(format: "p95 of a request of %d lines is %.1f ms", lines, requests))
         }
+        // Wording and formatting from a snapshot with empty caches.
+        let text = deskLargeWidget(lines: 2_000)
+        let file = DeskFileID("Large.desk")
+        let faulty = DeskLanguageService(openFile: file, files: [file: text.replacingOccurrences(of: "Text(\"CPU", with: "Txt(\"CPU")])
+        let wording = milliseconds { _ = faulty.setMessageLanguage(.english).diagnostics }
+        let format = milliseconds { _ = faulty.setMessageLanguage(.english).formatDocument() }
+        print(String(format: "    wording %d diagnostics %.1f ms; formatting 2,000 lines %.1f ms",
+                     faulty.snapshot.checked.diagnostics.count, wording, format))
     }
 }
