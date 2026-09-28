@@ -204,6 +204,11 @@ struct StudioScreen {
         try fm.createDirectory(at: skins, withIntermediateDirectories: true)
         let target = skins.appendingPathComponent(fixture.root, isDirectory: true)
         try fm.copyItem(at: source.appendingPathComponent(fixture.root, isDirectory: true), to: target)
+        // In Chinese the suite's widgets speak Chinese too (their own words: Stationery has both languages).
+        var edits = self.edits
+        if StudioText.language == .chinese, fixture.root == StudioBuiltInWords.suite {
+            edits.append(FileEdit(path: "@Resources/Variables.inc", find: "Language=English", replace: "Language=Chinese"))
+        }
         for edit in edits {
             let url = target.appendingPathComponent(edit.path)
             let text = try String(contentsOf: url, encoding: .utf8)

@@ -108,6 +108,9 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         super.init(window: window)
         window.delegate = self
         window.onControlTab = { [weak self] backward in self?.cycleFocus(backward: backward) }
+        window.onDone = { [weak self] in self?.doneAction(nil) }
+        // Tab goes through the panes' controls in the order they are laid out (they are made in code).
+        window.autorecalculatesKeyViewLoop = true
 
         sidebarItem.minimumThickness = Self.sidebarWidth
         sidebarItem.maximumThickness = Self.sidebarWidth
@@ -567,8 +570,19 @@ final class StudioWindow: NSWindow {
     var drawsAsKey = false
     /// ⌃Tab and ⌃⇧Tab: the keyboard's route between the panes (before any view takes the key).
     var onControlTab: ((Bool) -> Void)?
+    /// ⌘↩: Done, whichever pane has the keyboard (the Widget menu has it too, while the menu bar is the Studio's).
+    var onDone: (() -> Void)?
     override var isKeyWindow: Bool { drawsAsKey || super.isKeyWindow }
     override var isMainWindow: Bool { drawsAsKey || super.isMainWindow }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown, event.keyCode == 36 || event.keyCode == 76,
+           event.modifierFlags.intersection([.control, .command, .option, .shift]) == [.command], let onDone {
+            onDone()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 48,

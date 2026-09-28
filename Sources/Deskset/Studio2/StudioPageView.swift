@@ -1003,6 +1003,24 @@ final class StudioSwatchView: NSControl {
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    // The keyboard reaches it (Tab), and Space or Return opens it, as a click does; the focus ring follows the dot.
+    override var acceptsFirstResponder: Bool { onClick != nil }
+    override var canBecomeKeyView: Bool { onClick != nil && !isHiddenOrHasHiddenAncestor }
+    override var focusRingMaskBounds: NSRect { dotRect }
+    override func drawFocusRingMask() {
+        let r = dotRect.insetBy(dx: 1, dy: 1)
+        (swatch.kind == .card ? NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10) : NSBezierPath(ovalIn: r)).fill()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+           [" ", "\r"].contains(event.charactersIgnoringModifiers ?? "") {
+            onClick?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {}
 
     override func mouseUp(with event: NSEvent) {
