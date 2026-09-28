@@ -3,7 +3,9 @@ import Foundation
 // The values the language service speaks in. Every position it takes or gives is 0-based and counts UTF-16 units,
 // like `NSRange` and the text view; the checker's UTF-8 ranges never leave the service.
 
-/// A place in a text: its UTF-16 offset, and the 0-based line and UTF-16 column it is at.
+/// A place in a text: its UTF-16 offset, and the 0-based line and UTF-16 column it is at. A request reads only
+/// `offset`, clamped to the text and to the start of a scalar; every position the service gives is at a scalar's
+/// start, with the line and column of its offset.
 public struct DeskPosition: Sendable, Hashable, Comparable, CustomStringConvertible {
     public var offset: Int
     public var line: Int
@@ -60,24 +62,29 @@ public struct DeskRange: Sendable, Hashable, CustomStringConvertible {
 }
 
 extension DeskTextIndex {
+    /// The position of a UTF-16 offset, clamped to the text and to the start of a scalar.
     public func position(utf16 offset: Int) -> DeskPosition {
         let o = clampedUTF16(offset)
         let (line, column) = lineAndColumn(ofUTF16: o)
         return DeskPosition(offset: o, line: line, column: column)
     }
 
+    /// The position of a UTF-8 offset (the tree's and the checker's), clamped likewise.
     public func position(utf8 offset: Int) -> DeskPosition {
         position(utf16: utf16Offset(ofUTF8: offset))
     }
 
+    /// The position of a 0-based line and UTF-16 column (clamped as `utf16Offset(line:column:)` clamps them).
     public func position(line: Int, column: Int) -> DeskPosition {
         position(utf16: utf16Offset(line: line, column: column))
     }
 
+    /// The range of UTF-16 offsets, each clamped.
     public func range(utf16 range: Range<Int>) -> DeskRange {
         DeskRange(start: position(utf16: range.lowerBound), end: position(utf16: range.upperBound))
     }
 
+    /// The range of UTF-8 offsets, each clamped.
     public func range(utf8 range: Range<Int>) -> DeskRange {
         self.range(utf16: utf16Range(ofUTF8: range))
     }
@@ -175,6 +182,7 @@ public struct DeskWorkspaceEdit: Sendable, Hashable {
     /// The files it changes, sorted by path.
     public var changedFiles: [DeskFileID] { files.keys.sorted { $0.path < $1.path } }
 
+    /// The edits of one file, sorted (empty when it has none).
     public func edits(for file: DeskFileID) -> [DeskTextEditU16] { files[file] ?? [] }
 
     /// The edits sorted by (start, end), stable, without the ones that overlap an earlier one.

@@ -32,6 +32,7 @@ public struct DeskServiceFixIt: Sendable, Hashable {
 
 /// What error isolation removed because of a diagnostic, and where it is.
 public struct DeskDroppedUnit: Sendable, Hashable {
+    /// The smallest unit error isolation drops (§4.1): the editor draws a dropped element as a ghost.
     public enum Kind: String, Sendable, Hashable {
         case modifier, element, field, option, action, declaration
     }

@@ -32,6 +32,7 @@ public struct DeskConsentPermission: Sendable, Hashable {
 
 /// A command a widget can run, as the install sheet shows it.
 public struct DeskConsentCommand: Sendable, Hashable {
+    /// A `${n}` of the command line: the option it is filled from and the values it can have.
     public struct Placeholder: Sendable, Hashable {
         /// The option it reads (`${1}` is the first).
         public var option: String

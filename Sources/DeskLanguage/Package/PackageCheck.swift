@@ -20,10 +20,12 @@ public struct DeskSite: Sendable, Hashable, CustomStringConvertible {
 /// The package's shared styles, options and translation keys, each with its declarations in `package.desk` and its
 /// uses in every file of the folder (`package.desk`'s own included), sorted by file and position.
 public struct DeskPackageUses: Sendable, Hashable {
+    /// What the package shares.
     public enum Kind: String, Sendable, Hashable, CaseIterable {
         case style, option, translation
     }
 
+    /// One shared name: where it is declared and where it is used.
     public struct Entry: Sendable, Hashable {
         public var kind: Kind
         public var name: String
@@ -55,6 +57,7 @@ public struct DeskPackageUses: Sendable, Hashable {
 
     public init() {}
 
+    /// The entry of a shared name (nil when the package does not declare it).
     public func entry(_ kind: Kind, _ name: String) -> Entry? {
         switch kind {
         case .style: return styles[name]

@@ -29,6 +29,9 @@ public struct DeskArchiveEntry: Sendable, Hashable {
     }
 }
 
+/// Loads a widget folder (from disk, from memory, or an archive's entry list to check before unpacking) into a
+/// `DeskPackage`: its `.desk` texts, pictures with their sizes, fonts with their families, and what loading found
+/// (links, too many files, names that differ only in case or accent encoding, paths that leave the folder).
 public enum PackageLoader {
     /// Largest font file whose families are read.
     static let maximumFontBytes = 32 * 1_048_576
@@ -281,6 +284,7 @@ public enum PackageLoader {
 
 /// Picture sizes from the first bytes of PNG, JPEG and GIF files; nothing is decoded.
 public enum ImageHeader {
+    /// The size in pixels a PNG, JPEG or GIF file's header gives (nil for other data or a header cut short).
     public static func pixelSize(_ data: Data) -> DeskPixelSize? {
         let b = [UInt8](data.prefix(PackageLoader.imageHeaderBytes))
         if b.count >= 24, b[0..<8].elementsEqual([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),

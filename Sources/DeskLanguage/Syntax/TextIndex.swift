@@ -103,11 +103,13 @@ public struct DeskTextIndex: Sendable {
         return utf8Offset(inLine: line, utf16Column: o - starts16[line])
     }
 
+    /// The UTF-16 offsets of a range of UTF-8 offsets, each clamped.
     public func utf16Range(ofUTF8 range: Range<Int>) -> Range<Int> {
         let lower = utf16Offset(ofUTF8: range.lowerBound)
         return lower..<max(lower, utf16Offset(ofUTF8: range.upperBound))
     }
 
+    /// The UTF-8 offsets of a range of UTF-16 offsets, each clamped.
     public func utf8Range(ofUTF16 range: Range<Int>) -> Range<Int> {
         let lower = utf8Offset(ofUTF16: range.lowerBound)
         return lower..<max(lower, utf8Offset(ofUTF16: range.upperBound))

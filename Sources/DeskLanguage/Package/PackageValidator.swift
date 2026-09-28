@@ -5,6 +5,7 @@ import Foundation
 /// (DK8605) and pictures no widget shows (DK8609). What loading finds (DK8602, DK8606–DK8608) is in
 /// `DeskPackage.diagnostics`.
 public enum PackageValidator {
+    /// The folder checks' diagnostics, sorted as loading sorts its own.
     public static func validate(_ package: DeskPackage, files: [DeskFileID: CheckedFile],
                                 catalog: DeskCatalog = .current) -> [Diagnostic] {
         var out: [Diagnostic] = []

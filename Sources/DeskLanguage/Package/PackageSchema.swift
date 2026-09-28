@@ -127,6 +127,7 @@ public struct DeskOptionsSchema: Sendable, Hashable {
     public var items: [DeskOptionItem]
     public var storage: DeskOptionStorage
 
+    /// The item of an option, by its name.
     public func item(_ name: String) -> DeskOptionItem? { items.first { $0.name == name } }
 }
 

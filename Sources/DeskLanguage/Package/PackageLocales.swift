@@ -120,6 +120,7 @@ public struct DeskPackageLocales: Sendable {
         return localized(source, key: key, in: file, language: displayLanguage(of: file, preferred: preferred))
     }
 
+    /// A widget's `info { description: … }` in the display language (empty when it has none).
     public func description(of file: DeskFileID, preferred: [String]) -> String {
         let source = entries[file]?.description ?? ""
         guard let key = fieldKeys[file]?["description"] else { return source }
@@ -133,6 +134,7 @@ public struct DeskPackageLocales: Sendable {
         return localized(source, key: key, in: nil, language: displayLanguage(of: nil, preferred: preferred))
     }
 
+    /// `package { description: … }` in the display language; nil when the package has none.
     public func packageDescription(preferred: [String]) -> String? {
         guard let source = manifest?.description else { return nil }
         let key = packageFile.flatMap { fieldKeys[$0]?["description"] } ?? source

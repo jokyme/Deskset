@@ -42,6 +42,7 @@ public struct DeskRename: Sendable, Hashable {
 
 /// Why a name cannot be renamed, or not to that name, worded in the service's language.
 public struct DeskRenameRefusal: Error, Sendable, Hashable, CustomStringConvertible {
+    /// What kind of refusal it is (the message says it in words).
     public enum Reason: String, Sendable, Hashable {
         /// Nothing at the cursor is a name the author gave.
         case notAName

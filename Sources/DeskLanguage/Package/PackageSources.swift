@@ -48,6 +48,7 @@ public protocol PackageFileSource: Sendable {
     func read(_ path: String, limit: Int) throws -> Data
 }
 
+/// Why a file source could not read a path.
 public enum PackageSourceError: Error, Sendable, Equatable {
     case notARegularFile(String)
     case cannotRead(String)
@@ -136,6 +137,7 @@ public struct LocalPackageSource: PackageFileSource {
 /// A folder held in memory: files, links and empty folders by path. Folders are implied by the paths of what they
 /// hold. Paths are kept exactly as given, so two names that differ only in Unicode normalization can both be there.
 public struct InMemoryPackageSource: PackageFileSource {
+    /// What a path holds.
     public enum Item: Sendable, Hashable {
         case file(Data)
         case link(String)
