@@ -207,7 +207,7 @@ extension SkinWindowController {
         case "snapedgesgroup": setFlag(group(1), \.snapEdges)
         case "autoselectscreen":
             // Positions are kept in desktop coordinates whatever the setting; it decides which monitor the
-            // monitor variables without @N refer to (see `SkinWindowController.environment(for:)`).
+            // monitor variables without @N refer to (see `EnvironmentStore.environment`).
             setFlag(targets(1), \.autoSelectScreen)
         case "autoselectscreengroup":
             setFlag(group(1), \.autoSelectScreen)

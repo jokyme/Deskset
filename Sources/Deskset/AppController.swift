@@ -100,8 +100,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpStatusItem()
         observeSystem()
         observeFonts()
-        // What SysColor and Chameleon ask AppKit, published for skins that update on threads of their own.
+        // What SysColor and Chameleon ask AppKit, and the screens, paths and appearance every skin reads, published for
+        // skins that update on threads of their own.
         DesktopInputs.publishAll()
+        EnvironmentStore.shared.publish()
         observeAppearance()
         loadActiveSkins()
         launched = true
@@ -276,6 +278,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         observe(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { app in
             app.screensChanged()
         }
+        // `#CONFIGEDITOR#` follows Settings ▸ Editor.
+        observe(NotificationCenter.default, .desksetEditorPreferencesChanged) { _ in
+            EnvironmentStore.shared.publishConfigEditor()
+        }
     }
 
     /// Lays the skins out again whenever the fonts change, whoever changed them (docs/skin-threading.md §4.4): also a
@@ -381,6 +387,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Displays were connected, disconnected or rearranged.
     func screensChanged() {
+        EnvironmentStore.shared.publishScreens()
         for c in controllers.values { c.screensChanged() }
     }
 

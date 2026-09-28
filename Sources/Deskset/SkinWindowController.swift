@@ -662,37 +662,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     }
 
     func environment(for skin: Skin) -> SkinEnvironment {
-        var env = SkinWindowController.environment(windowFrame: window.frame)
         let s = state
-        env.zPosition = s.alwaysOnTop
-        // AutoSelectScreen: "the WindowX/WindowY @N settings are dynamically set based on the position of the
-        // window"; otherwise the monitor variables without @N refer to the primary screen.
-        if s.autoSelectScreen, window.frame.width > 1 || window.frame.height > 1,
-           let index = WindowGeometry.screenIndex(for: window.frame, screens: screens), index < env.screens.count {
-            env.currentScreen = index
-        }
-        return env
-    }
-
-    /// `#SETTINGSPATH#` of every skin, with a trailing slash: the app's settings folder. The self-tests point it at a
-    /// temporary folder, so that skins keeping what people type there (the Stationery widgets' `Stationery.inc`)
-    /// never read or write the user's. Main thread.
-    static var settingsPath = Paths.appSupport.path + "/"
-
-    /// Screens and window frame in skin coordinates (top-left origin at the primary screen's top-left).
-    static func environment(windowFrame: CGRect?) -> SkinEnvironment {
-        let screens = WindowGeometry.currentScreens()
-        let ph = Double(WindowGeometry.primaryHeight(screens))
-        func topLeft(_ r: CGRect) -> SkinRect {
-            SkinRect(x: Double(r.minX), y: ph - Double(r.maxY), width: Double(r.width), height: Double(r.height))
-        }
-        let list = screens.map { SkinScreen(area: topLeft($0.frame), workArea: topLeft($0.visibleFrame)) }
-        return SkinEnvironment(windowFrame: windowFrame.map(topLeft) ?? SkinRect(),
-                               screens: list.isEmpty ? SkinEnvironment().screens : list,
-                               settingsPath: settingsPath,
-                               programPath: Bundle.main.bundleURL.path + "/",
-                               configEditor: Workspace.configEditorPath,
-                               appearance: MacAppearance.current.value())
+        return EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: s.alwaysOnTop,
+                                                   autoSelectScreen: s.autoSelectScreen)
     }
 }
 

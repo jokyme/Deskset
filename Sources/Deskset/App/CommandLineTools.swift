@@ -94,7 +94,7 @@ enum CommandLineTools {
         return .app
     }
 
-    /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
+    /// Points `#SETTINGSPATH#` (`EnvironmentStore.settingsPath`) at `folder` (created if missing), or at a new temporary folder that the
     /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
     /// missing), so the Stationery widgets save as they do in the app.
     static func useHeadlessSettingsFolder(_ folder: String?) -> URL? {
@@ -107,7 +107,7 @@ enum CommandLineTools {
         if !fm.fileExists(atPath: suiteFile.path) {
             fm.createFile(atPath: suiteFile.path, contents: Data(DefaultSkins.stationeryFileHeader.utf8))
         }
-        SkinController.settingsPath = url.path + "/"
+        EnvironmentStore.shared.settingsPath = url.path + "/"
         return temporary ? url : nil
     }
 

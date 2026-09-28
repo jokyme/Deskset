@@ -191,8 +191,8 @@ enum ThreadStressSelfTests {
             WeatherService.install(weather)
             defer { WeatherService.install(previousWeather) }
             let plan = Plan.fromEnvironment()
-            // What SkinController would compute on the main thread; the skins get it by value.
-            let environment = SkinController.environment(windowFrame: nil)
+            // What the environment store publishes; the skins get it by value.
+            let environment = EnvironmentStore.shared.environment(windowFrame: nil)
             DesktopInputs.publishAll()
             let skins = files.enumerated().map { i, file in
                 StressSkin(file: file, number: i, plan: plan, environment: environment)

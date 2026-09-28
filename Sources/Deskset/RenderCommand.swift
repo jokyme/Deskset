@@ -296,7 +296,7 @@ final class RenderHost: SkinHost {
     }
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {
-        var env = SkinController.environment(windowFrame: nil)
+        var env = EnvironmentStore.shared.environment(windowFrame: nil)
         env.windowFrame = SkinRect(width: skin.width, height: skin.height)
         return env
     }

@@ -65,7 +65,7 @@ final class StudioHost: LiveSkinHost {
         if let c = desktop, !c.isStopped {
             env = c.environment(for: skin)
         } else {
-            env = SkinWindowController.environment(windowFrame: nil)
+            env = EnvironmentStore.shared.environment(windowFrame: nil)
         }
         env.windowFrame.width = skin.width
         env.windowFrame.height = skin.height

@@ -149,15 +149,15 @@ enum DrawingCacheCheck {
         try? FileManager.default.createDirectory(at: settings, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
                                        contents: Data(DefaultSkins.stationeryFileHeader.utf8))
-        let savedSettings = SkinController.settingsPath
+        let savedSettings = EnvironmentStore.shared.settingsPath
         let savedAppearance = NSApplication.shared.appearance
         let savedRegional = MacRegional.fixed
-        SkinController.settingsPath = settings.path + "/"
+        EnvironmentStore.shared.settingsPath = settings.path + "/"
         MacRegional.fix(MacRegionalSettings.standard)
         RenderCommand.applyAppearance(.light)
         if weatherPreview { WeatherWiring.installPreview() }
         defer {
-            SkinController.settingsPath = savedSettings
+            EnvironmentStore.shared.settingsPath = savedSettings
             MacRegional.fix(savedRegional)
             NSApp.appearance = savedAppearance
             MacAppearance.current.refresh()

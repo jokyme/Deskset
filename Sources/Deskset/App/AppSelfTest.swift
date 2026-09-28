@@ -17,7 +17,7 @@ enum AppSelfTest {
         let settings = t.temporaryDirectory("settings")
         FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
                                        contents: Data(DefaultSkins.stationeryFileHeader.utf8))
-        SkinController.settingsPath = settings.path + "/"
+        EnvironmentStore.shared.settingsPath = settings.path + "/"
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
@@ -417,10 +417,11 @@ enum AppSelfTest {
             check(["--foo", "--bar"], .invalid("unknown options --foo, --bar"))
             check(["--"], .invalid("unknown option --"))
             // Every mode gives skins a #SETTINGSPATH# of its own, never the app's real settings folder.
-            let savedSettings = SkinController.settingsPath
+            let store = EnvironmentStore.shared
+            let savedSettings = store.settingsPath
             let real = Paths.appSupport.path + "/"
             if let temporary = CommandLineTools.useHeadlessSettingsFolder(nil) {
-                t.check(SkinController.settingsPath == temporary.path + "/" && SkinController.settingsPath != real,
+                t.check(store.settingsPath == temporary.path + "/" && store.settingsPath != real,
                         "a mode without --settings-dir uses a temporary settings folder")
                 t.check(FileManager.default.fileExists(atPath: temporary.appendingPathComponent(DefaultSkins.stationeryFileName).path),
                         "the temporary settings folder holds a Stationery.inc as the app's does")
@@ -430,10 +431,10 @@ enum AppSelfTest {
             }
             let named = FileManager.default.temporaryDirectory.appendingPathComponent("Deskset-named-\(UUID().uuidString)")
             t.check(CommandLineTools.useHeadlessSettingsFolder(named.path) == nil
-                    && SkinController.settingsPath == named.standardizedFileURL.path + "/",
+                    && store.settingsPath == named.standardizedFileURL.path + "/",
                     "--settings-dir DIR is used as it is and kept")
             try? FileManager.default.removeItem(at: named)
-            SkinController.settingsPath = savedSettings
+            store.settingsPath = savedSettings
             check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
