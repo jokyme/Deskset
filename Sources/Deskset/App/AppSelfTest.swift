@@ -74,7 +74,8 @@ enum AppSelfTest {
         // The Studio's editing session.
         StudioSessionSelfTests.run(t)
         SensorSelfTests.run(t)
-        // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
+        // Last: they stop the widgets of every earlier suite, so the numbers are not theirs.
+        StudioMemorySelfTests.run(t)
         StudioLatencySelfTests.run(t)
         return t.finish()
     }

@@ -1,10 +1,11 @@
 import AppKit
 import DesksetCore
 
-/// "App: canvas planes": the canvas is drawn in three planes (`CanvasPlanes`) — pointing at a layer or selecting one
-/// draws the overlay only, the widget updating draws the content and the overlay, and the workbench is drawn again
-/// only for a zoom, size, backdrop or appearance change — and an off-screen picture of the planes is the one drawing
-/// of the canvas, pixel for pixel.
+/// "App: canvas planes": the canvas is drawn in two planes (`CanvasPlanes`) — pointing at a layer or selecting one
+/// draws the overlay only, a step draws the widget's area of the content and the overlay, the widget updating draws the
+/// widget's area and the overlay only when what it outlines moved, and all of the work surface is drawn again only for
+/// a zoom, size, backdrop or appearance change — and an off-screen picture of the planes is the one drawing of the
+/// canvas, pixel for pixel.
 enum CanvasPlanesSelfTests {
     static func run(_ t: AppTestRunner) {
         planeTests(t)
@@ -68,10 +69,9 @@ enum CanvasPlanesSelfTests {
             editor.window?.displayIfNeeded()
             display()
 
-            // Three planes at the bottom of the canvas, bottom to top, filling it and taking no clicks.
-            t.check(canvas.subviews.count >= 3 && canvas.subviews[0] === planes.workbench
-                    && canvas.subviews[1] === planes.content && canvas.subviews[2] === planes.overlay,
-                    "the planes are the canvas's first subviews, in order")
+            // Two planes at the bottom of the canvas, bottom to top, filling it and taking no clicks.
+            t.check(canvas.subviews.count >= 2 && canvas.subviews[0] === planes.content
+                    && canvas.subviews[1] === planes.overlay, "the planes are the canvas's first subviews, in order")
             t.check(planes.all.allSatisfy { $0.layer != nil }, "each plane has its own layer")
             for plane in planes.all { t.equal(plane.frame, canvas.bounds, "\(plane.kind) fills the canvas") }
             guard let title = editor.skin?.meter(named: "MeterTitle") else { return t.check(false, "the title") }
@@ -85,12 +85,10 @@ enum CanvasPlanesSelfTests {
             let start = planes.drawCounts
             canvas.simulateHover("MeterTitle")
             t.check(!asked(planes.content), "hover leaves the content plane alone")
-            t.check(!asked(planes.workbench), "and the workbench")
             t.check(asked(planes.overlay), "the overlay draws the hover")
             display()
             var now = planes.drawCounts
             t.equal(now.content, start.content, "no content draw on hover")
-            t.equal(now.workbench, start.workbench, "no workbench draw on hover")
             t.equal(now.overlay, start.overlay + 1, "one overlay draw")
             canvas.simulateHover(nil)
             display()
@@ -104,7 +102,6 @@ enum CanvasPlanesSelfTests {
             display()
             now = planes.drawCounts
             t.equal(now.content, before.content, "no content draw on a selection by click")
-            t.equal(now.workbench, before.workbench, "no workbench draw on a selection")
             t.check(now.overlay > before.overlay, "the overlay drew the selection")
             editor.select(section: "MeterValue")
             t.equal(canvas.selectedNames, ["MeterValue"], "selected from the layer list")
@@ -123,26 +120,30 @@ enum CanvasPlanesSelfTests {
             display()
             t.equal(planes.drawCounts.content, before.content, "none for a layer-list row under the pointer")
 
-            // The widget updating draws the content and the overlay (a selection follows its layer), not the workbench.
-            let ticked = planes.drawCounts
+            // A step or a preview draws the widget's area of the content and the overlay; the work surface around it
+            // keeps what it drew.
+            let ticked = planes.drawCounts, surface = planes.surfaceAsks
+            let area = canvas.widgetArea
             canvas.needsDisplay = true
-            t.check(asked(planes.content) && asked(planes.overlay), "an update asks the content and the overlay")
-            t.check(!asked(planes.workbench), "not the workbench")
+            t.check(asked(planes.content) && asked(planes.overlay), "a step asks the content and the overlay")
+            t.equal(planes.surfaceAsks, surface, "not all of the work surface")
             display()
             now = planes.drawCounts
-            t.equal(now.content, ticked.content + 1, "an update draws the content once")
+            t.equal(now.content, ticked.content + 1, "a step draws the content once")
             t.equal(now.overlay, ticked.overlay + 1, "and the overlay")
-            t.equal(now.workbench, ticked.workbench, "not the workbench")
+            t.check(planes.content.lastDrawn.contains(area.insetBy(dx: 1, dy: 1))
+                    && planes.content.lastDrawn.width < canvas.bounds.union(canvas.visibleRect).width,
+                    "only the widget's area: \(planes.content.lastDrawn) for \(area) in \(canvas.bounds)")
 
-            // The canvas timer (the widget's update rate): the content draws again; the overlay only when what it reads
-            // from the widget moved — a selected layer that grew, a layer that showed.
+            // The canvas timer (the widget's update rate): the widget's area of the content draws again; the overlay only
+            // when what it reads from the widget moved — a selected layer that grew, a layer that showed.
             editor.select(section: "MeterValue")
             display()
             let idle = planes.drawCounts
             canvas.widgetUpdated()
             t.check(asked(planes.content), "a tick draws the content")
             t.check(!asked(planes.overlay), "not the overlay, when nothing it outlines moved")
-            t.check(!asked(planes.workbench), "nor the workbench")
+            t.equal(planes.surfaceAsks, surface, "nor all of the work surface")
             display()
             now = planes.drawCounts
             t.equal(now.content, idle.content + 1)
@@ -171,35 +172,39 @@ enum CanvasPlanesSelfTests {
             display()
             let fitted = (zoom: canvas.zoom, origin: canvas.enclosingScrollView?.contentView.bounds.origin)
             canvas.zoomToFit()
-            t.check(!asked(planes.workbench) && !asked(planes.content) && !asked(planes.overlay),
-                    "fitting a fitted canvas again asks no plane to draw")
+            t.check(!asked(planes.content) && !asked(planes.overlay), "fitting a fitted canvas again asks no plane to draw")
             t.equal(canvas.zoom, fitted.zoom)
             t.equal(canvas.enclosingScrollView?.contentView.bounds.origin, fitted.origin, "and leaves it where it was")
 
-            // The workbench: a backdrop, a zoom, a size or an appearance change draws it again.
+            // The work surface: a backdrop, a zoom, a size or an appearance change draws all of it again.
+            var asks = planes.surfaceAsks
             let backdrop = canvas.backdrop
             canvas.backdrop = backdrop == .dark ? .light : .dark
-            t.check(asked(planes.workbench), "a backdrop change draws the workbench")
+            t.equal(planes.surfaceAsks, asks + 1, "a backdrop change draws all of the work surface")
             display()
+            t.check(planes.content.lastDrawn.contains(canvas.visibleRect.intersection(canvas.bounds)), "all of it")
             canvas.backdrop = backdrop
             display()
+            asks = planes.surfaceAsks
             let zoom = canvas.zoom
             canvas.setZoom(zoom * 2)
-            t.check(asked(planes.workbench), "a zoom draws the workbench")
+            t.equal(planes.surfaceAsks, asks + 1, "a zoom draws all of the work surface")
             display()
             canvas.setZoom(zoom)
             display()
+            asks = planes.surfaceAsks
             canvas.appearance = NSAppearance(named: canvas.workbenchState.dark ? .aqua : .darkAqua)
             canvas.needsDisplay = true
-            t.check(asked(planes.workbench), "an appearance change draws the workbench")
+            t.equal(planes.surfaceAsks, asks + 1, "an appearance change draws all of the work surface")
             canvas.appearance = nil
             canvas.needsDisplay = true
             display()
+            asks = planes.surfaceAsks
             let size = canvas.frame.size
             canvas.setFrameSize(NSSize(width: size.width + 10, height: size.height))
-            t.equal(planes.workbench.frame, canvas.bounds, "the planes follow the canvas's size exactly")
+            t.equal(planes.content.frame, canvas.bounds, "the planes follow the canvas's size exactly")
             canvas.needsDisplay = true
-            t.check(asked(planes.workbench), "a size change draws the workbench")
+            t.equal(planes.surfaceAsks, asks + 1, "a size change draws all of the work surface")
             canvas.updateSize()
             display()
             editor.window?.close()

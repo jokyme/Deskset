@@ -231,9 +231,11 @@ enum StudioLatencySelfTests {
         func frame() { canvas.cacheDisplay(in: canvas.bounds, to: rep) }
         frame()
         // Which of the canvas's planes a step asks to draw again (`frame` draws them first, as the screen would, then
-        // the whole picture): the content and the overlay, the workbench only when what it shows changed.
+        // the whole picture): the widget's area of the content and the overlay, all of the work surface only when what
+        // it shows changed.
         editor.window?.displayIfNeeded()
-        var asked = [0, 0, 0]
+        var asked = [0, 0]
+        let surfaceBefore = canvas.planes.surfaceAsks
         func noteAsked() {
             for (i, plane) in canvas.planes.all.enumerated() where plane.layer?.needsDisplay() ?? false { asked[i] += 1 }
         }
@@ -339,8 +341,8 @@ enum StudioLatencySelfTests {
         print("    LATENCY \(name) | undo phases, p50/p95 ms | \(breakdown(undoPhases))")
         print("    LATENCY \(name) | inspector | in place \(inPlaceSteps), built again \(rebuilt)"
               + (fallbacks.isEmpty ? "" : " (\(fallbacks.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: "; ")))"))
-        print("    LATENCY \(name) | canvas planes drawn again after \(2 * samples) steps | workbench \(asked[0]), "
-              + "content \(asked[1]), overlay \(asked[2])")
+        print("    LATENCY \(name) | canvas planes drawn again after \(2 * samples) steps | content \(asked[0]) "
+              + "(all of the work surface \(canvas.planes.surfaceAsks - surfaceBefore)), overlay \(asked[1])")
         if !gestureFrames.isEmpty {
             print("    LATENCY \(name) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
                   + "\(sent) of \(gestureFrames.count)")
