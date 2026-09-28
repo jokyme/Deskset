@@ -1748,8 +1748,11 @@ suite's `TestThreadExecutor`.
        had not started, its own instance on main and a ticketed reload; pause, wake, fonts and Dark Mode; every
        default widget and all 42 of its files loading, updating and drawing on the thread. Every wait is for a
        condition. They pass repeatedly, under `taskpolicy -b`, under Main Thread Checker (nothing reported) and
-       COUNTS_ROSETTA.
-     - COUNTS_APP
+       as the x86_64 build under Rosetta (202 checks; the Core suites too).
+     - Counts: Core 61,162 checks (73 of them the new suites); the app suite 10,678 checks in each scroller style
+       (default, `WhenScrolling`, `Always`; 202 of them the new suites), with 6,520–6,605 debug comparisons and no
+       difference, the existing suites unchanged. Main Thread Checker reports nothing for the full runs of both
+       programs.
      - A debug copy started from the build folder with `-SkinThreading engine`, a user folder of its own
        (`CFFIXED_USER_HOME`) and the demo audio and NowPlaying sources loaded all 23 default widgets in about
        1.5 s with no ownership assertion; a sample showed their updates and frames on "Deskset skin engine" and the
