@@ -92,6 +92,11 @@ def cost(directory="cost"):
         ("onScreenFrameChangeP99ms", "onScreen.frameChangeIntervalP99ms"),
         ("onScreenUnreadable", "onScreen.unreadable"),
         ("onScreenSamplesPerSecond", "onScreen.samplesPerSecond"),
+        ("windowServerIdleWakeupsPerSecondIncrease", "cpu.windowServerIdleWakeupsPerSecondIncrease"),
+        ("keptPicturesCopied", "keptPicturesLastFrame.picturesCopied"),
+        ("keptElementsDrawn", "keptPicturesLastFrame.elementsDrawn"),
+        ("keptVsFullMaxChannelDiff", "keptPicturesVsFullDrawing.maxChannelDiff"),
+        ("keptVsFullDifferingPercent", "keptPicturesVsFullDrawing.differingPercent"),
     ]
     for combo, runs in sorted(groups.items()):
         entry = {"rounds": len(runs), "config": runs[0].get("config"), "widgets": runs[0].get("widgets")}
@@ -124,12 +129,12 @@ def cost(directory="cost"):
     return out
 
 
-def wsmem():
+def wsmem(directory="wsmem"):
     """One opening per process. A round is clean when WindowServer's footprint went back to where it started after the
     windows closed (the spike's windowServerBackToStart): the medians of the WindowServer steps use clean rounds only
     (all rounds are listed too)."""
     groups = {}
-    for path in sorted(glob.glob(os.path.join(RESULTS, "wsmem", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(RESULTS, directory, "*.json"))):
         name = os.path.basename(path)[:-5]
         combo, _, _ = name.rpartition("-r")
         groups.setdefault(combo, []).append(load(path))
@@ -178,8 +183,26 @@ def keyed_stats(runs, fields):
     return out, (max(loads) if loads else None)
 
 
+def memtrace(directory):
+    """Footprint traces: the increase after 20 s and at the end of the shown part, and after closing."""
+    out = {}
+    for path in sorted(glob.glob(os.path.join(RESULTS, directory, "*.json"))):
+        run = load(path)
+        trace = run.get("increaseEverySecondMB", [])
+        hide = run.get("hideAt", -1)
+        out[os.path.basename(path)[:-5]] = {
+            "config": run.get("config"), "widgets": run.get("widgets"), "intervalMs": run.get("intervalMs"),
+            "after5sMB": trace[4] if len(trace) > 4 else None, "after20sMB": trace[19] if len(trace) > 19 else None,
+            "beforeHidingMB": trace[hide - 1] if 0 < hide <= len(trace) else None,
+            "whileHiddenMB": trace[hide + 3] if 0 < hide and hide + 3 < len(trace) else None,
+            "atEndMB": trace[-1] if trace else None, "afterCloseMB": run.get("increaseAfterCloseMB")}
+    return out
+
+
 def main():
-    summary = {"cost": cost(), "wscpu": cost("wscpu"), "wsmem": wsmem()}
+    summary = {"cost": cost(), "wscpu": cost("wscpu"), "wsmem": wsmem(), "costB": cost("cost-b"),
+               "wscpuB": cost("wscpu-b"), "wsmemB": wsmem("wsmem-b"), "memtrace": memtrace("memtrace"),
+               "memtraceB": memtrace("memtrace-b")}
     off, load_max = keyed_stats(rounds("offmain"), [
         "framesCommitted", "distinctFramesSeen", "tornSamples(codeA != codeB)", "unreadable", "samples",
         "longestSameFrameMs", "framesCommittedDuringStalls", "distinctFramesSeenDuringStalls", "layers"])
@@ -203,12 +226,27 @@ def main():
             return f"{s['median']:.{digits}f}"
         return f"{s['median']:.{digits}f} ({s['min']:.{digits}f}–{s['max']:.{digits}f})"
 
-    print("## Cost table (median (min–max) over rounds)\n")
+    for suffix, title in (("", "first campaign"), ("B", "second campaign, with B")):
+        print_tables(summary, suffix, title, m)
+    for name in ("memtrace", "memtraceB"):
+        print(f"\n## {name}\n")
+        for k, e in summary[name].items():
+            print(f"- {k}: " + ", ".join(f"{f} {v}" for f, v in e.items()))
+    for step in ("offmain", "glass", "swap"):
+        block = summary[step]
+        inner = next(v for k, v in block.items() if k.startswith("by"))
+        print(f"\n## {step} (load max at end {block['loadAverage1mAtEndMax']})\n")
+        for k, e in inner.items():
+            print(f"- {k}: " + ", ".join(f"{f} {m(e, f, 1)}" for f in e))
+
+
+def print_tables(summary, suffix, title, m):
+    print(f"## Cost table, {title} (median (min–max) over rounds)\n")
     print("| combination | rounds | load max | process MB (all widgets) | process MB/widget | layer bitmaps MB/widget "
           "| WS open step MB | process CPU % | WS CPU on / off % | WS increase per pair % | wakeups/s (intr / idle) "
           "| frame cost p50 µs | commit p50 µs |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
-    for combo, e in summary["cost"].items():
+    for combo, e in summary["cost" + suffix].items():
         flag = " (provisional)" if e["provisional"] else ""
         print(f"| {combo}{flag} | {e['rounds']} | {e['loadAverage1mMax']} | {m(e, 'footprintIncreaseMB', 1)} "
               f"| {m(e, 'footprintIncreasePerWidgetMB')} "
@@ -218,43 +256,45 @@ def main():
               f"| {m(e, 'windowServerIncreasePerPair', 1)} "
               f"| {m(e, 'interruptWakeupsPerSecond', 1)} / {m(e, 'idleWakeupsPerSecond', 1)} "
               f"| {m(e, 'frameCostP50us', 0)} | {m(e, 'commitCostP50us', 0)} |")
-    print("\n## WindowServer CPU, many short on / off pairs (wscpu)\n")
+    print(f"\n## WindowServer CPU, many short on / off pairs, {title}\n")
     print("| combination | rounds | load max | process CPU % | WS CPU on / off % | WS increase per pair % | pairs |")
     print("|---|---|---|---|---|---|---|")
-    for combo, e in summary["wscpu"].items():
+    for combo, e in summary["wscpu" + suffix].items():
         flag = " (provisional)" if e["provisional"] else ""
         pairs = e.get("windowServerIncreasePerPair", {}).get("n", 0)
         print(f"| {combo}{flag} | {e['rounds']} | {e['loadAverage1mMax']} | {m(e, 'processPercentOfOneCore')} "
               f"| {m(e, 'windowServerPercentOfOneCore', 1)} / {m(e, 'windowServerPercentOfOneCoreOff', 1)} "
               f"| {m(e, 'windowServerIncreasePerPair', 2)} (mean {e.get('windowServerIncreasePerPair', {}).get('mean')} "
               f"± {e.get('windowServerIncreasePerPair', {}).get('standardError')}) | {pairs} |")
-    print("\n## WindowServer memory, several widgets opened once per process (wsmem)\n")
+    print(f"\n## WindowServer memory, several widgets opened once per process, {title}\n")
     print("| scenario | mode | widgets | clean / rounds | WS open step MB, clean rounds (all rounds) | per widget MB (clean) "
           "| close steps MB | GPU in use: open step MB per widget | process MB/widget | layer bitmaps MB/widget |")
     print("|---|---|---|---|---|---|---|---|---|---|")
-    for combo, e in summary["wsmem"].items():
+    for combo, e in summary["wsmem" + suffix].items():
         print(f"| {e['scenario']} | {e['config']} | {e['widgets']} | {e['cleanRounds']} / {e['rounds']} "
               f"| {m(e, 'windowServerOpenStepMBClean', 1)} ({e['values']}) "
               f"| {m(e, 'windowServerOpenStepPerWidgetMBClean')} | {e['closeValues']} "
               f"| {m(e, 'gpuInUseOpenStepPerWidgetMB')} | {m(e, 'footprintIncreasePerWidgetMB')} "
               f"| {m(e, 'layerBitmapsPerWidgetMB')} |")
-    print("\n## 60 Hz\n")
+    print(f"\n## 60 Hz, {title}\n")
     print("| combination | commit interval p50 / p99 / max ms | on screen: distinct frames / committed "
           "| longest same frame ms | frame change p99 ms |")
     print("|---|---|---|---|---|")
-    for combo, e in summary["cost"].items():
+    for combo, e in summary["cost" + suffix].items():
         if not combo.startswith("sixty"):
             continue
         print(f"| {combo} | {m(e, 'commitIntervalP50ms')} / {m(e, 'commitIntervalP99ms')} / "
               f"{m(e, 'commitIntervalMaxMs')} | {m(e, 'onScreenDistinctFrames', 0)} / "
               f"{m(e, 'onScreenFramesCommitted', 0)} | {m(e, 'onScreenLongestSameFrameMs', 1)} "
               f"| {m(e, 'onScreenFrameChangeP99ms', 1)} |")
-    for step in ("offmain", "glass", "swap"):
-        block = summary[step]
-        inner = next(v for k, v in block.items() if k.startswith("by"))
-        print(f"\n## {step} (load max at end {block['loadAverage1mAtEndMax']})\n")
-        for k, e in inner.items():
-            print(f"- {k}: " + ", ".join(f"{f} {m(e, f, 1)}" for f in e))
+    print(f"\n## Opening, kept pictures, WindowServer idle wakeups, {title}\n")
+    print("| combination | open all ms | WS idle wakeups/s increase | kept: pictures copied / elements drawn (last frame) "
+          "| kept vs full drawing: max / % |")
+    print("|---|---|---|---|---|")
+    for combo, e in summary["cost" + suffix].items():
+        print(f"| {combo} | {m(e, 'openAllMs', 1)} | {m(e, 'windowServerIdleWakeupsPerSecondIncrease', 1)} "
+              f"| {m(e, 'keptPicturesCopied', 0)} / {m(e, 'keptElementsDrawn', 0)} "
+              f"| {m(e, 'keptVsFullMaxChannelDiff', 0)} / {m(e, 'keptVsFullDifferingPercent', 3)} |")
 
 
 if __name__ == "__main__":

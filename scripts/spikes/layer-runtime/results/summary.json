@@ -4344,6 +4344,7 @@
    }
   }
  },
+ "costB": {},
  "glass": {
   "byScenario": {
    "main idle": {
@@ -4571,6 +4572,130 @@
   },
   "loadAverage1mAtEndMax": 6.1
  },
+ "memtrace": {
+  "design-A-every-0.0167s": {
+   "after20sMB": 164.88,
+   "after5sMB": 166.5,
+   "afterCloseMB": 13.89,
+   "atEndMB": 164.88,
+   "beforeHidingMB": null,
+   "config": "A",
+   "intervalMs": 16.7,
+   "whileHiddenMB": null,
+   "widgets": 1
+  },
+  "design-A-every-0.0333s": {
+   "after20sMB": 164.23,
+   "after5sMB": 164.03,
+   "afterCloseMB": 13.22,
+   "atEndMB": 164.23,
+   "beforeHidingMB": null,
+   "config": "A",
+   "intervalMs": 33.3,
+   "whileHiddenMB": null,
+   "widgets": 1
+  },
+  "design-A-every-0.1s": {
+   "after20sMB": 164.11,
+   "after5sMB": 163.8,
+   "afterCloseMB": 13.02,
+   "atEndMB": 164.11,
+   "beforeHidingMB": null,
+   "config": "A",
+   "intervalMs": 100,
+   "whileHiddenMB": null,
+   "widgets": 1
+  },
+  "design-A-every-0.5s": {
+   "after20sMB": 163.48,
+   "after5sMB": 163.45,
+   "afterCloseMB": 12.67,
+   "atEndMB": 163.48,
+   "beforeHidingMB": null,
+   "config": "A",
+   "intervalMs": 500,
+   "whileHiddenMB": null,
+   "widgets": 1
+  },
+  "design-A-every-1s": {
+   "after20sMB": 163.64,
+   "after5sMB": 163.58,
+   "afterCloseMB": 13.13,
+   "atEndMB": 163.64,
+   "beforeHidingMB": null,
+   "config": "A",
+   "intervalMs": 1000,
+   "whileHiddenMB": null,
+   "widgets": 1
+  },
+  "static-A": {
+   "after20sMB": 17.75,
+   "after5sMB": 17.78,
+   "afterCloseMB": 17.53,
+   "atEndMB": 17.47,
+   "beforeHidingMB": 17.75,
+   "config": "A",
+   "intervalMs": 0,
+   "whileHiddenMB": 17.75,
+   "widgets": 10
+  },
+  "ten-A": {
+   "after20sMB": 195.41,
+   "after5sMB": 197.42,
+   "afterCloseMB": 29.36,
+   "atEndMB": 195.25,
+   "beforeHidingMB": 195.31,
+   "config": "A",
+   "intervalMs": 1000,
+   "whileHiddenMB": 210.08,
+   "widgets": 10
+  },
+  "ten-D1": {
+   "after20sMB": 22.98,
+   "after5sMB": 22.55,
+   "afterCloseMB": 15.53,
+   "atEndMB": 32.06,
+   "beforeHidingMB": 23.14,
+   "config": "D1@srgb",
+   "intervalMs": 1000,
+   "whileHiddenMB": 31.64,
+   "widgets": 10
+  },
+  "ten-DP": {
+   "after20sMB": 35.38,
+   "after5sMB": 33.34,
+   "afterCloseMB": 23.16,
+   "atEndMB": 40.75,
+   "beforeHidingMB": 35.53,
+   "config": "DP+surfaceBase@srgb",
+   "intervalMs": 1000,
+   "whileHiddenMB": 40.44,
+   "widgets": 10
+  },
+  "ten-E1": {
+   "after20sMB": 21.98,
+   "after5sMB": 20.94,
+   "afterCloseMB": 15.05,
+   "atEndMB": 22.97,
+   "beforeHidingMB": 22.61,
+   "config": "E1@srgb",
+   "intervalMs": 1000,
+   "whileHiddenMB": 30.66,
+   "widgets": 10
+  },
+  "ten-EP": {
+   "after20sMB": 21.61,
+   "after5sMB": 16,
+   "afterCloseMB": 17.3,
+   "atEndMB": 21.34,
+   "beforeHidingMB": 21.69,
+   "config": "EP@srgb",
+   "intervalMs": 1000,
+   "whileHiddenMB": 23.38,
+   "widgets": 10
+  }
+ },
+ "memtraceB": {},
  "offmain": {
   "byConfig": {
    "DP+surfaceBase@srgb": {
@@ -7447,6 +7572,7 @@
    }
   }
  },
+ "wscpuB": {},
  "wsmem": {
   "design-A": {
    "cleanRounds": 3,
@@ -9293,5 +9419,6 @@
     "standardError": 0.347
    }
   }
- }
+ },
+ "wsmemB": {}
 }

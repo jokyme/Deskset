@@ -1,8 +1,12 @@
 # H1: a skin as many Core Animation layers instead of one bitmap — results
 
-Measured on 2026-09-27 with the spike in this folder (`run.sh`, then `python3 summarize.py`). Every number below comes
-from a JSON file next to this one; each section names its files. Questions 1–7 and the side checks of the H1
-experiment are answered here; question 8 (a `CARenderer` probe on the CI runners) is a separate step.
+Measured on 2026-09-27 and 2026-09-28 with the spike in this folder (`run.sh`, then `python3 summarize.py`). Every
+number below comes from a JSON file next to this one; each section names its files. Questions 1–7 and the side checks
+of the H1 experiment are answered here; question 8 (a `CARenderer` probe on the CI runners) is a separate step.
+
+On 2026-09-27 Deskset itself stopped drawing skins with `draw(_:)` (A below) and started drawing each skin window into
+a bitmap of its own that becomes the view's layer contents, keeping pictures of meters that did not change (B below).
+The plan compares the layer runtime with A; this document compares it with both, and calls B "today".
 
 ## Conditions
 
