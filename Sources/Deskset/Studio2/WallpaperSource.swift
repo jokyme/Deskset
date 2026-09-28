@@ -252,6 +252,27 @@ enum WallpaperLayout {
     }
 }
 
+/// A screen's desktop picture setting, as `NSWorkspace` gives it.
+struct WallpaperSetting {
+    var path: String
+    var scaling: NSImageScaling = .scaleProportionallyUpOrDown
+    var allowsClipping = true
+    var fillColor: CGColor?
+    var screenFrame: CGRect
+    var screenScale: CGFloat
+
+    /// `screen`'s setting (main thread; asking does not read the picture).
+    static func of(_ screen: NSScreen) -> WallpaperSetting {
+        let options = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
+        let scaling = (options[.imageScaling] as? NSNumber).flatMap { NSImageScaling(rawValue: $0.uintValue) }
+            ?? .scaleProportionallyUpOrDown
+        return WallpaperSetting(path: NSWorkspace.shared.desktopImageURL(for: screen)?.path ?? "", scaling: scaling,
+                                allowsClipping: (options[.allowClipping] as? NSNumber)?.boolValue ?? true,
+                                fillColor: (options[.fillColor] as? NSColor)?.usingColorSpace(.sRGB)?.cgColor,
+                                screenFrame: screen.frame, screenScale: screen.backingScaleFactor)
+    }
+}
+
 /// Reads the desktop pictures for the Studio: the setting on the main thread (`NSWorkspace`), the file on a
 /// background queue, the result back on the main thread. One picture per setting and size is kept.
 final class WallpaperSource {
@@ -259,6 +280,10 @@ final class WallpaperSource {
     var reader: WallpaperFileReader = DiskWallpaperReader.shared
     /// Where the work runs (the tests run it at once).
     var queue: DispatchQueue? = DispatchQueue(label: "deskset.studio.wallpaper", qos: .userInitiated)
+    /// How a screen's setting is asked for (the self-tests give their own).
+    var setting: (NSScreen) -> WallpaperSetting = WallpaperSetting.of
+    /// How many times a desktop picture was asked for (the headless Studio never asks).
+    private(set) var requests = 0
 
     private struct Key: Hashable {
         var path: String
@@ -270,25 +295,31 @@ final class WallpaperSource {
     /// The desktop picture of `screen` for a Mac look (`dark`), or nil while it is being read (`ready` is called on
     /// the main thread once it is).
     func wallpaper(for screen: NSScreen, dark: Bool, ready: @escaping () -> Void) -> StudioWallpaper? {
+        wallpaper(for: setting(screen), dark: dark, ready: ready)
+    }
+
+    /// The desktop picture of a screen whose setting is `setting`.
+    func wallpaper(for setting: WallpaperSetting, dark: Bool, ready: @escaping () -> Void) -> StudioWallpaper? {
         dispatchPrecondition(condition: .onQueue(.main))
-        let options = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
-        let scaling = (options[.imageScaling] as? NSNumber).flatMap { NSImageScaling(rawValue: $0.uintValue) }
-            ?? .scaleProportionallyUpOrDown
-        let clipping = (options[.allowClipping] as? NSNumber)?.boolValue ?? true
-        let fill = (options[.fillColor] as? NSColor)?.usingColorSpace(.sRGB)?.cgColor
-            ?? CGColor(srgbRed: 0.2, green: 0.2, blue: 0.22, alpha: 1)
-        let path = NSWorkspace.shared.desktopImageURL(for: screen)?.path ?? ""
-        let maxPixels = Int(max(screen.frame.width, screen.frame.height) * screen.backingScaleFactor)
-        var result = StudioWallpaper(image: nil, fidelity: .close, sample: dark ? .dusk : .bright, scaling: scaling,
-                                     allowsClipping: clipping, fillColor: fill, screenFrame: screen.frame,
-                                     screenScale: screen.backingScaleFactor)
-        let key = Key(path: path, maxPixels: maxPixels)
+        requests += 1
+        let fill = setting.fillColor ?? CGColor(srgbRed: 0.2, green: 0.2, blue: 0.22, alpha: 1)
+        let maxPixels = Int(max(setting.screenFrame.width, setting.screenFrame.height) * setting.screenScale)
+        var result = StudioWallpaper(image: nil, fidelity: .close, sample: dark ? .dusk : .bright,
+                                     scaling: setting.scaling, allowsClipping: setting.allowsClipping, fillColor: fill,
+                                     screenFrame: setting.screenFrame, screenScale: setting.screenScale)
+        let key = Key(path: setting.path, maxPixels: maxPixels)
         if let known = cache[key] {
             result.image = known.image
             result.fidelity = known.image == nil ? .close : known.fidelity
             return result
         }
         load(key, then: ready)
+        // Read at once (no queue): the answer is there already.
+        if let known = cache[key] {
+            result.image = known.image
+            result.fidelity = known.image == nil ? .close : known.fidelity
+            return result
+        }
         return nil
     }
 

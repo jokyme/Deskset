@@ -250,9 +250,13 @@ final class StudioCanvasViewController: NSViewController {
         if !fits() { previewBar.compact = true }
         let pill = zoomCapsule.fittingWidth, bar = previewBar.fittingWidth
         let barHeight = StudioPreviewBar.height
-        zoomCapsule.frame = NSRect(x: w - 16 - pill, y: h - 34 - barHeight / 2, width: pill, height: barHeight)
-        let centred = w / 2 + bar / 2 <= w - 16 - pill - 14
-        let room = w - 16 - pill - 14 - 16
+        // Still too narrow: the zoom capsule goes up a row, over the bar's right end.
+        let stacked = !fits()
+        zoomCapsule.frame = NSRect(x: w - 16 - pill, y: h - 34 - barHeight / 2 - (stacked ? barHeight + 8 : 0),
+                                   width: pill, height: barHeight)
+        let right = stacked ? w : w - 16 - pill - 14
+        let centred = w / 2 + bar / 2 <= right
+        let room = right - 16
         let cx = centred ? w / 2 : 16 + max(bar, room) / 2
         previewBar.frame = NSRect(x: (cx - bar / 2).rounded(), y: h - 34 - barHeight / 2, width: bar, height: barHeight)
         let status = statusCapsule.fittingWidth
