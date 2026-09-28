@@ -105,9 +105,11 @@ final class CanvasPlane: NSView {
     override func draw(_ dirtyRect: NSRect) {
         drawCount += 1
         // A layer drawn outside a window (an off-screen picture of a canvas that is in none) is asked for an infinite
-        // rectangle: the dots would never end.
-        let dirtyRect = dirtyRect.intersection(bounds)
-        guard let canvas, !dirtyRect.isEmpty, let ctx = NSGraphicsContext.current?.cgContext else { return }
+        // rectangle, and the dots would never end: then what can be seen. (A finite one stays as it is: the work surface
+        // is drawn past the canvas's bounds where the clip view shows more than the canvas.)
+        func finite(_ r: CGRect) -> Bool { !r.isNull && r.width < 1e7 && r.height < 1e7 }
+        let dirtyRect = finite(dirtyRect) ? dirtyRect : finite(visibleRect) ? bounds.union(visibleRect) : bounds
+        guard let canvas, let ctx = NSGraphicsContext.current?.cgContext else { return }
         switch kind {
         case .workbench:
             let state = StudioSignposts.signposter.beginInterval("canvas.workbench")
