@@ -544,7 +544,8 @@ func runDeskServiceReviewTests(_ t: TestRunner) {
         let swiftUI = titles("Text(\"CPU\").frame(width: 100, height: 20).cornerRadius(8)")
         t.check(swiftUI.contains("Change to `.size(100, 20)`") && swiftUI.contains("Change to `.rounded(8)`"), "\(swiftUI)")
         t.equal(Set(swiftUI).count, swiftUI.count, "no title twice")
-        t.check(titles("Text(\"CPU\").font-size(14)").contains("Remove `-size(14)`"))
+        t.check(titles("Text(\"CPU\").font -size(14)").contains("Remove `-size(14)`"))
+        t.check(titles("Text(\"CPU\").font-size(14)").contains("Change to `.font(14)`"))
         t.check(titles("VStack { Text(\"a\") }", .simplifiedChinese).contains("改成 `Column`"))
     }
 
