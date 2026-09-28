@@ -48,6 +48,7 @@ enum AppSelfTest {
         MediaUITests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
+        SkinRuntimeSelfTests.run(t)
         RenderContextSelfTests.run(t)
         SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
