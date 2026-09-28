@@ -12,6 +12,7 @@ import DesksetCore
 ///   wifi                                     `FixedWiFi` as the WiFiStatus measures' reader
 ///   desktopImage                             `FixedDesktopPicture` as Chameleon's desktop
 ///   programs                                 `RecordingSideEffects` as the skin's side effects (nothing runs)
+///   trash                                    the Trash monitor's readings (`RecycleManagerMeasure.useGivenTrash`)
 ///
 /// Frames (`system`, `audio`) move on right before every update after the first: update i sees frame i. Main thread.
 final class RenderData {
@@ -92,6 +93,12 @@ final class RenderData {
             let saved = WiFiStatusMeasure.sharedCenter
             WiFiStatusMeasure.sharedCenter = { fixed }
             restores.append { WiFiStatusMeasure.sharedCenter = saved }
+        }
+        if let trash = data.trash {
+            // RecycleManager's readings are the data's; the Trash is never read.
+            RecycleManagerMeasure.useGivenTrash(trash)
+            restores.append { RecycleManagerMeasure.useGivenTrash(nil) }
+            virtual?.background.setFake(.service, for: .trash)
         }
     }
 

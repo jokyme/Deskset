@@ -669,6 +669,72 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         skin.close()
     }
 
+    t.suite("Executor: virtual time — RecycleManager's Trash reading is background work: scripted, faked or reported") {
+        let trash = t.temporaryDirectory("virtual-trash")
+        try Data("12345".utf8).write(to: trash.appendingPathComponent("a"))
+        try Data("123".utf8).write(to: trash.appendingPathComponent("b"))
+        let savedFolders = TrashMonitor.folders
+        TrashMonitor.folders = { [trash.path] }
+        defer { TrashMonitor.folders = savedFolders }
+        TrashMonitor.shared.forget()
+        let ini = """
+        [Rainmeter]
+        Update=-1
+        [Count]
+        Measure=RecycleManager
+        [Size]
+        Measure=RecycleManager
+        RecycleType=Size
+        [M]
+        Meter=Image
+        """
+
+        // A scripted reading: it comes back as work due at the next runUntilIdle, never read from the Mac.
+        let scripted = virtualExecutor()
+        scripted.background.setFake(.value(.text("7 4096")), for: .trash)
+        var skin = try virtualSkin(t, ini, executor: scripted)
+        skin.update()
+        t.equal(skin.measure(named: "Count")?.value, 0, "nothing yet: the reading comes back through the executor")
+        scripted.runUntilIdle()
+        t.equal(skin.measure(named: "Count")?.value, 7, "the first reading is shown as soon as it arrives")
+        t.equal(skin.measure(named: "Size")?.value, 4096)
+        t.equal(scripted.background.reports.first { $0.kind == .trash }?.faked, true)
+        skin.close()
+
+        // No fake: the real reading, reported as not verifiable; settle waits for it before the next update sees it.
+        let live = virtualExecutor()
+        skin = try virtualSkin(t, ini, executor: live)
+        // Two updates: the count alone is read first, then the size (a reading without it is fresh for half a
+        // second, as in live mode).
+        for _ in 0..<2 {
+            skin.update()
+            t.check(live.background.settle(timeout: 60), "settle waits for the Trash reading")
+            live.runUntilIdle()
+        }
+        skin.update()
+        t.equal(skin.measure(named: "Count")?.value, 2, "the folder's two items")
+        t.equal(skin.measure(named: "Size")?.value, 8)
+        t.equal(live.background.unverifiable.first { $0.kind == .trash }?.config, "Root\\Sub", "reported")
+        t.check(live.background.settle(timeout: 60))
+        skin.close()
+
+        // A Trash given as data (the host's fake service): no folder is read, and it counts as faked.
+        TrashMonitor.folders = { t.check(false, "the Trash is not read"); return [] }
+        RecycleManagerMeasure.useGivenTrash(.value(SkinInputData.Trash(count: 3, size: 100)))
+        defer { RecycleManagerMeasure.useGivenTrash(nil) }
+        let given = virtualExecutor()
+        given.background.setFake(.service, for: .trash)
+        skin = try virtualSkin(t, ini, executor: given)
+        skin.update()
+        t.check(given.background.settle(timeout: 60))
+        given.runUntilIdle()
+        t.equal(skin.measure(named: "Count")?.value, 3)
+        t.equal(skin.measure(named: "Size")?.value, 100)
+        t.equal(given.background.reports.first { $0.kind == .trash }?.faked, true, "the host's fake service")
+        t.equal(given.background.unverifiable.count, 0)
+        skin.close()
+    }
+
     t.suite("Executor: virtual time — live executors keep today's way back") {
         // The main executor: the real work on its queue, the result through the hop, nothing reported anywhere.
         let skin = try virtualSkin(t, "[M]\nMeter=Image\n", executor: nil)

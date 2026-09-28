@@ -89,5 +89,9 @@
       "ac_charger_name=Test Adapter",
       "ac_charger_watts=65"
     ]
+  },
+  "trash": {
+    "count": 12,
+    "size": 734003200
   }
 }

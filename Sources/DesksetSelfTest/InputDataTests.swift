@@ -67,6 +67,7 @@ func runInputDataTests(_ t: TestRunner) {
          "weather": "oslo.json",
          "wifi": {"ssid": "Home", "rssi": -55, "transmitRate": 866, "networks": [{"ssid": "Cafe", "rssi": -70}]},
          "desktopImage": "cover.png",
+         "trash": {"count": 3, "size": 2048},
          "later": 1}
         """#
         try text.write(to: dir.appendingPathComponent("data.json"), atomically: true, encoding: .utf8)
@@ -98,10 +99,16 @@ func runInputDataTests(_ t: TestRunner) {
         t.equal(d.wifi?.value?.current.ssid, "Home")
         t.equal(d.wifi?.value?.networks.map(\.rssi), [-70])
         t.equal(d.desktopImage?.value, np?.cover)
+        t.equal(d.trash?.value, SkinInputData.Trash(count: 3, size: 2048))
 
         // null: there is none. A key left out: the service stays live.
-        let none = try SkinInputData.load(#"{"battery": null, "nowPlaying": null, "weather": null, "wifi": null, "desktopImage": null}"#,
+        let none = try SkinInputData.load(#"{"battery": null, "nowPlaying": null, "weather": null, "wifi": null, "desktopImage": null, "trash": null}"#,
                                           directory: dir)
+        t.equal(none.trash, SkinInputData.Given<SkinInputData.Trash>.none, "null: an empty Trash")
+        t.equal(try SkinInputData.load(#"{"trash": 5}"#, directory: dir).trash?.value,
+                SkinInputData.Trash(count: 5), "a number: the count")
+        t.equal(try SkinInputData.load(#"{"trash": {"count": 2, "size": null}}"#, directory: dir).trash?.value,
+                SkinInputData.Trash(count: 2, size: nil), "size null: it cannot be read")
         t.equal(none.battery, SkinInputData.Given<BatteryStatus>.none)
         t.equal(none.nowPlaying, SkinInputData.Given<SkinInputData.NowPlaying>.none)
         t.equal(none.weather, SkinInputData.Given<SkinInputData.Weather>.none)
@@ -131,6 +138,7 @@ func runInputDataTests(_ t: TestRunner) {
         t.equal(failure(#"{"nowPlaying": {"state": "dancing"}}"#), "nowPlaying.state: is not playing, paused or stopped")
         t.equal(failure(#"{"weather": "missing.json"}"#).hasPrefix("weather: cannot read"), true)
         t.equal(failure(#"{"system": "missing.json"}"#).hasPrefix("system: cannot read"), true)
+        t.equal(failure(#"{"trash": {"count": "many"}}"#), "trash.count: is not a number")
         try "[1]".write(to: dir.appendingPathComponent("list.json"), atomically: true, encoding: .utf8)
         t.equal(failure("list.json"), "the data is not a JSON object")
         t.check(failure("{nope").hasPrefix("not JSON"), failure("{nope"))

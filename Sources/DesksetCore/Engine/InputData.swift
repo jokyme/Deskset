@@ -13,6 +13,7 @@ import Foundation
 //   wifi          the app's Wi-Fi reader
 //   desktopImage  the desktop picture (Chameleon, the Registry's Wallpaper)
 //   programs      what RunCommand's programs write (a Deskset addition: they are side effects, `SideEffects`)
+//   trash         the Trash's item count and size (RecycleManager; a Deskset addition)
 //
 // A key that is not given leaves that service live. `null` means "there is none": no battery, no player, no network
 // for the weather, no Wi-Fi interface, no desktop picture. The format: docs/COMPATIBILITY.md, "Rendering with given
@@ -269,6 +270,18 @@ public struct SkinInputData: Equatable, Sendable {
         }
     }
 
+    /// The Trash (RecycleManager): how many items it holds and their size.
+    public struct Trash: Equatable, Sendable {
+        public var count: Int
+        /// Bytes; nil: the size cannot be read (no Full Disk Access).
+        public var size: Double?
+
+        public init(count: Int, size: Double? = 0) {
+            self.count = count
+            self.size = size
+        }
+    }
+
     public struct WiFi: Equatable, Sendable {
         public var current: WiFiNetwork
         /// Visible networks (`WiFiInfoType=LIST`).
@@ -297,6 +310,8 @@ public struct SkinInputData: Equatable, Sendable {
     /// contains (no output when none does). A Deskset addition to the runtime design's keys: programs are side effects
     /// there (the sandbox records them), and this gives them their output.
     public var programs: [Program]?
+    /// The Trash; `null`: an empty one.
+    public var trash: Given<Trash>?
     /// Keys the reader did not know (a newer format): reported, not an error.
     public var unknownKeys: [String] = []
 
@@ -305,7 +320,7 @@ public struct SkinInputData: Equatable, Sendable {
     /// True when no key is given.
     public var isEmpty: Bool {
         system == nil && battery == nil && sensors == nil && thermalState == nil && nowPlaying == nil && audio == nil
-            && weather == nil && wifi == nil && desktopImage == nil && programs == nil
+            && weather == nil && wifi == nil && desktopImage == nil && programs == nil && trash == nil
     }
 
     /// What a program started with `command` writes (`programs`): the output of the longest entry the command line
@@ -326,6 +341,7 @@ public struct SkinInputData: Equatable, Sendable {
         if wifi != nil { keys.append("wifi") }
         if desktopImage != nil { keys.append("desktopImage") }
         if programs != nil { keys.append("programs") }
+        if trash != nil { keys.append("trash") }
         return keys
     }
 }
@@ -348,7 +364,7 @@ public struct SkinInputDataError: Error, Equatable, CustomStringConvertible {
 extension SkinInputData {
     /// The keys the format knows.
     public static let keys = ["system", "battery", "sensors", "nowPlaying", "audio", "weather", "wifi", "desktopImage",
-                              "programs"]
+                              "programs", "trash"]
 
     /// Reads `--data`: JSON text (starting with `{`) or the path of a JSON file. Relative paths inside are relative
     /// to the file's folder (to `directory` for text). A whole event script (with `data`, `steps`…) is read for its
@@ -398,6 +414,7 @@ struct SkinInputDataReader {
             }
         }
         if let v = top["programs"] { d.programs = try programs(v, "programs") }
+        if let v = top["trash"] { d.trash = try given(v) { try trash($0, "trash") } }
         return d
     }
 
@@ -706,6 +723,21 @@ struct SkinInputDataReader {
         }
         // The longest match first; the same length in the order of the text.
         return list.sorted { $0.match.count != $1.match.count ? $0.match.count > $1.match.count : $0.match < $1.match }
+    }
+
+    // MARK: trash
+
+    /// `{"count": 3, "size": 2048}` (size in bytes; `null`: not readable), or a number: the count of an empty-sized
+    /// Trash.
+    func trash(_ v: JSONValue, _ key: String) throws -> SkinInputData.Trash {
+        if case .number(let n) = v, n.isFinite { return SkinInputData.Trash(count: Int(min(max(n, 0), 1e9))) }
+        let o = try object(v, key)
+        let count = try number(o["count"], "\(key).count", default: 0)
+        var size: Double? = 0
+        if let s = o["size"] {
+            size = s.isNull ? nil : max(try number(s, "\(key).size") ?? 0, 0)
+        }
+        return SkinInputData.Trash(count: Int(min(max(count, 0), 1e9)), size: size)
     }
 
     // MARK: weather, wifi

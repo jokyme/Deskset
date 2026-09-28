@@ -88,6 +88,11 @@ enum RenderDataSelfTests {
             Measure=Plugin
             Plugin=RunCommand
             Parameter=echo from the Mac
+            [Trash]
+            Measure=RecycleManager
+            [TrashSize]
+            Measure=RecycleManager
+            RecycleType=Size
             [Start]
             Measure=Calc
             Formula=1
@@ -120,7 +125,8 @@ enum RenderDataSelfTests {
              "weather": "\(weather.path)",
              "wifi": {"ssid": "Deskset Test", "rssi": -52},
              "desktopImage": "\(desktopPicture.path)",
-             "programs": {"echo from the Mac": "from the data"}}
+             "programs": {"echo from the Mac": "from the data"},
+             "trash": {"count": 4, "size": 2048}}
             """
             let out = t.temporaryDirectory("data-render-out")
             func render(_ name: String) -> (status: Int32, png: Data?, state: JSONValue?) {
@@ -156,6 +162,8 @@ enum RenderDataSelfTests {
             t.equal(values["Desk"]?.1, desktopPicture.path)
             t.equal(values["DeskColor"]?.1, "C83C28", "Chameleon sampled the given picture: its widest band")
             t.check((values["Run"]?.1 ?? "").contains("from the data"), "RunCommand: the data's output: \(values["Run"]?.1 ?? "")")
+            t.equal(values["Trash"]?.0, 4, "RecycleManager: the data's Trash")
+            t.equal(values["TrashSize"]?.0, 2048)
 
             // The app's own services afterwards.
             t.check(NowPlayingCenter.current === NowPlayingCenter.shared)

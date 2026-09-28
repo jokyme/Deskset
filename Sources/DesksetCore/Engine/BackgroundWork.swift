@@ -46,6 +46,9 @@ public enum BackgroundWorkKind: String, CaseIterable, Sendable {
     case resMon
     /// Chameleon reads and analyses an image (a file or the desktop picture).
     case desktopImage
+    /// RecycleManager reads the Trash's item count and size (a shared service; `.service` when the host gave it a
+    /// fixture, such as `--data`'s `trash`).
+    case trash
 
     /// What it does, for reports.
     public var summary: String {
@@ -64,6 +67,7 @@ public enum BackgroundWorkKind: String, CaseIterable, Sendable {
         case .sensorList: return "MacSensors lists the Mac's sensors"
         case .resMon: return "ResMon looks up processes by name"
         case .desktopImage: return "Chameleon reads and analyses an image"
+        case .trash: return "RecycleManager reads the Trash"
         }
     }
 }
@@ -131,8 +135,10 @@ public struct BackgroundFake {
         case value(BackgroundFakeValue)
         /// A value per request, decided when the request is made (nil: no fake for that one).
         case script((BackgroundWorkRequest) -> BackgroundFakeValue?)
-        /// The host put a fake of the service itself in place (the weather service without network): what it tells
-        /// the skins does not depend on the outside world.
+        /// The host put a fake of the service itself in place (the weather service without network, a Trash given as
+        /// data): what it tells the skins does not depend on the outside world. Background work of that kind runs as
+        /// it would (against the fake service) and counts as faked; its result still comes back as real work does,
+        /// so `settle` waits for it.
         case service
     }
 
@@ -231,8 +237,13 @@ extension Skin {
     /// weather service): `hop()`, noted as background work of `kind` in virtual time.
     public func backgroundHop(_ kind: BackgroundWorkKind) -> SkinHop {
         if let virtual = executor as? VirtualTimeExecutor { virtual.background.noteService(kind, config: config) }
-        return hop()
+        return self.hop()
     }
+
+    /// Whether the skin runs in virtual time (`runInVirtualTime`): its measures then take what shared services tell
+    /// them only as it comes back through the executor, never by reading the service's latest state, which a thread
+    /// of the service changes at any moment.
+    public var runsInVirtualTime: Bool { executor is VirtualTimeExecutor }
 }
 
 // MARK: - Virtual time
@@ -341,7 +352,12 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
             } else {
                 reason = job.scripted == nil ? "it cannot be scripted" : "no scripted result for this request"
             }
-        case .service?, nil:
+        case .service?:
+            // Against the host's fake service: real work (its result comes back as real work does), but faked.
+            report(request, faked: true, "the host's fake service")
+            runReal(job, hop: hop, then: completion, orElse: dropped)
+            return
+        case nil:
             break
         }
         if let produce {
@@ -356,6 +372,12 @@ public final class VirtualBackgroundWork: @unchecked Sendable {
             return
         }
         report(request, faked: false, reason + "; the real work ran")
+        runReal(job, hop: hop, then: completion, orElse: dropped)
+    }
+
+    /// Starts `job` for real; `settle` waits until its result has been handed to the executor.
+    private func runReal<T>(_ job: BackgroundJob<T>, hop: SkinHop, then completion: @escaping (T) -> Void,
+                            orElse dropped: ((T) -> Void)?) {
         condition.lock()
         running += 1
         condition.unlock()
