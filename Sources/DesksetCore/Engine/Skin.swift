@@ -353,7 +353,13 @@ public final class Skin {
     /// The host calls this on a refresh (`!Refresh`, "Refresh skin"), before the first update of the new skin
     /// object, so the Calc `Counter` continues instead of starting again from 0.
     public func continueCounter(from previous: Skin) {
-        counterBase = previous.counter
+        continueCounter(at: previous.counter)
+    }
+
+    /// `continueCounter(from:)` with the counter the replaced skin had when it closed, as its host kept it (a skin on
+    /// another thread is not read directly).
+    public func continueCounter(at counter: Int) {
+        counterBase = counter
     }
 
     /// Before the first update of a new instance of a widget that mirrors one already running (the Studio's own
