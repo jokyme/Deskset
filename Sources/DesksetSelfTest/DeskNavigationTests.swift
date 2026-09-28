@@ -89,6 +89,7 @@ func runDeskNavigationTests(_ t: TestRunner) {
         deskNavDump(path)
         return
     }
+    runDeskNavigationGoldenTests(t)
     runDeskNavigationPropertyTests(t)
 }
 
@@ -290,4 +291,195 @@ func deskNavCheckRenames(_ t: TestRunner, _ text: String, file: String = "Test.d
         t.check(newText.contains(newName), "\(where_): the new name is written")
     }
     return count
+}
+
+// MARK: - Goldens
+
+/// A fixture's text.
+func deskNavFixture(_ path: String) -> String {
+    (try? String(contentsOf: deskFixtures.appendingPathComponent(path), encoding: .utf8)) ?? ""
+}
+
+/// The Harbor folder as the service sees it, opened on one of its files.
+func deskNavHarbor(_ openFile: String, language: DiagnosticLanguage = .english) -> DeskLanguageService {
+    DeskLanguageService(package: deskHarbor(), openFile: DeskFileID(path: openFile),
+                        options: DeskServiceOptions(messageLanguage: language))
+}
+
+/// What the index says at a needle: `name kind role [catalog path]`.
+func deskNavSymbol(_ snapshot: DeskSnapshot, _ needle: String, occurrence: Int = 1, into: Int = 0) -> String {
+    guard let info = snapshot.symbol(at: deskNavPosition(snapshot, needle, occurrence: occurrence, into: into)) else { return "nothing" }
+    return "\(info.name) \(info.kind.rawValue) \(info.role.rawValue)" + (info.catalogPath.map { " \($0)" } ?? "")
+}
+
+func deskNavDefinition(_ snapshot: DeskSnapshot, _ needle: String, occurrence: Int = 1, into: Int = 0) -> [String] {
+    deskNavDescribe(snapshot.definition(at: deskNavPosition(snapshot, needle, occurrence: occurrence, into: into)), snapshot)
+}
+
+func deskNavReferences(_ snapshot: DeskSnapshot, _ needle: String, occurrence: Int = 1, into: Int = 0,
+                       includeDeclaration: Bool = true) -> [String] {
+    deskNavDescribe(snapshot.references(at: deskNavPosition(snapshot, needle, occurrence: occurrence, into: into),
+                                        includeDeclaration: includeDeclaration), snapshot)
+}
+
+func runDeskNavigationGoldenTests(_ t: TestRunner) {
+    let monthView = deskNavService(deskNavFixture("Acceptance/MonthView.desk"), file: "MonthView.desk").snapshot
+    let cpu = deskNavService(deskNavFixture("Acceptance/CPU.desk"), file: "CPU.desk").snapshot
+
+    t.suite("Desk: service — symbol index") {
+        let m = monthView
+        t.equal(deskNavSymbol(m, "category"), "category infoField read info.category")
+        t.equal(deskNavSymbol(m, ".time", into: 1), "time enumCase read Category.time")
+        t.equal(deskNavSymbol(m, "weekStart"), "weekStart option declaration")
+        t.equal(deskNavSymbol(m, "Picker"), "Picker control read Picker")
+        t.equal(deskNavSymbol(m, "default:"), "default label read")
+        t.equal(deskNavSymbol(m, "monthsFromNow"), "monthsFromNow variable declaration")
+        t.equal(deskNavSymbol(m, "month ="), "month computed declaration")
+        t.equal(deskNavSymbol(m, "calendar"), "calendar namespace read calendar")
+        t.equal(deskNavSymbol(m, ".month(", into: 1), "month member read calendar.month")
+        t.equal(deskNavSymbol(m, "options.weekStart", into: 1), "options namespace read options")
+        t.equal(deskNavSymbol(m, "options.weekStart", into: 9), "weekStart option read")
+        t.equal(deskNavSymbol(m, "Column"), "Column component read Column")
+        t.equal(deskNavSymbol(m, "spacing"), "spacing label read")
+        t.equal(deskNavSymbol(m, "month.title", into: 6), "title member read MonthGrid.title")
+        t.equal(deskNavSymbol(m, ".font", into: 1), "font modifier read .font")
+        t.equal(deskNavSymbol(m, "monthsFromNow = 0", occurrence: 2), "monthsFromNow variable write")
+        t.equal(deskNavSymbol(m, "arrow"), "arrow style read")
+        t.equal(deskNavSymbol(m, "name in"), "name loopVariable declaration")
+        t.equal(deskNavSymbol(m, "Text(name)", into: 5), "name loopVariable read")
+        t.equal(deskNavSymbol(m, "day.isToday", into: 4), "isToday member read DayCell.isToday")
+        t.equal(deskNavSymbol(m, "style todayCell", into: 6), "todayCell style declaration")
+        t.equal(deskNavSymbol(m, "\"Month View\": ", into: 3), "Month View translationKey declaration")
+        t.equal(deskNavSymbol(m, "\"Highlight color\"", into: 1), "Highlight color translationKey read")
+        t.equal(deskNavSymbol(m, "Column(spacing: 12)", into: 17), "nothing", "a number without a unit")
+        t.equal(deskNavSymbol(m, "variable"), "nothing", "a keyword")
+        t.equal(deskNavSymbol(m, "monthsFromNow", into: 13), "monthsFromNow variable declaration", "right after the name")
+        let units = deskNavService("widget { Text(\"A\").padding(12pt).every(2s) { } }").snapshot
+        t.equal(deskNavSymbol(units, "pt"), "pt unit read")
+        t.equal(deskNavSymbol(units, "2s", into: 1), "s unit read")
+        let files = deskNavHarbor("Tide.desk").snapshot
+        t.equal(deskNavSymbol(files, "images/waves.png", into: 2), "images/waves.png asset read")
+        t.equal(deskNavSymbol(files, "\"Look\"", into: 1), "Look translationKey read", "an option's label")
+        t.equal(deskNavSymbol(files, "heading"), "heading style read")
+        t.equal(deskNavSymbol(files, "accent ="), "accent option declaration")
+        for info in [cpu.symbol(at: deskNavPosition(cpu, "cpu.usage", into: 5))] {
+            t.equal(info?.kind, .member)
+            t.equal(info?.catalogPath, .member(namespace: "cpu", name: "usage"))
+            t.equal(info.map { cpu.index.utf8Range(of: $0.range) }.map { cpu.text.utf8.dropFirst($0.lowerBound).prefix($0.count) }
+                .map { String(decoding: $0, as: UTF8.self) }, "usage")
+        }
+    }
+
+    t.suite("Desk: service — definition") {
+        let m = monthView
+        t.equal(deskNavDefinition(m, "monthsFromNow = 0", occurrence: 2), ["MonthView.desk 15:14 monthsFromNow"])
+        t.equal(deskNavDefinition(m, "monthsFromNow - 1", into: 3), ["MonthView.desk 15:14 monthsFromNow"])
+        t.equal(deskNavDefinition(m, "monthsFromNow", into: 5), ["MonthView.desk 15:14 monthsFromNow"], "at the declaration")
+        t.equal(deskNavDefinition(m, "month.days"), ["MonthView.desk 16:14 month"])
+        t.equal(deskNavDefinition(m, "day.isToday"), ["MonthView.desk 32:17 day"])
+        t.equal(deskNavDefinition(m, "{day.number}", into: 1), ["MonthView.desk 32:17 day"], "inside an interpolation")
+        t.equal(deskNavDefinition(m, "Text(name)", into: 5), ["MonthView.desk 29:17 name"])
+        t.equal(deskNavDefinition(m, "todayCell"), ["MonthView.desk 48:7 todayCell"])
+        t.equal(deskNavDefinition(m, "arrow", occurrence: 2), ["MonthView.desk 45:7 arrow"])
+        t.equal(deskNavDefinition(m, "options.highlight", occurrence: 3, into: 8), ["MonthView.desk 11:5 highlight"],
+                "an option read in a style")
+        t.equal(deskNavDefinition(m, "\"Month View\"", into: 2), ["MonthView.desk 52:9 \"Month View\""], "a text's translation")
+        t.equal(deskNavDefinition(m, "\"Week starts on\"", into: 2), ["MonthView.desk 54:9 \"Week starts on\""])
+        t.equal(deskNavDefinition(m, "calendar"), [], "a built-in name")
+        t.equal(deskNavDefinition(m, ".font", into: 1), [])
+        t.equal(deskNavDefinition(m, "Column"), [])
+        t.equal(deskNavDefinition(m, "widget"), [], "a keyword")
+        t.equal(deskNavDefinition(cpu, "cpu"), [])
+        t.equal(deskNavDefinition(cpu, "\"CPU\"", into: 1), [], "no translations")
+        // Element names, a loop variable in show(), and a quoted element name.
+        let named = deskNavService("""
+            info { name: "T" }
+            widget {
+                variable isOpen = false
+                Column {
+                    Text("Title").name(title).onClick { showOrHide(details) }
+                    Text("Details").name(details)
+                    for label in ["a", "b"] {
+                        Button(label).onClick { show(label); hide("title"); showOrHide(isOpen) }
+                    }
+                }
+            }
+            """).snapshot
+        t.equal(deskNavDefinition(named, "showOrHide(details)", into: 11), ["Test.desk 6:30 details"])
+        t.equal(deskNavDefinition(named, "hide(\"title\")", into: 7), ["Test.desk 5:28 title"])
+        t.equal(deskNavDefinition(named, "show(label)", into: 5), ["Test.desk 7:13 label"])
+        t.equal(deskNavDefinition(named, "showOrHide(isOpen)", into: 11), ["Test.desk 3:14 isOpen"])
+        t.equal(deskNavReferences(named, "name(title)", into: 5), ["Test.desk 5:28 title", "Test.desk 8:56 title"])
+    }
+
+    t.suite("Desk: service — references and highlights") {
+        let m = monthView
+        let months = ["15:14", "16:45", "23:28", "25:57", "25:73", "26:58", "26:74"].map { "MonthView.desk \($0) monthsFromNow" }
+        t.equal(deskNavReferences(m, "monthsFromNow"), months)
+        t.equal(deskNavReferences(m, "monthsFromNow + 1", into: 2), months, "from a use")
+        t.equal(deskNavReferences(m, "monthsFromNow", includeDeclaration: false), Array(months.dropFirst()))
+        let highlights = m.documentHighlights(at: deskNavPosition(m, "monthsFromNow"))
+        t.equal(highlights.map(\.role), [.declaration, .read, .write, .write, .read, .write, .read])
+        t.equal(highlights.map { "\($0.range.start)" }, ["15:14", "16:45", "23:28", "25:57", "25:73", "26:58", "26:74"])
+        t.equal(deskNavReferences(m, "day.isToday"), ["32:17", "33:24", "35:43", "36:37"].map { "MonthView.desk \($0) day" })
+        t.equal(deskNavReferences(m, "todayCell"), ["MonthView.desk 35:28 todayCell", "MonthView.desk 48:7 todayCell"])
+        t.equal(deskNavReferences(m, "highlight ="),
+                ["11:5", "22:41", "45:67", "48:85"].map { "MonthView.desk \($0) highlight" })
+        t.equal(deskNavReferences(m, "\"Week starts on\"", into: 1),
+                ["MonthView.desk 10:24 \"Week starts on\"", "MonthView.desk 54:9 \"Week starts on\""])
+        t.equal(deskNavReferences(m, ".color", into: 1).count, 5, "a modifier's uses")
+        t.equal(deskNavReferences(m, "variable"), [], "a keyword")
+        t.equal(m.documentHighlights(at: deskNavPosition(m, "12)")), [], "a number")
+        t.equal(deskNavReferences(cpu, "cpu"), ["CPU.desk 6:16 cpu", "CPU.desk 8:18 cpu"])
+        t.equal(deskNavReferences(cpu, "usage"), ["CPU.desk 6:20 usage", "CPU.desk 8:22 usage"])
+        t.equal(deskNavReferences(cpu, "\"CPU\"", into: 1), ["CPU.desk 1:14 \"CPU\"", "CPU.desk 5:14 \"CPU\""],
+                "the same text twice")
+        t.equal(deskNavReferences(cpu, "Text", occurrence: 2), ["CPU.desk 5:9 Text", "CPU.desk 6:9 Text"])
+    }
+
+    t.suite("Desk: service — definition and references across the package") {
+        let tide = deskNavHarbor("Tide.desk").snapshot
+        t.equal(deskNavDefinition(tide, "heading"), ["package.desk 20:7 heading"], "a package style")
+        t.equal(deskNavDefinition(tide, "options.metric", into: 9), ["package.desk 14:9 metric"], "a package option")
+        t.equal(deskNavDefinition(tide, "options.accent", into: 9), ["Tide.desk 13:5 accent", "package.desk 12:5 accent"],
+                "a widget's option in place of the package's (D99): both")
+        t.equal(deskNavDefinition(tide, "accent ="), ["Tide.desk 13:5 accent", "package.desk 12:5 accent"])
+        t.equal(deskNavDefinition(tide, "images/waves.png", into: 2), ["images/waves.png 1:1 "], "a picture")
+        t.equal(deskNavDefinition(tide, "\"Tide\"", into: 1), ["Tide.desk 29:9 \"Tide\"", "package.desk 30:9 \"Tide\""],
+                "the widget's translation, then the package's")
+        t.equal(deskNavReferences(tide, "card"),
+                ["Tide.desk 24:12 card", "package.desk 19:7 card", "Lamp.desk 20:12 card", "Radio.desk 23:12 card"])
+        t.equal(deskNavReferences(tide, "card", includeDeclaration: false),
+                ["Tide.desk 24:12 card", "Lamp.desk 20:12 card", "Radio.desk 23:12 card"])
+        t.equal(deskNavReferences(tide, "options.accent", into: 9),
+                ["Tide.desk 13:5 accent", "Tide.desk 19:89 accent", "package.desk 12:5 accent", "package.desk 20:48 accent"])
+        t.equal(deskNavReferences(tide, "showWaves"), ["9:5", "12:33", "22:37"].map { "Tide.desk \($0) showWaves" },
+                "the widget's own option stays in the widget")
+        t.equal(deskNavReferences(tide, "images/waves.png", into: 2), ["Tide.desk 20:39 \"images/waves.png\""])
+        t.equal(tide.documentHighlights(at: deskNavPosition(tide, "card")).map { "\($0.range.start) \($0.role.rawValue)" },
+                ["24:12 read"], "highlights stay in the open file")
+
+        let package = deskNavHarbor("package.desk").snapshot
+        t.equal(deskNavDefinition(package, "heading"), ["package.desk 20:7 heading"])
+        t.equal(deskNavDefinition(package, "options.accent", into: 9), ["package.desk 12:5 accent"])
+        t.equal(deskNavReferences(package, "heading"),
+                ["package.desk 20:7 heading", "Lamp.desk 16:28 heading", "Radio.desk 18:66 heading", "Tide.desk 18:28 heading"])
+        t.equal(deskNavReferences(package, "accent"),
+                ["package.desk 12:5 accent", "package.desk 20:48 accent", "Tide.desk 13:5 accent", "Tide.desk 19:89 accent"])
+        t.equal(deskNavReferences(package, "metric"), ["package.desk 14:9 metric", "Tide.desk 19:22 metric"])
+        t.equal(deskNavDefinition(package, "\"Tide\"", into: 1), ["package.desk 30:9 \"Tide\""])
+        t.equal(deskNavReferences(package, "\"Tide\"", into: 1),
+                ["package.desk 30:9 \"Tide\"", "Tide.desk 2:11 \"Tide\"", "Tide.desk 18:14 \"Tide\"", "Tide.desk 29:9 \"Tide\""])
+
+        let lamp = deskNavHarbor("Lamp.desk").snapshot
+        t.equal(deskNavDefinition(lamp, "images/paper.jpg", into: 2), ["images/paper.jpg 1:1 "])
+        t.equal(deskNavDefinition(lamp, "\"Lamp\"", into: 1), [], "no translation of this text")
+        t.equal(deskNavDefinition(lamp, "clicks + 1"), ["Lamp.desk 14:11 clicks"])
+        // A picture the folder does not have.
+        let missing = deskNavService("widget { Image(\"images/none.png\") }", file: "W.desk").snapshot
+        t.equal(deskNavDefinition(missing, "none", into: 1), ["images/none.png 1:1 "], "without the folder's files: the path")
+        let service = DeskLanguageService(openFile: DeskFileID(path: "W.desk"), files: [DeskFileID(path: "W.desk"): missing.text],
+                                          resources: PackageResources(package: deskHarbor()))
+        t.equal(deskNavDefinition(service.snapshot, "none", into: 1), [], "the folder has no such picture")
+    }
 }
