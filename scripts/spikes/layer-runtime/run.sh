@@ -468,7 +468,9 @@ for step in "${STEPS[@]}"; do
         sysmem)
             # The positive control first (8 copies of a 9.77 MB image must show about +78 MB), then the ways.
             for cs in srgb default; do
-                for v in none single copies; do run "sysmem/control-$v-$cs" sysmem --control "$v" --window-cs "$cs" --cycles 3; done
+                for v in none single shared crops copies; do
+                    run "sysmem/control-$v-$cs" sysmem --control "$v" --window-cs "$cs" --cycles 3
+                done
             done
             for r in $(seq 1 "$ROUNDS"); do
                 for entry in "${SYSMEM[@]}"; do

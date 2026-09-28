@@ -6,9 +6,10 @@
 //
 // `sysmem` measures what opening windows costs the whole machine, with a positive control that must show up:
 //
-//   sysmem --control none|single|copies [--window-cs default|srgb]
+//   sysmem --control none|single|shared|crops|copies [--window-cs default|srgb]
 //        an 800 × 800 pt window (1600 × 1600 px): empty, one layer showing a 9.77 MB image of random pixels (which
-//        the memory compressor cannot shrink), or 8 layers each showing its own copy of it (78 MB of distinct
+//        the memory compressor cannot shrink), 61 base tiles sharing it through contentsRect (question 6), 61 tiles
+//        each showing a CGImage.cropping of it, or 8 layers each showing its own copy of it (78 MB of distinct
 //        pixels). copies − single must come out near 7 × 9.77 = 68 MB for a method to be trusted.
 //   sysmem --scenario ten|design|sixty --mode … [--count N] [--one-thread]   widgets updating at the scenario's rate
 //        (options as for `cost`; default 20 System widgets, 12 design skins, 12 visualizers; windows overlap when they
@@ -105,6 +106,17 @@ func systemMemoryRun() -> JSON {
                 root.bounds = CGRect(origin: .zero, size: size)
                 host.layer?.addSublayer(root)
                 let image = q6BaseImage(W, H, noise: true)
+                if control == "shared" || control == "crops" {
+                    let window = PixelRect(x0: 0, y0: 0, x1: W, y1: H)
+                    let holes = sampleHoles(W, H)
+                    if control == "shared" {
+                        _ = q6Tiles(root: root, image: image, window: window, holes: holes, scale: scale)
+                    } else {
+                        _ = q6Tiles(root: root, image: image, window: window, holes: holes, scale: scale) {
+                            image.cropping(to: $0.cg)!
+                        }
+                    }
+                }
                 let n = control == "copies" ? 8 : control == "single" ? 1 : 0
                 for k in 0..<n {
                     // Each layer its own copy (a new buffer), offset so every one is visible.

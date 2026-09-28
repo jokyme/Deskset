@@ -180,11 +180,20 @@ System widget, tick 7 (19 groups, 38 base tiles), each mode in its own window, f
 | OVE (overlapping E layers) vs E1 | max 2, 6.80 % (inside group boxes 11.28 %) | max 3, 12.15 % (20.15 %) |
 | OVD (overlapping own bitmaps) vs D1 | max 4, 24.94 % (31.88 %) | max 3, 12.15 % (20.15 %) |
 
-- **The partition can equal one E layer and today's B pixel for pixel.** In the default window, an E layer's context is
-  in the window's color space (question 4), exactly like B's own bitmap: E1 and B are identical. A partition whose
-  base bitmap is drawn in the same space differs from both by 1 level in 7 pixels (0.003 %, all inside group boxes);
-  drawing the groups through a window-sized scratch bitmap in that space (EPxw) gives **0 differing pixels**, also over
-  the backdrop. In an sRGB window the same holds with an sRGB base (EP: 7 px; EPx: 0).
+- **The partition can equal one E layer and B drawn in full, pixel for pixel.** In the default window, an E layer's
+  context is in the window's color space (question 4), exactly like B's own bitmap: E1 and B drawn in full are
+  identical. A partition whose base bitmap is drawn in the same space differs from both by 1 level in 7 pixels
+  (0.003 %, all inside group boxes); drawing the groups through a window-sized scratch bitmap in that space (EPxw)
+  gives **0 differing pixels**, also over the backdrop. In an sRGB window the same holds with an sRGB base (EP: 7 px;
+  EPx: 0).
+- **What Deskset ships is B+kept, not B drawn in full**, and the spike's B is its own reimplementation of Deskset's
+  drawing, not Deskset's renderer. `q1` builds every window directly at tick 7 and draws it once, so its B has no kept
+  pictures. `q1-stepped.json` (added after review) steps every window from tick 0 to 7, a redraw per tick, so B+kept
+  has made and copied its pictures (4 copied, 13 of 24 elements drawn directly in the captured frame): **E1, EPxw, C1
+  and B drawn in full all differ from B+kept by 1 level in 1,393 pixels (0.68 %), EPw and CPw in 1,400**; B+kept drawn
+  once (no pictures yet) equals B. So the partition equals B drawn in full, and differs from what Deskset shows today
+  by max 1 in about 0.7 % of the pixels (0.4–0.7 % in the cost runs' own check, `keptPicturesVsFullDrawing`), all of it
+  B+kept's rounding when it copies pictures. Real Deskset was not captured next to the spike.
 - The 7 pixels come from CoreGraphics itself: drawing the same curved path moved by whole device pixels does not give
   identical pixels (question 5). The scratch bitmap draws every element at its window position, so nothing moves.
 - **Mixing color spaces costs 48 % of the pixels**: an sRGB base bitmap copied into E contexts that are in the
@@ -192,12 +201,22 @@ System widget, tick 7 (19 groups, 38 base tiles), each mode in its own window, f
   conversions round differently (max 1 in 48 % of the pixels, over the backdrop max 2 in 48.11 %). EPx in the default
   window is worse (max 9, 56.58 %): its sRGB scratch bitmap carries sRGB pixels into contexts in the display space.
 - **What an sRGB window changes against today**: anything rendered in 8-bit sRGB (E1, EP, D1 or B in an sRGB window)
-  differs from today's B by up to 9 levels in 53.81 % of the pixels (106,883 by 1, 2,705 by 2, 50 by 3, 44 by 4–7,
-  2 by 8–9); outside the group boxes (the panel alone) at most 1; over the backdrop max 9 in 65.04 %.
-- **A vs B and E**: A is rendered in the window's color space at a higher precision than an 8-bit bitmap (question 4:
-  an `RGBA16Float` E layer equals A exactly), so B and E1 differ from A by up to 6 levels in 84 % of the pixels
-  (167,947 by 1, 3,896 by 2, 40 by 3–6; the panel alone at most 2). 8-bit sRGB differs from A by up to 10 in 87 %.
-  In an sRGB window A, B, E1 and D1 are identical.
+  changes about 54 % of B's pixels, **by 1–2 levels in 99.9 % of them** (106,883 by 1, 2,705 by 2; about half the
+  pixels by ±2, as the draft estimated from the review), with 96 outliers (0.05 %) of 3–9 levels (50 by 3, 44 by 4–7,
+  2 by 8–9); outside the group boxes (the panel alone) at most 1; over the backdrop max 9 in 65.04 %. For scale, the
+  change from A to B that main already shipped touched 84 % of the pixels (below).
+- **A vs B and E**: A drawn once is rendered in the window's color space at a higher precision than an 8-bit bitmap
+  (question 4: an `RGBA16Float` E layer equals it exactly), so B and E1 differ from A drawn once by up to 6 levels in
+  84 % of the pixels (167,947 by 1, 3,896 by 2, 40 by 3–6; the panel alone at most 2). 8-bit sRGB differs from it by
+  up to 10 in 87 %. In an sRGB window A, B, E1 and D1 are identical.
+- **A drawn once is not what the old Deskset showed for skins that update.** An A skin that keeps redrawing moves onto
+  Core Animation's accelerated path (`memtrace`), and it rasterizes differently: in `q1-stepped.json`, A after 7 + 10
+  redraws, and A after 2 s of redraws at 60 Hz (identical to each other), differ from A drawn once in 15,782 pixels
+  (7.7 %): by 1 in most, but 666 pixels by 8 or more and up to 103 (edges of the line graph, the pill and the icon,
+  and a dither-like pattern over the panel, `crops/q1s-diff-full-A-redrawn-vs-A-drawn-once.png`). The `RGBA16Float`
+  E layer equals only A drawn once. **B, B+kept and E1 differ from A as it looked when updating by up to 102 levels in
+  85 % of the pixels** (166,121 by 1, 4,797 by 2, 2,069 by 3 or more). So "A = RGBA16Float E" and "A→B: max 6 in
+  84 %" describe static A only; the A→B note in `docs/compat/` has to use the updating A.
 - The window server's color matching differs from CoreGraphics' by 1 level: every mode rendered in sRGB differs from
   the offline sRGB reference converted by CoreGraphics into the display space by max 1 in 14.91 % of the pixels.
 - **Overlapping layers** (reproduced): putting the panel and the content in two layers that share pixels changes up to
@@ -536,7 +555,7 @@ drawn into a bitmap that covers only a 100 × 30 pt box vs drawn whole.
 | 270°, the box at every position on a 2 pt grid (6,966 positions) | 0–84.0 %, median 67.9 %, always max 1 |
 | 180° / 225°, same scan | median 68.5 % / 69.5 % (0–82.6 % / 0–83.2 %) |
 | full-width 260 × 30 pt boxes, every row (86 positions) | median 70.0 % (0–84.1 %) |
-| the review's **64.4 %** | reproduced: 298 box positions on a 1 pt grid give exactly 64.4 % at 270° (the review did not record its box) |
+| the review's 64.4 / 57.2 / 59.9 % (270° / 180° / 225°, box not recorded) | **the effect is reproduced, the review's figures are not** (`q5-review-search*.json`): on a 1 pt grid, 298 of 27,531 positions give 64.4 % at 270° and 15 give 59.9 % at 225°, none gives 57.2 % at 180°, and none gives all three (the closest is 2.0 points off); on a 0.5 pt grid (109,461 positions) 814 / 0 / 112, none all three (closest 0.75 points off). About 1 % of the positions land on any 0.1 % bin, so hitting 64.4 % somewhere proves nothing about the review's box |
 | box at the panel's top left (100 × 30, and 260 × 100) | **0** |
 | the whole panel moved 10 pt (translation only) | **0** |
 | solid translucent rounded panel, cut | **0** |
@@ -545,16 +564,27 @@ drawn into a bitmap that covers only a 100 × 30 pt box vs drawn whole.
 | **whole-window base bitmap, box copied out in whole pixels** (`.copy`, no interpolation) | **0** |
 
 The gradient's pixels depend on where the clip's bounding box starts: a box that starts at the panel's top left, or a
-hole that leaves the bounding box unchanged, gives 0; any other start changes about two thirds of the pixels by 1.
+hole that leaves the bounding box unchanged, gives 0; any other start changes about two thirds of the pixels by 1
+(median 67.9 %). That is the effect the review described; its exact box and figures were not identified.
 
 Whole partitions composed offline (base bitmap + each group's bitmap copied in) vs one bitmap, worst of ticks 0, 1, 7,
-60, 61:
+60, 61 (`q5.json`, 2×; `q5-partitions/` at 1× and 2×, as arm64 and as an x86_64 build under Rosetta, whose
+CoreGraphics output is the Intel runner's, question 8):
 
 | widget | groups / tiles | partition vs one bitmap | where (summed over the 5 ticks) | naive (panel redrawn per group, clipped) | scratch bitmap |
 |---|---|---|---|---|---|
 | System | 19 / 38 | max 1, 16 px (0.008 %) | CPU graph + fill 45 px, 2 core bars 1 px each | max 1, 33.66 % | **0** |
 | design | 8 / 25 | max 1, 10 px (0.002 %) | ring gauge + its text 28 px | max 1, 26.50 % | **0** |
 | visualizer | 34 / 22 | max 1, 1 px (0.001 %) | one gradient bar | max 1, 26.85 % | **0** |
+
+| widget | arm64 1× | arm64 2× | x86_64 1× | x86_64 2× |
+|---|---|---|---|---|
+| System | max 1, 2 px | max 1, 16 px | max 1, 2 px | max 1, 18 px |
+| design | max 1, 2 px | max 1, 10 px | max 1, 2 px | max 1, 10 px |
+| visualizer | 0 | max 1, 1 px | 0 | max 1, 1 px |
+
+The translation noise is of the same size on both architectures and at both scales (at most 1 level, ≤ 0.009 % of the
+pixels); the scratch bitmap gives 0 in all twelve cases.
 
 The remaining pixels come from moving the drawing by whole device pixels: each group's elements drawn at their place in
 a window-sized bitmap vs drawn into the group's own bitmap (no base involved) differ in the same groups by nearly the
@@ -646,17 +676,29 @@ render, waits for the GPU, reads the texture back (top row first) and hashes it:
 | `vector` | what Core Animation draws itself: rounded corners, border, shadow, shape layer, rotation, gradient layer, mask, fractional positions | 10 |
 | `cg` | a CoreGraphics bitmap (gradient, translucent rounded panel, hairlines, Helvetica text) as contents | 1 |
 | `g2-single` | a widget (StylePanel-like gradient panel, time, bar, ring, chart, list) as one layer showing one bitmap | 1 |
-| `g2-tiles` | the same widget partitioned: 15 base tiles sharing one base image through `contentsRect`, 5 group bitmaps | 20 |
-| `g2-e` | the same partition with group layers that paint in `draw(in:)` (E; their context was sRGB, 8 bpc, everywhere) | 20 |
+| `g2-tiles` | the same widget partitioned: 15 base tiles sharing one base image through `contentsRect`, 5 group bitmaps that are **crops of `g2-single`'s bitmap** (the scratch-bitmap way) | 20 |
+| `g2-e` | the same with group layers that copy those crops in `draw(in:)` (E; their context was sRGB, 8 bpc, everywhere) | 20 |
+| `g2-groups` (added after review) | the partition **as the plan draws it** (§6.2 of the plan): each group's bitmap is the base's crop copied in with `.copy`, then the group's elements drawn into the group's own bitmap, moved by whole pixels | 20 |
+| `g2-e-drawn` (added after review) | the same drawing done in each group layer's `draw(in:)` (E) | 20 |
 
-It checks `image` and `cg` and `g2-single` against their source bytes and both partitions against `g2-single`,
+It checks `image` and `cg` and `g2-single` against their source bytes and the partitions against `g2-single`, and (on
+the CPU, without Core Animation) the partition composed from the plan-style group bitmaps against `g2-single`'s source,
 compares every scene with this Mac's run (`ci-probe/local-arm64/`, the pixels deflate-compressed), and times the
 partitioned widget: three rounds of 20 renders each, in four ways, with the texture overwritten with garbage before
 every render and every read-back required to hash like the first. Each machine ran it three times: this Mac
 natively three times and once as an x86_64 build under Rosetta (`local-*.json`), each runner three times (workflow run
-36383643743, attempts 1–3, `ci-36383643743-attempt*.json`). The 1-minute load average stayed between 1.6 and 7.3 in
-every timed round, so nothing is provisional. (Run 36383370736, `ci-36383370736-*.json`, was the probe before the
-read-back fix below; its arm64 load was 16–23.)
+36383643743, attempts 1–3, `ci-36383643743-attempt*.json`). The scenes added after review (`g2-groups`, `g2-e-drawn`)
+ran here natively and under Rosetta (`local-arm64-plan-groups.json`, `local-x86_64-rosetta-plan-groups.json`; their
+pixels are in `local-arm64/scenes/`) but **not yet on the runners**: the workflow runs them on the next push of this
+branch. (Run 36383370736, `ci-36383370736-*.json`, was the probe before the read-back fix below.)
+
+Load: the rule "a 1-minute load above 8 is provisional" was set for this 14-core Mac (0.57 per core) and does not
+transfer to 3- and 4-core virtual machines. Per core, a round is provisional here when the 1-minute load divided by
+the cores exceeds 0.6. The load average also updates only every 5 s, so a round of 20 renders (under 1 s) reads the
+same value before and after. By that rule **every timed CI round except the Intel runner's attempt 2 is
+provisional**: `macos-26` (3 cores) 3.74, 7.26, 5.1 (1.2–2.4 per core) in attempts 1–3; `macos-26-intel` (4 cores)
+6.39 (1.6 per core; 5-minute load 32), 1.59 (0.4) and 4.73 (1.2; 5-minute 13). This Mac's native runs had 4.7–4.8
+(0.34 per core). The pixel results do not depend on the load; the timings below do.
 
 | | this Mac | `macos-26` | `macos-26-intel` |
 |---|---|---|---|
@@ -667,7 +709,9 @@ read-back fix below; its arm64 load was 16–23.)
 
 **Both runners can composite offscreen.** Every scene rendered on both, the read-backs are not the bytes written
 before the render, and every scene hashes the same in all three runs of a runner (three separate virtual machines).
-Within a run, what G2 compares is exact on both runners:
+Within a run, the partitions made of **copied** pixels are exact on both runners. That holds by construction (their
+group pixels are crops of the one-layer bitmap), so it shows that Core Animation composites copied bitmap pixels
+exactly, not that a partition drawn the plan's way matches one layer:
 
 | check (1× and 2×) | this Mac | `macos-26` | `macos-26-intel` |
 |---|---|---|---|
@@ -676,6 +720,20 @@ Within a run, what G2 compares is exact on both runners:
 | `g2-e` == `g2-single` | 0 | 0 | 0 |
 | the G2 trees rendered a second time, and `g2-tiles` 240 more times per run (4 ways × 3 rounds × 20) | same bytes | same bytes | same bytes |
 | `vector` rendered a second time | same bytes | same bytes | **max 1 in 301 px (0.098 %) at 2×** in all three runs (the second render differs from the first the same way each time); at 1× 0, 4 and 4 px |
+
+The partition drawn the plan's way (after review; this Mac, arm64 and x86_64 under Rosetta, whose CoreGraphics output
+is byte for byte the Intel runner's for `cg` and the G2 scenes):
+
+| check | arm64 1× | arm64 2× | x86_64 (Rosetta) 1× | x86_64 (Rosetta) 2× |
+|---|---|---|---|---|
+| `g2-groups` == `g2-single` | max 1, 2 px (0.003 %) | max 1, 3 px (0.001 %) | max 1, 3 px (0.004 %) | max 2, 3 px (0.001 %) |
+| `g2-e-drawn` == `g2-single` | max 1, 2 px | max 1, 3 px | max 1, 3 px | max 2, 3 px |
+| the same partition composed on the CPU == `g2-single`'s source | max 1, 2 px | max 1, 3 px | max 1, 3 px | max 2, 3 px |
+| `g2-e-drawn` == `g2-groups`; `g2-groups` == the CPU composition | 0 | 0 | 0 | 0 |
+
+Every difference is CoreGraphics' translation noise (the CPU composition has exactly the same pixels); Core Animation
+adds nothing. On x86_64 one pixel differs by 2 at 2×, still inside G2's tolerance (≤ 2, ≤ 0.1 %). The runners should
+show the same when the workflow runs again; until then the plan-style check on the runners is unmeasured.
 
 **Two traps, both silent:**
 
@@ -712,16 +770,19 @@ Within a run, what G2 compares is exact on both runners:
 |---|---|---|---|---|
 | the same tree again, 2× | 0.20 ms (0.19–0.24) | 1.39 ms (0.59–1.58) | 1.81 ms (1.66–2.78) | 0.55 ms |
 | the same tree again, 1× | 0.18 ms (0.17–0.19) | 1.12 ms (0.64–1.69) | 1.19 ms (1.11–1.76) | 0.44 ms |
-| a new tree each time (built, attached, committed, rendered), 2× | 0.49 ms (0.44–0.58) | **3.39 ms** (1.52–4.19) | **7.03 ms** (6.45–11.97) | 1.03 ms |
+| a new tree each time (built, attached, committed, rendered), 2× | 0.49 ms (0.44–0.58) | **3.39 ms** (1.52–4.19)* | **7.03 ms** (6.45–11.97)* | 1.03 ms |
 | a new texture and renderer each time, 2× | 0.88 ms (0.84–0.94) | 21.7 ms (12.0–22.9) | 9.26 ms (8.53–14.81) | 1.85 ms |
 | read-back and flip, 2× | 0.44 ms | 0.72 ms | 0.26 ms | 5.06 ms |
 | first render in the process | 5–8 ms | 111–209 ms | 139–724 ms | 57 ms |
 
+(`*`: 8 of the 9 CI rounds per runner are provisional by the per-core rule above; the only calm round set, the Intel
+runner's attempt 2, gave 6.45–6.65 ms.)
+
 The plan budgets about 10,000 renders for the G2 matrix at 5–20 ms each. With one renderer and texture per size and a
-new tree per render, the measured cost is about 4 ms per render on `macos-26` and 7.3 ms on `macos-26-intel`
-including the read-back (less at 1×): roughly 40 s and 75 s of `CARenderer` time, far inside the 10 and 20 minute
-caps. A new renderer per render would cost about 22 ms on `macos-26` (almost 4 minutes). Building the skins' scenes
-and bitmaps, which the probe does not measure, will be the larger part.
+new tree per render, the round medians put one render with its read-back at 2.2–4.9 ms on `macos-26` and 6.7–12.2 ms
+on `macos-26-intel` (less at 1×): **about 20–50 s and 65–125 s of `CARenderer` time**, far inside the 10 and 20
+minute caps even at the slow end. A new renderer per render would cost about 22 ms on `macos-26` (almost 4 minutes).
+Building the skins' scenes and bitmaps, which the probe does not measure, will be the larger part.
 
 **For G2 on CI:**
 
@@ -807,6 +868,34 @@ window's first frame is committed before it is shown.
 - An earlier version of this check composited the listed windows with `CGWindowListCreateImageFromArray`, which still
   includes a window 0.3 s after it was ordered out; it reported about 23 % "doubled" captures that were not on screen.
 
+### A window's color space changing under a partition (`cschange/program-*.json`, added after review)
+
+The plan keeps the window's own color space and draws the base bitmap in it; the review asked what happens when that
+space changes (a window moving to a screen with another profile, or the display's profile changed). No second screen
+and no sRGB display were available, and changing the display's profile is a System Settings change the spike does not
+make, so this check changes `NSWindow.colorSpace` itself (to sRGB and back) as a stand-in. Two windows, System widget
+at tick 7, not updating: the partition with its base in the window's space (EPw) and one E layer (E1); both read back
+every 0.25 s; every `draw(in:)` logged with its thread and its context's color space.
+
+| | partition vs one layer, before | right after the change | `draw(in:)` calls after the change |
+|---|---|---|---|
+| nothing reacts (what CA does by itself) | max 1, 7 px | **max 4 in 106,411 px (52 %)**, for as long as the window stays (4 s here) | **on the main thread**: E1's layer once, **10 of the 19 group layers** (the other 9, small ones, keep old contents), in the new space; the base tiles keep the old base bitmap |
+| the runtime reacts (skin thread draws the base again in the new space and redraws every group, one transaction, posted right after the change) | max 1, 7 px | max 1, 7 px (in every capture) | on the skin thread: 1 + 19; none on the main thread |
+
+- So the case the plan's table sent to D is real: a color-space change makes Core Animation call the E layers'
+  `draw(in:)` **on the main thread**, which breaks the rule that only the skin thread touches its layers (and runs the
+  skin's drawing code on the main thread), and until the runtime draws the base again, groups and base are in
+  different spaces (52 % of the pixels off here, like the 48 % of a mixed-space partition in question 1).
+- Reacting at once avoided both here, but only because the skin thread's redraw was posted before Core Animation's next
+  main-thread pass: with a real screen change the notification (`NSWindow.didChangeScreenProfileNotification`) arrives
+  after the change, and the main thread may draw first. Setting `NSWindow.colorSpace` from code posts no notification.
+- Layers whose contents the runtime sets itself (C, D) have no `draw(in:)`, so Core Animation cannot redraw them on
+  the main thread; their images keep their old color space tag and the window server converts them, so base and
+  groups stay consistent until the runtime redraws them.
+- Not tested: a real display profile change or a move between screens. `run.sh cschange-person` runs the same check
+  for 90 s while a person switches the display's profile (System Settings → Displays → Color profile, for example
+  Color LCD → sRGB IEC61966-2.1, and back), once without and once with the reaction.
+
 ## Click-through on transparent pixels (needs a person at the Mac)
 
 1. Run `scripts/spikes/layer-runtime/run.sh click` from Terminal. Two windows appear in the middle of the screen: a grey
@@ -825,12 +914,11 @@ window's first frame is committed before it is shown.
 ## Not covered
 
 - A 1× external display, an sRGB display, and moving a window between screens (only the built-in XDR display here).
-  With E layers in the window's color space (like B), a window moved to a screen with another color space needs its
-  base bitmap drawn again; B already does this (Deskset draws kept pictures again when the display's color space
-  changes).
-- WindowServer's memory from `footprint` or `vmmap`: both, and `proc_pid_rusage`, need root for WindowServer
-  ("try running with `sudo`"; `sudo` needs a password here), so it comes from `top` (MEM, 1 MB resolution), with
-  WindowServer's resident size from `ps` and the GPU's memory in use from the I/O Registry as cross-checks.
+  A color-space change was only simulated from code (side checks); a real one needs a person (`cschange-person`).
+- **WindowServer's memory.** `footprint`, `vmmap` and `proc_pid_rusage` need root for WindowServer. `top`'s MEM, the
+  GPU's memory in use and system-wide page counts all fail the positive control (8 separate copies of a 9.77 MB image
+  must add about 78 MB; see question 3), so no WindowServer memory number here is evidence. To measure it, a person
+  would run `sudo footprint -p WindowServer` before and after opening each way's windows.
 - The real `NSGlassEffectView` in the glass check is only timed: its tint is not a flat color, so the read-back cannot
   tell whether it lags behind the element (the stand-in view can).
 - D with IOSurfaces in the display's color space (it should match B like E does).

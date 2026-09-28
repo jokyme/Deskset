@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Summarizes the repeated runs in results/ (cost table, off-main commits, glass, window swap): median, minimum and
-maximum over the rounds, and whether any phase ran with a 1-minute load average above 8 (provisional).
+"""Summarizes the repeated runs in results/ (cost table, off-main commits, glass, window swap, and the corrections:
+cost-d, sysmem, wspair, frames60): median, minimum and maximum over the rounds, and whether any phase ran with a
+1-minute load average above 8 (provisional).
 
     python3 scripts/spikes/layer-runtime/summarize.py      writes results/summary.json and prints Markdown tables
 """
@@ -97,6 +98,18 @@ def cost(directory="cost"):
         ("keptElementsDrawn", "keptPicturesLastFrame.elementsDrawn"),
         ("keptVsFullMaxChannelDiff", "keptPicturesVsFullDrawing.maxChannelDiff"),
         ("keptVsFullDifferingPercent", "keptPicturesVsFullDrawing.differingPercent"),
+        # cost-d: proc_pid_rusage v6 counters of the on phases, thread CPU per update, the GPU
+        ("instructionsMillionsPerSecond", "cpu.countersOn.instructionsMillionsPerSecond"),
+        ("cyclesMillionsPerSecond", "cpu.countersOn.cyclesMillionsPerSecond"),
+        ("cyclesPerInstruction", "cpu.countersOn.cyclesPerInstruction"),
+        ("averageGHz", "cpu.countersOn.averageGHz"),
+        ("pCoreShareOfCPU", "cpu.countersOn.pCoreShareOfCPU"),
+        ("pCoreShareOfInstructions", "cpu.countersOn.pCoreShareOfInstructions"),
+        ("energyMilliwatts", "cpu.countersOn.energyMilliwatts"),
+        ("runnableMsPerSecond", "cpu.countersOn.runnableMsPerSecond"),
+        ("threadCPUp50us", "frameCost.threadCPUp50us"),
+        ("commitThreadCPUp50us", "frameCost.commitThreadCPUp50us"),
+        ("coalescedCommitP50us", "frameCost.coalescedCommitP50us"),
     ]
     for combo, runs in sorted(groups.items()):
         entry = {"rounds": len(runs), "config": runs[0].get("config"), "widgets": runs[0].get("widgets")}
@@ -106,6 +119,24 @@ def cost(directory="cost"):
         entry["provisionalRounds"] = sum(1 for run in runs if phase_loads(run) and max(phase_loads(run)) > LOAD_LIMIT)
         entry["memoryPressureLevels"] = sorted({dig(run, "memory.memoryPressureAfterSettle.pressureLevel")
                                                 for run in runs} - {None})
+        # Memory numbers from rounds under normal memory pressure (level 1) only.
+        level1 = [run for run in runs if dig(run, "memory.memoryPressureAfterSettle.pressureLevel") == 1]
+        entry["memoryPressureLevel1Rounds"] = len(level1)
+        s1 = stats([dig(run, "memory.footprintIncreasePerWidgetMB") for run in level1])
+        if s1:
+            entry["footprintIncreasePerWidgetMBLevel1"] = s1
+        # CPU from rounds whose phases all stayed at or below the load limit.
+        calm = [run for run in runs if phase_loads(run) and max(phase_loads(run)) <= LOAD_LIMIT]
+        entry["roundsAtOrBelowLoadLimit"] = len(calm)
+        s2 = stats([dig(run, "cpu.processPercentOfOneCore") for run in calm])
+        if s2:
+            entry["processPercentOfOneCoreCalmRounds"] = s2
+        gpu = [statistics.mean([p["gpu"]["deviceUtilizationPercent"] for p in run.get("phases", [])
+                                if p.get("phase") == "on" and p.get("gpu")])
+               for run in runs if any(p.get("gpu") for p in run.get("phases", []))]
+        s3 = stats(gpu)
+        if s3:
+            entry["gpuDeviceUtilizationOnPercent"] = s3
         for key, path in per_round:
             s = stats([dig(run, path) for run in runs])
             if s:
@@ -200,10 +231,117 @@ def memtrace(directory):
     return out
 
 
+def sysmem(directory="sysmem"):
+    """Memory as footprint --vmObjectDirty sees it (and the other readings), one window opening per process: the open
+    step per widget, median over rounds. Controls separately."""
+    groups = {}
+    for path in sorted(glob.glob(os.path.join(RESULTS, directory, "*.json"))):
+        name = os.path.basename(path)[:-5]
+        combo = name.rpartition("-r")[0] if name.rpartition("-r")[2].isdigit() else name
+        groups.setdefault(combo, []).append(load(path))
+    out = {}
+    for combo, runs in sorted(groups.items()):
+        e = {"rounds": len(runs), "config": runs[0].get("config") or runs[0].get("control"),
+             "widgets": runs[0].get("widgets", 1), "windowColorSpace": runs[0].get("windowColorSpace")}
+        for key in ("vmObjectDirtyMB", "footprintMB", "gpuInUseMB", "windowServerMB",
+                    "systemAnonymousWiredCompressedMB"):
+            opens = [v for run in runs for v in dig(run, f"summary.{key}.openSteps") or []]
+            closes = [v for run in runs for v in dig(run, f"summary.{key}.closeSteps") or []]
+            if opens:
+                e[key + "Open"] = stats(opens)
+                e[key + "OpenPerWidget"] = stats([v / e["widgets"] for v in opens])
+            if closes:
+                e[key + "Close"] = stats(closes)
+        e["bitmaps"] = [run.get("bitmapsAtLastClose") for run in runs]
+        levels = {c.get(k, {}).get("pressureLevel") for run in runs for c in run.get("cycles", [])
+                  for k in ("before", "open", "closed")} - {None}
+        e["memoryPressureLevels"] = sorted(levels)
+        out[combo] = e
+    return out
+
+
+def wspair(directory="wspair"):
+    """Paired phases in one process (WsPair.swift): per set, the increase over the idle phase of the same cycle,
+    pooled over the rounds with the cycles as the units; per round too."""
+    runs = [load(p) for p in sorted(glob.glob(os.path.join(RESULTS, directory, "r[0-9]*.json")))]
+    if not runs:
+        return {}
+    out = {"rounds": len(runs), "cycles": sum(r["cycles"] for r in runs),
+           "loadAverage1mMax": max(r["loadAverage1mMax"] for r in runs),
+           "provisionalPhases": sum(r["provisionalPhases"] for r in runs),
+           "phases": sum(len(r["phases"]) for r in runs)}
+    sets = runs[0]["sets"]
+
+    def cycle_values(run, key, a, b=None):
+        vals = []
+        for c in range(run["cycles"]):
+            ph = {p["set"]: p for p in run["phases"] if p["cycle"] == c}
+            def v(name):
+                p = ph.get(name)
+                if not p:
+                    return None
+                if key == "sum":
+                    x, y = p.get("windowServerPercentOfOneCore"), p.get("processPercentOfOneCore")
+                    return None if x is None or y is None else x + y
+                if key == "gpu":
+                    return p.get("gpu", {}).get("deviceUtilizationPercent")
+                return p.get(key)
+            x, y = v(a), v(b or "idle")
+            if x is not None and y is not None:
+                vals.append(x - y)
+        return vals
+
+    keys = ("windowServerPercentOfOneCore", "processPercentOfOneCore", "sum", "gpu")
+    per_set = {}
+    for name in sets:
+        per_set[name] = {k: stats([v for run in runs for v in cycle_values(run, k, name)]) for k in keys}
+        per_set[name]["perRoundMeanSum"] = [round(statistics.mean(cycle_values(run, "sum", name)), 2) for run in runs]
+    out["overIdle"] = per_set
+    pairs = {}
+    for a, b in (("CPw", "EPw"), ("EPw", "Bkept"), ("CPw", "Bkept"), ("EPw", "E1"), ("C1", "E1"), ("E1", "B"),
+                 ("Bkept", "B"), ("EP@srgb", "E1@srgb"), ("E1@srgb", "E1"), ("EP@srgb", "EPw"), ("A", "B")):
+        if a in sets and b in sets:
+            pairs[f"{a} - {b}"] = {k: stats([v for run in runs for v in cycle_values(run, k, a, b)]) for k in keys}
+            pairs[f"{a} - {b}"]["perRoundMeanSum"] = [round(statistics.mean(cycle_values(run, "sum", a, b)), 2)
+                                                      for run in runs]
+    out["pairs"] = pairs
+    return out
+
+
+def frames60(directory="frames60"):
+    """60 Hz frames on screen per round: distinct frames seen vs committed, the longest freeze, and whether the
+    skin thread's commits around it were on time."""
+    groups = {}
+    for path in sorted(glob.glob(os.path.join(RESULTS, directory, "*.json"))):
+        name = os.path.basename(path)[:-5]
+        groups.setdefault(name.rpartition("-r")[0], []).append((name, load(path)))
+    out = {}
+    for combo, runs in sorted(groups.items()):
+        rows = []
+        for name, run in runs:
+            o = run.get("onScreen", {})
+            seen, committed = o.get("distinctFramesSeen"), o.get("framesCommitted")
+            freeze = o.get("longestFreeze", {})
+            gaps = [c.get("sincePreviousCommitMs") for c in freeze.get("commitsAround", [])
+                    if c.get("sincePreviousCommitMs") is not None]
+            rows.append({"round": name, "distinctFramesSeen": seen, "framesCommitted": committed,
+                         "per300": round(seen / committed * 300, 1) if seen and committed else None,
+                         "longestSameFrameMs": o.get("longestSameFrameMs"),
+                         "largestCommitGapAroundFreezeMs": max(gaps) if gaps else None,
+                         "loadAtEnd": run.get("loadAverageAtEnd", [None])[0]})
+        per300 = [r["per300"] for r in rows if r["per300"] is not None]
+        out[combo] = {"rounds": len(rows), "per300": stats(per300),
+                      "roundsBelow298of300": sum(1 for v in per300 if v < 298),
+                      "longestSameFrameMs": stats([r["longestSameFrameMs"] for r in rows]),
+                      "rows": rows}
+    return out
+
+
 def main():
     summary = {"cost": cost(), "wscpu": cost("wscpu"), "wsmem": wsmem(), "costB": cost("cost-b"),
                "wscpuB": cost("wscpu-b"), "wsmemB": wsmem("wsmem-b"), "memtrace": memtrace("memtrace"),
-               "memtraceB": memtrace("memtrace-b")}
+               "memtraceB": memtrace("memtrace-b"), "costD": cost("cost-d"), "sysmem": sysmem(),
+               "wspair": wspair(), "frames60": frames60()}
     off, load_max = keyed_stats(rounds("offmain"), [
         "framesCommitted", "distinctFramesSeen", "tornSamples(codeA != codeB)", "unreadable", "samples",
         "longestSameFrameMs", "framesCommittedDuringStalls", "distinctFramesSeenDuringStalls", "layers"])
