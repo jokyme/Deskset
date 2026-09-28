@@ -230,6 +230,13 @@ enum StudioLatencySelfTests {
         guard let rep = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds) else { return t.check(false, "canvas") }
         func frame() { canvas.cacheDisplay(in: canvas.bounds, to: rep) }
         frame()
+        // Which of the canvas's planes a step asks to draw again (`frame` draws them first, as the screen would, then
+        // the whole picture): the content and the overlay, the workbench only when what it shows changed.
+        editor.window?.displayIfNeeded()
+        var asked = [0, 0, 0]
+        func noteAsked() {
+            for (i, plane) in canvas.planes.all.enumerated() where plane.layer?.needsDisplay() ?? false { asked[i] += 1 }
+        }
         let written = editor.skin?.meter(named: target)?.rawOption(run.key)
 
         let desktop = app.controller(for: config)
@@ -245,6 +252,7 @@ enum StudioLatencySelfTests {
             let start = now()
             editor.commit([.init(section: target, key: run.key, value: value, own: true)], name: run.undoName)
             let committed = now()
+            noteAsked()
             frame()
             edits.append(ms(since: start))
             phases["frame", default: []].append(ms(since: committed))
@@ -265,6 +273,7 @@ enum StudioLatencySelfTests {
             let start = now()
             editor.window?.undoManager?.undo()
             let undone = now()
+            noteAsked()
             frame()
             undos.append(ms(since: start))
             undoPhases["frame", default: []].append(ms(since: undone))
@@ -330,6 +339,8 @@ enum StudioLatencySelfTests {
         print("    LATENCY \(name) | undo phases, p50/p95 ms | \(breakdown(undoPhases))")
         print("    LATENCY \(name) | inspector | in place \(inPlaceSteps), built again \(rebuilt)"
               + (fallbacks.isEmpty ? "" : " (\(fallbacks.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: "; ")))"))
+        print("    LATENCY \(name) | canvas planes drawn again after \(2 * samples) steps | workbench \(asked[0]), "
+              + "content \(asked[1]), overlay \(asked[2])")
         if !gestureFrames.isEmpty {
             print("    LATENCY \(name) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
                   + "\(sent) of \(gestureFrames.count)")
