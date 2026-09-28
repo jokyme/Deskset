@@ -1619,10 +1619,12 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   PreviousFolder、ContextMenu、Properties；Type=Icon 写出 `.ico` 文件。
 - **Mac：** 模型相同；默认路径为 `/Volumes/`（已装载的卷）；排序与访达类似（`..`、文件夹、文件；自然排序）；FileDate 使用
   用户的区域格式；路径使用 `/`。`Type=Icon` 在后台按 IconSize 写出访达的图标：路径为 `.ico` 且不超过 256 像素时是真正的
-  `.ico` 文件，否则写入 PNG 数据（Image meter 两者都能读取），IconPath 中缺少的文件夹会被创建。ContextMenu 在访达中显示该
-  项目（无法显示另一个 App 中访达的上下文菜单）；Properties 打开访达的“显示简介”窗口（需要自动化权限）。
-- **原因：** macOS 的路径和 API。
-- **对皮肤的影响：** 右键菜单变为“在访达中显示”；从路径中解析 `\` 的皮肤需要改用 `/`。
+  `.ico` 文件，否则写入 PNG 数据（Image meter 两者都能读取），IconPath 中缺少的文件夹会被创建。符号链接和访达替身使用它
+  指向的项目的图标，不带访达的箭头（无法解析的保留自己的图标）。ContextMenu 在访达中显示该项目（无法显示另一个 App 中
+  访达的上下文菜单）；Properties 打开访达的“显示简介”窗口（需要自动化权限）。
+- **原因：** macOS 的路径和 API；手册没有说明链接的图标怎么画，而在 macOS 26 上 `/Applications/Safari.app` 是一个链接。
+- **对皮肤的影响：** 右键菜单变为“在访达中显示”；从路径中解析 `\` 的皮肤需要改用 `/`。指向桌面、文稿或下载文件夹中
+  项目的链接或替身可能让 macOS 询问一次该文件夹的访问权限。
 - **状态：** 部分支持
 
 #### RecycleManager

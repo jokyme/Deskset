@@ -1778,10 +1778,14 @@ Intel Macs are untested.
 - **Mac:** the same model; the default path is `/Volumes/` (the mounted volumes); Finder-like order (`..`, folders,
   files; natural name sort); FileDate in the user's locale; paths use `/`. `Type=Icon` writes Finder's icon at IconSize
   in the background, as a real `.ico` file for `.ico` paths up to 256 px and as PNG data otherwise (the Image meter
-  reads both), creating missing folders on IconPath. ContextMenu reveals the item in Finder (another app's Finder
-  context menu cannot be shown); Properties opens Finder's Get Info window (Automation permission).
-- **Why:** macOS paths and APIs.
-- **Skin impact:** right-click menus become "show in Finder"; skins that parse `\` out of paths need `/`.
+  reads both), creating missing folders on IconPath. A symbolic link or Finder alias gets the icon of the item it
+  leads to, without Finder's arrow (one that cannot be followed keeps its own icon). ContextMenu reveals the item in
+  Finder (another app's Finder context menu cannot be shown); Properties opens Finder's Get Info window (Automation
+  permission).
+- **Why:** macOS paths and APIs; the manual does not say how links are drawn, and on macOS 26 `/Applications/Safari.app`
+  is a link.
+- **Skin impact:** right-click menus become "show in Finder"; skins that parse `\` out of paths need `/`. A link or
+  alias to an item in Desktop, Documents or Downloads may make macOS ask for access to that folder once.
 - **Status:** partial
 
 #### RecycleManager

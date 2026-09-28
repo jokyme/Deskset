@@ -519,6 +519,21 @@ plugin's source code.
   core-only contexts (DesksetSelfTest) the icon values stay empty.
 - Status: emulated
 
+### Icons of links and aliases (judgment)
+- Windows (Rainmeter): the manual does not say how the icon of a shortcut or link is drawn.
+- Mac (Deskset): a symbolic link or Finder alias gets the icon of the item it leads to
+  (`FileViewIcons.resolvedSource`): links are followed through every component, aliases are resolved without any
+  dialog and without mounting volumes, and chains of both are followed. macOS would otherwise draw the link's own icon
+  with Finder's arrow. A link or alias that cannot be followed (broken, a loop, an original that was deleted or is on
+  a volume that is not mounted) keeps its own icon. Only `Type=Icon` follows them: names and the other types still
+  describe the link or alias itself, as Finder does (links to folders are listed as folders, see "Listing rules").
+- Why: judgment where the manual is silent. On recent macOS versions (seen on macOS 26) `/Applications/Safari.app` is
+  a link into a system volume, so a launcher listing it would show Safari with an arrow, unlike the Dock.
+- Skin impact: launchers and file lists show linked apps and aliases like the Dock does. Following a link or alias to
+  an item inside Desktop, Documents or Downloads reads that item, so macOS may ask for access to that folder once, as
+  it does when a skin lists the folder itself.
+- Status: emulated
+
 ### Commands
 - Windows (Rainmeter): FollowPath (folder → navigate, file → open), Open, PreviousFolder, ContextMenu (Explorer's
   context menu), Properties (Explorer's properties dialog), each also with a path for the parent.

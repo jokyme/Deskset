@@ -479,7 +479,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): the Finder icon of the file or folder (NSWorkspace), rendered at that pixel size and written
   atomically on a background queue. For `.ico` paths up to 256 pixels it is a real Windows icon file (ImageIO's ICO
   encoder); otherwise PNG data is written whatever the extension — the Image meter recognises both from the content.
-  Missing folders on the IconPath are created.
+  Missing folders on the IconPath are created. A symbolic link or Finder alias is followed first, so its icon is the
+  original's, without Finder's arrow (see "Icons of links and aliases" in `plugins.md`).
 - Why: macOS icons come from NSWorkspace; `.ico` is kept so the path the skin expects exists.
 - Skin impact: icons look like Finder icons.
 - Status: emulated
