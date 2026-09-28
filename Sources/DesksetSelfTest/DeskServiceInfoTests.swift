@@ -370,6 +370,9 @@ func runDeskHoverTests(_ t: TestRunner) {
             for start in starts {
                 guard let hover = snapshot.hover(at: snapshot.index.position(utf8: start)) else { continue }
                 hovers += 1
+                for text in hover.prose(.english) + hover.prose(.simplifiedChinese) where !deskMessageLeaks(text).isEmpty {
+                    t.check(false, "\(item.path): hover leaks \(deskMessageLeaks(text)): \(text)")
+                }
                 if hover.paragraphs.contains(item.doc.text) { found = true; break }
                 seen.append(hover.title.en)
             }
@@ -400,6 +403,36 @@ func runDeskHoverTests(_ t: TestRunner) {
                     "\(needle): Chinese card")
             for text in hover.prose(.english) + hover.prose(.simplifiedChinese) { t.equal(deskMessageLeaks(text), [], text) }
         }
+    }
+
+    t.suite("Desk: service — hover on the package's options and styles") {
+        let package = """
+        package { name: "Shelf" }
+        options { accent = ColorPicker("Accent", default: .accent) }
+        style card { .padding(4).rounded(8) }
+        translations { "zh-Hans" { "Hello": "你好" } }
+        """
+        let widget = """
+        widget {
+            Text("Hello").style(card).color(options.accent)
+        }
+        """
+        let snapshot = deskNavService(widget, file: "Clock.desk", others: ["package.desk": package]).snapshot
+        let card = snapshot.hover(at: deskNavPosition(snapshot, "card"))
+        t.equal(card?.codeLine, "style card { .padding(4).rounded(8) }")
+        t.check(card?.facts.contains(DeskHoverFact(LocalizedText("Written in", "写在"), LocalizedText("`package.desk`", "`package.desk`"))) == true,
+                "\(String(describing: card?.facts))")
+        let accent = snapshot.hover(at: deskNavPosition(snapshot, "accent"))
+        t.equal(accent?.title.en, "Option `accent`")
+        t.check(accent?.facts.contains { $0.label.en == "Shared" } == true, "\(String(describing: accent?.facts))")
+        t.check(accent?.facts.contains { $0.label.en == "Default" && $0.value.en == "`.accent`" } == true, "default")
+        let hello = snapshot.hover(at: deskNavPosition(snapshot, "Hello"))
+        t.check(hello?.facts.contains(DeskHoverFact(LocalizedText("zh-Hans", "zh-Hans"), LocalizedText("“你好”", "“你好”"))) == true,
+                "the package's translation: \(String(describing: hello?.facts))")
+        // Text written with data keeps its braces as the author wrote them (escaped for Markdown).
+        let data = deskNavService("widget {\n    Text(\"{cpu.usage}% *busy*\")\n}\n").snapshot
+        let quoted = data.hover(at: deskNavPosition(data, "% *busy"))
+        t.check(quoted?.facts.first?.value.en == "“\\{cpu.usage\\}% \\*busy\\*”", "\(String(describing: quoted?.facts.first))")
     }
 
     t.suite("Desk: service — hover and signature help, every name of every file") {
@@ -513,6 +546,12 @@ func runDeskSignatureHelpTests(_ t: TestRunner) {
                         t.equal(signature.parameters[p].label, label, "\(item.path): \(item.doc.example) at \(position)")
                     } else if entry.kind == .argument, signature.parameters[p].label != nil {
                         t.check(false, "\(item.path): positional argument at \(position) gets \(signature.parameters[p].label!): in \(item.doc.example) (\(signature.label))")
+                    }
+                    for q in signature.parameters {
+                        for text in [q.type.en, q.type.zh, q.doc.en, q.doc.zh, q.defaultValue?.en ?? "", q.defaultValue?.zh ?? ""]
+                        where !deskMessageLeaks(text).isEmpty {
+                            t.check(false, "\(item.path): signature help leaks \(deskMessageLeaks(text)): \(text)")
+                        }
                     }
                     let range = signature.parameters[p].labelRange
                     t.check(range.upperBound <= signature.label.utf16.count && !range.isEmpty, "label range \(range) of \(signature.label)")
