@@ -291,3 +291,21 @@ func runStudioCatalogTests(_ t: TestRunner) {
         t.equal(skin.measure(named: "MeasureCPU")?.value, 21)
     }
 }
+
+func runStudioSchemaChineseTests(_ t: TestRunner) {
+    t.suite("Studio catalog: every setting's words in Chinese") {
+        let reachable = StudioSchemaChinese.reachable()
+        let missingLabels = reachable.labels.filter { StudioSchemaChinese.label($0) == nil }.sorted()
+        let missingChoices = reachable.choices.filter { StudioSchemaChinese.choice($0) == nil }.sorted()
+        if ProcessInfo.processInfo.environment["DESKSET_LIST_MISSING_ZH"] != nil {
+            print("LABELS", missingLabels.map { "\"\($0)\"" }.joined(separator: "\n"))
+            print("CHOICES", missingChoices.map { "\"\($0)\"" }.joined(separator: "\n"))
+        }
+        t.equal(missingLabels, [], "labels without Chinese")
+        t.equal(missingChoices, [], "choices without Chinese")
+        // Chinese in Apple's style: full-width punctuation next to Chinese, a space between Chinese and Latin or digits.
+        for (en, zh) in StudioSchemaChinese.labels.merging(StudioSchemaChinese.choices, uniquingKeysWith: { a, _ in a }) {
+            t.equal(StudioSchemaChinese.styleProblems(zh), [], "\(en) → \(zh)")
+        }
+    }
+}

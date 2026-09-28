@@ -126,7 +126,9 @@ final class StudioWidgetPage {
 
     func build(_ facts: StudioWidgetFacts) -> StudioPage {
         plan = Self.plan(facts)
-        var page = StudioPage(id: "widget", title: facts.name, subtitle: facts.information)
+        let root = skin?.rootConfig ?? ""
+        var page = StudioPage(id: "widget", title: StudioBuiltInWords.name(facts.name, root: root),
+                              subtitle: StudioBuiltInWords.sentence(facts.information, root: root))
         if let s = optionsSection(facts) { page.sections.append(s) }
         if let s = showsSection(facts) { page.sections.append(s) }
         page.sections.append(colorsSection(facts))

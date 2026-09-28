@@ -652,11 +652,11 @@ enum StudioText {
         .backdropTransparent: ("Transparent", "透明棋盘"),
         .backdropSolid: ("Solid", "实色"),
         .backdropSimilar: ("Similar", "相似"),
-        .backdropClose: ("Close to your wallpaper", "接近你的壁纸"),
+        .backdropClose: ("Close to your wallpaper", "接近你的墙纸"),
         .backdropSimilarTip: ("macOS does not say which picture shows now; this is one of them.",
                               "macOS 不告诉我们现在显示的是哪一张，这是其中一张。"),
         .backdropCloseTip: ("Your wallpaper is in a place macOS asks about before it can be read, so a sample close to it stands in.",
-                            "你的壁纸在需要 macOS 授权才能读取的地方，所以这里用一张接近的样例代替。"),
+                            "你的墙纸在需要 macOS 授权才能读取的地方，所以这里用一张接近的样例代替。"),
         .showOtherWidgets: ("Show Other Widgets", "显示其他小组件"),
         .previewBar: ("Preview", "预览"),
         .previewPrefix: ("Preview:", "预览："),
@@ -881,7 +881,7 @@ enum StudioText {
         .rowSymbolColors: ("Colors", "颜色"),
         .textColor: ("Text color", "文字颜色"),
         .followsLightDark: ("follows Light / Dark", "跟随浅色 / 深色"),
-        .fit: ("Fit", "跟随内容"),
+        .fit: ("Fit", "自适应"),
         .widthPrefix: ("W", "宽"),
         .heightPrefix: ("H", "高"),
         .alignLeft: ("Left", "左对齐"),
@@ -1157,8 +1157,63 @@ enum StudioText {
         return language == .chinese ? entry.zh : entry.en
     }
 
-    /// The string of `key` with its `%@` / `%d` filled.
+    /// The string of `key` with its `%@` / `%d` filled. In Chinese a space goes between Chinese and a Latin letter or
+    /// a digit where the sentence meets what is filled in ("只改这个" + "CPU" → "只改这个 CPU"); the filled-in text itself
+    /// is left as it is written (a widget's or a file's own name).
     static func format(_ key: Key, _ arguments: CVarArg...) -> String {
-        String(format: self[key], arguments: arguments)
+        let template = self[key]
+        guard language == .chinese else { return String(format: template, arguments: arguments) }
+        return spacedFormat(template, arguments)
+    }
+
+    /// Marks around each filled-in value (private-use characters, never in the Studio's words).
+    private static let open: Character = "\u{E000}", close: Character = "\u{E001}"
+
+    static func spacedFormat(_ template: String, _ arguments: [CVarArg]) -> String {
+        // Wrap every specifier (%@, %d, %1$@…; not %%) in the marks.
+        var marked = ""
+        var i = template.startIndex
+        while i < template.endIndex {
+            let c = template[i]
+            guard c == "%" else { marked.append(c); i = template.index(after: i); continue }
+            var j = template.index(after: i)
+            guard j < template.endIndex else { marked.append(c); break }
+            if template[j] == "%" { marked += "%%"; i = template.index(after: j); continue }
+            while j < template.endIndex, template[j].isNumber || template[j] == "$" || template[j] == "." ||
+                  template[j] == "l" { j = template.index(after: j) }
+            guard j < template.endIndex else { marked += template[i...]; break }
+            let end = template.index(after: j)
+            marked.append(open)
+            marked += template[i..<end]
+            marked.append(close)
+            i = end
+        }
+        let filled = Array(String(format: marked, arguments: arguments))
+        var out = ""
+        for (n, c) in filled.enumerated() {
+            if c == open {
+                let before = out.last, after = filled[(n + 1)...].first { $0 != open && $0 != close }
+                if let before, let after, needsSpace(before, after) { out.append(" ") }
+            } else if c == close {
+                let after = filled[(n + 1)...].first { $0 != open && $0 != close }
+                if let before = out.last, let after, needsSpace(before, after) { out.append(" ") }
+            } else {
+                out.append(c)
+            }
+        }
+        return out
+    }
+
+    /// Chinese next to a Latin letter or a digit (either way round).
+    static func needsSpace(_ a: Character, _ b: Character) -> Bool {
+        (isHan(a) && isLatinOrDigit(b)) || (isLatinOrDigit(a) && isHan(b))
+    }
+
+    static func isHan(_ c: Character) -> Bool {
+        c.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) || (0x3400...0x4DBF).contains($0.value) }
+    }
+
+    static func isLatinOrDigit(_ c: Character) -> Bool {
+        c.isASCII && (c.isLetter || c.isNumber)
     }
 }

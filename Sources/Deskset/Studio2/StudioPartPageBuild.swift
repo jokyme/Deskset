@@ -455,7 +455,7 @@ extension StudioPartPage {
             colorRow("look.fill", "LineColor", label: StudioText[.rowFill])
             let width = OptionValue.number(m.option("LineWidth") ?? "") ?? 1
             var row = StudioPage.Row(label: StudioText[.rowThickness], control: .number(.init(
-                text: StudioNumberInput.text(width), value: width, unit: "pt", width: 64, minimum: 0, maximum: 50)))
+                text: StudioNumberInput.text(width), value: width, unit: StudioText.language == .chinese ? "点" : "pt", width: 64, minimum: 0, maximum: 50)))
             row.detail = showsIniNames ? "LineWidth" : nil
             items.append(.init(id: "look.thickness", kind: .row(row)))
             rows["look.thickness"] = StudioPartRow(key: "LineWidth", kind: .number(minimum: 0, maximum: 50),
@@ -490,7 +490,7 @@ extension StudioPartPage {
         if spec.kind == .rectangle {
             let radius = spec.number(4) ?? 0
             var r = StudioPage.Row(label: StudioText[.rowCorners], control: .number(.init(
-                text: spec.param(4) ?? "0", value: radius, unit: "pt", defaultText: "0", width: 64, minimum: 0)))
+                text: spec.param(4) ?? "0", value: radius, unit: StudioText.language == .chinese ? "点" : "pt", defaultText: "0", width: 64, minimum: 0)))
             r.detail = showsIniNames ? "Shape" : nil
             items.append(.init(id: "shape.corners", kind: .row(r)))
             rows["shape.corners"] = StudioPartRow(key: "Shape", kind: .shapeRadius, name: StudioText[.rowCorners],
@@ -517,7 +517,7 @@ extension StudioPartPage {
             return nil
         }.last ?? "1"
         items.append(.init(id: "shape.strokeWidth", kind: .row(StudioPage.Row(label: StudioText[.rowStrokeWidth],
-            control: .number(.init(text: width, value: Double(width), unit: "pt", defaultText: "1", width: 64,
+            control: .number(.init(text: width, value: Double(width), unit: StudioText.language == .chinese ? "点" : "pt", defaultText: "1", width: 64,
                                    minimum: 0))))))
         rows["shape.strokeWidth"] = StudioPartRow(key: "Shape", kind: .shapeStrokeWidth,
                                                  name: StudioText[.rowStrokeWidth], title: StudioText[.rowStrokeWidth],
@@ -692,8 +692,8 @@ extension StudioPartPage {
         case .number, .percent255, .angle:
             if p.key.caseInsensitiveCompare("FontSize") == .orderedSame, let s = m as? StringMeter {
                 let pt = TextStyle.pixelSize(points: s.style.fontSize)
-                control = .number(.init(text: StudioNumberInput.text((pt * 2).rounded() / 2), value: pt, unit: "pt",
-                                        width: 70))
+                control = .number(.init(text: StudioNumberInput.text((pt * 2).rounded() / 2), value: pt,
+                                        unit: chinese ? "点" : "pt", width: 70))
                 rowSpec(.fontSize)
             } else {
                 control = .number(.init(text: written, value: Double(value), placeholder: value, width: 70))
@@ -705,11 +705,14 @@ extension StudioPartPage {
             rowSpec(.geometry)
         case .choice(let choices, _):
             let values = choices.map(\.value)
-            let titles = field.presets.isEmpty ? choices.map(\.title)
+            let schemaTitle = { (c: EditorSchema.Choice) in chinese ? StudioSchemaChinese.choice(c.title) ?? c.title : c.title }
+            let titles = field.presets.isEmpty ? choices.map(schemaTitle)
                 : choices.map { c in field.presets.first { $0.value.caseInsensitiveCompare(c.value) == .orderedSame }
-                    .map { chinese ? $0.zh : $0.en } ?? c.title }
+                    .map { chinese ? $0.zh : $0.en } ?? schemaTitle(c) }
             let selected = EditorSchema.choice(for: value, in: choices).flatMap { c in values.firstIndex(of: c.value) }
-            if choices.count <= 3, titles.reduce(0, { $0 + $1.count }) <= 20 {
+            // Segments while every title fits its 62 pt (measured: a Chinese character is about twice a letter).
+            let fits = titles.allSatisfy { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width <= 58 }
+            if choices.count <= 3, fits {
                 control = .segmented(.init(items: titles, selected: selected ?? -1, width: CGFloat(62 * choices.count)))
             } else {
                 control = .popup(.init(items: titles.map { StudioPage.MenuItem(title: $0) }, selected: selected,
@@ -738,7 +741,8 @@ extension StudioPartPage {
             control = .text(sentence)
         case .text, .formula, .styleList, .sectionRef, .format, .image, .insets, .alignment9, .shapes:
             if case .alignment9 = p.kind {
-                control = .text(EditorSchema.alignmentChoice(for: value).title)
+                let title = EditorSchema.alignmentChoice(for: value).title
+                control = .text(chinese ? StudioSchemaChinese.choice(title) ?? title : title)
             } else {
                 control = .number(.init(text: written, value: nil, placeholder: value, isText: true))
                 rowSpec(.text)

@@ -190,7 +190,8 @@ public enum StudioCatalog {
         else if k.hasPrefix("tooltip") { section = .pointer }
         else if k.hasPrefix("font") || k.hasPrefix("string") { section = .text }
         else { section = .look }
-        return Field(p.key, section, p.label, p.label, control, level: p.level == .essential ? .essential : .more,
+        return Field(p.key, section, p.label, StudioSchemaChinese.label(p.label) ?? p.label, control,
+                     level: p.level == .essential ? .essential : .more,
                      rainmeter: [p.key])
     }
 

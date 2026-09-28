@@ -257,7 +257,9 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     /// The name the window shows: the widget's `[Metadata] Name`, else its folder.
     var widgetName: String {
         let config = session?.config ?? ""
-        if let skin, let name = ManageModel.metadataValue(skin.metadata, "Name"), !name.isEmpty { return name }
+        if let skin, let name = ManageModel.metadataValue(skin.metadata, "Name"), !name.isEmpty {
+            return StudioBuiltInWords.name(name, root: skin.rootConfig)
+        }
         return String(config.split(separator: "\\").last ?? Substring(config))
     }
 
