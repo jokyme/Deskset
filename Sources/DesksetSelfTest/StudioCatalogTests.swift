@@ -219,4 +219,75 @@ func runStudioCatalogTests(_ t: TestRunner) {
         t.equal(f.look, nil)
         t.equal(f.variants, nil)
     }
+
+    t.suite("Studio facts: writing a color") {
+        let ini = """
+            [Rainmeter]
+            Update=1000
+            SkinWidth=200
+            SkinHeight=100
+
+            [Variables]
+            @Include=#@#Theme.inc
+            Ring=0,136,255
+
+            [MeterCard]
+            Meter=Shape
+            Shape=Rectangle 0,0,200,100,8 | Fill Color #Card# | StrokeWidth 0
+
+            [MeterBar]
+            Meter=Bar
+            MeasureName=MeasureCPU
+            BarColor=C86400
+            X=10
+            Y=10
+            W=100
+            H=4
+
+            [MeterRing]
+            Meter=Shape
+            Shape=Ellipse 50,50,20 | Fill Color 0,0,0,0 | StrokeWidth 4 | Stroke Color #Ring#,80
+            Shape2=Arc 50,30,70,50,20,20 | StrokeWidth 4 | Stroke Color #Ring#
+
+            [MeterLabel]
+            Meter=String
+            Text=CPU
+            FontColor=#Ink#
+            X=10
+            Y=60
+
+            [MeasureCPU]
+            Measure=CPU
+            """
+        let (skin, _) = try makeSkin(t, ini, files: ["Root/@Resources/Theme.inc": "[Variables]\nCard=250,250,250,200\nInk=20,20,20\n"])
+        skin.update()
+        let f = StudioWidgetFacts(skin: skin)
+        let mint = RGBA(r: 0, g: 199, b: 190)
+        // A variable the widget adds an alpha to stays R,G,B, written for this widget after its includes.
+        guard let ring = f.colors.all.first(where: { $0.variable == "Ring" }) else { return t.check(false, "the ring") }
+        t.equal(ring.acceptsAlpha, false)
+        t.equal(StudioColorWriting.ops(ring, RGBA(r: 0, g: 199, b: 190, a: 128), skin: skin),
+                [.setValue(file: skin.fileURL, section: "Variables", key: "Ring", value: "0,199,190", afterIncludes: true)])
+        // A shared file's color is overridden in the widget's own file.
+        guard let card = f.colors.card else { return t.check(false, "the card") }
+        t.equal(card.variable, "Card")
+        t.equal(StudioColorWriting.currentText(card, skin: skin), "250,250,250,200")
+        t.equal(StudioColorWriting.ops(card, RGBA(r: 10, g: 20, b: 60, a: 200), skin: skin),
+                [.setValue(file: skin.fileURL, section: "Variables", key: "Card", value: "10,20,60,200", afterIncludes: true)])
+        // A literal color is replaced where it is written, in its notation (hex stays hex).
+        guard let bar = f.colors.all.first(where: { $0.variable == nil && ValueUsageIndex.colorKey($0.color) == "200,100,0,255" })
+        else { return t.check(false, "the bar's color") }
+        t.equal(StudioColorWriting.ops(bar, mint, skin: skin),
+                [.setValue(file: skin.fileURL, section: "MeterBar", key: "BarColor", value: "00C7BE", afterIncludes: false)])
+        let preview = StudioColorWriting.preview(bar, mint, skin: skin)
+        t.equal(preview.sections.first?.0, "MeterBar")
+        t.equal(preview.sections.first?.1["BarColor"], "00C7BE")
+        t.equal(StudioColorWriting.preview(ring, mint, skin: skin).variables, ["Ring": "0,199,190"])
+        // Sample readings pinned by name, whatever the measure is.
+        let sample = MeasureValueOverride()
+        sample.pinned = ["measurecpu": (21, nil)]
+        skin.measureValues = sample
+        skin.update()
+        t.equal(skin.measure(named: "MeasureCPU")?.value, 21)
+    }
 }
