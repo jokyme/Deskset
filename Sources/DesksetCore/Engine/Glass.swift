@@ -15,13 +15,13 @@ import Foundation
 // meters of zero size, meters inside a hidden container and meters turned by a TransformationMatrix have none.
 
 /// `MacGlass=Regular` / `Clear`.
-public enum GlassStyle: String, Equatable, CaseIterable {
+public enum GlassStyle: String, Equatable, CaseIterable, Sendable {
     case regular = "Regular"
     case clear = "Clear"
 }
 
 /// The `MacGlass…` options of one section, as read (nil when `MacGlass` is missing, `None` or not a style).
-public struct GlassOptions: Equatable {
+public struct GlassOptions: Equatable, Sendable {
     public var style: GlassStyle
     /// `MacGlassCornerRadius` (points, not negative); nil when not given.
     public var cornerRadius: Double?
@@ -65,7 +65,7 @@ public struct GlassOptions: Equatable {
 
 /// Where one piece of glass goes: a plain value, so it can travel to the host (and, later, in a skin's snapshot to
 /// the main thread; docs/skin-threading.md §5.5).
-public struct GlassRegion: Equatable {
+public struct GlassRegion: Equatable, Sendable {
     /// `id` of the glass behind the whole skin (`[Rainmeter]`, which is never a meter's name).
     public static let skinID = "Rainmeter"
 

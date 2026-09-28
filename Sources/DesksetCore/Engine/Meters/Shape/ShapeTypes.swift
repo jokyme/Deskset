@@ -5,7 +5,7 @@ import Foundation
 // fractional "device independent pixels"). The host turns it into CGPaths; DesksetCore uses it for bounds,
 // stroke planning and mouse hit testing.
 
-public struct ShapePoint: Equatable, Hashable {
+public struct ShapePoint: Equatable, Hashable, Sendable {
     public var x: Double
     public var y: Double
 
@@ -33,7 +33,7 @@ public struct ShapePoint: Equatable, Hashable {
 }
 
 /// One drawing segment; its start is the end of the previous segment (or the subpath start).
-public enum ShapeSegmentKind: Equatable {
+public enum ShapeSegmentKind: Equatable, Sendable {
     case line(to: ShapePoint)
     case quadratic(control: ShapePoint, to: ShapePoint)
     case cubic(control1: ShapePoint, control2: ShapePoint, to: ShapePoint)
@@ -55,7 +55,7 @@ public enum ShapeSegmentKind: Equatable {
     }
 }
 
-public struct ShapeSegment: Equatable {
+public struct ShapeSegment: Equatable, Sendable {
     public var kind: ShapeSegmentKind
     /// False after `SetNoStroke 1` in a Path definition: the segment is part of the outline but not stroked.
     public var stroked: Bool
@@ -70,7 +70,7 @@ public struct ShapeSegment: Equatable {
 }
 
 /// A figure: a start point followed by connected segments, optionally closed back to the start.
-public struct ShapeSubpath: Equatable {
+public struct ShapeSubpath: Equatable, Sendable {
     public var start: ShapePoint
     public var segments: [ShapeSegment]
     public var closed: Bool
@@ -91,11 +91,11 @@ public struct ShapeSubpath: Equatable {
 }
 
 /// `Path` fills with the even-odd rule, `Path1` with the non-zero rule (manual, "Path1").
-public enum ShapeFillRule: Equatable {
+public enum ShapeFillRule: Equatable, Sendable {
     case evenOdd, nonZero
 }
 
-public struct ShapePath: Equatable {
+public struct ShapePath: Equatable, Sendable {
     public var subpaths: [ShapeSubpath]
     public var fillRule: ShapeFillRule
 
@@ -116,7 +116,7 @@ public struct ShapePath: Equatable {
 }
 
 /// `Combine` types.
-public enum ShapeCombineMode: String, Equatable, CaseIterable {
+public enum ShapeCombineMode: String, Equatable, CaseIterable, Sendable {
     /// Parent and child merged.
     case union
     /// Only the overlap.
@@ -127,7 +127,7 @@ public enum ShapeCombineMode: String, Equatable, CaseIterable {
     case exclude
 }
 
-public struct ShapeCombineStep: Equatable {
+public struct ShapeCombineStep: Equatable, Sendable {
     public var mode: ShapeCombineMode
     public var geometry: ShapeGeometry
 
@@ -138,7 +138,7 @@ public struct ShapeCombineStep: Equatable {
 }
 
 /// Final geometry of a drawn shape, already transformed into meter coordinates.
-public indirect enum ShapeGeometry: Equatable {
+public indirect enum ShapeGeometry: Equatable, Sendable {
     case path(ShapePath)
     /// `Combine Parent | Mode Child | …`: applied left to right. Every operand is a closed region.
     case combined(ShapeGeometry, [ShapeCombineStep])
@@ -165,7 +165,7 @@ public indirect enum ShapeGeometry: Equatable {
 }
 
 /// 2-D affine transform, same convention as CGAffineTransform: x' = a·x + c·y + tx, y' = b·x + d·y + ty.
-public struct ShapeTransform: Equatable {
+public struct ShapeTransform: Equatable, Sendable {
     public var a: Double
     public var b: Double
     public var c: Double
@@ -232,7 +232,7 @@ public struct ShapeTransform: Equatable {
 
 // MARK: Paint
 
-public struct ShapeGradientStop: Equatable {
+public struct ShapeGradientStop: Equatable, Sendable {
     public var color: RGBA
     /// 0…1 along the gradient.
     public var position: Double
@@ -245,7 +245,7 @@ public struct ShapeGradientStop: Equatable {
 
 /// Linear gradient in the shape's own (untransformed) space: colors run from `start` (position 0) to `end`
 /// (position 1) and are clamped beyond them. Map through `ShapeItem.paintTransform` to reach meter coordinates.
-public struct ShapeLinearGradient: Equatable {
+public struct ShapeLinearGradient: Equatable, Sendable {
     public var start: ShapePoint
     public var end: ShapePoint
     /// Sorted, all positions in 0…1, at least one stop.
@@ -256,7 +256,7 @@ public struct ShapeLinearGradient: Equatable {
 
 /// Radial (elliptical) gradient in the shape's own space: position 0 at `origin`, position 1 on the ellipse
 /// around `center` with radii `radiusX` / `radiusY`.
-public struct ShapeRadialGradient: Equatable {
+public struct ShapeRadialGradient: Equatable, Sendable {
     public var center: ShapePoint
     public var origin: ShapePoint
     public var radiusX: Double
@@ -265,7 +265,7 @@ public struct ShapeRadialGradient: Equatable {
     public var linearGamma: Bool
 }
 
-public enum ShapePaint: Equatable {
+public enum ShapePaint: Equatable, Sendable {
     case none
     case color(RGBA)
     case linearGradient(ShapeLinearGradient)
@@ -284,11 +284,11 @@ public enum ShapePaint: Equatable {
 
 // MARK: Stroke
 
-public enum ShapeLineCap: String, Equatable {
+public enum ShapeLineCap: String, Equatable, Sendable {
     case flat, round, square, triangle
 }
 
-public enum ShapeLineJoin: String, Equatable {
+public enum ShapeLineJoin: String, Equatable, Sendable {
     /// Mitered up to the miter limit, then squared off (see `ShapeStroker.clippedMiter`).
     case miter
     case bevel
@@ -298,11 +298,11 @@ public enum ShapeLineJoin: String, Equatable {
 }
 
 /// Where the stroke sits relative to the outline. Not in the manual (see ShapeParser); default `center`.
-public enum ShapeStrokePlacement: Equatable {
+public enum ShapeStrokePlacement: Equatable, Sendable {
     case center, outer, inner
 }
 
-public struct ShapeStrokeStyle: Equatable {
+public struct ShapeStrokeStyle: Equatable, Sendable {
     public var width: Double = 1
     public var startCap = ShapeLineCap.flat
     public var endCap = ShapeLineCap.flat
@@ -320,7 +320,7 @@ public struct ShapeStrokeStyle: Equatable {
 
 /// One piece of stroke to draw natively (CGPath stroking): the host strokes `subpath` with `ShapeStrokePlan.width`,
 /// this join and this cap. `cap` is never `.triangle` (triangle caps are emitted as patches).
-public struct ShapeStrokeRun: Equatable {
+public struct ShapeStrokeRun: Equatable, Sendable {
     public var subpath: ShapeSubpath
     public var join: ShapeLineJoin
     public var cap: ShapeLineCap
@@ -328,7 +328,7 @@ public struct ShapeStrokeRun: Equatable {
 
 /// How to draw a stroke: native runs plus closed patches (caps, forced round joins) filled with the stroke paint.
 /// Pieces may overlap; the host must paint their union once (not blend each piece separately).
-public struct ShapeStrokePlan: Equatable {
+public struct ShapeStrokePlan: Equatable, Sendable {
     public var width: Double
     public var miterLimit: Double
     public var runs: [ShapeStrokeRun]
@@ -343,7 +343,7 @@ public struct ShapeStrokePlan: Equatable {
 // MARK: Items
 
 /// Rectangle in meter coordinates.
-public struct ShapeRect: Equatable {
+public struct ShapeRect: Equatable, Sendable {
     public var minX: Double
     public var minY: Double
     public var maxX: Double
@@ -396,7 +396,7 @@ struct ShapeBoundsAccumulator {
 }
 
 /// One shape the meter draws (after Combine consumed its parts), in drawing order.
-public struct ShapeItem: Equatable {
+public struct ShapeItem: Equatable, Sendable {
     /// N of the `ShapeN` option (1 for `Shape`).
     public var index: Int
     public var geometry: ShapeGeometry
@@ -421,7 +421,7 @@ public struct ShapeItem: Equatable {
 
 /// A `Rectangle` shape as drawn: `X, Y, Width, Height` with a negative width or height turned around, and the corner
 /// radii as `ShapeGeometryBuilder.rectangle` uses them (both 0 when either is).
-public struct ShapeRectangle: Equatable {
+public struct ShapeRectangle: Equatable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double

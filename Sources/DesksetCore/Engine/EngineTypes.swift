@@ -1,7 +1,7 @@
 import Foundation
 
 /// Rectangle in skin coordinates (origin top-left, y grows downward, 1 unit = 1 point).
-public struct SkinRect: Equatable {
+public struct SkinRect: Equatable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -23,7 +23,7 @@ public struct SkinRect: Equatable {
 }
 
 /// A width and height in skin coordinates (points).
-public struct SkinSize: Equatable {
+public struct SkinSize: Equatable, Sendable {
     public var width: Double
     public var height: Double
 
@@ -33,7 +33,7 @@ public struct SkinSize: Equatable {
     }
 }
 
-public struct SkinInsets: Equatable {
+public struct SkinInsets: Equatable, Sendable {
     public var left: Double
     public var top: Double
     public var right: Double
@@ -49,12 +49,12 @@ public struct SkinInsets: Equatable {
     public static let zero = SkinInsets()
 }
 
-public enum SkinLogLevel: String {
+public enum SkinLogLevel: String, Sendable {
     case debug = "Debug", notice = "Notice", warning = "Warning", error = "Error"
 }
 
 /// Mouse action option names, shared by meters and the `[Rainmeter]` section.
-public enum MouseEventKind: String, CaseIterable {
+public enum MouseEventKind: String, CaseIterable, Sendable {
     case leftUp = "LeftMouseUpAction"
     case leftDown = "LeftMouseDownAction"
     case leftDoubleClick = "LeftMouseDoubleClickAction"
@@ -81,7 +81,7 @@ public enum MouseEventKind: String, CaseIterable {
 /// A mouse button, for mouse input that is not tied to a meter (`Plugin=Mouse`, see `Skin.pointerEvent(_:x:y:)`).
 /// The raw value is AppKit's button number (0 left, 1 right, 2 middle, 3 and 4 the side buttons that Windows calls
 /// X1 and X2).
-public enum MouseButton: Int, CaseIterable {
+public enum MouseButton: Int, CaseIterable, Sendable {
     case left, right, middle, x1, x2
 
     /// `LeftMouseDownAction`, `RightMouseDownAction`…
@@ -118,7 +118,7 @@ public enum MouseButton: Int, CaseIterable {
 
 /// Mouse input a skin window receives, reported to `Skin.pointerEvent(_:x:y:)` for the measures that follow the mouse
 /// themselves (`Plugin=Mouse`).
-public enum PointerEvent: Equatable {
+public enum PointerEvent: Equatable, Sendable {
     /// A button went down on the skin; `doubleClick` for the second click of a double click.
     case pressed(MouseButton, doubleClick: Bool)
     /// A button went up, wherever the pointer is now (the release of a press that started on the skin).
@@ -136,7 +136,7 @@ public enum PointerEvent: Equatable {
 /// The mouse input made outside a skin's window that its measures want now (`Skin.outsidePointerNeeds`): Plugin=Slider
 /// sees the mouse anywhere on the screen. The host watches the mouse elsewhere only for what is asked here and reports
 /// it through `Skin.outsidePointerEvent(_:x:y:)`. Mouse input only; nothing ever asks for keys.
-public struct OutsidePointerNeeds: Equatable {
+public struct OutsidePointerNeeds: Equatable, Sendable {
     /// Buttons whose presses and releases are wanted.
     public var buttons: Set<MouseButton> = []
     /// Buttons whose drags (moves while that button is down) are wanted.
@@ -171,12 +171,12 @@ public struct OutsidePointerNeeds: Equatable {
 /// - disabled: detected (it blocks meters / the skin behind it) but takes no action — like an action of `[]`;
 /// - cleared: not detected at all, so actions behind it run — like an action of `""`.
 /// The option values themselves are kept: enabling again restores the defined action.
-public enum MouseActionState: Equatable {
+public enum MouseActionState: Equatable, Sendable {
     case enabled, disabled, cleared
 }
 
 /// Everything the host needs to show a meter's tooltip (manual: Meters → Tooltips).
-public struct ToolTipInfo: Equatable {
+public struct ToolTipInfo: Equatable, Sendable {
     /// `ToolTipText` with `%1`, `%2`… replaced by the bound measures' values.
     public var text: String
     /// `ToolTipTitle` (one line).
@@ -199,7 +199,7 @@ public struct ToolTipInfo: Equatable {
 }
 
 /// One custom context menu entry (`ContextTitleN` / `ContextActionN` in `[Rainmeter]`).
-public struct ContextMenuItem: Equatable {
+public struct ContextMenuItem: Equatable, Sendable {
     /// Title (at most 30 characters, longer titles end in `...`).
     public var title: String
     /// Action to execute (`Skin.execute(_:from:)` with `skin.rainmeterSection`); empty for separators.
@@ -214,7 +214,7 @@ public struct ContextMenuItem: Equatable {
     }
 }
 
-public struct SkinScreen: Equatable {
+public struct SkinScreen: Equatable, Sendable {
     public var area: SkinRect
     public var workArea: SkinRect
 

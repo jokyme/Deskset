@@ -19,7 +19,7 @@ import Foundation
 /// - `ButtonImage=sf:<symbol>` (Deskset extension, `MacSymbol`): the symbol is one frame used for all three states;
 ///   the app draws it at half opacity while pressed (`isSymbol`).
 public final class ButtonMeter: Meter {
-    public enum State: Int { case normal = 0, pressed = 1, hover = 2 }
+    public enum State: Int, Sendable { case normal = 0, pressed = 1, hover = 2 }
 
     public private(set) var buttonImagePath: String?
     public private(set) var imageOptions = ImageOptions()

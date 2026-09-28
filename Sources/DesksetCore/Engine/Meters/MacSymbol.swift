@@ -16,8 +16,8 @@ import Foundation
 /// - `MacSymbolRendering` — Monochrome (default: every layer white, so ImageTint colors it), Hierarchical (white, the
 ///   secondary layers more transparent: ImageTint gives one color in several strengths) or Multicolor (the symbol's own
 ///   colors as in Dark Mode; layers without a color of their own are white, and ImageTint multiplies every color).
-public struct MacSymbol: Hashable {
-    public enum Weight: String, CaseIterable, Hashable {
+public struct MacSymbol: Hashable, Sendable {
+    public enum Weight: String, CaseIterable, Hashable, Sendable {
         case ultralight, thin, light, regular, medium, semibold, bold, heavy, black
 
         /// `MacSymbolWeight` as written (any case); anything else is Regular.
@@ -29,7 +29,7 @@ public struct MacSymbol: Hashable {
         public var optionValue: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
     }
 
-    public enum Rendering: String, CaseIterable, Hashable {
+    public enum Rendering: String, CaseIterable, Hashable, Sendable {
         case monochrome, hierarchical, multicolor
 
         /// `MacSymbolRendering` as written (any case); anything else is Monochrome.
@@ -41,7 +41,7 @@ public struct MacSymbol: Hashable {
     }
 
     /// How a meter asks for its symbols (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`).
-    public struct Style: Hashable {
+    public struct Style: Hashable, Sendable {
         public var pointSize = MacSymbol.defaultPointSize
         public var weight = Weight.regular
         public var rendering = Rendering.monochrome
