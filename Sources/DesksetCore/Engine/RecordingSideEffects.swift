@@ -182,7 +182,7 @@ final class RecordedProcess: SkinProcess, @unchecked Sendable {
 /// programs to open — is recorded in `effects` (`SideEffect.hostBang`, `.forwardBang`, `.open`) and not done. Drawing,
 /// the log, text and image measurement and the environment are the `inner` host's; without one nothing is drawn, the
 /// log is kept (`log`), text is measured roughly (0.6 of the font size per character, 1.2 per line) and the environment
-/// is the default one.
+/// is the default one with a fixed locale and languages (`fixedEnvironment`), never the Mac's.
 public final class RecordingSkinHost: SkinHost {
     public let effects: RecordingSideEffects
     public let inner: SkinHost?
@@ -233,8 +233,13 @@ public final class RecordingSkinHost: SkinHost {
     }
 
     public func environment(for skin: Skin) -> SkinEnvironment {
-        inner?.environment(for: skin) ?? SkinEnvironment()
+        inner?.environment(for: skin) ?? RecordingSkinHost.fixedEnvironment
     }
+
+    /// The environment without an inner host: `SkinEnvironment`'s defaults (one 1920×1080 screen, the light
+    /// appearance with macOS's blue), the en_US_POSIX locale and English — the same on every Mac.
+    public static let fixedEnvironment = SkinEnvironment(locale: Locale(identifier: "en_US_POSIX"),
+                                                          preferredLanguages: ["en"])
 
     public func skin(_ skin: Skin, fadeWindowFrom from: Int, to: Int) -> Bool {
         inner?.skin(skin, fadeWindowFrom: from, to: to) ?? false

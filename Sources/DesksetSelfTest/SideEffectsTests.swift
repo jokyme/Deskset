@@ -173,6 +173,9 @@ private func recordingHost(_ t: TestRunner) throws {
         .forwardBang("!SetVariable A 1", config: "Other\\Config"),
     ])
     t.check(host.textSize("abc\nd", style: TextStyle(), wrapWidth: nil, for: skin).width > 0, "text is measured")
+    let environment = host.environment(for: skin)
+    t.equal(environment.locale.identifier, "en_US_POSIX", "a fixed locale without an inner host, never the Mac's")
+    t.equal(environment.preferredLanguages, ["en"])
     skin.log("hello", level: .notice)
     t.check(host.log.contains { $0.message.contains("hello") }, "the log is kept")
     skin.close()
