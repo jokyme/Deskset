@@ -1814,7 +1814,6 @@ suite's `TestThreadExecutor`.
      closing every skin, with exit status 0; the same 95 errors and 188 warnings in the logs (the packs' own: styles
      they never define, Windows programs, missing images), apart from one more "Unable to open image" of a player
      skin's button on main, which depends on when the demo player changes state.
-
    - The main thread: with `main`, each batch's launch kept it busy for 640–1,120 ms (13 steps over 250 ms in all);
      with `engine`, one step of 263 ms, the app's own launch before any skin loaded.
    - **Found and fixed: the order of the loads at launch.** With `engine`, `loadActiveSkins` asked for every load at
