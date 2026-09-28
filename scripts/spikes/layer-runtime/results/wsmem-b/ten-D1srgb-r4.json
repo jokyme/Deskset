@@ -1,0 +1,55 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "D1",
+  "--window-cs",
+  "srgb",
+  "--count",
+  "10",
+  "--out",
+  "results/wsmem-b/ten-D1srgb-r4.json"
+ ],
+ "command": "wsmem",
+ "config": "D1@srgb",
+ "footprintIncreasePerWidgetMB": 2.352,
+ "gpuInUseCloseStepMB": -11.3,
+ "gpuInUseOpenStepMB": 10.1,
+ "gpuInUseOpenStepPerWidgetMB": 1.01,
+ "layerBitmapsPerWidgetMB": 0.828,
+ "loadAverageAtEnd": [
+  5.73,
+  8.36,
+  8.18
+ ],
+ "loadAverageAtStart": [
+  5.37,
+  8.49,
+  8.22
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 2.58,
+  "freeGB": 4.5,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 2.57,
+  "freeGB": 3.78,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "D1",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "scenario": "ten",
+ "updateIntervalMs": 1000,
+ "widgets": 10,
+ "windowServerBackToStart": false,
+ "windowServerBeforeMB": 1796,
+ "windowServerCloseStepMB": 0,
+ "windowServerOpenStepMB": 3,
+ "windowServerOpenStepPerWidgetMB": 0.3,
+ "windowServerResidentCloseStepMB": 2.8,
+ "windowServerResidentOpenStepMB": 0.39
+}

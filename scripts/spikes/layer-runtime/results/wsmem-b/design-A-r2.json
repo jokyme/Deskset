@@ -1,0 +1,51 @@
+{
+ "arguments": [
+  "--scenario",
+  "design",
+  "--mode",
+  "A",
+  "--out",
+  "results/wsmem-b/design-A-r2.json"
+ ],
+ "command": "wsmem",
+ "config": "A",
+ "footprintIncreasePerWidgetMB": 35.709,
+ "gpuInUseCloseStepMB": -297.6,
+ "gpuInUseOpenStepMB": 296.8,
+ "gpuInUseOpenStepPerWidgetMB": 59.35,
+ "layerBitmapsPerWidgetMB": 0,
+ "loadAverageAtEnd": [
+  6.85,
+  6.05,
+  6.12
+ ],
+ "loadAverageAtStart": [
+  6.85,
+  5.97,
+  6.09
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 3.24,
+  "freeGB": 4.05,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 3.23,
+  "freeGB": 3.49,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "A",
+ "oneBitmapOfTheWindowMB": 1.978,
+ "scenario": "design",
+ "updateIntervalMs": 1000,
+ "widgets": 5,
+ "windowServerBackToStart": true,
+ "windowServerBeforeMB": 1959,
+ "windowServerCloseStepMB": -3,
+ "windowServerOpenStepMB": 1,
+ "windowServerOpenStepPerWidgetMB": 0.2,
+ "windowServerResidentCloseStepMB": 1.19,
+ "windowServerResidentOpenStepMB": 1.3
+}

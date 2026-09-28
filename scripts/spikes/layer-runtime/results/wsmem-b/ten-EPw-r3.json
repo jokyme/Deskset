@@ -1,0 +1,54 @@
+{
+ "arguments": [
+  "--scenario",
+  "ten",
+  "--mode",
+  "EP",
+  "--window-space-base",
+  "--count",
+  "10",
+  "--out",
+  "results/wsmem-b/ten-EPw-r3.json"
+ ],
+ "command": "wsmem",
+ "config": "EP+windowSpaceBase",
+ "footprintIncreasePerWidgetMB": 2.306,
+ "gpuInUseCloseStepMB": -9.4,
+ "gpuInUseOpenStepMB": 2,
+ "gpuInUseOpenStepPerWidgetMB": 0.2,
+ "layerBitmapsPerWidgetMB": 1.583,
+ "loadAverageAtEnd": [
+  8.93,
+  9.54,
+  7.86
+ ],
+ "loadAverageAtStart": [
+  9.61,
+  9.72,
+  7.88
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 4.08,
+  "freeGB": 0.67,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 4.13,
+  "freeGB": 0.1,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "EP",
+ "oneBitmapOfTheWindowMB": 0.778,
+ "scenario": "ten",
+ "updateIntervalMs": 1000,
+ "widgets": 10,
+ "windowServerBackToStart": true,
+ "windowServerBeforeMB": 1971,
+ "windowServerCloseStepMB": -2,
+ "windowServerOpenStepMB": 2,
+ "windowServerOpenStepPerWidgetMB": 0.2,
+ "windowServerResidentCloseStepMB": -1.56,
+ "windowServerResidentOpenStepMB": 7.06
+}

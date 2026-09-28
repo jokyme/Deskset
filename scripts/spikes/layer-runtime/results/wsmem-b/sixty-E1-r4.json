@@ -1,0 +1,51 @@
+{
+ "arguments": [
+  "--scenario",
+  "sixty",
+  "--mode",
+  "E1",
+  "--out",
+  "results/wsmem-b/sixty-E1-r4.json"
+ ],
+ "command": "wsmem",
+ "config": "E1",
+ "footprintIncreasePerWidgetMB": 2.022,
+ "gpuInUseCloseStepMB": 1.1,
+ "gpuInUseOpenStepMB": 3.5,
+ "gpuInUseOpenStepPerWidgetMB": 0.69,
+ "layerBitmapsPerWidgetMB": 1.428,
+ "loadAverageAtEnd": [
+  14.09,
+  10.47,
+  9.01
+ ],
+ "loadAverageAtStart": [
+  17.27,
+  10.77,
+  9.08
+ ],
+ "memoryPressure": {
+  "compressorOccupiesGB": 2.53,
+  "freeGB": 2.44,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 2.51,
+  "freeGB": 2.12,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "mode": "E1",
+ "oneBitmapOfTheWindowMB": 0.476,
+ "scenario": "sixty",
+ "updateIntervalMs": 16.67,
+ "widgets": 5,
+ "windowServerBackToStart": true,
+ "windowServerBeforeMB": 1798,
+ "windowServerCloseStepMB": 0,
+ "windowServerOpenStepMB": 2,
+ "windowServerOpenStepPerWidgetMB": 0.4,
+ "windowServerResidentCloseStepMB": -0.63,
+ "windowServerResidentOpenStepMB": 5.08
+}
