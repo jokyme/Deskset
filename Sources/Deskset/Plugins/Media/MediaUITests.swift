@@ -22,9 +22,11 @@ enum MediaUITests {
         wifiTests(t)
         frostedGlassTests(t)
         chameleonTests(t)
+        ChameleonDesktopSelfTests.run(t)
         desktopInfoTests(t)
         testSkinTests(t)
         wiredSkinTests(t)
+        stationeryTrackChangeTests(t)
         MediaUIReviewTests.run(t)
     }
 
@@ -1655,6 +1657,116 @@ enum MediaUITests {
             t.check(fake.shown.last?.password == true)
             t.equal(fake.shown.last?.y, 106, "Y=([Secret:Y]): section variables in overrides")
             input.close()
+        }
+    }
+
+    // MARK: Stationery's media widgets
+
+    /// Music goes from one track straight to the next: the title never reads empty between them. Every media widget of
+    /// the Stationery suite shows the next title and artist after one update of the measures that read the player
+    /// (once a second, whatever the widget's tempo), and the Turntable's label shows the next cover.
+    static func stationeryTrackChangeTests(_ t: AppTestRunner) {
+        t.suite("App: MediaUI Stationery media widgets show the next track within one update") {
+            guard let defaults = Paths.repositoryFolder("DefaultSkins") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            // A copy: the widgets write their own files.
+            let root = t.temporaryDirectory("stationery-tracks")
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
+            let savedRoot = MediaUICache.root
+            MediaUICache.root = t.temporaryDirectory("stationery-track-covers")
+            defer { MediaUICache.root = savedRoot }
+            // The widget, the meter that shows the title and the one that shows the artist (nil: the title's shows
+            // both, "title · artist").
+            let widgets: [(config: String, file: String, title: String, artist: String?)] = [
+                ("Turntable", "Large.ini", "MeterTitle", "MeterArtist"),
+                ("NowPlaying", "Medium.ini", "MeterTitle", "MeterArtist"),
+                ("NowPlaying", "Small.ini", "MeterTitle", "MeterArtist"),
+                ("StudioVU", "Medium.ini", "MeterTitle", "MeterArtist"),
+                ("Spectrum", "Medium.ini", "MeterHeaderTitle", nil),
+            ]
+            for widget in widgets {
+                let name = "\(widget.config)/\(widget.file)"
+                let backend = DemoNowPlayingBackend()
+                let center = NowPlayingCenter(backend: backend)
+                center.forceLive = true
+                center.interval = 3600
+                var now = 0.0
+                center.clock = { now }
+                center.log = { _ in }
+                let url = root.appendingPathComponent("Stationery/\(widget.config)/\(widget.file)")
+                let skin = Skin(config: "Stationery\\\(widget.config)", fileURL: url, skinsDirectory: root,
+                                system: SystemMonitor.shared, host: RenderHost())
+                try skin.load()
+                defer { skin.close() }
+                func text(_ meter: String) -> String { (skin.meter(named: meter) as? StringMeter)?.text ?? "nil" }
+                func artist() -> String { widget.artist.map(text) ?? text(widget.title) }
+                func cover() -> String { skin.variable("CoverPath") ?? "" }
+                // One update of the measures that read the player: they update once a second at either tempo (every
+                // update at Rest, every 30th at Live).
+                let perSecond = max(1, Int((1000 / Double(max(skin.settings.update, 1))).rounded()))
+                func second() { for _ in 0..<perSecond { skin.update() } }
+                func play(_ id: String, _ title: String, _ artist: String, _ album: String) {
+                    backend.tracks[.music] = NowPlayingTrack(title: title, artist: artist, album: album, duration: 200)
+                    backend.statuses[.music]?.trackID = id
+                    center.poll()
+                    second()
+                }
+                let turntable = widget.config == "Turntable"
+                inline([center.worker]) {
+                    for case let m as NowPlayingClientMeasure in skin.measures { m.center = center }
+                    center.poll()
+                    second()
+                    // The first cover arrives with the next poll, once a measure shows it.
+                    center.poll()
+                    second()
+                    t.check(text(widget.title).contains("Rain on Glass"), "\(name): the first title: \(text(widget.title))")
+                    t.check(artist().contains("Deskset Ensemble"), "\(name): the first artist: \(artist())")
+                    let firstCover = cover()
+                    if turntable { t.check(firstCover.contains("cover-"), "\(name): the first cover: \(firstCover)") }
+
+                    // The next track, its cover at hand at once (all three change within the same second).
+                    backend.artworkData = pngData(0.9, 0.3, 0.2)
+                    play("NEXT", "Second Song", "Someone Else", "Another Record")
+                    t.check(text(widget.title).contains("Second Song"),
+                            "\(name): the next title within one update: \(text(widget.title))")
+                    t.check(artist().contains("Someone Else"), "\(name): the next artist within one update: \(artist())")
+                    let secondCover = cover()
+                    if turntable {
+                        t.check(secondCover.contains("cover-") && secondCover != firstCover,
+                                "\(name): the next cover on the label: \(secondCover)")
+                    }
+
+                    // And the one after, whose cover comes a second later: the paper label until it does.
+                    backend.artworkQueue = [nil]
+                    backend.artworkData = pngData(0.2, 0.3, 0.9)
+                    play("THIRD", "Third Song", "A Third Band", "A Third Record")
+                    t.check(text(widget.title).contains("Third Song"),
+                            "\(name): the third title within one update: \(text(widget.title))")
+                    t.check(artist().contains("A Third Band"), "\(name): the third artist within one update: \(artist())")
+                    guard turntable else { return }
+                    t.equal(cover(), "", "\(name): the paper label while the cover is on its way")
+                    now += 2
+                    center.poll()
+                    second()
+                    let thirdCover = cover()
+                    t.check(thirdCover.contains("cover-") && thirdCover != secondCover,
+                            "\(name): the third cover on the label: \(thirdCover)")
+                    // What the deck saves when it closes (a change of tempo refreshes it) and shows after a restart.
+                    t.equal(skin.measure(named: "MeasureLastTrack")?.stringValue, "Third Song", "\(name): saved title")
+                    t.equal(skin.measure(named: "MeasureLastArtist")?.stringValue, "A Third Band", "\(name): saved artist")
+                    t.equal(skin.measure(named: "MeasureLastCover")?.stringValue, thirdCover, "\(name): saved cover")
+                    // The player quits: the idle deck keeps the last track.
+                    backend.running = []
+                    center.poll()
+                    second()
+                    t.equal(text("MeterTitle"), "Third Song", "\(name): the last title stays")
+                    t.equal(skin.measure(named: "MeasureLastArtist")?.stringValue, "A Third Band", "\(name): its artist")
+                    t.equal(cover(), thirdCover, "\(name): and its cover")
+                }
+            }
         }
     }
 }

@@ -10,8 +10,11 @@ import DesksetCore
 /// - `FirstRun.ini` in it, when there is one, says which skins a new user's desktop starts with, and where;
 /// - `Stationery.inc` in the settings folder holds what people type into the Stationery widgets.
 enum DefaultSkins {
-    /// Bump when the bundled skins change so they are copied again.
-    static let version = 3
+    /// Bump when the bundled skins change so they are copied again. 3: the Stationery suite replaced the 0.1 examples;
+    /// 4: Stationery's player and audio permission states, palette symbols and the strip staying on screen; 5: the
+    /// Turntable follows one track straight after another (title, artist and cover), and the Spectrum strip shows its
+    /// permission Notice instead of the row of dots.
+    static let version = 5
 
     /// The first-run layout's file, next to the root configs.
     static let firstRunFileName = "FirstRun.ini"

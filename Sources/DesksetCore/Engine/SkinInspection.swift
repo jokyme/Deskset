@@ -347,6 +347,7 @@ extension Skin {
         if hadPreview {
             for m in meters { m.needsOptionRead = true; m.readOptionsIfNeeded(); m.updateMeter(); m.noteDrawChange() }
             layout()
+            sizeAfterPatchDuringPreview()
             redraw()
         }
     }

@@ -236,7 +236,8 @@ enum EditorWindowSelfTests {
             func skin() -> Skin? { app.controller(for: "Deskset\\System")?.skin }
             let original = bytes()
 
-            // Typing, then ⌘S: the bytes are written, the skin refreshes, one undo step restores them.
+            // Typing, then ⌘S: the bytes are written, the skin takes them (on purpose: a text change is a patch of the
+            // same copy), one undo step restores them.
             t.check(type(editor, "!", after: "Text=CPU\n", offset: 8), "typed")
             t.check(editor.codeView.isDirty, "the buffer is dirty until it is committed")
             t.equal(text(), String(decoding: original, as: UTF8.self), "nothing written while typing")
@@ -245,7 +246,7 @@ enum EditorWindowSelfTests {
             t.check(!editor.codeView.hasUncommittedChanges, "committed")
             t.check(text().contains("Text=CPU!\n"), "written to System.ini")
             t.equal(bytes().count, original.count + 1, "only the typed byte changed (encoding and line endings kept)")
-            t.check(app.controller(for: "Deskset\\System") !== before, "the skin refreshed")
+            t.check(app.controller(for: "Deskset\\System") === before, "the skin took it without loading again")
             t.equal(skin()?.meter(named: "MeterCPULabel")?.rawOption("Text"), "CPU!")
             t.equal(editor.window?.undoManager?.undoActionName, "Edit Code")
             let edited = bytes()
@@ -344,14 +345,15 @@ enum EditorWindowSelfTests {
             let target = edit(of: field)
 
             // Typing in the code, then clicking a field of the inspector: the code is committed as the focus leaves
-            // it (which refreshes the skin), and the field the user clicked still gets the focus.
+            // it (the skin takes it: a patch here), and the field the user clicked still gets the focus.
             t.check(window.makeFirstResponder(editor.codeView.textView), "the code has the focus")
             t.check(type(editor, "!", after: "Text=CPU\n", offset: 8), "typed")
             let before = app.controller(for: "Deskset\\System")
             t.check(window.makeFirstResponder(field), "clicked a field")
             t.check(!editor.codeView.hasUncommittedChanges, "the code was committed on the way out")
             t.check(((try? String(contentsOf: ini, encoding: .utf8)) ?? "").contains("Text=CPU!\n"), "and written")
-            t.check(app.controller(for: "Deskset\\System") !== before, "the skin refreshed")
+            t.check(app.controller(for: "Deskset\\System") === before, "the skin took it without loading again")
+            t.equal(before?.skin.meter(named: "MeterCPULabel")?.rawOption("Text"), "CPU!", "the new text in effect")
             t.check(focused() === field && field.window === window, "the clicked field has the focus, in the window")
             // The inspector is rebuilt for the refreshed skin once the click is over; the same field keeps the focus.
             settle()
@@ -361,7 +363,11 @@ enum EditorWindowSelfTests {
             t.equal(edit(of: again), target, "the same field")
             t.equal(editor.skin?.meter(named: "MeterCPULabel")?.rawOption("Text"), "CPU!", "the inspector shows the new skin")
 
-            // A field committed while it keeps the focus (Return): the rebuilt inspector gives it back.
+            // A field committed while it keeps the focus (Return): the rebuilt inspector gives it back. (A value step now
+            // follows in place, which keeps the field itself: the page is built again here, as when the step changes
+            // what the page is made of.)
+            InspectorInPlace.isOffForTests = true
+            defer { InspectorInPlace.isOffForTests = false }
             if let again, let fieldEditor = again.currentEditor() {
                 fieldEditor.string = "50"
                 if let value = again as? ValueField { value.finishEditing(deferred: false) } else { editor.fieldCommitted(again) }

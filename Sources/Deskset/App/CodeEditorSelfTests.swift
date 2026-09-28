@@ -729,6 +729,28 @@ enum CodeEditorSelfTests {
             t.equal(disk.encoding, .utf16LittleEndian(bom: true))
             t.equal(disk.text, "[A]\r\nText=Caféé日\r\n")
         }
+
+        t.suite("App: code editor keeps a GBK file GBK (ANSI code page 936)") {
+            // A Chinese Mac reads legacy files as GBK (main.swift; the self-tests keep 1252 unless a suite sets it).
+            let saved = TextDecoding.ansiCodePage
+            TextDecoding.ansiCodePage = 936
+            defer { TextDecoding.ansiCodePage = saved }
+            let gbk = TextDecoding.encode("[A]\r\nText=中文\r\n", as: .windowsCodePage(936))
+            let f = try makeFixture(t, mainBytes: gbk)
+            let e = f.editor
+            e.onCommit = nil
+            t.equal(e.document(for: f.main)?.encoding, .windowsCodePage(936))
+            t.equal(e.document(for: f.main)?.text, "[A]\r\nText=中文\r\n")
+            var asked = 0
+            e.onEncodingConversion = { _, _ in
+                asked += 1
+                return false
+            }
+            type(e, "皮肤", at: NSMaxRange(line(e, 2)))
+            t.check(e.commitNow(), "GBK holds 皮肤: no question")
+            t.equal(asked, 0)
+            t.equal(try Data(contentsOf: f.main), TextDecoding.encode("[A]\r\nText=中文皮肤\r\n", as: .windowsCodePage(936)))
+        }
     }
 
     // MARK: Keeping unsaved edits

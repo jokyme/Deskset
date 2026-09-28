@@ -1055,7 +1055,8 @@ dropped without being closed, whose WebParser transfers are now cancelled (see L
   app.
 - Shared services hand a skin's callback to that skin's executor, which the caller must name (there is no default, so
   a caller cannot forget it): `TrashMonitor.refresh(on:)` groups its waiters by executor, so the skins on the main
-  thread still get one block together, and `PluginProcess.run(_:_:on:completion:)` (RecycleManager's EmptyBin).
+  thread still get one block together, and `SideEffects.launch(_:_:on:completion:)` (RecycleManager's EmptyBin; the skin's
+  side effects, formerly `PluginProcess.run`).
 - The update clock (`SkinController.startTimer`), with the old 10 % leeway. §4.2 planned this for phase 2; on the main
   executor it is the same timer.
 

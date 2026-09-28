@@ -348,12 +348,38 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   whole value is removed (`"""x"""` → `""x""`); a key repeated within one section of one file: the first wins; an
   `@Include` before any section is ignored (with a warning); a missing include file is also looked for next to the
   including file and case-insensitively; encodings: UTF-32 / UTF-8 / UTF-16 byte-order marks, BOM-less UTF-16, UTF-8,
-  otherwise Windows-1252; an unterminated `[Name` line is a section header; include limits 30 levels, 500 files,
-  32 MB per file. `!WriteKeyValue` writes a value with leading or trailing spaces in quotes (so it reads back
-  unchanged) and turns line breaks in a value into spaces.
+  otherwise the ANSI code page of the Mac's language (next entry); an unterminated `[Name` line is a section header;
+  include limits 30 levels, 500 files, 32 MB per file. `!WriteKeyValue` writes a value with leading or trailing spaces
+  in quotes (so it reads back unchanged) and turns line breaks in a value into spaces.
 - Why: the manual does not describe these edge cases; the fallbacks only apply when a file would otherwise be missing.
 - Skin impact: none for valid skins.
 - Status: identical (+ leniencies)
+
+### Legacy ANSI skin files (code page)
+- Windows (Rainmeter): the extended characters of a file saved as ANSI are "based on the Windows Codepage (locale)
+  active in your Windows system": Windows-1252 in the US and Western Europe, GBK (936) on a Simplified Chinese
+  Windows, Big5 (950) on a Traditional Chinese one, and so on. UTF-16 LE is the encoding that reads the same everywhere
+  (/tips/unicode-in-rainmeter/).
+- Mac (Deskset): macOS has no system code page, so the first language in System Settings > General > Language & Region
+  stands for the Windows locale: Simplified Chinese → 936 (GBK), Traditional Chinese → 950 (Big5), Japanese → 932,
+  Korean → 949, Thai → 874, Vietnamese → 1258, Russian and other Cyrillic languages → 1251, Central European
+  languages → 1250, Greek → 1253, Turkish → 1254, Hebrew → 1255, Arabic and Persian → 1256, Baltic languages → 1257,
+  any other language → 1252. The app picks it when it starts, before any skin loads, and uses it for skin and include
+  files, Lua scripts, QuotePlugin files, WebParser's CodePage=0 fallback, the Skin Studio and the installer. A file
+  written back (`!WriteKeyValue`, the Skin Studio, variables kept on reinstall) stays in that code page; text the code
+  page cannot hold switches the file to UTF-16 LE with BOM (the Skin Studio's code view asks first). Byte-order marks,
+  BOM-less UTF-16 and valid UTF-8 are detected first, whatever the language, and a file that is not valid in the code
+  page is read as Windows-1252 (nothing is dropped). The command-line modes do the same (`--render` follows
+  `-AppleLanguages`, or `--languages`; with `--clock` it reads in 1252 unless `--languages` says otherwise);
+  `--self-test` keeps 1252 on every Mac. RunCommand's `OutputType=ANSI` and Lua strings that are
+  not UTF-8 stay Windows-1252 (see their entries). Deskset 0.1.0 read every ANSI file as Windows-1252.
+- Why: the Mac's language is the closest equivalent of the Windows locale. Judgment call: only the first language
+  counts, like the one system locale on Windows.
+- Skin impact: an ANSI skin in the code page of the user's language shows its text and font names correctly (a GBK
+  skin with `FontFace=微软雅黑` draws in PingFang SC on a Mac set to Simplified Chinese). An ANSI skin in another code
+  page shows wrong characters, as on a Windows set to another locale; saving it as UTF-16 LE (or UTF-8) makes it read
+  the same on every Mac. A change of language applies the next time Deskset starts.
+- Status: identical (judgment call: the Mac's first language stands for the Windows locale)
 
 ### Variables (details)
 - Windows (Rainmeter): `#Var#`, nested `[#Var]`, escapes `#*Var*#` / `[*Name*]`, character variables `[\x263A]` /
@@ -470,6 +496,19 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Why: ICU instead of PCRE; judgment calls where the manual is silent.
 - Skin impact: common patterns (`(?siU)<tag>(.*)</tag>`) behave the same; exotic PCRE features may not match.
 - Status: identical (common cases) / partial (exotic PCRE)
+
+### Running Windows programs
+- Windows (Rainmeter): `["Program.exe" "arguments"]` and `!Execute ["…"]` run a program, script or shortcut, often one
+  that ships with the skin (`#CURRENTPATH#Tool.exe`, a `.bat` file, a `.lnk` shortcut).
+- Mac (Deskset): URLs, files, folders and Mac apps open as on Windows (a Mac app gets the files and URLs among the
+  arguments). A Windows program, script or shortcut (`.exe`, `.com`, `.bat`, `.cmd`, `.scr`, `.pif`, `.msi`, `.vbs`,
+  `.vbe`, `.js`, `.jse`, `.wsf`, `.wsh`, `.ps1`, `.lnk`, `.ahk`) is not opened, even when the file exists; the skin's
+  log says "Cannot run … (Windows programs are not supported)".
+- Why: macOS cannot run them, and handing one to Finder only brings up its "macOS doesn't support Microsoft Windows
+  applications" alert, at whatever moment the skin runs the action.
+- Skin impact: tools that come with a skin (voice lines, configuration programs) do nothing; the rest of the action
+  runs.
+- Status: not supported
 
 ### Update interval and Counter
 - Windows (Rainmeter): `Update` minimum 16 ms, -1 = once; the Calc `Counter` "only resets when the skin is unloaded
@@ -704,9 +743,9 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   Options: `MacSymbolSize` (points, default 16) sets its natural size, used when the meter has no W / H;
   `MacSymbolWeight` = Ultralight, Thin, Light, Regular (default), Medium, Semibold, Bold, Heavy, Black;
   `MacSymbolRendering` = Monochrome (default: the whole symbol white, the parts it knocks out transparent),
-  Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths) or
+  Hierarchical (white, its secondary layers more transparent: ImageTint gives one color in several strengths),
   Multicolor (the symbol's own colors as drawn in Dark Mode, its plain layers white; ImageTint multiplies every color,
-  so leave it white to keep them). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
+  so leave it white to keep them) or Palette (colors of the skin's choosing, see the next entry). It is rendered at the pixels it covers (drawn size × backing scale, up to 64 pixels
   per point: a 16-point symbol stays sharp drawn 512 points wide on a Retina display). With both W and H an Image
   meter's symbol keeps its shape (PreserveAspectRatio defaults to 1; 0 stretches it), unless ScaleMargins is set: it
   then defaults to 0, where ScaleMargins nine-slices the symbol (a capsule stretched to any width). A Button uses the
@@ -717,6 +756,24 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   nothing is drawn): they need a strip of frames or a picture at its pixel size.
 - Why: Deskset extension — SF Symbols are the Mac's icon set; skins can use them without shipping image files.
 - Skin impact: none for Windows skins. On Windows such a skin shows missing images.
+- Status: Deskset extension
+
+### Palette symbols (`MacSymbolRendering=Palette`, `MacSymbolColors`)
+- Windows (Rainmeter): no SF Symbols (see the entry above).
+- Mac (Deskset): `MacSymbolRendering=Palette` draws each layer of an SF Symbol in a color of the skin's choosing:
+  `MacSymbolColors=c1|c2|c3` gives the colors of its primary, secondary and tertiary layers (any color option value,
+  with its alpha; `#Variables#`, formulas and a measure's value work, as in any option). Which part of a symbol is in
+  which layer is Apple's design: `cloud.sun.fill` has the cloud first and the sun second, `sunrise.fill` the arrow and
+  horizon first and the sun second. A layer past the last color takes the last color, as macOS draws it; an entry that
+  is not a color is white, so the layers after it keep theirs; empty entries at the end are dropped and colors after
+  the third ignored. Without any color, Palette draws as Monochrome (white). `MacSymbolColors` is ignored with the
+  other renderings. The general image options work on the colored symbol as on a colored picture: ImageTint multiplies
+  the colors (leave it white), ImageAlpha fades them. MacWeather's `Type=SymbolPalette` gives the colors for the
+  current weather symbol (`weather.md`).
+- Why: Deskset extension. Multicolor draws some symbols in white on any look (Apple's weather symbols paint their
+  clouds white in Light as in Dark Mode), and a skin cannot choose its colors; a palette gives, for example, a yellow
+  sun on a cloud in the text's color in both looks.
+- Skin impact: none for Windows skins.
 - Status: Deskset extension
 
 ### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)

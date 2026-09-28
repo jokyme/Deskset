@@ -123,7 +123,7 @@ enum DefaultSkinsSelfTests {
             t.check(!fm.fileExists(atPath: app.skinsDirectory.appendingPathComponent("FirstRun.ini").path),
                     "the layout file is not a root config")
             t.equal(app.state.data.defaultSkinsInstalled, DefaultSkins.version)
-            t.equal(DefaultSkins.version, 3)
+            t.check(DefaultSkins.version >= 3, "Stationery arrived with version 3")
             t.equal(app.state.data.shippedVariables["Stationery"], ["clockhours": "Auto", "location": "timezone"],
                     "what this version ships is recorded")
 

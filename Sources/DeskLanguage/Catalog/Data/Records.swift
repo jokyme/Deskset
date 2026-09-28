@@ -20,7 +20,7 @@ extension CatalogData {
 
     static let records: [RecordSpec] = [
         monthGrid, dayCell, calendarEvent, cpuCore, diskRecord, networkInterface, appRecord,
-        record("Weather", weatherFields(automatic: false), "The weather at a place: now, today, the next hours and days",
+        record("Weather", weatherFields(automatic: false), "The weather at a place — now, today, the next hours and days",
                "天气；weather 和 weather.at(…) 都是它", #"Text("{weather.at("Oslo").now.temperature}")"#,
                rm: [plugin("MacWeather").noted("Deskset")], mac: true),
         record("Sun", sunFields(automatic: false), "The sun at a place on a day", "太阳；sun、sun.at(…)、sun.day(…) 都是它",

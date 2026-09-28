@@ -831,8 +831,15 @@ extension InspectorWindowController: EditingSessionClient {
     func session(_ session: EditingSession, didChange change: SessionChange) {
         guard session === self.session else { return }
         switch change {
-        case .reloaded:
+        case .reloaded(let edits):
+            // The code pane follows by the edits (`syncCodePane`) while the window follows the instance.
+            codeEditsToFollow = edits
+            defer { codeEditsToFollow = nil }
             studioSkinReloaded()
+        case .patched(let summary, let edits):
+            codeEditsToFollow = edits
+            defer { codeEditsToFollow = nil }
+            studioSkinPatched(summary)
         case .applied:
             break
         case .reverted(let t, let undo):

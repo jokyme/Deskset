@@ -110,16 +110,16 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 
 | Feature (skin option) | macOS permission | When it is asked | If you refuse |
 | --- | --- | --- | --- |
-| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only") | First time a visualizer skin runs | macOS delivers silence: levels read 0 and `DeviceStatus` still reads 1. If a visualizer stays silent for about 10 s while another app plays sound, the skin gets a compatibility note pointing to the permission |
-| AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, one log line |
-| AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, one log line. Tried again every 10 s, so allowing it later works without a restart |
+| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only"); the purple indicator shows only while another app plays sound | First time another app plays sound while a visualizer skin runs | macOS delivers silence: levels read 0. If a visualizer stays silent for about 20 s while the same app plays sound, `MacPermission` reads 1 (Deskset extension) and the skin gets a compatibility note pointing to the permission |
+| AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, `MacPermission` 1, one log line |
+| AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, `MacPermission` 1, one log line. Tried again every 10 s, so allowing it later works without a restart |
 | AppVolume `NumberType=Peak`, AppVolume mute | System Audio Recording | First peak / mute use | Peak 0; mute has no effect |
-| NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing. Re-checked every 30 s, so granting it later works without a restart |
+| NowPlaying, iTunes, WebNowPlaying data and commands; MediaKey track keys without Accessibility | Automation → Music / Spotify | First poll of a *running* player, or first command sent to it | The player looks closed; commands do nothing; `PlayerType=MacPermission` tells a skin (Deskset extension). Re-checked every 30 s, so granting it later works without a restart |
 | WiFiStatus `SSID`, `LIST` | Location Services (macOS shares Wi-Fi names only with such apps) | First time a skin with an SSID / LIST measure loads | SSID is empty and the list is empty; quality, rates and security still work |
 | MacWeather / MacSun `Location=auto` (Deskset extension) | Location Services (reduced accuracy; rounded to about 1 km, kept in memory only) | First time a skin with `Location=auto` runs in a skin window | `Status` 5 and a note; use a place name instead |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`, FileView `Properties` | Automation → Finder | First use | Nothing is emptied / no Get Info window |
 | RecycleManager `RecycleType=Size` | Full Disk Access (no prompt; set it in System Settings → Privacy & Security) | — | Size reads 0; a compatibility note and the log say where to grant it. `Count` needs no permission |
-| Any skin file in Desktop, Documents, Downloads, removable or network volumes (Quote, FolderInfo, FileView, Lua `io`, images and other files a skin names) | Files and Folders | First access to that folder | Empty values, missing images; Lua's `io.open` returns nil and an error |
+| Any skin file in Desktop, Documents, Downloads, removable or network volumes (Quote, FolderInfo, FileView, Lua `io`, images and other files a skin names) | Files and Folders | First access to that folder | Empty values, missing images; Lua's `io.open` returns nil and an error. Chameleon `Type=Desktop` never reads a wallpaper kept there, so it never asks (its fallback colors instead) |
 | MediaKey as real media-key events (volume HUD, any player) | Accessibility (never requested) | — | Track keys go to Music / Spotify through Automation; volume keys change the volume directly (no HUD) |
 | GetActiveTitle window titles | Accessibility, or Screen Recording (never requested) | — | The frontmost app's name instead of the window title |
 | WebParser or Ping reaching a device on your local network | Local Network | First such request | The request fails |
@@ -147,7 +147,7 @@ by the 15 tested packages.
 | --- | --- | --- |
 | ActionTimer | identical | Lists, Wait, Repeat, Execute, Stop; drift-free timing on the main run loop |
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
-| AudioLevel | emulated | Core Audio process tap (system audio) or input device; RMS, Peak, FFT, Bands; needs a permission |
+| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; needs a permission; `Type=MacPermission` tells a missing one |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |
 | FolderInfo | emulated | Background scans; Mac hidden / system files |
@@ -380,14 +380,37 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Mac:** the same. Judgment calls: one pair of matching quotes (`"` or `'`) around a whole value is removed; a key
   repeated in one section of one file: the first wins; an `@Include` before any section is ignored with a warning;
   a missing include file is also looked for next to the including file and case-insensitively; `\` paths work;
-  encodings UTF-8 / UTF-16 / UTF-32 (with or without BOM where detectable), otherwise Windows-1252; an unterminated
-  `[Name` line is a section header; include limits 30 levels, 500 files, 32 MB per file. `!WriteKeyValue` quotes
-  values with leading / trailing spaces and turns line breaks into spaces; it only writes files under `#SKINSPATH#`
-  or `#SETTINGSPATH#`, as documented.
+  encodings UTF-8 / UTF-16 / UTF-32 (with or without BOM where detectable), otherwise the ANSI code page of the Mac's
+  language (next entry); an unterminated `[Name` line is a section header; include limits 30 levels, 500 files, 32 MB
+  per file. `!WriteKeyValue` quotes values with leading / trailing spaces and turns line breaks into spaces; it only
+  writes files under `#SKINSPATH#` or `#SETTINGSPATH#`, as documented.
 - **Why:** the manual does not describe these edge cases; the fallbacks only apply when a file would otherwise be
   missing.
 - **Skin impact:** none for valid skins.
 - **Status:** identical (+ leniencies)
+
+#### Legacy ANSI skin files (code page)
+- **Windows:** the extended characters of an ANSI file follow "the Windows Codepage (locale) active in your Windows
+  system": Windows-1252 in the US and Western Europe, GBK (936) on a Simplified Chinese Windows, Big5 (950) on a
+  Traditional Chinese one. UTF-16 LE reads the same everywhere.
+- **Mac:** the first language in System Settings > General > Language & Region stands for the Windows locale:
+  Simplified Chinese → 936 (GBK), Traditional Chinese → 950 (Big5), Japanese → 932, Korean → 949, Thai → 874,
+  Vietnamese → 1258, Cyrillic languages → 1251, Central European → 1250, Greek → 1253, Turkish → 1254, Hebrew → 1255,
+  Arabic and Persian → 1256, Baltic → 1257, any other language → 1252. It is picked when the app starts and used for
+  skin and include files, Lua scripts, QuotePlugin files, WebParser's CodePage=0 fallback, the Skin Studio and the
+  installer. Files written back (`!WriteKeyValue`, the Skin Studio, variables kept on reinstall) stay in that code
+  page; text it cannot hold switches the file to UTF-16 LE with BOM (the Studio's code view asks first). BOMs, UTF-16
+  and valid UTF-8 are detected first; a file that is not valid in the code page is read as Windows-1252. The
+  command-line modes do the same (`--render` follows `-AppleLanguages`, or `--languages`; with `--clock` it reads in
+  1252 unless `--languages` says otherwise); `--self-test` keeps 1252. Deskset 0.1.0 read
+  every ANSI file as Windows-1252.
+- **Why:** macOS has no system code page; the Mac's language is the closest equivalent of the Windows locale
+  (judgment call: only the first language counts).
+- **Skin impact:** an ANSI skin in the code page of your language shows its text and font names correctly (a GBK skin
+  with `FontFace=微软雅黑` draws in PingFang SC on a Mac set to Simplified Chinese). An ANSI skin in another code page
+  shows wrong characters, as on a Windows set to another locale; save it as UTF-16 LE (or UTF-8) to fix it. A change
+  of language applies the next time Deskset starts.
+- **Status:** identical (judgment call)
 
 #### Section variables in options without DynamicVariables
 - **Windows:** "Section variables are always dynamic"; DynamicVariables=1 is needed to *update* them. The manual
@@ -516,6 +539,16 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
 - **Skin impact:** common patterns such as `(?siU)<tag>(.*)</tag>` behave the same; exotic PCRE features may not
   match.
 - **Status:** identical (common patterns) / partial (exotic PCRE)
+
+#### Running Windows programs
+- **Windows:** `["Program.exe"]` and `!Execute ["…"]` run a program, script or shortcut, often one that ships with the
+  skin.
+- **Mac:** URLs, files, folders and Mac apps open; a Windows program, script or shortcut (`.exe`, `.bat`, `.cmd`,
+  `.lnk`, `.vbs`, `.ps1`…) is not opened, even when the file exists, and the skin's log says so.
+- **Why:** macOS cannot run them; Finder would only show its "macOS doesn't support Microsoft Windows applications"
+  alert.
+- **Skin impact:** tools that come with a skin do nothing; the rest of the action runs.
+- **Status:** not supported
 
 #### Update interval and Counter
 - **Windows:** `Update` minimum 16 ms, -1 = once; Calc's `Counter` only resets when the skin is unloaded.
@@ -691,14 +724,27 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   `ButtonImage`, `BarImage` and the skin's `Background`. It is white, so ImageTint colors it and ImageAlpha,
   Greyscale, ColorMatrix, flip, rotate, crop, Tile and ScaleMargins work; it is rendered at the pixels it covers and
   stays sharp. `MacSymbolSize` (default 16) sets its size without W / H, `MacSymbolWeight` its weight (Ultralight …
-  Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths) or Multicolor (the
-  symbol's own colors, plain parts white). With W and H it keeps its shape (PreserveAspectRatio defaults to 1, or to
+  Black), `MacSymbolRendering` Monochrome (default), Hierarchical (one color in several strengths), Multicolor (the
+  symbol's own colors, plain parts white) or Palette (colors of the skin's choosing, next entry). With W and H it keeps its shape (PreserveAspectRatio defaults to 1, or to
   0 with ScaleMargins, which then nine-slices it). A Button shows it in every state, at half opacity while pressed.
   Unknown names give a compatibility note (taken back when a measure's value names a known one); `sf:` alone
   (`sf:%1` or `sf:[Measure]` before the measure has a value) is no image and no note. Bitmap, Rotator and Histogram
   cannot use symbols (note, nothing drawn).
 - **Why:** Deskset extension: the Mac's icon set, without image files.
 - **Skin impact:** none for Windows skins; on Windows such images are missing.
+- **Status:** Mac-only
+
+#### Palette symbols (`MacSymbolRendering=Palette`, `MacSymbolColors`)
+- **Windows:** no SF Symbols.
+- **Mac:** `MacSymbolRendering=Palette` with `MacSymbolColors=c1|c2|c3` draws a symbol's primary, secondary and
+  tertiary layers in those colors (alpha included; variables, formulas and measure values work). Which part is in
+  which layer is Apple's design (`cloud.sun.fill`: cloud, then sun). Layers past the last color take the last color;
+  an entry that is not a color is white; no colors at all draws as Monochrome; other renderings ignore the option.
+  ImageTint multiplies the colors (leave it white); ImageAlpha fades them. MacWeather's `Type=SymbolPalette` gives the
+  colors for the current weather symbol.
+- **Why:** Deskset extension: Multicolor paints weather clouds white in any look; a palette gives a yellow sun on a
+  cloud in the text's color on light and dark backgrounds.
+- **Skin impact:** none for Windows skins.
 - **Status:** Mac-only
 
 #### Decoding an image at the size it is drawn (`MacDecodeSize=Drawn`)
@@ -861,7 +907,10 @@ that uses them still loads there, only without the effect. The Mac look extensio
 belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mode variables and the clock, week and
 temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
-with the measures ([§6.4](#64-measures)). Deskset's own plugins are with the plugins of their area:
+with the measures ([§6.4](#64-measures)), NowPlaying's `PlayerType=MacPermission` with the music players
+([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)), AudioLevel's `Type=MacPermission` with the audio plugins
+([§10.1](#101-audiolevel-visualizers-and-level-meters)), Chameleon's `CropDesktop=Skin` with the desktop plugins
+([§10.7](#107-window-desktop-and-color-plugins-third-party)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 
@@ -1013,7 +1062,8 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 
 #### StartHidden
 - **Windows:** the skin starts hidden; `!Show` shows it.
-- **Mac:** the same (also from `DefaultStartHidden`); a hidden skin keeps updating and running its actions.
+- **Mac:** the same (also from `DefaultStartHidden`); a hidden skin keeps updating and running its actions. The Manage
+  window marks it as hidden and can show it ([§7.3](#73-menus-and-the-manage-window)).
 - **Why:** —
 - **Skin impact:** none.
 - **Status:** identical
@@ -1150,6 +1200,21 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Skin impact:** none.
 - **Status:** emulated
 
+#### A loaded skin that is hidden (Manage window)
+- **Windows:** the Manage window lists the active skins with their Coordinates, Position, Load order, Transparency and
+  other settings; the manual describes no sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows
+  it again.
+- **Mac:** a loaded skin hidden by a skin action (`!Hide`, `!HideFade`, `!Toggle`, their group forms, a bang from
+  another skin) or by StartHidden is marked: a crossed-out eye on its row, the status "Loaded, hidden", and a notice
+  that it is loaded and running but off the desktop, with a Show button that shows it as `!ShowFade` does (Show is in
+  the row's menu too). Typing coordinates for a hidden skin moves it out of sight, and a hint under the coordinates
+  says it is still hidden. Show changes no setting: a skin that hides itself can hide again (the Stationery Spectrum
+  strip with Hide When Idle, the next time it goes quiet), and StartHidden hides it again at its next load.
+- **Why:** a skin that hid itself, for example while it has nothing to show, looked lost: no window, no menu, and
+  moving it did not bring it back.
+- **Skin impact:** none.
+- **Status:** Mac-only
+
 #### The default skins and the first launch
 - **Windows:** Rainmeter comes with its illustro skins, loaded when it is first installed.
 - **Mac:** Deskset's own original skins, the Stationery suite, are copied into the Skins folder at the first launch
@@ -1234,16 +1299,100 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2,
-  1 000 ms apart), draws it at scale S (default 2) in the Light appearance with a 24-hour clock, weeks from Sunday and
-  °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--data FILE|JSON]
+  [--state out.json] [--color-space device|srgb] [--locale ID|system] [--languages LIST|system]
+  [--accent-color R,G,B[,A]|system] [--wallpaper FILE] [--at X,Y] [--screen WxH|system] [--skins-dir DIR]` loads the
+  skin without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light
+  appearance with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and
+  prints compatibility notes and log lines. `--wallpaper` stands in for the desktop picture (Chameleon samples it; the
+  part under the skin is drawn behind it) on a screen of 1512 × 982 points (1920 × 1080 with `--clock`; `--screen`
+  gives another), with the skin's top-left corner at `--at` (default 0,0); without it, `--background` stands in for a
+  desktop of that color. With a stand-in desktop the skin sees that one screen. `--clock` runs the skin in virtual time from the given moment: update i
+  is at the given time plus i intervals, in UTC unless `--time-zone` names another zone (`--time-zone` alone changes
+  only the zone); `!Delay`, ActionTimer and other timers run at their own virtual times and nothing waits in real
+  time. The files of its own tree (QuotePlugin, FolderInfo, FileView, WebParser `file://`) are read as fixtures, and
+  so are those of the render's settings folder, of the `--data` file's folder and of the `--wallpaper`'s; work that reaches further (other
+  folders such as a Downloads folder, the network, programs, live system state) runs for real, gets up to one interval
+  to come back, and is listed on stderr as not verifiable, as is every service the skin reads that nothing stands in
+  for (the system data, battery, sensors, players, audio, Wi-Fi, the front window, system colors, the Trash). With
+  `--clock` the rest of the skin's world is fixed too: the en_US_POSIX locale (day names, `%Z`, `locale-date`, the
+  weather's `Units=Auto`), English as the preferred language (legacy ANSI files read in code page 1252), macOS's blue
+  accent (`#MACACCENTCOLOR#`) and one 1920×1080 screen (`#SCREENAREAWIDTH#`, `#WORKAREAHEIGHT#`…), unless `--locale`,
+  `--languages`, `--accent-color` or `--screen` give others (`system`: the Mac's; without `--clock` these are the
+  Mac's, except the screen of a stand-in desktop). `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua `math.random`, `os.tmpname`…) the same
+  in every run, and the render runs with Swift's deterministic hashing, so the order of sets and dictionaries is the
+  same too. The image is drawn in the device RGB space; `--color-space srgb` draws it
+  into an 8-bit premultiplied sRGB bitmap instead (the space reference images are compared in). Development builds
+  also take `--legacy`: a frozen copy of the renderer measures and draws the skin (the reference the renderer is
+  compared with, byte for byte, while its code moves); release builds reject it. Window, config and
+  app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
+  track, `=refused` a running Music that refused Automation; its covers, like the ones `--data` gives, are kept in `Caches` in the render's settings folder, never in the
+  app's cache). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
   ([§6.8](#68-deskset-extensions)), and WebParser's `file://` limit to the Skins and settings
   folders ([§11.1](#111-webparser)) applies in the app only. `Deskset --help` (or `-h`) lists every command-line mode;
   an unknown `--` option prints that list and exits with status 2 instead of starting the menu bar app.
 - **Why:** repeatable screenshots without prompts or a visible screen.
+- **Skin impact:** none (developer tool).
+- **Status:** Mac-only
+
+#### Rendering with given data (`--data`, `--state`)
+- **Windows:** no counterpart.
+- **Mac:** `--data` gives what the skin reads about the Mac, as a JSON object (or the path of a file holding one;
+  paths inside are relative to that file's folder; an event script is read for its `data` object). A key that is not
+  given leaves that part live; `null` means there is none:
+  - `system`: a list of frames (or `{"frames": […]}`, or one frame, or the path of a file with them), one per update
+    — frame 1 for the first update, then the next before each update, the last one staying. A frame gives any of
+    `cpu` (`[whole, core 1, core 2…]`, 0–100), `memory` (`physicalTotal`, `physicalUsed`, `swapTotal`, `swapUsed`,
+    bytes), `network` (`{"en0": {"received": …, "sent": …}}`, cumulative bytes), `bestInterface`, `disks`
+    (`{"/": {"total", "free", "available", "label", "kind"}}` by mount point), `uptime` (seconds), `processes`
+    (`[{"name", "pid", "cpu": share of the whole Mac 0–100, "memory": bytes}]`: Process, UsageMonitor, AdvancedCPU,
+    PerfMon), `sysInfo` (`{"COMPUTER_NAME": "…", "IP_ADDRESS:1": "…"}`), `cpuFrequency` (Hz) and `graphicsAdapter`; a
+    frame keeps what it leaves out from the one before. With `system` given, nothing of these comes from the Mac: a
+    reading no frame gives is 0, empty or unknown.
+  - `battery`: `{"level", "charging", "onAC", "timeRemaining"}` (minutes); `null`: a Mac without a battery.
+  - `sensors`: `{"cpu": 52.4, "fan.1": {"value", "min", "max", "label"}, "thermal": 0–3, …}` by MacSensors key; a
+    sensor left out is one this Mac does not have.
+  - `nowPlaying`: `{"player": "music"|"spotify", "state": "playing"|"paused"|"stopped", "artist", "title", "album",
+    "position", "duration", "cover": image file, "volume", "shuffle", "repeat": "off"|"one"|"all", "rating"}`;
+    `null`: every player closed.
+  - `audio`: `{"frames": [{"rms": [l, r], "peak": [l, r], "bands": [[…], […]], "fft": …}], "deviceName",
+    "sampleRate", "channels"}` (or the path of a file): the levels every AudioLevel parent reports, 0–1 before its
+    gains, one frame per update; a single value or list stands for every channel. `null`: no audio device.
+  - `weather`: the path of a MET Norway locationforecast 2.0 response (as the service receives it), or
+    `{"forecast": path, "location": [lat, lon] | null, "status": 200}`; `null`: offline. The render's skin counts as
+    live; `Location=auto` is the forecast's own point unless `location` says otherwise, and `Location=timezone` the city
+    of the skin's time zone (`--time-zone`).
+  - `wifi`: `{"ssid", "rssi", "transmitRate", "encryption", "auth", "phy", "networks": [...]}`; `null`: no Wi-Fi.
+  - `desktopImage`: the desktop picture (Chameleon `Type=Desktop`, the Registry's Wallpaper); `null`: none.
+  - `programs`: `{"part of a command line": "its output" | ["line", …]}`: RunCommand starts no program; each one
+    ends at once with the output of the longest entry its command line contains (none: no output), and the skin's own
+    file writes (`!WriteKeyValue`…) go to a copy of its files.
+  - `trash`: `{"count": 3, "size": 2048}` (bytes; `"size": null`: it cannot be read) or a count: every RecycleManager
+    reading; `null`: an empty Trash. (A Deskset addition.)
+
+  With `--clock` and `--seed` as well, the render is the same on every run and on every Mac, except what it lists as
+  not verifiable and the few things still read from the Mac (SysColor's colors, FileView's date format, the fonts
+  installed). A mistake in the data names the key and
+  stops the render. `--state` writes what the skin ended up with (its size; each measure's value, string and whether
+  it is disabled or paused; each meter's frame, visibility and text; its variables) as JSON. The x86_64 build under
+  Rosetta draws the edges of text and shapes slightly differently from the arm64 one (a few levels of 255 per
+  channel), and trigonometric functions may differ in the last digit, so compare the two with `--state` rather than
+  byte for byte.
+- **Why:** repeatable renders for comparing the drawing code with itself, on any Mac and without reaching the network,
+  a player or a permission.
+- **Skin impact:** none (developer tool).
+- **Status:** Mac-only
+
+#### Measuring what a skin costs (`--benchmark`)
+- **Windows:** no counterpart.
+- **Mac:** `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` runs each skin without a window at its own `Update` rate, drawing its picture after every update
+  as a skin window does, and prints the time of an update and of a drawing and the CPU time of the main thread and of
+  the process (in percent of one core). Nothing asks for a permission: `DESKSET_AUDIO_DEMO=1` gives visualizers the
+  demo signal. What Core Animation and the window server do afterwards is not included.
+- **Why:** comparing a skin's cost before and after a change without opening windows.
 - **Skin impact:** none (developer tool).
 - **Status:** Mac-only
 
@@ -1464,7 +1613,7 @@ paths and a few functions that have no Mac meaning. Details: [`compat/lua.md`](c
 #### `os.date`, `os.clock` and other `os` functions
 - **Windows:** Microsoft C library (`%#d` removes leading zeros; `clock()` is wall-clock time).
 - **Mac:** `%#x` flags are emulated; `os.clock` returns wall-clock seconds (the Mac C library would return CPU time);
-  `math.random` sequences differ.
+  `math.random` sequences differ; `os.tmpname` makes `/tmp/lua_XXXXXX` with a name from the skin's random numbers.
 - **Why:** scripts time animations with `os.clock`.
 - **Skin impact:** none expected.
 - **Status:** emulated
@@ -1793,10 +1942,14 @@ Intel Macs are untested.
 - **Mac:** the same model; the default path is `/Volumes/` (the mounted volumes); Finder-like order (`..`, folders,
   files; natural name sort); FileDate in the user's locale; paths use `/`. `Type=Icon` writes Finder's icon at IconSize
   in the background, as a real `.ico` file for `.ico` paths up to 256 px and as PNG data otherwise (the Image meter
-  reads both), creating missing folders on IconPath. ContextMenu reveals the item in Finder (another app's Finder
-  context menu cannot be shown); Properties opens Finder's Get Info window (Automation permission).
-- **Why:** macOS paths and APIs.
-- **Skin impact:** right-click menus become "show in Finder"; skins that parse `\` out of paths need `/`.
+  reads both), creating missing folders on IconPath. A symbolic link or Finder alias gets the icon of the item it
+  leads to, without Finder's arrow (one that cannot be followed keeps its own icon). ContextMenu reveals the item in
+  Finder (another app's Finder context menu cannot be shown); Properties opens Finder's Get Info window (Automation
+  permission).
+- **Why:** macOS paths and APIs; the manual does not say how links are drawn, and on macOS 26 `/Applications/Safari.app`
+  is a link.
+- **Skin impact:** right-click menus become "show in Finder"; skins that parse `\` out of paths need `/`. A link or
+  alias to an item in Desktop, Documents or Downloads may make macOS ask for access to that folder once.
 - **Status:** partial
 
 #### RecycleManager
@@ -1949,8 +2102,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   engine serves every skin: a stream is captured once however many skins use it, starts at the first update of the
   first parent measure in a skin window — never when a skin is only checked (the Manage window, for skins that are not
   loaded) or drawn with `--render` — and stops 3 s after the last one is gone; capture also pauses while skin updates
-  are paused (sleep, displays asleep, another user's session). Cost on Apple silicon: 0.1–0.3 % of one core for
-  typical visualizers.
+  are paused (sleep, displays asleep, another user's session), and system audio is captured only while another app
+  plays sound (below). Cost on Apple silicon: 0.1–0.3 % of one core for typical visualizers.
 - **Why:** WASAPI does not exist on macOS.
 - **Skin impact:** none for skin authors.
 - **Status:** emulated
@@ -1962,10 +2115,19 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   (≈ 0.3 s gap). An output device that also has inputs (USB interfaces, headsets) is not added to the capture
   aggregate, so a visualizer never records a microphone or switches Bluetooth headphones to their call profile.
 - **Why:** process taps are the public API for system audio capture.
-- **Skin impact:** macOS asks once for **System Audio Recording** and shows its purple recording indicator while a
-  visualizer runs. If refused, macOS delivers silence (levels 0). When a system-audio stream carries only digital
-  silence over two checks 10 s apart while another app is playing sound, the skin gets a compatibility note pointing
-  to the permission (it goes away once sound arrives).
+- **Skin impact:** macOS asks once for **System Audio Recording** and shows its purple recording indicator while the
+  tap runs. If refused, macOS delivers silence (levels 0); `MacPermission` 1 (below) is Deskset's suspicion of it.
+- **Status:** emulated
+
+#### System audio only while another app plays (macOS 14.2+)
+- **Windows:** the loopback capture runs while the skin is loaded, and nothing shows it.
+- **Mac:** a system-audio stream is tapped only while another process runs audio output (Core Audio's process
+  objects, followed with listeners). When the last one stops, the tap stays 5 s more, then goes — and with it the
+  purple recording indicator and the busy output device; the next sound starts it again at once. Meanwhile the levels
+  read 0 and `DeviceStatus` reads 1. So the permission prompt comes the first time something plays while a
+  visualizer is loaded. Not on macOS 13 – 14.1, nor for `Port=Input`.
+- **Why:** a visualizer at rest should not look like it records, nor keep the output device awake.
+- **Skin impact:** none; a system sound starts the tap for about 5 s.
 - **Status:** emulated
 
 #### `Port=Output` on macOS 13 – 14.1
@@ -1980,8 +2142,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Windows:** capture of the default (or `ID`) input endpoint.
 - **Mac:** the input device directly, following default-input changes; needs the **Microphone** permission.
 - **Why:** —
-- **Skin impact:** the orange microphone indicator while capturing; refused → 0, `DeviceStatus` 0 and a compatibility
-  note. Deskset tries again every 10 s, so the levels start (and the note goes away) once the microphone is allowed.
+- **Skin impact:** the orange microphone indicator while capturing; refused → 0, `DeviceStatus` 0, `MacPermission` 1
+  and a compatibility note. Deskset tries again every 10 s, so the levels start (and the note goes away) once the microphone is allowed.
 - **Status:** identical (different permission UI)
 
 #### `ID`
@@ -1998,7 +2160,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Mac:** the same (parent options are read once). Judgment calls: an invalid `Port` means Output; a parent's own
   value is 0 unless it has a `Type`; a child with a missing or wrong parent, an unknown Type or Channel reads 0 / Sum
   with one warning; a parent disabled at load starts no capture until enabled, and a parent disabled later with
-  `!DisableMeasure` keeps capturing (and the recording indicator on) until the skin is refreshed or unloaded.
+  `!DisableMeasure` lets its capture go (the stream stops 3 s later unless another parent uses it, and its children
+  read 0) until `!EnableMeasure`.
 - **Why:** the manual is silent on these.
 - **Skin impact:** none for valid skins.
 - **Status:** identical
@@ -2036,12 +2199,33 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 
 #### `Type=Format`, `DeviceStatus`, `DeviceName`, `DeviceID`, `DeviceList`
 - **Windows:** format text, status 0 / 1, name / ID, a list of device IDs.
-- **Mac:** Format like `48000 Hz, 32-bit float, 2 channels`; DeviceStatus 1 while capturing (a refused System Audio
-  Recording permission cannot be detected, so it stays 1); Mac device names and UIDs, available even before capture;
-  DeviceList has one `UID: Name` per line.
+- **Mac:** Format like `48000 Hz, 32-bit float, 2 channels`; DeviceStatus 1 while capturing or while system audio
+  waits for sound (also while a refused permission is suspected: the device is there), else 0; Mac device names and
+  UIDs, available even before capture; DeviceList has one `UID: Name` per line.
 - **Why:** these formats are not documented.
 - **Skin impact:** different wording; skins that parse the Windows list format will not match.
-- **Status:** emulated / partial (DeviceStatus)
+- **Status:** emulated
+
+#### `Type=MacPermission`: a missing permission
+- **Windows:** no counterpart; Windows asks for no permission to capture audio.
+- **Mac:** 1 while a refused permission keeps the stream silent, 2 while macOS waits for an answer (the microphone's
+  prompt), else 0; the string names it (`System Audio Recording`, `Screen Recording`, `Microphone`). A refused
+  microphone or Screen Recording is known when the capture starts. A refused System Audio Recording is a tap that
+  carries only digital silence: when a tap carries nothing else at two looks 10 s apart while the same app plays
+  each time (an app with a Dock icon, its helpers included; not daemons or agents), and no system-audio tap has
+  carried sound since Deskset started, `MacPermission` reads 1 and the skin gets a compatibility note. It holds while
+  the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s). While it holds and an
+  app plays, every look (10 s) takes a new tap for the first 3 minutes; then the tap is kept, with new ones about
+  4 min 40 s and 9 min 40 s after the verdict, and none after that until another app plays (which starts it all
+  again). Leaving or quitting System Settings, macOS's permission prompt going away, and Deskset becoming active or
+  inactive take a new tap at once (never on a tap younger than 2 s), so a permission given there reaches the capture
+  within seconds. `DeviceStatus` stays 1.
+- **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing. The
+  quick new taps: an ad-hoc build that lost its grant stayed still for minutes after the user allowed it again.
+- **Skin impact:** none for skins that do not use it. It is a suspicion: an app that sends only digital silence to
+  its output from the moment Deskset starts looks the same. Deskset's Spectrum (card and strip) and Studio VU show
+  "Allow System Audio Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security.
+- **Status:** Mac-only
 
 ### 10.2 Win7Audio (volume, mute, output device)
 
@@ -2121,6 +2305,20 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Why:** macOS player data.
 - **Skin impact:** identical for Music.app; Spotify lacks genre / year / lyrics / rating (as on Windows).
 - **Status:** identical (Music) / partial (Spotify)
+
+#### NowPlaying: `PlayerType=MacPermission` (refused Automation)
+- **Windows:** no counterpart; Windows players need no permission.
+- **Mac:** about the player the measure would show: the preferred player while it runs, else the other one. 1 while
+  that player runs and has refused Automation, 2 while it has not been asked yet (macOS's prompt may be on screen),
+  else 0; so the other player's refusal counts only while the preferred player is closed. It stays 0 while the
+  measure shows another player's track, and for a refused player that is closed. The string is the player
+  the number is about (`Music`, `Spotify`; with 0, the player the measure shows). Reading it never asks; a refusal is
+  re-checked every 30 s, so allowing it later brings it back to 0. WebNowPlaying accepts it too.
+- **Why:** Deskset extension: a refused player looks closed to every other PlayerType, so a skin could only say "not
+  playing".
+- **Skin impact:** none for other skins. Deskset's media widgets show "Allow Access" and open Privacy & Security ›
+  Automation (`x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`).
+- **Status:** Mac-only
 
 #### NowPlaying: lyrics and cover art
 - **Windows:** lyrics are downloaded from a lyrics website; Cover is a path to an image file.
@@ -2263,11 +2461,23 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   Light1–4, Dark1–4, Average, Luminance.
 - **Mac:** the wallpaper of the skin's screen (a folder of rotating wallpapers → its first image) or the file,
   sampled in the background when it changes. Colors come from Deskset's own clustering (the plugin's algorithm is not
-  documented). ContextAwareColors and ForceIcon are ignored; dynamic / aerial wallpapers that are not image files give
-  the fallback colors.
-- **Why:** no access to the plugin's method.
+  documented). A dynamic wallpaper (Sonoma…) is judged by its light or dark picture, as the appearance is. A wallpaper
+  kept in Desktop, Documents, Downloads, iCloud Drive or on another volume is never read (macOS would ask first): the
+  fallback colors apply. ContextAwareColors and ForceIcon are ignored; wallpapers that are not image files (Aerials,
+  downloaded `.madesktop` ones) give the fallback colors.
+- **Why:** no access to the plugin's method; no prompt for a folder the person did not give Deskset.
 - **Skin impact:** colors are similar in spirit, not identical.
 - **Status:** emulated
+
+#### Chameleon `CropDesktop=Skin` (the wallpaper under the skin)
+- **Windows:** no counterpart (`CropDesktop` is 1 or 0).
+- **Mac:** a `Type=Desktop` parent samples only the part of the wallpaper under the skin window, laid on the screen as
+  macOS lays it (Fill, Fit, Stretch, Center), from the window's place (no screen capture), and again as soon as the
+  window has stopped moving; when the colors change, its children update at once (except `UpdateDivider=-1`), so their
+  OnChangeAction runs. `CropX/Y/W/H` win over it.
+- **Why:** Deskset extension: a skin without a card must judge the wallpaper actually behind it.
+- **Skin impact:** not available in Rainmeter; the skin still loads there. Details: [`compat/media-ui.md`](compat/media-ui.md).
+- **Status:** Mac-only
 
 #### IsFullScreen
 - **Windows:** 1 when the focused window is full screen; string = its process name (`chrome.exe`).
@@ -2303,11 +2513,12 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Windows:** no counterpart; skins read weather web sites with WebParser (most of those services have shut down).
 - **Mac:** forecasts from MET Norway's Locationforecast 2.0 for any place: one measure with `Location=` (a town such as
   `Oslo, NO` or `Springfield, IL`, `latitude,longitude`, `auto`, or `timezone`), others with `Parent=` and `Type=` (Temperature,
-  FeelsLike, High, Low, Condition, Symbol, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal, Beaufort,
-  Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise, Sunset, Place,
-  UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
+  FeelsLike, High, Low, Condition, Symbol, SymbolPalette, Humidity, Pressure, UVIndex, WindSpeed, WindCardinal,
+  Beaufort, Precipitation, PrecipitationChance, ThunderChance, TemperatureColor, TemperatureCurve, Time, Sunrise,
+  Sunset, Place, UpdatedAt, Status, Attribution, LocationSource…), `Hour=` 0–47 or `Day=` 0–9. `Units=Auto` follows the Mac's Temperature setting and
   region; `Metric`, `Imperial` and per-quantity overrides. `Decimals`, `UnavailableText`, `TimeZone` (hours from UTC
-  without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`; FinishAction,
+  without this Mac's summer time, unlike the Time measure, unless `DaylightSavingTime=1`), `Format`, `ScaleColor` (one
+  color for every TemperatureColor instead of the scale); FinishAction,
   OnConnectErrorAction, OnLocationErrorAction; `!CommandMeasure … Refresh` / `Locate`; section variable functions
   `[&M:Now(Humidity)]`, `[&M:Hour(3, Temperature)]`, `[&M:Day(1, High)]`. Days run midnight to midnight in the
   place's time zone.
@@ -2363,7 +2574,11 @@ own. Details, every option and Type: [`compat/weather.md`](compat/weather.md).
 - **Mac:** `Type=Symbol` gives an SF Symbol name for each of MET's 83 weather codes (day and night forms, all on
   macOS 13): `ImageName=sf:%1` draws it (see [SF Symbols as images](#sf-symbols-as-images-imagenamesfcpufill)),
   `MacSymbolRendering=Multicolor` in color. `Type=SymbolCode` gives MET's own code for skins with their own images.
-- **Why:** no image files to ship.
+  `Type=SymbolPalette` (and `Hour(n, SymbolPalette)`, `Day(n, SymbolPalette)`) gives the colors for
+  `MacSymbolRendering=Palette`, one per layer of the current symbol by what it shows: clouds, moons, snow and lightning
+  `PaletteInk`, the sun `PaletteSun`, rain and sleet drops `PaletteRain` (defaults: Multicolor's Dark Mode white,
+  yellow and cyan), set once on the measure with the place.
+- **Why:** no image files to ship; palettes because Multicolor clouds are white on any background.
 - **Skin impact:** none.
 - **Status:** Mac-only
 
@@ -2708,6 +2923,16 @@ rendered, 0 crashes / timeouts, 10 notes in 8 skins — PowershellRM (three Flue
 HMNmeter2 skins, one of them also `Current Bandwidth`), the Winamp player of Nelamint and Simple Clean, and the two
 Windows registry video-memory values of FluentDash11 GPU. The MSI Afterburner note is gone. Where Deskset has no Full
 Disk Access, PogPack's Garbage skin also notes that its Trash size needs it (§4).
+
+**Re-tested on 2026-09-28** after the new drawing path (skin windows keep pictures of the meters that did not change),
+reading legacy ANSI files in the code page of the user's language, and logging Windows programs instead of opening
+them: every pass (plain, demo audio, English and Chinese language, installed copies, and a slower one with 5 updates
+a second apart) rendered 390 of 390 with no crash and no hang (60-second limit); 11 notes in 9 skins — the 10 of
+2026-09-27 and the Trash note. The drawing check (`Deskset --verify-drawing-cache`) found no frame that differs from a
+full drawing in any of the 390 skins. On a Chinese-language Mac none of the corpus's 162 legacy ANSI files decodes as
+GBK, so they read as before. Two bugs found by the run were fixed: the drawing check skipped skins that sit directly
+in their root config folder, and a RecycleManager Size measure placed after a Count measure never read the Trash size
+at a one-second update (PogPack's Garbage). Raw numbers: [`compat/retest-2026-09-28.md`](compat/retest-2026-09-28.md).
 
 ---
 

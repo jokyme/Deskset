@@ -26,14 +26,14 @@ public enum TextFileEncoding: Equatable {
 /// ANSI: the manual ("Unicode in Rainmeter", docs.rainmeter.net/tips/unicode-in-rainmeter/) says the extended
 /// characters of an ANSI file are "based on the Windows Codepage (locale) active in your Windows system" —
 /// Windows-1252 in the US / Western Europe, Windows-1251 with a Russian locale, and so on. The macOS equivalent of the
-/// Windows locale is the user's preferred language (`defaultANSICodePage()`); once the app sets `ansiCodePage` from it,
+/// Windows locale is the user's preferred language (`defaultANSICodePage()`); the app sets `ansiCodePage` from it, so
 /// e.g. a GBK-encoded skin from a Chinese author reads correctly for a Chinese user, exactly as it would in Rainmeter
 /// on a Chinese Windows. Valid UTF-8 is still preferred (a leniency: Rainmeter itself cannot read UTF-8 without BOM,
 /// but such files are common, and DBCS text is practically never valid UTF-8 by accident).
 public enum TextDecoding {
     /// The Windows "ANSI" code page used for legacy (non-Unicode, non-UTF-8) files. The default, 1252, keeps the core
-    /// deterministic (tests and tools behave the same on every Mac). The app should set it once at startup, before
-    /// loading skins, to the code page of the user's language:
+    /// deterministic (tests and tools behave the same on every Mac). The app sets it once at startup, before loading
+    /// skins, to the code page of the user's language (`CommandLineTools.useANSICodePage`; not in its self-tests):
     ///
     ///     TextDecoding.ansiCodePage = TextDecoding.defaultANSICodePage()
     ///
@@ -43,7 +43,8 @@ public enum TextDecoding {
     /// The Windows system ANSI code page for a language list (the first entry decides), e.g. `zh-Hans` → 936,
     /// `zh-Hant` → 950, `ja` → 932, `ko` → 949, `ru` → 1251, `pl` → 1250, `el` → 1253, `tr` → 1254, `he` → 1255,
     /// `ar` → 1256, `lt` → 1257, `vi` → 1258, `th` → 874; anything else → 1252.
-    public static func defaultANSICodePage(preferredLanguages: [String] = Locale.preferredLanguages) -> Int {
+    public static func defaultANSICodePage(
+        preferredLanguages: [String] = SkinEnvironment.systemPreferredLanguages()) -> Int {
         guard let first = preferredLanguages.first else { return 1252 }
         let parts = first.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).map(String.init)
         guard let language = parts.first else { return 1252 }

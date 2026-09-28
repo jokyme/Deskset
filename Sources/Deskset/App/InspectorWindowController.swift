@@ -214,6 +214,9 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     var builtInOverride = false
     /// The code pane has not seen the latest refresh (it was hidden).
     var codeStale = true
+    /// The edits the step the window follows made to the text of the widget's files (`SessionChange`), while it
+    /// follows it: the code pane makes them in its copy instead of reading the files again (`followCodeEdits`).
+    var codeEditsToFollow: SourceTextEdits?
     /// Selection changes made by the caret in the code pane (they tint the code instead of scrolling it).
     var selectionFromCode = false
     /// The code pane's commit is being written: its refresh must not scroll the code or commit it again.
@@ -259,6 +262,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     var revealedGroups: Set<String> = []
     var advancedOpen = false
     let inspectorState = InspectorState()
+    /// The rows of the page on show that follow a step in place (`InspectorInPlace`).
+    let inPlace = InspectorInPlace()
     var addKeyField: NSTextField?
     var addValueField: NSTextField?
 
@@ -1414,11 +1419,13 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         self.session = nil
     }
 
-    /// The Studio's instance was loaded again (a step, an undo, a change on disk): everything that shows it follows.
+    /// The Studio's instance was loaded again (a step, an undo, a change on disk): everything that shows it follows,
+    /// each part timed in the session's phases of the reload.
     func studioSkinReloaded() {
         guard let c = controller else { return }
         finishOpening()
-        for part in attachParts(c) { part.work() }
+        let phases = session?.reloadPhases ?? StudioPhaseClock()
+        for part in attachParts(c) { phases.run(windowPart: part) }
     }
 
     /// What binding to a skin controller takes, in order (`attach` runs the parts at once): the widget, the canvas, the
@@ -1681,6 +1688,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             canvas.setSelection(selectedMeterName, reveal: true)
         }
         rows = currentRows()
+        // Only values changed: the rows showing them follow in place (InspectorInPlace.swift).
+        if steps == nil, updateInspectorInPlace() { return }
         // Nothing the inspector shows changed (a refresh after typing code elsewhere, a write it does not show): the
         // controls stay — no rebuild of the whole column (hundreds of milliseconds), focus, scroll and open menus
         // kept — and only the live values follow.
@@ -1949,7 +1958,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             let before = self.canvas.frame.size
             self.canvas.updateSize()
             if self.canvas.frame.size != before { self.fitIfAutomatic() }
-            self.canvas.needsDisplay = true
+            self.canvas.widgetUpdated()
         }
         ct.tolerance = interval * 0.1
         RunLoop.main.add(ct, forMode: .common)
@@ -2028,7 +2037,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         pendingStudioReload = false
         let before = skin
         session.reloadStudioSkin()
-        // Not loaded again (no Studio instance, or its file cannot be read now): the code pane re-reads the files.
+        // Not loaded again (no Studio instance, or its file cannot be read now): the code pane re-reads the files. (This
+        // always loads, never patches: the same object means nothing was loaded.)
         if skin === before { codeFilesChangedOnDisk() }
     }
 
@@ -2049,8 +2059,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     /// the running skin sets (`!SetOption`, often on every update) are updated in place, and nothing is rebuilt while
     /// a menu is open or a control follows the mouse. The sidebar's live values follow too, whatever is selected
     /// (`refreshSidebarValues`).
-    func refreshLiveValues() {
-        defer { refreshSidebarValues() }
+    func refreshLiveValues(sidebar: Bool = true) {
+        defer { if sidebar { refreshSidebarValues() } }
         guard let skin, let name = selectedSection else { return }
         headerSubtitle?.stringValue = Self.summary(of: name, kind: selectedKind, in: skin)
         let fresh = currentRows()

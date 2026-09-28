@@ -155,6 +155,12 @@ enum CodeEditorRouter {
             }
         }
         func showStarted(_ c: SkinWindowController) {
+            // The new Studio (its switch on): it opens on the widget at once, the code beside the canvas at the line.
+            if StudioSwitch.isOn(for: app) {
+                app.showInspector(for: c)
+                StudioWindowController.window(for: app)?.reveal(file: file, line: line, notice: notice)
+                return
+            }
             if let inspector = app.inspector, inspector.controller === c {
                 // Already editing this skin (the editor is open: it forgets its skin when it closes): no re-attach (it
                 // would rebuild the layers and the inspector), but the window comes in front of the other apps'
@@ -194,7 +200,8 @@ enum CodeEditorRouter {
         func owns(_ c: SkinWindowController) -> Bool {
             !c.isStopped && c.runtime.snapshot.sourceFiles.contains { comparablePath($0) == key }
         }
-        if let edited = app.inspector?.controller, owns(edited) { return edited }
+        if let edited = app.inspector?.controller ?? StudioWindowController.window(for: app)?.link?.controller,
+           owns(edited) { return edited }
         let running = app.sortedControllers
         if let main = running.first(where: { !$0.isStopped && comparablePath($0.fileURL) == key }) { return main }
         return running.first(where: owns)

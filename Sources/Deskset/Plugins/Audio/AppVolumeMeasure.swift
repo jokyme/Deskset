@@ -173,6 +173,9 @@ final class AudioAppCatalog {
 }
 
 final class AppVolumeMeasure: Measure, SectionVariableFunctions {
+    /// Reads the Mac's audio devices and volume (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.volume] }
+
     enum NumberType: Equatable { case volume, peak }
     enum StringType: Equatable { case fileName, filePath }
 
@@ -316,6 +319,24 @@ final class AppVolumeMeasure: Measure, SectionVariableFunctions {
             logOnce("[\(name)] AppVolume: \(command) only works on child measures")
             return
         }
+        // Mute, UnMute and ToggleMute go through the skin's side effects: done, or only recorded (the app as the measure
+        // names it, which a recording does not look up).
+        let target = appName.isEmpty ? "Index \(index)" : appName
+        let effect: AudioEffect?
+        switch verb {
+        case "mute": effect = .muteApp(target)
+        case "unmute": effect = .unmuteApp(target)
+        case "togglemute": effect = .toggleMuteApp(target)
+        default: effect = nil
+        }
+        if let effect {
+            skin.sideEffects.perform(.audio(effect)) { apply(verb, command: command) }
+        } else {
+            apply(verb, command: command)
+        }
+    }
+
+    private func apply(_ verb: String, command: String) {
         guard let app = selectedApp() else {
             logOnce("[\(name)] AppVolume: no app to control")
             return

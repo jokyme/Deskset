@@ -518,8 +518,8 @@ extension Skin {
     }
 
     /// A number that changes whenever a variable's value does (`!SetVariable`, previews): with the skin object and
-    /// its previews, what the editor's cache of `valueUsages()` is keyed on (the files of one skin object never
-    /// change: a refresh loads a new one).
+    /// its previews and `sourceGeneration` (a patch gives the same skin object new text), what the editor's cache of
+    /// `valueUsages()` is keyed on.
     public var variableStamp: Int {
         var hasher = Hasher()
         for e in document.section(named: "Variables")?.entries ?? [] {
@@ -572,6 +572,13 @@ extension Skin {
                 "currentconfig": config, "rootconfig": rootConfig, "rootconfigpath": dir(rootConfigDirectory),
                 "skinspath": dir(skinsDirectory),
             ]
+            // Loaded before, and neither it nor any file it read changed since (on disk or in the editor's text):
+            // what it read then (a suite of hundreds of skins is walked in a few milliseconds on every step).
+            let key = IncludeMapCache.key(url)
+            if let cached = IncludeMapCache.shared.entry(key), cached.isCurrent(sourceProvider) {
+                for file in cached.included { map.readers[file, default: []].insert(config.lowercased()) }
+                continue
+            }
             var usesAppearance = false
             func load(_ appearance: SkinAppearance) -> LoadedIniFile? {
                 let mac = appearance.variables
@@ -593,8 +600,58 @@ extension Skin {
             for file in included {
                 map.readers[IncludeMap.key(file), default: []].insert(config.lowercased())
             }
+            IncludeMapCache.shared.store(key, .init(included: included.map(IncludeMap.key),
+                                                    stamps: ([url] + included).map { IncludeMapCache.stamp($0, sourceProvider) }))
         }
         return map
+    }
+
+    /// What `includeMap()` found for each .ini file, kept for the next walk: the files it read, and a stamp of each
+    /// (its size and modification date, and the editor's text of it when an editing session holds one), so a skin is
+    /// loaded again only when it or a file it read changed — a file added or removed shows in the walk itself.
+    final class IncludeMapCache: @unchecked Sendable {
+        static let shared = IncludeMapCache()
+
+        struct Stamp: Equatable {
+            var path: String
+            var modified: Date?
+            var size: Int?
+            var text: Int?
+        }
+
+        struct Entry {
+            var included: [String]
+            var stamps: [Stamp]
+
+            func isCurrent(_ sources: SourceProvider?) -> Bool {
+                stamps.allSatisfy { IncludeMapCache.stamp(URL(fileURLWithPath: $0.path), sources) == $0 }
+            }
+        }
+
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+
+        static func key(_ url: URL) -> String { url.standardizedFileURL.resolvingSymlinksInPath().path }
+
+        static func stamp(_ url: URL, _ sources: SourceProvider?) -> Stamp {
+            let path = key(url)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+            return Stamp(path: path, modified: attributes?[.modificationDate] as? Date,
+                         size: (attributes?[.size] as? NSNumber)?.intValue,
+                         text: sources?.sourceText(for: URL(fileURLWithPath: path))?.hashValue)
+        }
+
+        func entry(_ key: String) -> Entry? {
+            lock.lock()
+            defer { lock.unlock() }
+            return entries[key]
+        }
+
+        func store(_ key: String, _ entry: Entry) {
+            lock.lock()
+            defer { lock.unlock() }
+            entries[key] = entry
+        }
     }
 
     /// The files each config reads through `@Include` (`Skin.includeMap()`).
@@ -763,6 +820,14 @@ struct ValueUsageScanner {
 
         let background = skin.detectedBackgroundLayer()
         let followers = self.followers()
+        // Whether a file is the widget's own, once per file (each answer resolves paths on disk).
+        var ownFiles: [URL: Bool] = [:]
+        func isOwn(_ url: URL) -> Bool {
+            if let known = ownFiles[url] { return known }
+            let own = skin.isOwnFile(url)
+            ownFiles[url] = own
+            return own
+        }
         // What a variable an action sets is drawn as (`HoverOn=[!SetVariable PanelBorderNow "#PanelBorderHover#"]`
         // colors what `PanelBorderNow` colors).
         let drawn: (String) -> [ValueUsageIndex.Use] = { name in
@@ -776,7 +841,7 @@ struct ValueUsageScanner {
             let trimmed = d.raw.trimmingCharacters(in: .whitespaces)
             let calculated = trimmed.hasPrefix("(") || trimmed.contains("#") || trimmed.contains("[")
             let kind = Self.kind(raw: trimmed, current: d.current, name: d.name, keys: keys)
-            let origin: ValueUsageIndex.Value.Origin = d.file.map { skin.isOwnFile($0) ? .own : .shared($0) } ?? .none
+            let origin: ValueUsageIndex.Value.Origin = d.file.map { isOwn($0) ? .own : .shared($0) } ?? .none
             var value = ValueUsageIndex.Value(source: .variable(d.name), uses: found, kind: kind, raw: d.raw,
                                               current: d.current, origin: origin, file: d.file, isCalculated: calculated,
                                               isAtLeast: atLeast.contains(key),
@@ -787,7 +852,7 @@ struct ValueUsageScanner {
         for key in literalOrder {
             guard let entry = literals[key] else { continue }
             let files = entry.uses.compactMap { definingFile(of: $0) }
-            let shared = files.first { !skin.isOwnFile($0) }
+            let shared = files.first { !isOwn($0) }
             let ownOnly = shared == nil
             var value = ValueUsageIndex.Value(source: .literal(key), uses: entry.uses, kind: .color, raw: entry.raw,
                                               current: key, origin: ownOnly ? .own : .shared(shared ?? skin.fileURL))

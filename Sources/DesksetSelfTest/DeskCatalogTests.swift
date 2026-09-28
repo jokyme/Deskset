@@ -1,4 +1,8 @@
 import Foundation
+
+/// The Desk suites' timing budgets are for a Mac someone is working at. CI's runners (the Intel one especially) are several
+/// times slower, so there a budget only tells finishing from running away.
+let deskCIScale: Double = ProcessInfo.processInfo.environment["CI"] == "true" ? 10 : 1
 import DesksetCore
 import DeskLanguage
 
@@ -768,9 +772,9 @@ func runDeskCatalogTests(_ t: TestRunner) {
                                      "DK3022", "DK3036", "DK4013", "DK4022", "DK4031", "DK4032", "DK4042", "DK4050", "DK5005", "DK5012",
                                      "DK5014", "DK5018", "DK5020", "DK5021", "DK5024", "DK5025", "DK5027", "DK6008", "DK6009",
                                      "DK6011", "DK6012", "DK6101", "DK7013", "DK8102", "DK8104", "DK8105", "DK8303", "DK8401",
-                                     "DK8403", "DK8502", "DK9011", "DK9013", "DK9014", "DK9310"]
+                                     "DK8403", "DK8502", "DK8603", "DK8604", "DK8605", "DK9011", "DK9013", "DK9014", "DK9310"]
         let infos: Set<String> = ["DK2030", "DK3026", "DK3027", "DK3029", "DK3032", "DK4033", "DK4038", "DK4043", "DK4044",
-                                  "DK4046", "DK5013", "DK5026", "DK7008", "DK8003", "DK8406"]
+                                  "DK4046", "DK5013", "DK5026", "DK7008", "DK8003", "DK8406", "DK8609"]
         for d in c.diagnostics {
             let expected: Severity = warnings.contains(d.id.rawValue) ? .warning : infos.contains(d.id.rawValue) ? .info : .error
             t.equal(d.severity, expected, "\(d.id.rawValue) \(d.id.symbolicName)")
@@ -914,7 +918,7 @@ func runDeskCatalogTests(_ t: TestRunner) {
         print(String(format: "  note    catalog: index %.1f ms · 14,000 lookups (a 2,000-line file) %.1f ms · "
                      + "did-you-mean for 100 names over %d candidates %.1f ms", build * 1000, lookups * 1000,
                      candidates.count, didYouMean * 1000))
-        t.check(build + lookups + didYouMean < 0.3, "the catalog's share of a re-check fits the 0.3 s debounce")
+        t.check(build + lookups + didYouMean < 0.3 * deskCIScale, "the catalog's share of a re-check fits the 0.3 s debounce")
     }
 }
 

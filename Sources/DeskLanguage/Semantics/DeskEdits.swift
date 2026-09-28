@@ -156,8 +156,9 @@ struct RenamePlan {
             // An element named with `.name(x)`.
             for modifier in declaration.children(.modifierApp).map(ModifierAppSyntax.init(unchecked:))
             where modifier.name.token.text == "name" {
-                if let value = modifier.arguments?.arguments.first?.value.node, value.kind == .identifierExpr {
-                    ranges.append(IdentifierExprSyntax(unchecked: value).token.textRange)
+                if let value = modifier.arguments?.arguments.first?.value.node {
+                    if value.kind == .identifierExpr { ranges.append(IdentifierExprSyntax(unchecked: value).token.textRange) }
+                    if let inner = RenamePlan.quotedName(value) { ranges.append(inner) }
                 }
             }
         default:
@@ -174,14 +175,31 @@ struct RenamePlan {
             guard target == ref, let node = tree.resolve(use) else { continue }
             switch node.kind {
             case .identifierExpr: ranges.append(IdentifierExprSyntax(unchecked: node).token.textRange)
-            case .memberExpr: ranges.append(MemberExprSyntax(unchecked: node).name.textRange)
+            case .memberExpr:
+                // `options.code.matches(…)`: nested member accesses start at one place, and the reference names the
+                // outermost; the option is the innermost, `options.code`.
+                var member = node
+                while let base = member.childNodes.first, base.kind == .memberExpr { member = base }
+                ranges.append(MemberExprSyntax(unchecked: member).name.textRange)
             case .target:
                 let target = TargetSyntax(unchecked: node)
                 ranges.append((target.members.last ?? target.name).textRange)
+            case .stringLiteral:
+                // A quoted own name (`.style("card")`, `show("details")`, DK3036): the text between the quotes.
+                if let inner = RenamePlan.quotedName(node) { ranges.append(inner) }
             default: break
             }
         }
         let unique = Set(ranges.map { [$0.lowerBound, $0.upperBound] }).map { $0[0]..<$0[1] }
         return unique.sorted { $0.lowerBound < $1.lowerBound }.map { TextEdit(file: tree.file, range: $0, replacement: newName) }
+    }
+
+    /// The text between the quotes of a one-line string that is only text (`"card"`), or nil.
+    static func quotedName(_ value: PositionedNode) -> Range<Int>? {
+        guard value.kind == .stringLiteral else { return nil }
+        let tokens = value.tokens.filter { !$0.token.isMissing }
+        guard tokens.count == 3, tokens[0].kind == .stringStart, tokens[1].kind == .stringText, tokens[2].kind == .stringEnd,
+              !tokens[1].token.text.contains("\\") else { return nil }
+        return tokens[1].textRange
     }
 }

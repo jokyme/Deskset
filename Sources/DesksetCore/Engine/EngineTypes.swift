@@ -1,7 +1,7 @@
 import Foundation
 
 /// Rectangle in skin coordinates (origin top-left, y grows downward, 1 unit = 1 point).
-public struct SkinRect: Equatable {
+public struct SkinRect: Equatable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -23,7 +23,7 @@ public struct SkinRect: Equatable {
 }
 
 /// A width and height in skin coordinates (points).
-public struct SkinSize: Equatable {
+public struct SkinSize: Equatable, Sendable {
     public var width: Double
     public var height: Double
 
@@ -33,7 +33,7 @@ public struct SkinSize: Equatable {
     }
 }
 
-public struct SkinInsets: Equatable {
+public struct SkinInsets: Equatable, Sendable {
     public var left: Double
     public var top: Double
     public var right: Double
@@ -49,12 +49,12 @@ public struct SkinInsets: Equatable {
     public static let zero = SkinInsets()
 }
 
-public enum SkinLogLevel: String {
+public enum SkinLogLevel: String, Sendable {
     case debug = "Debug", notice = "Notice", warning = "Warning", error = "Error"
 }
 
 /// Mouse action option names, shared by meters and the `[Rainmeter]` section.
-public enum MouseEventKind: String, CaseIterable {
+public enum MouseEventKind: String, CaseIterable, Sendable {
     case leftUp = "LeftMouseUpAction"
     case leftDown = "LeftMouseDownAction"
     case leftDoubleClick = "LeftMouseDoubleClickAction"
@@ -81,7 +81,7 @@ public enum MouseEventKind: String, CaseIterable {
 /// A mouse button, for mouse input that is not tied to a meter (`Plugin=Mouse`, see `Skin.pointerEvent(_:x:y:)`).
 /// The raw value is AppKit's button number (0 left, 1 right, 2 middle, 3 and 4 the side buttons that Windows calls
 /// X1 and X2).
-public enum MouseButton: Int, CaseIterable {
+public enum MouseButton: Int, CaseIterable, Sendable {
     case left, right, middle, x1, x2
 
     /// `LeftMouseDownAction`, `RightMouseDownAction`…
@@ -118,7 +118,7 @@ public enum MouseButton: Int, CaseIterable {
 
 /// Mouse input a skin window receives, reported to `Skin.pointerEvent(_:x:y:)` for the measures that follow the mouse
 /// themselves (`Plugin=Mouse`).
-public enum PointerEvent: Equatable {
+public enum PointerEvent: Equatable, Sendable {
     /// A button went down on the skin; `doubleClick` for the second click of a double click.
     case pressed(MouseButton, doubleClick: Bool)
     /// A button went up, wherever the pointer is now (the release of a press that started on the skin).
@@ -136,7 +136,7 @@ public enum PointerEvent: Equatable {
 /// The mouse input made outside a skin's window that its measures want now (`Skin.outsidePointerNeeds`): Plugin=Slider
 /// sees the mouse anywhere on the screen. The host watches the mouse elsewhere only for what is asked here and reports
 /// it through `Skin.outsidePointerEvent(_:x:y:)`. Mouse input only; nothing ever asks for keys.
-public struct OutsidePointerNeeds: Equatable {
+public struct OutsidePointerNeeds: Equatable, Sendable {
     /// Buttons whose presses and releases are wanted.
     public var buttons: Set<MouseButton> = []
     /// Buttons whose drags (moves while that button is down) are wanted.
@@ -171,12 +171,12 @@ public struct OutsidePointerNeeds: Equatable {
 /// - disabled: detected (it blocks meters / the skin behind it) but takes no action — like an action of `[]`;
 /// - cleared: not detected at all, so actions behind it run — like an action of `""`.
 /// The option values themselves are kept: enabling again restores the defined action.
-public enum MouseActionState: Equatable {
+public enum MouseActionState: Equatable, Sendable {
     case enabled, disabled, cleared
 }
 
 /// Everything the host needs to show a meter's tooltip (manual: Meters → Tooltips).
-public struct ToolTipInfo: Equatable {
+public struct ToolTipInfo: Equatable, Sendable {
     /// `ToolTipText` with `%1`, `%2`… replaced by the bound measures' values.
     public var text: String
     /// `ToolTipTitle` (one line).
@@ -199,7 +199,7 @@ public struct ToolTipInfo: Equatable {
 }
 
 /// One custom context menu entry (`ContextTitleN` / `ContextActionN` in `[Rainmeter]`).
-public struct ContextMenuItem: Equatable {
+public struct ContextMenuItem: Equatable, Sendable {
     /// Title (at most 30 characters, longer titles end in `...`).
     public var title: String
     /// Action to execute (`Skin.execute(_:from:)` with `skin.rainmeterSection`); empty for separators.
@@ -214,7 +214,7 @@ public struct ContextMenuItem: Equatable {
     }
 }
 
-public struct SkinScreen: Equatable {
+public struct SkinScreen: Equatable, Sendable {
     public var area: SkinRect
     public var workArea: SkinRect
 
@@ -243,6 +243,22 @@ public struct SkinEnvironment: Equatable {
     public var currentScreen: Int
     /// The Mac's light / dark appearance and colors (`#MACAPPEARANCE#`… variables, Deskset extension).
     public var appearance: SkinAppearance
+    /// The user's locale: `FormatLocale=Local`, the names of `%Z` and of SysInfo's time zone types, `locale-date` /
+    /// `locale-time`, the `#MAC…#` clock and week variables, FileView's dates and sort order, RunCommand's `LANG`. The
+    /// Mac's own (`Locale.autoupdatingCurrent`) unless set.
+    public var locale: Locale
+    /// The user's preferred languages, first first: the Windows ANSI code page of old non-Unicode skin files
+    /// (`TextDecoding.defaultANSICodePage(preferredLanguages:)`). The Mac's own (`Locale.preferredLanguages`, read
+    /// when asked) unless set.
+    public var preferredLanguages: [String] {
+        get { preferredLanguagesSet ?? SkinEnvironment.systemPreferredLanguages() }
+        set { preferredLanguagesSet = newValue }
+    }
+    private var preferredLanguagesSet: [String]?
+
+    /// The Mac's preferred languages (the live value of `preferredLanguages`): the one place that reads them, also for
+    /// the ANSI code page the app sets at startup (`TextDecoding.defaultANSICodePage`).
+    public static func systemPreferredLanguages() -> [String] { Locale.preferredLanguages }
 
     public init(windowFrame: SkinRect = SkinRect(),
                 screens: [SkinScreen] = [SkinScreen(area: SkinRect(width: 1920, height: 1080),
@@ -252,7 +268,9 @@ public struct SkinEnvironment: Equatable {
                 zPosition: Int = 0,
                 configEditor: String = "/System/Applications/TextEdit.app",
                 currentScreen: Int = 0,
-                appearance: SkinAppearance = .light) {
+                appearance: SkinAppearance = .light,
+                locale: Locale = .autoupdatingCurrent,
+                preferredLanguages: [String]? = nil) {
         self.windowFrame = windowFrame
         self.screens = screens
         self.settingsPath = settingsPath
@@ -261,6 +279,8 @@ public struct SkinEnvironment: Equatable {
         self.configEditor = configEditor
         self.currentScreen = currentScreen
         self.appearance = appearance
+        self.locale = locale
+        preferredLanguagesSet = preferredLanguages
     }
 }
 
@@ -335,19 +355,22 @@ public enum SkinInput {
 /// Decides, action by action, what a skin runs of its own actions (its options' actions, mouse actions, scripts,
 /// plugins' finish actions): `Skin.actionPolicy`. What it refuses is skipped, as if the action were not there; the
 /// policy keeps a record of it if it wants one. Asked on the skin's owner, with the bang's arguments resolved.
+///
+/// One mechanism with the skin's side effects: the policy decides about bangs, and what the skin's plugins and scripts
+/// do outside it on their own (programs, files, the Mac's audio, players) goes to its `SideEffects`. A policy may
+/// bring side effects of its own (`sideEffects`: the Studio's records them), which the skin then uses.
 public protocol SkinActionPolicy: AnyObject {
     /// Whether the skin performs `bang` (`!Delay` included).
     func skin(_ skin: Skin, allows bang: Bang) -> Bool
     /// Whether the skin hands `["target" arguments…]` (a web page, a file, a program) to its host.
     func skin(_ skin: Skin, allowsExecuting target: String, arguments: [String]) -> Bool
-    /// Where the files the skin's scripts write (`io.open` for writing, `io.output`, `os.remove`, `os.rename`) and its
-    /// WebParser `DownloadFile` downloads go: nil (the default) for the files themselves, or a private copy that keeps
-    /// them away from the widget's files (`SkinFileSandbox`).
-    var fileSandbox: SkinFileSandbox? { get }
+    /// The side effects of a skin under this policy (`Skin.sideEffects`): nil (the default) for the skin's own, or a
+    /// recording that keeps them away from the Mac and the widget's files (`RecordingSideEffects`).
+    var sideEffects: SideEffects? { get }
 }
 
 extension SkinActionPolicy {
-    public var fileSandbox: SkinFileSandbox? { nil }
+    public var sideEffects: SideEffects? { nil }
 }
 
 extension SkinHost {

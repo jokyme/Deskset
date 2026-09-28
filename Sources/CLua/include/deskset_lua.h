@@ -96,6 +96,31 @@ int deskset_lua_depth(const deskset_lua *p);
    Lua is registered, and by deskset_lua_open for programs that never register it. Any thread. */
 void deskset_lua_start_clock(void);
 
+/*
+ * Where os.time, os.date, os.clock, math.random and math.randomseed read the time and random numbers: the skin's
+ * clock and random source. A callback left NULL keeps what Lua 5.1 does (the default for every state): time() and
+ * the process time zone (localtime, mktime) for os.time and os.date, the process clock started by
+ * deskset_lua_start_clock for os.clock, and C's rand() and srand() for math.random and math.randomseed — one
+ * generator for the whole app.
+ */
+typedef struct deskset_lua_time_source {
+    void *context;
+    /* The wall clock: seconds since 1970-01-01 00:00 UTC. Set together with `zone`. */
+    double (*wall)(void *context);
+    /* The local time zone at `time` (seconds since 1970): returns its offset in seconds east of UTC, sets *is_dst,
+       and writes its abbreviation (at most `size` bytes with the NUL) to `name`. */
+    long (*zone)(void *context, double time, int *is_dst, char *name, size_t size);
+    /* os.clock: seconds. */
+    double (*monotonic)(void *context);
+    /* math.random: a number in [0, 1). Set together with `reseed`. */
+    double (*uniform)(void *context);
+    /* math.randomseed(n). */
+    void (*reseed)(void *context, int n);
+} deskset_lua_time_source;
+
+/* Sets the state's time source (copied; NULL clears it). Call on the state's thread, between calls. */
+void deskset_lua_set_time_source(deskset_lua *p, const deskset_lua_time_source *source);
+
 /* Loads `code` as a chunk named `chunkname` (`@file` or `=name`) and runs it. */
 int deskset_lua_run(deskset_lua *p, const char *code, size_t length, const char *chunkname);
 /* Calls the global function `name` with `args`; DESKSET_MISSING when the global is not a function. */

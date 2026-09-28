@@ -26,7 +26,7 @@ import Foundation
 /// - PrimaryImageRotate and the ColorMatrix options are not supported (reported as compatibility issues).
 public final class HistogramMeter: Meter {
     /// One of PrimaryImage / SecondaryImage / BothImage with its image options.
-    public struct HistogramImage: Equatable {
+    public struct HistogramImage: Equatable, Sendable {
         public var path: String
         /// `ImageCrop=X,Y,W,H[,Origin]`.
         public var crop: [Double]?
@@ -56,7 +56,7 @@ public final class HistogramMeter: Meter {
         }
     }
 
-    public enum Part { case primary, secondary, both }
+    public enum Part: Sendable { case primary, secondary, both }
 
     public private(set) var primaryMeasure: Measure?
     public private(set) var secondaryMeasure: Measure?
@@ -157,15 +157,6 @@ public final class HistogramMeter: Meter {
         imageSize ?? (0, 0)
     }
 
-    /// Takes `other`'s samples: a new instance of a widget then shows the graph the one already running shows
-    /// (`Skin.takeGraphs(from:)`).
-    func takeHistory(from other: HistogramMeter) {
-        primaryHistory = other.primaryHistory
-        secondaryHistory = other.secondaryHistory
-        computeAutoRange()
-        noteDrawChange()
-    }
-
     /// Without AutoScale the columns are scaled by the measures' MinValue and MaxValue as they are when drawn (a Net
     /// measure learns its maximum as it updates, which the meter may do less often).
     public override func hashDrawInputs(into hasher: inout Hasher) {
@@ -235,5 +226,48 @@ public final class HistogramMeter: Meter {
         return (p > common ? g.column(age: age, from: common, to: p) : empty,
                 s > common ? g.column(age: age, from: common, to: s) : empty,
                 common > 0 ? g.column(age: age, from: 0, to: common) : empty)
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension HistogramMeter {
+    /// Takes the samples of another instance's meter: a new instance of a widget then shows the graph the one already
+    /// running shows (`Skin.seedGraphs(from:)`).
+    /// Only a side that reads the measure the other instance's side read (`measures`: primary and secondary, lowercased
+    /// names; nil: none) takes its samples: another measure's values would be drawn in this one's range.
+    func seedHistory(primary: GraphHistory, secondary: GraphHistory, measures: [String?]) {
+        let names = boundMeasureNames
+        if measures.count > 0, names[0] == measures[0] { primaryHistory = primary }
+        if measures.count > 1, names[1] == measures[1] { secondaryHistory = secondary }
+        computeAutoRange()
+        noteDrawChange()
+    }
+
+    /// The measures the primary and the secondary side read (nil: none), by name, for another instance.
+    var boundMeasureNames: [String?] { [primaryMeasure?.name.lowercased(), secondaryMeasure?.name.lowercased()] }
+}
+
+// MARK: - Patching (SkinPatch.swift)
+
+extension HistogramMeter {
+    /// The measures the primary and the secondary side read now, for `restartSides(readingOtherThan:)`.
+    var boundMeasures: [Measure?] { [primaryMeasure, secondaryMeasure] }
+
+    /// A patch changed the measures the sides read (MeasureName, MeasureName2, SecondaryMeasureName): a side that reads
+    /// another one than `before` says drops its samples and starts afresh at the next update, as after a reload.
+    func restartSides(readingOtherThan before: [Measure?]) {
+        var restarted = false
+        if before.count < 1 || primaryMeasure !== before[0], primaryHistory.count > 0 {
+            primaryHistory = GraphHistory(capacity: historyLength)
+            restarted = true
+        }
+        if before.count < 2 || secondaryMeasure !== before[1], secondaryHistory.count > 0 {
+            secondaryHistory = GraphHistory(capacity: historyLength)
+            restarted = true
+        }
+        guard restarted else { return }
+        computeAutoRange()
+        noteDrawChange()
     }
 }

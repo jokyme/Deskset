@@ -17,7 +17,11 @@ import Foundation
 open class SkinSection {
     public let name: String
     public unowned let skin: Skin
-    let own: IniSection
+    /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
+    /// in its place; the lookup below follows.
+    var own: IniSection {
+        didSet { ownValues = SkinSection.index(own) }
+    }
     /// `own` keyed by lowercased option name (first definition wins, like `IniSection.value(forKey:)`). Option
     /// lookups are the hottest path of dynamic sections, which re-read every option on every update; a linear
     /// case-insensitive scan per lookup dominated the update time of large skins.
@@ -158,10 +162,22 @@ open class SkinSection {
         guard let raw = rawOption(key) else { return nil }
         let sectionVariables = resolvesSectionVariables
         let value = skin.resolve(raw, in: self, sectionVariables: sectionVariables)
-        if !sectionVariables, !mentionsSectionVariables, value.utf8.contains(UInt8(ascii: "[")) {
-            mentionsSectionVariables = skin.mentionsSectionVariable(value)
-        }
+        noteSectionVariables(raw: raw, resolved: value, sectionVariablesResolved: sectionVariables)
         return value
+    }
+
+    /// Sets `mentionsSectionVariables` when an option read now names a measure or meter in brackets: from the value
+    /// read, when section variables were not resolved in it (the load-time read); otherwise — while a patch reads the
+    /// section (`tracksSectionVariables`) — from the value with only variables resolved.
+    func noteSectionVariables(raw: String, resolved: String, sectionVariablesResolved: Bool) {
+        guard !mentionsSectionVariables else { return }
+        if !sectionVariablesResolved {
+            if resolved.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(resolved) }
+        } else if tracksSectionVariables,
+                  raw.utf8.contains(UInt8(ascii: "[")) || raw.utf8.contains(UInt8(ascii: "#")) {
+            let plain = skin.resolve(raw, in: self, sectionVariables: false)
+            if plain.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(plain) }
+        }
     }
 
     /// Whether options read now resolve `[Measure]` / `[Meter:X]` section variables.
@@ -170,8 +186,22 @@ open class SkinSection {
     /// True while `readOptions()` runs after the skin's load-time read (see `readOptionsIfNeeded`).
     private(set) var readingAfterLoad = false
     /// Set when an option read without section variables names a measure or meter in brackets; the skin then
-    /// reads the section's options once more at the first update (see `Skin.load`).
+    /// reads the section's options once more at the first update (see `Skin.load`), and a patch reads it again when
+    /// another section changed (`Skin.patch(sources:)`).
     var mentionsSectionVariables = false
+    /// True while a patch reads the section's new options: `mentionsSectionVariables` is found anew from them, although
+    /// that read resolves section variables (`rereadTrackingSectionVariables`).
+    private(set) var tracksSectionVariables = false
+
+    /// Reads the options again after a patch changed them, finding anew whether they name measures or meters in
+    /// brackets: a reload would find that in its load-time read, and later patches read such a section again.
+    func rereadTrackingSectionVariables() {
+        mentionsSectionVariables = false
+        needsOptionRead = true
+        tracksSectionVariables = true
+        defer { tracksSectionVariables = false }
+        readOptionsIfNeeded()
+    }
 
     /// Whether option `key`, which failed to parse in this read, may still be valid once section variables have
     /// their values: it names a measure or meter in brackets (`Formula=[Meter:X] + 5`), and this read either did not

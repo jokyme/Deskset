@@ -36,7 +36,8 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   reads real window titles. `--render`, self-tests and skins checked by the Manage window never trigger a prompt.
 - Why: macOS privacy (TCC). Nothing may block: the permission prompts are waited for on background threads.
 - Skin impact: when a permission is denied the measures show "closed player" / empty values and one line is written to
-  the log with the System Settings path to change it; nothing crashes or hangs. The skin also gets a compatibility note
+  the log with the System Settings path to change it; nothing crashes or hangs. NowPlaying's `PlayerType=MacPermission`
+  (below) lets a skin tell a refused player from a closed one. The skin also gets a compatibility note
   (Automation refused for Music or Spotify, Location Services off for an SSID / LIST measure, a MediaKey track key sent
   without Accessibility), which is taken back once the permission is granted: Automation when the player answers again
   (re-checked every 30 s), Location Services at the measure's next update, Accessibility at the MediaKey measure's next
@@ -56,7 +57,9 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
 - Why: if a "would require consent" answer were treated as a refusal, no Apple Event would ever be sent, so the prompt
   would never appear and NowPlaying could never work.
 - Skin impact: none. The prompt appears the first time a skin with NowPlaying data (or a MediaKey/NowPlaying command)
-  meets a running player.
+  meets a running player. Until a player is known to allow it, its permission is also read without asking
+  (`askUserIfNeeded` false) right before each poll, so `PlayerType=MacPermission` can tell "not asked yet" while the
+  prompt waits for the user.
 - Status: emulated
 
 ---
@@ -130,9 +133,35 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   - Automatic MaxValue: Progress/Volume 100, Rating 5, State 2, Position/Duration = the track length (1 without a
     track); others 1. Judgment: lets `Meter=Bar` + `PlayerType=Position` work without MaxValue.
   - Unknown PlayerType: logs a warning once and shows the title.
+  - `MacPermission` (Deskset extension): whether a refused Automation permission keeps the player from being read; see
+    below.
 - Why: macOS player data.
 - Skin impact: identical for Music.app; Spotify lacks genre/year/lyrics/rating like on Windows ("partially supported").
 - Status: identical (Music) / partial (Spotify)
+
+### `PlayerType=MacPermission` (refused Automation)
+- Windows (Rainmeter): no counterpart. Windows players need no permission, so a player that runs can always be read.
+- Mac (Deskset): `PlayerType=MacPermission` tells whether macOS keeps Deskset from reading a running player. It is
+  about the player the measure would show if it could read it: the preferred player while it runs, else the other
+  one. Number: **1** while that player runs and has refused Automation (in the prompt or in System Settings › Privacy &
+  Security › Automation), **2** while it runs and has not been asked yet (macOS asks at its first poll, so its prompt
+  may be on screen), else **0**. So the other player's refusal counts only while the preferred player is closed: while
+  the preferred one runs, the measure shows it, not playing and with its own controls, whatever the other one refused
+  (judgment: a user may refuse the other player on purpose and keep it open). It is 0 while the measure shows a track
+  of another player (the refusal hides nothing then), and 0 for a refused player that is closed (not playing is what
+  is true; its first poll after it opens tells again). String: the
+  player the number is about (`Music`, `Spotify`); with 0, the player the measure shows (the preferred one when none
+  runs), so it is never empty. Automatic MaxValue 2. `PlayerName=[MainMeasure]` works as for every PlayerType, and
+  WebNowPlaying accepts it too. Reading it never asks: it is the answer of the last poll, or of the check Apple's API
+  makes without a prompt before it (see "How the Automation permission is checked"). A refusal is
+  re-checked every 30 s without asking, so allowing it later in System Settings brings the value back to 0 within
+  30 s.
+- Why: Deskset extension. A refused player looks closed to every other PlayerType, so a skin could only say "not
+  playing" while the user's music plays.
+- Skin impact: none for skins that do not use it; Rainmeter logs an unknown PlayerType. A skin can show "Allow Access"
+  and open `x-apple.systempreferences:com.apple.preference.security?Privacy_Automation`; Deskset's own media widgets
+  do. `Substitute="Music":"1","Spotify":"2"` turns the string into an index for nested variables.
+- Status: Deskset extension
 
 ### Lyrics
 - Windows (Rainmeter): downloaded from letras.mus.br using the ID3 Artist and Title.
@@ -529,18 +558,67 @@ How the plugins are hooked up: `MediaUIPlugins.register()` registers every type 
   BMP…), re-sampled when the path or its modification date changes (checked every 2 s; the folder listing, the
   modification date and the decoding run on a background queue, so a `Path` on a slow or network volume cannot stall the
   skins; the parent's string is the configured path at once and becomes the chosen image of a wallpaper folder after the
-  check). CropDesktop (default 1) crops the centre to the screen's aspect ratio (what "fill screen" shows); CropX/Y/W/H
-  in the image's pixels. Judgment (original method, the plugin's algorithm is not documented): colors are clustered from
-  a 4-bit-per-channel histogram (≤ 8 clusters); Background1 = the largest cluster, Background2 = the next clearly
+  check). CropDesktop (default 1) crops the centre to the screen's aspect ratio (what "fill screen" shows); `0` samples
+  the whole picture; `Skin` samples the part under the skin window (next entry). CropX/Y/W/H are in the image's pixels
+  and win over CropDesktop. Judgment (original method, the plugin's algorithm is not documented): colors are clustered
+  from a 4-bit-per-channel histogram (≤ 8 clusters); Background1 = the largest cluster, Background2 = the next clearly
   different one; Foreground1/2 = the clusters with the most contrast against Background1, pushed toward white/black
   until 4.5:1 / 3:1 contrast; Light/Dark = those four by luminance; Average = mean color; Luminance = mean relative
   luminance. Default format Hex (`RRGGBB`), Dec = `R,G,B`. Until an image is sampled (or when it cannot be read) the
   fallback colors are used (FallbackXX options, else dark grey backgrounds and white/light grey foregrounds).
   ContextAwareColors, ContextX/Y/W/H and ForceIcon are ignored; non-image files (icons of .exe) are not supported.
 - Why: no access to the plugin's method; macOS dynamic wallpapers are HEIC collections.
-- Skin impact: colors are similar in spirit, not identical; dynamic/aerial wallpapers that are not image files give the
-  fallback colors.
+- Skin impact: colors are similar in spirit, not identical; wallpapers that are not image files (Aerials, the
+  `.madesktop` wallpapers macOS downloads) give the fallback colors.
 - Status: emulated
+
+### Dynamic wallpapers (`Type=Desktop`)
+- Windows: n/a (a Windows wallpaper is one picture).
+- Mac (Deskset): a dynamic desktop picture (Sonoma, the Mojave and Big Sur pictures…) is a HEIC file with several
+  pictures and Apple's desktop metadata (`apple_desktop:apr` for light and dark, `h24` by time of day, `solar` by the
+  sun). `Type=Desktop` samples the picture the file names for the current appearance: the light one in light mode, the
+  dark one in dark mode, and samples again when the Mac switches (at the parent's next check). A picture without that
+  metadata is sampled as before (its primary picture). `Type=File` always samples the primary picture.
+- Why: the wallpaper a person sees in dark mode is the dark picture; judging a dark desktop by its light picture gives
+  the wrong colors.
+- Skin impact: colors follow what is on screen. Judgment: a time-based dynamic wallpaper set to change through the day
+  is judged by its light or dark picture, not by the picture of the hour.
+- Status: emulated
+
+### Wallpapers kept in Desktop, Documents or Downloads (`Type=Desktop`)
+- Windows: n/a (no such prompt).
+- Mac (Deskset): macOS asks before an app reads a file in Desktop, Documents or Downloads, or on a removable or network
+  volume (Files & Folders), and iCloud Drive and cloud storage providers' folders may ask too. `Type=Desktop` never
+  reads a desktop picture kept in any of them, nor one a symbolic link leads there (links are followed without touching the guarded folder): the
+  fallback colors apply, the skin's log says so once, and nothing is asked. The parent's string is still the path. A
+  wallpaper on a disk other than the startup disk (`/Volumes/…`) counts as such a volume. `Type=File` with such a
+  `Path` is read as before (the skin asked for that file; macOS may ask once).
+- Why: a widget that tints itself from the wallpaper should never make macOS ask for a folder the person did not
+  give it.
+- Skin impact: with a wallpaper there, Chameleon skins show their fallback colors; move the picture to Pictures (or
+  choose one of macOS's) to get its colors.
+- Status: partial
+
+### `CropDesktop=Skin` (the wallpaper under the skin)
+- Windows: n/a. `CropDesktop` is 1 (crop to what the monitor shows, the default) or 0; ContextAwareColors reorders the
+  colors to fit the area the skin covers.
+- Mac (Deskset): `CropDesktop=Skin` on a `Type=Desktop` parent samples only the part of the wallpaper that lies under
+  the skin window: the window's frame comes from the skin's environment (the same place `#CURRENTCONFIGX#` reads), the
+  screen is the one that shows most of the window, and the picture is laid on it as macOS lays it (Fill Screen by
+  default; Fit to Screen, Stretch to Fill Screen and Center from the desktop picture options, the fill color around a
+  picture that does not cover the screen, black when macOS gives none). No screen is captured: the picture file is
+  decoded once, small (≤ 384 px, kept for every skin), and cropped from memory. The parent samples again as soon as the
+  window has stopped moving (0.3 s after a drag, a `!Move`, a change of screen or of the displays' arrangement) and at
+  its checks (every 2 s at most, when it updates); when a new sample changes the colors, its child measures update at
+  once (not those with `UpdateDivider=-1`), so their OnChangeAction runs and the skin need not wait for its next
+  update. `CropX/Y/W/H` win over it. A skin drawn without a window (`--render`, previews) is at the screen's top-left
+  corner unless `--render --at` places it.
+- Why: a skin without a card (white or dark ink straight on the wallpaper) must judge the wallpaper actually behind it:
+  the centre of the whole screen can be far from what lies under a widget near an edge.
+- Skin impact: not available in Rainmeter's Chameleon, which does not document this value; a skin that uses it still
+  loads there. Judgment: a picture set to Center is laid at its size in points (its pixels at the resolution the file
+  gives, 72 dpi when it gives none).
+- Status: Deskset extension
 
 ---
 

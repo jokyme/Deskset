@@ -66,7 +66,7 @@ public enum RoundMeterMath {
     }
 
     /// Affine transform `x' = a·x + c·y + tx`, `y' = b·x + d·y + ty` (same layout as CGAffineTransform).
-    public struct Transform: Equatable {
+    public struct Transform: Equatable, Sendable {
         public var a: Double
         public var b: Double
         public var c: Double
@@ -134,7 +134,7 @@ public enum RoundMeterMath {
 /// `Meter=Roundline`: a line or solid fill that rotates around the center of the meter with a measure value.
 public final class RoundlineMeter: Meter {
     /// Parsed Roundline options (all lengths in pixels, angles in radians).
-    public struct Options: Equatable {
+    public struct Options: Equatable, Sendable {
         public var startAngle = 0.0
         /// Manual lists no default for Roundline; we use the Rotator's documented default, a full turn (2π).
         public var rotationAngle = RoundMeterMath.fullCircle
@@ -156,7 +156,7 @@ public final class RoundlineMeter: Meter {
     }
 
     /// What to draw.
-    public enum Shape: Equatable {
+    public enum Shape: Equatable, Sendable {
         case none
         /// Straight line (flat caps) of `width` pixels.
         case line(x1: Double, y1: Double, x2: Double, y2: Double, width: Double)

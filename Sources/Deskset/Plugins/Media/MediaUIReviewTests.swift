@@ -7,6 +7,7 @@ enum MediaUIReviewTests {
     static func run(_ t: AppTestRunner) {
         inputTextFrameTests(t)
         permissionTests(t)
+        macPermissionTests(t)
         commandWithoutPollTests(t)
         playerNameTests(t)
         wifiScanTests(t)
@@ -105,6 +106,198 @@ enum MediaUIReviewTests {
             let (gone, sentGone) = backend(check: OSStatus(procNotFound))
             t.equal(gone.status(.spotify), .notRunning)
             t.equal(sentGone().count, 0)
+        }
+    }
+
+    // MARK: PlayerType=MacPermission
+
+    /// A player whose Automation permission the test decides: `answer` is what the status poll gets, `peeked` what the
+    /// check without a prompt says.
+    final class PermissionBackend: NowPlayingBackend {
+        var running: Set<MediaApp> = [.music]
+        var peeked: [MediaApp: NowPlayingPermission] = [:]
+        var answers: [MediaApp: NowPlayingPoll] = [:]
+        private(set) var peeks = 0
+        func isRunning(_ app: MediaApp) -> Bool { running.contains(app) }
+        func status(_ app: MediaApp) -> NowPlayingPoll {
+            guard running.contains(app) else { return .notRunning }
+            return answers[app] ?? .ok(NowPlayingStatus())
+        }
+        func track(_ app: MediaApp) -> NowPlayingTrack? { NowPlayingTrack(title: "Song \(app.displayName)", duration: 100) }
+        func artwork(_ app: MediaApp, track: NowPlayingTrack) -> NowPlayingArtwork? { nil }
+        func perform(_ command: MediaPlayerCommand, on app: MediaApp) -> Bool { false }
+        func permission(_ app: MediaApp) -> NowPlayingPermission? {
+            peeks += 1
+            return running.contains(app) ? peeked[app] : nil
+        }
+    }
+
+    static func macPermissionTests(_ t: AppTestRunner) {
+        t.suite("App: NowPlaying MacPermission: the rule") {
+            func value(_ preferred: MediaApp, shown: NowPlayingSnapshot, running: Set<MediaApp>,
+                       _ permissions: [MediaApp: NowPlayingPermission]) -> String {
+                let v = NowPlayingValues.permission(preferred: preferred, shown: shown, running: running,
+                                                    permissions: permissions)
+                return "\(Int(v.number)) \(v.string)"
+            }
+            let closedMusic = NowPlayingSnapshot(app: .music), closedSpotify = NowPlayingSnapshot(app: .spotify)
+            t.equal(value(.music, shown: closedMusic, running: [], [:]), "0 Music", "nothing runs: the preferred player")
+            t.equal(value(.spotify, shown: closedSpotify, running: [], [:]), "0 Spotify")
+            t.equal(value(.music, shown: closedMusic, running: [.music], [.music: .refused]), "1 Music")
+            t.equal(value(.music, shown: closedMusic, running: [], [.music: .refused]), "0 Music",
+                    "a refused player that is closed hides nothing")
+            t.equal(value(.music, shown: MediaUITests.playing(.spotify), running: [.music, .spotify],
+                          [.music: .refused, .spotify: .allowed]), "0 Spotify",
+                    "another player's track shows: the refusal hides nothing")
+            var pausedNoTrack = NowPlayingSnapshot(app: .spotify)
+            pausedNoTrack.running = true
+            pausedNoTrack.status.state = 2
+            t.equal(value(.music, shown: pausedNoTrack, running: [.music, .spotify], [.music: .refused]), "1 Music",
+                    "a player without a track does not hide the refusal")
+            t.equal(value(.music, shown: closedMusic, running: [.music, .spotify],
+                          [.music: .notDetermined, .spotify: .refused]), "2 Music",
+                    "the preferred player runs: it is the one the measure shows")
+            t.equal(value(.spotify, shown: closedSpotify, running: [.music, .spotify],
+                          [.music: .refused, .spotify: .refused]), "1 Spotify", "the preferred player first")
+            var idleMusic = NowPlayingSnapshot(app: .music)
+            idleMusic.running = true
+            t.equal(value(.music, shown: idleMusic, running: [.music, .spotify], [.music: .allowed, .spotify: .refused]),
+                    "0 Music", "another player's refusal while the preferred one runs: not playing, with its controls")
+            t.equal(value(.music, shown: closedMusic, running: [.spotify], [.spotify: .refused]), "1 Spotify",
+                    "the preferred player is closed: the refused one is what the measure would show")
+            t.equal(value(.music, shown: closedMusic, running: [.spotify], [.spotify: .notDetermined]), "2 Spotify")
+            t.equal(value(.music, shown: closedMusic, running: [.music], [.music: .notDetermined]), "2 Music")
+            t.equal(value(.music, shown: closedMusic, running: [.music], [.music: .allowed]), "0 Music")
+            t.equal(NowPlayingField.nowPlaying(" macPERMISSION "), .macPermission)
+            t.equal(NowPlayingField.webNowPlaying("MacPermission"), .macPermission)
+            t.equal(NowPlayingField.nowPlaying("Permission"), nil, "only the Mac-prefixed name")
+            t.equal(NowPlayingField.macPermission.maxValue(closedMusic), 2)
+        }
+
+        t.suite("App: NowPlaying MacPermission: read without asking") {
+            let b = AppleScriptNowPlayingBackend()
+            var peekAnswer = OSStatus(0)
+            var peeks = 0
+            var asks = 0
+            b.permissionPeek = { _ in
+                peeks += 1
+                return peekAnswer
+            }
+            b.permissionCheck = { _ in
+                asks += 1
+                return 0
+            }
+            b.scriptRunner = { _ in (nil, -1708) }
+            let cases: [(OSStatus, NowPlayingPermission?)] = [
+                (0, .allowed), (OSStatus(AppleScriptNowPlayingBackend.notPermitted), .refused),
+                (OSStatus(AppleScriptNowPlayingBackend.wouldRequireConsent), .notDetermined),
+                (OSStatus(procNotFound), nil), (-50, nil),
+            ]
+            for (answer, expected) in cases {
+                peekAnswer = answer
+                t.equal(b.permission(.music), expected, "\(answer)")
+            }
+            t.equal(asks, 0, "reading the permission never uses the check that may ask")
+            // Once a check allowed it, the answer is known without another check.
+            _ = b.status(.music)
+            let before = peeks
+            t.equal(b.permission(.music), .allowed)
+            t.equal(peeks, before)
+            t.equal(DemoNowPlayingBackend().permission(.music), .allowed)
+            t.equal(DemoNowPlayingBackend().permission(.spotify), nil, "not running")
+        }
+
+        t.suite("App: NowPlaying MacPermission: the center and the measure") {
+            let backend = PermissionBackend()
+            backend.running = []
+            let center = NowPlayingCenter(backend: backend)
+            center.forceLive = true
+            center.interval = 3600
+            var now: TimeInterval = 1000
+            center.clock = { now }
+            center.log = { _ in }
+            let (skin, _) = try MediaUITests.bareSkin(t)
+            func measure(_ name: String, _ options: [(String, String)]) -> NowPlayingMeasure {
+                let m = NowPlayingMeasure(name: name, section: MediaUITests.section(name, [("Measure", "NowPlaying")]
+                                                                                      + options),
+                                          skin: skin, type: "nowplaying")
+                m.center = center
+                m.readOptions()
+                return m
+            }
+            func read(_ m: NowPlayingMeasure) -> String { "\(Int(m.computeValue())) \(m.currentRawString ?? "nil")" }
+            MediaUITests.inline([center.worker]) {
+                // (made here, so their subscriptions' first poll runs inline too)
+                let access = measure("Access", [("PlayerName", "Music"), ("PlayerType", "MacPermission")])
+                let spotifyAccess = measure("SpotifyAccess", [("PlayerName", "Spotify"), ("PlayerType", "MacPermission")])
+                t.equal(read(access), "0 Music", "before the first poll")
+                t.equal(access.automaticMaxValue, 2)
+
+                // Music opens and has not been asked: macOS's prompt is up while the status poll waits for it.
+                backend.running = [.music]
+                backend.peeked[.music] = .notDetermined
+                backend.answers[.music] = .failed("waiting for the prompt")
+                center.poll()
+                t.equal(center.permission(.music), .notDetermined)
+                t.equal(read(access), "2 Music")
+                t.equal(read(spotifyAccess), "2 Music", "a Spotify widget is told Music keeps it from showing anything")
+
+                // Refused.
+                backend.peeked[.music] = .refused
+                backend.answers[.music] = .denied
+                center.poll()
+                t.equal(read(access), "1 Music")
+                t.check(center.isDenied(.music))
+                t.equal(center.snapshot(preferring: .music).running, false, "the refused player looks closed")
+
+                // Spotify plays meanwhile: its track shows, so nothing is hidden.
+                backend.running = [.music, .spotify]
+                backend.answers[.spotify] = .ok(NowPlayingStatus(state: 1, trackID: "S1"))
+                now += 1
+                center.poll()
+                t.equal(read(access), "0 Spotify")
+                backend.answers[.spotify] = .ok(NowPlayingStatus(state: 0, trackID: ""))
+                now += 1
+                center.poll()
+                t.equal(read(access), "1 Music", "Spotify stopped: Music's refusal shows again")
+
+                // Music quits: nothing to read, not playing is true.
+                backend.running = [.spotify]
+                now += 1
+                center.poll()
+                t.equal(read(access), "0 Spotify", "the running Spotify is what the measure shows")
+                t.equal(center.permission(.music), .refused, "known, for when it opens again")
+
+                // Allowed later in System Settings: the re-check (every 30 s) reads it without asking.
+                backend.running = [.music]
+                backend.peeked[.music] = .allowed
+                backend.answers[.music] = .ok(NowPlayingStatus(state: 2, trackID: ""))
+                now += 31
+                _ = center.snapshot(preferring: .music)   // the first read after a quiet spell polls
+                t.equal(read(access), "0 Music")
+                t.equal(center.permission(.music), .allowed)
+                t.check(!center.isDenied(.music))
+                let peeks = backend.peeks
+                now += 1
+                center.poll()
+                t.equal(backend.peeks, peeks, "an allowed player is not checked again")
+            }
+
+            // The demo's refused Music (DESKSET_NOWPLAYING_DEMO=refused, for previews).
+            let demo = DemoNowPlayingBackend()
+            demo.permissions[.music] = .refused
+            let demoCenter = NowPlayingCenter(backend: demo)
+            demoCenter.forceLive = true
+            demoCenter.interval = 3600
+            demoCenter.log = { _ in }
+            MediaUITests.inline([demoCenter.worker]) {
+                let subscription = demoCenter.subscribe(live: true)
+                demoCenter.poll()
+                let v = demoCenter.permissionValue(preferring: .music)
+                t.equal("\(Int(v.number)) \(v.string)", "1 Music")
+                t.equal(demoCenter.snapshot(preferring: .music).hasTrack, false)
+                withExtendedLifetime(subscription) {}
+            }
         }
     }
 

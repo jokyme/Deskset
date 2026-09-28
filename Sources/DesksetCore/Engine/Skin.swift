@@ -106,6 +106,20 @@ public final class RainmeterSection: SkinSection {
     }
 }
 
+/// A variable of a skin and its value (`Skin.runtimeVariables`).
+public struct SkinVariable: Equatable, Sendable, CustomStringConvertible {
+    /// Lower case.
+    public let name: String
+    public let value: String
+
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    public var description: String { "\(name)=\(value)" }
+}
+
 /// One loaded skin: sections, variables, the update cycle and bang execution. Drawing is done by the host.
 ///
 /// Update cycle (manual: /manual/skins/ "Update", /manual/measures/ "Order", /manual/meters/ "Order",
@@ -133,9 +147,29 @@ public final class Skin {
     /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
     /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
     public var sourceProvider: SourceProvider?
+    /// Counts the patches that gave this skin object new source text (`patch(sources:)`): anything kept per skin object
+    /// that was read from its files (a layer's name, a thumbnail, where a value is used) is out of date once it moves.
+    /// Never decreases.
+    public internal(set) var sourceGeneration = 0
+    /// A patch came while an editor preview showed: the window is sized when the preview ends (`endPreview`), not with
+    /// the preview's values.
+    var sizeWaitsForPreviewEnd = false
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
+    /// Every way the skin's plugins and scripts reach outside it that is not a request to its host (`SideEffects`):
+    /// programs they start and signal, files they write, the Mac's audio, media players, key events. Done for real
+    /// (`LiveSideEffects.shared`, the default) or only recorded (`RecordingSideEffects`, for a run that must leave the
+    /// Mac alone). A policy that brings side effects of its own (`SkinActionPolicy.sideEffects`: the Studio's) takes
+    /// precedence over the ones set here. Set before `load()`; read on the skin's owner (plugins that need it on a
+    /// background queue take it along from there).
+    public var sideEffects: SideEffects {
+        get { actionPolicy?.sideEffects ?? assignedSideEffects }
+        set { assignedSideEffects = newValue }
+    }
+    private var assignedSideEffects: SideEffects = LiveSideEffects.shared
+    /// Sample data in place of what the measures read (the Studio's instance; nil: live).
+    public var measureValues: MeasureValueOverride?
     /// Told of each input the skin took from the person using it — a click, a hover, the wheel, the pointer for
     /// `Plugin=Mouse`, a context menu item, text typed into InputText — and of each bang another widget sent it, after
     /// the skin acted on it, while it is still loaded (an input that refreshed it is not passed on). The Studio replays
@@ -298,9 +332,27 @@ public final class Skin {
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []
 
-    /// Monotonic clock in seconds (Net measures compute bytes per second from it). Tests and the editor's component
-    /// thumbnails (sample readings on a clock of their own) replace it.
-    public var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Where the skin reads the time: the wall clock, a monotonic clock and the local time zone (see `SkinClock`).
+    /// The system's own unless the host gives the skin another before `load()` (`Deskset --render --clock`, tests).
+    public var skinClock = SkinClock.live
+    /// The monotonic part of `skinClock`, in seconds (Net measures compute bytes per second from it; plugins time
+    /// with it). Tests and the editor's component thumbnails (sample readings on a clock of their own) replace it.
+    public var clock: () -> TimeInterval {
+        get { skinClock.uptime }
+        set { skinClock.uptime = newValue }
+    }
+    /// Where the skin takes its random numbers (see `SkinRandom`): the system's generator unless the host gives the
+    /// skin a seeded one before `load()` (`Deskset --render --seed`, tests).
+    public var random = SkinRandom.live()
+    /// The user's locale (`SkinEnvironment.locale`): the host's, read once per load. The live one
+    /// (`Locale.autoupdatingCurrent`) follows the Mac's settings by itself.
+    public var locale: Locale {
+        if let loadedLocale { return loadedLocale }
+        let value = currentEnvironment().locale
+        loadedLocale = value
+        return value
+    }
+    private var loadedLocale: Locale?
 
     /// Host facts for the dynamic built-in variables; fetched lazily and invalidated at every update and every
     /// top-level action, so `#CURRENTCONFIGX#` etc. are current without querying the host on every lookup.
@@ -388,6 +440,7 @@ public final class Skin {
             endWork()
         }
         environmentValid = false
+        loadedLocale = nil
         let builtins = builtInVariables()
         var includesAppearance = false
         let loaded = try SkinFileLoader.load(url: fileURL, sources: sourceProvider) { raw, readSoFar in
@@ -1182,6 +1235,24 @@ public final class Skin {
         variableValue(name, section: nil)
     }
 
+    /// The skin's variables as it runs them, sorted by name: for summaries of its state (the runtime design: two runs
+    /// that took the same inputs list the same variables) and for seeding another instance of the widget with the ones
+    /// set while it ran (`runtimeState(as:including:)`, which compares them with `variableDefinitions`). Its
+    /// `[Variables]` as loaded — after `!WriteKeyValue` and a refresh, the values written — with what `!SetVariable`
+    /// changed since, and the built-in variables fixed at load (`#@#`, `#CURRENTCONFIG#`, `#SKINSPATH#`…). The built-ins
+    /// that follow the window, the screens and the appearance (`#CURRENTCONFIGX#`, `#SCREENAREAWIDTH#`, `#MACDARKMODE#`…)
+    /// are read when used and not listed. An editor preview's values are not the skin's: what a preview replaced is
+    /// listed (or nothing, for a variable only the preview made). Names are lower case: variable names are not
+    /// case-sensitive.
+    public var runtimeVariables: [SkinVariable] {
+        assertOwned()
+        var values = variables
+        for (key, saved) in previewSavedVariables {
+            if let saved { values[key] = saved } else { values.removeValue(forKey: key) }
+        }
+        return values.map { SkinVariable(name: $0.key, value: $0.value) }.sorted { $0.name < $1.name }
+    }
+
     /// `!SetVariable`: built-in variables "cannot be directly modified by actions in a skin".
     public func setVariable(_ name: String, _ value: String) {
         assertOwned()
@@ -1465,6 +1536,8 @@ public final class Skin {
     /// meter, and every image option that refers to it): "If no file extension is included, .png is assumed" — `.png`
     /// is appended when the file name has no extension and no file of exactly that name exists (a name ending in
     /// `/` or `\` is left alone).
+    ///
+    /// A skin whose writes go to a recording's sandbox sees the copies of the files it wrote there (`readablePath`).
     public func imageFilePath(_ name: String, imagePath: String) -> String {
         let trimmedPath = imagePath.trimmingCharacters(in: .whitespaces)
         let path: String
@@ -1475,14 +1548,15 @@ public final class Skin {
             path = absolutePath(name, relativeTo: base)
         }
         let written = name.trimmingCharacters(in: .whitespaces)
-        guard !written.isEmpty, !written.hasSuffix("/"), !written.hasSuffix("\\") else { return path }
+        guard !written.isEmpty, !written.hasSuffix("/"), !written.hasSuffix("\\") else { return readablePath(path) }
         let last = (path as NSString).lastPathComponent
-        guard !last.isEmpty, last != "/", (last as NSString).pathExtension.isEmpty else { return path }
+        guard !last.isEmpty, last != "/", (last as NSString).pathExtension.isEmpty else { return readablePath(path) }
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
-            return path
+        let readable = readablePath(path)
+        if FileManager.default.fileExists(atPath: readable, isDirectory: &isDirectory), !isDirectory.boolValue {
+            return readable
         }
-        return path + ".png"
+        return readablePath(path + ".png")
     }
 
     // MARK: Actions & bangs
@@ -1848,7 +1922,8 @@ public final class Skin {
             return
         }
         do {
-            try IniWriter.writeValue(value, key: key, section: section, fileURL: url)
+            // For real, or into a recording's copy of the file.
+            try sideEffects.writeKeyValue(value, key: key, section: section, fileURL: url)
             keyValueWrites += 1
         } catch {
             log("!WriteKeyValue: \(error)", level: .error)
@@ -2064,12 +2139,15 @@ public final class Skin {
             && m.isHit(x: x, y: y) {
             now.insert(m.name.lowercased())
         }
-        for key in now.subtracting(hoveredMeters) {
+        // In the order of the meters, not of the sets (which Swift seeds at random in every process): when the pointer
+        // enters or leaves two overlapping meters in one move, their actions run in the same order on every run.
+        let entered = now.subtracting(hoveredMeters), left = hoveredMeters.subtracting(now)
+        for key in inMeterOrder(entered) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.over), !a.isEmpty {
                 withMouse(x: x, y: y, in: m.frame) { execute(a, from: m) }
             }
         }
-        for key in hoveredMeters.subtracting(now) {
+        for key in inMeterOrder(left) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.leave), !a.isEmpty {
                 withMouse(x: x, y: y, in: m.frame) { execute(a, from: m) }
             }
@@ -2220,6 +2298,19 @@ public final class Skin {
         host?.skinOutsidePointerNeedsChanged(self)
     }
 
+    /// `keys` (lower-case meter names) in the order of the skin's meters; names of meters the skin no longer has last,
+    /// sorted.
+    private func inMeterOrder(_ keys: Set<String>) -> [String] {
+        guard keys.count > 1 else { return Array(keys) }
+        var ordered: [String] = []
+        for m in meters {
+            let key = m.name.lowercased()
+            if keys.contains(key), !ordered.contains(key) { ordered.append(key) }
+        }
+        if ordered.count < keys.count { ordered += keys.subtracting(ordered).sorted() }
+        return ordered
+    }
+
     public func mouseExited() {
         assertOwned()
         beginWork()
@@ -2227,7 +2318,7 @@ public final class Skin {
         defer { mirror(.exited) }
         environmentValid = false
         for m in meters where m.handlesMouseItself { m.mouseHover(inside: false, x: -1, y: -1) }
-        for key in hoveredMeters {
+        for key in inMeterOrder(hoveredMeters) {
             if let m = meterIndex[key], let a = m.effectiveMouseAction(.leave), !a.isEmpty { execute(a, from: m) }
         }
         hoveredMeters = []
@@ -2380,4 +2471,89 @@ protocol SkinOutsidePointerObserver: SkinPointerObserver {
     /// What it wants from outside the skin window now: nothing while it is disabled, paused or closed, or has no
     /// action that such input could run.
     func outsidePointerNeeds() -> OutsidePointerNeeds
+}
+
+// MARK: - What a patch replaces (SkinPatch.swift)
+
+extension Skin {
+    /// Puts a patch's merged text in place of the loaded one (`patch(sources:)`): the document, its files, where each
+    /// section and option was written, the section and style lookups built from it and `[Metadata]`. The caller has
+    /// checked that the files and the sections are the same ones.
+    func installPatchedSource(_ loaded: LoadedIniFile, mentionsAppearance: Bool) {
+        document = loaded.document
+        includedFiles = loaded.includedFiles
+        sources = loaded.sources
+        sectionIndex = [:]
+        styleValueIndex = [:]
+        for section in document.sections {
+            let key = section.name.lowercased()
+            if sectionIndex[key] == nil { sectionIndex[key] = section }
+        }
+        metadata = [:]
+        for e in document.section(named: "Metadata")?.entries ?? [] { metadata[e.key] = e.value }
+        if mentionsAppearance { usesMacAppearance = true }
+    }
+
+    /// The `[Variables]` definitions as last resolved, and the built-in values they were resolved with (the appearance
+    /// variables as they are now).
+    var variableDefinitions: (values: [String: String], builtins: [String: String]) {
+        (definedVariables, definitionBuiltins.merging(currentEnvironment().appearance.variables) { _, new in new })
+    }
+
+    /// New definitions of the `[Variables]` in `changed` (nil: no longer defined). The new definition wins over a value
+    /// set while the skin ran (`!SetVariable`), as after a reload — and as `seed(from:)` takes such a value only while its
+    /// definition is the one it was set over. An editor preview goes on showing its value, and gives back the new
+    /// definition when it ends.
+    func redefineVariables(_ changed: [String: String?]) {
+        for (key, value) in changed {
+            definedVariables[key] = value
+            if previewSavedVariables[key] != nil {
+                previewSavedVariables[key] = .some(value)
+            } else {
+                variables[key] = value
+            }
+        }
+    }
+
+    /// Whether `close()` ran: the skin no longer updates.
+    var isClosed: Bool { closed }
+
+    /// Meter frames are computed again before the next read of a meter's position or size (a patch reads its sections
+    /// in file order, and a later one may use an earlier one's new place).
+    func markLayoutPending() { layoutPending = true }
+
+    /// Lays the skin out after a patch and sizes the window again (the new text may make it larger or smaller, as a
+    /// reload would) — once a preview showing now ends — then asks the host to draw.
+    func finishPatch() {
+        layout()
+        if isPreviewing {
+            sizeWaitsForPreviewEnd = true
+        } else {
+            updateSize(force: true)
+        }
+        needsDisplay()
+    }
+
+    /// When the last preview ends: the window takes the size a patch made while it showed.
+    func sizeAfterPatchDuringPreview() {
+        guard sizeWaitsForPreviewEnd else { return }
+        sizeWaitsForPreviewEnd = false
+        updateSize(force: true)
+    }
+}
+
+// MARK: - What seeding reads and sets (Session/Seeding.swift)
+
+extension Skin {
+    /// Before the first update: the Calc `Counter` goes on from `counter` — its next update computes it again when the
+    /// source keeps running beside this instance (`mirroring`, as `mirrorCounter(of:)`), else the one after it (as
+    /// `continueCounter(from:)`).
+    func seedCounter(_ counter: Int, mirroring: Bool) {
+        counterBase = mirroring ? max(counter, 1) - 1 : counter
+    }
+
+    /// A variable set while another instance of the widget ran (`SkinRuntimeState`), as `!SetVariable` sets it.
+    func seedVariable(_ key: String, _ value: String) {
+        variables[key] = value
+    }
 }

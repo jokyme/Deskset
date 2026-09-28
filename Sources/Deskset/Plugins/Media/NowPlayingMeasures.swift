@@ -1,5 +1,4 @@
 import AppKit
-import CoreAudio
 import DesksetCore
 
 // NowPlaying, iTunesPlugin, WebNowPlaying and MediaKey measures on top of `NowPlayingCenter`.
@@ -8,6 +7,9 @@ import DesksetCore
 
 /// A measure reading `NowPlayingCenter`: subscribes (so the center polls) as long as it lives.
 class NowPlayingClientMeasure: MediaUIMeasure {
+    /// Reads a player through the NowPlaying center (virtual time: noted, see `Measure.liveInputs`).
+    override var liveInputs: [BackgroundWorkKind] { [.nowPlaying] }
+
     /// A compatibility note for every player of `apps` Deskset may not control (asked by macOS, not needed on
     /// Windows). NowPlaying and WebNowPlaying show whichever player plays, so every refused player matters to them;
     /// the iTunes plugin reads Music only.
@@ -39,7 +41,7 @@ class NowPlayingClientMeasure: MediaUIMeasure {
         apps.filter(center.isDenied).map(automationNote)
     }
 
-    var center: NowPlayingCenter = .shared
+    var center: NowPlayingCenter = .current
     private var subscription: NowPlayingSubscription?
     private weak var subscribedCenter: NowPlayingCenter?
     /// Whether this measure shows the cover (cover art is only fetched while someone shows it).
@@ -180,7 +182,8 @@ final class NowPlayingMeasure: NowPlayingClientMeasure {
     }
 
     private func values(_ snap: NowPlayingSnapshot, main: NowPlayingMeasure) -> (number: Double, string: String?) {
-        NowPlayingValues.value(field, snap, now: center.clock(), leadingZero: !main.disableLeadingZero)
+        if field == .macPermission { return center.permissionValue(preferring: main.preferredApp) }
+        return NowPlayingValues.value(field, snap, now: center.clock(), leadingZero: !main.disableLeadingZero)
     }
 
     override func execute(command: String) {
@@ -189,7 +192,10 @@ final class NowPlayingMeasure: NowPlayingClientMeasure {
             return
         }
         let main = mainMeasure
-        center.perform(request, preferring: main.preferredApp, playerPath: main.playerPath, live: runsInApp)
+        // Through the skin's side effects: sent to the player, or only recorded.
+        skin.sideEffects.perform(.media(plugin: "NowPlaying", command: command.muiTrimmed)) {
+            center.perform(request, preferring: main.preferredApp, playerPath: main.playerPath, live: runsInApp)
+        }
     }
 }
 
@@ -256,7 +262,9 @@ final class ITunesMeasure: NowPlayingClientMeasure {
             skin.log("iTunesPlugin [\(name)]: unknown command \"\(text)\"", level: .warning)
             return
         }
-        center.perform(request, preferring: .music, live: runsInApp)
+        skin.sideEffects.perform(.media(plugin: "iTunes", command: text.muiTrimmed)) {
+            center.perform(request, preferring: .music, live: runsInApp)
+        }
     }
 }
 
@@ -307,6 +315,7 @@ final class WebNowPlayingMeasure: NowPlayingClientMeasure {
     }
 
     private func values(_ snap: NowPlayingSnapshot) -> (number: Double, string: String?) {
+        if field == .macPermission { return center.permissionValue(preferring: nil) }
         var v = NowPlayingValues.value(field, snap, now: center.clock())
         if field == .cover, v.string?.isEmpty ?? true, !defaultPath.isEmpty { v.string = defaultPath }
         return v
@@ -317,7 +326,9 @@ final class WebNowPlayingMeasure: NowPlayingClientMeasure {
             skin.log("WebNowPlaying [\(name)]: unknown command \"\(command)\"", level: .warning)
             return
         }
-        center.perform(request, preferring: nil, live: runsInApp)
+        skin.sideEffects.perform(.media(plugin: "WebNowPlaying", command: command.muiTrimmed)) {
+            center.perform(request, preferring: nil, live: runsInApp)
+        }
     }
 }
 
@@ -331,7 +342,7 @@ final class WebNowPlayingMeasure: NowPlayingClientMeasure {
 /// the track keys go to Music / Spotify through the NowPlaying backend and the volume keys change the default
 /// output device's volume directly (Judgment: 2 % per step, like the Windows volume keys; mute toggles).
 final class MediaKeyMeasure: MediaUIMeasure {
-    var center: NowPlayingCenter = .shared
+    var center: NowPlayingCenter = .current
     /// Tests capture what would be sent instead of touching the system.
     static var sink: ((MediaKeyCommand, _ viaHID: Bool) -> Void)?
     /// Whether Deskset may post key events (Accessibility); replaced in tests.
@@ -368,6 +379,11 @@ final class MediaKeyMeasure: MediaUIMeasure {
             skin.log("MediaKey [\(name)]: unknown command \"\(command)\"", level: .warning)
             return
         }
+        // Through the skin's side effects: sent, or only recorded.
+        skin.sideEffects.perform(.mediaKey(key.manualName)) { send(key) }
+    }
+
+    private func send(_ key: MediaKeyCommand) {
         // There is no Stop media key on the Mac: Stop always goes to the player.
         let trusted = MediaKeyMeasure.canPostEvents()
         let viaHID = key != .stop && trusted
@@ -393,111 +409,5 @@ final class MediaKeyMeasure: MediaUIMeasure {
         case .volumeUp: MediaUISystemVolume.change(by: 0.02)
         case .volumeDown: MediaUISystemVolume.change(by: -0.02)
         }
-    }
-}
-
-/// Media-key events (the same events the keyboard's media keys produce).
-enum MediaKeys {
-    /// Posting keyboard events needs the Accessibility permission; checked without asking.
-    static var canPostEvents: Bool { AXIsProcessTrusted() }
-
-    /// NX key types (IOKit ev_keymap.h): sound up 0, sound down 1, mute 7, play 16, next 17, previous 18.
-    static func keyType(_ key: MediaKeyCommand) -> Int32 {
-        switch key {
-        case .volumeUp: return 0
-        case .volumeDown: return 1
-        case .volumeMute: return 7
-        case .playPause, .stop: return 16   // .stop is never posted (see MediaKeyMeasure)
-        case .nextTrack: return 17
-        case .prevTrack: return 18
-        }
-    }
-
-    /// Posts the key's down and up events: built on the main thread (an `NSEvent`), at once when the caller is there,
-    /// else queued there.
-    static func post(_ key: MediaKeyCommand) {
-        MediaUIMainHop.run { postOnMain(key) }
-    }
-
-    private static func postOnMain(_ key: MediaKeyCommand) {
-        let type = keyType(key)
-        for down in [true, false] {
-            let flags = NSEvent.ModifierFlags(rawValue: down ? 0xA00 : 0xB00)
-            let data1 = Int((type << 16) | ((down ? 0xA : 0xB) << 8))
-            let event = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: flags, timestamp: 0,
-                                           windowNumber: 0, context: nil, subtype: 8, data1: data1, data2: -1)
-            event?.cgEvent?.post(tap: .cghidEventTap)
-        }
-    }
-}
-
-/// Volume of the default output device (CoreAudio; no permission needed). `change(by:)` and `toggleMute()` run on a
-/// serial background queue: HAL calls are requests to the audio server and can stall (Bluetooth / AirPlay devices
-/// switching), which must never freeze the skins.
-enum MediaUISystemVolume {
-    private static let queue = DispatchQueue(label: "Deskset MediaKey volume", qos: .userInitiated)
-
-    private static func run(_ work: @escaping () -> Void) {
-        queue.async(execute: work)
-    }
-
-    private static func defaultOutputDevice() -> AudioDeviceID? {
-        var device = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-                                                 mScope: kAudioObjectPropertyScopeGlobal,
-                                                 mElement: kAudioObjectPropertyElementMain)
-        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size,
-                                                &device)
-        return status == noErr && device != 0 ? device : nil
-    }
-
-    private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioDevicePropertyScopeOutput,
-                                   mElement: kAudioObjectPropertyElementMain)
-    }
-
-    /// "Virtual main volume" ('vmvc', AudioHardwareService): the volume the menu bar slider shows.
-    private static let virtualMainVolume: AudioObjectPropertySelector = 0x766D_7663
-
-    static func volume() -> Float? {
-        guard let device = defaultOutputDevice() else { return nil }
-        var value = Float32(0)
-        var size = UInt32(MemoryLayout<Float32>.size)
-        var a = address(virtualMainVolume)
-        guard AudioObjectHasProperty(device, &a),
-              AudioObjectGetPropertyData(device, &a, 0, nil, &size, &value) == noErr else { return nil }
-        return value
-    }
-
-    static func change(by delta: Float) {
-        run {
-            guard delta.isFinite, let device = defaultOutputDevice(), let current = volume() else { return }
-            var value = Float32(min(max(current + delta, 0), 1))
-            var a = address(virtualMainVolume)
-            var settable = DarwinBoolean(false)
-            guard AudioObjectIsPropertySettable(device, &a, &settable) == noErr, settable.boolValue else { return }
-            AudioObjectSetPropertyData(device, &a, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
-            if value > 0 { setMute(device, false) }
-        }
-    }
-
-    static func toggleMute() {
-        run {
-            guard let device = defaultOutputDevice() else { return }
-            var muted = UInt32(0)
-            var size = UInt32(MemoryLayout<UInt32>.size)
-            var a = address(kAudioDevicePropertyMute)
-            guard AudioObjectHasProperty(device, &a),
-                  AudioObjectGetPropertyData(device, &a, 0, nil, &size, &muted) == noErr else { return }
-            setMute(device, muted == 0)
-        }
-    }
-
-    private static func setMute(_ device: AudioDeviceID, _ on: Bool) {
-        var value = UInt32(on ? 1 : 0)
-        var a = address(kAudioDevicePropertyMute)
-        guard AudioObjectHasProperty(device, &a) else { return }
-        AudioObjectSetPropertyData(device, &a, 0, nil, UInt32(MemoryLayout<UInt32>.size), &value)
     }
 }

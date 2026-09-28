@@ -859,6 +859,27 @@ extension Parser {
         while true {
             let k = kind(i)
             if k == .rParen { children.append(take()); break }
+            // `Text({cpu.usage})`: a value in JSX's braces (DK9010). The braces stay as stray tokens around it.
+            if k == .lBrace, !expectComma, case .token(let close)? = braces.closes[i], close > i + 1, close < limit,
+               !(i + 1...close).contains(where: { nl($0) }), kind(close + 1) == .rParen || kind(close + 1) == .comma {
+                let open = i
+                children.append(.node(node(.unexpected, [take()])))
+                let value = parseExpr()
+                children.append(.node(node(.argument, [.node(value.node)])))
+                if i < close {
+                    var rest: [SyntaxChild] = []
+                    while i < close { rest.append(take()) }
+                    children.append(.node(node(.unexpected, rest)))
+                }
+                children.append(.node(node(.unexpected, [take()])))
+                let inner = text(open + 1, close - 1)
+                let whole = starts[open]..<textEnd(close)
+                report(.swiftInterpolation, .error, whole, ["fixed": .code("{\(inner)}")],
+                       fixIts: [FixIt(titleKey: "rewrite", edits: [edit(whole, "\"{\(inner)}\"")]),
+                                FixIt(titleKey: "changeTo", titleArguments: ["text": .code(inner)], edits: [edit(whole, inner)])])
+                expectComma = true
+                continue
+            }
             if i >= limit || k == .rBrace || k == .lBrace || k == .rBracket || k == .semicolon
                 || (nl(i) && looksLikeStatementStart(i) && (expectComma || children.count == 1)) {
                 children.append(missing(.rParen))

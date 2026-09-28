@@ -11,6 +11,12 @@ import Foundation
 // `//== context: resources symbols fonts layout future target=1.0`, `//== file: package.desk`,
 // `//== generate: …` (for inputs too large or too odd to keep as text); then the positive code; `//== negative` and
 // the corrected code; optionally `//== package` and a package.desk the check uses.
+//
+// Folder diagnostics (DK86xx) check a whole widget folder held in memory: the fixture's file, the package, and
+// `//== folder-file: Name` sections (each a file of the folder, its text up to the next section),
+// `//== asset: path WxH` (a PNG of that size), `//== link: path -> destination` and `//== folder-generate: kind`
+// (`manyFiles`, `largeFolder`). Those written after `//== negative` belong to the corrected folder, which otherwise
+// has the same folder files and assets (never the links or generated files).
 
 struct DeskDiagnosticFixture {
     var path: String
@@ -26,11 +32,35 @@ struct DeskDiagnosticFixture {
     var positive = ""
     var negative: String?
     var package: String?
+    /// The folder's other files, pictures and links (positive; the negative's when written after `//== negative`).
+    var folderFiles: [(name: String, text: String)] = []
+    var negativeFolderFiles: [(name: String, text: String)]?
+    var assets: [(path: String, width: Int, height: Int)] = []
+    var negativeAssets: [(path: String, width: Int, height: Int)]?
+    var links: [(path: String, destination: String)] = []
+    var negativeLinks: [(path: String, destination: String)] = []
+    var folderGenerate: String?
+
+    /// Checked as a whole folder.
+    var isFolder: Bool {
+        id.hasPrefix("DK86") || !folderFiles.isEmpty || !assets.isEmpty || !links.isEmpty || folderGenerate != nil
+            || negativeFolderFiles != nil || negativeAssets != nil
+    }
 
     static func parse(path: String, text: String) -> DeskDiagnosticFixture {
         var fixture = DeskDiagnosticFixture(path: path, id: String((path as NSString).lastPathComponent.prefix(6)))
         var section = "positive"
         var positive: [String] = [], negative: [String] = [], package: [String] = []
+        var folderFile: [String] = []
+        var folderFileName: String?
+        var afterNegative = false
+        func endFolderFile() {
+            guard let name = folderFileName else { return }
+            let file = (name, folderFile.joined(separator: "\n"))
+            if afterNegative { fixture.negativeFolderFiles = (fixture.negativeFolderFiles ?? []) + [file] } else { fixture.folderFiles.append(file) }
+            folderFileName = nil
+            folderFile = []
+        }
         for line in text.components(separatedBy: "\n") {
             if line.hasPrefix("//== ") {
                 let directive = String(line.dropFirst(5))
@@ -38,8 +68,29 @@ struct DeskDiagnosticFixture {
                     guard directive.hasPrefix(key + ":") else { return nil }
                     return directive.dropFirst(key.count + 1).split(separator: " ").map(String.init)
                 }
-                if directive == "negative" { section = "negative"; continue }
-                if directive == "package" { section = "package"; continue }
+                if directive == "negative" { endFolderFile(); section = "negative"; afterNegative = true; continue }
+                if directive == "package" { endFolderFile(); section = "package"; continue }
+                if directive.hasPrefix("folder-file:") {
+                    endFolderFile()
+                    folderFileName = directive.dropFirst("folder-file:".count).trimmingCharacters(in: .whitespaces)
+                    section = "folder-file"
+                    continue
+                }
+                if let v = values("asset"), v.count == 2 {
+                    let size = v[1].split(separator: "x").compactMap { Int($0) }
+                    let asset = (v[0], size.first ?? 1, size.last ?? 1)
+                    if afterNegative { fixture.negativeAssets = (fixture.negativeAssets ?? []) + [asset] } else { fixture.assets.append(asset) }
+                    continue
+                }
+                if directive.hasPrefix("link:") {
+                    let parts = directive.dropFirst("link:".count).components(separatedBy: " -> ")
+                    if parts.count == 2 {
+                        let link = (parts[0].trimmingCharacters(in: .whitespaces), parts[1].trimmingCharacters(in: .whitespaces))
+                        if afterNegative { fixture.negativeLinks.append(link) } else { fixture.links.append(link) }
+                    }
+                    continue
+                }
+                if let v = values("folder-generate"), let kind = v.first { fixture.folderGenerate = kind; continue }
                 if let v = values("expect") { fixture.expect += v; continue }
                 if let v = values("also") { fixture.also += v; continue }
                 if let v = values("negative-also") { fixture.negativeAlso += v; continue }
@@ -52,9 +103,11 @@ struct DeskDiagnosticFixture {
             switch section {
             case "negative": negative.append(line)
             case "package": package.append(line)
+            case "folder-file": folderFile.append(line)
             default: positive.append(line)
             }
         }
+        endFolderFile()
         fixture.positive = positive.joined(separator: "\n")
         if !negative.isEmpty { fixture.negative = negative.joined(separator: "\n") }
         if !package.isEmpty { fixture.package = package.joined(separator: "\n") }
@@ -205,6 +258,10 @@ func deskCheckFixtureText(_ text: String, _ fixture: DeskDiagnosticFixture) -> C
 
 func checkDeskFixture(_ t: TestRunner, _ fixture: DeskDiagnosticFixture) {
     let label = fixture.id
+    if fixture.isFolder {
+        checkDeskFolderFixture(t, fixture)
+        return
+    }
     // DK1008 happens before parsing: the bytes are not UTF-8.
     if fixture.generate == "invalidUTF8" {
         let result = Desk.load(Data([0x77, 0x69, 0xFF, 0xFE, 0x20]), fileName: "Test.desk")
@@ -265,5 +322,113 @@ func checkDeskFixture(_ t: TestRunner, _ fixture: DeskDiagnosticFixture) {
         let clean = deskCheckFixtureText(negative, fixture)
         let left = clean.diagnostics.filter { !fixture.negativeAlso.contains($0.id.rawValue) }
         t.check(left.isEmpty, "\(label) negative: \(left.map { "\($0.id.rawValue)@\(clean.tree.location(of: $0.range.lowerBound)): \($0.message(in: .english))" })")
+    }
+}
+
+// MARK: - Folder fixtures
+
+/// A PNG of this size: its signature, header and end, with no pixels (the loader reads only the header).
+func deskPNG(width: Int, height: Int) -> Data {
+    func crc(_ bytes: [UInt8]) -> UInt32 {
+        var c: UInt32 = 0xFFFF_FFFF
+        for b in bytes {
+            c ^= UInt32(b)
+            for _ in 0..<8 { c = c & 1 == 1 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
+        }
+        return c ^ 0xFFFF_FFFF
+    }
+    func be(_ v: Int) -> [UInt8] { [UInt8(v >> 24 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v & 0xFF)] }
+    func chunk(_ type: String, _ body: [UInt8]) -> [UInt8] {
+        let typed = Array(type.utf8) + body
+        return be(body.count) + typed + be(Int(crc(typed)))
+    }
+    let header = be(width) + be(height) + [8, 6, 0, 0, 0]
+    return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + chunk("IHDR", header) + chunk("IEND", []))
+}
+
+/// The folder a folder fixture describes, with `text` as the fixture's own file.
+func deskFixtureFolder(_ fixture: DeskDiagnosticFixture, text: String, negative: Bool,
+                       edited: [String: String] = [:]) -> InMemoryPackageSource {
+    var source = InMemoryPackageSource()
+    var texts: [(String, String)] = [(fixture.fileName, text)]
+    if let package = fixture.package, fixture.fileName != "package.desk" { texts.append(("package.desk", package)) }
+    let files = negative ? (fixture.negativeFolderFiles ?? fixture.folderFiles) : fixture.folderFiles
+    texts += files.map { ($0.name, $0.text) }
+    for (name, text) in texts { source.add(name, text: edited[name] ?? text) }
+    for asset in negative ? (fixture.negativeAssets ?? fixture.assets) : fixture.assets {
+        source.add(asset.path, .file(deskPNG(width: asset.width, height: asset.height)))
+    }
+    for link in negative ? fixture.negativeLinks : fixture.links { source.add(link.path, .link(link.destination)) }
+    if !negative {
+        switch fixture.folderGenerate {
+        case "manyFiles"?:
+            for i in 1...2_001 { source.add(String(format: "notes/n%04d.txt", i), text: "note \(i)") }
+        case "largeFolder"?:
+            source.add("clip.mov", .file(Data(count: 101 * 1_048_576)))
+        default:
+            break
+        }
+    }
+    return source
+}
+
+func deskCheckFixtureFolder(_ source: InMemoryPackageSource, _ fixture: DeskDiagnosticFixture) -> CheckedDeskPackage {
+    var context = deskFixtureContext(fixture, package: nil)
+    context.resources = nil
+    let package = (try? PackageLoader.load(source)) ?? DeskPackage()
+    return CheckedDeskPackage(package: package, context: context)
+}
+
+func deskFolderSummary(_ checked: CheckedDeskPackage) -> [String] {
+    checked.allDiagnostics.map { "\($0.id.rawValue)@\($0.file.path):\($0.range.lowerBound)" }
+}
+
+func checkDeskFolderFixture(_ t: TestRunner, _ fixture: DeskDiagnosticFixture) {
+    let label = fixture.id
+    let source = deskFixtureFolder(fixture, text: fixture.positive, negative: false)
+    let checked = deskCheckFixtureFolder(source, fixture)
+    let all = checked.allDiagnostics
+    let produced = Set(all.map(\.id.rawValue))
+    let allowed = Set(fixture.expect + fixture.also)
+    for id in fixture.expect { t.check(produced.contains(id), "\(label): expected \(id), got \(deskFolderSummary(checked))") }
+    for id in produced.subtracting(allowed).sorted() {
+        let d = all.first { $0.id.rawValue == id }!
+        t.check(false, "\(label): unexpected \(id) in \(d.file.path): \(d.message(in: .english))")
+    }
+    for d in all {
+        for language in [DiagnosticLanguage.english, .simplifiedChinese] {
+            let message = d.message(in: language)
+            t.check(!message.isEmpty && deskMessageLeaks(message).isEmpty, "\(label): \(d.id.rawValue) message: \(message)")
+            for note in d.notes {
+                let text = note.message(in: language)
+                t.check(!text.isEmpty && text != note.messageKey && deskMessageLeaks(text).isEmpty, "\(label): note \(text)")
+            }
+            for f in d.fixIts {
+                let title = f.title(in: language)
+                t.check(deskMessageLeaks(title).isEmpty && !title.isEmpty, "\(label): fix-it title \(title)")
+            }
+        }
+    }
+    // Fix-its of the expected diagnostic, applied to the folder's texts.
+    let errorsBefore = Set(all.filter { $0.severity == .error }.map(\.id.rawValue))
+    for d in all where fixture.expect.contains(d.id.rawValue) {
+        for f in d.fixIts where !f.edits.isEmpty {
+            var edited: [String: String] = [:]
+            for (file, edits) in Dictionary(grouping: f.edits, by: \.file) {
+                guard let text = checked.package.texts[file] else { continue }
+                edited[file.path] = TextEdit.apply(edits, to: text)
+            }
+            let after = deskCheckFixtureFolder(deskFixtureFolder(fixture, text: fixture.positive, negative: false, edited: edited), fixture)
+            let countBefore = all.filter { $0.id == d.id }.count
+            let countAfter = after.allDiagnostics.filter { $0.id == d.id }.count
+            t.check(countAfter < countBefore, "\(label): fix-it \(f.titleKey) left \(d.id.rawValue)")
+            let newErrors = Set(after.allDiagnostics.filter { $0.severity == .error }.map(\.id.rawValue)).subtracting(errorsBefore)
+            t.check(newErrors.isEmpty, "\(label): fix-it \(f.titleKey) brought \(newErrors.sorted())")
+        }
+    }
+    if let negative = fixture.negative {
+        let clean = deskCheckFixtureFolder(deskFixtureFolder(fixture, text: negative, negative: true), fixture)
+        let left = clean.allDiagnostics.filter { !fixture.negativeAlso.contains($0.id.rawValue) }
+        t.check(left.isEmpty, "\(label) negative: \(left.map { "\($0.id.rawValue)@\($0.file.path): \($0.message(in: .english))" })")
     }
 }

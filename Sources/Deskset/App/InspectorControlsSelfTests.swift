@@ -167,7 +167,7 @@ extension AppSelfTest {
             t.equal((control("ImageAlpha") as? PercentControl)?.field.stringValue, "100", "255 is 100 %")
             check("ImageRotate", is: AngleControl.self)
             // The hour before and after building the preview: the check holds when the hour turns in between.
-            let hourBefore = TimeFormatting.format(Date(), format: "%H")
+            let hourBefore = MacTimeFormatting.format(Date(), format: "%H")
             editor.select(section: "MeasureTime")
             // Format: examples rendered now; Custom… opens the format itself with its live preview.
             t.check(find("time-format") is NSPopUpButton, "a menu of rendered examples")
@@ -175,7 +175,7 @@ extension AppSelfTest {
             editor.rebuildInspector()
             check("Format", is: FormatControl.self)
             let preview = (control("Format") as? FormatControl)?.preview.stringValue ?? ""
-            let hourAfter = TimeFormatting.format(Date(), format: "%H")
+            let hourAfter = MacTimeFormatting.format(Date(), format: "%H")
             t.check(preview.contains(hourBefore) || preview.contains(hourAfter), "live preview of the format: \(preview)")
             editor.select(section: "MeasureCalc")
             // A formula: its value, "calculated", and [Edit Formula…] for the formula itself.
@@ -481,7 +481,11 @@ extension AppSelfTest {
             func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
             guard let window = editor.window else { return t.check(false, "window") }
             editor.select(section: "VarText")
-            // Typing in a field, then Tab: the value is written, the skin refreshes, and the next field keeps the focus.
+            // Typing in a field, then Tab: the value is written, the skin refreshes, and the next field keeps the focus —
+            // across a rebuild of the inspector (a value step follows in place, which keeps the fields themselves: the
+            // page is built again here, as when a step changes what it is made of).
+            InspectorInPlace.isOffForTests = true
+            defer { InspectorInPlace.isOffForTests = false }
             guard let field = editor.inspectorControl(for: "Text") as? ValueField,
                   let next = editor.inspectorStack.findSubview(where: { $0.identifier?.rawValue == "VarText/Prefix" }) as? ValueField
             else { return t.check(false, "fields") }

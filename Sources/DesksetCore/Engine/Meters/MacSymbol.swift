@@ -14,10 +14,14 @@ import Foundation
 /// - `MacSymbolSize` — point size of the symbol's natural size (default 16), used when the meter has no W / H.
 /// - `MacSymbolWeight` — Ultralight, Thin, Light, Regular (default), Medium, Semibold, Bold, Heavy, Black.
 /// - `MacSymbolRendering` — Monochrome (default: every layer white, so ImageTint colors it), Hierarchical (white, the
-///   secondary layers more transparent: ImageTint gives one color in several strengths) or Multicolor (the symbol's own
-///   colors as in Dark Mode; layers without a color of their own are white, and ImageTint multiplies every color).
-public struct MacSymbol: Hashable {
-    public enum Weight: String, CaseIterable, Hashable {
+///   secondary layers more transparent: ImageTint gives one color in several strengths), Multicolor (the symbol's own
+///   colors as in Dark Mode; layers without a color of their own are white, and ImageTint multiplies every color) or
+///   Palette (the colors of `MacSymbolColors`, one per layer; ImageTint multiplies them).
+/// - `MacSymbolColors` — with Palette: `c1|c2|c3`, the colors of the symbol's primary, secondary and tertiary layers.
+///   A layer past the last color takes the last color (macOS does this); an entry that is not a color is white; without
+///   any color, Palette draws as Monochrome.
+public struct MacSymbol: Hashable, Sendable {
+    public enum Weight: String, CaseIterable, Hashable, Sendable {
         case ultralight, thin, light, regular, medium, semibold, bold, heavy, black
 
         /// `MacSymbolWeight` as written (any case); anything else is Regular.
@@ -29,8 +33,8 @@ public struct MacSymbol: Hashable {
         public var optionValue: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
     }
 
-    public enum Rendering: String, CaseIterable, Hashable {
-        case monochrome, hierarchical, multicolor
+    public enum Rendering: String, CaseIterable, Hashable, Sendable {
+        case monochrome, hierarchical, multicolor, palette
 
         /// `MacSymbolRendering` as written (any case); anything else is Monochrome.
         public init(parsing text: String) {
@@ -40,25 +44,59 @@ public struct MacSymbol: Hashable {
         public var optionValue: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
     }
 
-    /// How a meter asks for its symbols (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`).
-    public struct Style: Hashable {
+    /// How a meter asks for its symbols (`MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`).
+    public struct Style: Hashable, Sendable {
         public var pointSize = MacSymbol.defaultPointSize
         public var weight = Weight.regular
-        public var rendering = Rendering.monochrome
+        public var rendering = Rendering.monochrome {
+            didSet { if rendering != .palette { colors = [] } }
+        }
+        /// The layers' colors with Palette rendering (at most `maxColors`, components whole numbers 0…255); empty with
+        /// any other rendering, so the colors never make two paths of one drawing.
+        public var colors: [RGBA] = [] {
+            didSet {
+                let kept = rendering == .palette ? MacSymbol.normalizedColors(colors) : []
+                if kept != colors { colors = kept }
+            }
+        }
 
         public init(pointSize: Double = MacSymbol.defaultPointSize, weight: Weight = .regular,
-                    rendering: Rendering = .monochrome) {
+                    rendering: Rendering = .monochrome, colors: [RGBA] = []) {
             self.pointSize = MacSymbol.clampedPointSize(pointSize)
             self.weight = weight
             self.rendering = rendering
+            self.colors = rendering == .palette ? MacSymbol.normalizedColors(colors) : []
         }
 
         /// Reads the symbol options of `section` (`prefix` as for the other image options).
         public static func read(from section: SkinSection, prefix: String = "") -> Style {
-            Style(pointSize: section.double(prefix + "MacSymbolSize", MacSymbol.defaultPointSize),
-                  weight: Weight(parsing: section.string(prefix + "MacSymbolWeight")),
-                  rendering: Rendering(parsing: section.string(prefix + "MacSymbolRendering")))
+            let rendering = Rendering(parsing: section.string(prefix + "MacSymbolRendering"))
+            return Style(pointSize: section.double(prefix + "MacSymbolSize", MacSymbol.defaultPointSize),
+                         weight: Weight(parsing: section.string(prefix + "MacSymbolWeight")),
+                         rendering: rendering,
+                         colors: rendering == .palette ? MacSymbol.colors(parsing: section.string(prefix + "MacSymbolColors"))
+                            : [])
         }
+    }
+
+    /// Colors a palette uses at most: SF Symbols have a primary, a secondary and a tertiary layer.
+    public static let maxColors = 3
+
+    /// `MacSymbolColors` as written: colors separated by `|` (a `|` inside parentheses belongs to a formula). Trailing
+    /// empty entries are dropped; any other entry that is not a color is white, so the layers after it keep their
+    /// colors. At most `maxColors`.
+    public static func colors(parsing text: String) -> [RGBA] {
+        let trimmed = OptionText.trim(text)
+        guard !trimmed.isEmpty else { return [] }
+        var parts = OptionText.splitTopLevel(trimmed, separator: 0x7C).map(OptionText.trim)
+        while let last = parts.last, last.isEmpty { parts.removeLast() }
+        return normalizedColors(parts.prefix(maxColors).map { OptionValue.color(String($0)) ?? .white })
+    }
+
+    /// At most `maxColors`, each component a whole number in 0…255 (what the path can say).
+    static func normalizedColors(_ colors: [RGBA]) -> [RGBA] {
+        func c(_ v: Double) -> Double { v.isFinite ? min(max(v, 0), 255).rounded() : 0 }
+        return colors.prefix(maxColors).map { RGBA(r: c($0.r), g: c($0.g), b: c($0.b), a: c($0.a)) }
     }
 
     /// Written before the symbol name: `sf:cpu.fill` (any case).
@@ -108,12 +146,14 @@ public struct MacSymbol: Hashable {
 
     // MARK: Paths
 
-    /// `sf:<name>?size=16&weight=regular&rendering=monochrome` (plus `&density=2` when it is not 1): what the engine and
-    /// the app's image caches key the image by. The name is percent-encoded, so no name can reach into the options.
+    /// `sf:<name>?size=16&weight=regular&rendering=monochrome` (plus `&colors=ffcc00ff-000000ff` for a palette's colors
+    /// and `&density=2` when it is not 1): what the engine and the app's image caches key the image by. The name is
+    /// percent-encoded, so no name can reach into the options.
     public var path: String {
         let encoded = name.addingPercentEncoding(withAllowedCharacters: MacSymbol.nameCharacters) ?? ""
         var p = "\(MacSymbol.prefix)\(encoded)?size=\(MacSymbol.format(style.pointSize))"
             + "&weight=\(style.weight.rawValue)&rendering=\(style.rendering.rawValue)"
+        if !style.colors.isEmpty { p += "&colors=" + style.colors.map(MacSymbol.hex).joined(separator: "-") }
         if density != 1 { p += "&density=\(MacSymbol.format(density))" }
         return p
     }
@@ -126,6 +166,7 @@ public struct MacSymbol: Hashable {
         let name = String(parts.first ?? "").removingPercentEncoding ?? ""
         var style = Style()
         var density = 1.0
+        var colors: [RGBA] = []
         if parts.count > 1 {
             for item in parts[1].split(separator: "&") {
                 let pair = item.split(separator: "=", maxSplits: 1)
@@ -135,11 +176,13 @@ public struct MacSymbol: Hashable {
                 case "size": style.pointSize = MacSymbol.clampedPointSize(Double(value) ?? MacSymbol.defaultPointSize)
                 case "weight": style.weight = Weight(parsing: value)
                 case "rendering": style.rendering = Rendering(parsing: value)
+                case "colors": colors = value.split(separator: "-").map { MacSymbol.color(hex: $0) ?? .white }
                 case "density": density = Double(value) ?? 1
                 default: break
                 }
             }
         }
+        style.colors = colors
         self.init(name: name, style: style, density: density)
     }
 
@@ -166,6 +209,19 @@ public struct MacSymbol: Hashable {
         set.insert(charactersIn: ".-_")
         return set
     }()
+
+    /// `rrggbbaa` of a normalized color.
+    private static func hex(_ c: RGBA) -> String {
+        [c.r, c.g, c.b, c.a].map { v -> String in
+            let s = String(Int(v), radix: 16)
+            return s.count < 2 ? "0" + s : s
+        }.joined()
+    }
+
+    private static func color(hex text: Substring) -> RGBA? {
+        guard text.utf8.count == 8, let v = UInt32(text, radix: 16) else { return nil }
+        return RGBA(r: Double(v >> 24 & 0xff), g: Double(v >> 16 & 0xff), b: Double(v >> 8 & 0xff), a: Double(v & 0xff))
+    }
 
     private static func format(_ v: Double) -> String {
         v == v.rounded() && abs(v) < 1e9 ? String(Int(v)) : String(v)

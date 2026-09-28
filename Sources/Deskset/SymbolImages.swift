@@ -8,7 +8,8 @@ import DesksetCore
 /// `MacSymbolSize`, rounded up to whole points with the symbol centered. It is drawn white — the whole symbol, with
 /// the parts a template symbol knocks out left transparent (Monochrome), the layers in their hierarchy's opacities
 /// (Hierarchical), or the parts without colors of their own (Multicolor, drawn as in Dark Mode) — so the general image
-/// options (ImageTint, ColorMatrix, Greyscale, ImageAlpha) color it as they color a white picture.
+/// options (ImageTint, ColorMatrix, Greyscale, ImageAlpha) color it as they color a white picture. Palette draws each
+/// layer in its color from `MacSymbolColors` (the general options then work on those colors, as on a colored file).
 ///
 /// Any thread: each render makes its own `NSImage` and graphics context (`Images` renders a path once at a time).
 enum SymbolImages {
@@ -30,7 +31,7 @@ enum SymbolImages {
             image.draw(in: NSRect(x: (points.width - natural.width) / 2, y: (points.height - natural.height) / 2,
                                   width: natural.width, height: natural.height))
             NSGraphicsContext.restoreGraphicsState()
-            if symbol.style.rendering == .monochrome {
+            if drawsAsTemplate(symbol.style) {
                 // The template drawing (black, with the knocked-out parts of `.circle.fill`-style symbols) made white.
                 ctx.setBlendMode(.sourceIn)
                 ctx.setFillColor(CGColor(gray: 1, alpha: 1))
@@ -38,7 +39,7 @@ enum SymbolImages {
             }
         }
         // Multicolor draws the layers without colors of their own in the label color: white in Dark Mode. The other
-        // renderings are white in any appearance, and Dark Mode keeps them the same.
+        // renderings are white (or a palette's colors) in any appearance, and Dark Mode keeps them the same.
         if let dark = NSAppearance(named: .darkAqua) { dark.performAsCurrentDrawingAppearance(draw) } else { draw() }
         guard let cg = ctx.makeImage() else { return nil }
         return (cg, points)
@@ -64,8 +65,25 @@ enum SymbolImages {
             configuration = configuration.applying(NSImage.SymbolConfiguration(hierarchicalColor: .labelColor))
         case .multicolor:
             configuration = configuration.applying(.preferringMulticolor())
+        case .palette:
+            configuration = configuration.applying(NSImage.SymbolConfiguration(
+                paletteColors: symbol.style.colors.isEmpty ? [.labelColor, .labelColor]
+                    : paletteColors(symbol.style.colors)))
         }
         return base.withSymbolConfiguration(configuration)
+    }
+
+    /// A palette's colors for AppKit, the last one repeated up to three: macOS gives the layers past the last color
+    /// that color anyway, but a palette of one translucent color comes out with its alpha applied twice (0,0,0,153
+    /// draws at alpha 92; measured on macOS 26), and two of it draw right.
+    static func paletteColors(_ colors: [RGBA]) -> [NSColor] {
+        guard let last = colors.last else { return [] }
+        return (colors + Array(repeating: last, count: max(MacSymbol.maxColors - colors.count, 0))).map(\.nsColor)
+    }
+
+    /// Monochrome, and a palette without colors: the template drawing, made white.
+    private static func drawsAsTemplate(_ style: MacSymbol.Style) -> Bool {
+        style.rendering == .monochrome || (style.rendering == .palette && style.colors.isEmpty)
     }
 
     /// Whether macOS has a symbol of that name (the editor asks before it says a picture is missing).
@@ -82,6 +100,12 @@ enum SymbolImages {
         case .hierarchical:
             configuration = configuration.applying(NSImage.SymbolConfiguration(hierarchicalColor: .white))
         case .multicolor: configuration = configuration.applying(.preferringMulticolor())
+        case .palette:
+            // Without colors, drawn as a template like Monochrome (`render`).
+            if !symbol.style.colors.isEmpty {
+                configuration = configuration.applying(NSImage.SymbolConfiguration(
+                    paletteColors: paletteColors(symbol.style.colors)))
+            }
         }
         return base.withSymbolConfiguration(configuration)
     }

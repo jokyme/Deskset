@@ -21,6 +21,13 @@ public protocol ResourceResolving: Sendable {
     func kind(of relativePath: String) -> ResourceKind?
     /// Files whose names are close (DK4029's suggestion).
     func similarPaths(to relativePath: String) -> [String]
+    /// Pictures whose path or name starts with `prefix` (every picture for an empty one), at most `limit`, for
+    /// completion. The default lists none.
+    func paths(matching prefix: String, limit: Int) -> [String]
+}
+
+extension ResourceResolving {
+    public func paths(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// The fonts of this Mac. Without it, font checks are skipped.
@@ -29,6 +36,13 @@ public protocol FontCataloging: Sendable {
     /// The Mac font a Windows family is shown with (DK4033), or nil when it is not a Windows font.
     func macSubstitute(forWindowsFamily family: String) -> String?
     func similarFamilies(to family: String) -> [String]
+    /// Families whose name, or a word of it, starts with `prefix`, best first, at most `limit`, for completion (an
+    /// empty prefix: the usual ones). Not the misspelling suggestion (`similarFamilies`). The default lists none.
+    func families(matching prefix: String, limit: Int) -> [String]
+}
+
+extension FontCataloging {
+    public func families(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// SF Symbol names. Without it, symbol checks are skipped.
@@ -36,6 +50,13 @@ public protocol SymbolValidating: Sendable {
     func exists(_ symbol: String) -> Bool
     func minimumMacOS(of symbol: String) -> Int?
     func similarSymbols(to symbol: String) -> [String]
+    /// Symbol names that start with `prefix`, or have a part (between dots) that does, best first, at most `limit`,
+    /// for completion. Not the misspelling suggestion (`similarSymbols`). The default lists none.
+    func symbols(matching prefix: String, limit: Int) -> [String]
+}
+
+extension SymbolValidating {
+    public func symbols(matching prefix: String, limit: Int) -> [String] { [] }
 }
 
 /// A font as the layout pass measures it.
@@ -408,6 +429,31 @@ public struct TranslationTable: Sendable, Hashable {
     public init(languages: [String: [String: String]] = [:]) { self.languages = languages }
 }
 
+/// The pictures a file names where a picture is expected (§8.3): every literal path with where it is written, and
+/// whether some picture comes from anything else (data, an option, a template), so that the file's pictures cannot
+/// all be known.
+public struct AssetUses: Sendable, Hashable {
+    public struct Site: Sendable, Hashable {
+        public var path: String
+        public var file: DeskFileID
+        public var range: Range<Int>
+
+        public init(path: String, file: DeskFileID, range: Range<Int>) {
+            self.path = path
+            self.file = file
+            self.range = range
+        }
+    }
+
+    public var images: [Site]
+    public var computedImages: Bool
+
+    public init(images: [Site] = [], computedImages: Bool = false) {
+        self.images = images
+        self.computedImages = computedImages
+    }
+}
+
 /// A checked file (§4.20).
 public struct CheckedFile: Sendable {
     public let tree: SyntaxTree
@@ -432,6 +478,11 @@ public struct CheckedFile: Sendable {
     /// How each `for` identifies its instances (§4.15): the identity field of the list's records (`"date"`), or
     /// `"position"`.
     public var loopIdentities: [NodeID: String] = [:]
+    /// The pictures the file names.
+    public var assets = AssetUses()
+    /// The type each `variable`, `saved` and `computed` declaration settled to (by its initializer, or by its uses
+    /// when the initializer left it open), keyed by the declaration; absent where no use decided it.
+    public var declarationTypes: [NodeID: SemType] = [:]
 
     public init(tree: SyntaxTree, diagnostics: [Diagnostic], symbols: [NodeID: Symbol], types: [NodeID: SemType],
                 elements: [NodeID: ElementFacts], dataUses: [DataUse], dependencies: [NodeID: Set<DepKey>],

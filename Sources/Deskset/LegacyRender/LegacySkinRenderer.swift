@@ -1,0 +1,261 @@
+#if DEBUG
+// A frozen copy of the renderer, made from SkinRenderer.swift. Debug builds only.
+//
+// LegacyRender/ holds the skin renderer as it was before the drawing code starts moving into a library of its own (the
+// runtime design, milestone M0): SkinRenderer, Renderers/* (with Shape/ShapeCG and SkinRenderContext), Images, the
+// String meter's TextLayout, font resolution (Fonts; registering fonts stays with Fonts), SF Symbol images, the glass
+// stand-in, the CG bridges of RGBA and SkinRect, and the parts of SkinDrawing a full window picture needs. Every type is
+// prefixed with Legacy; its caches are its own (LegacyStorage), so both renderers can draw one skin in one process.
+//
+// It is the reference the moved renderer is compared with, byte for byte, in the same run with the same injected clock
+// and data (`--render --legacy`; the "Runtime: legacy renderer" self-tests). The reference images are made fresh on
+// every run, never stored, so they fit the machine, macOS and architecture they are compared on.
+//
+// Do not change it, except to fix a bug the same way in both copies. It goes once the moved renderer has replaced
+// the old one everywhere. It was checked against the binary built from the commit it was copied from (tag
+// runtime-m0a-render-base, local only): `--render` gives the same bytes for every skin in DefaultSkins and TestSkins at
+// 1x and 2x, light and dark.
+
+import AppKit
+import DesksetCore
+
+/// Draws a skin into the current (flipped, top-left origin) graphics context.
+enum LegacySkinRenderer {
+    /// Meters in file order. Content meters (`Container=`) are drawn where their container is in that order, clipped
+    /// to the container's W×H and "only drawn on solid pixels of the container"; "the container meter itself is not
+    /// drawn, just the content", and "any transparency of both the container and the content is cumulative"
+    /// (manual: Container). Content of a hidden container is not drawn.
+    ///
+    /// Glass (`MacGlass`) is behind everything the skin draws: the skin window has the real thing behind its drawing
+    /// (`glass: .window`), every other drawing shows a stand-in (`LegacyGlassPlaceholder`).
+    ///
+    /// Only the skin's owner may draw it: drawing uses and fills the skin's `LegacySkinRenderContext`.
+    static func draw(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing = .placeholder(dark: nil)) {
+        drawBase(skin, in: ctx, glass: glass)
+        let context = LegacySkinRenderContext.of(skin)
+        for meter in topLevelMeters(skin) { drawTopLevel(meter, of: skin, in: ctx, context) }
+    }
+
+    /// What `draw` puts under the meters: the glass (or where it catches the mouse) and the skin's background.
+    static func drawBase(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing) {
+        switch glass {
+        case .window:
+            LegacyGlassPlaceholder.drawHitArea(skin.glassRegions, in: ctx)
+        case .placeholder(let dark):
+            // Worked out now rather than taken from the last redraw: the Studio draws its live previews without one.
+            LegacyGlassPlaceholder.draw(skin.currentGlassRegions(), in: ctx, dark: dark)
+        case .none:
+            break
+        }
+        drawBackground(skin, ctx)
+    }
+
+    /// The meters `draw` draws itself, in order: the visible ones outside containers (a container draws its content).
+    static func topLevelMeters(_ skin: Skin) -> [Meter] {
+        skin.meters.filter { !$0.hidden && $0.container == nil }
+    }
+
+    /// The content of a container (every meter whose Container it is, hidden or not).
+    static func content(of container: Meter, in skin: Skin) -> [Meter] {
+        skin.meters.filter { $0.container === container }
+    }
+
+    /// One of `topLevelMeters`, as `draw` draws it.
+    static func drawTopLevel(_ meter: Meter, of skin: Skin, in ctx: CGContext, _ context: LegacySkinRenderContext) {
+        if meter.isContainer {
+            drawContainer(meter, content: content(of: meter, in: skin), ctx, context)
+        } else {
+            drawMeter(meter, ctx, context)
+        }
+    }
+
+    /// How glass appears in a drawing (see `draw`).
+    enum GlassDrawing: Equatable {
+        /// A stand-in for the glass (`LegacyGlassPlaceholder`); `dark`: over a dark background, a light one, or unknown.
+        case placeholder(dark: Bool?)
+        /// The skin window: the real glass is behind the drawing, which only makes it catch the mouse.
+        case window
+        /// No glass at all.
+        case none
+    }
+
+    /// One meter with its background, bevel and TransformationMatrix (the Skin Studio's thumbnails of single layers),
+    /// its glass as a stand-in. Only the owner of the meter's skin may draw it.
+    static func drawMeter(_ meter: Meter, _ ctx: CGContext, glassDark: Bool? = nil) {
+        drawMeters([meter], ctx, glassDark: glassDark)
+    }
+
+    /// Several meters into one picture, in the given order (the Skin Studio's thumbnails of runs and selections):
+    /// first the glass stand-ins of all of them, then the meters, so the glass stays behind everything drawn, as in
+    /// the skin window. Only the owner of the meters' skin may draw them.
+    static func drawMeters(_ meters: [Meter], _ ctx: CGContext, glassDark: Bool? = nil) {
+        for meter in meters {
+            if let region = meter.glassRegion { LegacyGlassPlaceholder.draw(region, in: ctx, dark: glassDark) }
+        }
+        for meter in meters { drawMeter(meter, ctx, LegacySkinRenderContext.of(meter.skin)) }
+    }
+
+    private static func drawMeter(_ meter: Meter, _ ctx: CGContext, _ context: LegacySkinRenderContext) {
+        ctx.saveGState()
+        if let m = meter.transformationMatrix {
+            ctx.concatenate(CGAffineTransform(a: m[0], b: m[1], c: m[2], d: m[3], tx: m[4], ty: m[5]))
+        }
+        drawMeterBackground(meter, ctx)
+        switch meter {
+        case let m as StringMeter: drawString(m, ctx, context)
+        case let m as ImageMeter: drawImage(m, ctx)
+        case let m as BarMeter: drawBar(m, ctx)
+        case let m as LineMeter: drawLine(m, ctx)
+        case let m as HistogramMeter: drawHistogram(m, ctx, context)
+        case let m as RoundlineMeter: drawRoundline(m, ctx)
+        case let m as RotatorMeter: drawRotator(m, ctx, context)
+        case let m as ShapeMeter: drawShape(m, ctx)
+        case let m as ButtonMeter: drawButton(m, ctx)
+        case let m as BitmapMeter: drawBitmap(m, ctx)
+        default: break
+        }
+        ctx.restoreGState()
+    }
+
+    /// The content of `container`: drawn into a layer clipped to the container's frame, then kept only where the
+    /// container's own drawing (background, image, shape… as one layer) is opaque, scaled by its alpha.
+    private static func drawContainer(_ container: Meter, content: [Meter], _ ctx: CGContext,
+                                      _ context: LegacySkinRenderContext) {
+        let visible = content.filter { !$0.hidden }
+        let clip = container.frame.legacyCGRect
+        guard !visible.isEmpty, clip.width > 0, clip.height > 0, clip.minX.isFinite, clip.minY.isFinite else { return }
+        ctx.saveGState()
+        ctx.clip(to: clip)
+        ctx.beginTransparencyLayer(in: clip, auxiliaryInfo: nil)
+        for meter in visible { drawMeter(meter, ctx, context) }
+        // The container's drawing is one layer composited with destination-in: only its alpha matters, and several
+        // drawing operations (fill, bevel, image…) act as one mask.
+        ctx.setBlendMode(.destinationIn)
+        ctx.beginTransparencyLayer(in: clip, auxiliaryInfo: nil)
+        drawMeter(container, ctx, context)
+        ctx.endTransparencyLayer()
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
+    }
+
+    // MARK: Backgrounds
+
+    /// `BackgroundMode`: 0 the image at its size, 2 SolidColor (with SolidColor2 / GradientAngle and the bevel),
+    /// 3 the image scaled to the skin (with `BackgroundMargins` unscaled, like ScaleMargins), 4 the image tiled.
+    /// "All general image options are valid for Background."
+    private static func drawBackground(_ skin: Skin, _ ctx: CGContext) {
+        let s = skin.settings
+        let rect = CGRect(x: 0, y: 0, width: skin.width, height: skin.height)
+        switch s.backgroundMode {
+        case 2:
+            fill(rect, s.solidColor, s.solidColor2, angle: s.gradientAngle, ctx)
+            drawBevel(rect, s.bevelType, light: s.bevelColor, dark: s.bevelColor2, ctx)
+        case 0, 3, 4:
+            guard let path = s.backgroundImage else { return }
+            // An SF Symbol is rendered for the skin's size when stretched (mode 3), else for its own size.
+            guard let prepared = LegacyPreparedImage(path: path, options: s.backgroundImageOptions,
+                                               drawn: s.backgroundMode == 3 ? rect.size : nil, in: ctx) else { return }
+            switch s.backgroundMode {
+            case 4:
+                // One tiled draw with whole-pixel tiles (see `tile`), with the image options baked in.
+                guard let image = prepared.flattened(), prepared.alpha > 0 else { return }
+                ctx.saveGState()
+                ctx.setAlpha(prepared.alpha)
+                tile(image, in: rect, ctx, density: prepared.density)
+                ctx.restoreGState()
+            case 3:
+                let m = s.backgroundMargins
+                let margins = m.left != 0 || m.top != 0 || m.right != 0 || m.bottom != 0 ? m : nil
+                drawImageFile(prepared, in: rect, scaleMargins: margins, ctx)
+            default:
+                prepared.draw(in: CGRect(origin: .zero, size: prepared.size), ctx)
+            }
+        default:
+            break
+        }
+    }
+
+    private static func drawMeterBackground(_ meter: Meter, _ ctx: CGContext) {
+        let rect = meter.frame.legacyCGRect
+        if meter.solidColor.a > 0 || (meter.solidColor2?.a ?? 0) > 0 {
+            fill(rect, meter.solidColor, meter.solidColor2, angle: meter.gradientAngle, ctx)
+        }
+        drawBevel(rect, meter.bevelType, light: meter.bevelColor, dark: meter.bevelColor2, ctx)
+    }
+
+    static func fill(_ rect: CGRect, _ c1: RGBA, _ c2: RGBA?, angle: Double, _ ctx: CGContext) {
+        guard let c2, c2 != c1 else {
+            ctx.setFillColor(c1.legacyCGColor)
+            ctx.fill(rect)
+            return
+        }
+        guard let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                                        colors: [c1.legacyCGColor, c2.legacyCGColor] as CFArray, locations: [0, 1])
+        else { return }
+        let radians = angle * .pi / 180
+        let dx = cos(radians) * rect.width / 2
+        let dy = sin(radians) * rect.height / 2
+        ctx.saveGState()
+        ctx.clip(to: rect)
+        ctx.drawLinearGradient(gradient, start: CGPoint(x: rect.midX - dx, y: rect.midY - dy),
+                               end: CGPoint(x: rect.midX + dx, y: rect.midY + dy),
+                               options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        ctx.restoreGState()
+    }
+
+    /// `BevelType` 1 (raised) / 2 (sunken): one-point lines along the edges. Manual: for a raised bevel "BevelColor
+    /// will represent the color on the left and top edges … BevelColor2 … on the right and bottom"; for a sunken
+    /// one BevelColor is on the right and bottom and BevelColor2 on the left and top. Defaults: white / black. The
+    /// context is flipped, so the top edge is at `minY`.
+    static func drawBevel(_ rect: CGRect, _ type: Int, light: RGBA?, dark: RGBA?, _ ctx: CGContext) {
+        guard type == 1 || type == 2, rect.width > 1, rect.height > 1 else { return }
+        let first = (light ?? RGBA(r: 255, g: 255, b: 255, a: 255)).legacyCGColor
+        let second = (dark ?? RGBA(r: 0, g: 0, b: 0, a: 255)).legacyCGColor
+        let (topLeft, bottomRight) = type == 1 ? (first, second) : (second, first)
+        ctx.saveGState()
+        ctx.setLineWidth(1)
+        ctx.setStrokeColor(topLeft)
+        ctx.strokeLineSegments(between: [CGPoint(x: rect.minX, y: rect.minY + 0.5), CGPoint(x: rect.maxX, y: rect.minY + 0.5),
+                                         CGPoint(x: rect.minX + 0.5, y: rect.minY), CGPoint(x: rect.minX + 0.5, y: rect.maxY)])
+        ctx.setStrokeColor(bottomRight)
+        ctx.strokeLineSegments(between: [CGPoint(x: rect.minX, y: rect.maxY - 0.5), CGPoint(x: rect.maxX, y: rect.maxY - 0.5),
+                                         CGPoint(x: rect.maxX - 0.5, y: rect.minY), CGPoint(x: rect.maxX - 0.5, y: rect.maxY)])
+        ctx.restoreGState()
+    }
+
+    // MARK: LegacyImages
+
+    /// Draws a CGImage upright into a flipped context.
+    static func drawCGImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, alpha: CGFloat = 1) {
+        ctx.saveGState()
+        ctx.setAlpha(alpha)
+        ctx.translateBy(x: rect.minX, y: rect.maxY)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: rect.width, height: rect.height))
+        ctx.restoreGState()
+    }
+
+    /// Tiles `image` over `rect`, the first tile at its top-left corner, tiles upright. CoreGraphics does the tiling
+    /// in one call and only for the visible (clipped) area: drawing tile by tile took one draw call per tile, i.e. a
+    /// million calls per frame for a 1×1 image on a 1000×1000 skin, and practically forever for huge skin sizes.
+    static func tile(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: LegacyImages.Density = .one) {
+        guard image.width > 0, image.height > 0, rect.width > 0, rect.height > 0,
+              rect.minX.isFinite, rect.minY.isFinite, rect.maxX.isFinite, rect.maxY.isFinite else { return }
+        let area = rect.intersection(ctx.boundingBoxOfClipPath)
+        guard !area.isNull, !area.isEmpty else { return }
+        ctx.saveGState()
+        ctx.clip(to: area)
+        // Flip the context around the rect (top-left origin → bottom-left) so images are drawn upright; the tile
+        // whose top edge is the rect's top edge anchors the pattern.
+        ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
+        ctx.scaleBy(x: 1, y: -1)
+        let w = CGFloat(image.width) / density.x, h = CGFloat(image.height) / density.y
+        // Integer tiles at the backing scale: `.none` gives exactly what drawing each tile did (checked pixel by
+        // pixel at 4x); smoothing would blur the pattern. (A symbol, rendered at the backing scale, is smoothed.)
+        ctx.interpolationQuality = density == .one ? .none : .high
+        ctx.draw(image, in: CGRect(x: rect.minX, y: rect.maxY - h, width: w, height: h), byTiling: true)
+        ctx.restoreGState()
+    }
+}
+#endif

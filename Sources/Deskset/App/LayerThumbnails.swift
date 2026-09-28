@@ -72,7 +72,8 @@ final class LayerThumbnails {
         let key = "\u{1F}widget"
         // The glass as of the last redraw too: a `!SetOption` and `!Redraw` from a mouse action changes it between
         // updates (a skin with `Update=-1` has no further update).
-        let signature = "\(ObjectIdentifier(skin).hashValue)|\(skin.width)x\(skin.height)|\(skin.updateCount)|\(dark)|\(panel)"
+        let signature = "\(ObjectIdentifier(skin).hashValue)|\(skin.sourceGeneration)|\(skin.width)x\(skin.height)|"
+            + "\(skin.updateCount)|\(dark)|\(panel)"
             + "|\(skin.glassRegions)"
         if let entry = cache[key], entry.signature == signature || drawnThisPass.contains(key) { return entry.image }
         let area = SkinRect(x: 0, y: 0, width: skin.width, height: skin.height)
@@ -94,10 +95,11 @@ final class LayerThumbnails {
                             "StringEffect", "LineColor", "PrimaryColor", "SecondaryColor", "BothColor", "ImageTint",
                             "ImageAlpha", "Greyscale", "ImageName"]
 
-    /// What a tile shows: the skin loaded now, the frames, values, texts and colors of the layers, and the colors
-    /// around them.
+    /// What a tile shows: the skin loaded now and its text (`sourceGeneration`: a patch gives the same skin object new
+    /// text), the frames, values, texts and colors of the layers, and the colors around them.
     static func signature(of meters: [Meter], in skin: Skin, panel: NSColor, dark: Bool) -> String {
-        var parts = ["\(ObjectIdentifier(skin).hashValue)", panel.description, dark ? "dark" : "light"]
+        var parts = ["\(ObjectIdentifier(skin).hashValue)|\(skin.sourceGeneration)", panel.description,
+                     dark ? "dark" : "light"]
         for m in meters {
             let f = m.frame
             var part = "\(m.name)|\(m.hidden)|\(f.x),\(f.y),\(f.width),\(f.height)"

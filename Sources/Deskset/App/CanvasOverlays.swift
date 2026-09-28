@@ -440,6 +440,24 @@ extension InspectorWindowController {
     /// unheard — for 2 seconds (`settled`: as if it had, for snapshots), until closed. Never in Code mode (it explains
     /// the canvas and would cover the code); the silence is still timed there.
     func updateSilentData(settled: Bool = false) {
+        // Typed code the canvas shows only once saved (`typedCodeWaits`) is said here first: the words the user is
+        // typing are not on the canvas yet.
+        if typedCodeWaits != nil, isCanvasVisible, session?.studioSources.waitingDismissed != true {
+            let text = Self.typedCodeWaitsText
+            let changed = statusCapsule.text != text, appearing = statusCapsule.isHidden
+            if changed {
+                statusCapsule.configure(text, symbol: "clock", actions: [
+                    ToastAction("Save") { [weak self] in _ = self?.loadedCodeView?.commitNow(explicit: true) },
+                ])
+            }
+            statusCapsule.isHidden = false
+            if changed || appearing { statusCapsule.settleLayout() }
+            return
+        }
+        if statusCapsule.text == Self.typedCodeWaitsText {
+            statusCapsule.isHidden = true
+            statusCapsule.configure("", symbol: nil, actions: [])
+        }
         let state = soundState()
         let now = overlayClock()
         if state == nil || state == .playing {
@@ -469,6 +487,11 @@ extension InspectorWindowController {
     }
 
     func dismissSilentData() {
+        if statusCapsule.text == Self.typedCodeWaitsText {
+            session?.studioSources.waitingDismissed = true
+            statusCapsule.isHidden = true
+            return
+        }
         dismissedSoundState = lastSoundState
         statusCapsule.isHidden = true
     }

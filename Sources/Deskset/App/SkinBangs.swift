@@ -203,6 +203,7 @@ extension SkinWindowController {
         // Skins on other threads read the desktop pictures as published (Chameleon): the new one at once.
         DesktopInputs.mainScreenDesktop.refresh()
         DesktopInputs.displayDesktops.refresh()
+        DesktopInputs.allScreenDesktops.refresh()
         DesktopInputs.desktopFillColor.refresh()
     }
 }

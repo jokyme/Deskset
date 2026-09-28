@@ -598,10 +598,10 @@ extension InspectorWindowController {
     // MARK: Who uses what
 
     /// Where the skin's shared values are used (`Skin.valueUsages()`), scanned once per state of the skin: its files
-    /// (a skin object never reloads them), its previews and its variables' values — not once per update (a big
-    /// widget takes a noticeable moment to scan).
+    /// (`sourceGeneration`: a patch gives the same skin object new text), its previews and its variables' values — not
+    /// once per update (a big widget takes a noticeable moment to scan).
     func valueUsages(_ skin: Skin) -> ValueUsageIndex {
-        let key = "\(skin.isPreviewing)|\(skin.keyValueWrites)|\(skin.variableStamp)"
+        let key = "\(skin.isPreviewing)|\(skin.keyValueWrites)|\(skin.variableStamp)|\(skin.sourceGeneration)"
         if let cached = inspectorState.usageCache, cached.skin === skin, cached.key == key { return cached.index }
         let index = skin.valueUsages()
         inspectorState.usageCache = InspectorState.UsageCache(skin: skin, key: key, index: index)

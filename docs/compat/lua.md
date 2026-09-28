@@ -338,8 +338,10 @@ content; before, those areas stayed empty.
   the process started.
 - Mac (Deskset): `%#x` is emulated (numbers without leading zeros; `!` UTC formats included). os.clock returns
   wall-clock seconds since the app started Lua at launch (the Mac C library would return CPU time, which hardly moves
-  for an idle app). os.time, os.difftime, os.tmpname, os.remove, os.rename are the standard ones; locale-dependent
-  formats use the C locale on both systems.
+  for an idle app). os.time, os.difftime, os.remove, os.rename are the standard ones; os.tmpname makes an empty file
+  `/tmp/lua_XXXXXX` as the standard one does, its six characters from the skin's random numbers (the same in every
+  `--render --seed` run) and the file made through the skin's side effects (an instance that must not change the Mac,
+  such as the Skin Studio's, keeps it in its private copy); locale-dependent formats use the C locale on both systems.
 - Why: scripts time animations with os.clock and format dates with `%#`.
 - Skin impact: none expected. math.random sequences differ from Windows (different C library).
 - Status: emulated

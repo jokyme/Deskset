@@ -10,7 +10,8 @@ extension EditorSchema {
     /// data itself).
     public static let weatherTypes: [Choice] = [
         Choice("Temperature", "Temperature"), Choice("FeelsLike", "Feels like"), Choice("Condition", "Condition"),
-        Choice("Symbol", "Weather icon (SF Symbol)"), Choice("SymbolCode", "Weather code (MET Norway)"),
+        Choice("Symbol", "Weather icon (SF Symbol)"), Choice("SymbolPalette", "Weather icon colors"),
+        Choice("SymbolCode", "Weather code (MET Norway)"),
         Choice("Humidity", "Humidity"), Choice("DewPoint", "Dew point"), Choice("Pressure", "Air pressure"),
         Choice("CloudCover", "Cloud cover"), Choice("Fog", "Fog"), Choice("UVIndex", "UV index"),
         Choice("WindSpeed", "Wind speed", aliases: ["Wind"]), Choice("WindGust", "Wind gusts"),
@@ -36,12 +37,13 @@ extension EditorSchema {
 
     /// Types that take `Hour=` / `Day=` (as the plugin reads them).
     static let weatherHourlyTypes = ["Temperature", "FeelsLike", "DewPoint", "Condition", "Symbol", "SymbolCode",
-                                     "IsDaylight", "Humidity", "Pressure", "CloudCover", "Fog", "UVIndex", "WindSpeed",
-                                     "WindGust", "WindDirection", "WindCardinal", "Beaufort", "Precipitation",
-                                     "PrecipitationChance", "ThunderChance", "TemperatureColor", "Time"]
-    static let weatherDailyTypes = ["High", "Low", "Condition", "Symbol", "SymbolCode", "UVIndex", "WindSpeed",
-                                    "WindGust", "Beaufort", "Precipitation", "PrecipitationChance", "ThunderChance",
-                                    "TemperatureColor", "Time", "Sunrise", "Sunset", "SolarNoon", "DayLength"]
+                                     "SymbolPalette", "IsDaylight", "Humidity", "Pressure", "CloudCover", "Fog",
+                                     "UVIndex", "WindSpeed", "WindGust", "WindDirection", "WindCardinal", "Beaufort",
+                                     "Precipitation", "PrecipitationChance", "ThunderChance", "TemperatureColor", "Time"]
+    static let weatherDailyTypes = ["High", "Low", "Condition", "Symbol", "SymbolCode", "SymbolPalette", "UVIndex",
+                                    "WindSpeed", "WindGust", "Beaufort", "Precipitation", "PrecipitationChance",
+                                    "ThunderChance", "TemperatureColor", "Time", "Sunrise", "Sunset", "SolarNoon",
+                                    "DayLength"]
     static let weatherTimeTypes = ["Time", "Sunrise", "Sunset", "SolarNoon", "UpdatedAt", "ForecastTime", "Status"]
 
     /// `Type=` of a MacSun measure.
@@ -119,7 +121,18 @@ extension EditorSchema {
             Property("NoEventText", "Text when the sun doesn't rise or set", .text, default: "--:--",
                      help: "Midnight sun and polar night", visibleWhen: [.equals("Type", "Sunrise", "Sunset")]),
             Property("SymbolStyle", "Icon style", pick([Choice("Fill", "Filled"), Choice("Outline", "Outline")]),
-                     default: "Fill", visibleWhen: [.equals("Type", "Symbol")]),
+                     default: "Fill", visibleWhen: [.equals("Type", "Symbol", "SymbolPalette")]),
+            Property("PaletteInk", "Icon cloud color", .color,
+                     default: MacWeatherMeasure.colorText(MacWeatherMeasure.defaultPaletteInk),
+                     help: "Clouds, moons, snow and lightning in the icon colors; measures that follow this one use it too"),
+            Property("PaletteSun", "Icon sun color", .color,
+                     default: MacWeatherMeasure.colorText(MacWeatherMeasure.defaultPaletteSun),
+                     help: "The sun in the icon colors"),
+            Property("PaletteRain", "Icon rain color", .color,
+                     default: MacWeatherMeasure.colorText(MacWeatherMeasure.defaultPaletteRain),
+                     help: "Rain, drizzle and sleet in the icon colors"),
+            Property("ScaleColor", "Temperature color instead", .color, placeholder: "the scale",
+                     help: "Temperature color gives this color for every temperature"),
             Property("Hours", "Hours in the curve", num(2, 48, step: 1, unit: "hours"), default: "24",
                      visibleWhen: [.equals("Type", "TemperatureCurve")]),
             Property("CurveWidth", "Curve width", num(1, nil, step: 1, unit: "pt"), default: "200",

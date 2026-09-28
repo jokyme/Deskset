@@ -84,14 +84,6 @@ public final class LineMeter: Meter {
         computeRange()
     }
 
-    /// Takes the samples of `other`'s lines, line by line: a new instance of a widget then shows the graph the one
-    /// already running shows (`Skin.takeGraphs(from:)`).
-    func takeHistory(from other: LineMeter) {
-        for i in lines.indices where i < other.lines.count { lines[i].history = other.lines[i].history }
-        computeRange()
-        noteDrawChange()
-    }
-
     private func computeRange() {
         var lo = Double.infinity, hi = -Double.infinity
         for line in lines {
@@ -136,5 +128,47 @@ public final class LineMeter: Meter {
         return (1..<divisions).map { k in
             (g.valueCoordinate(length * Double(k) / Double(divisions)) - 0.5).rounded(.down) + 0.5
         }
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension LineMeter {
+    /// Takes the samples of another instance's meter, line by line: a new instance of a widget then shows the graph
+    /// the one already running shows (`Skin.seedGraphs(from:)`).
+    /// Only a line that reads the measure the other instance's line read (`measures`, lowercased names; nil: none) takes
+    /// its samples: another measure's values would be drawn in this one's range.
+    func seedHistory(_ histories: [GraphHistory], measures: [String?]) {
+        for i in lines.indices where i < histories.count && i < measures.count
+            && lines[i].measure?.name.lowercased() == measures[i] {
+            lines[i].history = histories[i]
+        }
+        computeRange()
+        noteDrawChange()
+    }
+
+    /// The measure each line reads (nil: none), by name, for another instance (`SkinRuntimeState.Graph`).
+    var boundMeasureNames: [String?] { lines.map { $0.measure?.name.lowercased() } }
+}
+
+// MARK: - Patching (SkinPatch.swift)
+
+extension LineMeter {
+    /// The measure each line reads now, for `restartLines(readingOtherThan:)`.
+    var boundMeasures: [Measure?] { lines.map(\.measure) }
+
+    /// A patch changed the measures the lines read (MeasureNameN): each line that reads another one than `before`
+    /// says drops its samples — they are the other measure's values, in another range — and starts afresh at the next
+    /// update, as after a reload. The other lines keep theirs.
+    func restartLines(readingOtherThan before: [Measure?]) {
+        var restarted = false
+        for i in lines.indices where i >= before.count || lines[i].measure !== before[i] {
+            guard lines[i].history.count > 0 else { continue }
+            lines[i].history = GraphHistory(capacity: historyLength)
+            restarted = true
+        }
+        guard restarted else { return }
+        computeRange()
+        noteDrawChange()
     }
 }

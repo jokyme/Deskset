@@ -8,6 +8,7 @@ enum AppSelfTest {
     static func run(filter: String?) -> Int32 {
         let t = AppTestRunner(filter: filter)
         print("Deskset app self-test")
+        ANSICodePageSelfTests.codePageAtStart = TextDecoding.ansiCodePage
         // No SMC key list is kept on disk during the self-tests, from the first suite on: skins that read the sensors
         // through the app's own service (the thread stress suite loads TestSkins/Plugins/Sensors) walk the keys
         // instead of reading or writing the user's cache.
@@ -30,6 +31,7 @@ enum AppSelfTest {
         libraryTests(t)
         manageModelTests(t)
         renderOptionTests(t)
+        ANSICodePageSelfTests.run(t)
         systemMonitorTests(t)
         iconTests(t)
         controllerTests(t)
@@ -69,6 +71,10 @@ enum AppSelfTest {
         EngineStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
+        InspectorInPlaceSelfTests.run(t)
+        StudioDesktopFollowSelfTests.run(t)
+        CodeFollowingSelfTests.run(t)
+        CanvasPlanesSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
         FriendlySidebarSelfTests.run(t)
         FriendlyWidgetPageSelfTests.run(t)
@@ -80,8 +86,19 @@ enum AppSelfTest {
         // The Studio's editing session.
         StudioSessionSelfTests.run(t)
         SensorSelfTests.run(t)
-        // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
+        VirtualTimeRenderSelfTests.run(t)
+        RenderDataSelfTests.run(t)
+        PluginSideEffectsSelfTests.run(t)
+        #if DEBUG
+        LegacyRenderSelfTests.run(t)
+        #endif
+        // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
+        // busier, and the renders' checks of what services deliver within one interval are timed in real time.
+        Studio2SelfTests.run(t)
+        // Last: they stop the widgets of every earlier suite, so the numbers are not theirs.
+        StudioMemorySelfTests.run(t)
         StudioLatencySelfTests.run(t)
+        Studio2LatencySelfTests.run(t)
         t.suite("App: default skins: no suite changed the repository's default skins") {
             let now = DefaultSkinsSelfTests.fingerprint()
             let changed = Set(shipped.keys).union(now.keys).filter { shipped[$0] != now[$0] }.sorted()
@@ -307,6 +324,10 @@ enum AppSelfTest {
             let reloaded = AppState(fileURL: url)
             t.equal(reloaded.skin("Deskset\\Clock")?.loadOrder, 3)
             t.equal(reloaded.activeConfigs.map(\.config), ["Other\\Skin", "Deskset\\Clock"])
+            // Keys a newer version wrote survive a save by this one, at both levels.
+            t.equal(reloaded.skin("Other\\Skin")?.unknownKeys, ["extra": .number(1)])
+            t.equal(reloaded.data.unknownKeys, ["futureKey": .array([.number(1), .number(2)])])
+            t.equal(reloaded.skin("Deskset\\Clock")?.unknownKeys, [:])
 
             // Unreadable file: defaults, and the file is kept aside.
             let broken = dir.appendingPathComponent("broken.json")
@@ -450,7 +471,7 @@ enum AppSelfTest {
                     "--settings-dir DIR is used as it is and kept")
             try? FileManager.default.removeItem(at: named)
             store.settingsPath = savedSettings
-            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report"),
+            check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report, --benchmark"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
             let long = "--" + String(repeating: "x", count: 500)
@@ -502,6 +523,75 @@ enum AppSelfTest {
             t.equal(missing?.output, "x.png")
             let color = RenderOptions.parse(["P", "--render", "a.ini", "--background", "40,40,50"])
             t.equal(color?.background, RGBA(r: 40, g: 40, b: 50, a: 255))
+
+            // --clock, --time-zone and --seed (the skin's clock and random numbers).
+            t.equal(d?.clock, nil)
+            t.equal(d?.timeZone, nil)
+            t.equal(d?.seed, nil)
+            t.check(d?.virtualTime() == nil, "no --clock: the Mac's clock and the main executor")
+            let fixed = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-12-31T23:59:58+08:00",
+                                             "--seed", "7"])
+            t.equal(fixed?.clock?.timeIntervalSince1970, 1_798_732_798)
+            t.equal(fixed?.seed, 7)
+            t.equal(fixed?.warnings, [])
+            t.equal(fixed?.virtualTime()?.timeZone.identifier, "GMT", "UTC unless --time-zone says otherwise")
+            let unix = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "1790000000.5", "--seed", "-1"])
+            t.equal(unix?.clock?.timeIntervalSince1970, 1_790_000_000.5)
+            t.equal(unix?.seed, UInt64.max)
+            let zoned = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01T12:00:00",
+                                             "--time-zone", "Europe/Oslo"])
+            t.equal(zoned?.clock?.timeIntervalSince1970, 1_782_900_000, "a time without an offset is in --time-zone")
+            t.equal(zoned?.virtualTime()?.timeZone.identifier, "Europe/Oslo")
+            let day = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "2026-07-01", "--time-zone", "UTC"])
+            t.equal(day?.clock?.timeIntervalSince1970, 1_782_864_000, "a date alone is midnight")
+            let wrong = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "soon", "--time-zone", "Mars/Base",
+                                             "--seed", "x"])
+            t.equal(wrong?.clock, nil)
+            t.equal(wrong?.timeZone, nil)
+            t.equal(wrong?.seed, nil)
+            t.equal(wrong?.warnings.count, 3)
+            let virtual = RenderOptions(input: "a.ini", clock: Date(timeIntervalSince1970: 1_000)).virtualTime()!
+            let clock = virtual.clock
+            t.equal(clock.now().timeIntervalSince1970, 1_000)
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime)
+            virtual.advance(until: 2.5)
+            t.equal(clock.now().timeIntervalSince1970, 1_002.5, "update i sees the start plus i intervals")
+            t.equal(clock.uptime(), SteppedSkinClock.defaultUptime + 2.5)
+            t.check(!clock.nowIsLive && !clock.uptimeIsLive && !clock.timeZoneIsLive)
+
+            // --color-space: device RGB unless srgb is asked for.
+            t.equal(d?.colorSpace, .device)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "sRGB"])?.colorSpace, .srgb)
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "device"])?.colorSpace, .device)
+            let space = RenderOptions.parse(["P", "--render", "a.ini", "--color-space", "p3"])
+            t.equal(space?.colorSpace, .device)
+            t.equal(space?.warnings, ["--color-space \"p3\" is not device or srgb; using device"])
+            t.equal(RenderOptions.parse(["P", "--render", "a.ini", "--color-space"])?.warnings,
+                    ["--color-space needs a value; using device"])
+
+            // The environment: fixed with --clock unless given or `system`; the Mac's without --clock.
+            t.equal(d?.environment, RenderHost.Fixed(), "no --clock: the Mac's")
+            let standard = fixed?.environment
+            t.equal(standard?.locale?.identifier, "en_US_POSIX")
+            t.equal(standard?.preferredLanguages, ["en"])
+            t.equal(standard?.accent, .standard)
+            t.equal(standard?.screens, [SkinScreen(area: SkinRect(width: 1920, height: 1080),
+                                                   workArea: SkinRect(width: 1920, height: 1080))])
+            let given = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "zh-CN",
+                                             "--languages", "zh-Hans, en", "--accent-color", "255,0,0",
+                                             "--screen", "1440x900"])
+            t.equal(given?.warnings, [])
+            t.equal(given?.environment.locale?.identifier, "zh_CN")
+            t.equal(given?.environment.preferredLanguages, ["zh-Hans", "en"])
+            t.equal(given?.environment.accent, .given(RGBA(r: 255, g: 0, b: 0)))
+            t.equal(given?.environment.screens?.first?.workArea.width, 1440)
+            let system = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "system",
+                                              "--languages", "system", "--accent-color", "system", "--screen", "SYSTEM"])
+            t.equal(system?.environment, RenderHost.Fixed(), "system: the Mac's, also with --clock")
+            let odd = RenderOptions.parse(["P", "--render", "a.ini", "--clock", "0", "--locale", "xx_Nowhere",
+                                           "--screen", "wide", "--accent-color", "blue", "--languages"])
+            t.equal(odd?.warnings.count, 4)
+            t.equal(odd?.environment, standard, "the standard ones")
 
             let (root, config) = RenderCommand.locate(URL(fileURLWithPath: "/x/Skins/Suite/Clock/Clock.ini"), skinsDir: nil)
             t.equal(root.path, "/x/Skins")
@@ -1082,6 +1172,156 @@ enum AppSelfTest {
             window.layoutIfNeeded()
             t.equal(clip.bounds.origin.y, 60, "scrolled")
             t.equal(page.frame.origin, .zero, "the page stays")
+            manage.close()
+        }
+        t.suite("App: manage window: a skin hidden by a skin action says so and can be shown") {
+            guard let app = try makeApp(t), let focus = app.activate(config: "App\\Focus", file: "Focus.ini")
+            else { return }
+            let manage = ManageWindowController(app: app)
+            manage.select(config: "App\\Focus", file: nil)
+            t.equal(manage.testStatus, "● Loaded")
+            t.check(manage.testHiddenNotice == nil, "no notice while it shows")
+            t.equal(manage.testCoordinatesHint, nil)
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded")
+            t.check(!manage.testContextMenuTitles(config: "App\\Focus", file: "Focus.ini").contains("Show"))
+
+            // The skin hides itself: nothing tells the window, which looks again (on screen, twice a second; never
+            // while it is off screen, as here).
+            manage.windowDidChangeOcclusionState(Notification(name: NSWindow.didChangeOcclusionStateNotification))
+            t.check(!manage.testWatchesHiddenSkins, "no timer while the window cannot be seen")
+            manage.testXField.stringValue = "9999"
+            focus.skin.execute("[!HideFade]", from: nil)
+            t.check(focus.isHiddenByBang)
+            manage.refreshHiddenState()
+            t.equal(manage.testStatus, ManageModel.Hidden.status)
+            t.equal(manage.testHiddenNotice?.title, "Hidden by the skin")
+            t.equal(manage.testHiddenNotice?.text, ManageModel.Hidden.explanation(startHidden: false))
+            t.check(manage.testHiddenNotice?.text.contains("!Hide") == true, "names the bang")
+            t.equal(manage.testCoordinatesHint, ManageModel.Hidden.coordinatesHint(moved: false))
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded, hidden")
+            t.check(manage.testContextMenuTitles(config: "App\\Focus", file: "Focus.ini").contains("Show"))
+            t.check(!manage.testContextMenuTitles(config: "App\\Focus", file: "Compact.ini").contains("Show"),
+                    "only on the file that runs")
+            t.equal(manage.testXField.stringValue, "9999", "what is being typed stays")
+            manage.refreshHiddenState()
+            t.equal(manage.testHiddenNotice?.title, "Hidden by the skin", "nothing changed: nothing redrawn")
+
+            // Typing coordinates moves it, out of sight, and says so.
+            manage.testTypeCoordinates(x: 300, y: 200)
+            t.check(focus.isHiddenByBang, "moving does not show it")
+            t.equal(manage.testCoordinatesHint, ManageModel.Hidden.coordinatesHint(moved: true))
+            t.check(manage.testCoordinatesHint?.contains("hidden") == true)
+            t.check(manage.testHiddenNotice != nil)
+
+            // Another variant selected: the notice is for the file that runs; the coordinates are the config's.
+            manage.select(config: "App\\Focus", file: "Compact.ini")
+            t.equal(manage.testStatus, "Focus.ini is loaded, hidden")
+            t.check(manage.testHiddenNotice == nil)
+            t.check(manage.testCoordinatesHint != nil, "the coordinates would move the hidden Focus.ini")
+
+            // Show: back on the desktop, and everything says so.
+            manage.select(config: "App\\Focus", file: "Focus.ini")
+            manage.testShowButton.performClick(nil)
+            t.check(!focus.isHiddenByBang, "Show shows it")
+            t.equal(manage.testStatus, "● Loaded")
+            t.check(manage.testHiddenNotice == nil)
+            t.equal(manage.testCoordinatesHint, nil)
+            t.equal(manage.testRowLabel(config: "App\\Focus", file: "Focus.ini"), "Focus.ini, loaded")
+
+            // Hidden by another skin's bang, shown from the outline's menu.
+            guard let controls = app.activate(config: "App\\Controls", file: nil) else {
+                return t.check(false, "App\\Controls loads")
+            }
+            controls.skin.execute(#"[!Hide "App\Focus"]"#, from: nil)
+            manage.refreshHiddenState()
+            t.check(manage.testHiddenNotice != nil)
+            manage.testContextShow(config: "App\\Focus")
+            t.check(!focus.isHiddenByBang, "the menu's Show shows it")
+            t.check(manage.testHiddenNotice == nil)
+
+            // Hidden, then unloaded: nothing is hidden any more.
+            focus.skin.execute("[!Hide]", from: nil)
+            manage.refreshHiddenState()
+            app.deactivate(config: "App\\Focus")
+            manage.select(config: "App\\Focus", file: "Focus.ini")
+            t.equal(manage.testStatus, "Not loaded")
+            t.check(manage.testHiddenNotice == nil)
+            t.equal(manage.testCoordinatesHint, nil)
+
+            // StartHidden (App\Defaults has DefaultStartHidden=1): loaded hidden, and the text says why.
+            guard app.activate(config: "App\\Defaults", file: nil) != nil else { return t.check(false, "Defaults") }
+            manage.select(config: "App\\Defaults", file: nil)
+            t.equal(manage.testHiddenNotice?.text, ManageModel.Hidden.explanation(startHidden: true))
+            t.check(manage.testHiddenNotice?.text.contains("StartHidden") == true)
+            manage.close()
+        }
+        t.suite("App: manage window: Show brings back the Spectrum strip hidden while idle, with its dots") {
+            guard let stationery = Paths.repositoryFolder("DefaultSkins")?.appendingPathComponent("Stationery") else {
+                print("    (skipped: DefaultSkins not found; run from the repository)")
+                return
+            }
+            let root = t.temporaryDirectory("manage-strip")
+            let skins = root.appendingPathComponent("Skins")
+            try FileManager.default.createDirectory(at: skins, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: stationery, to: skins.appendingPathComponent("Stationery"))
+            // At rest (the tempo the strip writes into itself when it goes quiet), with Hide When Idle on and no
+            // track (no player is asked).
+            func edit(_ path: String, _ pairs: [(String, String)]) throws {
+                let url = skins.appendingPathComponent(path)
+                var text = try String(contentsOf: url, encoding: .utf8)
+                for (old, new) in pairs {
+                    t.check(text.contains(old), "\(path): \(old)")
+                    text = text.replacingOccurrences(of: old, with: new)
+                }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            }
+            try edit("Stationery/Spectrum/Strip.ini", [("\nTempo=Live\n", "\nTempo=Rest\n"),
+                                                        ("\nTempoLive=1\n", "\nTempoLive=0\n")])
+            try edit("Stationery/@Resources/Variables.inc", [("\nHideSpectrumWhenIdle=0", "\nHideSpectrumWhenIdle=1"),
+                                                              ("\nShowSpectrumTrack=1", "\nShowSpectrumTrack=0")])
+            let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
+                                    skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
+                                    backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
+            retainedApps.append(app)
+            guard let strip = app.activate(config: "Stationery\\Spectrum", file: "Strip.ini") else {
+                return t.check(false, "the strip loads")
+            }
+            t.check(strip.isHiddenByBang, "at rest with Hide When Idle it comes up hidden")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false,
+                    "its dots are there for when it is shown")
+            let manage = ManageWindowController(app: app)
+            manage.select(config: "Stationery\\Spectrum", file: "Strip.ini")
+            t.equal(manage.testStatus, ManageModel.Hidden.status)
+            t.equal(manage.testHiddenNotice?.title, ManageModel.Hidden.title)
+            manage.testShowButton.performClick(nil)
+            t.check(!strip.isHiddenByBang, "Show shows it")
+            strip.skin.update()
+            t.check(!strip.isHiddenByBang, "and it stays while nothing changes")
+            t.equal(strip.skin.meter(named: "MeterRestDots")?.hidden, false, "with its row of dots")
+            manage.close()
+        }
+        t.suite("App: manage window: the hidden notice fits the details at the window's smallest") {
+            guard let app = try makeApp(t), let focus = app.activate(config: "App\\Focus", file: "Focus.ini")
+            else { return }
+            focus.skin.execute("[!Hide]", from: nil)
+            let manage = ManageWindowController(app: app)
+            guard let window = manage.window, let page = manage.testDetailDocument else { return t.check(false, "window") }
+            for size in [window.minSize, NSSize(width: 1200, height: 800)] {
+                window.setFrame(NSRect(origin: NSPoint(x: 100, y: 100), size: size), display: false)
+                manage.select(config: "App\\Focus", file: "Focus.ini")
+                window.layoutIfNeeded()
+                let notice = manage.testHiddenNoticeView, text = manage.testHiddenNoticeText
+                let button = manage.testShowButton
+                t.check(!notice.hasAmbiguousLayout && !text.hasAmbiguousLayout, "\(size): one layout")
+                t.close(Double(notice.frame.width), Double(page.frame.width - 48), accuracy: 0.5,
+                        "\(size): as wide as the other sections")
+                t.check(text.frame.width > 200, "\(size): the text has room: \(text.frame.width)")
+                t.check(text.frame.maxX <= button.frame.minX, "\(size): the text stays left of Show")
+                t.check(button.frame.maxX <= notice.bounds.maxX - 11, "\(size): Show inside the notice")
+                // Three lines at most at 11 pt (the text wraps at its own width, not at one character).
+                t.check(text.frame.height < 60, "\(size): the text wraps to its width: \(text.frame.height)")
+                t.check(notice.frame.height < 100, "\(size): \(notice.frame.height)")
+            }
             manage.close()
         }
     }

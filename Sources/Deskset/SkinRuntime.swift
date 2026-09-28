@@ -800,9 +800,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         }
     }
 
+    /// Extensions of Windows programs, scripts and shortcuts that skins run with `["…"]`; none of them opens on a Mac.
+    static let windowsProgramExtensions: Set<String> = ["exe", "com", "bat", "cmd", "scr", "pif", "msi", "vbs", "vbe",
+                                                         "js", "jse", "wsf", "wsh", "ps1", "lnk", "ahk"]
+
     /// What `[target arguments…]` does: a URL opens; an application bundle opens the arguments that are files
     /// (relative to the skin folder) or URLs — the way skins open files in `#CONFIGEDITOR#` — and other arguments
-    /// (command-line switches) are dropped; any other existing file opens with its default app.
+    /// (command-line switches) are dropped; any other existing file opens with its default app; a Windows program
+    /// or script is logged as not supported, even when the file exists.
     static func executePlan(_ skin: Skin, target: String, arguments: [String]) -> SkinExecutePlan {
         let t = target.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return .nothing }
@@ -811,6 +816,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder) else { return .unsupported(t) }
         let url = URL(fileURLWithPath: path)
+        // A Windows program or script that ships with a skin (`["#CURRENTPATH#Tool.exe"]`): opening it would only make
+        // Finder say that macOS cannot open Windows applications, so it is logged instead.
+        if !isFolder.boolValue, windowsProgramExtensions.contains(url.pathExtension.lowercased()) { return .unsupported(t) }
         if isFolder.boolValue, url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
             let files = arguments.prefix(32).compactMap { raw -> URL? in
                 let a = raw.trimmingCharacters(in: .whitespaces)

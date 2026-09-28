@@ -624,6 +624,20 @@ extension AppSelfTest {
             t.equal(SkinController.executePlan(skin, target: "https://example.com", arguments: []),
                     .open(URL(string: "https://example.com")!))
             t.equal(SkinController.executePlan(skin, target: "notepad.exe", arguments: ["x"]), .unsupported("notepad.exe"))
+            // A Windows program that ships with the skin exists, but opening it would only bring up Finder's "macOS
+            // doesn't support Microsoft Windows applications" alert.
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Deskset-exe-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            for name in ["VoiceActivation.exe", "Setup.BAT", "Tool.lnk"] {
+                let program = folder.appendingPathComponent(name)
+                FileManager.default.createFile(atPath: program.path, contents: Data("MZ".utf8))
+                t.equal(SkinController.executePlan(skin, target: program.path, arguments: ["Take out the trash"]),
+                        .unsupported(program.path), "\(name) is not opened")
+            }
+            let notes = folder.appendingPathComponent("Notes.txt")
+            FileManager.default.createFile(atPath: notes.path, contents: Data("x".utf8))
+            t.equal(SkinController.executePlan(skin, target: notes.path, arguments: []), .open(notes), "other files still open")
+            try? FileManager.default.removeItem(at: folder)
             t.equal(SkinController.executePlan(skin, target: "  ", arguments: []), .nothing)
         }
     }

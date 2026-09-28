@@ -7,8 +7,11 @@ import DesksetCore
 /// The files on disk stay the source of truth. Typing edits an in-memory buffer (one per open file, each with its own
 /// undo manager, so ⌘Z here undoes typing only); the buffer is *committed* — handed to `onCommit`, which writes it
 /// as one undoable editor step and refreshes the skin — after `idleCommitDelay` without typing, on ⌘S, when the text
-/// view loses focus or its window stops being key, and before another file is shown. After a visual edit or an
-/// external change the host calls `reloadFromDisk`, which updates clean buffers in place, keeping caret and scroll.
+/// view loses focus or its window stops being key, and before another file is shown. Before that, once typing pauses
+/// for `typedTextDelay`, the typed text is handed to `onTypedText` (the Studio shows it on its canvas, unwritten). After
+/// a visual edit the host hands the view the step's edits (`follow`), which it makes character by character in clean
+/// buffers; after an external change, or when it cannot follow, the host calls `reloadFromDisk`, which updates clean
+/// buffers in place too. Both keep caret and scroll.
 ///
 /// A commit never writes over a change made on disk since the buffer was read: each buffer remembers the bytes its
 /// text is based on, and a commit that finds other bytes in the file asks whether to keep the typed edits (written
@@ -56,6 +59,11 @@ final class CodeEditorView: NSView {
 
     enum DiskConflictChoice { case keepEdits, takeDisk, decideLater }
 
+    /// Typing paused for `typedTextDelay` (not committed yet: that waits for `idleCommitDelay`): the buffer's text, for
+    /// the host to show before it is written (the Studio's canvas); nil when the buffer holds no typing any more — typed
+    /// back, committed, discarded, or the file's text taken — after the host was shown some.
+    var onTypedText: ((URL, String?) -> Void)?
+
     /// Reads a file's bytes: the disk by default. The skin studio reads its editing session's text instead (the truth
     /// the disk follows), so the buffers compare with — and re-read — what the Studio's instance of the widget shows.
     var readData: (URL) throws -> Data = { try Data(contentsOf: $0) }
@@ -64,6 +72,10 @@ final class CodeEditorView: NSView {
     /// How long typing must pause before the buffer is committed (self-tests set it; the idle commit can also be
     /// fired at once with `fireIdleCommit`).
     var idleCommitDelay: TimeInterval = CodeEditorView.defaultIdleCommitDelay
+    static let defaultTypedTextDelay: TimeInterval = 0.15
+    /// How long typing must pause before the typed text is reported (`onTypedText`; self-tests set it, or fire it at once
+    /// with `fireTypedText`).
+    var typedTextDelay: TimeInterval = CodeEditorView.defaultTypedTextDelay
     static let defaultCaretRestDelay: TimeInterval = 0.15
     /// How long the caret must rest before its section is reported (self-tests set it; `fireCaretRest` reports at
     /// once).
@@ -84,8 +96,14 @@ final class CodeEditorView: NSView {
     /// One open file.
     private final class FileBuffer {
         let url: URL
+        /// The file as a session names it (symlinks resolved).
+        lazy var id = SourceFileID(url)
         /// The text as last read or committed (the clean state), with the file's encoding and line ending.
-        var document: CodeDocument
+        var document: CodeDocument {
+            didSet { digest = nil }
+        }
+        /// The fingerprint of `document.text`, once taken (a step's edits are made only on the text they start from).
+        var digest: TextDigest?
         /// The file's bytes the buffer's edits start from (read, reloaded while clean, or committed). A commit that
         /// finds other bytes in the file would write over a change made elsewhere, so it asks first.
         var base: Data?
@@ -119,6 +137,9 @@ final class CodeEditorView: NSView {
     /// The buffer being handed to `onCommit` (or written), during the call.
     private var committingBuffer: FileBuffer?
     private var commitTimer: Timer?
+    private var typedTimer: Timer?
+    /// The files whose typed text the host was shown (`onTypedText`) and not yet told is gone.
+    private var typedShown: Set<URL> = []
     private var caretTimer: Timer?
     /// Whether the pending caret rest was caused by typing (a rest in the same section is then not reported again).
     private var caretMoveFromTyping = false
@@ -127,8 +148,16 @@ final class CodeEditorView: NSView {
     /// Edited characters waiting to be highlighted again.
     private var pendingHighlight: NSRange?
     /// The shown buffer as a CodeDocument (line index, sections), rebuilt lazily after edits.
-    private var analysisCache: CodeDocument?
+    private var analysisCache: CodeDocument? {
+        didSet { outlineCache = nil }
+    }
+    /// The shown buffer's sections, read once for every lookup until the text changes.
+    private var outlineCache: CodeDocument.Outline?
     private var windowObservers: [NSObjectProtocol] = []
+    /// How many steps the view followed by their edits (`follow`), and how often it read its files again
+    /// (`reloadFromDisk`): for the self-tests.
+    private(set) var stepsFollowed = 0
+    private(set) var filesReadAgain = 0
 
     // MARK: Setup
 
@@ -151,6 +180,7 @@ final class CodeEditorView: NSView {
 
     deinit {
         commitTimer?.invalidate()
+        typedTimer?.invalidate()
         caretTimer?.invalidate()
         windowObservers.forEach(NotificationCenter.default.removeObserver)
         NotificationCenter.default.removeObserver(self)
@@ -260,16 +290,27 @@ final class CodeEditorView: NSView {
         ])
     }
 
+    /// Whether the jump bar shows above the code (a host with a header of its own hides it).
+    var showsJumpBar = true {
+        didSet {
+            jumpBar.isHidden = !showsJumpBar
+            jumpBarHeight?.constant = showsJumpBar ? 28 : 0
+        }
+    }
+    private var jumpBarHeight: NSLayoutConstraint?
+
     private func layOut() {
         jumpBar.translatesAutoresizingMaskIntoConstraints = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(jumpBar)
         addSubview(scrollView)
+        let height = jumpBar.heightAnchor.constraint(equalToConstant: 28)
+        jumpBarHeight = height
         NSLayoutConstraint.activate([
             jumpBar.topAnchor.constraint(equalTo: topAnchor),
             jumpBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             jumpBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            jumpBar.heightAnchor.constraint(equalToConstant: 28),
+            height,
             scrollView.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -294,11 +335,11 @@ final class CodeEditorView: NSView {
 
     /// The 1-based line of the caret and the section it is in (the shown buffer, unsaved edits included).
     var caretLine: Int { analysis.line(containingOffset: textView.selectedRange().location) }
-    var caretSection: String? { analysis.section(containingLine: caretLine) }
+    var caretSection: String? { outline.section(containingLine: caretLine) }
     /// UTF-16 offsets of the line starts of the shown buffer (the ruler's numbers).
     var lineStarts: [Int] { analysis.lineStarts }
     /// The lines of `[name]` in the shown buffer (see `CodeDocument.lineRange(ofSection:)`).
-    func lineRange(ofSection name: String) -> Range<Int>? { analysis.lineRange(ofSection: name) }
+    func lineRange(ofSection name: String) -> Range<Int>? { outline.lineRange(ofSection: name) }
     /// The tinted characters, if any (they follow edits).
     private(set) var tintedRange: NSRange? {
         didSet {
@@ -365,9 +406,10 @@ final class CodeEditorView: NSView {
         return retained.map(\.url)
     }
 
-    /// Shows another open file (commits the shown buffer first). Not reported through `onFileChange`.
+    /// Shows another open file (commits the shown buffer first). Not reported through `onFileChange`. The file shown
+    /// already stays as it is (its buffer's stash is not its text: the text view holds that).
     func show(file url: URL) {
-        guard let buffer = buffer(for: url) else { return }
+        guard let buffer = buffer(for: url), buffer !== current else { return }
         show(buffer)
     }
 
@@ -386,6 +428,8 @@ final class CodeEditorView: NSView {
     func discardUncommittedChanges() {
         commitTimer?.invalidate()
         commitTimer = nil
+        typedTimer?.invalidate()
+        typedTimer = nil
         apiChange {
             for buffer in buffers where buffer.isDirty {
                 // Re-read: the disk may have changed, and a refused commit may have switched the encoding already.
@@ -429,7 +473,7 @@ final class CodeEditorView: NSView {
     func revealSection(_ name: String, in file: URL, tint: Bool = true) -> Bool {
         guard let buffer = buffer(for: file) ?? (try? addBuffer(file)) else { return false }
         if buffer !== current { apiChange { show(buffer) } }
-        guard let lines = analysis.lineRange(ofSection: name) else {
+        guard let lines = outline.lineRange(ofSection: name) else {
             if tint { tintSection(lines: nil) }
             return false
         }
@@ -456,6 +500,7 @@ final class CodeEditorView: NSView {
     /// loses its undo history. Dirty buffers keep their edits and the bytes they are based on: when the file changed
     /// meanwhile, their next commit asks what to keep (see `onDiskConflict`). Only their clean state is refreshed.
     func reloadFromDisk(keepCaret: Bool = true) {
+        filesReadAgain += 1
         apiChange {
             for buffer in buffers {
                 guard let file = try? load(buffer.url) else { continue }
@@ -484,6 +529,143 @@ final class CodeEditorView: NSView {
             }
             updateJumpBar()
         }
+    }
+
+    /// Makes a step's edits in the open files it changed (`SourceTextEdits`, from the Studio's editing session), instead
+    /// of reading them again: only the edited characters change — and are colored again, with the rest of their lines —
+    /// so layout, colors, the caret, the selection and the scroll position stay everywhere else. A buffer whose text
+    /// changed loses its undo history, as when it is read again (`reloadFromDisk`).
+    ///
+    /// Returns false, changing nothing, when the files must be read again instead: a file the step changed holds typing
+    /// not committed (reading keeps it: today's rules), its encoding changed, or it does not hold the text the step
+    /// started from. Files the view does not hold are not its business.
+    @discardableResult
+    func follow(_ step: SourceTextEdits) -> Bool {
+        var plan: [(buffer: FileBuffer, file: SourceTextEdits.File)] = []
+        for file in step.files {
+            let id = SourceFileID(file.url)
+            guard let buffer = buffers.first(where: { $0.id == id }) else { continue }
+            guard !buffer.isDirty, !buffer.isRetained, !file.encodingChanged else { return false }
+            let digest = buffer.digest ?? TextDigest(buffer.document.text)
+            buffer.digest = digest
+            guard digest == file.before else { return false }
+            plan.append((buffer, file))
+        }
+        guard !plan.isEmpty else { return true }
+        stepsFollowed += 1
+        apiChange {
+            var endingChanged = false
+            for (buffer, file) in plan {
+                let lineBreaks = buffer === current ? makeShown(file.edits) : make(file.edits, in: buffer)
+                var document = buffer.document
+                document.text = buffer === current ? textView.string : buffer.text
+                // New line breaks take the file's most frequent one, as when it is read again.
+                if lineBreaks {
+                    let ending = CodeDocument.dominantLineEnding(in: document.text)
+                    endingChanged = endingChanged || ending != document.lineEnding
+                    document.lineEnding = ending
+                }
+                buffer.document = document
+                buffer.digest = file.after
+                buffer.base = file.bytes ?? document.data
+                buffer.undoManager.removeAllActions()
+                if buffer === current {
+                    textView.lineEnding = document.lineEnding.string
+                    // The line index of the text shown, made already.
+                    analysisCache = document
+                }
+            }
+            if endingChanged { updateJumpBar() }
+        }
+        return true
+    }
+
+    /// Makes `edits` in the shown text, keeping the caret or selection where the text around it went, and the text at
+    /// the top of the view where it was on screen (lines coming or going above it do not move it). Returns whether a
+    /// line break was removed or inserted.
+    private func makeShown(_ edits: [TextEdit]) -> Bool {
+        guard let storage = textView.textStorage else { return false }
+        let selection = textView.selectedRange()
+        var anchor = topOfView()
+        var start = selection.location, end = NSMaxRange(selection)
+        var lineBreaks = false
+        storage.beginEditing()
+        for edit in edits {
+            let range = Self.clamped(edit.range, to: storage.length)
+            lineBreaks = lineBreaks || Self.hasLineBreak(storage.mutableString.substring(with: range))
+                || Self.hasLineBreak(edit.replacement)
+            storage.replaceCharacters(in: range, with: NSAttributedString(string: edit.replacement, attributes: baseAttributes))
+            let inserted = (edit.replacement as NSString).length
+            start = Self.map(start, replacing: range, with: inserted)
+            end = max(start, Self.map(end, replacing: range, with: inserted))
+            if let top = anchor { anchor = (Self.map(top.index, replacing: range, with: inserted), top.offset) }
+        }
+        storage.endEditing()
+        textView.setSelectedRange(NSRange(location: start, length: end - start))
+        if let anchor { scroll(keeping: anchor) }
+        return lineBreaks
+    }
+
+    /// The first character at the top of the view, and how far below the top its line starts (negative: above).
+    private func topOfView() -> (index: Int, offset: CGFloat)? {
+        guard let layout = textView.layoutManager, let container = textView.textContainer,
+              let storage = textView.textStorage, storage.length > 0 else { return nil }
+        let visible = scrollView.contentView.bounds
+        guard visible.minY > 0 else { return nil }
+        let origin = textView.textContainerOrigin
+        let glyph = layout.glyphIndex(for: NSPoint(x: 0, y: visible.minY - origin.y), in: container)
+        let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        return (layout.characterIndexForGlyph(at: glyph), line.minY + origin.y - visible.minY)
+    }
+
+    /// Scrolls so that the line of `anchor.index` starts `anchor.offset` below the top of the view again.
+    private func scroll(keeping anchor: (index: Int, offset: CGFloat)) {
+        guard let layout = textView.layoutManager, let storage = textView.textStorage, storage.length > 0 else { return }
+        let glyph = layout.glyphIndexForCharacter(at: min(anchor.index, storage.length - 1))
+        let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let clip = scrollView.contentView
+        let y = line.minY + textView.textContainerOrigin.y - anchor.offset
+        guard abs(y - clip.bounds.minY) > 0.5 else { return }
+        clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: NSPoint(x: clip.bounds.minX, y: y),
+                                                        size: clip.bounds.size)).origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Makes `edits` in a buffer that is not shown (its text, caret and selection).
+    private func make(_ edits: [TextEdit], in buffer: FileBuffer) -> Bool {
+        let text = NSMutableString(string: buffer.text)
+        var start = buffer.selection.location, end = NSMaxRange(buffer.selection)
+        var lineBreaks = false
+        for edit in edits {
+            let range = Self.clamped(edit.range, to: text.length)
+            lineBreaks = lineBreaks || Self.hasLineBreak(text.substring(with: range)) || Self.hasLineBreak(edit.replacement)
+            text.replaceCharacters(in: range, with: edit.replacement)
+            let inserted = (edit.replacement as NSString).length
+            start = Self.map(start, replacing: range, with: inserted)
+            end = max(start, Self.map(end, replacing: range, with: inserted))
+        }
+        buffer.text = text as String
+        let length = text.length
+        buffer.selection = NSRange(location: min(start, length), length: min(end, length) - min(start, length))
+        return lineBreaks
+    }
+
+    /// `range` inside a text of `length` UTF-16 units.
+    private static func clamped(_ range: Range<Int>, to length: Int) -> NSRange {
+        let lower = min(max(range.lowerBound, 0), length)
+        let upper = min(max(range.upperBound, lower), length)
+        return NSRange(location: lower, length: upper - lower)
+    }
+
+    /// Where offset `p` goes when `range` is replaced by `inserted` characters (as `replaceShownText` maps the caret).
+    private static func map(_ p: Int, replacing range: NSRange, with inserted: Int) -> Int {
+        if p < range.location { return p }
+        if p >= NSMaxRange(range) { return p + inserted - range.length }
+        return min(p, range.location + inserted)
+    }
+
+    private static func hasLineBreak(_ text: String) -> Bool {
+        text.utf16.contains { $0 == 0x0A || $0 == 0x0D }
     }
 
     func setFontSize(_ size: CGFloat) {
@@ -618,6 +800,7 @@ final class CodeEditorView: NSView {
             commitTimer?.invalidate()
             commitTimer = nil
         }
+        defer { if committingBuffer == nil { reportCleanBuffers() } }
         guard buffer.isDirty else { return true }
         // No nested commits: the host (committing dirty code before its own edit), its refresh, or the window
         // resigning key behind the conversion alert may ask for one while this one runs. For the same buffer that is
@@ -666,6 +849,8 @@ final class CodeEditorView: NSView {
             buffer.conflictPostponed = false
             let now = buffer === current ? textView.string : buffer.text
             buffer.isDirty = !(now as NSString).isEqual(to: text)
+            // The committed text is what the host shows now.
+            if !buffer.isDirty, buffer === current { typedTimer?.invalidate() }
         }
         updateJumpBar()
         return ok
@@ -750,6 +935,56 @@ final class CodeEditorView: NSView {
         guard let timer = commitTimer, timer.isValid else { return false }
         timer.fire()
         return true
+    }
+
+    /// Reports the pending typed text now (self-tests: no waiting on the clock). False when none was pending.
+    @discardableResult
+    func fireTypedText() -> Bool {
+        guard let timer = typedTimer, timer.isValid else { return false }
+        timer.fire()
+        return true
+    }
+
+    /// When the pending typed text is due (nil: none pending), for self-tests.
+    var typedTextDate: Date? { typedTimer.flatMap { $0.isValid ? $0.fireDate : nil } }
+
+    private func scheduleTypedText() {
+        typedTimer?.invalidate()
+        guard onTypedText != nil else { return }
+        let timer = Timer(timeInterval: typedTextDelay, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.typedTimer = nil
+            // Not in the middle of an input-method composition: its marked text is not typed yet.
+            if self.textView.hasMarkedText() {
+                self.scheduleTypedText()
+                return
+            }
+            self.reportTypedText()
+        }
+        RunLoop.main.add(timer, forMode: .default)
+        typedTimer = timer
+    }
+
+    /// Tells the host what the shown buffer holds now: its typed text, or — typed back to the file's text — none.
+    private func reportTypedText() {
+        guard let buffer = current else { return }
+        if buffer.isDirty {
+            typedShown.insert(buffer.url)
+            onTypedText?(buffer.url, textView.string)
+        } else {
+            reportCleanBuffers()
+        }
+    }
+
+    /// Tells the host that buffers whose typed text it was shown hold none any more (committed, discarded, typed back,
+    /// the file's text taken, or closed).
+    private func reportCleanBuffers() {
+        guard !typedShown.isEmpty else { return }
+        for url in typedShown.sorted(by: { $0.path < $1.path }) {
+            if let buffer = buffer(for: url), buffer.isDirty { continue }
+            typedShown.remove(url)
+            onTypedText?(url, nil)
+        }
     }
 
     private func scheduleCommit() {
@@ -846,6 +1081,7 @@ final class CodeEditorView: NSView {
         flushHighlight()
         apiDepth -= 1
         if apiDepth == 0 {
+            reportCleanBuffers()
             // The next user move is reported even in the same section: the host may have selected something else.
             lastReport = nil
             updateSectionTitle(caretSection)
@@ -962,6 +1198,13 @@ final class CodeEditorView: NSView {
         return document
     }
 
+    private var outline: CodeDocument.Outline {
+        if let cached = outlineCache { return cached }
+        let outline = analysis.outline()
+        outlineCache = outline
+        return outline
+    }
+
     private func updateJumpBar() {
         let names = buffers.map { $0.url.lastPathComponent }
         filePopUp.removeAllItems()
@@ -987,7 +1230,7 @@ final class CodeEditorView: NSView {
 
     private func updateSectionTitle(_ section: String?) {
         guard let title = sectionPopUp.item(at: 0) else { return }
-        let header = section.flatMap { name in analysis.sectionHeaders().first { $0.name == name } }
+        let header = section.flatMap { name in outline.headers.first { $0.name == name } }
         title.title = section ?? "No Section"
         title.image = header.map { CodeEditorView.symbolImage(for: $0) }
             ?? EditorStyle.image("text.alignleft", size: 11)
@@ -1076,6 +1319,7 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
         buffer.isDirty = !(textView.textStorage?.mutableString.isEqual(to: buffer.document.text) ?? true)
         if buffer.isDirty != wasDirty { updateJumpBar() }
         if buffer.isDirty { scheduleCommit() } else { commitTimer?.invalidate() }
+        if buffer.isDirty || typedShown.contains(buffer.url) { scheduleTypedText() } else { typedTimer?.invalidate() }
         ruler.updateThickness(lineCount: analysis.lineCount)
         ruler.needsDisplay = true
     }
@@ -1110,7 +1354,7 @@ extension CodeEditorView: NSTextViewDelegate, NSTextStorageDelegate, NSMenuDeleg
         let title = menu.item(at: 0)
         menu.removeAllItems()
         if let title { menu.addItem(title) }
-        let headers = analysis.sectionHeaders()
+        let headers = outline.headers
         if headers.isEmpty {
             let empty = NSMenuItem(title: "No Sections", action: nil, keyEquivalent: "")
             empty.isEnabled = false

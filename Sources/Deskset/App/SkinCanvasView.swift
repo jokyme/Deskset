@@ -80,23 +80,35 @@ final class SkinCanvasView: NSView {
     /// The layer under the pointer (never a locked one).
     private(set) var hover: String?
     /// Selected meters in the order they were selected; the last one is the primary selection.
-    private(set) var selectedNames: [String] = []
+    private(set) var selectedNames: [String] = [] {
+        didSet { if drawsPartFocusRing, selectedNames != oldValue { noteFocusRingMaskChanged() } }
+    }
     var selection: String? { selectedNames.last }
     /// Layers related to the inspector's selection (those showing the selected data source), outlined softly.
-    var relatedNames: [String] = [] { didSet { if relatedNames != oldValue { needsDisplay = true } } }
+    var relatedNames: [String] = [] { didSet { if relatedNames != oldValue { overlayNeedsDisplay() } } }
     /// Layers outlined because the pointer is over their row in the sidebar (docs/editor-friendly.md §5.2 "Hover links
     /// the list and the canvas"): the rest of the widget is veiled.
-    var hoverHighlight: [String] = [] { didSet { if hoverHighlight != oldValue { needsDisplay = true } } }
+    var hoverHighlight: [String] = [] { didSet { if hoverHighlight != oldValue { overlayNeedsDisplay() } } }
     /// The layer under the pointer changed (nil: none), for the sidebar to highlight its row.
     var onHoverChange: ((String?) -> Void)?
     var backdrop = Backdrop.checkerboard { didSet { needsDisplay = true } }
+    /// Whether the canvas paints its dotted work surface and the widget card's fill. The new Studio window turns it off
+    /// and puts a backdrop view (a wallpaper, a sample) below the canvas, which then shows through.
+    var paintsSurface = true { didSet { needsDisplay = true } }
+    /// How the widget's glass is drawn (nil: stand-ins). The new Studio window puts real glass views below the canvas.
+    var glassDrawing: SkinRenderer.GlassDrawing? { didSet { needsDisplay = true } }
     /// Editing is off while no skin is loaded.
     var isEditable = true
+    /// Which of the parts under the pointer (front first) a click takes; nil: the frontmost (the new Studio window
+    /// passes over parts that draw nothing).
+    var hitFilter: (([Meter]) -> Meter?)?
+    /// The words of the selected part's tag; nil: its name and size.
+    var selectionTag: ((Meter) -> String)?
 
     // MARK: What the editor tells the canvas
 
     /// Runs of repeated layers (section names, file order), selected as one by a first click (`LayerSeries`).
-    var groups: [[String]] = [] { didSet { if groups != oldValue { enteredGroup = nil; needsDisplay = true } } }
+    var groups: [[String]] = [] { didSet { if groups != oldValue { enteredGroup = nil; overlayNeedsDisplay() } } }
     /// The run the user double-clicked into: clicks on its layers select them one by one.
     private(set) var enteredGroup: [String]?
     /// Whether a layer is locked in the editor (§9.6): clicks and selection boxes pass through it.
@@ -116,9 +128,9 @@ final class SkinCanvasView: NSView {
         }
     }
     /// Layers placed relative to the ones being moved (follower → the layer it follows), outlined while they move (§9.5).
-    var followers: [String: String] = [:] { didSet { if followers != oldValue { needsDisplay = true } } }
+    var followers: [String: String] = [:] { didSet { if followers != oldValue { overlayNeedsDisplay() } } }
     /// The text layer being edited in place: its placeholder is not drawn.
-    var editingText: String? { didSet { if editingText != oldValue { needsDisplay = true } } }
+    var editingText: String? { didSet { if editingText != oldValue { overlayNeedsDisplay() } } }
 
     /// Called when the user changes the selection on the canvas (click, ⇧-click, selection box, ⌘A, Esc).
     var onSelectionChange: (([String]) -> Void)?
@@ -146,6 +158,12 @@ final class SkinCanvasView: NSView {
     var onNudge: ((Double, Double) -> Void)?
     /// Delete / Backspace, ⌘D.
     var onDelete: (() -> Void)?
+    /// Tab / ⇧Tab (`true`: backward) for a host that walks the parts from the keyboard: true when it took the key (else
+    /// Tab goes on through the window's controls).
+    var onTab: ((Bool) -> Bool)?
+    /// The selected parts carry the system focus ring while the canvas has the keyboard (a host that lets the keyboard
+    /// select parts).
+    var drawsPartFocusRing = false
     var onDuplicate: (() -> Void)?
     /// The view's size or `origin` changed (the overlays over the canvas follow).
     var onLayoutChange: (() -> Void)?
@@ -160,6 +178,8 @@ final class SkinCanvasView: NSView {
     /// Where the skin's (0, 0) is in view coordinates.
     private(set) var origin = NSPoint(x: margin, y: margin)
 
+    /// The workbench, content and overlay planes the canvas is drawn in (CanvasPlanes.swift).
+    let planes = CanvasPlanes()
     private var trackingArea: NSTrackingArea?
     private(set) var gesture: Gesture?
     private var gestureStart: NSPoint = .zero
@@ -180,6 +200,7 @@ final class SkinCanvasView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.desksetComponent])
+        planes.install(in: self)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -269,7 +290,7 @@ final class SkinCanvasView: NSView {
         leaveGroupUnlessInside(names)
         guard names != selectedNames else { return }
         selectedNames = names
-        needsDisplay = true
+        overlayNeedsDisplay()
         window?.invalidateCursorRects(for: self)
         if reveal, let name = names.last, let skin, let m = skin.meter(named: name) {
             scrollToVisible(viewRect(m.frame).insetBy(dx: -24, dy: -24))
@@ -314,7 +335,7 @@ final class SkinCanvasView: NSView {
     private func setHover(_ name: String?) {
         guard name != hover else { return }
         hover = name
-        needsDisplay = true
+        overlayNeedsDisplay()
         onHoverChange?(name)
     }
 
@@ -326,11 +347,13 @@ final class SkinCanvasView: NSView {
     /// The topmost unlocked meter drawn at a point in skin coordinates (an empty text counts where its placeholder is).
     func pickableMeter(atSkinX x: Double, _ y: Double) -> Meter? {
         guard let skin else { return nil }
-        return skin.meters.last { m in
-            guard !m.isContainer, !isLocked(m.name) else { return false }
+        let hit: (Meter) -> Bool = { m in
+            guard !m.isContainer, !self.isLocked(m.name) else { return false }
             if m.frame.width > 0, m.frame.height > 0, m.isHit(x: x, y: y) { return true }
-            return placeholderRect(m).map { $0.contains(x: x, y: y) } ?? false
+            return self.placeholderRect(m).map { $0.contains(x: x, y: y) } ?? false
         }
+        if let hitFilter { return hitFilter(skin.meters.reversed().filter(hit)) }
+        return skin.meters.last(where: hit)
     }
 
     /// The meter a click at a point in view coordinates picks.
@@ -462,7 +485,22 @@ final class SkinCanvasView: NSView {
         return min(max(z, Self.minZoom), Self.maxZoom)
     }
 
-    func zoomToFit() { setZoom(fitZoom(), centeredAt: NSPoint(x: bounds.midX, y: bounds.midY)) }
+    func zoomToFit() {
+        // Fitted already, the whole canvas in view where the clip view puts it, on a whole pixel as a magnification
+        // leaves it: the same magnification set again would only reset the clip view and draw every plane again, the
+        // workbench too (the editor fits after each step). A pane that changed size still centres the canvas again.
+        let z = fitZoom()
+        if abs(z - zoom) < 0.000_1, let clip = enclosingScrollView?.contentView,
+           clip.bounds.width >= frame.width - 0.5, clip.bounds.height >= frame.height - 0.5 {
+            let placed = clip.constrainBoundsRect(clip.bounds).origin, at = clip.bounds.origin
+            let pixels = max(zoom, 0.01) * (window?.backingScaleFactor ?? 2)
+            func whole(_ v: CGFloat) -> Bool { abs(v * pixels - (v * pixels).rounded()) < 0.01 }
+            if abs(placed.x - at.x) * pixels <= 0.51, abs(placed.y - at.y) * pixels <= 0.51, whole(at.x), whole(at.y) {
+                return
+            }
+        }
+        setZoom(z, centeredAt: NSPoint(x: bounds.midX, y: bounds.midY))
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.shift, .numericPad]) == .command,
@@ -497,6 +535,8 @@ final class SkinCanvasView: NSView {
     // MARK: Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if event.keyCode == 48, event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+           let onTab, onTab(event.modifierFlags.contains(.shift)) { return }
         guard isEditable, !selectedNames.isEmpty, let key = event.specialKey else { return super.keyDown(with: event) }
         let step: Double = event.modifierFlags.contains(.shift) ? 10 : 1
         switch key {
@@ -507,6 +547,25 @@ final class SkinCanvasView: NSView {
         case .delete, .deleteForward, .backspace: onDelete?()
         default: super.keyDown(with: event)
         }
+    }
+
+    /// The selection's focus ring (`drawsPartFocusRing`): around the selected parts, in the canvas's coordinates.
+    override var focusRingMaskBounds: NSRect {
+        guard let r = partFocusRect else { return .zero }
+        return r
+    }
+
+    override func drawFocusRingMask() {
+        guard let r = partFocusRect else { return }
+        NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill()
+    }
+
+    var partFocusRect: NSRect? {
+        guard drawsPartFocusRing, let skin else { return nil }
+        let frames = selectedNames.compactMap { skin.meter(named: $0) }.map { viewRect($0.frame) }
+        guard var r = frames.first else { return nil }
+        for f in frames.dropFirst() { r = r.union(f) }
+        return r.insetBy(dx: -1, dy: -1)
     }
 
     /// Esc: cancels a gesture, else goes one selection level up (`selectLevelUp`).
@@ -630,7 +689,7 @@ final class SkinCanvasView: NSView {
         }.map(\.name)
         enteredGroup = nil
         changeSelection(marqueeBase + hits.filter { !marqueeBase.contains($0) })
-        needsDisplay = true
+        overlayNeedsDisplay()
     }
 
     /// The gesture's pointer moved to `p` (view coordinates). Also used by the self-tests.
@@ -700,7 +759,7 @@ final class SkinCanvasView: NSView {
     override func mouseUp(with event: NSEvent) {
         if marquee != nil {
             marquee = nil
-            needsDisplay = true
+            overlayNeedsDisplay()
             return
         }
         guard gesture != nil else { return }
@@ -842,25 +901,45 @@ final class SkinCanvasView: NSView {
 
     // MARK: Drawing
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let z = max(zoom, 0.01)
-        drawSurface(dirtyRect, zoom: z, ctx)
-        guard let skin else { return }
-        let rect = skinRect
+    // The canvas draws nothing itself: its planes (CanvasPlanes.swift) draw these three parts, bottom to top.
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            super.needsDisplay = newValue
+            if newValue { planes.invalidate(for: self) }
+        }
+    }
 
-        drawBackdrop(rect, zoom: z, ctx)
+    /// The workbench plane: the work surface and the widget card on it (its shadow and backdrop).
+    func drawWorkbench(_ dirtyRect: NSRect, _ ctx: CGContext) {
+        let z = max(zoom, 0.01)
+        if paintsSurface { drawSurface(dirtyRect, zoom: z, ctx) }
+        guard skin != nil else { return }
+        if paintsSurface { drawBackdrop(skinRect, zoom: z, ctx) }
+    }
+
+    /// The content plane: the widget, the hatch, the ghost outside the card, what is cut off and the pixel grid.
+    func drawContent(_ dirtyRect: NSRect, _ ctx: CGContext) {
+        guard let skin else { return }
+        let z = max(zoom, 0.01)
+        let rect = skinRect
         // The hatch marks areas the desktop shows transparent or cuts off; the layers are drawn over it.
         drawHatch(skin, card: rect, zoom: z, ctx)
         ctx.saveGState()
         ctx.clip(to: rect)
         ctx.translateBy(x: origin.x, y: origin.y)
         // MacGlass cannot be shown off the desktop: a stand-in for the card's light or dark backdrop.
-        SkinRenderer.draw(skin, in: ctx, glass: .placeholder(dark: backdropIsDark))
+        SkinRenderer.draw(skin, in: ctx, glass: glassDrawing ?? .placeholder(dark: backdropIsDark))
         ctx.restoreGState()
         drawOutside(skin, card: rect, ctx)
         drawCutOffOutlines(skin, card: rect, zoom: z, ctx)
         if z >= Self.gridZoom { drawGrid(rect, dirty: dirtyRect, zoom: z, ctx) }
+    }
+
+    /// The overlay plane: hover and selection, handles, guides, tags, badges, placeholders and a dragged component.
+    func drawOverlayPlane(_ dirtyRect: NSRect, _ ctx: CGContext) {
+        guard let skin else { return }
+        let z = max(zoom, 0.01)
         // The badges are placed first (off the layers being dragged), the tags then keep off them, and the badges are
         // drawn last, over everything: "Cut off on the desktop" stays readable when it matters most.
         let badges = badgePlacements(zoom: z)
@@ -1262,7 +1341,7 @@ final class SkinCanvasView: NSView {
             ctx.setLineWidth(px)
             ctx.strokePath()
         }
-        let text = gesture == nil
+        let text = gesture == nil && selectionTag != nil ? selectionTag!(m) : gesture == nil
             ? "\(layerName(m.name)) · \(Self.format(m.frame.width)) × \(Self.format(m.frame.height))"
             : "X \(Self.format(m.frame.x))  Y \(Self.format(m.frame.y))  \(Self.format(m.frame.width)) × \(Self.format(m.frame.height))"
         // Outside the handles, so it never covers them or the layer.
@@ -1757,12 +1836,18 @@ final class CenteringClipView: NSClipView {
         }
     }
 
+    /// How far above the middle a document smaller than the visible area sits (document points; 0: centred).
+    var verticalBias: CGFloat = 0
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let document = documentView else { return rect }
         let size = document.frame.size
         if rect.width > size.width { rect.origin.x = holdsDocument ? proposedBounds.minX : (size.width - rect.width) / 2 }
-        if rect.height > size.height { rect.origin.y = holdsDocument ? proposedBounds.minY : (size.height - rect.height) / 2 }
+        if rect.height > size.height {
+            rect.origin.y = holdsDocument ? proposedBounds.minY
+                : (size.height - rect.height) / 2 + (isFlipped ? verticalBias : -verticalBias)
+        }
         return rect
     }
 }

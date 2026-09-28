@@ -138,7 +138,7 @@ public enum LayerNaming {
     /// not change, such as building one part of an inspector page. A nested call for the same skin shares the outer
     /// namer. Off the main thread, `body` simply runs.
     public static func sharingWork<T>(for skin: Skin, _ body: () throws -> T) rethrows -> T {
-        guard Thread.isMainThread, shared?.skin !== skin else { return try body() }
+        guard Thread.isMainThread, shared?.isCurrent(for: skin) != true else { return try body() }
         let saved = shared
         shared = LayerNamer(skin: skin)
         defer { shared = saved }
@@ -147,7 +147,7 @@ public enum LayerNaming {
 
     /// The shared namer for `skin` inside `sharingWork`, else a new one.
     static func namer(for skin: Skin) -> LayerNamer {
-        if Thread.isMainThread, let shared, shared.skin === skin { return shared }
+        if Thread.isMainThread, let shared, shared.isCurrent(for: skin) { return shared }
         return LayerNamer(skin: skin)
     }
 
@@ -754,10 +754,19 @@ final class LayerNamer {
     private var naming: Set<String> = []
     /// Layers being named (the same loop, seen from the layer).
     private var namingLayers: Set<String> = []
+    /// Data item (lowercased) → the names its formula reads (`formulaNames`): a formula is read by several names.
+    private var formulaNameCache: [String: [String]] = [:]
+
+    /// The skin's `sourceGeneration` when the namer was made: a patch gives the same skin new text, and the names.
+    let sourceGeneration: Int
 
     init(skin: Skin) {
         self.skin = skin
+        sourceGeneration = skin.sourceGeneration
     }
+
+    /// Whether the namer names `skin` as its files are now.
+    func isCurrent(for skin: Skin) -> Bool { self.skin === skin && sourceGeneration == skin.sourceGeneration }
 
     // MARK: Layers
 
@@ -1076,16 +1085,23 @@ final class LayerNamer {
 
     /// A formula that reads its own value (`Formula=(MeasureScroll + 1) % 100`): a counter.
     private func refersToItself(_ m: Measure) -> Bool {
+        formulaNames(m).contains { $0.caseInsensitiveCompare(m.name) == .orderedSame }
+    }
+
+    /// The names a data item's formula reads: `[Name]`s, then its words (read once per namer).
+    private func formulaNames(_ m: Measure) -> [String] {
+        let key = m.name.lowercased()
+        if let cached = formulaNameCache[key] { return cached }
         let formula = m.rawOption("Formula") ?? ""
-        return (LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula))
-            .contains { $0.caseInsensitiveCompare(m.name) == .orderedSame }
+        let names = LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula)
+        formulaNameCache[key] = names
+        return names
     }
 
     /// Data a formula names, in order.
     func formulaReferences(_ m: Measure) -> [Measure] {
-        let formula = m.rawOption("Formula") ?? ""
         var seen: Set<String> = []
-        return (LayerReferences.bracketNames(in: formula) + LayerReferences.identifiers(in: formula)).compactMap { name in
+        return formulaNames(m).compactMap { name in
             guard name.caseInsensitiveCompare(m.name) != .orderedSame, let found = skin.measure(named: name),
                   seen.insert(found.name.lowercased()).inserted else { return nil }
             return found
@@ -1304,6 +1320,7 @@ final class LayerNamer {
             case "status": return named("Whether the player is open", "Player")
             case "shuffle": return named("Shuffle", "Shuffle")
             case "repeat": return named("Repeat", "Repeat")
+            case "macpermission": return named("Player permission", "Permission")
             default: return named("Now playing", "Music")
             }
         default:
@@ -1347,6 +1364,8 @@ final class LayerNamer {
             return DataName(name: input ? "Input devices" : "Output devices", short: "Devices", subtitle: "")
         case "devicestatus":
             return DataName(name: "Sound device status", short: "Status", subtitle: "")
+        case "macpermission":
+            return DataName(name: "Sound recording permission", short: "Permission", subtitle: "")
         case "format":
             return DataName(name: "Sound format", short: "Format", subtitle: "")
         case "bandfreq":
@@ -1417,13 +1436,16 @@ final class LayerNamer {
     }
 
     /// The data a formula shows as a percentage of another (`A / B * 100`, `100 * A / B`, `[A:] / [B:] * 100`): A.
+    /// A lone 100, and `A / B` (with brackets around either): compiled once (a formula of every data item is looked at).
+    private static let hundred = try? NSRegularExpression(pattern: #"(?<![\d.])100(?![\d.])"#)
+    private static let division = try? NSRegularExpression(pattern: #"([A-Za-z_][\w.]*)\s*\)?\s*/\s*\(?\s*([A-Za-z_][\w.]*)"#)
+
     private func percentPart(of formula: String, among sources: [Measure]) -> Measure? {
         let bare = formula.filter { !"[]:".contains($0) }
-        guard bare.range(of: #"(?<![\d.])100(?![\d.])"#, options: .regularExpression) != nil,
-              let regex = try? NSRegularExpression(pattern: #"([A-Za-z_][\w.]*)\s*\)?\s*/\s*\(?\s*([A-Za-z_][\w.]*)"#) else {
+        let range = NSRange(bare.startIndex..., in: bare)
+        guard bare.contains("100"), Self.hundred?.firstMatch(in: bare, range: range) != nil, let regex = Self.division else {
             return nil
         }
-        let range = NSRange(bare.startIndex..., in: bare)
         for match in regex.matches(in: bare, range: range) {
             guard let a = Range(match.range(at: 1), in: bare), let b = Range(match.range(at: 2), in: bare) else { continue }
             let first = String(bare[a]), second = String(bare[b])
