@@ -247,31 +247,42 @@ public struct CodeDocument: Equatable {
     /// `[]` block). Comment lines right above a header belong to that header's section, as in
     /// `IniWriter.movingSection`; other lines belong to the header above them.
     public func section(containingLine line: Int) -> String? {
-        let o = outline()
-        guard line >= 1, !o.kinds.isEmpty else { return nil }
-        return o.owner(ofLine: min(line, o.kinds.count))
+        outline().section(containingLine: line)
     }
 
     /// The 1-based lines of the first `[name]` block (the one the reader uses; names are case-insensitive): from its
     /// header to the next header, without the comment lines that introduce the next section and without trailing
     /// blank lines. nil when there is no such section.
     public func lineRange(ofSection name: String) -> Range<Int>? {
-        let o = outline()
-        guard let k = o.headerLines.firstIndex(where: { $0.name.map { IniSyntax.namesEqual($0, name) } ?? false }) else {
-            return nil
-        }
-        return o.block(k)
+        outline().lineRange(ofSection: name)
     }
 
     // MARK: - Outline
 
-    private enum LineKind { case blank, comment, header, other }
+    fileprivate enum LineKind { case blank, comment, header, other }
 
-    private struct Outline {
-        var kinds: [LineKind] = []
+    /// The document's sections, read once for several lookups (`outline()`: each lookup on the document reads them
+    /// again). A value of the text it was read from.
+    public struct Outline {
+        fileprivate var kinds: [LineKind] = []
         /// Every header line (1-based) with its name (nil for `[]`).
-        var headerLines: [(name: String?, line: Int)] = []
-        var headers: [Header] = []
+        fileprivate var headerLines: [(name: String?, line: Int)] = []
+        /// As `sectionHeaders()`.
+        public fileprivate(set) var headers: [Header] = []
+
+        /// As `CodeDocument.section(containingLine:)`.
+        public func section(containingLine line: Int) -> String? {
+            guard line >= 1, !kinds.isEmpty else { return nil }
+            return owner(ofLine: min(line, kinds.count))
+        }
+
+        /// As `CodeDocument.lineRange(ofSection:)`.
+        public func lineRange(ofSection name: String) -> Range<Int>? {
+            guard let k = headerLines.firstIndex(where: { $0.name.map { IniSyntax.namesEqual($0, name) } ?? false }) else {
+                return nil
+            }
+            return block(k)
+        }
 
         /// Lines [header, end) of the k-th header's block.
         func block(_ k: Int) -> Range<Int> {
@@ -298,7 +309,8 @@ public struct CodeDocument: Equatable {
         }
     }
 
-    private func outline() -> Outline {
+    /// The sections of the text, read once (`Outline`).
+    public func outline() -> Outline {
         var o = Outline()
         var current: Int?
         IniSyntax.forEachLine(in: text) { raw in
