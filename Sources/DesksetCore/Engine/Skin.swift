@@ -242,9 +242,27 @@ public final class Skin {
     private var issueSet: Set<String> = []
     private var loggedOnce: Set<String> = []
 
-    /// Monotonic clock in seconds (Net measures compute bytes per second from it). Tests and the editor's component
-    /// thumbnails (sample readings on a clock of their own) replace it.
-    public var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Where the skin reads the time: the wall clock, a monotonic clock and the local time zone (see `SkinClock`).
+    /// The system's own unless the host gives the skin another before `load()` (`Deskset --render --clock`, tests).
+    public var skinClock = SkinClock.live
+    /// The monotonic part of `skinClock`, in seconds (Net measures compute bytes per second from it; plugins time
+    /// with it). Tests and the editor's component thumbnails (sample readings on a clock of their own) replace it.
+    public var clock: () -> TimeInterval {
+        get { skinClock.uptime }
+        set { skinClock.uptime = newValue }
+    }
+    /// Where the skin takes its random numbers (see `SkinRandom`): the system's generator unless the host gives the
+    /// skin a seeded one before `load()` (`Deskset --render --seed`, tests).
+    public var random = SkinRandom.live()
+    /// The user's locale (`SkinEnvironment.locale`): the host's, read once per load. The live one
+    /// (`Locale.autoupdatingCurrent`) follows the Mac's settings by itself.
+    public var locale: Locale {
+        if let loadedLocale { return loadedLocale }
+        let value = currentEnvironment().locale
+        loadedLocale = value
+        return value
+    }
+    private var loadedLocale: Locale?
 
     /// Host facts for the dynamic built-in variables; fetched lazily and invalidated at every update and every
     /// top-level action, so `#CURRENTCONFIGX#` etc. are current without querying the host on every lookup.
@@ -320,6 +338,7 @@ public final class Skin {
     public func load() throws {
         assertOwned()
         environmentValid = false
+        loadedLocale = nil
         let builtins = builtInVariables()
         var includesAppearance = false
         let loaded = try SkinFileLoader.load(url: fileURL, sources: sourceProvider) { raw, readSoFar in

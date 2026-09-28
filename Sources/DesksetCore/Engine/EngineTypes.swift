@@ -243,6 +243,21 @@ public struct SkinEnvironment: Equatable {
     public var currentScreen: Int
     /// The Mac's light / dark appearance and colors (`#MACAPPEARANCE#`… variables, Deskset extension).
     public var appearance: SkinAppearance
+    /// The user's locale: `FormatLocale=Local`, the names of `%Z` and of SysInfo's time zone types, `locale-date` /
+    /// `locale-time`, the `#MAC…#` clock and week variables, FileView's dates and sort order, RunCommand's `LANG`. The
+    /// Mac's own (`Locale.autoupdatingCurrent`) unless set.
+    public var locale: Locale
+    /// The user's preferred languages, first first: the Windows ANSI code page of old non-Unicode skin files
+    /// (`TextDecoding.defaultANSICodePage(preferredLanguages:)`). The Mac's own (`Locale.preferredLanguages`, read
+    /// when asked) unless set.
+    public var preferredLanguages: [String] {
+        get { preferredLanguagesSet ?? SkinEnvironment.systemPreferredLanguages() }
+        set { preferredLanguagesSet = newValue }
+    }
+    private var preferredLanguagesSet: [String]?
+
+    /// The Mac's preferred languages (the live value of `preferredLanguages`).
+    public static func systemPreferredLanguages() -> [String] { Locale.preferredLanguages }
 
     public init(windowFrame: SkinRect = SkinRect(),
                 screens: [SkinScreen] = [SkinScreen(area: SkinRect(width: 1920, height: 1080),
@@ -252,7 +267,9 @@ public struct SkinEnvironment: Equatable {
                 zPosition: Int = 0,
                 configEditor: String = "/System/Applications/TextEdit.app",
                 currentScreen: Int = 0,
-                appearance: SkinAppearance = .light) {
+                appearance: SkinAppearance = .light,
+                locale: Locale = .autoupdatingCurrent,
+                preferredLanguages: [String]? = nil) {
         self.windowFrame = windowFrame
         self.screens = screens
         self.settingsPath = settingsPath
@@ -261,6 +278,8 @@ public struct SkinEnvironment: Equatable {
         self.configEditor = configEditor
         self.currentScreen = currentScreen
         self.appearance = appearance
+        self.locale = locale
+        preferredLanguagesSet = preferredLanguages
     }
 }
 
