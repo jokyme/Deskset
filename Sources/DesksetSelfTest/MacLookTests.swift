@@ -166,6 +166,89 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(image("Symbol").frame.width, 10)
     }
 
+    t.suite("Mac look: palette symbols (MacSymbolRendering=Palette, MacSymbolColors)") {
+        t.equal(MacSymbol.Rendering(parsing: " PALETTE "), .palette)
+        t.equal(MacSymbol.Rendering.palette.optionValue, "Palette")
+        // Parsing: `|` between colors, formulas and hex allowed, trailing empties dropped, a bad entry white.
+        t.equal(MacSymbol.colors(parsing: "0,0,0,153 | 255,204,0"),
+                [RGBA(r: 0, g: 0, b: 0, a: 153), RGBA(r: 255, g: 204, b: 0)])
+        t.equal(MacSymbol.colors(parsing: "FFCC00|(Clamp(300,0,255)),(1|2),0,128"),
+                [RGBA(r: 255, g: 204, b: 0), RGBA(r: 255, g: 3, b: 0, a: 128)], "a | inside parentheses is a formula's")
+        t.equal(MacSymbol.colors(parsing: "red|0,0,255"), [.white, RGBA(r: 0, g: 0, b: 255)],
+                "an entry that is not a color is white, so the next layer keeps its color")
+        t.equal(MacSymbol.colors(parsing: "||1,2,3"), [.white, .white, RGBA(r: 1, g: 2, b: 3)])
+        t.equal(MacSymbol.colors(parsing: "1,2,3||"), [RGBA(r: 1, g: 2, b: 3)], "trailing empties dropped")
+        t.equal(MacSymbol.colors(parsing: "  "), [])
+        t.equal(MacSymbol.colors(parsing: "1,1,1|2,2,2|3,3,3|4,4,4|5,5,5").count, MacSymbol.maxColors, "three layers")
+        t.equal(MacSymbol.colors(parsing: "12.4,12.6,-4,999"), [RGBA(r: 12, g: 13, b: 0, a: 255)], "whole, 0…255")
+
+        // Paths: the colors only with Palette, as rrggbbaa; a round trip keeps them.
+        let palette = MacSymbol(name: "cloud.sun.fill",
+                                style: MacSymbol.Style(pointSize: 20, rendering: .palette,
+                                                       colors: [RGBA(r: 0, g: 0, b: 0, a: 153), RGBA(r: 255, g: 204, b: 0)]),
+                                density: 2)
+        t.equal(palette.path, "sf:cloud.sun.fill?size=20&weight=regular&rendering=palette&colors=00000099-ffcc00ff&density=2")
+        t.equal(MacSymbol(path: palette.path), palette, "round trip")
+        t.equal(palette.measuringPath, "sf:cloud.sun.fill?size=20&weight=regular&rendering=palette&colors=00000099-ffcc00ff")
+        t.equal(MacSymbol.Style(rendering: .hierarchical, colors: [.black]).colors, [], "colors belong to Palette only")
+        var style = MacSymbol.Style(rendering: .palette, colors: [.black])
+        style.rendering = .multicolor
+        t.equal(style.colors, [], "leaving Palette drops the colors")
+        style.colors = [.white]
+        t.equal(style.colors, [], "and a non-palette style takes none")
+        t.equal(MacSymbol(path: "sf:a?rendering=multicolor&colors=ff0000ff")?.style.colors, [])
+        t.equal(MacSymbol(path: "sf:a?colors=ff0000ff-zz&rendering=palette")?.style.colors,
+                [RGBA(r: 255, g: 0, b: 0), .white], "any order; a bad entry is white")
+        t.equal(MacSymbol(name: "a", style: MacSymbol.Style(rendering: .palette)).path,
+                "sf:a?size=16&weight=regular&rendering=palette", "a palette without colors")
+
+        // Read from a skin: the options (with prefixes) reach the path the host draws.
+        let host = MacLookHost()
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        [Variables]
+        Ink=0,0,0,153
+        Sun=255,204,0
+        [MeasureColors]
+        Measure=String
+        String=#Sun#|#Ink#
+        [Sun]
+        Meter=Image
+        ImageName=sf:cpu.fill
+        MacSymbolRendering=Palette
+        MacSymbolColors=#Ink#|#Sun#
+        [FromMeasure]
+        Meter=Image
+        ImageName=sf:cpu.fill
+        MacSymbolRendering=palette
+        MacSymbolColors=[MeasureColors]
+        DynamicVariables=1
+        [Ignored]
+        Meter=Image
+        ImageName=sf:cpu.fill
+        MacSymbolRendering=Hierarchical
+        MacSymbolColors=#Ink#
+        [Bar]
+        Meter=Bar
+        BarImage=sf:battery.100percent
+        MacSymbolRendering=Palette
+        MacSymbolColors=#Sun#
+        """, host: host)
+        skin.update()
+        skin.update()
+        func path(_ name: String) -> String? { (skin.meter(named: name) as? ImageMeter)?.imagePath }
+        t.equal(path("Sun"), "sf:cpu.fill?size=16&weight=regular&rendering=palette&colors=00000099-ffcc00ff")
+        t.equal(path("FromMeasure"), "sf:cpu.fill?size=16&weight=regular&rendering=palette&colors=ffcc00ff-00000099",
+                "a measure's value (a MacWeather SymbolPalette) sets them")
+        t.equal(path("Ignored"), "sf:cpu.fill?size=16&weight=regular&rendering=hierarchical")
+        t.equal((skin.meter(named: "Bar") as? BarMeter)?.barImagePath,
+                "sf:battery.100percent?size=16&weight=regular&rendering=palette&colors=ffcc00ff")
+        t.equal(skin.meter(named: "Sun")?.frame.width, 20, "the colors do not change the size")
+        skin.execute("[!SetOption Sun MacSymbolColors \"1,2,3\"][!UpdateMeter Sun]", from: nil)
+        t.equal(path("Sun"), "sf:cpu.fill?size=16&weight=regular&rendering=palette&colors=010203ff")
+        t.check(skin.issues.isEmpty, "\(skin.issues)")
+    }
+
     t.suite("Mac look: unknown symbols and meters without symbols are noted once") {
         let host = MacLookHost()
         let (skin, _) = try makeSkin(t, """
@@ -265,7 +348,19 @@ func runMacLookTests(_ t: TestRunner) {
         let weights = S.property("MacSymbolWeight", in: S.meterGroups("Image"))?.kind.choices?.map(\.value)
         t.equal(weights, MacSymbol.Weight.allCases.map(\.optionValue))
         t.equal(S.property("MacSymbolRendering", in: S.meterGroups("Image"))?.kind.choices?.map(\.value),
-                ["Monochrome", "Hierarchical", "Multicolor"])
+                ["Monochrome", "Hierarchical", "Multicolor", "Palette"])
+        // The layers' colors show only for a palette symbol.
+        if let colors = S.property("MacSymbolColors", in: S.meterGroups("Image")) {
+            let groups = S.meterGroups("Image")
+            let palette: (String) -> String? = { ["ImageName": "sf:cloud.sun.fill", "MacSymbolRendering": "palette"][$0] }
+            t.check(S.isVisible(colors, in: groups, values: palette), "shown for a palette")
+            t.check(!S.isVisible(colors, in: groups, values: { $0 == "ImageName" ? "sf:cloud.sun.fill" : nil }),
+                    "hidden for Monochrome")
+            t.check(!S.isVisible(colors, in: groups, values: {
+                ["ImageName": "clock.png", "MacSymbolRendering": "Palette"][$0] }), "hidden for a file")
+        } else {
+            t.check(false, "MacSymbolColors is in the editor")
+        }
         t.equal(S.property("MacSymbolSize", in: S.meterGroups("Image"))?.defaultValue, "16")
         let image = S.meterGroups("Image"), fit = S.property("PreserveAspectRatio", in: image)!
         t.equal(S.defaultValue(of: fit, in: image, values: { $0 == "ImageName" ? "sf:wifi" : nil }), "1",
@@ -279,7 +374,7 @@ func runMacLookTests(_ t: TestRunner) {
         t.equal(S.property("MacOnAppearanceChangeAction", in: skin)?.defaultValue, Skin.defaultAppearanceChangeAction)
         t.check(S.property("MacSymbolSize", in: skin) != nil, "the background can be a symbol")
         // Every label reads as plain words.
-        for key in ["MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering"] {
+        for key in ["MacSymbolSize", "MacSymbolWeight", "MacSymbolRendering", "MacSymbolColors"] {
             let p = S.property(key, in: S.meterGroups("Image"))
             t.equal(S.engineWord(in: (p?.label ?? "") + " " + (p?.help ?? "")), nil, key)
         }

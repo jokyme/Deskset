@@ -180,7 +180,8 @@ enum WeatherLocationResolver {
 public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableFunctions {
     /// What a measure shows (`Type=`).
     public enum ValueType: String, CaseIterable {
-        case temperature, feelsLike, high, low, dewPoint, condition, symbol, symbolCode, isDaylight, humidity, pressure
+        case temperature, feelsLike, high, low, dewPoint, condition, symbol, symbolCode, symbolPalette, isDaylight
+        case humidity, pressure
         case cloudCover, fog, uvIndex, windSpeed, windGust, windDirection, windCardinal, beaufort, precipitation
         case precipitationChance, thunderChance, temperatureColor, temperatureCurve, time, sunrise, sunset, solarNoon
         case dayLength, daylightProgress, place, placeDetail, country, countryCode, latitude, longitude, timeZone
@@ -201,8 +202,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         /// Accepts `Hour=`.
         var hourly: Bool {
             switch self {
-            case .temperature, .feelsLike, .dewPoint, .condition, .symbol, .symbolCode, .isDaylight, .humidity,
-                 .pressure, .cloudCover, .fog, .uvIndex, .windSpeed, .windGust, .windDirection, .windCardinal,
+            case .temperature, .feelsLike, .dewPoint, .condition, .symbol, .symbolCode, .symbolPalette, .isDaylight,
+                 .humidity, .pressure, .cloudCover, .fog, .uvIndex, .windSpeed, .windGust, .windDirection, .windCardinal,
                  .beaufort, .precipitation, .precipitationChance, .thunderChance, .temperatureColor, .time:
                 return true
             default: return false
@@ -212,7 +213,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         /// Accepts `Day=`.
         var daily: Bool {
             switch self {
-            case .high, .low, .condition, .symbol, .symbolCode, .uvIndex, .windSpeed, .windGust, .beaufort,
+            case .high, .low, .condition, .symbol, .symbolCode, .symbolPalette, .uvIndex, .windSpeed, .windGust, .beaufort,
                  .precipitation, .precipitationChance, .thunderChance, .temperatureColor, .time, .sunrise, .sunset,
                  .solarNoon, .dayLength:
                 return true
@@ -310,7 +311,13 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
 
     static let inherited = ["Units", "TemperatureUnit", "WindUnit", "PrecipitationUnit", "PressureUnit", "TimeZone",
                             "FormatLocale", "Decimals", "UnavailableText", "NoEventText", "SymbolStyle",
-                            "DaylightSavingTime"]
+                            "DaylightSavingTime", "PaletteInk", "PaletteSun", "PaletteRain", "ScaleColor"]
+
+    /// `Type=SymbolPalette`'s colors when `PaletteInk`, `PaletteSun` and `PaletteRain` are not set: Apple's Multicolor
+    /// in Dark Mode (a white cloud, systemYellow and systemCyan), as `MacSymbolRendering=Multicolor` draws them.
+    public static let defaultPaletteInk = RGBA(r: 255, g: 255, b: 255)
+    public static let defaultPaletteSun = RGBA(r: 255, g: 214, b: 0)
+    public static let defaultPaletteRain = RGBA(r: 60, g: 211, b: 254)
 
     public override func readMeasureOptions() {
         parentName = string("Parent").trimmingCharacters(in: .whitespaces)
@@ -604,6 +611,30 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     }
 
     private var decimals: Int? { setting("Decimals").flatMap { OptionValue.number($0) }.map { Int($0.clamped(0, 6)) } }
+
+    /// An inherited color option (`PaletteInk`, `ScaleColor`…); nil when it is not set or is not a color.
+    private func colorSetting(_ key: String) -> RGBA? { setting(key).flatMap { OptionValue.color($0) } }
+
+    /// `Type=SymbolPalette`: the colors of `name`'s layers, `c1|c2|c3`, for `MacSymbolColors`.
+    func symbolPalette(_ name: String) -> String {
+        let ink = colorSetting("PaletteInk") ?? MacWeatherMeasure.defaultPaletteInk
+        let sun = colorSetting("PaletteSun") ?? MacWeatherMeasure.defaultPaletteSun
+        let rain = colorSetting("PaletteRain") ?? MacWeatherMeasure.defaultPaletteRain
+        return WeatherSymbols.paletteRoles(name).map { role -> String in
+            switch role {
+            case .ink: return MacWeatherMeasure.colorText(ink)
+            case .sun: return MacWeatherMeasure.colorText(sun)
+            case .rain: return MacWeatherMeasure.colorText(rain)
+            }
+        }.joined(separator: "|")
+    }
+
+    /// `R,G,B` (and `,A` when it is not opaque), whole numbers.
+    static func colorText(_ c: RGBA, alpha: Bool = true) -> String {
+        func n(_ v: Double) -> String { String(Int(v.isFinite ? min(max(v, 0), 255).rounded() : 0)) }
+        let rgb = "\(n(c.r)),\(n(c.g)),\(n(c.b))"
+        return alpha && n(c.a) != "255" ? rgb + "," + n(c.a) : rgb
+    }
     private var unavailableText: String { setting("UnavailableText") ?? "" }
 
     private func displayZone(_ b: Binding) -> TimeZone {
@@ -626,7 +657,8 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         var out = Output()
         func none() -> Output {
             // Symbol names stay empty, so `ImageName=sf:%1` draws nothing until there is data.
-            Output(number: 0, string: type == .symbol || type == .statusSymbol ? "" : unavailableText,
+            Output(number: 0, string: type == .symbol || type == .statusSymbol || type == .symbolPalette ? ""
+                                        : unavailableText,
                    available: false, range: nil)
         }
         func number(_ v: Double?) -> Output {
@@ -764,13 +796,19 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
         case .dewPoint:
             out = number(temp(step?.instant.dewPoint))
             out.range = tempRange { $0.instant.dewPoint }
-        case .condition, .symbol, .symbolCode:
+        case .condition, .symbol, .symbolCode, .symbolPalette:
             guard let symbol else { return none() }
             if symbol.condition == nil {
                 logOnce("MacWeather: unknown MET Norway symbol code \(symbol.raw)", level: .notice)
             }
             let outline = setting("SymbolStyle")?.trimmingCharacters(in: .whitespaces).lowercased() == "outline"
-            let s = type == .condition ? symbol.description : type == .symbol ? symbol.sfSymbol(outline: outline) : symbol.raw
+            let s: String
+            switch type {
+            case .condition: s = symbol.description
+            case .symbol: s = symbol.sfSymbol(outline: outline)
+            case .symbolPalette: s = symbolPalette(symbol.sfSymbol(outline: outline))
+            default: s = symbol.raw
+            }
             out = Output(number: Double(symbol.number), string: s, available: true, range: (0, 50))
         case .isDaylight:
             // From the sun for every condition (only half of MET's codes come in day / night / polar twilight forms,
@@ -829,7 +867,10 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
             let c = daySummary.map { colorOfLow ? $0.low : $0.high } ?? step?.instant.temperature
             guard let celsius = c else { return none() }
             let rgb = WeatherUnits.color(celsius: celsius)
-            out = Output(number: temp(celsius) ?? 0, string: "\(rgb.r),\(rgb.g),\(rgb.b)")
+            // ScaleColor replaces the scale (a look where every temperature is one color); R,G,B like the scale's.
+            let text = colorSetting("ScaleColor").map { MacWeatherMeasure.colorText($0, alpha: false) }
+                ?? "\(rgb.r),\(rgb.g),\(rgb.b)"
+            out = Output(number: temp(celsius) ?? 0, string: text)
             out.range = daySummary != nil ? weekRange() : tempRange { $0.instant.temperature }
         case .temperatureCurve:
             guard let curve = temperatureCurve(forecast, now: b.now, units: u) else { return none() }

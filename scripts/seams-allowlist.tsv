@@ -134,6 +134,8 @@ zone.localizedText	Sources/Deskset/App/ManageModel.swift	*	Skin Studio, Manage o
 
 background.mainHop	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.Timer	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
+timer.runLoopAdd	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 zone.implicitFormatter	Sources/Deskset/App/ManageWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
 event.notification	Sources/Deskset/App/SettingsWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -145,6 +147,12 @@ effect.pasteboard	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetCli
 effect.sound	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.terminate	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
 effect.workspace	Sources/Deskset/App/SkinBangs.swift	1	app-level bangs (!SetClip, !SetWallpaper, !Play, !Quit, ...): host requests, recorded by RecordingSkinHost in sandboxed runs
+
+effect.fileWrite	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+mono.systemUptime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+mono.threadCPUTime	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+random.UUID	Sources/Deskset/App/SkinBenchmark.swift	*	command-line tooling, not a skin input
+timer.executorTimer	Sources/Deskset/App/SkinBenchmark.swift	1	--benchmark: the update timer, on the skin's executor as a skin window's
 
 event.pointerState	Sources/Deskset/App/SkinCanvasView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
@@ -214,20 +222,22 @@ mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioAnalysis.swift	1	audio serv
 random.hashOrder	Sources/Deskset/Plugins/Audio/AudioAnalysis.swift	1	not a dictionary: the weights of a band are an array named values
 
 background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	the capture backend's own queue (AudioHAL): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
-background.mainHop	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+background.mainHop	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification; the Screen Recording request and the watch on System Settings are the main thread's
 background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
 event.captureStream	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	audio service (AudioLevel, AppVolume): faked in verification
 event.coreAudio	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
+event.notification	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	the capture engine hears when System Settings, where a permission may have been given, goes to the background or quits: live audio only (never in a command-line mode; --data's audio replaces the engine)
 mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
 random.UUID	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	the output-activity watch listens to each audio process on its own: the order its listeners are added and removed in reaches no skin
+random.pid	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	the silence watchdog tells Deskset's own process and the apps that play from the rest: live audio only, not a skin input (--data's audio replaces the engine)
 timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
 
-background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	9	the capture engine's own queues (AudioHAL, analysis): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
+background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	12	the capture engine's own queues (AudioHAL, analysis): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
 background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
-mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	2	audio service (AudioLevel, AppVolume): faked in verification
-random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	3	the engine's capture sources, each on its own: the order they are visited in reaches no skin
-random.pid	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
-timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	4	audio service (AudioLevel, AppVolume): faked in verification
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	4	audio service (AudioLevel, AppVolume): faked in verification; the silence watchdog's looks are timed on the uptime
+random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	the engine's capture sources, each on its own: the order they are visited in reaches no skin
+timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	audio service (AudioLevel, AppVolume): faked in verification; system audio waits in standby a moment after the other apps stop playing
 timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
 
 background.queue	Sources/Deskset/Plugins/Audio/AudioHAL.swift	1	audio service (AudioLevel, AppVolume): faked in verification
@@ -256,7 +266,7 @@ background.thread	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	MediaUIWo
 wait.deadline	Sources/Deskset/Plugins/Media/MediaUIPlugins.swift	1	media workers: waitUntilIdle, for --render in virtual time (a condition, with a real-time limit)
 
 background.URLSession	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
-background.dispatch	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	13	the NowPlaying center's worker and its main-thread hops: a live service shared by every skin (the nowPlaying kind, reported in virtual time unless --data gives the player)
+background.dispatch	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	14	the NowPlaying center's worker and its main-thread hops: a live service shared by every skin (the nowPlaying kind, reported in virtual time unless --data gives the player)
 effect.appleScript	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	2	the AppleScript runner reads the players and sends their commands; the commands pass SideEffects.perform in the measures
 effect.fileWrite	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	3	NowPlaying service and cover art: faked in verification
 mono.systemUptime	Sources/Deskset/Plugins/Media/NowPlayingCenter.swift	1	NowPlaying service and cover art: faked in verification
@@ -271,9 +281,12 @@ zone.Locale.current	Sources/Deskset/Plugins/Media/NowPlayingCoverLookup.swift	2	
 
 background.dispatch	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	the front-window reader's worker and its main-thread hop: a live service (the frontWindow kind, reported in virtual time)
 background.global	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
+background.mainHop	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	3	Chameleon's CropDesktop=Skin follows its skin window's moves with AppKit's notifications, on the main thread (a skin window only, never in a render); the moves come back through the skin's backgroundHop
+event.notification	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	Chameleon's CropDesktop=Skin follows its skin window's moves with AppKit's notifications, on the main thread (a skin window only, never in a render); the moves come back through the skin's backgroundHop
 mono.systemUptime	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	2	front app and desktop info plugins: service, faked in verification
 random.hashOrder	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	Chameleon ranks colour bins by size and keeps hash order for bins of equal size: a known input (--render runs with deterministic hashing); breaking ties by the bin's key changes the colour of tied images, so it waits for the owner's decision
 random.pid	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	front app and desktop info plugins: service, faked in verification
+timer.asyncAfter	Sources/Deskset/Plugins/UI/DesktopInfoPlugins.swift	1	Chameleon's window-move watch waits for the moves to stop before it samples again (main thread, a skin window only, never in a render)
 
 background.mainHop	Sources/Deskset/Plugins/UI/FrostedGlass.swift	1	FrostedGlass backdrop window follows the skin window
 event.notification	Sources/Deskset/Plugins/UI/FrostedGlass.swift	2	FrostedGlass backdrop window follows the skin window
@@ -414,6 +427,8 @@ timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	
 random.pid	Sources/DesksetCore/Engine/Plugins/SensorPlugins.swift	1	ResMon counts the app's own file descriptors
 
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/SliderPlugin.swift	1	already on the executor (VirtualTimeExecutor)
+
+random.hashOrder	Sources/DesksetCore/Engine/Plugins/UsagePlugins.swift	1	not a dictionary: a ranking's values are an array (the counter's instances after Percent and the lists)
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/WeatherPlugins.swift	1	a Gregorian calendar whose time zone is set right after
 

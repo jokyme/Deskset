@@ -84,7 +84,8 @@ public struct ImageOptions: Hashable, Sendable {
     /// Degrees, clockwise (negative = counter-clockwise).
     public var rotate = 0.0
     public var useExifOrientation = false
-    /// `MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`: how an `sf:` image is drawn (see `MacSymbol`).
+    /// `MacSymbolSize`, `MacSymbolWeight`, `MacSymbolRendering`, `MacSymbolColors`: how an `sf:` image is drawn (see
+    /// `MacSymbol`).
     public var symbol = MacSymbol.Style()
 
     public init() {}

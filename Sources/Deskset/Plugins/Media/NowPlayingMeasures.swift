@@ -182,7 +182,8 @@ final class NowPlayingMeasure: NowPlayingClientMeasure {
     }
 
     private func values(_ snap: NowPlayingSnapshot, main: NowPlayingMeasure) -> (number: Double, string: String?) {
-        NowPlayingValues.value(field, snap, now: center.clock(), leadingZero: !main.disableLeadingZero)
+        if field == .macPermission { return center.permissionValue(preferring: main.preferredApp) }
+        return NowPlayingValues.value(field, snap, now: center.clock(), leadingZero: !main.disableLeadingZero)
     }
 
     override func execute(command: String) {
@@ -314,6 +315,7 @@ final class WebNowPlayingMeasure: NowPlayingClientMeasure {
     }
 
     private func values(_ snap: NowPlayingSnapshot) -> (number: Double, string: String?) {
+        if field == .macPermission { return center.permissionValue(preferring: nil) }
         var v = NowPlayingValues.value(field, snap, now: center.clock())
         if field == .cover, v.string?.isEmpty ?? true, !defaultPath.isEmpty { v.string = defaultPath }
         return v

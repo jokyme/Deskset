@@ -33,6 +33,23 @@ enum AudioPermissions {
     private static let lock = NSLock()
     private static var logged: Set<String> = []
 
+    /// Calls `changed` (main thread) whenever the user leaves System Settings or quits it: a permission may have been
+    /// given there (macOS says nothing when one is). Watches for the rest of the app's run.
+    static func watchSystemSettings(_ changed: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            let center = NSWorkspace.shared.notificationCenter
+            for name in [NSWorkspace.didDeactivateApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+                _ = center.addObserver(forName: name, object: nil, queue: .main) { note in
+                    let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                    if app?.bundleIdentifier == systemSettingsBundleID { changed() }
+                }
+            }
+        }
+    }
+
+    /// System Settings (and System Preferences before macOS 13).
+    static let systemSettingsBundleID = "com.apple.systempreferences"
+
     /// Logs a capture problem once per app run (the skins show 0 meanwhile).
     static func logOnce(_ message: String) {
         lock.lock()
@@ -43,10 +60,13 @@ enum AudioPermissions {
 }
 
 extension AudioSourceStatus {
-    /// `permissionNote`: the refused permission in words for the user (see `AudioSourceStatus.permissionNote`).
-    static func failed(_ message: String, device: AudioObjectID? = nil, permissionNote: String? = nil) -> AudioSourceStatus {
+    /// `permission`: the refused permission (`Type=MacPermission`), and `permissionNote` the same in words for the user
+    /// (see `AudioSourceStatus.permissionNote`).
+    static func failed(_ message: String, device: AudioObjectID? = nil, permission: AudioPermission? = nil,
+                       permissionNote: String? = nil) -> AudioSourceStatus {
         AudioPermissions.logOnce("Audio capture: \(message)")
         var s = AudioSourceStatus(message: message, permissionNote: permissionNote)
+        s.missingPermission = permission
         if let device {
             s.deviceName = AudioHAL.name(of: device) ?? ""
             s.deviceUID = AudioHAL.uid(of: device) ?? ""
@@ -241,11 +261,14 @@ final class InputDeviceBackend: AudioCaptureBackend {
                 AVCaptureDevice.requestAccess(for: .audio) { granted in if granted { events.restart() } }
             }
             let uid = AudioHAL.uid(of: device) ?? ""
-            return AudioSourceStatus(deviceName: AudioHAL.name(of: device) ?? uid, deviceUID: uid,
-                                     message: "waiting for the microphone permission")
+            var waiting = AudioSourceStatus(deviceName: AudioHAL.name(of: device) ?? uid, deviceUID: uid,
+                                            message: "waiting for the microphone permission")
+            waiting.missingPermission = .microphone
+            waiting.permissionUndecided = true
+            return waiting
         default:
             return .failed("microphone access is off (System Settings → Privacy & Security → Microphone)",
-                           device: device, permissionNote: AudioPermissions.microphoneNote)
+                           device: device, permission: .microphone, permissionNote: AudioPermissions.microphoneNote)
         }
         guard let format = AudioHAL.inputStreamFormat(of: device), isFloat32(format) else {
             return .failed("the input device has an unexpected format", device: device)
@@ -330,7 +353,8 @@ final class ScreenCaptureAudioBackend: NSObject, AudioCaptureBackend, SCStreamOu
             }
             return .failed("on macOS 13 – 14.1 system audio needs the Screen Recording permission "
                            + "(System Settings → Privacy & Security → Screen Recording), then a restart of Deskset",
-                           device: device, permissionNote: AudioPermissions.screenRecordingNote)
+                           device: device, permission: .screenRecording,
+                           permissionNote: AudioPermissions.screenRecordingNote)
         }
         self.ring = ring
         self.events = events
@@ -441,6 +465,123 @@ enum AudioProcesses {
     static func object(for pid: pid_t) -> AudioObjectID? {
         list().first { $0.pid == pid }?.objectID
     }
+
+    /// Core Audio's process objects (HAL queue). Empty before macOS 14.2.
+    static func objects() -> [AudioObjectID] {
+        guard #available(macOS 14.2, *) else { return [] }
+        return AudioHAL.array(AudioObjectID(kAudioObjectSystemObject),
+                              AudioHAL.address(kAudioHardwarePropertyProcessObjectList), of: AudioObjectID.self)
+    }
+
+    static func isRunningOutput(_ object: AudioObjectID) -> Bool {
+        guard #available(macOS 14.2, *) else { return false }
+        return (AudioHAL.get(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput), as: UInt32.self) ?? 0) != 0
+    }
+
+    static func pid(of object: AudioObjectID) -> pid_t? {
+        guard #available(macOS 14.2, *) else { return nil }
+        return AudioHAL.get(object, AudioHAL.address(kAudioProcessPropertyPID), as: pid_t.self)
+    }
+
+    /// Whether a process other than Deskset runs audio output now (HAL queue). Deskset's own capture counts as output
+    /// (its aggregate device runs the output device), so it is left out. Reads one property of most processes.
+    static func othersRunOutput(among objects: [AudioObjectID]? = nil) -> Bool {
+        let me = getpid()
+        return (objects ?? self.objects()).contains { isRunningOutput($0) && pid(of: $0) != me }
+    }
+
+    /// The apps other than Deskset whose processes run audio output now (HAL queue), by the pid of the app each such
+    /// process works for (its responsible process, as Activity Monitor groups them: a browser's audio helper or
+    /// WebKit's media process counts as the browser), kept when that is a regular app (one with a Dock icon). Daemons
+    /// and agents that keep an output open while they send silence (system sounds, speech, call services, audio
+    /// routers) are left out. Only processes that run output are looked up.
+    static func appsRunningOutput() -> Set<pid_t> {
+        let me = getpid()
+        var apps = Set<pid_t>()
+        for object in objects() where isRunningOutput(object) {
+            guard let pid = pid(of: object), pid != me else { continue }
+            let owner = responsiblePID(pid)
+            guard owner != me, NSRunningApplication(processIdentifier: owner)?.activationPolicy == .regular else {
+                continue
+            }
+            apps.insert(owner)
+        }
+        return apps
+    }
+
+    /// The process responsible for `pid` (the app a helper or an XPC service works for), else `pid` itself.
+    static func responsiblePID(_ pid: pid_t) -> pid_t {
+        guard let lookup = responsibleLookup else { return pid }
+        let owner = lookup(pid)
+        return owner > 0 ? owner : pid
+    }
+
+    /// `responsibility_get_pid_responsible_for_pid` (libSystem, not in the SDK's headers), looked up with dlsym: when a
+    /// macOS release drops it, every process is its own app (its helpers then do not count).
+    private static let responsibleLookup: (@convention(c) (pid_t) -> pid_t)? = {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
+        else { return nil }
+        return unsafeBitCast(symbol, to: (@convention(c) (pid_t) -> pid_t).self)
+    }()
+}
+
+/// `AudioOutputActivity` from Core Audio's process objects (macOS 14.2+): a listener on the process list, and one on
+/// each process's "is running output" (HAL queue only).
+final class CoreAudioOutputActivity: AudioOutputActivity {
+    /// nil where process objects do not exist (before macOS 14.2), for the demo signal, and when ScreenCaptureKit is
+    /// forced (`DESKSET_AUDIO_FORCE_SCK`): those capture while subscribed.
+    static func makeIfSupported() -> CoreAudioOutputActivity? {
+        guard #available(macOS 14.2, *), !AudioCaptureEngine.demoSignal,
+              ProcessInfo.processInfo.environment["DESKSET_AUDIO_FORCE_SCK"] == nil else { return nil }
+        return CoreAudioOutputActivity()
+    }
+
+    private var handler: (() -> Void)?
+    private var listListener: AudioListenerToken?
+    /// The process objects followed, and the listeners on them (a process that cannot be listened to is still looked
+    /// at by `othersPlay` on every other change).
+    private var followed: Set<AudioObjectID> = []
+    private var listeners: [AudioObjectID: AudioListenerToken] = [:]
+
+    func othersPlay() -> Bool {
+        AudioProcesses.othersRunOutput(among: handler == nil ? nil : Array(followed))
+    }
+
+    func observe(_ handler: @escaping () -> Void) {
+        guard #available(macOS 14.2, *) else { return }
+        stopObserving()
+        self.handler = handler
+        listListener = AudioHAL.listen(AudioObjectID(kAudioObjectSystemObject),
+                                       AudioHAL.address(kAudioHardwarePropertyProcessObjectList),
+                                       queue: AudioHAL.queue) { [weak self] in
+            self?.followProcesses()
+            self?.handler?()
+        }
+        followProcesses()
+    }
+
+    func stopObserving() {
+        handler = nil
+        listListener?.remove()
+        listListener = nil
+        listeners.values.forEach { $0.remove() }
+        listeners = [:]
+        followed = []
+    }
+
+    /// Listens to the processes that exist now, and forgets the ones gone.
+    private func followProcesses() {
+        guard #available(macOS 14.2, *), handler != nil else { return }
+        let current = Set(AudioProcesses.objects())
+        for object in followed.subtracting(current) {
+            listeners.removeValue(forKey: object)?.remove()
+        }
+        for object in current.subtracting(followed) {
+            listeners[object] = AudioHAL.listen(object, AudioHAL.address(kAudioProcessPropertyIsRunningOutput),
+                                                queue: AudioHAL.queue) { [weak self] in self?.handler?() }
+        }
+        followed = current
+    }
 }
 
 // MARK: - Demo signal
@@ -449,9 +590,12 @@ enum AudioProcesses {
 /// every half second, a hi-hat and a four-note melody (right channel a little quieter). No permission is needed, so
 /// visualizer skins can be checked with `--render`, screenshotted or demoed without playing anything.
 /// `DESKSET_AUDIO_DEMO=silent`: the same stream, all digital silence (a visualizer at rest, and its cost).
+/// `DESKSET_AUDIO_DEMO=refused`: silence that the watchdog has taken for a refused permission (`MacPermission` 1).
 final class SyntheticAudioBackend: AudioCaptureBackend {
-    /// Every sample 0 (`DESKSET_AUDIO_DEMO=silent`).
+    /// Every sample 0 (`DESKSET_AUDIO_DEMO=silent` or `refused`).
     var silent = AudioCaptureEngine.demoSilence
+    /// The status says what the watchdog says of a refused permission (`DESKSET_AUDIO_DEMO=refused`).
+    var refused = AudioCaptureEngine.demoRefused
     let deviceID: AudioObjectID? = nil
     static let sampleRate = 48000.0
     private let queue = DispatchQueue(label: "net.deskset.audio.demo", qos: .userInteractive)
@@ -472,10 +616,15 @@ final class SyntheticAudioBackend: AudioCaptureBackend {
         }
         timer.resume()
         self.timer = timer
-        return AudioSourceStatus(running: true, deviceName: "Deskset Demo Signal", deviceUID: "DesksetDemoSignal",
-                                 format: AudioHAL.describe(sampleRate: SyntheticAudioBackend.sampleRate,
-                                                           bitsPerChannel: 32, isFloat: true, channels: 2),
-                                 sampleRate: SyntheticAudioBackend.sampleRate, channels: 2)
+        var status = AudioSourceStatus(running: true, deviceName: "Deskset Demo Signal", deviceUID: "DesksetDemoSignal",
+                                       format: AudioHAL.describe(sampleRate: SyntheticAudioBackend.sampleRate,
+                                                                 bitsPerChannel: 32, isFloat: true, channels: 2),
+                                       sampleRate: SyntheticAudioBackend.sampleRate, channels: 2)
+        if refused {
+            status.refusalSuspected = true
+            status.permissionNote = AudioCaptureEngine.silenceNote
+        }
+        return status
     }
 
     func stop() {

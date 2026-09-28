@@ -44,6 +44,13 @@ protocol NowPlayingBackend: AnyObject {
     func artwork(_ app: MediaApp, track: NowPlayingTrack) -> NowPlayingArtwork?
     @discardableResult
     func perform(_ command: MediaPlayerCommand, on app: MediaApp) -> Bool
+    /// The Automation permission for a running `app`, read without asking (never shows the prompt); nil when unknown
+    /// (the player is not running, or the check failed). Worker thread.
+    func permission(_ app: MediaApp) -> NowPlayingPermission?
+}
+
+extension NowPlayingBackend {
+    func permission(_ app: MediaApp) -> NowPlayingPermission? { nil }
 }
 
 // MARK: - AppleScript backend
@@ -65,16 +72,34 @@ final class AppleScriptNowPlayingBackend: NowPlayingBackend {
     /// errAEEventWouldRequireUserConsent: not decided yet and the check did not ask.
     static let wouldRequireConsent = -1744
 
-    /// Tests replace the permission check and the script runner, so the permission logic runs without Apple Events.
-    var permissionCheck: (MediaApp) -> OSStatus = AppleScriptNowPlayingBackend.determinePermission
+    /// Tests replace the permission checks and the script runner, so the permission logic runs without Apple Events.
+    var permissionCheck: (MediaApp) -> OSStatus = { AppleScriptNowPlayingBackend.determinePermission($0, ask: true) }
+    /// The check that never asks (`permission(_:)`).
+    var permissionPeek: (MediaApp) -> OSStatus = { AppleScriptNowPlayingBackend.determinePermission($0, ask: false) }
     var scriptRunner: ((String) -> (NSAppleEventDescriptor?, Int))?
 
-    /// Asks for the Automation permission (the system shows its prompt once; later calls answer from the stored
-    /// decision). Blocks until the user answers, which is why it runs on the worker thread.
-    static func determinePermission(_ app: MediaApp) -> OSStatus {
+    /// The Automation permission. `ask`: macOS may show its prompt (once; later calls answer from the stored
+    /// decision), and the call blocks until the user answers, which is why it runs on the worker thread. Without
+    /// `ask` it never prompts: an undecided permission answers `wouldRequireConsent`.
+    static func determinePermission(_ app: MediaApp, ask: Bool) -> OSStatus {
         let target = NSAppleEventDescriptor(bundleIdentifier: app.bundleIdentifier)
         guard let desc = target.aeDesc else { return OSStatus(procNotFound) }
-        return AEDeterminePermissionToAutomateTarget(desc, typeWildCard, typeWildCard, true)
+        return AEDeterminePermissionToAutomateTarget(desc, typeWildCard, typeWildCard, ask)
+    }
+
+    /// A check's answer as a permission state (nil: the player is not running, or another error).
+    static func permissionState(_ status: Int) -> NowPlayingPermission? {
+        switch status {
+        case 0: return .allowed
+        case notPermitted: return .refused
+        case wouldRequireConsent: return .notDetermined
+        default: return nil
+        }
+    }
+
+    func permission(_ app: MediaApp) -> NowPlayingPermission? {
+        if permitted.contains(app) { return .allowed }
+        return AppleScriptNowPlayingBackend.permissionState(Int(permissionPeek(app)))
     }
 
     /// Whether scripts may be sent to `app`: `noErr` when allowed or not decided yet, else the reason.
@@ -83,7 +108,7 @@ final class AppleScriptNowPlayingBackend: NowPlayingBackend {
     /// for asking. When it answers `wouldRequireConsent` (no prompt was shown) the script is sent anyway: its own
     /// Apple Event makes the system ask. Treating that answer as a refusal would mean the prompt never appears and
     /// NowPlaying never works.
-    private func permission(_ app: MediaApp) -> Int {
+    private func permissionToSend(_ app: MediaApp) -> Int {
         if permitted.contains(app) { return 0 }
         let status = Int(permissionCheck(app))
         switch status {
@@ -131,7 +156,7 @@ final class AppleScriptNowPlayingBackend: NowPlayingBackend {
     }
 
     func status(_ app: MediaApp) -> NowPlayingPoll {
-        switch permission(app) {
+        switch permissionToSend(app) {
         case 0: break
         case Int(procNotFound): return .notRunning
         case AppleScriptNowPlayingBackend.notPermitted: return .denied
@@ -169,7 +194,7 @@ final class AppleScriptNowPlayingBackend: NowPlayingBackend {
 
     func perform(_ command: MediaPlayerCommand, on app: MediaApp) -> Bool {
         guard let source = NowPlayingScripts.command(command, app) else { return false }
-        guard permission(app) == 0 else { return false }
+        guard permissionToSend(app) == 0 else { return false }
         return runChecked(source, app).1 == 0
     }
 
@@ -211,6 +236,8 @@ final class AppleScriptNowPlayingBackend: NowPlayingBackend {
 /// Fixed data for `--render` previews and tests (`DESKSET_NOWPLAYING_DEMO=1`): never talks to a real player.
 final class DemoNowPlayingBackend: NowPlayingBackend {
     var running: Set<MediaApp> = [.music]
+    /// Players that refused Automation (`DESKSET_NOWPLAYING_DEMO=refused`) or have not been asked; others allow it.
+    var permissions: [MediaApp: NowPlayingPermission] = [:]
     var statuses: [MediaApp: NowPlayingStatus] = [
         .music: NowPlayingStatus(state: 1, volume: 70, shuffle: true, repeatMode: .all, position: 83, trackID: "DEMO1",
                                  rating: 80),
@@ -233,7 +260,12 @@ final class DemoNowPlayingBackend: NowPlayingBackend {
     func status(_ app: MediaApp) -> NowPlayingPoll {
         statusPolls += 1
         guard running.contains(app) else { return .notRunning }
+        if permissions[app] == .refused { return .denied }
         return .ok(statuses[app] ?? NowPlayingStatus())
+    }
+
+    func permission(_ app: MediaApp) -> NowPlayingPermission? {
+        running.contains(app) ? permissions[app] ?? .allowed : nil
     }
 
     func track(_ app: MediaApp) -> NowPlayingTrack? { tracks[app] }
@@ -365,8 +397,10 @@ final class NowPlayingCenter {
         set { currentCenter.access { $0 = newValue === shared ? nil : newValue } }
     }
 
-    /// `DESKSET_NOWPLAYING_DEMO=1`: fixed demo data (for `--render` previews), never Apple Events.
-    static let demoMode = ProcessInfo.processInfo.environment["DESKSET_NOWPLAYING_DEMO"] == "1"
+    /// `DESKSET_NOWPLAYING_DEMO=1`: fixed demo data (for `--render` previews), never Apple Events. `=refused`: Music
+    /// runs but refused Automation (the permission state's previews).
+    static let demoSetting = ProcessInfo.processInfo.environment["DESKSET_NOWPLAYING_DEMO"] ?? ""
+    static let demoMode = demoSetting == "1" || demoSetting == "refused"
 
     /// Set before the first skin subscribes (tests), like the other settings below.
     var backend: NowPlayingBackend
@@ -389,6 +423,10 @@ final class NowPlayingCenter {
     private struct Readable {
         var snapshots: [MediaApp: NowPlayingSnapshot] = [:]
         var deniedUntil: [MediaApp: TimeInterval] = [:]
+        /// Each player's Automation permission as last known (kept after it quits), and the players seen running at
+        /// the last poll (`PlayerType=MacPermission`).
+        var permissions: [MediaApp: NowPlayingPermission] = [:]
+        var running: Set<MediaApp> = []
         var lastChoice: [String: MediaApp] = [:]
         /// When a measure last read a snapshot (energy: see `poll`).
         var lastReadAt: TimeInterval = -1e9
@@ -458,8 +496,14 @@ final class NowPlayingCenter {
     }
 
     init(backend: NowPlayingBackend? = nil) {
-        self.backend = backend ?? (NowPlayingCenter.demoMode ? DemoNowPlayingBackend() : AppleScriptNowPlayingBackend())
+        self.backend = backend ?? (NowPlayingCenter.demoMode ? NowPlayingCenter.demoBackend() : AppleScriptNowPlayingBackend())
         if backend != nil || NowPlayingCenter.demoMode { coverLookup = nil }
+    }
+
+    private static func demoBackend() -> DemoNowPlayingBackend {
+        let demo = DemoNowPlayingBackend()
+        if demoSetting == "refused" { demo.permissions[.music] = .refused }
+        return demo
     }
 
     // MARK: Subscriptions
@@ -509,6 +553,22 @@ final class NowPlayingCenter {
     /// thread.
     func isDenied(_ app: MediaApp) -> Bool { readable.access { $0.deniedUntil[app] != nil } }
 
+    /// The Automation permission of `app` as last known (nil: never checked). Any thread.
+    func permission(_ app: MediaApp) -> NowPlayingPermission? { readable.access { $0.permissions[app] } }
+
+    /// Main thread.
+    private func setPermission(_ permission: NowPlayingPermission?, for app: MediaApp) {
+        guard let permission else { return }
+        readable.access { $0.permissions[app] = permission }
+    }
+
+    /// Main thread.
+    private func setRunning(_ running: Bool, _ app: MediaApp) {
+        readable.access { r in
+            if running { r.running.insert(app) } else { r.running.remove(app) }
+        }
+    }
+
     private func startPolling() {
         guard timer == nil else { return }
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.poll() }
@@ -533,15 +593,24 @@ final class NowPlayingCenter {
         guard now - readable.access({ $0.lastReadAt }) < NowPlayingCenter.idleAfter else { return }
         for app in MediaApp.allCases {
             guard backend.isRunning(app) else {
+                setRunning(false, app)
                 snapshots[app] = NowPlayingSnapshot(app: app)
                 coverJobs[app] = nil
                 continue
             }
+            setRunning(true, app)
             if polling.contains(app) { continue }
             if let until = deniedUntil[app], now < until { continue }
             polling.insert(app)
             let backend = self.backend
+            // Until the player is known to allow it, the permission is read first without asking: an undecided one
+            // shows while macOS's prompt (asked by the status poll) waits for the user.
+            let peek = permission(app) != .allowed
             worker.async { [weak self] in
+                if peek {
+                    let permission = backend.permission(app)
+                    MediaUIMainHop.async { self?.setPermission(permission, for: app) }
+                }
                 let result = backend.status(app)
                 MediaUIMainHop.async { self?.apply(result, for: app) }
             }
@@ -561,6 +630,7 @@ final class NowPlayingCenter {
             snapshots[app] = NowPlayingSnapshot(app: app)
             coverJobs[app] = nil
         case .denied:
+            setPermission(.refused, for: app)
             deniedUntil[app] = now + 30
             snapshots[app] = NowPlayingSnapshot(app: app)
             logOnce("Deskset is not allowed to control \(app.displayName); NowPlaying shows nothing for it. "
@@ -568,6 +638,7 @@ final class NowPlayingCenter {
         case .failed(let why):
             logOnce("\(app.displayName) did not answer (\(why)); NowPlaying keeps the last values")
         case .ok(let status):
+            setPermission(.allowed, for: app)
             deniedUntil[app] = nil
             var snap = snapshots[app] ?? NowPlayingSnapshot(app: app)
             let previousID = snap.status.trackID
@@ -838,6 +909,17 @@ final class NowPlayingCenter {
         }
     }
 
+    /// `PlayerType=MacPermission` for a measure preferring `preferred` (see `NowPlayingValues.permission`). A read
+    /// without bookkeeping, like `peek`. Any thread.
+    func permissionValue(preferring preferred: MediaApp?) -> (number: Double, string: String) {
+        readable.access { r in
+            let chosen = NowPlayingCenter.choice(preferring: preferred, in: r).app
+            return NowPlayingValues.permission(preferred: preferred ?? chosen,
+                                               shown: r.snapshots[chosen] ?? NowPlayingSnapshot(app: chosen),
+                                               running: r.running, permissions: r.permissions)
+        }
+    }
+
     private static func choice(preferring preferred: MediaApp?, in r: Readable) -> (key: String, app: MediaApp) {
         let key = preferred?.rawValue ?? "any"
         let first = preferred ?? r.lastChoice[key] ?? .music
@@ -924,6 +1006,7 @@ final class NowPlayingCenter {
     private func refreshRunningState() {
         for app in MediaApp.allCases {
             let running = backend.isRunning(app)
+            setRunning(running, app)
             let known = snapshots[app]?.running ?? false
             guard running != known else { continue }
             var snap = NowPlayingSnapshot(app: app)

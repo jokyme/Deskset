@@ -461,8 +461,14 @@ open class Measure: SkinSection {
         } else if disabled {
             needsOptionRead = true
         }
+        let changed = flag != disabled
         disabled = flag
+        if changed { disabledStateChanged() }
     }
+
+    /// Called when the measure has just been disabled or enabled (a bang, or its `Disabled` option): a measure that
+    /// holds something while it runs can let it go (AudioLevel releases its audio capture).
+    open func disabledStateChanged() {}
 
     /// `!PauseMeasure` / `!UnpauseMeasure`: a paused measure keeps its values.
     func setPaused(_ flag: Bool) {

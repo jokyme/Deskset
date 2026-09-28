@@ -1,13 +1,15 @@
 ; Stationery · Spectrum — the sound, and when the bars rest. Original work, MIT licensed.
 ;
 ; One AudioLevel parent listens to what the Mac plays (Port=Output), from 40 Hz to 16 kHz; its Band children
-; (Bands32.inc, Bands64.inc) are the bars. macOS asks once for System Audio Recording when the widget loads (before
-; macOS 14.2 for Screen Recording, and then Deskset must be quit and reopened), and shows its recording indicator in
-; the menu bar while Spectrum is loaded. Nothing is recorded or saved.
+; (Bands32.inc, Bands64.inc) are the bars. Deskset listens only while another app plays sound, so macOS asks once for
+; System Audio Recording the first time something plays, and shows its recording indicator in the menu bar only while
+; something plays (before macOS 14.2: Screen Recording, asked when the widget loads, then Deskset must be quit and
+; reopened; the indicator shows while Spectrum is loaded). Nothing is recorded or saved.
 ;
 ; MeasureMode: 0 live · 1 rest · 2 System Audio Recording refused · 3 Screen Recording needed (macOS 13 to 14.1).
 ; The widget loads at rest and wakes on the first sound; after 3 s of quiet with nothing playing it rests again. Each
-; skin says what a mode shows in its LiveActions, RestActions, NoticeAudioActions and NoticeScreenActions.
+; skin says what a mode shows in its LiveActions, RestActions, NoticeAudioActions and NoticeScreenActions. A Notice
+; does not move, so it runs at the Rest tempo, even while a player plays.
 ;
 ; The tempo. Until Deskset skips a skin's redraw when nothing changed (E7), a skin that updates 30 times a second is
 ; drawn 30 times a second, even at rest. So the widget keeps its own Tempo (in its own file): Live, updating every
@@ -90,11 +92,20 @@ Group=Audio
 
 ; ---------------------------------------------------------------- a missing permission
 [MeasureDevice]
-; 1 capturing · 0 not (on macOS 13 to 14.1: Screen Recording missing)
+; 1 listening, or waiting for another app to play · 0 not listening (on macOS 13 to 14.1: Screen Recording missing)
 Measure=Plugin
 Plugin=AudioLevel
 Parent=MeasureAudio
 Type=DeviceStatus
+UpdateDivider=#AudioDivider#
+
+[MeasureAudioAccess]
+; Deskset's MacPermission: 1 while a refused permission keeps the sound away (System Audio Recording: Deskset's verdict
+; after about 20 s of silence while an app plays; on macOS 13 to 14.1, Screen Recording), else 0
+Measure=Plugin
+Plugin=AudioLevel
+Parent=MeasureAudio
+Type=MacPermission
 UpdateDivider=#AudioDivider#
 
 [MeasureOS]
@@ -112,17 +123,11 @@ Measure=Calc
 Formula=(MeasureDevice = 0) ? Min(MeasureDeviceOff + 1, 10) : 0
 UpdateDivider=#AudioDivider#
 
-[MeasureSilentPlay]
-; half-seconds of digital silence while Music or Spotify says it plays: until Deskset tells a refused System Audio
-; Recording apart (E27), this is how the widget notices it (it needs Show Track)
-Measure=Calc
-Formula=((MeasureState = 1) && ((MeasureRMSL + MeasureRMSR) = 0) && (MeasureDevice = 1)) ? Min(MeasureSilentPlay + 1, 100) : 0
-UpdateDivider=#AudioDivider#
-
 [MeasureNoticeKind]
-; 0 none · 1 System Audio Recording refused (DeviceStatus 2 once Deskset reports it, E27) · 2 Screen Recording needed
+; 0 none · 1 System Audio Recording refused · 2 Screen Recording needed (macOS 13 to 14.1: refused, or no capture 2 s
+; after load)
 Measure=Calc
-Formula=((MeasureDevice = 2) || (MeasureSilentPlay >= 20)) ? 1 : (((MeasureDeviceOff >= 4) && (#OldCapture# = 1)) ? 2 : 0)
+Formula=(MeasureAudioAccess = 1) ? (1 + #OldCapture#) : (((MeasureDeviceOff >= 4) && (#OldCapture# = 1)) ? 2 : 0)
 DynamicVariables=1
 UpdateDivider=#AudioDivider#
 

@@ -1187,8 +1187,8 @@ extension InspectorWindowController {
     // MARK: Kinds that need the skin
 
     /// The absolute path of an image option's file (ImagePath / MaskImagePath prefix, skin folder); for an SF Symbol,
-    /// its path with the section's MacSymbolSize, MacSymbolWeight and MacSymbolRendering (a mask uses them too), as the
-    /// engine draws it.
+    /// its path with the section's MacSymbolSize, MacSymbolWeight, MacSymbolRendering and MacSymbolColors (a mask uses
+    /// them too), as the engine draws it.
     func imagePath(ctxSection section: String, key: String, resolved: String) -> String? {
         guard let skin else { return nil }
         let owner = skin.section(named: section)

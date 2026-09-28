@@ -53,8 +53,15 @@ struct RenderOptions: Equatable {
     /// `--accent-color R,G,B[,A]`: `#MACACCENTCOLOR#`. Standard: macOS's blue for the appearance.
     var accentColor = Fixed<RGBA>.standard
     /// `--screen WxH`: one screen of that size, its work area the whole screen (`#SCREENAREAWIDTH#`,
-    /// `#WORKAREAHEIGHT#`…). Standard: 1920×1080.
+    /// `#WORKAREAHEIGHT#`…), and the size of a stand-in desktop (`--wallpaper`, `--background`). Standard: 1920×1080
+    /// with `--clock`; without it a 14-inch MacBook Pro's 1512×982 when there is a stand-in desktop, else the Mac's
+    /// screens (`resolvedScreen`).
     var screen = Fixed<ScreenSize>.standard
+    /// `--wallpaper`: a picture that stands in for the desktop picture: Chameleon `Type=Desktop` samples it, and the
+    /// part under the skin is drawn behind it. Without it, `--background` stands in for a desktop of one color.
+    var wallpaper: String?
+    /// `--at X,Y`: the skin window's top-left corner on the screen (points; `#CURRENTCONFIGX#`, `CropDesktop=Skin`).
+    var at = CGPoint.zero
     #if DEBUG
     /// `--legacy` (debug builds only): the skin is measured and drawn by the frozen copy of the renderer
     /// (`LegacySkinRenderer`), the reference the renderer is compared with while its code moves.
@@ -85,6 +92,8 @@ struct RenderOptions: Equatable {
     static let standardLocale = "en_US_POSIX"
     static let standardLanguages = ["en"]
     static let standardScreen = ScreenSize(width: 1920, height: 1080)
+    /// The screen of a stand-in desktop without `--clock`: a 14-inch MacBook Pro's at its default resolution.
+    static let standInScreen = ScreenSize(width: 1512, height: 982)
 
     static let maxUpdates = 100_000
     static let maxInterval = 60_000.0
@@ -96,7 +105,8 @@ struct RenderOptions: Equatable {
         + "[--background R,G,B[,A]] [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] "
         + "[--first-weekday 0-6|system] [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] "
         + "[--seed N] [--data FILE|JSON] [--state out.json] [--color-space device|srgb] [--locale ID|system] "
-        + "[--languages LIST|system] [--accent-color R,G,B[,A]|system] [--screen WxH|system] [--skins-dir DIR]"
+        + "[--languages LIST|system] [--accent-color R,G,B[,A]|system] [--wallpaper FILE] [--at X,Y] "
+        + "[--screen WxH|system] [--skins-dir DIR]"
 
     /// nil when there is no `--render <file>`.
     static func parse(_ arguments: [String]) -> RenderOptions? {
@@ -135,6 +145,27 @@ struct RenderOptions: Equatable {
             if let c = OptionValue.color(raw) { o.background = c } else {
                 o.warnings.append("--background \"\(raw)\" is not a color; using transparent")
             }
+        }
+        if let raw = value("--wallpaper") {
+            o.wallpaper = raw
+        } else if arguments.contains("--wallpaper") {
+            o.warnings.append("--wallpaper needs a picture file")
+        }
+        func pair(_ flag: String, separators: Set<Character>) -> (Double, Double)? {
+            guard let raw = value(flag) else {
+                if arguments.contains(flag) { o.warnings.append("\(flag) needs a value; using the default") }
+                return nil
+            }
+            let parts = raw.split(whereSeparator: { separators.contains($0) })
+                .map { Double($0.trimmingCharacters(in: .whitespaces)) }
+            guard parts.count == 2, let a = parts[0], let b = parts[1], a.isFinite, b.isFinite else {
+                o.warnings.append("--\(flag.dropFirst(2)) \"\(raw)\" is not two numbers; using the default")
+                return nil
+            }
+            return (a, b)
+        }
+        if let (x, y) = pair("--at", separators: [","]) {
+            o.at = CGPoint(x: min(max(x, -100_000), 100_000), y: min(max(y, -100_000), 100_000))
         }
         if arguments.contains("--dark") { o.appearance = .dark }
         if let raw = value("--appearance") {
@@ -241,7 +272,8 @@ struct RenderOptions: Equatable {
         }
         o.accentColor = fixed("--accent-color", expected: "a color or system") { OptionValue.color($0) }
         o.screen = fixed("--screen", expected: "WIDTHxHEIGHT (such as 1920x1080) or system") { text in
-            let parts = text.lowercased().split(separator: "x").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+            let parts = text.lowercased().split(whereSeparator: { $0 == "x" || $0 == "," })
+                .map { Double($0.trimmingCharacters(in: .whitespaces)) }
             guard parts.count == 2, let w = parts[0], let h = parts[1], w.isFinite, h.isFinite, w >= 1, h >= 1,
                   w <= 100_000, h <= 100_000 else { return nil }
             return ScreenSize(width: w, height: h)
@@ -280,17 +312,23 @@ struct RenderOptions: Equatable {
         case .system: f.accent = .mac
         case .standard: f.accent = clock == nil ? .mac : .standard
         }
-        let size: ScreenSize?
-        switch screen {
-        case .given(let s): size = s
-        case .system: size = nil
-        case .standard: size = clock == nil ? nil : RenderOptions.standardScreen
-        }
-        if let size {
+        if let size = resolvedScreen {
             let area = SkinRect(width: size.width, height: size.height)
             f.screens = [SkinScreen(area: area, workArea: area)]
         }
         return f
+    }
+
+    /// The one screen the skin sees (nil: the Mac's screens): the one given; with `standard`, 1920×1080 with `--clock`,
+    /// else 1512×982 when a stand-in desktop is drawn (`--wallpaper`, `--background`), else the Mac's.
+    var resolvedScreen: ScreenSize? {
+        switch screen {
+        case .given(let s): return s
+        case .system: return nil
+        case .standard:
+            if clock != nil { return RenderOptions.standardScreen }
+            return wallpaper != nil || background != nil ? RenderOptions.standInScreen : nil
+        }
     }
 
     /// An IANA time zone name (`Europe/Oslo`), `UTC` / `GMT`, or an abbreviation macOS knows (`CET`).
@@ -339,6 +377,29 @@ struct RenderOptions: Equatable {
         return MacRegionalSettings(clockHours: clockHours, firstWeekday: firstWeekday, temperatureUnit: temperatureUnit)
     }
 
+    /// The screen and desktop picture that stand in for the Mac's: `--wallpaper` (laid as macOS's default, Fill
+    /// Screen), else a desktop of the `--background` color; nil without either (the Mac's own). The screen is the one
+    /// the skin sees (`resolvedScreen`); with `--screen system`, the Mac's primary screen, where the skin's screens
+    /// start.
+    var standInDesktop: ScreenDesktop? {
+        guard wallpaper != nil || background != nil else { return nil }
+        let size = resolvedScreen.map { CGSize(width: $0.width, height: $0.height) }
+            ?? NSScreen.screens.first?.frame.size
+            ?? CGSize(width: RenderOptions.standInScreen.width, height: RenderOptions.standInScreen.height)
+        let area = CGRect(origin: .zero, size: size)
+        if let wallpaper {
+            let path = URL(fileURLWithPath: wallpaper).standardizedFileURL.path
+            return ScreenDesktop(picture: path, frame: area, area: area)
+        }
+        if let background {
+            func channel(_ v: Double) -> Int { v.isFinite ? Int(min(max(v, 0), 255).rounded()) : 0 }
+            return ScreenDesktop(picture: "", frame: area, area: area,
+                                 solid: ChameleonColor(r: channel(background.r), g: channel(background.g),
+                                                       b: channel(background.b)))
+        }
+        return nil
+    }
+
     /// Whole numbers without ".0". Past Int's range (`--updates -1e20`) Swift's own form ("-1e+20"): converting those
     /// to Int would trap.
     private static func raw(_ v: Double) -> String { Int(exactly: v).map(String.init) ?? String(v) }
@@ -350,12 +411,16 @@ struct RenderOptions: Equatable {
 ///            [--scale 2] [--background 30,30,30] [--appearance dark] [--clock-hours 12] [--first-weekday 1]
 ///            [--temperature-unit F] [--clock 2026-12-31T23:59:58+08:00] [--time-zone Asia/Shanghai] [--seed 7]
 ///            [--data data.json] [--state state.json] [--color-space srgb] [--locale en_US] [--languages en]
-///            [--accent-color 0,122,255] [--screen 1920x1080] [--skins-dir path/to/Skins]
+///            [--accent-color 0,122,255] [--wallpaper dunes.heic] [--at 100,80] [--screen 1920x1080]
+///            [--skins-dir path/to/Skins]
 ///
 /// Loads the skin, runs the requested number of updates (`interval` ms apart, 0 = back to back), draws it
 /// off-screen and writes a PNG. Compatibility issues and skin log lines go to stderr. The skin sees the Light
 /// appearance unless `--appearance dark` (or `--dark`) or `--appearance system` says otherwise, and a 24-hour clock,
 /// weeks from Sunday and °C unless `--clock-hours`, `--first-weekday` or `--temperature-unit` say otherwise.
+/// `--wallpaper` stands in for the desktop picture (Chameleon samples it, and the part under the skin window, at
+/// `--at`, is drawn behind the skin); `--background` alone stands in for a desktop of one color. With a stand-in
+/// desktop the skin sees one screen of it, 1512×982 unless `--screen` or `--clock` say otherwise.
 /// `--clock` runs the skin in virtual time from the given moment (a `VirtualTimeExecutor`; its time zone is UTC unless
 /// `--time-zone` says otherwise): update i is at the given time plus i intervals, `!Delay`, ActionTimer and the other
 /// timers run at their own virtual times, and nothing waits in real time. Its background work comes back as ordinary
@@ -415,6 +480,15 @@ enum RenderCommand {
         }
         let output = URL(fileURLWithPath: o.output ?? fileURL.deletingPathExtension().lastPathComponent + ".png")
 
+        if let wallpaper = o.wallpaper, !FileManager.default.fileExists(atPath: wallpaper) {
+            fputs("error: no such file: \(wallpaper)\n", stderr)
+            return 1
+        }
+        // A stand-in desktop: what Chameleon samples, on the screen the skin sees (`environment.screens`).
+        let standIn = o.standInDesktop
+        DesktopInputs.fake.access { $0 = standIn.map { [$0] } }
+        defer { DesktopInputs.fake.access { $0 = nil } }
+
         let (skinsDir, config) = locate(fileURL, skinsDir: o.skinsDirectory)
         // --data: what the skin reads about the Mac.
         var inputs: RenderData?
@@ -440,6 +514,7 @@ enum RenderCommand {
         }
         let host = RenderHost()
         host.fixed = environment
+        host.windowOrigin = o.at
         var skinHost: SkinHost = host
         #if DEBUG
         // --legacy: the frozen renderer measures the skin's text and images too, not only draws it.
@@ -459,6 +534,10 @@ enum RenderCommand {
             // data's (anything else a skin lists or reads — a Downloads folder — is the user's, and is reported).
             virtual.background.allowFixtureReads(under: URL(fileURLWithPath: SkinController.settingsPath))
             for folder in inputs?.folders ?? [] { virtual.background.allowFixtureReads(under: folder) }
+            // --wallpaper: a given picture, read as a fixture like the data's.
+            if let picture = standIn?.picture, !picture.isEmpty {
+                virtual.background.allowFixtureReads(under: URL(fileURLWithPath: picture).deletingLastPathComponent())
+            }
             // The weather service installed above is the preview (no network, place lookups at once): a fake service.
             virtual.background.setFake(.service, for: .weather)
             virtual.background.setFake(.service, for: .sun)
@@ -507,7 +586,7 @@ enum RenderCommand {
         }
         let width = min(max(Int(ceil(skinW * scale)), 1), RenderOptions.maxPixels)
         let height = min(max(Int(ceil(skinH * scale)), 1), RenderOptions.maxPixels)
-        guard let png = draw(skin, width: width, height: height, scale: scale, options: o) else {
+        guard let png = draw(skin, width: width, height: height, scale: scale, options: o, standIn: standIn) else {
             fputs("error: cannot create bitmap \(width)x\(height)\n", stderr)
             return 1
         }
@@ -561,13 +640,27 @@ enum RenderCommand {
 
     /// Draws the skin into a new bitmap of `width` × `height` pixels at `scale` and returns it as PNG: in the device
     /// RGB space (`--color-space device`, the default: the bytes `--render` always wrote), or in 8-bit premultiplied
-    /// sRGB (`--color-space srgb`). nil when the bitmap cannot be made.
-    static func draw(_ skin: Skin, width: Int, height: Int, scale: Double, options o: RenderOptions) -> Data? {
+    /// sRGB (`--color-space srgb`). A stand-in desktop's picture (`--wallpaper`) is drawn behind the skin, the part
+    /// under the skin window at `--at`. nil when the bitmap cannot be made.
+    static func draw(_ skin: Skin, width: Int, height: Int, scale: Double, options o: RenderOptions,
+                     standIn: ScreenDesktop? = nil) -> Data? {
         func paint(_ cg: CGContext) {
             cg.clear(CGRect(x: 0, y: 0, width: width, height: height))
             if let background = o.background {
                 cg.setFillColor(background.cgColor)
                 cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            }
+            // The wallpaper behind the skin, where it sits.
+            if let standIn, !standIn.picture.isEmpty {
+                let dark = skin.host?.environment(for: skin).appearance.isDark ?? false
+                let picture = WallpaperImages.large(file: standIn.picture, dark: dark,
+                                                    maxPixels: Int(max(standIn.area.width, standIn.area.height) * scale))
+                let skinW = skin.width.isFinite ? max(skin.width, 1) : 1
+                let skinH = skin.height.isFinite ? max(skin.height, 1) : 1
+                let window = CGRect(x: o.at.x, y: o.at.y, width: CGFloat(skinW), height: CGFloat(skinH))
+                DesktopSampler.draw(picture, desktop: standIn,
+                                    region: window.offsetBy(dx: -standIn.area.minX, dy: -standIn.area.minY),
+                                    into: cg, size: CGSize(width: width, height: height))
             }
             // Flip to Rainmeter's top-left origin and scale to the requested backing scale.
             cg.translateBy(x: 0, y: CGFloat(height))
@@ -691,6 +784,8 @@ final class RenderHost: SkinHost {
     var logs: [String] = []
     /// What the skin sees instead of the Mac's own (`RenderOptions.environment`); nothing by default.
     var fixed = Fixed()
+    /// Where the skin window's top-left corner is (`--at`).
+    var windowOrigin = CGPoint.zero
 
     /// Parts of the environment a render fixes (nil: the Mac's).
     struct Fixed: Equatable {
@@ -721,7 +816,8 @@ final class RenderHost: SkinHost {
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {
         var env = SkinController.environment(windowFrame: nil)
-        env.windowFrame = SkinRect(width: skin.width, height: skin.height)
+        env.windowFrame = SkinRect(x: Double(windowOrigin.x), y: Double(windowOrigin.y), width: skin.width,
+                                   height: skin.height)
         if let screens = fixed.screens {
             env.screens = screens
             env.currentScreen = 0

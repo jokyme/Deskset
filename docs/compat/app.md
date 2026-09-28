@@ -160,7 +160,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 ### StartHidden
 - Windows (Rainmeter): the skin starts hidden; `!Show` shows it.
 - Mac (Deskset): same (also from `DefaultStartHidden`). A hidden skin keeps updating and running its actions, like one
-  hidden with `!Hide`.
+  hidden with `!Hide`. The Manage window marks it as hidden and can show it (see "A loaded skin that is hidden").
 - Why: —
 - Skin impact: none.
 - Status: identical
@@ -347,6 +347,22 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Skin impact: none.
 - Status: Deskset extension
 
+### A loaded skin that is hidden (Manage window)
+- Windows (Rainmeter): the Manage window lists the active skins with their Coordinates, Position, Load order,
+  Transparency and other settings (https://docs.rainmeter.net/manual/user-interface/manage/); the manual does not
+  describe any sign there that a skin is hidden by `!Hide` or StartHidden. `!Show` shows it again.
+- Mac (Deskset): a loaded skin hidden by a skin action (`!Hide`, `!HideFade`, `!Toggle`, their group forms, a bang
+  from another skin) or by StartHidden is marked: its row has a crossed-out eye, its status reads "Loaded, hidden",
+  and a notice says that it is loaded and running but off the desktop, with a Show button that shows it as
+  `!ShowFade` does (the row's menu has Show too). Typing coordinates for a hidden skin moves it out of sight, and a
+  hint under the coordinates says it is still hidden. The window looks for skins hiding and showing themselves twice a
+  second while it is on screen. Show changes no setting: a skin that hides itself can hide again (the Stationery
+  Spectrum strip with Hide When Idle, the next time it goes quiet), and StartHidden hides it again at its next load.
+- Why: a skin that hid itself (for example while it has nothing to show) looked lost: its window and its menu were
+  gone, and moving it did not bring it back.
+- Skin impact: none.
+- Status: Mac-only UI
+
 ---
 
 ## Config and app bangs
@@ -479,7 +495,8 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Mac (Deskset): the Finder icon of the file or folder (NSWorkspace), rendered at that pixel size and written
   atomically on a background queue. For `.ico` paths up to 256 pixels it is a real Windows icon file (ImageIO's ICO
   encoder); otherwise PNG data is written whatever the extension — the Image meter recognises both from the content.
-  Missing folders on the IconPath are created.
+  Missing folders on the IconPath are created. A symbolic link or Finder alias is followed first, so its icon is the
+  original's, without Finder's arrow (see "Icons of links and aliases" in `plugins.md`).
 - Why: macOS icons come from NSWorkspace; `.ico` is kept so the path the skin expects exists.
 - Skin impact: icons look like Finder icons.
 - Status: emulated
@@ -494,7 +511,7 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
   | Feature | macOS permission | Info.plist key | When refused |
   |---|---|---|---|
-  | AudioLevel `Port=Output`, AppVolume peaks (macOS 14.2+) | Screen & System Audio Recording → System Audio Recording Only | `NSAudioCaptureUsageDescription` | levels read 0 |
+  | AudioLevel `Port=Output`, AppVolume peaks (macOS 14.2+) | Screen & System Audio Recording → System Audio Recording Only (AudioLevel: asked the first time another app plays sound while the skin is loaded) | `NSAudioCaptureUsageDescription` | levels read 0; AudioLevel `MacPermission` 1 once the silence watchdog suspects it |
   | AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording (then restart Deskset) | — | levels read 0 |
   | AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | levels read 0 (tried again every 10 s) |
   | NowPlaying / iTunes / WebNowPlaying, RecycleManager Empty, FileView Properties | Automation (Music, Spotify, Finder) | `NSAppleEventsUsageDescription` | player shown as closed; Trash / Get Info do nothing |
@@ -515,8 +532,9 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): besides the log line, the skin gets a compatibility note when: the microphone is refused (Port=Input);
   on macOS 13 – 14.1 Screen Recording is missing; a system-audio stream carried nothing but digital silence over two
-  looks 10 seconds apart while another app was playing sound (the usual sign of a refused System Audio Recording
-  permission, which macOS reports as silence); Location Services are off for a WiFiStatus SSID / LIST measure or a
+  looks 10 seconds apart while the same app was playing sound, and no system-audio stream had carried sound since
+  Deskset started (the usual sign of a refused System Audio Recording permission, which macOS reports as silence;
+  AudioLevel's `MacPermission` then reads 1); Location Services are off for a WiFiStatus SSID / LIST measure or a
   MacWeather / MacSun `Location=auto` measure (the weather note is taken back at the measure's next update once they
   are allowed); Deskset
   may not control Music or Spotify; a MediaKey track key is sent without Accessibility (it reaches only Music and
@@ -545,10 +563,17 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--skins-dir DIR]` loads the
-  skin without a window, runs N updates
-  (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given
-  background and prints compatibility notes and skin log lines. The skin sees the Light appearance (the appearance
+  [--temperature-unit C|F|system] [--clock ISO8601|UNIX] [--time-zone ID] [--seed N] [--wallpaper FILE] [--at X,Y]
+  [--screen WxH|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2, 1 000 ms apart),
+  draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given background and prints
+  compatibility notes and skin log lines. `--wallpaper` names a picture that stands in for the desktop picture, on a
+  screen of `--screen` points (default 1512 × 982, a 14-inch MacBook Pro's; 1920 × 1080 with `--clock`) laid as macOS
+  lays it by default (Fill Screen): Chameleon `Type=Desktop` samples it (a dynamic picture's light or dark one, as the
+  appearance is), and the part under the skin is drawn behind it. `--at` puts the skin window's top-left corner there
+  (default 0,0; `#CURRENTCONFIGX#`, `CropDesktop=Skin`). Without `--wallpaper`, `--background` stands in for a desktop
+  of that one color, so a frameless skin picks the ink the image shows; with neither, Chameleon reads the Mac's own
+  wallpaper. With a stand-in desktop the skin sees that one screen (`#SCREENAREAWIDTH#`…); in virtual time the
+  wallpaper is read as a fixture. The skin sees the Light appearance (the appearance
   variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
   24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
   plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`
@@ -566,9 +591,27 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   to that ignored `!SetTransparency`), mouse actions never run, the Skins folder is the nearest ancestor named `Skins`
   (or `--skins-dir`). Nothing asks for a permission: nothing is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
-  track), Location and Automation are never used. Fonts in `@Resources/Fonts`, FileView icons and the
+  track; `DESKSET_NOWPLAYING_DEMO=refused` a running Music that refused Automation), Location and Automation are never
+  used. Fonts in `@Resources/Fonts`, FileView icons and the
   Registry `Wallpaper` value work as in the app.
 - Why: repeatable screenshots without prompts or a visible screen.
+- Skin impact: none (developer tool).
+- Status: Deskset extension
+
+### `--benchmark` (what a skin costs)
+- Windows (Rainmeter): n/a.
+- Mac (Deskset): `Deskset --benchmark Skin.ini… [--seconds N] [--warmup N] [--scale S] [--appearance light|dark]
+  [--skins-dir DIR]` runs each skin without a window, one after another, from a temporary copy of its Skins folder: it
+  updates at its own `Update` rate on the skin's clock, as in a skin window, and every update draws the window's
+  picture as a skin window does (kept pictures of the meters that did not change included). After `--warmup` seconds
+  (default 2) it measures for `--seconds` (default 10) and prints the updates, the time of an update and of a
+  drawing, the pictures copied, made and the meters drawn per drawing, and the CPU time of the main thread and of the
+  whole process per second, in percent of one core. What Core Animation and the window server do with the picture
+  afterwards is not included. As with `--render`, nothing asks for a permission and no audio is captured:
+  `DESKSET_AUDIO_DEMO=1` plays the demo signal into visualizers (its generator runs in the process, about 0.3 % of a
+  core), `DESKSET_NOWPLAYING_DEMO=1` fakes a playing track. Window, config and app bangs are ignored, so a skin that
+  switches its own tempo with `!Refresh` stays in the tempo it loads in.
+- Why: comparing a skin's cost before and after a change without opening windows on the screen.
 - Skin impact: none (developer tool).
 - Status: Deskset extension
 
@@ -602,11 +645,13 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 
 ### Command-line flags
 - Windows (Rainmeter): n/a.
-- Mac (Deskset): the binary's development modes are `--render`, `--self-test [filter]`, `--snapshot-ui`,
-  `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`; `--help` / `-h` prints them (exit status
-  0). An argument starting with `--` that is none of these flags or their options (`--out`, `--updates`, `--interval`,
-  `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`, `--clock-hours`, `--first-weekday`,
-  `--temperature-unit`, `--clock`, `--time-zone`, `--seed`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`), or such an
+- Mac (Deskset): the binary's development modes are `--render`, `--verify-drawing-cache`, `--benchmark`,
+  `--self-test [filter]`, `--snapshot-ui`, `--system-report`, `--weather-report`, `--cover-lookup` and `--make-icon`;
+  `--help` / `-h` prints them (exit status 0). An argument starting with `--` that is none of these flags or their
+  options (`--out`, `--updates`, `--interval`, `--scale`, `--background`, `--skins-dir`, `--dark`, `--appearance`,
+  `--clock-hours`, `--first-weekday`, `--temperature-unit`, `--clock`, `--time-zone`, `--seed`, `--wallpaper`, `--at`,
+  `--screen`, `--select`, `--size`, `--zoom`, `--location`, `--units`, `--offline`, `--now`, `--seconds`, `--warmup`),
+  or such an
   option without a mode, prints the usage to
   stderr and exits with status 2. Other arguments are left alone, so Finder / LaunchServices launches (`-psn_…`) and
   AppKit defaults (`-NSDocumentRevisionsDebugMode YES`) still start the app. (`--plist` belongs to

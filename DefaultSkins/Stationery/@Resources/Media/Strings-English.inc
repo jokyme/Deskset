@@ -29,15 +29,16 @@ NowPlayingPause=Pause
 NowPlayingPrevious=Previous Track
 NowPlayingNext=Next Track
 NowPlayingAllowAccess=Allow Access
-NowPlayingAllowBody=Deskset needs permission to read what [MeasurePlayerName] is playing.
+; access refused (Media/Permission.inc): the whole family's Notice, and its sentence (NowPlayingTip3)
+NowPlayingAllowBody=Deskset needs permission to read what [MeasureAccessPlayer] is playing.
 NowPlayingMenuBackgroundGlass=Background: Glass
 NowPlayingMenuBackgroundArtwork=Background: Artwork
 ; the card's sentence, by what the card shows: 0 not playing, 1 playing, 2 paused, 3 access refused, 4 loading,
 ; 5 a live stream. [MeasureTipArtist] is "Erik Satie, Gymnopédies. " (or nothing)
-NowPlayingTip0=Deskset shows what Music or Spotify is playing. Other apps, such as web browsers, can’t be shown. If [MeasurePlayerName] is playing, allow Deskset in System Settings › Privacy & Security › Automation.
+NowPlayingTip0=Deskset shows what Music or Spotify is playing. Other apps, such as web browsers, can’t be shown.
 NowPlayingTip1=[MeasureTipArtist][MeasurePosition] of [MeasureDuration]. [MeasurePlayerName] volume [MeasureVolume:0]%.
 NowPlayingTip2=[MeasureTipArtist]Paused at [MeasurePosition] of [MeasureDuration]. [MeasurePlayerName] volume [MeasureVolume:0]%.
-NowPlayingTip3=Deskset needs permission to read what [MeasurePlayerName] is playing. Allow it in System Settings › Privacy & Security › Automation.
+NowPlayingTip3=Deskset needs permission to read what [MeasureAccessPlayer] is playing. Allow it in System Settings › Privacy & Security › Automation.
 NowPlayingTip4=Deskset shows what Music or Spotify is playing.
 NowPlayingTip5=[MeasureTipArtistOnly]Live. [MeasurePlayerName] volume [MeasureVolume:0]%.
 ; the bar's tooltip (Medium): "1:21 of 3:13. Click to jump there."

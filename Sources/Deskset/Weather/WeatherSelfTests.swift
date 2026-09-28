@@ -392,6 +392,39 @@ enum WeatherSelfTests {
             _ = host
             skin.close()
         }
+
+        t.suite("App: Weather: SymbolPalette has one color for each layer macOS draws") {
+            // Drawn with three distinct colors, a weather symbol shows exactly as many of them as SymbolPalette gives
+            // colors (the roles in WeatherSymbols.paletteRoles, measured on macOS); a new macOS that splits or merges
+            // the layers of a symbol fails here.
+            let red = RGBA(r: 255, g: 0, b: 0), green = RGBA(r: 0, g: 255, b: 0), blue = RGBA(r: 0, g: 0, b: 255)
+            var names = Set(WeatherCondition.all.flatMap { [$0.daySymbol, $0.nightSymbol] })
+            names.insert("cloud.fill")
+            names.formUnion(names.map { String($0.dropLast(5)) })
+            for name in names.sorted() {
+                let symbol = MacSymbol(name: name, style: MacSymbol.Style(pointSize: 40, rendering: .palette,
+                                                                            colors: [red, green, blue]), density: 2)
+                guard let image = Images.cgImage(atPath: symbol.path) else {
+                    t.check(false, "\(name) renders")
+                    continue
+                }
+                let rep = NSBitmapImageRep(cgImage: image)
+                var counts = [0, 0, 0], opaque = 0
+                for y in 0..<rep.pixelsHigh {
+                    for x in 0..<rep.pixelsWide {
+                        guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), c.alphaComponent > 0.9 else { continue }
+                        opaque += 1
+                        let r = c.redComponent, g = c.greenComponent, b = c.blueComponent
+                        if r > 0.8 && g < 0.2 && b < 0.2 { counts[0] += 1 }
+                        if g > 0.8 && r < 0.2 && b < 0.2 { counts[1] += 1 }
+                        if b > 0.8 && r < 0.2 && g < 0.2 { counts[2] += 1 }
+                    }
+                }
+                let layers = counts.map { opaque > 0 && Double($0) / Double(opaque) > 0.02 }
+                let expected = WeatherSymbols.paletteRoles(name).count
+                t.equal(layers, (0..<3).map { $0 < expected }, "\(name): \(counts) of \(opaque)")
+            }
+        }
     }
 
     // MARK: Threads
@@ -444,7 +477,7 @@ enum WeatherSelfTests {
             t.equal(CommandLineTools.validate(["P", "--weather-report", "--location", "Bergen", "--units", "metric"]), V.mode)
             t.equal(CommandLineTools.validate(["P", "--weather-report", "--offline", "a.json", "--now", "x"]), V.mode)
             t.equal(CommandLineTools.validate(["P", "--location", "Oslo"]),
-                    V.invalid("--location needs one of --render, --snapshot-ui, --weather-report"))
+                    V.invalid("--location needs one of --render, --snapshot-ui, --weather-report, --benchmark"))
             guard let fixtures, let binary = Bundle.main.executableURL else { return }
             func run(_ args: [String], environment: [String: String] = [:]) -> (status: Int32, out: String, err: String) {
                 let p = Process()

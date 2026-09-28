@@ -10,8 +10,9 @@ import DesksetCore
 /// - `FirstRun.ini` in it, when there is one, says which skins a new user's desktop starts with, and where;
 /// - `Stationery.inc` in the settings folder holds what people type into the Stationery widgets.
 enum DefaultSkins {
-    /// Bump when the bundled skins change so they are copied again.
-    static let version = 3
+    /// Bump when the bundled skins change so they are copied again. 3: the Stationery suite replaced the 0.1 examples;
+    /// 4: Stationery's player and audio permission states, palette symbols and the strip staying on screen.
+    static let version = 4
 
     /// The first-run layout's file, next to the root configs.
     static let firstRunFileName = "FirstRun.ini"
