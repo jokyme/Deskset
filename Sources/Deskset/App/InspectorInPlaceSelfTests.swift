@@ -89,6 +89,11 @@ enum InspectorInPlaceSelfTests {
 
     /// Makes a step and checks that the inspector followed it in place (not built again).
     static func step(_ t: AppTestRunner, _ editor: InspectorWindowController, _ what: String, _ make: () -> Void) {
+        // A time format's choices show the time now: the step and the page made again are not a minute apart.
+        let deadline = Date().addingTimeInterval(5)
+        while Calendar.current.component(.second, from: Date()) >= 58, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        }
         let updates = editor.inPlace.updates, rebuilds = editor.inspectorRebuildCount
         make()
         t.check(editor.inPlace.updates > updates && editor.inspectorRebuildCount == rebuilds,
