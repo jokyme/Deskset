@@ -180,7 +180,7 @@ extension InspectorWindowController {
             for slot in state.slots { if let shown = slot.describe() { slot.shown = shown } }
         }
         state.claims = Set(state.slots.flatMap(\.claims))
-        if InspectorInPlace.debugs, ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_DEBUG"] != nil {
+        if InspectorInPlace.printsDebug {
             FileHandle.standardError.write(Data("Studio in place: built \(state.page) with slots \(state.slots.map { $0.claims.joined(separator: "+") })\n".utf8))
         }
         let inputs = inspectorInputParts()
@@ -682,9 +682,7 @@ extension InspectorWindowController {
                     text += " order at #\(i): \(built.structure[i]) / \(now.structure[i])"
                 }
                 Log.write(text, level: .debug, source: config)
-                if ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_DEBUG"] != nil {
-                    FileHandle.standardError.write(Data((text + "\n").utf8))
-                }
+                if InspectorInPlace.printsDebug { FileHandle.standardError.write(Data((text + "\n").utf8)) }
             }
             return false
         }
@@ -810,7 +808,7 @@ extension InspectorWindowController {
                     state.lastFallback = "a slot of \(slot.claims.joined(separator: ",")) cannot tell"
                     return false
                 }
-                if ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_TRACE"].map({ slot.claims.contains($0) }) == true {
+                if let trace = InspectorInPlace.trace, slot.claims.contains(trace) {
                     FileHandle.standardError.write(Data("Studio in place: trace \(slot.claims) \(slot.shown) → \(shown) control \(slot.control.map { "\(type(of: $0)) in grid \($0.superview is NSGridView) window \($0.window != nil)" } ?? "nil")\n".utf8))
                 }
                 if shown == slot.shown {
@@ -838,7 +836,7 @@ extension InspectorWindowController {
             state.lastFallback = "focus moving"
             return false
         }
-        if InspectorInPlace.debugs, ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_DEBUG"] != nil {
+        if InspectorInPlace.printsDebug {
             let text = plan.map { "\($0.2) \($0.0.claims.joined(separator: ",")): \($0.0.shown.shape.debugDescription)→\($0.1.shape.debugDescription) \($0.0.shown.value.debugDescription)→\($0.1.value.debugDescription)" }
             FileHandle.standardError.write(Data("Studio in place: \(text.joined(separator: " | "))\n".utf8))
         }
@@ -969,9 +967,11 @@ extension InspectorWindowController {
 
 extension InspectorInPlace {
     /// Logs why a refresh built the page again (`defaults write app.deskset.Deskset StudioInPlaceDebug -bool YES`).
-    static var debugs: Bool {
-        UserDefaults.standard.bool(forKey: "StudioInPlaceDebug") || ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_DEBUG"] != nil
-    }
+    static var debugs: Bool { UserDefaults.standard.bool(forKey: "StudioInPlaceDebug") || printsDebug }
+    /// Why and how each update followed, on standard error (`DESKSET_IN_PLACE_DEBUG`, self-tests).
+    static let printsDebug = ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_DEBUG"] != nil
+    /// A row id whose slot is traced on standard error at every update (`DESKSET_IN_PLACE_TRACE`).
+    static let trace = ProcessInfo.processInfo.environment["DESKSET_IN_PLACE_TRACE"]
 }
 
 // MARK: - Checking
