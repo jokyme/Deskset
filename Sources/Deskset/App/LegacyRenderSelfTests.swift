@@ -115,7 +115,7 @@ enum LegacyRenderSelfTests {
             let program = ["/Applications/Deskset.app/Contents/MacOS/Deskset"]
             t.equal(CommandLineTools.validate(program + ["--render", "a.ini", "--legacy"]), V.mode)
             t.equal(CommandLineTools.validate(program + ["--legacy"]),
-                    V.invalid("--legacy needs one of --render, --snapshot-ui, --weather-report"))
+                    V.invalid("--legacy needs one of --render, --snapshot-ui, --weather-report, --benchmark"))
             t.check(RenderOptions.parse(["Deskset", "--render", "a.ini", "--legacy"])?.legacy == true)
             t.check(RenderOptions.parse(["Deskset", "--render", "a.ini"])?.legacy == false)
             t.check(!CommandLineTools.usage.contains("--legacy"), "a development flag, not in the usage")
