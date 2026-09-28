@@ -209,6 +209,7 @@ final class EditingSession {
         takeOwnWrites(since: stamps)
         if let seed { skin.seedGraphs(from: seed) }
         studioSkin = skin
+        studioSources.waiting = nil
         startUpdates(skin)
         old?.close()
         watcher.watch(skin.sourceFiles)

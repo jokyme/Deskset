@@ -404,7 +404,7 @@ enum CodeFollowingSelfTests {
             t.equal(StudioReviewSelfTests.read(url), typedIni)
         }
 
-        t.suite("App: code editor shows a typed layer by loading the Studio's instance again, and drops it when discarded") {
+        t.suite("App: code editor shows a typed layer once it is saved, loading the Studio's instance once, not at every pause") {
             guard let (_, editor, url) = try StudioReviewSelfTests.openSkin(t, "CodeTypedLayer", typedIni) else { return }
             defer { editor.window?.close() }
             guard let session = editor.session else { return t.check(false, "a session") }
@@ -413,25 +413,57 @@ enum CodeFollowingSelfTests {
             let code = editor.codeView
             let instance = editor.skin
             editor.window?.makeFirstResponder(code.textView)
-            let end = (code.text as NSString).length
-            code.textView.setSelectedRange(NSRange(location: end, length: 0))
-            code.textView.insertText("\n[MeterTyped]\nMeter=String\nText=Typed\nY=30\n", replacementRange: code.textView.selectedRange())
+            func typeAtEnd(_ text: String) {
+                let end = (code.text as NSString).length
+                code.textView.setSelectedRange(NSRange(location: end, length: 0))
+                code.textView.insertText(text, replacementRange: code.textView.selectedRange())
+            }
+            // Half a layer, then the rest, with pauses: the instance cannot take either as a patch, and waits.
+            typeAtEnd("\n[MeterTyped]\n")
             t.check(code.fireTypedText(), "the pause")
-            t.check(editor.skin !== instance, "a layer added: the Studio's instance loaded again")
-            t.check(editor.skin?.meter(named: "MeterTyped") != nil, "it shows the typed layer")
-            t.check(editor.allItems.contains { $0.title == "MeterTyped" }, "the layers list it")
+            t.check(editor.skin === instance, "a layer typed: the Studio's instance does not load at the pause")
+            t.check(editor.typedCodeWaits != nil, "it waits for the code to be saved")
+            t.check(!editor.statusCapsule.isHidden, "and the capsule over the canvas says so")
+            t.equal(editor.statusCapsule.text, InspectorWindowController.typedCodeWaitsText)
+            typeAtEnd("Meter=String\nText=Typed\nY=30\n")
+            t.check(code.fireTypedText(), "another pause")
+            t.check(editor.skin === instance, "still no load")
+            t.check(editor.skin?.meter(named: "MeterTyped") == nil, "the typed layer is not shown yet")
             t.check(editor.window?.firstResponder === code.textView, "the code keeps the keyboard focus")
             t.equal(StudioReviewSelfTests.read(url), typedIni, "nothing written")
             t.equal(session.buffers.buffer(url)?.text, typedIni)
             t.check(!session.undoStack.canUndo, "no step")
-            let shown = editor.skin
+
+            // Discarded: nothing to wait for, and nothing loaded.
             code.discardUncommittedChanges()
             settle()
-            t.check(editor.skin?.meter(named: "MeterTyped") == nil, "discarded: the layer is gone")
-            t.check(editor.skin !== shown, "loaded again")
+            t.check(editor.typedCodeWaits == nil, "discarded: nothing waits")
+            t.check(editor.statusCapsule.isHidden, "the capsule goes")
+            t.check(editor.skin === instance, "and the instance never loaded")
             t.check(session.studioSources.typed.isEmpty)
             t.equal(code.text, typedIni)
             t.check(!session.undoStack.canUndo, "still no step")
+
+            // Typed again and saved: one load, at the commit.
+            typeAtEnd("\n[MeterTyped]\nMeter=String\nText=Typed\nY=30\n")
+            t.check(code.fireTypedText(), "the pause")
+            t.check(editor.skin === instance && editor.typedCodeWaits != nil, "waiting")
+            // Closed (×): it stays closed while the same code waits.
+            editor.statusCapsule.closeButton.performClick(nil)
+            t.check(editor.statusCapsule.isHidden, "closed")
+            editor.updateCanvasOverlays()
+            t.check(editor.statusCapsule.isHidden, "and stays closed")
+            t.check(code.fireIdleCommit(), "committed after the longer pause")
+            settle()
+            t.check(editor.skin !== instance, "the commit loads the Studio's instance")
+            t.check(editor.skin?.meter(named: "MeterTyped") != nil, "which shows the typed layer")
+            t.check(editor.allItems.contains { $0.title == "MeterTyped" }, "the layers list it")
+            t.check(editor.typedCodeWaits == nil && editor.statusCapsule.isHidden, "nothing waits")
+            t.equal(session.undoStack.undoActionName, "Edit Code")
+            editor.window?.undoManager?.undo()
+            settle()
+            t.check(editor.skin?.meter(named: "MeterTyped") == nil, "undone")
+            t.equal(StudioReviewSelfTests.read(url), typedIni)
 
             // Code that does not load keeps the instance as it was.
             let before = editor.skin
