@@ -10,7 +10,7 @@ extension EditorSchema {
     /// data itself).
     public static let weatherTypes: [Choice] = [
         Choice("Temperature", "Temperature"), Choice("FeelsLike", "Feels like"), Choice("Condition", "Condition"),
-        Choice("Symbol", "Weather icon (SF Symbol)"), Choice("SymbolPalette", "Weather icon colors (for Palette)"),
+        Choice("Symbol", "Weather icon (SF Symbol)"), Choice("SymbolPalette", "Weather icon colors"),
         Choice("SymbolCode", "Weather code (MET Norway)"),
         Choice("Humidity", "Humidity"), Choice("DewPoint", "Dew point"), Choice("Pressure", "Air pressure"),
         Choice("CloudCover", "Cloud cover"), Choice("Fog", "Fog"), Choice("UVIndex", "UV index"),
@@ -37,13 +37,13 @@ extension EditorSchema {
 
     /// Types that take `Hour=` / `Day=` (as the plugin reads them).
     static let weatherHourlyTypes = ["Temperature", "FeelsLike", "DewPoint", "Condition", "Symbol", "SymbolCode",
-                                     "SymbolPalette", "IsDaylight", "Humidity", "Pressure", "CloudCover", "Fog", "UVIndex", "WindSpeed",
-                                     "WindGust", "WindDirection", "WindCardinal", "Beaufort", "Precipitation",
-                                     "PrecipitationChance", "ThunderChance", "TemperatureColor", "Time"]
+                                     "SymbolPalette", "IsDaylight", "Humidity", "Pressure", "CloudCover", "Fog",
+                                     "UVIndex", "WindSpeed", "WindGust", "WindDirection", "WindCardinal", "Beaufort",
+                                     "Precipitation", "PrecipitationChance", "ThunderChance", "TemperatureColor", "Time"]
     static let weatherDailyTypes = ["High", "Low", "Condition", "Symbol", "SymbolCode", "SymbolPalette", "UVIndex",
-                                    "WindSpeed",
-                                    "WindGust", "Beaufort", "Precipitation", "PrecipitationChance", "ThunderChance",
-                                    "TemperatureColor", "Time", "Sunrise", "Sunset", "SolarNoon", "DayLength"]
+                                    "WindSpeed", "WindGust", "Beaufort", "Precipitation", "PrecipitationChance",
+                                    "ThunderChance", "TemperatureColor", "Time", "Sunrise", "Sunset", "SolarNoon",
+                                    "DayLength"]
     static let weatherTimeTypes = ["Time", "Sunrise", "Sunset", "SolarNoon", "UpdatedAt", "ForecastTime", "Status"]
 
     /// `Type=` of a MacSun measure.

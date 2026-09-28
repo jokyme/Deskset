@@ -754,9 +754,16 @@ private func runWeatherEditorTests(_ t: TestRunner) {
                     "precipitationunit", "pressureunit", "format", "timezone", "formatlocale", "decimals",
                     "unavailabletext", "symbolstyle", "hours", "curvewidth", "curveheight", "smooth", "colorof",
                     "finishaction", "onconnecterroraction", "onlocationerroraction", "noeventtext",
-                    "daylightsavingtime"] {
+                    "daylightsavingtime", "paletteink", "palettesun", "paletterain", "scalecolor"] {
             t.check(keys.contains(key), "MacWeather \(key)")
         }
+        t.equal(S.weatherDataName(plugin: "macweather", type: "SymbolPalette", hour: nil, day: 1).name,
+                "Tomorrow's weather icon colors")
+        t.equal(S.weatherDataName(plugin: "macweather", type: "symbolpalette", hour: 3, day: nil).name,
+                S.weatherDataName(plugin: "macweather", type: "Symbol", hour: 3, day: nil).name
+                    .replacingOccurrences(of: "Weather icon", with: "Weather icon colors"))
+        t.equal(S.property("PaletteSun", in: weather)?.defaultValue, "255,214,0")
+        t.equal(S.property("PaletteInk", in: weather)?.kind, .color)
         t.equal(S.property("Type", in: weather)?.kind.choices?.count, MacWeatherMeasure.ValueType.allCases.count,
                 "every Type is in the menu")
         for type in MacWeatherMeasure.ValueType.allCases {
