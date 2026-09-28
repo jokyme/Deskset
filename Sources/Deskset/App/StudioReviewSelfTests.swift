@@ -689,9 +689,15 @@ enum StudioReviewSelfTests {
             editor.saveSkinCode(nil)
             t.check(read(ini).contains("; note\n[VarText]"))
             t.equal(editor.inspectorRebuildCount, count, "typing in another section does not rebuild the inspector")
-            // A change of the selected layer does.
+            // A value the page shows follows in place (InspectorInPlace): its field takes it, nothing is rebuilt.
+            let x = editor.inspectorStack.findSubview { $0.identifier?.rawValue == "Text/X" } as? ValueField
+            editor.writeProperty(section: "Text", key: "X", value: "14", variable: nil, label: "X")
+            t.equal(editor.inspectorRebuildCount, count, "a value it shows follows in place")
+            t.check(x != nil && editor.inspectorStack.findSubview { $0.identifier?.rawValue == "Text/X" } === x, "the same field")
+            t.equal(x?.stringValue, "14", "showing the new value")
+            // A change of what the page is made of builds it again: a setting under More set (its dot, "· 1 in use").
             editor.writeProperty(section: "Text", key: "Prefix", value: "»", variable: nil, label: "Prefix")
-            t.equal(editor.inspectorRebuildCount, count + 1, "a change of what it shows rebuilds it")
+            t.equal(editor.inspectorRebuildCount, count + 1, "a change of what it is made of rebuilds it")
             count = editor.inspectorRebuildCount
 
             // Values the running skin sets (!SetOption, often on every update) update in place: the Studio's instance,
