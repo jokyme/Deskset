@@ -199,6 +199,19 @@ public final class LiveSideEffects: SideEffects {
     }
 }
 
+// MARK: - Reading back
+
+extension Skin {
+    /// The path to read a file the skin names: its copy when the skin's writes go to a recording's sandbox and the skin
+    /// wrote (or removed) that file there — a RunCommand `OutputFile` parsed by WebParser, a `DownloadFile` shown by an
+    /// Image meter, a file a script wrote — so that a sandboxed instance reads what it wrote, as the live one does;
+    /// else `path` itself. Take it on the skin's thread (background reads take the result along).
+    public func readablePath(_ path: String) -> String {
+        guard let sandbox = sideEffects.fileSandbox, !path.isEmpty else { return path }
+        return sandbox.path(for: path, access: .read)
+    }
+}
+
 // MARK: - Helper programs
 
 /// Helper programs of the plugins (`open`, `osascript`), started off the main thread; nothing waits for them. Skins

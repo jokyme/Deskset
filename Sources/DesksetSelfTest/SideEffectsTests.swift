@@ -220,6 +220,7 @@ private func everyExit(_ t: TestRunner) throws {
     t.check(spinUntil {
         (skin.measure(named: "MeasureDownload") as? WebParserMeasure)?.isDownloading == false
             && (skin.measure(named: "MeasurePage") as? WebParserMeasure)?.isFetching == false
+            && skin.measure(named: "MeasureOut")?.stringValue.isEmpty == false
     }, "WebParser finished")
     t.check(spinUntil {
         skin.measure(named: "MeasureIcon")?.stringValue.isEmpty == false
@@ -267,6 +268,11 @@ private func everyExit(_ t: TestRunner) throws {
 
     // The skin went on as it would, on the copies.
     t.equal(skin.measure(named: "MeasureRun")?.stringValue, "output of echo hello\n", "the program's given output")
+    t.equal(skin.measure(named: "MeasureOut")?.stringValue, "output of echo hello\n",
+            "WebParser reads the OutputFile the program wrote, from the copy")
+    t.equal(skin.imageFilePath("DownloadFile\\copy.html", imagePath: ""),
+            recording.files.copy(of: dir + "/DownloadFile/copy.html"), "an image path finds the copy of a download")
+    t.equal(skin.imageFilePath("page.html", imagePath: ""), dir + "/page.html", "and a file it did not write itself")
     let out = recording.files.copy(of: dir + "/out.txt")
     t.equal(out.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }, "output of echo hello\n",
             "OutputFile is in the copy")

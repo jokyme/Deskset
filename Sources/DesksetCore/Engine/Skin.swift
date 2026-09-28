@@ -1430,6 +1430,8 @@ public final class Skin {
     /// meter, and every image option that refers to it): "If no file extension is included, .png is assumed" — `.png`
     /// is appended when the file name has no extension and no file of exactly that name exists (a name ending in
     /// `/` or `\` is left alone).
+    ///
+    /// A skin whose writes go to a recording's sandbox sees the copies of the files it wrote there (`readablePath`).
     public func imageFilePath(_ name: String, imagePath: String) -> String {
         let trimmedPath = imagePath.trimmingCharacters(in: .whitespaces)
         let path: String
@@ -1440,14 +1442,15 @@ public final class Skin {
             path = absolutePath(name, relativeTo: base)
         }
         let written = name.trimmingCharacters(in: .whitespaces)
-        guard !written.isEmpty, !written.hasSuffix("/"), !written.hasSuffix("\\") else { return path }
+        guard !written.isEmpty, !written.hasSuffix("/"), !written.hasSuffix("\\") else { return readablePath(path) }
         let last = (path as NSString).lastPathComponent
-        guard !last.isEmpty, last != "/", (last as NSString).pathExtension.isEmpty else { return path }
+        guard !last.isEmpty, last != "/", (last as NSString).pathExtension.isEmpty else { return readablePath(path) }
         var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
-            return path
+        let readable = readablePath(path)
+        if FileManager.default.fileExists(atPath: readable, isDirectory: &isDirectory), !isDirectory.boolValue {
+            return readable
         }
-        return path + ".png"
+        return readablePath(path + ".png")
     }
 
     // MARK: Actions & bangs

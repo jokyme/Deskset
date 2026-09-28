@@ -81,8 +81,10 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
         guard !closed else { return }
         loadingKey = k
         let path = self.path, separator = self.separator, subfolders = self.subfolders, filter = self.filter
+        // A file the skin wrote to a recording's sandbox is read from its copy.
+        let readPath = skin.readablePath(path)
         let job = BackgroundJob(.quote, subject: path, on: PluginIO.queue, fixture: true) {
-            QuoteMeasure.readItems(path: path, separator: separator, subfolders: subfolders, filter: filter)
+            QuoteMeasure.readItems(path: readPath, separator: separator, subfolders: subfolders, filter: filter)
         }
         skin.startBackground(job) { [weak self] result in
             guard let self, !self.closed, self.loadingKey == k else { return }
@@ -271,13 +273,17 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         // What the scan cost, in real time (the pause after it grows with it); the next scan is due on the skin's clock,
         // counted from when the result reaches the skin. A fixture scan in virtual time costs nothing: no real time
         // goes into a virtual run.
+        // A folder the skin removed or renamed in a recording's sandbox reads as it is there (the copies of files it
+        // wrote are kept apart from the folders they belong to, so a scan does not count them).
+        var scanned = o
+        scanned.path = skin.readablePath(o.path)
         let job = BackgroundJob(.folderInfo, subject: o.path, start: { deliver in
             PluginIO.queue.async {
                 let started = ProcessInfo.processInfo.systemUptime
-                let r = FolderInfoMeasure.scan(o)
+                let r = FolderInfoMeasure.scan(scanned)
                 deliver((r, ProcessInfo.processInfo.systemUptime - started))
             }
-        }, inline: { (FolderInfoMeasure.scan(o), 0) })
+        }, inline: { (FolderInfoMeasure.scan(scanned), 0) })
         skin.startBackground(job) { [weak self] (r: Result, cost: TimeInterval) in
             guard let self else { return }
             self.scanning = false

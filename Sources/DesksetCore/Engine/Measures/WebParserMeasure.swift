@@ -352,7 +352,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         let dumpPath = options.debug == 2 ? debugDumpPath() : nil
         let dumpDestination = dumpPath.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
         var request = requestSettings()
-        request.target = target
+        request.target = readable(target)
         request.maxBytes = WebParserNetwork.maxPageBytes
         if options.debug == 1 {
             skin.log("WebParser [\(name)]: fetching \(target.displayString)", level: .debug)
@@ -558,7 +558,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             return
         }
         var request = settings
-        request.target = target
+        request.target = readable(target)
         request.maxBytes = WebParserNetwork.maxDownloadBytes
         if options.debug == 1 { skin.log("WebParser [\(name)]: downloading \(target.displayString)", level: .debug) }
         // Background queue: save what arrived, then hand the outcome to the skin's executor.
@@ -636,6 +636,18 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             setResult(path)
             if !finishAction.isEmpty { skin.execute(finishAction, from: self) }
         }
+    }
+
+    /// A file target as the skin reads it: the copy of a file the skin wrote to a recording's sandbox (a RunCommand
+    /// `OutputFile`, a download), else the file itself (`Skin.readablePath`). The target the skin named stays what
+    /// reports and relative URLs use.
+    private func readable(_ target: WebParserTarget) -> WebParserTarget {
+        guard case .file(let path) = target, skin.sideEffects.fileSandbox != nil else { return target }
+        for candidate in [path, path.removingPercentEncoding ?? path] {
+            let read = skin.readablePath(candidate)
+            if read != candidate { return .file(read) }
+        }
+        return target
     }
 
     /// Applies `allowsFileAccess` to a file target (a refused file behaves like a missing one).
