@@ -46,6 +46,7 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
     }
     runDeskSemanticTokenTests(t)
     runDeskHoverTests(t)
+    runDeskSignatureHelpTests(t)
 }
 
 /// A service for one harness text (every catalog example is checked in one).
@@ -452,4 +453,50 @@ func deskCatalogProseLeaks() -> [String] {
     for e in catalog.enums { for c in e.cases { if let t = c.title { check("\(e.id).\(c.name)", t.en); check("\(e.id).\(c.name) zh", t.zh) } } }
     for p in catalog.permissions { check("permission \(p.id)", p.needsPhrase.en); check("permission \(p.id) zh", p.needsPhrase.zh) }
     return out
+}
+
+func runDeskSignatureHelpTests(_ t: TestRunner) {
+    t.suite("Desk: service — signature help, every argument of every catalog example") {
+        let harness = DeskExampleHarness(catalog: .current)
+        var arguments = 0
+        var options = 0
+        for item in DeskCatalog.current.documentedItems() where !item.doc.example.isEmpty {
+            let built = harness.build(item.doc.example, context: item.doc.exampleContext)
+            let snapshot = deskInfoHarnessSnapshot(built.text)
+            let table = snapshot.nodeTable
+            for (i, entry) in table.entries.enumerated() where built.exampleRange.contains(entry.textStart) {
+                guard entry.kind == .argument || entry.kind == .formatOption, entry.textEnd > entry.textStart else { continue }
+                let label = table.children(of: i).first { table.entries[$0].kind == .label }
+                    .flatMap { table.entries[$0].positioned.childTokens.first?.token.name }
+                // At the argument's start (a format option: after its comma), in its value and at its end.
+                let start = entry.kind == .formatOption ? entry.textStart + 1 : entry.textStart
+                let value = table.children(of: i).last { table.entries[$0].kind != .label }
+                var offsets = [start, entry.textEnd]
+                if let value { offsets.append(table.entries[value].textStart) }
+                for offset in offsets {
+                    let position = snapshot.index.position(utf8: offset)
+                    guard let help = snapshot.signatureHelp(at: position) else {
+                        t.check(false, "\(item.path): no signature help at \(position) in \(item.doc.example)")
+                        continue
+                    }
+                    let signature = help.signatures[help.activeSignature]
+                    guard let p = help.activeParameter, signature.parameters.indices.contains(p) else {
+                        t.check(false, "\(item.path): no active parameter at \(position) in \(item.doc.example) (\(signature.label))")
+                        continue
+                    }
+                    if let label {
+                        t.equal(signature.parameters[p].label, label, "\(item.path): \(item.doc.example) at \(position)")
+                    } else if entry.kind == .argument, signature.parameters[p].label != nil {
+                        t.check(false, "\(item.path): positional argument at \(position) gets \(signature.parameters[p].label!): in \(item.doc.example) (\(signature.label))")
+                    }
+                    let range = signature.parameters[p].labelRange
+                    t.check(range.upperBound <= signature.label.utf16.count && !range.isEmpty, "label range \(range) of \(signature.label)")
+                }
+                if entry.kind == .argument { arguments += 1 } else { options += 1 }
+            }
+        }
+        t.check(arguments > 300, "arguments: \(arguments)")
+        t.check(options > 10, "format options: \(options)")
+        print("    \(arguments) arguments and \(options) format options of the catalog examples")
+    }
 }

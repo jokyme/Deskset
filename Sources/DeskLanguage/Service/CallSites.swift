@@ -32,6 +32,20 @@ struct DeskCallSite {
     /// The argument list's node index (an argument clause, or the interpolation of format options).
     var clause: Int
 
+    /// A modifier's signatures with `if:` last where it takes a condition and does not list one itself.
+    static func withCondition(_ spec: ModifierSpec) -> [Signature] {
+        guard spec.acceptsCondition else { return spec.signatures }
+        let condition = ParamSpec(label: "if", name: "condition", type: .bool, role: .condition,
+                                  doc: LocalizedText("Only while this is true", "只在它成立时"))
+        let signatures = spec.signatures.isEmpty ? [Signature(params: [])] : spec.signatures
+        return signatures.map { signature in
+            guard !signature.params.contains(where: { $0.label == "if" }) else { return signature }
+            var copy = signature
+            copy.params.append(condition)
+            return copy
+        }
+    }
+
     /// The argument a position is in, counted by the commas before it; `arguments.count` after the last comma.
     func argumentIndex(at offset: Int) -> Int {
         for (k, argument) in arguments.enumerated() where offset <= argument.span.upperBound { return k }
@@ -159,18 +173,33 @@ extension DeskSnapshot {
             owner = .modifier
             path = .modifier(spec.name)
             name = "." + spec.name
-            signatures = spec.signatures
+            signatures = DeskCallSite.withCondition(spec)
         case .callExpr:
             guard let calleeIndex = table.children(of: entry.parent).first, calleeIndex != clause else { return nil }
             let callee = table.entries[calleeIndex]
             switch callee.kind {
             case .identifierExpr:
                 let token = IdentifierExprSyntax(unchecked: callee.positioned).token
-                guard !token.token.isMissing, let spec = catalog.function(named: token.token.name) else { return nil }
-                owner = spec.kind == .action ? .action : .function
-                path = .function(spec.name)
-                name = spec.name
-                signatures = spec.signatures
+                guard !token.token.isMissing else { return nil }
+                if let spec = catalog.function(named: token.token.name) {
+                    owner = spec.kind == .action ? .action : .function
+                    path = .function(spec.name)
+                    name = spec.name
+                    signatures = spec.signatures
+                } else if let spec = catalog.control(named: token.token.name) {
+                    // `Choice(.mono, "One color")` among a Picker's choices.
+                    owner = .control
+                    path = .control(spec.name)
+                    name = spec.name
+                    signatures = spec.signatures
+                } else if let spec = catalog.component(named: token.token.name) {
+                    owner = .component
+                    path = .component(spec.name)
+                    name = spec.name
+                    signatures = spec.signatures
+                } else {
+                    return nil
+                }
             case .memberExpr:
                 guard let token = callee.positioned.childTokens.last(where: { $0.kind != .dot }), !token.token.isMissing,
                       let found = memberAt(token.textRange.lowerBound) else { return nil }
@@ -201,7 +230,7 @@ extension DeskSnapshot {
     private func memberAt(_ offset: Int) -> (path: CatalogPath, spec: MemberSpec)? {
         guard let occurrence = symbolIndex.names[safe: DeskSymbolIndex.lastStarting(atOrBefore: offset, in: symbolIndex.names)],
               occurrence.range.lowerBound == offset, let path = occurrence.path,
-              let spec = options.catalog.serviceMember(for: path) else { return nil }
+              let spec = options.catalog.serviceMember(for: path, call: true) else { return nil }
         return (path, spec)
     }
 
