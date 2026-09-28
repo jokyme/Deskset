@@ -16,7 +16,7 @@ https://docs.rainmeter.net/manual/plugins/win7audio/, the version history — pl
 
 | Feature | macOS permission (asked the first time a skin needs it) | Info.plist key | When refused |
 |---|---|---|---|
-| AudioLevel `Port=Output` (macOS 14.2+) | System Audio Recording ("Screen & System Audio Recording → System Audio Recording Only") | `NSAudioCaptureUsageDescription` | Levels read 0 (macOS delivers silence); a compatibility note once the silence watchdog suspects a refusal |
+| AudioLevel `Port=Output` (macOS 14.2+) | System Audio Recording ("Screen & System Audio Recording → System Audio Recording Only"), asked the first time another app plays sound while a visualizer is loaded | `NSAudioCaptureUsageDescription` | Levels read 0 (macOS delivers silence); once the silence watchdog suspects a refusal, `DeviceStatus` reads 2 and the skin gets a compatibility note |
 | AudioLevel `Port=Output` (macOS 13 – 14.1) | Screen Recording, then restart Deskset | — | Levels read 0, `DeviceStatus` 0, logged once, compatibility note |
 | AudioLevel `Port=Input` | Microphone | `NSMicrophoneUsageDescription` | Levels read 0, `DeviceStatus` 0, logged once, compatibility note; tried again every 10 s |
 | AppVolume `NumberType=Peak`, `Mute` | System Audio Recording | `NSAudioCaptureUsageDescription` | Peak 0; mute has no effect |
@@ -56,7 +56,8 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Why: WASAPI does not exist on macOS.
 - Skin impact: none for skin authors. Cost measured on Apple Silicon: 0.1–0.3 % of one core for the visualizers in the
   corpus (FFTSize 1024–4096, 16–121 bands); an absurd FFTSize=65536/FFTOverlap=65535/Bands=1024 stays under 10 %.
-  Digital silence skips the FFT entirely.
+  Digital silence skips the FFT entirely. System audio is captured only while another app plays sound (see
+  [System audio only while another app plays](#system-audio-only-while-another-app-plays)).
 - Status: emulated
 
 ### Port=Output (system audio), macOS 14.2 and later
@@ -67,14 +68,30 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   when devices come and go, and when the output device's sample rate changes (≈ 0.3 s gap). An output device that also
   has inputs is not put into the aggregate (see the next entry).
 - Why: process taps are the public API for system audio capture on macOS (14.2+).
-- Skin impact: macOS asks once for "System Audio Recording"; while a visualizer is loaded macOS shows its purple
-  audio-recording indicator in the menu bar, and the output device stays active (as with any app that records system
-  audio; not for output devices with inputs, see the next entry). If the user refuses, macOS delivers silence: every
-  level is 0 and Deskset cannot tell a refusal from silence for sure (`DeviceStatus` stays 1). A watchdog looks every
-  10 s: a stream that carried only digital silence at two looks in a row while another app was playing sound gets a
-  compatibility note pointing to the permission, which goes away as soon as sound arrives. The tap captures what apps
-  play; the output device's own volume and mute are expected to apply after it, so turning the Mac's volume down
-  should not shrink the meters (not verified: see "Verification" below).
+- Skin impact: macOS asks once for "System Audio Recording"; while the tap runs macOS shows its purple audio-recording
+  indicator in the menu bar, and the output device stays active (as with any app that records system audio; not for
+  output devices with inputs, see the next entry). The tap runs only while another app plays sound (next entry but
+  one). If the user refuses, macOS delivers silence: every level is 0, and Deskset can only suspect a refusal (see
+  [DeviceStatus 2](#typedevicestatus-value-2-a-refused-system-audio-recording)). The tap captures what apps play; the
+  output device's own volume and mute are expected to apply after it, so turning the Mac's volume down should not
+  shrink the meters (not verified: see "Verification" below).
+- Status: emulated
+
+### System audio only while another app plays
+- Windows (Rainmeter): a loopback capture runs while the skin is loaded; Windows shows nothing for it.
+- Mac (Deskset): on macOS 14.2 and later a system-audio stream (`Port=Output`) is tapped only while a process other
+  than Deskset runs audio output (Core Audio's process objects and their "is running output" state, followed with
+  listeners: nothing is polled). When the last one stops, the tap stays 5 s more (the gap between two tracks, a
+  browser that stops its stream a moment after a video), then goes, and with it the purple recording indicator and the
+  busy output device. The first sound starts it again at once (Core Audio tells Deskset when a process starts its
+  output). While it waits the levels read 0, `DeviceStatus` reads 1 (the device is there), and the device name, ID and
+  format come from the device list. The permission prompt therefore comes the first time something plays while a
+  visualizer is loaded, not when the visualizer loads. Not on macOS 13 – 14.1 (no process objects: the capture runs
+  while the skin is loaded, as before), nor for `Port=Input`, AppVolume's taps or the demo signal.
+- Why: macOS shows the recording indicator for as long as a tap runs; a visualizer at rest should not look like it
+  records, nor keep the output device (and Bluetooth headphones) awake.
+- Skin impact: none; a visualizer reads silence either way while nothing plays. A system sound (an alert) starts the
+  tap for about 5 s.
 - Status: emulated
 
 ### Port=Output with an output device that also has inputs (USB audio interfaces, headsets, BlackHole)
@@ -138,10 +155,13 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Mac (Deskset): same. Parent options (Port, ID, RMS*/Peak*/FFT*/Bands/Freq*/Sensitivity) are read once when the parent is
   first read; `!SetOption`/`DynamicVariables` do not change them. Child options (Type, Channel, FFTIdx, BandIdx, and Parent
   itself) are re-read normally. A parent that is `Disabled=1` at load does not start any capture until it is enabled;
-  a parent disabled later (`!DisableMeasure`) keeps its capture (and the recording indicator) until the skin is
-  refreshed or unloaded. The capture of a skin stops 3 s after the skin object is released (checked with the registry
-  wired: releasing the skin removes the output source after the grace period). The parent must be in the same skin.
-- Why: manual.
+  a parent disabled later (`!DisableMeasure`, or its `Disabled` option) lets its capture go: the stream stops 3 s
+  later unless another parent still uses it, the recording indicator with it, and its children read 0.
+  `!EnableMeasure` subscribes it again at its next update. The capture of a skin stops 3 s after the skin object is
+  released (checked with the registry wired: releasing the skin removes the output source after the grace period).
+  The parent must be in the same skin.
+- Why: manual; releasing the capture of a disabled parent is a judgment call (the manual is silent), so that a skin can
+  turn its visualizer off, and the recording indicator with it, without unloading.
 - Skin impact: none.
 - Status: identical
 
@@ -151,7 +171,8 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
   in a skin window. A skin that is only read — the Manage window checks skins that are not loaded for their
   compatibility notes — or drawn with `--render` never captures: no permission prompt, no recording indicator; in a
   render the levels read 0 and `DeviceStatus` 0, unless `DESKSET_AUDIO_DEMO=1` feeds it the demo signal. AppVolume's
-  peak taps follow the same rule.
+  peak taps follow the same rule. From there, system audio on macOS 14.2+ is tapped only while another app plays sound
+  ([System audio only while another app plays](#system-audio-only-while-another-app-plays)).
 - Why: macOS shows its permission prompt and the recording indicator as soon as a capture starts. Found in review:
   selecting a visualizer that was not loaded in the Manage window started a capture (the check loaded the skin, and
   loading a parent subscribed it).
@@ -213,7 +234,8 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 - Windows (Rainmeter): the version history lists a fix for the plugin "keep[ing] the last values it received" when sound
   stops.
 - Mac (Deskset): when no audio arrives for 0.1 s (device stopped, capture interrupted) every value falls with its own decay
-  time; they never freeze. When a capture stops (last skin gone, device lost) values are reset to 0.
+  time; they never freeze. When a capture stops (last skin gone, parent disabled, device lost, system audio waiting for
+  another app to play) values are reset to 0.
 - Why: matches the fixed behaviour.
 - Skin impact: none.
 - Status: identical
@@ -286,11 +308,30 @@ loaded, `--render` and the other command-line modes (`--self-test`…) never cap
 
 ### Type=DeviceStatus
 - Windows (Rainmeter): "Status (0 or 1) of the device."
-- Mac (Deskset): 1 while the capture runs, 0 otherwise (no device, microphone refused, Screen Recording missing on 13–14.1,
-  command-line mode). A refused System Audio Recording permission cannot be detected (macOS delivers silence), so it reads 1.
+- Mac (Deskset): 1 while the capture runs, or while system audio waits for another app to play sound; 0 otherwise (no
+  device, microphone refused, Screen Recording missing on 13–14.1, command-line mode). A refused System Audio
+  Recording permission reads 2 once the silence watchdog suspects it (next entry).
 - Why: see Port=Output.
-- Skin impact: "device unavailable" hints may not appear when the tap permission was refused.
-- Status: partial
+- Skin impact: a skin that tests `DeviceStatus = 1` treats a suspected refusal like a missing device.
+- Status: emulated
+
+### Type=DeviceStatus value 2: a refused System Audio Recording
+- Windows (Rainmeter): no counterpart (0 or 1 only).
+- Mac (Deskset): macOS reports a refused System Audio Recording permission as a tap that runs and carries only digital
+  silence, so it cannot be seen up front. A watchdog looks every 10 s while a system-audio tap runs: nothing but
+  digital silence at two looks in a row, while another app runs its audio output each time, is its verdict.
+  `DeviceStatus` then reads 2 (instead of 1) and the skin gets a compatibility note pointing to the permission. The
+  verdict holds while the tap waits for sound and in the next taps, until a tap carries sound, which clears both
+  within 10 s. Once any system-audio tap has carried sound since Deskset started, the permission was given, and later
+  silence is only silence (a call app that keeps its output running between calls, a paused video): no verdict until
+  Deskset restarts.
+- Why: Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
+- Skin impact: none for skins that test `DeviceStatus = 1` or `= 0`. Deskset's Spectrum and Studio VU show "Allow
+  System Audio Recording" and open Privacy & Security
+  (`x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`). It takes about 20 s of silence to
+  appear, and it is a suspicion, not a certainty: an app that sends nothing but digital silence to its output from the
+  moment Deskset starts, before anything else was heard, looks the same.
+- Status: Deskset extension
 
 ### Type=DeviceName, Type=DeviceID
 - Windows (Rainmeter): name / Windows ID of the device connected to.
@@ -482,11 +523,14 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
   synthetic sines and noise (levels, dB mapping, attack/decay times, Hann leakage, non-power-of-two sizes, band layout,
   white-noise slope, band-count independence), the ring buffer (interleaved, non-interleaved, overflow, tap buffer
   selection), the engine with fake backends (sharing, restart debounce, stop after the last subscriber, refusal paths),
-  option parsing, all measure types, Win7Audio commands against fakes, AppVolume filtering and section variables, the
-  permission notes (added, and taken back once the microphone is allowed or sound arrives), which skins capture (the
-  Manage window's check of a skin that is not loaded and a render subscribe nothing; a skin window subscribes at its
-  first update, not when it loads; AppVolume taps no app outside a skin window), and a read-only pass over this Mac's
-  real device list and output volume.
+  system audio with a fake "another app plays" (no tap while nothing plays, a tap at the first sound, the 5 s standby
+  delay and a shorter gap that keeps the tap, sleep and wake while waiting), the watchdog's verdict as `DeviceStatus` 2
+  (kept while waiting and in the next tap, cleared by sound, never again once sound was heard), `!DisableMeasure` and
+  `!EnableMeasure` on a parent, option parsing, all measure types, Win7Audio commands against fakes, AppVolume
+  filtering and section variables, the permission notes (added, and taken back once the microphone is allowed or sound
+  arrives), which skins capture (the Manage window's check of a skin that is not loaded and a render subscribe nothing;
+  a skin window subscribes at its first update, not when it loads; AppVolume taps no app outside a skin window), and a
+  read-only pass over this Mac's real device list, output volume and Core Audio process list (read and listened to).
 - Verified by rendering: the corpus volume skins (Enigma, PogPack) show the Mac's real output device and volume; the
   corpus visualizers (Nelamint, Simple Clean) and `TestSkins/Audio/Visualizer` animate with `DESKSET_AUDIO_DEMO=1`.
 - Verified with a throw-away program on macOS 26.5 (Apple Silicon), without starting any IO (so without a permission
@@ -504,12 +548,17 @@ described here (Accessibility requested on the first key, 1/16 volume steps, `St
     sub-device is dropped (tap only); a tap-only aggregate has 2 inputs, no outputs, 48 kHz.
   - Win7Audio commands against a fake HAL (volume, hardware and emulated mute, device switching, commands racing
     device re-reads), AppVolume mute bookkeeping with fake taps.
+- Checked on macOS 26.5 by reading Core Audio's process objects (no capture): a Deskset whose visualizer taps system
+  audio is itself "running output" (its aggregate device runs the output device), so Deskset leaves its own process
+  out when it asks whether another app plays.
 - Not verified on a real stream, because each needs a permission prompt answered by a person: reading the tap
   (System Audio Recording), ScreenCaptureKit (macOS 13 – 14.1) and the microphone; muting one app with a tap; the tap-only aggregate used for output devices with inputs. These paths follow Apple's documented API usage
   and fail safe (0 values, one log line) if something is refused. To check by hand (app bundle with the Info.plist
   keys below): load `TestSkins/Audio/Visualizer`, allow System Audio Recording, play music — with the built-in speakers,
   with Bluetooth headphones (the headphones must stay in their high-quality profile and no microphone indicator may
-  appear) and with a USB audio interface or BlackHole as the output.
+  appear) and with a USB audio interface or BlackHole as the output. With nothing playing, the purple indicator must
+  go out about 5 s after the music stops and come back with the next sound; refusing the permission and playing for
+  20 s must turn `DeviceStatus` to 2 (Spectrum's Notice), and allowing it and playing again must bring it back to 1.
 
 ## Engine integration notes (for maintainers)
 

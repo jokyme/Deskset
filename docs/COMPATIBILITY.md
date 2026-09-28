@@ -110,7 +110,7 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 
 | Feature (skin option) | macOS permission | When it is asked | If you refuse |
 | --- | --- | --- | --- |
-| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only") | First time a visualizer skin runs | macOS delivers silence: levels read 0 and `DeviceStatus` still reads 1. If a visualizer stays silent for about 10 s while another app plays sound, the skin gets a compatibility note pointing to the permission |
+| AudioLevel `Port=Output` (visualizers), macOS 14.2+ | System Audio Recording ("Screen & System Audio Recording" → "System Audio Recording Only"); the purple indicator shows only while another app plays sound | First time another app plays sound while a visualizer skin runs | macOS delivers silence: levels read 0. If a visualizer stays silent for about 20 s while another app plays sound, `DeviceStatus` reads 2 (Deskset extension) and the skin gets a compatibility note pointing to the permission |
 | AudioLevel `Port=Output`, macOS 13 – 14.1 | Screen Recording, then restart Deskset | First time a visualizer skin runs | Levels 0, `DeviceStatus` 0, one log line |
 | AudioLevel `Port=Input` | Microphone (orange indicator while capturing) | First time an input-level skin runs | Levels 0, `DeviceStatus` 0, one log line. Tried again every 10 s, so allowing it later works without a restart |
 | AppVolume `NumberType=Peak`, AppVolume mute | System Audio Recording | First peak / mute use | Peak 0; mute has no effect |
@@ -147,7 +147,7 @@ by the 15 tested packages.
 | --- | --- | --- |
 | ActionTimer | identical | Lists, Wait, Repeat, Execute, Stop; drift-free timing on the main run loop |
 | AdvancedCPU (deprecated) | emulated | Per-process CPU time in Windows' 100 ns units; other users' processes are summed as one process named `System` |
-| AudioLevel | emulated | Core Audio process tap (system audio) or input device; RMS, Peak, FFT, Bands; needs a permission |
+| AudioLevel | emulated | Core Audio process tap (system audio, only while another app plays sound) or input device; RMS, Peak, FFT, Bands; needs a permission; `DeviceStatus` 2 for a suspected refusal |
 | CoreTemp | emulated | Temperatures, clocks, power and voltage from the Mac's sensors (a core's temperature is its cluster's on Apple silicon); nominal TjMax; `Tdp` 0; see [§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors) |
 | FileView | partial | Finder-like listing and icons; `ContextMenu` can only reveal the item in Finder |
 | FolderInfo | emulated | Background scans; Mac hidden / system files |
@@ -825,7 +825,8 @@ belong to: system font designs ([§6.2](#62-text-and-fonts)), light and dark mod
 temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files-variables-formulas-and-options)), and SF Symbols as images with
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
 with the measures ([§6.4](#64-measures)), NowPlaying's `PlayerType=MacPermission` with the music players
-([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)). Deskset's own plugins are with the plugins of their area:
+([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)), AudioLevel's `DeviceStatus` value 2 with the audio plugins
+([§10.1](#101-audiolevel-visualizers-and-level-meters)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 
@@ -1909,8 +1910,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   engine serves every skin: a stream is captured once however many skins use it, starts at the first update of the
   first parent measure in a skin window — never when a skin is only checked (the Manage window, for skins that are not
   loaded) or drawn with `--render` — and stops 3 s after the last one is gone; capture also pauses while skin updates
-  are paused (sleep, displays asleep, another user's session). Cost on Apple silicon: 0.1–0.3 % of one core for
-  typical visualizers.
+  are paused (sleep, displays asleep, another user's session), and system audio is captured only while another app
+  plays sound (below). Cost on Apple silicon: 0.1–0.3 % of one core for typical visualizers.
 - **Why:** WASAPI does not exist on macOS.
 - **Skin impact:** none for skin authors.
 - **Status:** emulated
@@ -1922,10 +1923,19 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   (≈ 0.3 s gap). An output device that also has inputs (USB interfaces, headsets) is not added to the capture
   aggregate, so a visualizer never records a microphone or switches Bluetooth headphones to their call profile.
 - **Why:** process taps are the public API for system audio capture.
-- **Skin impact:** macOS asks once for **System Audio Recording** and shows its purple recording indicator while a
-  visualizer runs. If refused, macOS delivers silence (levels 0). When a system-audio stream carries only digital
-  silence over two checks 10 s apart while another app is playing sound, the skin gets a compatibility note pointing
-  to the permission (it goes away once sound arrives).
+- **Skin impact:** macOS asks once for **System Audio Recording** and shows its purple recording indicator while the
+  tap runs. If refused, macOS delivers silence (levels 0); `DeviceStatus` 2 (below) is Deskset's suspicion of it.
+- **Status:** emulated
+
+#### System audio only while another app plays (macOS 14.2+)
+- **Windows:** the loopback capture runs while the skin is loaded, and nothing shows it.
+- **Mac:** a system-audio stream is tapped only while another process runs audio output (Core Audio's process
+  objects, followed with listeners). When the last one stops, the tap stays 5 s more, then goes — and with it the
+  purple recording indicator and the busy output device; the next sound starts it again at once. Meanwhile the levels
+  read 0 and `DeviceStatus` reads 1. So the permission prompt comes the first time something plays while a
+  visualizer is loaded. Not on macOS 13 – 14.1, nor for `Port=Input`.
+- **Why:** a visualizer at rest should not look like it records, nor keep the output device awake.
+- **Skin impact:** none; a system sound starts the tap for about 5 s.
 - **Status:** emulated
 
 #### `Port=Output` on macOS 13 – 14.1
@@ -1958,7 +1968,8 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 - **Mac:** the same (parent options are read once). Judgment calls: an invalid `Port` means Output; a parent's own
   value is 0 unless it has a `Type`; a child with a missing or wrong parent, an unknown Type or Channel reads 0 / Sum
   with one warning; a parent disabled at load starts no capture until enabled, and a parent disabled later with
-  `!DisableMeasure` keeps capturing (and the recording indicator on) until the skin is refreshed or unloaded.
+  `!DisableMeasure` lets its capture go (the stream stops 3 s later unless another parent uses it, and its children
+  read 0) until `!EnableMeasure`.
 - **Why:** the manual is silent on these.
 - **Skin impact:** none for valid skins.
 - **Status:** identical
@@ -1996,12 +2007,24 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
 
 #### `Type=Format`, `DeviceStatus`, `DeviceName`, `DeviceID`, `DeviceList`
 - **Windows:** format text, status 0 / 1, name / ID, a list of device IDs.
-- **Mac:** Format like `48000 Hz, 32-bit float, 2 channels`; DeviceStatus 1 while capturing (a refused System Audio
-  Recording permission cannot be detected, so it stays 1); Mac device names and UIDs, available even before capture;
+- **Mac:** Format like `48000 Hz, 32-bit float, 2 channels`; DeviceStatus 1 while capturing or while system audio
+  waits for sound, 2 for a suspected refusal (next entry); Mac device names and UIDs, available even before capture;
   DeviceList has one `UID: Name` per line.
 - **Why:** these formats are not documented.
 - **Skin impact:** different wording; skins that parse the Windows list format will not match.
-- **Status:** emulated / partial (DeviceStatus)
+- **Status:** emulated
+
+#### `Type=DeviceStatus` value 2: a refused System Audio Recording
+- **Windows:** no counterpart (0 or 1).
+- **Mac:** macOS reports a refused System Audio Recording as a tap that carries only digital silence. When a tap
+  carries nothing but digital silence at two looks 10 s apart while another app runs its audio output, and no
+  system-audio tap has carried sound since Deskset started, `DeviceStatus` reads 2 and the skin gets a compatibility
+  note. It holds while the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s).
+- **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
+- **Skin impact:** none for skins that test for 1 or 0. It is a suspicion: an app that sends only digital silence to
+  its output from the moment Deskset starts looks the same. Deskset's Spectrum and Studio VU show "Allow System Audio
+  Recording" and open Privacy & Security.
+- **Status:** Mac-only
 
 ### 10.2 Win7Audio (volume, mute, output device)
 

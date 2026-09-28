@@ -103,7 +103,7 @@ Deskset 从不主动请求“辅助功能”权限（只在你已经授予时才
 
 | 功能（皮肤选项） | macOS 权限 | 何时请求 | 如果拒绝 |
 | --- | --- | --- | --- |
-| AudioLevel `Port=Output`（可视化频谱），macOS 14.2 及以上 | 系统录音（“屏幕与系统录音” → “仅系统录音”） | 频谱类皮肤第一次运行时 | macOS 只提供静音：电平读数为 0，`DeviceStatus` 仍为 1。如果其他 App 正在播放声音而频谱皮肤约 10 秒都没有声音，皮肤会得到一条指向该权限的兼容性提示 |
+| AudioLevel `Port=Output`（可视化频谱），macOS 14.2 及以上 | 系统录音（“屏幕与系统录音” → “仅系统录音”）；紫色指示点只在其他 App 播放声音时显示 | 频谱类皮肤运行期间，其他 App 第一次播放声音时 | macOS 只提供静音：电平读数为 0。如果其他 App 正在播放声音而频谱皮肤约 20 秒都没有声音，`DeviceStatus` 变为 2（Deskset 扩展），皮肤还会得到一条指向该权限的兼容性提示 |
 | AudioLevel `Port=Output`，macOS 13 – 14.1 | 屏幕录制，授权后需重启 Deskset | 频谱类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志 |
 | AudioLevel `Port=Input` | 麦克风（采集时显示橙色指示点） | 输入电平类皮肤第一次运行时 | 电平为 0，`DeviceStatus` 为 0，记录一行日志。每 10 秒重试一次，之后再授权无需重启 |
 | AppVolume `NumberType=Peak`、AppVolume 静音 | 系统录音 | 第一次使用峰值 / 静音时 | 峰值为 0；静音无效 |
@@ -137,7 +137,7 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 | --- | --- | --- |
 | ActionTimer | 完全一致 | 动作列表、Wait、Repeat、Execute、Stop；在主运行循环上无漂移计时 |
 | AdvancedCPU（已弃用） | 模拟实现 | 按 Windows 的 100 ns 单位给出各进程 CPU 时间；其他用户的进程合并为一个名为 `System` 的进程 |
-| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频）或输入设备；RMS、Peak、FFT、Bands；需要权限 |
+| AudioLevel | 模拟实现 | Core Audio 进程 tap（系统音频，只在其他 App 播放声音时）或输入设备；RMS、Peak、FFT、Bands；需要权限；疑似被拒绝时 `DeviceStatus` 为 2 |
 | CoreTemp | 模拟实现 | 温度、频率、功耗和电压来自 Mac 的传感器（Apple 芯片上各核心温度取其所在簇）；TjMax 为标称值；`Tdp` 为 0；见 §9.3 |
 | FileView | 部分支持 | 类似访达的列表和图标；`ContextMenu` 只能在访达中显示该项目 |
 | FolderInfo | 模拟实现 | 后台扫描；使用 Mac 的隐藏 / 系统文件规则 |
@@ -750,7 +750,8 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 加载，只是没有这些效果。Mac 外观方面的扩展写在各自所属的小节里：系统字体的设计（[§6.2](#62-文字与字体)）、浅色 / 深色模式
 变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
 （[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)），
-NowPlaying 的 `PlayerType=MacPermission` 写在音乐播放器一节（[§10.4](#104-音乐播放器nowplayingituneswebnowplayingmediakey)）。
+NowPlaying 的 `PlayerType=MacPermission` 写在音乐播放器一节（[§10.4](#104-音乐播放器nowplayingituneswebnowplayingmediakey)），
+AudioLevel 的 `DeviceStatus` 值 2 写在音频插件一节（[§10.1](#101-audiolevel频谱与电平表)）。
 Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
@@ -1737,7 +1738,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Mac：** 原生实现（`AudioLevel`、`AudioLevel.dll`、`Plugins\AudioLevel.dll`）。一个共享的采集引擎服务所有皮肤：无论多少
   皮肤使用同一个音频流，都只采集一次；皮肤窗口中第一个父 measure 第一次更新时开始（只是检查皮肤——管理窗口检查未加载的
   皮肤——或用 `--render` 绘制皮肤时从不开始），最后一个消失 3 秒后停止；皮肤更新暂停期间（睡眠、显示器睡眠、其他用户的
-  会话）采集也会暂停。在 Apple 芯片上，典型频谱皮肤占用单个核心的 0.1–0.3 %。
+  会话）采集也会暂停；系统音频只在其他 App 播放声音时采集（见下文）。在 Apple 芯片上，典型频谱皮肤占用单个核心的
+  0.1–0.3 %。
 - **原因：** macOS 上没有 WASAPI。
 - **对皮肤的影响：** 对皮肤作者没有影响。
 - **状态：** 模拟实现
@@ -1748,9 +1750,18 @@ M1–M3 的规则和 Intel Mac 尚未测试。
   音频流。输出设备、设备列表或采样率变化时会重新创建（约 0.3 秒的间断）。同时带有输入的输出设备（USB 声卡、耳机）不会加入
   采集用的聚合设备，因此频谱皮肤绝不会录下麦克风，也不会让蓝牙耳机切换到通话模式。
 - **原因：** 进程 tap 是采集系统音频的公开 API。
-- **对皮肤的影响：** macOS 会询问一次 **系统录音** 权限，频谱皮肤运行期间显示紫色的录音指示点。如果拒绝，macOS 只提供静音
-  （电平为 0）。当系统音频流在相隔 10 秒的两次检查中都只有数字静音、而其他 App 正在播放声音时，皮肤会得到一条指向该权限的
-  兼容性提示（有声音后提示消失）。
+- **对皮肤的影响：** macOS 会询问一次 **系统录音** 权限，tap 运行期间显示紫色的录音指示点。如果拒绝，macOS 只提供静音
+  （电平为 0）；`DeviceStatus` 为 2（见下文）表示 Deskset 怀疑权限被拒绝。
+- **状态：** 模拟实现
+
+#### 系统音频只在其他 App 播放时采集（macOS 14.2 及以上）
+- **Windows：** 皮肤加载期间一直环回采集，界面上没有任何提示。
+- **Mac：** 只有当其他进程正在输出音频时才建立系统音频的 tap（通过 Core Audio 的进程对象及其监听器得知，不轮询）。最后一个
+  进程停止后，tap 再保留 5 秒然后关闭——紫色录音指示点和被占用的输出设备也随之消失；下一个声音出现时立即重新开始。其间电平
+  读数为 0，`DeviceStatus` 为 1。因此权限弹窗出现在频谱皮肤加载后第一次有声音播放时。macOS 13 – 14.1 和 `Port=Input`
+  不受影响。
+- **原因：** 静止的频谱皮肤不应看起来像在录音，也不应让输出设备一直保持唤醒。
+- **对皮肤的影响：** 没有影响；系统提示音会让 tap 运行约 5 秒。
 - **状态：** 模拟实现
 
 #### macOS 13 – 14.1 上的 `Port=Output`
@@ -1780,8 +1791,8 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Windows：** 父 measure 负责采集；子 measure（`Parent=`）读取数值；只有 Type、Channel、FFTIdx 和 BandIdx 可以动态修改。
 - **Mac：** 相同（父 measure 的选项只读取一次）。取舍判断：无效的 `Port` 视为 Output；父 measure 自身的值为 0，除非它有
   `Type`；父 measure 缺失或错误、Type 或 Channel 未知的子 measure 读数为 0 / Sum，并给出一条警告；加载时被禁用的父
-  measure 在启用前不会开始采集，之后才用 `!DisableMeasure` 禁用的父 measure 会继续采集（录音指示点也保持显示），直到皮肤
-  刷新或卸载。
+  measure 在启用前不会开始采集，之后才用 `!DisableMeasure` 禁用的父 measure 会放开它的采集（若没有其他父 measure 使用，
+  音频流 3 秒后停止，子 measure 读数为 0），直到 `!EnableMeasure`。
 - **原因：** 手册对此没有规定。
 - **对皮肤的影响：** 对有效的皮肤没有影响。
 - **状态：** 完全一致
@@ -1815,11 +1826,21 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 
 #### `Type=Format`、`DeviceStatus`、`DeviceName`、`DeviceID`、`DeviceList`
 - **Windows：** 格式文字、状态 0 / 1、名称 / ID、设备 ID 列表。
-- **Mac：** Format 形如 `48000 Hz, 32-bit float, 2 channels`；采集期间 DeviceStatus 为 1（无法检测系统录音权限被拒绝，
-  因此仍为 1）；Mac 的设备名称和 UID，采集开始前即可读取；DeviceList 每行一个 `UID: 名称`。
+- **Mac：** Format 形如 `48000 Hz, 32-bit float, 2 channels`；采集期间或系统音频等待声音期间 DeviceStatus 为 1，疑似
+  权限被拒绝时为 2（见下一条）；Mac 的设备名称和 UID，采集开始前即可读取；DeviceList 每行一个 `UID: 名称`。
 - **原因：** 这些格式没有文档。
 - **对皮肤的影响：** 措辞不同；解析 Windows 列表格式的皮肤无法匹配。
-- **状态：** 模拟实现 / 部分支持（DeviceStatus）
+- **状态：** 模拟实现
+
+#### `Type=DeviceStatus` 的值 2：系统录音权限被拒绝
+- **Windows：** 没有对应（只有 0 或 1）。
+- **Mac：** macOS 把被拒绝的系统录音权限表现为一个只传来数字静音的 tap。当 tap 在相隔 10 秒的两次检查中都只有数字静音、
+  而其他 App 每次都在输出音频，并且自 Deskset 启动以来没有任何系统音频 tap 传来过声音时，`DeviceStatus` 变为 2，皮肤还会
+  得到一条兼容性提示。这个判断在 tap 等待声音期间以及之后的 tap 中都保持，直到某个 tap 传来声音（10 秒内清除）。
+- **原因：** Deskset 扩展：没有它，权限缺失时皮肤只能显示“没有在播放”。
+- **对皮肤的影响：** 对只判断 1 或 0 的皮肤没有影响。这只是推测：一个从 Deskset 启动起就只向输出发送数字静音的 App 看起来
+  也一样。Deskset 的频谱和录音棚 VU 表会显示“允许‘系统录音’”，并打开“隐私与安全性”。
+- **状态：** 仅 Mac
 
 ### 10.2 Win7Audio（音量、静音、输出设备）
 
