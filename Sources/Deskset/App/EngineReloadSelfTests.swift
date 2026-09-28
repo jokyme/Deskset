@@ -14,6 +14,7 @@ enum EngineReloadSelfTests {
         installTests(t)
         keptWindowTests(t)
         buttonTests(t)
+        frameTests(t)
     }
 
     typealias E = EngineThreadSelfTests
@@ -473,6 +474,89 @@ enum EngineReloadSelfTests {
                 }, "ButtonCommand ran on the thread")
                 // (The suite fails by itself if the runtime was called off its thread: `HostCallAudit`.)
                 app.deactivate(config: "App\\Buttons")
+            }
+            E.finish(t, app, tracked)
+        }
+    }
+
+    // MARK: First frames and frames let go of
+
+    static func frameTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: a window ordered in a turn after its first frame shows that frame, not a second one") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["Still": E.plain])
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "Engine\\Still", file: nil) else { return t.check(false, "load") }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted }, "started")
+                // As `show` does: the first frame, then the window ordered in; here the facts say so a turn later.
+                c.orderIn(alpha: 1)
+                t.check(AppSelfTest.spin(timeout: 30) { c.content.state.presented == 1 }, "the first frame")
+                c.visibilityForTesting = true
+                // Three more turns of the thread's.
+                for _ in 0..<3 { _ = c.runtime.exclusive(timeout: 30) { _ in true } }
+                _ = E.onEngine(app) { true }
+                t.equal(c.runtime.exclusive(timeout: 30) { _ in c.runtime.frames.framesDrawn }, 1,
+                        "nothing changed: the first frame is what it shows")
+                t.equal(c.content.state.presented, 1)
+                // A redraw after that is drawn, once.
+                c.runtime.send(.redraw)
+                t.check(AppSelfTest.spin(timeout: 30) { c.content.state.presented == 2 }, "a redraw draws")
+                app.deactivate(config: "Engine\\Still")
+            }
+            E.finish(t, app, tracked)
+        }
+
+        t.suite("App: engine thread: !Show draws a hidden skin's first frame before the main thread shows its window") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["Hidden": E.plain])
+            app.state.update("Engine\\Hidden") { $0.startHidden = true }
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "Engine\\Hidden", file: nil) else { return t.check(false, "load") }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted && c.isHiddenByBang }, "started hidden")
+                t.equal(c.content.state.presented, 0, "no frame yet")
+                c.runtime.send(.execute("[!Show]", section: nil))
+                t.check(AppSelfTest.spin(timeout: 30) { !c.isHiddenByBang }, "the main thread shows it")
+                t.equal(c.content.state.presented, 1, "its first frame was there by then")
+                app.deactivate(config: "Engine\\Hidden")
+            }
+            E.finish(t, app, tracked)
+        }
+
+        t.suite("App: engine thread: a window hidden for a while lets go of its kept pictures and its frame, and draws again when shown") {
+            let saved = SkinFrameProducer.releaseDelay
+            SkinFrameProducer.releaseDelay = 0.2
+            defer { SkinFrameProducer.releaseDelay = saved }
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            try E.write(app, ["Ticker": E.ticker])
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                guard let c = app.activate(config: "Engine\\Ticker", file: nil) else { return t.check(false, "load") }
+                tracked.append(E.track(c))
+                t.check(AppSelfTest.spin(timeout: 60) { c.isStarted }, "started")
+                c.visibilityForTesting = true
+                func kept() -> Bool? { c.runtime.exclusive(timeout: 30) { _ in c.runtime.frames.drawing.keepsPictures } }
+                t.check(AppSelfTest.spin(timeout: 60) { c.content.state.presented >= 3 && kept() == true },
+                        "shown: frames, with pictures kept")
+                // Ordered out (as !Hide does, in the facts).
+                c.visibilityForTesting = false
+                t.check(AppSelfTest.spin(timeout: 30) { c.content.shown.image == nil },
+                        "after a while the layer lets go of its frame")
+                t.equal(kept(), false, "and the drawing of its bitmaps and kept pictures")
+                let releases = c.runtime.exclusive(timeout: 30) { _ in c.runtime.frames.releases }
+                t.equal(releases?.pictures, 1)
+                t.equal(releases?.contents, 1)
+                // Shown again: the first frame again, before the window is ordered in.
+                let before = c.content.state.presented
+                c.orderIn(alpha: 1)
+                t.check(AppSelfTest.spin(timeout: 30) { c.content.state.presented == before + 1 }, "a frame for the showing")
+                t.check(c.content.shown.image != nil, "the layer shows it")
+                c.visibilityForTesting = true
+                t.check(AppSelfTest.spin(timeout: 30) { c.content.state.presented >= before + 3 }, "and it goes on")
+                app.deactivate(config: "Engine\\Ticker")
             }
             E.finish(t, app, tracked)
         }

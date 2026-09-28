@@ -75,6 +75,19 @@ final class SkinBitmapDrawing {
 
     /// What the last frame did (tests): runs copied, runs drawn into a new picture, items drawn directly.
     private(set) var lastStats = (copied: 0, made: 0, drawn: 0)
+
+    /// Lets go of the kept pictures and both bitmaps (the picture a layer still shows keeps its own pixels): a window
+    /// that cannot be seen for a while holds none of them. The next picture is drawn in full.
+    func releaseKept() {
+        runs = []
+        previous = [:]
+        lastBase = nil
+        bitmaps = []
+        drawnFor = nil
+    }
+
+    /// Whether it keeps anything now: bitmaps or pictures (tests).
+    var keepsPictures: Bool { !bitmaps.isEmpty || !runs.isEmpty }
     /// Pictures kept now (tests).
     var keptRuns: Int { runs.count }
     /// Frames that differed from a full drawing (`verifies`; tests).
@@ -340,8 +353,24 @@ final class SkinFrameProducer {
     private var justOrderedIn = false
     /// A frame was drawn in this turn (the first frame, right before the window is ordered in).
     private var drewThisTurn = false
+    /// The frame presented was drawn for the window's showing (`drawFirstFrame`: the first frame, or one after the
+    /// provider let go of what it showed), which has not come yet: when the window is ordered in and the skin has not
+    /// redrawn since, it shows that frame (on a skin thread the window's facts come a turn or more after it).
+    private var drawnForShowing = false
     /// What the provider was told last.
     private var toldVisible: Bool?
+    /// The provider let go of what it showed (`releaseContents`): the window was ordered out for a while.
+    private var contentsReleased = false
+    /// Counts the times the window stopped being seen; a release scheduled for an earlier time does nothing.
+    private var unseenGeneration = 0
+    /// Where the producer runs (`start(on:)`): the release after `releaseDelay` is scheduled there.
+    private weak var executor: SkinExecutor?
+    /// Releases of the kept pictures, and of the provider's contents, since the start (tests).
+    private(set) var releases = (pictures: 0, contents: 0)
+
+    /// How long a window that cannot be seen keeps its kept pictures (and, ordered out, its frame): hidden by a bang,
+    /// never shown, covered for a while. The next frame after that is drawn in full.
+    static var releaseDelay: TimeInterval = 10
 
     /// Frames drawn and presented (tests).
     private(set) var framesDrawn = 0
@@ -372,6 +401,7 @@ final class SkinFrameProducer {
     /// Starts drawing at the end of `executor`'s turns. Any thread.
     func start(on executor: SkinExecutor) {
         guard provider != nil, observer == nil else { return }
+        self.executor = executor
         let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
         guard let observer = CFRunLoopObserverCreateWithHandler(nil, activities.rawValue, true,
                                                                   SkinFrameProducer.observerOrder,
@@ -426,8 +456,10 @@ final class SkinFrameProducer {
         }
         if facts.isOrderedIn && !isOrderedIn {
             justOrderedIn = true
-            // Unless the first frame was drawn for it right now.
-            if !drewThisTurn { redraw = true }
+            // AppKit displayed the view when its window was ordered in; not when the first frame, drawn for this
+            // showing, is still what the skin looks like (drawn right now, or on an earlier turn of a skin thread).
+            if contentsReleased || (!drewThisTurn && !(drawnForShowing && !needsFrame)) { redraw = true }
+            drawnForShowing = false
         }
         isOrderedIn = facts.isOrderedIn
         isUnoccluded = facts.isVisible
@@ -437,14 +469,43 @@ final class SkinFrameProducer {
         if seen != toldVisible {
             toldVisible = seen
             provider?.setVisible(seen)
+            if !seen { scheduleRelease() }
+        }
+    }
+
+    /// The window stopped being seen: after `releaseDelay`, if it still cannot be seen, the kept pictures go, and
+    /// what the provider shows when the window is ordered out.
+    private func scheduleRelease() {
+        unseenGeneration += 1
+        let generation = unseenGeneration
+        executor?.async(after: SkinFrameProducer.releaseDelay) { [weak self] in
+            guard let self, generation == self.unseenGeneration else { return }
+            self.releaseUnseen()
+        }
+    }
+
+    /// Lets go of what a window that cannot be seen does not need (tests call it at once).
+    func releaseUnseen() {
+        guard !isStopped, !canBeSeen else { return }
+        if drawing.keepsPictures {
+            drawing.releaseKept()
+            releases.pictures += 1
+        }
+        if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
+            provider.releaseContents()
+            contentsReleased = true
+            releases.contents += 1
         }
     }
 
     /// The window is about to be shown for the first time: the first frame now, whether the window can be seen yet or
-    /// not (nothing when a frame was presented already).
+    /// not (nothing when a frame was presented already, unless the provider let go of it: then this frame, for the
+    /// window shown again).
     func drawFirstFrame() {
-        guard framesDrawn == 0, !isStopped else { return }
+        guard framesDrawn == 0 || contentsReleased, !isStopped else { return }
+        let before = framesDrawn
         draw()
+        if framesDrawn > before { drawnForShowing = true }
     }
 
     /// A turn of the executor's run loop ends (or, `beforeTimers`, the next one starts). The run-loop observer calls it
@@ -493,6 +554,8 @@ final class SkinFrameProducer {
         provider.present(SkinFrame(image: picture, scale: scale))
         framesDrawn += 1
         drewThisTurn = true
+        drawnForShowing = false
+        contentsReleased = false
         if FrameTimingLog.period > 0 {
             let now = ProcessInfo.processInfo.systemUptime
             timing.note(presentedAt: now, drawing: now - began)

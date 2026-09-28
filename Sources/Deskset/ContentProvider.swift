@@ -36,6 +36,13 @@ protocol ContentProvider: AnyObject {
     func setScale(_ scale: CGFloat)
     /// The window has closed: nothing more is shown, and what was shown is let go of. Later calls do nothing.
     func teardown()
+    /// The window has been ordered out for a while: what the provider shows may be let go of. The producer presents a
+    /// frame before the window is shown again. Optional: a provider that keeps nothing worth letting go of ignores it.
+    func releaseContents()
+}
+
+extension ContentProvider {
+    func releaseContents() {}
 }
 
 /// Frame delivery E on bitmaps (docs/skin-threading.md §7.3): the frame becomes the contents of a layer the skin owns,
@@ -106,6 +113,14 @@ final class LayerContentProvider: ContentProvider {
         lock.lock()
         defer { lock.unlock() }
         self.scale = scale
+    }
+
+    /// Lets go of the picture (the window is ordered out); the next `present` shows one again.
+    func releaseContents() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown else { return }
+        transaction { contentLayer.contents = nil }
     }
 
     func teardown() {

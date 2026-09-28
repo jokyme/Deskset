@@ -491,6 +491,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// One of the skin's own window bangs: the model changes at once, then the main thread is asked to do the same.
     private func ownWindowBang(_ bang: Bang) {
         guard !isClosed, let change = model.apply(bang, screens: EnvironmentStore.shared.currentScreens) else { return }
+        // Shown: a window that has not drawn yet (StartHidden) has its first frame before the main thread orders it
+        // in, as at the start, wherever the skin runs.
+        if case .hidden(false, _) = change.operation { frames.drawFirstFrame() }
         request(.window(change))
     }
 

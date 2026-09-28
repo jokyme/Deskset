@@ -11,6 +11,7 @@ enum SkinDrawingSelfTests {
         frameTests(t)
         threadFrameTests(t)
         windowFrameTests(t)
+        releaseTests(t)
         memoryTests(t)
         repositorySkinTests(t)
         contentLayerCheckTests(t)
@@ -587,10 +588,17 @@ enum SkinDrawingSelfTests {
             t.equal(frames.framesDrawn, 1, "only the first time")
             endTurn()
 
-            // Ordered in on a later turn: one frame (the view was displayed when its window was ordered in).
+            // Ordered in on a later turn, as a skin thread hears of it: the first frame is what it shows, drawn again
+            // only if the skin redrew since.
             w.show(true)
             endTurn()
-            t.equal(frames.framesDrawn, 2, "ordered in: one frame")
+            t.equal(frames.framesDrawn, 1, "ordered in after its first frame, nothing changed: that frame, not another")
+            // Ordered out and in again: one frame (the view was displayed when its window was ordered in).
+            w.show(false)
+            endTurn()
+            w.show(true)
+            endTurn()
+            t.equal(frames.framesDrawn, 2, "ordered in again: one frame")
             endTurn()
             t.equal(frames.framesDrawn, 2, "then nothing, while nothing changes")
             runtime.send(.update(hops: 0))
@@ -1030,6 +1038,58 @@ enum SkinDrawingSelfTests {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
         }
         return result == 0 ? Int(info.ri_phys_footprint) : 0
+    }
+
+    static func releaseTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: a covered window lets go of its kept pictures after a while, an ordered-out one of its frame too") {
+            let w = FrameTestWindow()
+            let runtime = try frameRuntime(t, keep, window: w)
+            let frames = runtime.frames
+            w.publish()
+            _ = try runtime.load()
+            runtime.send(.start)
+            runtime.send(.firstFrame)
+            w.show(true)
+            for _ in 0..<3 {
+                runtime.send(.update(hops: 0))
+                endTurn()
+            }
+            t.check(frames.drawing.keepsPictures && frames.drawing.lastStats.copied > 0, "shown: pictures kept")
+            frames.releaseUnseen()
+            t.equal(frames.releases.pictures, 0, "nothing goes while the window can be seen")
+
+            // Covered: the pictures go, the frame stays on the layer (it shows as soon as the window is uncovered).
+            w.publish { $0.isVisible = false }
+            endTurn()
+            frames.releaseUnseen()
+            t.check(!frames.drawing.keepsPictures, "covered: the kept pictures and bitmaps go")
+            t.check(w.content.shown.image != nil, "the frame stays")
+            t.equal(frames.releases.contents, 0)
+            let drawn = frames.framesDrawn
+            w.publish { $0.isVisible = true }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn, "uncovered without a redraw meanwhile: nothing drawn")
+            runtime.send(.update(hops: 0))
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1)
+            t.equal(frames.drawing.lastStats.copied, 0, "the next frame is drawn in full")
+            checkShown(t, w.content, host: w.view.layer, runtime.skin, scale: 2, space: sRGB, "after the release")
+
+            // Ordered out: the frame goes too; shown again, the frame for the showing comes first.
+            w.show(false)
+            endTurn()
+            frames.releaseUnseen()
+            t.check(w.content.shown.image == nil, "ordered out: the layer lets go of its frame")
+            t.equal(frames.releases.contents, 1)
+            runtime.send(.firstFrame)
+            t.check(w.content.shown.image != nil, "the frame for the showing")
+            t.equal(frames.framesDrawn, drawn + 2)
+            w.show(true)
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 2, "and no second one when the window is ordered in")
+            checkShown(t, w.content, host: w.view.layer, runtime.skin, scale: 2, space: sRGB, "shown again")
+            runtime.send(.close(fadeOut: false, ticket: nil))
+        }
     }
 
     static func memoryTests(_ t: AppTestRunner) {
