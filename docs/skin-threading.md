@@ -1954,3 +1954,49 @@ the same outcome.
    - A test run had committed the Turntable's own `Tempo` lines at `Live`, so a new install ran 30 updates a second
      until the deck noticed. They are back at `Rest`, and the app suite now fails when any suite changes the
      repository's `DefaultSkins`.
+9. **§10's measurements again, with the right baseline.** The later pass's table compared `SkinThreading=main` with
+   `engine` of the same new build, so a cost of this phase that both modes share (frames presented from an observer in
+   transactions of their own, a snapshot after every piece of work, window facts as messages) could not show. Its
+   runs were also too few and too noisy to say "no difference", and they measured neither idle wake-ups nor commits.
+   Measured again (release builds, M4 Pro, macOS 26.5, nobody at the Mac): the pre-phase-2 build (main at 847138a,
+   where AppKit's display pass set the view's layer) and both modes of this branch, the same ten skins as before (the
+   soak's ten, above other windows, the demo audio and player), five rounds alternating the three, each 30 s of
+   warm-up and then 120 s. The machine was not quiet: other work kept the 1-minute load at 2.4–4.5, and the owner's own
+   copy of Deskset kept running. Median [range] of the five runs:
+
+   | | 847138a | this branch, `main` | this branch, `engine` |
+   |---|---|---|---|
+   | Deskset CPU, % of a core | 21.8 [20.8–25.5] | 22.7 [17.1–23.3] | 23.1 [17.7–23.6] |
+   | top's energy impact | 22.2 [21.0–26.0] | 23.3 [17.4–23.9] | 23.6 [17.9–24.1] |
+   | WindowServer CPU, % | 47.3 [47.2–47.8] | 46.7 [45.5–47.2] | 46.7 [44.6–47.2] |
+   | idle wake-ups a second (top's IDLEW) | 8.9 [7.3–11.7] | 12.9 [7.0–15.0] | 13.2 [6.1–14.6] |
+   | context switches a second | 1,093 [1,083–1,177] | 1,077 [982–1,082] | 1,124 [1,054–1,142] |
+   | frames a second, the ten skins together | not logged | 117.6 | 117.7 |
+   | Core Animation commits a second, skin frames | not logged | 100.7 [96.8–104.2] | 101.8 [99.6–102.7] |
+
+   - WindowServer with no test copy running: 44.4 [42.6–49.6] %. Its spread is larger than any difference between the
+     columns, so §10's WindowServer item stays open until a quiet run exists (load under 1, the owner's copy quit).
+   - CPU, energy and context switches: the three columns lie within each other's ranges; the branch is not measurably
+     dearer than the build before it. The idle wake-ups' medians are higher for the branch, but the ranges overlap
+     (the baseline's up to 11.7, the branch's down to 6.1), and on a machine this busy most of a process's wake-ups
+     are not from idle; they go into the quiet run too.
+   - Commits: 117.7 frames a second took 101.8 commits on the engine thread, where each frame used to be a commit of
+     its own (117.7). The saving is what skins that draw in the same turn share; ten skins with their own update
+     intervals rarely do.
+   - The absolute CPU numbers are higher than in the later pass's table (about 14 %) for all three builds alike, the
+     baseline too: the difference is the machine's state that night, not the branch.
+   - Memory (the three side by side, three times, footprint at 2, 10 and 30 minutes): 98–112 MB at 2 minutes in every
+     column; 79–81, 79–82 and 78–81 MB at 10 minutes; 79–87, 78–83 and 78–81 MB at 30 minutes (847138a, `main`,
+     `engine`). `heap` at 10 minutes counted the same live objects in all three (125,800–126,500 blocks, 23.0 MB). The
+     difference the later pass recorded (+10 and +34 MB for `engine`) came from samples taken 2.5 minutes after launch,
+     where freed malloc pages not yet given back (footprint's "reclaimable" in `MALLOC_SMALL`) and two transient
+     `MALLOC_LARGE` regions vary by 25 MB within one mode. Settled, the modes use the same memory.
+   - The default stays `engine`: with the right baseline it costs no measurable CPU, energy or memory, and it keeps
+     the visualizer's frames even while the Studio opens (the later pass's pacing measurement, unchanged by the
+     review). The WindowServer and idle wake-up items stay open for a quiet run.
+10. **Counts after the review.** Core 61,167 checks. The app suite 10,911 checks in each scroller style (default,
+    `WhenScrolling`, `Always`), in one process, with 6,568–6,580 debug comparisons of snapshot answers and no
+    difference; it now ends by checking that no suite changed the repository's `DefaultSkins`. The new suites
+    ("App: engine thread: …" in `EngineReloadSelfTests.swift` and "App: skin drawing: a covered window lets go…") pass
+    in both modes where they compare them. Main Thread Checker reports nothing for the full runs of both programs. The
+    threads stress suites ("App: threads") pass on their own too (82 checks).
