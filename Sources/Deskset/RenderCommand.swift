@@ -248,12 +248,19 @@ enum RenderCommand {
                         host: host)
         // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
         let virtual = o.virtualTime()
+        var restoreServices: () -> Void = {}
+        defer { restoreServices() }
         if let virtual {
             skin.runInVirtualTime(virtual)
             // The weather service installed above is the preview (no network, place lookups at once): a fake service.
             virtual.background.setFake(.service, for: .weather)
             virtual.background.setFake(.service, for: .sun)
             virtual.background.addSettleHook { WeatherService.shared.drain() }
+            // NowPlaying's position runs on the centre's clock: the virtual one for this render (the demo player then
+            // gives the same image on every run).
+            let savedClock = NowPlayingCenter.shared.clock
+            NowPlayingCenter.shared.clock = { virtual.uptime }
+            restoreServices = { NowPlayingCenter.shared.clock = savedClock }
         } else if let zone = o.timeZone {
             skin.skinClock.timeZone = { zone }
         }
