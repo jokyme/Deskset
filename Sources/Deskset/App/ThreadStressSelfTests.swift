@@ -708,7 +708,7 @@ enum ThreadStressSelfTests {
 ///   skin weakly (`SkinHop`), so nothing queued late keeps a skin.
 /// - `exclusive` parks the thread between two pieces of work (`SkinExecutorPark`): while the caller holds it,
 ///   `isCurrent` is true on the caller's thread and false on this one.
-final class TestThreadExecutor: SkinExecutor {
+final class TestThreadExecutor: SkinRunLoopExecutor {
     /// Set up on the thread before `init` returns and read-only afterwards, except `stopped` (the thread's own).
     private final class Loop {
         var runLoop: CFRunLoop?
@@ -745,6 +745,9 @@ final class TestThreadExecutor: SkinExecutor {
     }
 
     var isCurrent: Bool { park.isCurrent(onThread: loop.thread) }
+
+    /// The thread's run loop, where the frame producer of a skin on it draws at the end of each turn.
+    var runLoop: CFRunLoop? { loop.runLoop }
 
     /// On the executor's own thread, whoever holds exclusive access: where its run loop is.
     private var isOnThread: Bool {

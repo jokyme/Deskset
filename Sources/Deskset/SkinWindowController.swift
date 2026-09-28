@@ -20,6 +20,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// The window's content view: the glass (`MacGlass`), then `view` in front of it.
     let contentView: SkinContentView
     let view: SkinView
+    /// Where the skin's frames go: a layer of their own in `view`'s layer. Only the runtime's frame producer presents
+    /// frames; the window tears it down once it has closed.
+    let content: LayerContentProvider
     /// The glass behind the skin's drawing (`MacGlass`), in `contentView`.
     let glass = SkinGlassViews()
     private var hoverTimer: Timer?
@@ -40,8 +43,6 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// It is not saved: a refresh, or any change of the saved AlphaValue (!SetTransparency, the menu, the Manage
     /// window), ends it.
     private(set) var fadedAlpha: (value: Int, base: Int)?
-    /// A redraw was requested while the window was fully covered; done when it becomes visible again.
-    private var displayPending = false
     private var fadeGeneration = 0
 
     /// The last of the skin's own window changes applied here (`SkinWindowFacts.modelSequence`).
@@ -79,8 +80,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         view = SkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView.addSubview(view)
+        content = LayerContentProvider(in: view)
         window = SkinWindowController.makePanel()
-        runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory, executor: executor)
+        runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory, executor: executor,
+                              content: content)
         super.init()
         runtime.window = self
         runtime.directoryStore = app.skinDirectory
@@ -138,8 +141,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
 
     // MARK: Lifecycle
 
-    /// First update, placement, then shows the window (fading in over FadeDuration when `fadeIn`). With
-    /// StartHidden the window stays hidden until !Show.
+    /// First update, placement, then shows the window (fading in over FadeDuration when `fadeIn`) with its first frame.
+    /// With StartHidden the window stays hidden until !Show.
     func start(fadeIn: Bool) {
         if state.startHidden { isHiddenByBang = true }
         // Also publishes the settings the first load seeded (`seedWindowSettings`): #CURRENTCONFIGZPOS# of the first
@@ -148,15 +151,27 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         // The first update, then the update clock (which never fires inline).
         runtime.send(.start)
         placeWindow()
-        view.needsDisplay = true
         if app.presentsWindows && !isHiddenByBang {
             let target = targetAlpha
             let duration = fadeIn ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
-            window.alphaValue = duration > 0 ? 0 : target
-            window.orderFrontRegardless()
+            orderIn(alpha: duration > 0 ? 0 : target)
             if duration > 0 { animateAlpha(to: target, duration: duration) }
         }
         publishFacts()
+    }
+
+    /// Self-tests: told right before the window is ordered in (`orderIn`).
+    var willOrderIn: (() -> Void)?
+
+    /// Orders the window in at `alpha`, with its first frame drawn already: a skin's window never shows before its
+    /// skin has drawn (a skin that started hidden draws its first frame here). The headless self-tests call it to see
+    /// what the window would show: without presented windows nothing is ordered in.
+    func orderIn(alpha: CGFloat) {
+        runtime.send(.firstFrame)
+        willOrderIn?()
+        guard app.presentsWindows else { return }
+        window.alphaValue = alpha
+        window.orderFrontRegardless()
     }
 
     /// Stops updating, runs OnCloseAction and closes the window (fading out when `fadeOut`).
@@ -175,19 +190,22 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         fadeGeneration += 1
         let duration = fadeOut && window.isVisible && app.presentsWindows
             ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
+        let content = self.content
         guard duration > 0 else {
             window.orderOut(nil)
             window.close()
+            content.teardown()
             return
         }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
             window.animator().alphaValue = 0
         }, completionHandler: {
-            // Keeps the controller (and so the drawn skin) alive until the fade has finished.
+            // Keeps the controller (and so the skin's last frame) alive until the fade has finished.
             withExtendedLifetime(self) {
                 window.orderOut(nil)
                 window.close()
+                content.teardown()
             }
         })
     }
@@ -311,7 +329,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         }
         old.orderOut(nil)
         old.close()
-        view.needsDisplay = true
+        runtime.send(.frameWanted)
     }
 
     private func applyAlpha(animated: Bool) {
@@ -364,9 +382,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             }
         } else {
             if !window.isVisible && app.presentsWindows {
-                window.alphaValue = duration > 0 ? 0 : targetAlpha
-                window.orderFrontRegardless()
-                view.needsDisplay = true
+                // A skin that started hidden shows its first frame; the others one frame, when they redrew meanwhile
+                // (the window's facts tell the runtime it can be seen again).
+                orderIn(alpha: duration > 0 ? 0 : targetAlpha)
             }
             applyMouseHandling()
             animateAlpha(to: targetAlpha, duration: duration)
@@ -562,11 +580,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         runtime.send(.focus(false))
     }
 
+    /// Covered or uncovered: the runtime draws no frames while the window cannot be seen, and one when it can again.
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        if displayPending, window.occlusionState.contains(.visible) {
-            displayPending = false
-            view.needsDisplay = true
-        }
         publishFacts()
     }
 
@@ -579,7 +594,16 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         publishFacts()
     }
 
+    /// Another backing scale or colour space (the window moved to another display): the frames follow.
     func windowDidChangeBackingProperties(_ notification: Notification) {
+        publishFacts()
+    }
+
+    func windowDidChangeScreenProfile(_ notification: Notification) {
+        publishFacts()
+    }
+
+    func windowDidChangeScreen(_ notification: Notification) {
         publishFacts()
     }
 
@@ -588,8 +612,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
     /// Applies what the runtime asks of the main thread, in the order it asked.
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         switch request {
-        case .display(let size):
-            display(size: size)
+        case .resize(let size):
+            resize(to: size)
         case .glass(let regions):
             guard !isStopped else { return }
             glass.apply(regions, in: contentView, below: view)
@@ -618,8 +642,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         if !changes.isDisjoint(with: [.issues, .metadata]) { app.skinDetailsChanged() }
     }
 
-    /// The skin redrew: the window follows its size (the top-left corner stays) and shows the new picture.
-    private func display(size: CGSize) {
+    /// The skin's size changed: the window follows (the top-left corner stays). The frames go to the content layer
+    /// from the skin's executor, which skips them while the window cannot be seen (energy: a skin hidden behind other
+    /// windows, on a locked screen or ordered out is not drawn until it can be seen again; its measures keep updating).
+    private func resize(to size: CGSize) {
         guard !isStopped else { return }
         if window.frame.size != size {
             // Keep the top-left corner fixed.
@@ -628,13 +654,6 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
             if state.keepOnScreen && window.isVisible { frame = keptOnScreen(frame) }
             window.setFrame(frame, display: false)
             view.frame = NSRect(origin: .zero, size: size)
-        }
-        // Energy: a skin hidden behind other windows, on a locked screen or faded out is not redrawn until it can be
-        // seen again (measures keep updating).
-        if !app.presentsWindows || window.occlusionState.contains(.visible) {
-            view.needsDisplay = true
-        } else {
-            displayPending = true
         }
         view.updateToolTips()
     }
@@ -740,10 +759,17 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow 
         publishFacts()
     }
 
+    /// Self-tests: whether the window counts as shown and uncovered in the facts, although the headless tests never
+    /// show it (nil: as it is). The frames follow the facts.
+    var visibilityForTesting: Bool? {
+        didSet { publishFacts() }
+    }
+
     /// What the window is now, for the runtime.
     var facts: SkinWindowFacts {
         SkinWindowFacts(frame: window.frame, screen: window.screen.flatMap { NSScreen.screens.firstIndex(of: $0) },
-                        isVisible: window.occlusionState.contains(.visible), isOrderedIn: window.isVisible,
+                        isVisible: visibilityForTesting ?? window.occlusionState.contains(.visible),
+                        isOrderedIn: visibilityForTesting ?? window.isVisible,
                         scale: window.backingScaleFactor, colorSpace: window.colorSpace?.cgColorSpace,
                         appearance: view.effectiveAppearance.name.rawValue, takesPointer: takesPointer,
                         settings: SkinWindowSettings(state, hidden: isHiddenByBang,

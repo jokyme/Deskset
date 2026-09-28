@@ -305,13 +305,14 @@ enum SkinRuntimeSelfTests {
         """
 
     static func makeRuntime(_ t: AppTestRunner, _ text: String, executor: SkinExecutor,
-                            window: RecordingWindow) throws -> SkinRuntime {
+                            window: RecordingWindow, content: ContentProvider? = nil) throws -> SkinRuntime {
         ReleaseProbe.register()
         let root = t.temporaryDirectory("runtime")
         let folder = root.appendingPathComponent("Runtime", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try text.write(to: folder.appendingPathComponent("Test.ini"), atomically: true, encoding: .utf8)
-        let runtime = SkinRuntime(config: "Runtime", file: "Test.ini", skinsDirectory: root, executor: executor)
+        let runtime = SkinRuntime(config: "Runtime", file: "Test.ini", skinsDirectory: root, executor: executor,
+                                  content: content)
         runtime.window = window
         return runtime
     }
@@ -375,11 +376,13 @@ final class RecordingWindow: SkinRuntimeWindow {
     var log: [String] = []
     /// What the runtime's `.snapshotChanged` requests said changed, in order.
     var snapshotPosts: [SkinSnapshotChanges] = []
+    /// The sizes the runtime asked the window to follow.
+    var resizes: [CGSize] = []
 
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         let place = Thread.isMainThread ? "on main" : "off main"
         switch request {
-        case .display: return   // every redraw
+        case .resize(let size): resizes.append(size)
         case .snapshotChanged(let changes):
             // With nothing in it: a test's marker; else what the runtime posted.
             if changes.isEmpty { log.append("marker \(place)") } else { snapshotPosts.append(changes) }

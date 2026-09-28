@@ -16,9 +16,11 @@ enum SkinSnapshotSelfTests {
             runtime.send(.start)
             for _ in 0..<5 { runtime.send(.update(hops: 0)) }
             window.snapshotPosts = []
+            let resizes = window.resizes.count
             let generation = runtime.snapshot.generation
             for _ in 0..<120 { runtime.send(.update(hops: 0)) }
             t.equal(window.snapshotPosts.count, 0, "posted: \(window.snapshotPosts.map(\.rawValue))")
+            t.equal(window.resizes.count, resizes, "nor is the window asked to resize: its frames go to its content layer")
             t.check(runtime.snapshot.generation != generation, "rebuilt meanwhile (a tooltip shows a measure)")
             t.equal(runtime.snapshot.updateCount, runtime.skin.updateCount, "the snapshot follows the updates")
             t.equal(runtime.snapshot.counter, runtime.skin.counter)

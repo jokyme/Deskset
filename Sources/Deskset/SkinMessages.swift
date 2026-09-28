@@ -77,6 +77,13 @@ enum SkinMessage {
     case appearanceChanged
     /// The update clock stops and the skin closes (`Skin.close`: OnCloseAction). The window fades out when `fadeOut`.
     case close(fadeOut: Bool)
+
+    // MARK: Frames
+
+    /// The window is about to be shown: its first frame now, if no frame was presented yet (`SkinFrameProducer`).
+    case firstFrame
+    /// The window wants its frame again at the end of the turn (its content went to a new panel).
+    case frameWanted
 }
 
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
@@ -90,8 +97,9 @@ struct HostBang {
 
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
 enum SkinRequest {
-    /// The skin changed what it shows: redraw its window, resized to `size` first (points; the top-left corner stays).
-    case display(size: CGSize)
+    /// The skin's size changed: the window follows (points; the top-left corner stays). Its frames go to the content
+    /// provider from the skin's executor.
+    case resize(CGSize)
     /// Where the glass goes now (`MacGlass`), back to front, in skin points.
     case glass([GlassRegion])
     /// One of the skin's own window changes (position, Z position, transparency, the window flags, !Show / !Hide), made

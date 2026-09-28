@@ -2,8 +2,9 @@ import AppKit
 import DesksetCore
 
 /// The half of a running skin that owns the `Skin` (docs/skin-threading.md §5.4): it is the skin's `SkinHost`, runs its
-/// update clock, pause and wake, handles the messages sent to it (`send`), publishes what the main thread reads of the
-/// skin (`snapshot`) and asks the main thread for what only the main thread can do (`request`). Everything here runs on
+/// update clock, pause and wake, draws its frames (`frames`), handles the messages sent to it (`send`), publishes what
+/// the main thread reads of the skin (`snapshot`) and asks the main thread for what only the main thread can do
+/// (`request`). Everything here runs on
 /// the skin's executor, except reading the snapshot; the window half, `SkinWindowController`, stays on the main thread
 /// and reaches the skin only through this object: messages, the snapshot, or exclusive access (`exclusive`) where it
 /// still needs the live skin at once.
@@ -53,19 +54,32 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Told of every message right before it is handled, on the executor (self-tests).
     var messageObserver: ((SkinMessage) -> Void)?
 
+    /// Draws the skin's frames at the end of its executor's turns and presents them through the window's content
+    /// provider. On the executor.
+    let frames: SkinFrameProducer
+    /// The size the window was last asked to follow (`skinNeedsDisplay`). Not the window model's: AppKit rounds a
+    /// window's frame to whole points, so a skin 130.3 points wide has a window 131 wide.
+    private var requestedSize: CGSize?
+
     /// Most bangs one skin passes on to another inside a single chain (`[!Update B]` in A's OnUpdateAction, `[!Update
     /// A]` in B's…): the next one is dropped (and logged, once per skin).
     static let maxHops = 16
 
-    /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`. Load it with `load()`, on the executor.
-    init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared) {
+    /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`, whose frames go to `content` (nil: none
+    /// are drawn). Load it with `load()`, on the executor.
+    init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
+         content: ContentProvider? = nil) {
         self.config = config
         self.file = file
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
+        var owner: (() -> Skin?)?
+        frames = SkinFrameProducer(provider: content, skin: { owner?() })
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: self)
         skin.executor = executor
         self.skin = skin
+        owner = { [weak self] in self?.skin }
+        frames.start(on: executor)
     }
 
     deinit {
@@ -156,6 +170,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             return true
         case .windowFacts(let facts):
             model.take(facts)
+            frames.take(model.facts)
             return true
         default:
             break
@@ -216,6 +231,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             skin.appearanceDidChange()
         case .close:
             close()
+        case .firstFrame:
+            frames.drawFirstFrame()
+        case .frameWanted:
+            frames.setNeedsFrame()
         case .mirrorInput, .windowFacts:
             break
         }
@@ -519,6 +538,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         isClosing = true
         skin.close()
         isClosed = true
+        // The window fades out with the last frame.
+        frames.stop()
     }
 
     // MARK: LiveSkinHost
@@ -532,12 +553,19 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     // MARK: SkinHost
 
+    /// The skin redrew: a frame at the end of the turn (`frames`). A new size goes to the window model at once (the skin
+    /// reads it right away) and to the main thread, which resizes the window with its top-left corner fixed; the frame
+    /// of the new size goes to the content layer, which clips it or leaves a margin until the window follows, never
+    /// stretching it.
     func skinNeedsDisplay(_ skin: Skin) {
         guard !isClosed else { return }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
-        // The window follows the skin's size (top-left corner fixed): the skin reads its new size at once.
         model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
-        request(.display(size: size))
+        if size != requestedSize {
+            requestedSize = size
+            request(.resize(size))
+        }
+        frames.setNeedsFrame()
     }
 
     /// Largest window side in points: guards against skins whose size formulas explode.

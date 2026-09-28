@@ -1,8 +1,8 @@
 import AppKit
 import DesksetCore
 
-/// Draws a skin window's picture into a bitmap of its own, which becomes the view's layer contents
-/// (`SkinView.updateLayer`).
+/// Draws a skin window's picture into a bitmap of its own, which the skin's frame producer presents as the contents of
+/// its window's content layer (`SkinFrameProducer`, `LayerContentProvider`).
 ///
 /// Why not AppKit's `draw(_:)`: on macOS 26 a layer-backed view's backing store is drawn through Core Animation's
 /// accelerated path (CA::CG on Metal). As soon as a skin redrew every second or faster, that held 110–150 MB of
@@ -282,5 +282,204 @@ final class SkinBitmapDrawing {
             }
         }
         return found
+    }
+}
+
+// MARK: - Frames
+
+/// An executor whose work runs on a run loop of its own: the frame producer draws at the end of that run loop's turns.
+protocol SkinRunLoopExecutor: SkinExecutor {
+    /// The run loop the executor's work runs on (nil before its thread has started).
+    var runLoop: CFRunLoop? { get }
+}
+
+extension MainSkinExecutor: SkinRunLoopExecutor {
+    var runLoop: CFRunLoop? { CFRunLoopGetMain() }
+}
+
+/// A skin's frames (docs/skin-threading.md §7.3, frame delivery E on bitmaps): on the skin's executor, whichever it is,
+/// the producer draws the skin with `SkinBitmapDrawing` and presents the picture through its window's `ContentProvider`.
+///
+/// - The skin asks for a frame when it redraws (`setNeedsFrame`, from `SkinHost.skinNeedsDisplay`). The producer draws at
+///   most once per turn of the executor's run loop, at its end: in an observer before the run loop waits (or leaves),
+///   ordered before Core Animation's commit, which is where AppKit's display pass drew the view. A thread that never
+///   waits also draws once a frame's time has passed since the skin asked.
+/// - It draws at the backing scale, in the colour space and with the appearance of the window's facts
+///   (`SkinWindowFacts`, which the main thread publishes whenever they change): what the view read from its window.
+///   Another scale, colour space or appearance draws the frame again.
+/// - It does not draw while the window cannot be seen: before it is shown, while it is ordered out (hidden by a bang,
+///   never shown at all as in the headless self-tests, where AppKit never displayed the view either) or covered by
+///   other windows. It draws one frame when the window can be seen again: when it is uncovered, if the skin redrew
+///   meanwhile; when it is ordered in again, always, and before its occlusion state catches up (AppKit displayed the
+///   view then).
+/// - The first frame is drawn before the window is first shown (`drawFirstFrame`), whether it can be seen or not.
+/// - Once the skin has closed (`stop`) nothing more is drawn: the window fades out with the last frame.
+final class SkinFrameProducer {
+    /// The pictures, with the ones kept of meters that did not change.
+    let drawing = SkinBitmapDrawing()
+    let provider: ContentProvider?
+    /// The skin, as long as the runtime has it.
+    private let skin: () -> Skin?
+
+    /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
+    private(set) var needsFrame = false
+    /// When the skin asked for the frame it waits for (the monotonic clock).
+    private var askedAt: TimeInterval = 0
+    private var isStopped = false
+    private var observer: CFRunLoopObserver?
+
+    // From the window's facts.
+    private(set) var scale: CGFloat = 2
+    private(set) var space: CGColorSpace = SkinFrameProducer.sRGB
+    private(set) var appearance = NSAppearance.Name.aqua.rawValue
+    private var isOrderedIn = false
+    private var isUnoccluded = false
+    /// Ordered in since the last turn ended: seen before the occlusion state says so.
+    private var justOrderedIn = false
+    /// What the provider was told last.
+    private var toldVisible: Bool?
+
+    /// Frames drawn and presented (tests).
+    private(set) var framesDrawn = 0
+    /// Turns that ended with a frame wanted but not drawn because the window could not be seen (tests).
+    private(set) var framesSkipped = 0
+
+    /// How long a turn may run before a frame asked for in it is drawn anyway (a thread that never waits).
+    static let frameInterval: TimeInterval = 1.0 / 60
+    /// Before Core Animation's commit (2000000), after the run loop's other work.
+    static let observerOrder: CFIndex = 1_999_000
+    static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+
+    /// `provider` nil: a runtime without a window (tests), which draws nothing.
+    init(provider: ContentProvider?, skin: @escaping () -> Skin?) {
+        self.provider = provider
+        self.skin = skin
+    }
+
+    deinit {
+        if let observer { CFRunLoopObserverInvalidate(observer) }
+    }
+
+    /// Starts drawing at the end of `executor`'s turns. Any thread.
+    func start(on executor: SkinExecutor) {
+        guard provider != nil, observer == nil else { return }
+        let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
+        guard let observer = CFRunLoopObserverCreateWithHandler(nil, activities.rawValue, true,
+                                                                  SkinFrameProducer.observerOrder,
+                                                                  { [weak self] _, activity in
+                                                                      self?.runLoopTurn(activity)
+                                                                  })
+        else { return }
+        self.observer = observer
+        if let executor = executor as? SkinRunLoopExecutor, let loop = executor.runLoop {
+            CFRunLoopAddObserver(loop, observer, .commonModes)
+        } else {
+            // Its work runs on its run loop: the observer goes there.
+            executor.async { CFRunLoopAddObserver(CFRunLoopGetCurrent(), observer, .commonModes) }
+        }
+    }
+
+    /// The skin closed: no more frames.
+    func stop() {
+        isStopped = true
+        needsFrame = false
+        if let observer { CFRunLoopObserverInvalidate(observer) }
+        observer = nil
+    }
+
+    /// Whether the window can be seen, as far as its facts tell.
+    var canBeSeen: Bool { isOrderedIn && (isUnoccluded || justOrderedIn) }
+
+    /// The skin redrew: a frame at the end of the turn, if the window can be seen then.
+    func setNeedsFrame() {
+        guard !isStopped else { return }
+        if !needsFrame { askedAt = ProcessInfo.processInfo.systemUptime }
+        needsFrame = true
+    }
+
+    /// The window's facts, as the runtime's window model took them.
+    func take(_ facts: SkinWindowFacts?) {
+        guard let facts, !isStopped else { return }
+        var redraw = false
+        if facts.scale != scale, facts.scale > 0, facts.scale.isFinite {
+            scale = facts.scale
+            provider?.setScale(scale)
+            redraw = true
+        }
+        let space = facts.colorSpace ?? SkinFrameProducer.sRGB
+        if space != self.space {
+            self.space = space
+            redraw = true
+        }
+        if facts.appearance != appearance {
+            appearance = facts.appearance
+            redraw = true
+        }
+        if facts.isOrderedIn && !isOrderedIn {
+            justOrderedIn = true
+            redraw = true
+        }
+        isOrderedIn = facts.isOrderedIn
+        isUnoccluded = facts.isVisible
+        // Before the first frame there is nothing to draw again: the skin's first redraw asks for it.
+        if redraw && framesDrawn > 0 { setNeedsFrame() }
+        let seen = canBeSeen
+        if seen != toldVisible {
+            toldVisible = seen
+            provider?.setVisible(seen)
+        }
+    }
+
+    /// The window is about to be shown for the first time: the first frame now, whether the window can be seen yet or
+    /// not (nothing when a frame was presented already).
+    func drawFirstFrame() {
+        guard framesDrawn == 0, !isStopped else { return }
+        draw()
+    }
+
+    /// A turn of the executor's run loop ends (or, `beforeTimers`, the next one starts). The run-loop observer calls it
+    /// (and the self-tests).
+    func runLoopTurn(_ activity: CFRunLoopActivity) {
+        guard !isStopped else { return }
+        if activity == .beforeTimers {
+            // A thread that has not waited for a frame's time.
+            guard needsFrame, ProcessInfo.processInfo.systemUptime - askedAt >= SkinFrameProducer.frameInterval
+            else { return }
+            drawIfSeen()
+            return
+        }
+        drawIfSeen()
+        justOrderedIn = false
+    }
+
+    private func drawIfSeen() {
+        guard needsFrame else { return }
+        guard canBeSeen else {
+            framesSkipped += 1
+            return
+        }
+        draw()
+    }
+
+    /// Draws the skin as it is now and presents it; a picture that cannot be made keeps the last one on screen.
+    private func draw() {
+        needsFrame = false
+        guard let provider, let skin = skin() else { return }
+        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
+        var picture: CGImage?
+        // The drawing appearance AppKit set while the view drew.
+        SkinFrameProducer.withAppearance(appearance) {
+            picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: appearance)
+        }
+        guard let picture else { return }
+        provider.present(SkinFrame(image: picture, scale: scale))
+        framesDrawn += 1
+    }
+
+    /// Runs `body` with the appearance named `name` as the thread's drawing appearance.
+    static func withAppearance(_ name: String, _ body: () -> Void) {
+        guard let appearance = NSAppearance(named: NSAppearance.Name(rawValue: name)) else { return body() }
+        appearance.performAsCurrentDrawingAppearance(body)
     }
 }

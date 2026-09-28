@@ -11,11 +11,13 @@ final class SkinPanel: NSPanel {
     override func keyDown(with event: NSEvent) {}
 }
 
-/// Draws the skin and turns mouse events into skin actions / window dragging. It reaches the skin through its
+/// Shows the skin and turns mouse events into skin actions / window dragging. Its frames are the contents of a layer of
+/// their own inside the view's layer, which the skin's runtime presents from its executor (`LayerContentProvider`); the
+/// view's own layer shows nothing, and `draw(_:)` stays for snapshots (`cacheDisplay`). It reaches the skin through its
 /// window controller's runtime: events are messages (`SkinRuntime.send`); what it needs to know at once — whether a
 /// press may drag, whether a right click opens the skin menu, the cursor, the tooltips, whether the panel becomes key —
 /// it reads from the skin's snapshot (`SkinSnapshot`, as of the skin's last piece of work: the frame on screen), and
-/// the picture from the live skin with exclusive access. Whether an event was handled is the skin's answer when the
+/// its own drawing from the live skin with exclusive access. Whether an event was handled is the skin's answer when the
 /// message ran at once (the skin runs on the main thread), else what the snapshot predicted. Debug builds compare every
 /// answer taken from the snapshot with the live skin's while the skin runs on the main thread (`SnapshotAudit`).
 ///
@@ -77,6 +79,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Where the pointer is on the screen, which a drag follows (a self-test drags without moving the real pointer).
     static var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
 
+    /// Snapshots of the view (`cacheDisplay`): the skin drawn in full. AppKit never draws the view on screen: its layer
+    /// asks for no drawing (`wantsUpdateLayer`) and has no contents of its own.
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext, let runtime = controller?.runtime else { return }
         ctx.clear(bounds)
@@ -84,39 +88,23 @@ final class SkinView: NSView, NSViewToolTipOwner {
         runtime.exclusive { SkinRenderer.draw($0, in: ctx, glass: .window) }
     }
 
-    /// The skin's picture, drawn into a bitmap of its own (`SkinBitmapDrawing`, which says why) rather than through
-    /// `draw(_:)`, which stays for snapshots (`cacheDisplay`).
-    let drawing = SkinBitmapDrawing()
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {
-        guard let layer else { return }
-        guard let runtime = controller?.runtime else {
-            layer.contents = nil
-            return
-        }
-        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        let space = window?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)
-        guard let space else { return }
-        layer.contentsScale = scale
-        let size = bounds.size, appearance = effectiveAppearance.name.rawValue, drawing = self.drawing
-        // A skin that does not let go of its thread in time keeps its last picture.
-        guard let picture = runtime.exclusive({
-            drawing.picture(of: $0, size: size, scale: scale, space: space, appearance: appearance)
-        }) else { return }
-        layer.contents = picture
+        layer?.contents = nil
     }
 
-    /// The picture is the view's own: drawn again for another backing scale or color space (a window moved to another
-    /// display) and appearance, not only when the skin redraws (an `Update=-1` skin never does).
+    /// The frames are drawn at the window's backing scale, in its colour space and with the view's appearance: another
+    /// one (a window moved to another display, Dark Mode switched) goes to the runtime in the window's facts, and the
+    /// frame is drawn again, not only when the skin redraws (an `Update=-1` skin never does).
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        needsDisplay = true
+        controller?.publishFacts()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
+        controller?.publishFacts()
     }
 
     override func updateTrackingAreas() {
