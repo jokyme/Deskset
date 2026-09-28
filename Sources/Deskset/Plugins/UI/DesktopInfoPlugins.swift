@@ -331,7 +331,7 @@ final class ChameleonMeasure: MediaUIMeasure {
         let desktop = isDesktop
         pendingKey = path
         // An image file is a fixture in virtual time; the desktop picture is the Mac's live state (no fake).
-        let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: .global(qos: .utility),
+        let job = BackgroundJob(.desktopImage, subject: desktop ? "desktop" : path, on: DispatchQueue.global(qos: .utility),
                                 fixture: !desktop) { () -> (file: String, key: String, changed: Bool, ChameleonPalette?) in
             let file = desktop ? ChameleonMeasure.wallpaperFile(path) : path
             let modified = file.isEmpty ? 0 : ((try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate]
