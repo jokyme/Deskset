@@ -307,6 +307,8 @@ enum RenderCommand {
         // --legacy: the frozen renderer measures the skin's text and images too, not only draws it.
         if o.legacy { skinHost = LegacyRenderHost(host) }
         #endif
+        // The skin holds its host weakly.
+        defer { withExtendedLifetime(skinHost) {} }
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDir,
                         system: inputs?.systemSource(base: SystemMonitor.shared) ?? SystemMonitor.shared, host: skinHost)
         // --clock / --time-zone / --seed: the skin's clock and random numbers (the Mac's own otherwise).
