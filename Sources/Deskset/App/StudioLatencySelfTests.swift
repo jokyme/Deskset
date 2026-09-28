@@ -184,13 +184,14 @@ enum StudioLatencySelfTests {
         var value: (_ written: String?, _ i: Int) -> String
         var label: String { "\(mode.rawValue) · \(key)" }
 
-        /// One larger each time (13, 14, 15… from 12), down from the written size past 300: a text never laid out yet.
+        /// One larger each time, twelve sizes in turn (13 … 24 from 12): none was laid out in the last eleven steps, so
+        /// no cached text layout serves it, and the sizes stay ones a user picks (much larger ones would push the text
+        /// out of the widget and change what the steps are).
         static let fontSize = Run(mode: .design, key: "FontSize", undoName: "Change Font Size") { written, i in
             let number = written.flatMap { OptionValue.number($0) } ?? 12
-            let base = Int(number.isFinite ? min(max(number, 1), 400) : 12)
-            let up: Int = base + 1 + i
-            let down: Int = max(base - 1 - (up - 300), 1)
-            return String(up <= 300 ? up : down)
+            let base = Int(number.isFinite ? min(max(number, 1), 380) : 12)
+            let size: Int = base + 1 + i % 12
+            return String(size)
         }
         /// A new color each time (alpha 254 or 253, which no reference widget writes).
         static let fontColor = Run(mode: .design, key: "FontColor", undoName: "Change Text Color") { _, i in
