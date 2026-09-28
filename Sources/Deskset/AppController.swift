@@ -1021,9 +1021,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// What a skin's menu shows of the skin itself: its custom items, its name and the weather credit.
+    struct SkinMenuFacts {
+        var items: [ContextMenuItem]
+        var name: String?
+        var weather: (uses: Bool, updated: String?)
+        /// Read from the live skin; false: from its snapshot, because the skin was busy.
+        var isLive: Bool
+    }
+
+    /// How long a menu waits for a busy skin (a skin on another thread in the middle of its work) before it shows what
+    /// the skin's snapshot has.
+    static let menuReadTimeout: TimeInterval = 0.05
+
+    /// The skin's custom items, name and weather credit for its menu: read from the live skin with exclusive access
+    /// (the titles "are always dynamic"), or, when the skin does not let go within `menuReadTimeout`, from its
+    /// snapshot (the items as of the last change of its variables, the credit without the time of the data).
+    func menuFacts(for c: SkinWindowController) -> SkinMenuFacts {
+        if let live = c.runtime.exclusive(timeout: AppController.menuReadTimeout, { skin in
+            SkinMenuFacts(items: skin.contextMenuItems(), name: ManageModel.metadataValue(skin.metadata, "Name"),
+                          weather: MacWeatherMeasure.attributionInfo(for: skin), isLive: true)
+        }) {
+            return live
+        }
+        let snapshot = c.runtime.snapshot
+        return SkinMenuFacts(items: snapshot.contextItems, name: ManageModel.metadataValue(snapshot.metadata, "Name"),
+                             weather: (snapshot.usesWeather, nil), isLive: false)
+    }
+
     /// Menu with only the skin's custom items (`!SkinCustomMenu`), nil when it has none.
     func customSkinMenu(for c: SkinWindowController) -> NSMenu? {
-        let items = c.runtime.exclusive { $0.contextMenuItems() } ?? []
+        let items = menuFacts(for: c).items
         guard !items.isEmpty else { return nil }
         let menu = NSMenu()
         addCustomItems(items, for: c, to: menu)
@@ -1034,18 +1062,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
         let s = c.state
-        // The name and the compatibility notes from the skin's snapshot; the custom items read at once (their titles
-        // "are always dynamic").
+        // The compatibility notes from the skin's snapshot; the custom items, the name and the weather credit read when
+        // the menu opens (`menuFacts`).
         let snapshot = c.runtime.snapshot
-        let facts = c.runtime.exclusive { skin in
-            (custom: includeCustomItems ? skin.contextMenuItems() : [],
-             weather: includeCustomItems
-                ? WeatherWiring.menuItems(for: skin, target: self, action: #selector(openWeatherSourceAction(_:))) : [])
-        }
         if includeCustomItems {
-            let title = ManageModel.metadataValue(snapshot.metadata, "Name") ?? c.config
+            let facts = menuFacts(for: c)
+            let title = facts.name ?? c.config
             menu.addItem(withTitle: title, action: nil, keyEquivalent: "").isEnabled = false
-            let custom = facts?.custom ?? []
+            let custom = facts.items
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
             if custom.count > 3 {
                 let submenu = NSMenu()
@@ -1057,7 +1081,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 addCustomItems(custom, for: c, to: menu)
             }
             // CC BY 4.0: every skin that shows MET Norway's forecasts credits them, whoever wrote it.
-            for weather in facts?.weather ?? [] { menu.addItem(weather) }
+            for weather in WeatherWiring.menuItems(for: facts.weather, target: self,
+                                                   action: #selector(openWeatherSourceAction(_:))) {
+                menu.addItem(weather)
+            }
             menu.addItem(.separator())
         }
 
@@ -1195,7 +1222,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activate(config: a[0], file: a[1])
     }
 
-    @objc private func customContextAction(_ sender: NSMenuItem) {
+    /// A chosen custom item: its action runs on the skin's executor, from `[Rainmeter]`.
+    @objc func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
               !entry.action.isEmpty else { return }
         c.runtime.send(.execute(entry.action, section: "Rainmeter"))

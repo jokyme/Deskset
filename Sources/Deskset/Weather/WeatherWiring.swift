@@ -106,8 +106,9 @@ enum WeatherWiring {
 
     /// Menu items for a skin that shows MET Norway's data (any skin with a MacWeather measure, so third-party skins
     /// credit the source too): "Weather: Based on data from MET Norway ↗" (opens api.met.no) and "Updated 12:05".
-    static func menuItems(for skin: Skin, target: AnyObject, action: Selector) -> [NSMenuItem] {
-        let info = MacWeatherMeasure.attributionInfo(for: skin)
+    /// `info`: what `MacWeatherMeasure.attributionInfo` said of the skin, on the skin's executor (a busy skin's menu has
+    /// its snapshot's: the credit without the time).
+    static func menuItems(for info: (uses: Bool, updated: String?), target: AnyObject, action: Selector) -> [NSMenuItem] {
         guard info.uses else { return [] }
         let credit = NSMenuItem(title: "Weather: \(METNorway.attribution) ↗", action: action, keyEquivalent: "")
         credit.target = target

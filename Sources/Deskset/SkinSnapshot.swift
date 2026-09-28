@@ -29,6 +29,8 @@ struct SkinSnapshot {
     var issues: [String] = []
     /// `[Metadata]`.
     var metadata: [String: String] = [:]
+    /// The skin shows MET Norway's data (a MacWeather measure): its menu credits the source.
+    var usesWeather = false
     /// The skin groups of `[Rainmeter]` (`Group=`), as written.
     var groups: [String] = []
     /// The skin's file and the files it includes.
@@ -84,6 +86,7 @@ struct SkinSnapshot {
         wantsFocus = !skin.settings.onFocusAction.isEmpty || !skin.settings.onUnfocusAction.isEmpty
         issues = skin.issues
         metadata = skin.metadata
+        usesWeather = MacWeatherMeasure.showsWeather(in: skin)
         groups = skin.settings.groups
         sourceFiles = skin.sourceFiles
         outsidePointerNeeds = skin.outsidePointerNeeds
