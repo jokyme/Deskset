@@ -1769,12 +1769,18 @@ final class CenteringClipView: NSClipView {
         }
     }
 
+    /// How far above the middle a document smaller than the visible area sits (document points; 0: centred).
+    var verticalBias: CGFloat = 0
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let document = documentView else { return rect }
         let size = document.frame.size
         if rect.width > size.width { rect.origin.x = holdsDocument ? proposedBounds.minX : (size.width - rect.width) / 2 }
-        if rect.height > size.height { rect.origin.y = holdsDocument ? proposedBounds.minY : (size.height - rect.height) / 2 }
+        if rect.height > size.height {
+            rect.origin.y = holdsDocument ? proposedBounds.minY
+                : (size.height - rect.height) / 2 + (isFlipped ? verticalBias : -verticalBias)
+        }
         return rect
     }
 }

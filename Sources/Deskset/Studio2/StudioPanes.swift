@@ -253,9 +253,30 @@ final class StudioCanvasViewController: NSViewController {
         return DesktopMapping(widgetFrame: frame, cardRect: card, zoom: zoom)
     }
 
+    /// How far below the toolbar the widget's top sits at most: a widget with room to spare sits above the middle,
+    /// where the eye puts the middle of a page (the room under it holds the caption and the preview bar).
+    static let topRoom: CGFloat = 150
+
+    /// Moves a widget that has room to spare up, so its top is at most `topRoom` below the toolbar.
+    func placeOptically() {
+        guard let clip = scrollView.contentView as? CenteringClipView, !clip.holdsDocument, skinProvider() != nil
+        else { return }
+        let zoom = max(scrollView.magnification, 0.01)
+        let card = cardRect
+        guard card.height > 0 else { return }
+        // Where the top would be with the widget centred, and how far above that it should go.
+        let centredTop = card.minY - Self.toolbarHeight + clip.verticalBias * zoom
+        let bias = max(0, centredTop - Self.topRoom) / zoom
+        guard abs(bias - clip.verticalBias) > 0.25 else { return }
+        clip.verticalBias = bias
+        clip.scroll(to: clip.bounds.origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
+
     /// The canvas moved, zoomed or the widget changed size: the planes and the caption follow.
     func geometryChanged() {
         guard isViewLoaded else { return }
+        placeOptically()
         let m = mapping
         backdropView.mapping = m
         neighboursView.mapping = m

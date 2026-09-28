@@ -763,7 +763,7 @@ enum StudioText {
         .lookLight: ("Light", "浅色"),
         .lookDark: ("Dark", "深色"),
         .lookClear: ("Clear", "透明"),
-        .lookShared: ("The look is shared by all %d %@ widgets", "全部 %d 个 %@ 小组件共用这个外观"),
+        .lookShared: ("Shared by all %d %@ widgets", "全部 %d 个 %@ 小组件共用这个外观"),
         .swatchText: ("Text", "文字"),
         .swatchCard: ("Card", "卡片"),
         .swatchMore: ("More…", "更多…"),

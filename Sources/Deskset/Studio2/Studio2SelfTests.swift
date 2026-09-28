@@ -348,7 +348,7 @@ enum Studio2SelfTests {
     static func snapshotTests(_ t: AppTestRunner) {
         t.suite("Studio2: window: snapshot") {
             prepare(t)
-            t.equal(StudioScreen.names, ["03-customize", "03b-weather", "04-part", "07-layers", "08-add", "09-every-setting",
+            t.equal(StudioScreen.names, ["03-customize", "03-customize-changed", "03b-weather", "04-part", "07-layers", "08-add", "09-every-setting",
                                          "10-preview", "12b-code-ini", "13b-compat", "17-show-on-desktop"])
             for screen in StudioScreen.all {
                 guard let source = Paths.repositoryFolder(screen.fixture.source) else {
