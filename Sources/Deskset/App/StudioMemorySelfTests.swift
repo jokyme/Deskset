@@ -41,6 +41,7 @@ enum StudioMemorySelfTests {
 
     static func run(_ t: AppTestRunner) {
         rebuildProbe(t)
+        closeProbe(t)
         t.suite("App: studio memory") {
             AppSelfTest.stopEarlierSkins()
             let budget = ProcessInfo.processInfo.environment["DESKSET_STUDIO_MEMORY_BUDGET_MB"].flatMap(Double.init)
@@ -129,6 +130,41 @@ extension StudioMemorySelfTests {
             let alive = survivors.compactMap(\.view)
             t.check(fieldCount > 0, "the pages have fields")
             t.check(alive.isEmpty, "the old cards are released: \(alive.map { $0.identifier?.rawValue ?? "\(type(of: $0))" })")
+        }
+    }
+
+    /// A Studio window opened on a widget, stepped, and closed: once what the close autoreleased is drained, nothing
+    /// holds on to its controller, its window or its canvas — a Studio opened and closed again and again does not keep
+    /// every window it showed.
+    static func closeProbe(_ t: AppTestRunner) {
+        t.suite("App: studio memory: a closed Studio window goes") {
+            weak var closedEditor: InspectorWindowController?
+            weak var closedWindow: NSWindow?
+            weak var closedCanvas: SkinCanvasView?
+            weak var closedSkin: Skin?
+            try autoreleasepool {
+                guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Calendar"),
+                      let target = editor.skin?.meters.first(where: { $0 is StringMeter })?.name else {
+                    return t.check(false, "the Studio opens")
+                }
+                editor.select(section: target)
+                EditorWindowSelfTests.settle()
+                editor.commit([.init(section: target, key: "FontSize", value: "21", own: true)], name: "Change Font Size")
+                EditorWindowSelfTests.settle()
+                editor.window?.undoManager?.undo()
+                EditorWindowSelfTests.settle()
+                closedEditor = editor
+                closedWindow = editor.window
+                closedCanvas = editor.canvas
+                closedSkin = editor.skin
+                editor.window?.close()
+                EditorWindowSelfTests.settle()
+            }
+            for _ in 0..<3 { autoreleasepool { EditorWindowSelfTests.settle() } }
+            t.check(closedSkin == nil, "the Studio's instance of the widget is released")
+            t.check(closedCanvas == nil, "the canvas is released")
+            t.check(closedEditor == nil, "the Studio's window controller is released")
+            t.check(closedWindow == nil, "and its window")
         }
     }
 }
