@@ -225,6 +225,15 @@ func runSeedingTests(_ t: TestRunner) {
         t.equal(text(studio, "MeterChild"), "two", "the result shows on the new instance's first update")
         t.equal(parent(studio)?.fetchCount, 0, "without fetching the page again: its cycle goes on from the source's")
         t.equal(parent(studio)?.captures, parent(source)?.captures)
+        // The Studio's instance loaded again after a step: its successor goes on in the same cycle, without fetching.
+        let seeded = studio.runtimeState(as: .successor)
+        t.equal(seeded.measures["measureparent"]?.webParser?.updateCounter, 3,
+                "a seeded parent passes on where it is in its cycle, although it fetched nothing itself")
+        let successor = try twin(of: source)
+        successor.seed(from: seeded)
+        successor.update()
+        t.equal(text(successor, "MeterChild"), "two")
+        t.equal(parent(successor)?.fetchCount, 0, "the successor does not fetch either")
 
         // Taken while the first page was still on its way: nothing to show, and the new instance fetches.
         t.equal(inFlight.measures["measureparent"]?.webParser, nil)
