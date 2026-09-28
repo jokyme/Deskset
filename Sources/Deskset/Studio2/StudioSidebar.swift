@@ -42,9 +42,15 @@ final class StudioSidebarViewController: NSViewController {
         _ = view
         self.page = page
         tabs.selectedSegment = page.rawValue
+        StudioPageStyle.markChosenSegment(tabs)
         addView.isHidden = page != .add
         layersView.isHidden = page != .layers
         layout()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        StudioPageStyle.markChosenSegment(tabs)
     }
 
     @objc func tabChanged() {

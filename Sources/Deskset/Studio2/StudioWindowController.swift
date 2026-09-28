@@ -624,7 +624,8 @@ final class StudioRunningViewController: NSViewController {
             pathLabel.stringValue = path
             switch link.provenance {
             case .builtIn: noteLabel.stringValue = StudioText[.runningBuiltIn]
-            case .madeByYou, .rainmeter: noteLabel.stringValue = StudioText[.runningRainmeter]
+            case .madeByYou: noteLabel.stringValue = StudioText[.runningMadeByYou]
+            case .rainmeter: noteLabel.stringValue = StudioText[.runningRainmeter]
             }
         } else {
             pathLabel.stringValue = link.displayPath ?? ""

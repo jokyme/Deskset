@@ -74,6 +74,54 @@ enum StudioWords {
         return table[lower] ?? english
     }
 
+    /// What a click does, in the Studio's language (the Core says it in English: "Opens Activity Monitor" → "打开
+    /// Activity Monitor"). A sentence it does not know stays English.
+    static func action(_ sentence: String) -> String {
+        guard chinese else { return sentence }
+        let fixed: [String: String] = [
+            "Runs a command": "执行一个命令", "Opens Manage Widgets": "打开“管理小组件”", "Opens the widget's menu": "打开小组件的菜单",
+            "Quits Deskset": "退出 Deskset", "Reloads every widget": "重新载入全部小组件", "Reloads the widget": "重新载入小组件",
+            "Hides the widget": "隐藏小组件", "Shows the widget": "显示小组件", "Shows or hides the widget": "显示或隐藏小组件",
+            "Moves the widget": "移动小组件", "Writes to the log": "写进日志", "Sends a command to live data": "给实时数据发一个命令",
+            "Changes one of its settings": "更改它的一个设置",
+        ]
+        if let zh = fixed[sentence] { return zh }
+        let patterns: [(String, String)] = [
+            (#"^Runs (\d+) commands$"#, "执行 $1 个命令"),
+            (#"^Shows or hides the widget (.+)$"#, "显示或隐藏小组件$1"),
+            (#"^Shows the widget (.+)$"#, "显示小组件$1"),
+            (#"^Hides the widget (.+)$"#, "隐藏小组件$1"),
+            (#"^Shows or hides the layers in (.+)$"#, "显示或隐藏$1里的图层"),
+            (#"^Shows the layers in (.+)$"#, "显示$1里的图层"),
+            (#"^Hides the layers in (.+)$"#, "隐藏$1里的图层"),
+            (#"^Shows or hides (.+)$"#, "显示或隐藏$1"),
+            (#"^Shows (.+)$"#, "显示$1"),
+            (#"^Hides (.+)$"#, "隐藏$1"),
+            (#"^Changes a setting of (.+)$"#, "更改$1的一个设置"),
+            (#"^Changes the shared value (.+)$"#, "更改共用值$1"),
+            (#"^Writes an email to (.+)$"#, "给 $1 写邮件"),
+            (#"^Opens (.+)$"#, "打开 $1"),
+        ]
+        for (pattern, template) in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern),
+                  let m = re.firstMatch(in: sentence, range: NSRange(sentence.startIndex..., in: sentence)) else { continue }
+            var out = template
+            if m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: sentence) {
+                let value = String(sentence[r])
+                // A space between Chinese and a Latin word or number that meets it.
+                let before = out.components(separatedBy: "$1").first ?? ""
+                let after = out.components(separatedBy: "$1").dropFirst().joined()
+                var joined = before
+                if let a = before.last, let b = value.first, StudioText.needsSpace(a, b), !before.hasSuffix(" ") { joined += " " }
+                joined += value
+                if let a = value.last, let b = after.first, StudioText.needsSpace(a, b) { joined += " " }
+                out = joined + after
+            }
+            return out.replacingOccurrences(of: "  ", with: " ")
+        }
+        return sentence
+    }
+
     /// "1 part", "4 parts".
     static func parts(_ n: Int) -> String {
         n == 1 ? StudioText[.partsOne] : StudioText.format(.partsMany, n)

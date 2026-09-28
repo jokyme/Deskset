@@ -160,7 +160,7 @@ struct StudioPage: Equatable {
         /// A number: its field (with its notation kept: `10R`, `(#Gap# + 4)`), its unit, and the shortcuts of every
         /// number field (drag the label, arithmetic, ⌥-click the label for the default, arrows ±1, ⇧ ±10).
         case number(Number)
-        /// A swatch with words beside it: "Text color · follows Light / Dark".
+        /// A swatch with words beside it: "Text color · follows Light/Dark".
         case colorLabel(ColorLabel)
         /// Two controls side by side (Size: W · H; Font · weight).
         case pair([Control])
@@ -306,10 +306,13 @@ struct StudioPage: Equatable {
         }
     }
 
-    /// A pair of controls (width and height) counts as two.
+    /// A pair of controls (width and height) counts as two; a value shown as text changes nothing, so it is none.
     static func controls(in control: Control) -> Int {
-        if case .pair(let items) = control { return items.reduce(0) { $0 + controls(in: $1) } }
-        return 1
+        switch control {
+        case .pair(let items): return items.reduce(0) { $0 + controls(in: $1) }
+        case .text: return 0
+        default: return 1
+        }
     }
 
     /// The design's limit: twelve controls, plus the Text · Card pair.

@@ -17,6 +17,16 @@ enum StudioInk {
                                                                      : NSColor(white: 0, alpha: 0.12)
     }
     static let live = NSColor(srgbRed: 0.20, green: 0.70, blue: 0.35, alpha: 1)
+    /// The accent as words on the canvas's glass (an item in use): the accent itself is about 4 : 1 on white and less
+    /// on glass over a dark picture, so it is taken darker in light (lighter in dark) until small words read at 4.5 : 1
+    /// on the Bright, Busy and Dark samples.
+    static let accentText = NSColor(name: "StudioAccentText") { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        var accent = NSColor.controlAccentColor
+        appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? accent }
+        return (dark ? accent.blended(withFraction: 0.45, of: .white) : accent.blended(withFraction: 0.45, of: .black))
+            ?? accent
+    }
 }
 
 /// Whether the Studio's controls change at once (Reduce Motion) rather than animating.
@@ -156,7 +166,7 @@ final class StudioBarItem: NSView {
     private var textColor: NSColor {
         if !isEnabled { return StudioInk.quiet.withAlphaComponent(0.35) }
         if isLink { return .linkColor }
-        return isOn ? .controlAccentColor : StudioInk.primary
+        return isOn ? StudioInk.accentText : StudioInk.primary
     }
 
     private func symbolImage(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
@@ -211,7 +221,7 @@ final class StudioBarItem: NSView {
             NSBezierPath(ovalIn: NSRect(x: x + 2, y: midY - 3.5, width: 7, height: 7)).fill()
             x += 11 + 5
         case .symbol(let name):
-            let tint = iconColor ?? (isOn ? NSColor.controlAccentColor : (isEnabled ? StudioInk.primary : color))
+            let tint = iconColor ?? (isOn ? StudioInk.accentText : (isEnabled ? StudioInk.primary : color))
             if let image = symbolImage(name, size: iconSize, weight: .medium, color: tint) {
                 image.draw(in: NSRect(x: x, y: midY - image.size.height / 2, width: image.size.width,
                                       height: image.size.height))
@@ -225,12 +235,12 @@ final class StudioBarItem: NSView {
             x += ceil(size.width) + 5
         }
         if let prefix, showsTitle {
-            text(prefix, NSFont.systemFont(ofSize: font.pointSize), isOn ? .controlAccentColor : StudioInk.quiet)
+            text(prefix, NSFont.systemFont(ofSize: font.pointSize), isOn ? StudioInk.accentText : StudioInk.quiet)
         }
         if !shownTitle.isEmpty { text(shownTitle, titleFont, color) }
         if let suffix, showsTitle { text(suffix, NSFont.systemFont(ofSize: font.pointSize - 1), StudioInk.quiet) }
         if showsChevron,
-           let image = symbolImage("chevron.down", size: 8, weight: .bold, color: isOn ? .controlAccentColor : StudioInk.quiet) {
+           let image = symbolImage("chevron.down", size: 8, weight: .bold, color: isOn ? StudioInk.accentText : StudioInk.quiet) {
             image.draw(in: NSRect(x: x, y: midY - image.size.height / 2, width: image.size.width,
                                   height: image.size.height))
         }

@@ -488,9 +488,11 @@ extension StudioPartPage {
         rows["shape.kind"] = StudioPartRow(key: "Shape", kind: .shapeKind, name: StudioText[.undoShape],
                                           title: StudioText[.rowKind], section: "shape")
         if spec.kind == .rectangle {
-            let radius = spec.number(4) ?? 0
+            // A radius written as a variable shows its value (a change is this shape's own).
+            let radius = spec.number(4) ?? OptionValue.number(m.skin.resolve(spec.param(4) ?? "0", in: m,
+                                                                                sectionVariables: false)) ?? 0
             var r = StudioPage.Row(label: StudioText[.rowCorners], control: .number(.init(
-                text: spec.param(4) ?? "0", value: radius, unit: StudioText.language == .chinese ? "点" : "pt", defaultText: "0", width: 64, minimum: 0)))
+                text: StudioNumberInput.text(radius), value: radius, unit: StudioText.language == .chinese ? "点" : "pt", defaultText: "0", width: 64, minimum: 0)))
             r.detail = showsIniNames ? "Shape" : nil
             items.append(.init(id: "shape.corners", kind: .row(r)))
             rows["shape.corners"] = StudioPartRow(key: "Shape", kind: .shapeRadius, name: StudioText[.rowCorners],
@@ -573,10 +575,19 @@ extension StudioPartPage {
         return StudioText.format(.withPart, name)
     }
 
+    /// An action written as one variable (`#OpenAction#`) is summed up as what the variable says.
+    static func resolvedAction(_ action: String, skin: Skin) -> String {
+        guard let name = WriteScopes.soleVariable(action), let value = skin.variable(name), !value.isEmpty else {
+            return action
+        }
+        return value
+    }
+
     func clickSection(_ m: Meter, skin: Skin) -> StudioPage.Section {
         let action = (m.fileOption("LeftMouseUpAction") ?? "").trimmingCharacters(in: .whitespaces)
         let sentence = action.isEmpty ? StudioText[.clickNothing]
-            : ActionSummary.sentence(for: action, section: m.name, in: skin) ?? StudioText[.clickNothing]
+            : ActionSummary.sentence(for: Self.resolvedAction(action, skin: skin), section: m.name, in: skin)
+                .map(StudioWords.action) ?? StudioText[.clickNothing]
         var menu = [StudioPage.MenuItem(title: sentence)]
         if !action.isEmpty { menu.append(.init(title: StudioText[.clickRemove])) }
         var row = StudioPage.Row(label: "", control: .popup(.init(items: menu, selected: 0,
@@ -737,7 +748,8 @@ extension StudioPartPage {
             rowSpec(.fonts(faces))
         case .action:
             let sentence = written.isEmpty ? StudioText[.clickNothing]
-                : ActionSummary.sentence(for: written, section: m.name, in: skin) ?? written
+                : ActionSummary.sentence(for: Self.resolvedAction(written, skin: skin), section: m.name, in: skin)
+                    .map(StudioWords.action) ?? written
             control = .text(sentence)
         case .text, .formula, .styleList, .sectionRef, .format, .image, .insets, .alignment9, .shapes:
             if case .alignment9 = p.kind {

@@ -384,7 +384,7 @@ final class StudioPageView: NSView {
             let heading = headings[section.id]!
             let hh = ceil(heading.intrinsicContentSize.height)
             if let note = trailingNotes[section.id] {
-                let w = min(ceil(note.intrinsicContentSize.width) + 2, inner / 2)
+                let w = min(ceil(note.fittingSize.width) + 1, inner / 2)
                 put(note, NSRect(x: m + inner - w, y: y + (hh - 14) / 2 + 1, width: w, height: 14))
                 put(heading, NSRect(x: m, y: y, width: inner - w - 8, height: hh))
             } else if let buttons = trailing[section.id] {
@@ -676,6 +676,7 @@ final class StudioRowView: NSView, StudioPageItemView {
             s.selectedSegment = seg.selected
             s.isEnabled = seg.enabled
             s.toolTip = row.tooltip
+            StudioPageStyle.markChosenSegment(s)
         case .toggle(let on):
             (controlView as? NSSwitch)?.state = on ? .on : .off
         case .percent(let value):
@@ -719,10 +720,27 @@ final class StudioRowView: NSView, StudioPageItemView {
 
     func height(forWidth width: CGFloat) -> CGFloat { dense ? 23.5 : 24 }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        if let s = controlView as? NSSegmentedControl { StudioPageStyle.markChosenSegment(s) }
+    }
+
+    /// Whether the label needs more room than its column: a dense row's label then goes onto two lines (the dense row
+    /// grows), never cut.
+    var labelWraps: Bool {
+        guard dense, let font = label.font, row.labelWidth > 0 else { return false }
+        return ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width) + 4 > row.labelWidth
+    }
+
     override func layout() {
         super.layout()
         let h = bounds.height
-        let lh = ceil(label.intrinsicContentSize.height)
+        let wraps = labelWraps
+        label.maximumNumberOfLines = wraps ? 2 : 1
+        label.lineBreakMode = wraps ? .byWordWrapping : .byTruncatingTail
+        label.cell?.wraps = wraps
+        let lh = wraps ? StudioPageStyle.height(of: label.stringValue, font: label.font ?? StudioPageStyle.labelFont,
+                                               width: row.labelWidth) : ceil(label.intrinsicContentSize.height)
         let labelWidth = row.labelWidth
         label.frame = NSRect(x: 0, y: (h - lh) / 2, width: labelWidth, height: lh)
         if !scrubMark.isHidden {

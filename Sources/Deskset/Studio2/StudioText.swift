@@ -88,6 +88,7 @@ enum StudioText {
         case runningNothing = "running.nothing"
         case runningBuiltIn = "running.builtIn"
         case runningRainmeter = "running.rainmeter"
+        case runningMadeByYou = "running.madeByYou"
         case showInFinder = "running.showInFinder"
         // The panes.
         case searchPlaceholder = "inspector.search"
@@ -647,6 +648,7 @@ enum StudioText {
         .runningNothing: ("Nothing: the widget is not on your desktop right now.", "没有：这个小组件现在不在桌面上。"),
         .runningBuiltIn: ("A widget that comes with Deskset.", "Deskset 自带的小组件。"),
         .runningRainmeter: ("The skin’s own file: changes are written into it.", "皮肤自己的文件：改动写进这个文件。"),
+        .runningMadeByYou: ("Your widget’s own file: changes are written into it.", "你的小组件自己的文件：改动写进这个文件。"),
         .showInFinder: ("Show in Finder", "在访达中显示"),
         .searchPlaceholder: ("What do you want to change?", "想改什么？"),
         .tabAdd: ("Add", "添加"),
@@ -889,7 +891,7 @@ enum StudioText {
         .rowTint: ("Tint", "着色"),
         .rowSymbolColors: ("Colors", "颜色"),
         .textColor: ("Text color", "文字颜色"),
-        .followsLightDark: ("follows Light / Dark", "跟随浅色 / 深色"),
+        .followsLightDark: ("follows Light/Dark", "跟随浅色 / 深色"),
         .fit: ("Fit", "自适应"),
         .widthPrefix: ("W", "宽"),
         .heightPrefix: ("H", "高"),

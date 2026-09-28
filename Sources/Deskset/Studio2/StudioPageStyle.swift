@@ -63,6 +63,27 @@ enum StudioPageStyle {
         NSColor(srgbRed: c.r / 255, green: c.g / 255, blue: c.b / 255, alpha: c.a / 255)
     }
 
+    // MARK: Chosen segments
+
+    /// The mark beside a chosen segment's words.
+    static let segmentMark: NSImage? = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
+        .withSymbolConfiguration(.init(pointSize: 9, weight: .bold))
+
+    /// In Dark Mode the accent of a chosen segment stands out from its track by less than 3 : 1 (about 2.3 : 1), so the
+    /// chosen segment also carries a check mark: a sign that does not rely on color (the design's rule for chosen
+    /// states). Segments that show symbols of their own are left as they are.
+    static func markChosenSegment(_ control: NSSegmentedControl) {
+        let dark = isDark(control.effectiveAppearance)
+        for i in 0..<control.segmentCount {
+            let current = control.image(forSegment: i)
+            guard current == nil || current === segmentMark else { continue }
+            let mark = dark && control.isSelected(forSegment: i) ? segmentMark : nil
+            guard current !== mark else { continue }
+            control.setImage(mark, forSegment: i)
+            control.setImageScaling(.scaleNone, forSegment: i)
+        }
+    }
+
     // MARK: Pieces
 
     /// A label in quiet ink.

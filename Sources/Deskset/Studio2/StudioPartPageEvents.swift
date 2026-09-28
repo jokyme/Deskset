@@ -310,7 +310,8 @@ extension StudioPartPage {
     private func shapeNumber(_ item: String, _ m: Meter, _ row: StudioPartRow, _ change: StudioNumberChange) {
         guard var spec = shapeSpec(m) else { return }
         let isRadius: Bool = { if case .shapeRadius = row.kind { return true }; return false }()
-        let current: Double = isRadius ? (spec.number(4) ?? 0) : (spec.modifiers.compactMap { mod -> Double? in
+        let current: Double = isRadius ? (spec.number(4) ?? OptionValue.number(m.skin.resolve(spec.param(4) ?? "0", in: m,
+            sectionVariables: false)) ?? 0) : (spec.modifiers.compactMap { mod -> Double? in
             if case .strokeWidth(let w) = mod { return Double(w) }
             return nil
         }.last ?? 1)

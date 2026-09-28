@@ -136,7 +136,7 @@ struct StudioScreen {
                      zoom: 1.65, hoverSwatch: "part:0",
                      later: ["wallpaper backdrop", "the city row (city search)", "the Colors scope sentence for two copies",
                              "Accent among the colors"]),
-        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: "MeterCPUValue",
+        StudioScreen(name: "04-part", fixture: .system, zoom: 1.65, selection: ProcessInfo.processInfo.environment["DBGSEL"] ?? "MeterCPUValue",
                      scopeHover: true, updates: 4, pinned: systemReadings,
                      later: ["Position: In the Column · Free (an INI part is free: X and Y instead)",
                              "Shows examples (the number is written by the widget's data, not the part)",

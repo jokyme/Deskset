@@ -93,7 +93,7 @@ enum Studio2PartSelfTests {
             t.check(page.footer.first?.detail.hasSuffix("more") == true, page.footer.first?.detail ?? "")
             if case .row(let row)? = page.item("text.color")?.kind, case .colorLabel(let c) = row.control {
                 t.equal(c.title, "Text color")
-                t.equal(c.note, "follows Light / Dark")
+                t.equal(c.note, "follows Light/Dark")
             } else {
                 t.check(false, "the color row")
             }

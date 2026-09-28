@@ -52,6 +52,7 @@ final class StudioPreviewPopoverController: NSViewController {
         }
         appearanceControl.selectedSegment = initial.appearance.rawValue
         glassControl.selectedSegment = initial.glass.rawValue
+        for control in [appearanceControl, glassControl] { StudioPageStyle.markChosenSegment(control) }
         appearanceControl.setAccessibilityLabel(StudioText[.macAppearance])
         glassControl.setAccessibilityLabel(StudioText[.glass])
         footerLabel.font = .systemFont(ofSize: 11.5)
@@ -88,7 +89,13 @@ final class StudioPreviewPopoverController: NSViewController {
         return row
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        for control in [appearanceControl, glassControl] { StudioPageStyle.markChosenSegment(control) }
+    }
+
     @objc func changed() {
+        for control in [appearanceControl, glassControl] { StudioPageStyle.markChosenSegment(control) }
         let appearance = StudioPreviewState.Appearance(rawValue: appearanceControl.selectedSegment) ?? .followMac
         let glass = StudioPreviewState.Glass(rawValue: glassControl.selectedSegment) ?? .standard
         onChange?(appearance, glass)

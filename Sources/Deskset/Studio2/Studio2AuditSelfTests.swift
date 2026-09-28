@@ -584,11 +584,24 @@ enum Studio2AuditSelfTests {
                             found.append(w)
                         }
                         if chinese {
-                            for w in Studio2PreviewSelfTests.bannedChinese where text.contains(w) && !found.contains(w) {
+                            // "节" (a section) is an engine word; in 细节 (details) and the like it is not.
+                            let plain = ["细节", "调节", "节省", "季节", "节日"].reduce(text) {
+                                $0.replacingOccurrences(of: $1, with: "")
+                            }
+                            found.removeAll { $0 == "节" && !plain.contains("节") }
+                            for w in Studio2PreviewSelfTests.bannedChinese where plain.contains(w) && !found.contains(w) {
                                 found.append(w)
                             }
                         }
-                        t.equal(found, [], "\(language.rawValue): \(what)")
+                        // Where the first one is, so a failure says what to change.
+                        let context = found.first.flatMap { w -> String? in
+                            let needle = w == "#…#" ? "#" : w
+                            guard let r = text.range(of: needle, options: .caseInsensitive) else { return nil }
+                            let from = text.index(r.lowerBound, offsetBy: -30, limitedBy: text.startIndex) ?? text.startIndex
+                            let to = text.index(r.upperBound, offsetBy: 30, limitedBy: text.endIndex) ?? text.endIndex
+                            return String(text[from..<to])
+                        } ?? ""
+                        t.equal(found, [], "\(language.rawValue): \(what): …\(context)…")
                     }
                     for name in ["03-customize", "03b-weather", "09-every-setting"] {
                         guard let opened = open(t, name) else { continue }
@@ -612,9 +625,10 @@ enum Studio2AuditSelfTests {
                         studio.preview.closePreviewPopover()
                         studio.showRunningPopover()
                         if let p = studio.runningPopoverContent {
-                            // The file's path is the file's own.
-                            p.pathLabel.stringValue = ""
-                            scan(Studio2PageSelfTests.words(in: p.view), "\(name): the name's popover")
+                            _ = p.view
+                            // Its words (the file's path is the file's own).
+                            scan([p.titleLabel.stringValue, p.noteLabel.stringValue, p.finderButton.title]
+                                .joined(separator: " "), "\(name): the name's popover")
                         }
                         // The canvas's floating controls, and the preview bar's menus.
                         let canvas = studio.canvasController
@@ -676,14 +690,15 @@ enum Studio2AuditSelfTests {
         return (y0..<y1).map { y in (x0..<x1).map { x in rep.colorAt(x: x, y: y).map(luminance) ?? 0 } }
     }
 
-    /// The contrast of the ink in `rect` against what it sits on: the background is the most common luminance at the
-    /// rectangle's edge, the ink the pixels furthest from it (the 98th percentile, so a stray pixel does not decide).
+    /// The contrast of the ink in `rect` against what it sits on: the background is the middle luminance of the
+    /// rectangle, the ink the pixels furthest from it (the 98th percentile, so a stray pixel does not decide).
     static func inkContrast(_ rep: NSBitmapImageRep, _ rect: NSRect, content: NSView) -> Double {
         let grid = pixels(rep, rect, content: content)
         guard grid.count > 2, let width = grid.first?.count, width > 2 else { return 0 }
-        let edge = grid.first! + grid.last! + grid.map { $0.first! } + grid.map { $0.last! }
-        let background = edge.sorted()[edge.count / 2]
-        let contrasts = grid.flatMap { $0 }.map { ratio($0, background) }.sorted()
+        // What the words sit on is what most of the rectangle is (the words' strokes are a small part of it).
+        let all = grid.flatMap { $0 }.sorted()
+        let background = all[all.count / 2]
+        let contrasts = all.map { ratio($0, background) }.sorted()
         return contrasts[Int(Double(contrasts.count - 1) * 0.98)]
     }
 
@@ -759,8 +774,12 @@ enum Studio2AuditSelfTests {
                         }
                         // The chosen segment against its track (3 : 1): the size, the preview popover's look.
                         if let size = (page.itemView("size") as? StudioRowView)?.controlView as? NSSegmentedControl {
+                            // 3 : 1, or a mark that does not rely on color (Dark Mode: a check mark).
                             let c = segmentContrast(rep, size, content: content) ?? 0
-                            t.check(c >= 3, String(format: "%@: the chosen size %.2f : 1", look, c))
+                            let marked = size.image(forSegment: size.selectedSegment) === StudioPageStyle.segmentMark
+                            t.check(c >= 3 || marked, String(format: "%@: the chosen size %.2f : 1%@", look, c,
+                                                             marked ? ", with a check mark" : ""))
+                            if c < 3 { print(String(format: "    %@: the chosen size %.2f : 1 and a check mark", look, c)) }
                         } else {
                             t.check(false, "\(look): the size row")
                         }

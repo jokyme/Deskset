@@ -349,7 +349,7 @@ final class StudioExampleChip: NSControl {
     }
 }
 
-/// A swatch with words beside it: "◐ Text color  follows Light / Dark". The swatch opens the color popover; pointing
+/// A swatch with words beside it: "◐ Text color  follows Light/Dark". The swatch opens the color popover; pointing
 /// at the row outlines what the color paints.
 final class StudioColorLabelView: NSView {
     var onClick: (() -> Void)?
@@ -392,7 +392,7 @@ final class StudioColorLabelView: NSView {
         let tw = ceil(title.fittingSize.width) + 1
         title.frame = NSRect(x: 23, y: (h - 16) / 2, width: min(tw, bounds.width - 23), height: 16)
         let nx = 23 + tw + 2
-        // The note in the smaller size when the usual one would be cut ("follows Light / Dark" in full).
+        // The note in the smaller size when the usual one would be cut ("follows Light/Dark" in full).
         note.font = StudioPageStyle.noteFont
         if ceil(note.fittingSize.width) > bounds.width - nx { note.font = StudioPageStyle.smallFont }
         note.frame = NSRect(x: nx, y: (h - 15) / 2, width: max(bounds.width - nx, 0), height: 15)
@@ -518,11 +518,15 @@ final class StudioDenseRowView: NSView, StudioPageItemView {
 
     func accepts(_ control: StudioPage.Control) -> Bool { row.accepts(control) }
 
-    func height(forWidth width: CGFloat) -> CGFloat { 23.5 + (dense.note == nil ? 0 : 14) }
+    /// A label longer than its column goes onto two lines.
+    private var rowHeight: CGFloat { row.labelWraps ? 32 : 23.5 }
+
+    func height(forWidth width: CGFloat) -> CGFloat { rowHeight + (dense.note == nil ? 0 : 14) }
 
     override func layout() {
         super.layout()
-        row.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 23.5)
-        note.frame = NSRect(x: 108, y: 22, width: max(bounds.width - 108, 0), height: 14)
+        let h = rowHeight
+        row.frame = NSRect(x: 0, y: 0, width: bounds.width, height: h)
+        note.frame = NSRect(x: 108, y: h - 1.5, width: max(bounds.width - 108, 0), height: 14)
     }
 }
