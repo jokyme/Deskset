@@ -151,12 +151,27 @@ enum CommandLineTools {
         unsetenv("SWIFT_DETERMINISTIC_HASHING")
     }
 
+    /// Temporary settings folders more than a day old: left by a mode that was killed or crashed before it could remove
+    /// its own (both spellings, since earlier builds named them "Deskset-settings-…").
+    static func removeStaleHeadlessSettingsFolders(now: Date = Date()) {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+        guard let names = try? fm.contentsOfDirectory(atPath: root.path) else { return }
+        for name in names where name.hasPrefix("DesksetSettings-") || name.hasPrefix("Deskset-settings-") {
+            let url = root.appendingPathComponent(name)
+            guard let modified = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date,
+                  now.timeIntervalSince(modified) > 24 * 3600 else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
     /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
     /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
     /// missing), so the Stationery widgets save as they do in the app.
     static func useHeadlessSettingsFolder(_ folder: String?) -> URL? {
         let fm = FileManager.default
         let temporary = folder == nil
+        if temporary { removeStaleHeadlessSettingsFolders() }
         let url = folder.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }
             // Not "Deskset-…": the core self-tests count those in the shared temporary folder as their own leftovers, and a
             // render running next to them would show up there.
