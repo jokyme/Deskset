@@ -1781,7 +1781,8 @@ public final class Skin {
             return
         }
         do {
-            try IniWriter.writeValue(value, key: key, section: section, fileURL: url)
+            // For real, or into a recording's copy of the file.
+            try sideEffects.writeKeyValue(value, key: key, section: section, fileURL: url)
             keyValueWrites += 1
         } catch {
             log("!WriteKeyValue: \(error)", level: .error)
