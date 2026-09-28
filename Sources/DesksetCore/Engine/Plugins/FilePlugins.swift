@@ -62,7 +62,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
             rawString = ""
             return 0
         }
-        let stale = ProcessInfo.processInfo.systemUptime - loadedAt > QuoteMeasure.reloadInterval
+        let stale = skin.clock() - loadedAt > QuoteMeasure.reloadInterval
         if loadingKey != k && (loadedKey != k || stale) { load(k) }
         if loadedKey == k, !items.isEmpty { current = pick() }
         rawString = current ?? ""
@@ -71,8 +71,8 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
 
     private func pick() -> String {
         guard items.count > 1 else { return items.first ?? "" }
-        var choice = items[Int.random(in: 0..<items.count)]
-        if choice == current { choice = items[Int.random(in: 0..<items.count)] }
+        var choice = items[skin.random.int(in: 0..<items.count)]
+        if choice == current { choice = items[skin.random.int(in: 0..<items.count)] }
         if choice == current, let other = items.first(where: { $0 != current }) { choice = other }
         return choice
     }
@@ -87,7 +87,7 @@ public final class QuoteMeasure: Measure, PluginLifecycle {
             hop.post {
                 guard let self, !self.closed, self.loadingKey == k else { return }
                 self.loadingKey = nil
-                self.loadedAt = ProcessInfo.processInfo.systemUptime
+                self.loadedAt = self.skin.clock()
                 switch result {
                 case .success(let list):
                     let first = self.loadedKey != k
@@ -255,7 +255,7 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         if let parentName {
             r = parentResolver(parentName)?.latestResult ?? Result()
         } else {
-            if !scanning && !options.path.isEmpty && ProcessInfo.processInfo.systemUptime >= nextScan { scan() }
+            if !scanning && !options.path.isEmpty && skin.clock() >= nextScan { scan() }
             r = result
         }
         switch infoType {
@@ -271,13 +271,15 @@ public final class FolderInfoMeasure: Measure, PluginLifecycle {
         let o = options
         let hop = skin.hop()
         PluginIO.queue.async { [weak self] in
+            // What the scan cost, in real time (the pause after it grows with it); the next scan is due on the skin's
+            // clock, counted from when the result reaches the skin.
             let started = ProcessInfo.processInfo.systemUptime
             let r = FolderInfoMeasure.scan(o)
-            let finished = ProcessInfo.processInfo.systemUptime
+            let cost = ProcessInfo.processInfo.systemUptime - started
             hop.post {
                 guard let self else { return }
                 self.scanning = false
-                self.nextScan = finished + (finished - started) * FolderInfoMeasure.scanPause
+                self.nextScan = self.skin.clock() + cost * FolderInfoMeasure.scanPause
                 guard !self.closed, o == self.options else { return }
                 self.result = r
                 if r.denied && !self.reportedDenied {

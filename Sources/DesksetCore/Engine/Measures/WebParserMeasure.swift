@@ -57,7 +57,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private var downloadKey: String?
     /// Temporary file of the last `Download=1` without `DownloadFile` (deleted when replaced or when the measure goes).
     private var temporaryDownload: String?
-    private let instanceToken = String(UUID().uuidString.prefix(8))
+    private lazy var instanceToken = String(skin.random.uuidString().prefix(8))
 
     private var finishAction = ""
     private var onConnectErrorAction = ""

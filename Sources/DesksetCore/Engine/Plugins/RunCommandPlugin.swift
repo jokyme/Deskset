@@ -155,7 +155,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         let newJob: RunCommandJob
         do {
             newJob = try RunCommandJob.start(shellCommand: line, directory: directory,
-                                             maxOutput: RunCommandMeasure.maxOutput)
+                                             maxOutput: RunCommandMeasure.maxOutput, locale: skin.locale)
         } catch RunCommandJob.StartError.pipe {
             output = ""
             setState(106)
@@ -202,7 +202,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private func startFailed() {
         output = ""
         setState(103)
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = skin.clock()
         let repeated = lastStartFailure.map { now - $0 < 1 } ?? false
         lastStartFailure = now
         guard !repeated, !finishAction.isEmpty else { return }
@@ -344,7 +344,8 @@ final class RunCommandJob: @unchecked Sendable {
         exitSource = exit
     }
 
-    static func start(shellCommand: String, directory: String, maxOutput: Int) throws -> RunCommandJob {
+    /// `locale`: the user's (`SkinEnvironment.locale`), for `LANG` when the app has none.
+    static func start(shellCommand: String, directory: String, maxOutput: Int, locale: Locale) throws -> RunCommandJob {
         var outPipe: [Int32] = [-1, -1], errPipe: [Int32] = [-1, -1]
         guard pipe(&outPipe) == 0 else { throw StartError.pipe }
         guard pipe(&errPipe) == 0 else {
@@ -381,7 +382,7 @@ final class RunCommandJob: @unchecked Sendable {
         environment["PATH"] = path.joined(separator: ":")
         // Apps started from Finder have no locale variables: programs would then write non-ASCII text as `?`.
         if environment["LANG"] == nil && environment["LC_ALL"] == nil && environment["LC_CTYPE"] == nil {
-            environment["LANG"] = RunCommandJob.defaultLanguage
+            environment["LANG"] = RunCommandJob.defaultLanguage(for: locale)
         }
         let envStrings = environment.map { "\($0.key)=\($0.value)" }
         let args = ["/bin/sh", "-c", shellCommand]
@@ -402,13 +403,21 @@ final class RunCommandJob: @unchecked Sendable {
         return RunCommandJob(pid: pid, stdout: outPipe[0], stderr: errPipe[0], maxOutput: maxOutput)
     }
 
-    /// `ll_CC.UTF-8` of the user's locale when macOS has it (what Terminal sets), else `en_US.UTF-8`.
-    static let defaultLanguage: String = {
-        let identifier = Locale.current.identifier.split(separator: "@").first.map(String.init) ?? ""
+    /// `ll_CC.UTF-8` of `locale` (the user's) when macOS has it (what Terminal sets), else `en_US.UTF-8`. Looked up
+    /// once per locale.
+    static func defaultLanguage(for locale: Locale) -> String {
+        let identifier = locale.identifier.split(separator: "@").first.map(String.init) ?? ""
+        languageLock.lock()
+        defer { languageLock.unlock() }
+        if let known = languages[identifier] { return known }
         let candidate = identifier + ".UTF-8"
-        if !identifier.isEmpty, FileManager.default.fileExists(atPath: "/usr/share/locale/" + candidate) { return candidate }
-        return "en_US.UTF-8"
-    }()
+        let language = !identifier.isEmpty && FileManager.default.fileExists(atPath: "/usr/share/locale/" + candidate)
+            ? candidate : "en_US.UTF-8"
+        if languages.count < 64 { languages[identifier] = language }
+        return language
+    }
+    private static let languageLock = NSLock()
+    private static var languages: [String: String] = [:]
 
     /// Starts reading and watching for the exit (set `onExit` first).
     func resume() {

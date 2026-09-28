@@ -132,13 +132,16 @@ final class TrashMonitor: @unchecked Sendable {
 
     /// Folders to look at (background queue); tests replace it.
     static var folders: () -> [String] = { TrashMonitor.cachedDefaultFolders() }
+    /// The monitor's clock (seconds, monotonic; any thread): shared by every skin, so not a skin's clock. Tests and a
+    /// verifier replace it with the rest of the service.
+    static var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
 
     private static var folderCache: (time: TimeInterval, folders: [String])?
     private static let folderLock = NSLock()
 
     /// `defaultFolders()`, looked up again at most every 10 seconds (volumes come and go rarely).
     static func cachedDefaultFolders() -> [String] {
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = TrashMonitor.clock()
         folderLock.lock()
         let cached = folderCache
         folderLock.unlock()
@@ -181,7 +184,7 @@ final class TrashMonitor: @unchecked Sendable {
     }
 
     private func refresh(includeSize: Bool, force: Bool, waiter: (executor: SkinExecutor, callback: () -> Void)?) {
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = TrashMonitor.clock()
         lock.lock()
         if inFlight {
             if let waiter { waiters.append(waiter) }
@@ -207,7 +210,7 @@ final class TrashMonitor: @unchecked Sendable {
             var measuredAt = previousSizeTime
             if includeSize {
                 let sig = TrashMonitor.signature(folders)
-                let age = ProcessInfo.processInfo.systemUptime - previousSizeTime
+                let age = TrashMonitor.clock() - previousSizeTime
                 if force || sig != previousSignature || previous.size == nil && !previous.sizeDenied
                     || age > TrashMonitor.sizeMaxAge {
                     var total = 0.0
@@ -218,7 +221,7 @@ final class TrashMonitor: @unchecked Sendable {
                     next.size = denied && total == 0 ? nil : total
                     next.sizeDenied = denied
                     signature = sig
-                    measuredAt = ProcessInfo.processInfo.systemUptime
+                    measuredAt = TrashMonitor.clock()
                 }
             }
             lock.lock()
@@ -226,7 +229,7 @@ final class TrashMonitor: @unchecked Sendable {
             sizeSignature = signature
             sizeTime = measuredAt
             inFlight = false
-            lastRefresh = ProcessInfo.processInfo.systemUptime
+            lastRefresh = TrashMonitor.clock()
             let done = waiters
             waiters = []
             lock.unlock()

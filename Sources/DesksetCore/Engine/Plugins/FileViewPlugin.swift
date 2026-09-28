@@ -280,7 +280,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
                 return 0
             }
             rawString = FileViewMeasure.dateFormatter.string(from: date)
-            return TimeFormatting.measureValue(for: date)
+            return TimeFormatting.measureValue(for: date, timeZone: skin.skinClock.timeZone())
         case .filePath:
             rawString = item.isDotDot ? parentFolder(of: listing.folder) ?? item.path : item.path
             return 0

@@ -235,7 +235,7 @@ public final class ResMonMeasure: Measure, PluginLifecycle {
         if wanted == "rainmeter" || wanted == ProcessNames.normalized(ProcessInfo.processInfo.processName) {
             return Double(ResMonMeasure.fileDescriptorCount(pids: [getpid()]))
         }
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = skin.clock()
         let current = pids.flatMap { $0.name == processName ? $0 : nil }
         let stale = current.map { now - $0.time > ResMonMeasure.pidRefreshInterval } ?? true
         if !closed, lookingUp != processName, stale {
@@ -247,7 +247,7 @@ public final class ResMonMeasure: Measure, PluginLifecycle {
                 hop.post {
                     guard let self, !self.closed, self.lookingUp == name else { return }
                     self.lookingUp = nil
-                    self.pids = (name, list, ProcessInfo.processInfo.systemUptime)
+                    self.pids = (name, list, self.skin.clock())
                 }
             }
         }

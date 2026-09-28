@@ -435,7 +435,7 @@ private func runWeatherLocationTests(_ t: TestRunner) {
         t.equal(WeatherLocationResolver.daylightSavingTime("1"), true)
         t.equal(WeatherLocationResolver.daylightSavingTime("0"), false)
         t.equal(offset("Local", dst: false), 2, "Local is this Mac's zone")
-        t.equal(WeatherLocationResolver.zone(option: "Asia/Tokyo", place: nil, daylightSavingTime: true,
+        t.equal(WeatherLocationResolver.zone(option: "Asia/Tokyo", place: nil, daylightSavingTime: true, at: summer,
                                              localTimeZone: berlin).identifier, "Asia/Tokyo")
     }
 

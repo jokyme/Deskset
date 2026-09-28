@@ -153,7 +153,7 @@ public final class UsageMonitorMeasure: Measure, PluginLifecycle {
 
     private func context(snapshot: ProcessSnapshot?, cores: [CoreTicks]) -> PerfCounters.Context {
         PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin), snapshot: snapshot,
-                             cores: cores, time: ProcessInfo.processInfo.systemUptime)
+                             cores: cores, time: skin.clock())
     }
 
     static func values(_ spec: PerfCounterSpec, previous: ProcessSnapshot?, latest: ProcessSnapshot,
@@ -312,7 +312,7 @@ public final class PerfMonMeasure: Measure, PluginLifecycle {
         } else {
             let ctx = PerfCounters.Context(system: skin.system, sensors: HardwareSensors.source(for: skin),
                                            snapshot: nil, cores: spec.usesCores ? ProcessorTicks.read() : [],
-                                           time: ProcessInfo.processInfo.systemUptime)
+                                           time: skin.clock())
             let reading = PerfCounters.rawReading(spec, ctx)
             values = PerfCounters.values(spec, old: lastReading, new: reading, mode: mode)
             lastReading = reading
@@ -374,8 +374,12 @@ public final class AdvancedCPUMeasure: Measure, PluginLifecycle {
         }
     }
 
-    /// Monotonic clock (seconds); tests may replace it.
-    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Monotonic clock (seconds): the skin's (`Skin.clock`) unless a test replaces it.
+    var clock: () -> TimeInterval {
+        get { clockOverride ?? skin.clock }
+        set { clockOverride = newValue }
+    }
+    private var clockOverride: (() -> TimeInterval)?
     private var lastUpdate: TimeInterval?
     /// CPU time per second of the latest sampled interval, and the top process.
     private var rate: (Double, String?)?

@@ -435,7 +435,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
 
     /// `print()`: to the skin log, at most `LuaSupport.maxPrintsPerSecond` lines per second.
     private func printLine(_ text: String) {
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = skin.clock()
         if printWindowStart < 0 || now - printWindowStart >= 1 {
             printWindowStart = now
             printsInWindow = 0

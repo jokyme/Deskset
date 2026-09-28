@@ -1094,7 +1094,7 @@ private func runPluginRunCommandTests(_ t: TestRunner) {
         t.check(spin(5) { !locale.isRunning })
         t.check(!locale.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 "programs get a locale (UTF-8 output)")
-        t.check(RunCommandJob.defaultLanguage.hasSuffix(".UTF-8"))
+        t.check(RunCommandJob.defaultLanguage(for: .current).hasSuffix(".UTF-8"))
     }
 }
 
