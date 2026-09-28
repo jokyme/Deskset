@@ -356,3 +356,95 @@ func nominalBitmapBytes(_ root: CALayer) -> Int {
     visit(root)
     return total
 }
+
+// MARK: Counters that separate work from placement (proc_pid_rusage v6)
+
+/// CPU time says how long this process ran, not how much it did: the same work takes longer on an efficiency core
+/// or on a core that has not ramped up. These counters (all threads of this process, since it started) tell them
+/// apart: instructions retired (the work), cycles (instructions / cycles = how fast), the share of both on
+/// performance cores, energy, and time spent runnable but waiting for a core.
+struct ProcCounters {
+    var cpu = 0.0, pCoreCPU = 0.0, runnable = 0.0          // seconds
+    var instructions = 0.0, pInstructions = 0.0, cycles = 0.0, pCycles = 0.0
+    var energyJ = 0.0, pEnergyJ = 0.0
+    var interruptWakeups = 0.0, idleWakeups = 0.0
+
+    /// The rates between `self` (earlier) and `later`, over `seconds` of wall time.
+    func rates(to later: ProcCounters, seconds: Double) -> JSON {
+        let d = { (k: KeyPath<ProcCounters, Double>) in later[keyPath: k] - self[keyPath: k] }
+        let cpu = d(\.cpu), instructions = d(\.instructions), cycles = d(\.cycles)
+        var j: JSON = ["cpuPercentOfOneCore": r(cpu / seconds * 100, 3),
+                       "pCoreShareOfCPU": cpu > 0 ? r(d(\.pCoreCPU) / cpu, 3) : 0,
+                       "instructionsMillionsPerSecond": r(instructions / seconds / 1e6, 2),
+                       "cyclesMillionsPerSecond": r(cycles / seconds / 1e6, 2),
+                       "pCoreShareOfInstructions": instructions > 0 ? r(d(\.pInstructions) / instructions, 3) : 0,
+                       "pCoreShareOfCycles": cycles > 0 ? r(d(\.pCycles) / cycles, 3) : 0,
+                       "energyMilliwatts": r(d(\.energyJ) / seconds * 1000, 2),
+                       "runnableMsPerSecond": r(d(\.runnable) / seconds * 1000, 2)]
+        if instructions > 0 { j["cyclesPerInstruction"] = r(cycles / instructions, 3) }
+        if cpu > 0 { j["averageGHz"] = r(cycles / cpu / 1e9, 3) }
+        return j
+    }
+}
+
+private let machTicksToSeconds: Double = {
+    var tb = mach_timebase_info()
+    mach_timebase_info(&tb)
+    return Double(tb.numer) / Double(tb.denom) / 1e9
+}()
+
+func procCounters() -> ProcCounters {
+    var info = rusage_info_v6()
+    let rc = withUnsafeMutablePointer(to: &info) { p in
+        p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V6, $0) }
+    }
+    guard rc == 0 else { return ProcCounters() }
+    let t = machTicksToSeconds
+    return ProcCounters(
+        cpu: Double(info.ri_user_time + info.ri_system_time) * t,
+        pCoreCPU: Double(info.ri_user_ptime + info.ri_system_ptime) * t,
+        runnable: Double(info.ri_runnable_time) * t,
+        instructions: Double(info.ri_instructions), pInstructions: Double(info.ri_pinstructions),
+        cycles: Double(info.ri_cycles), pCycles: Double(info.ri_pcycles),
+        energyJ: Double(info.ri_energy_nj) / 1e9, pEnergyJ: Double(info.ri_penergy_nj) / 1e9,
+        interruptWakeups: Double(info.ri_interrupt_wkups), idleWakeups: Double(info.ri_pkg_idle_wkups))
+}
+
+/// CPU seconds of the calling thread (for the cost of one update without the time it was preempted).
+func threadCPUSeconds() -> Double { Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)) / 1e9 }
+
+// MARK: GPU and system memory
+
+/// The GPU's performance statistics from the I/O Registry (whole system): memory in use and the utilization CA and
+/// the window server's compositing add to.
+func gpuStatistics() -> (inUseMB: Double?, device: Double?, renderer: Double?, tiler: Double?) {
+    guard let out = run("/usr/sbin/ioreg", ["-r", "-c", "IOAccelerator", "-d", "1", "-w0"]) else {
+        return (nil, nil, nil, nil)
+    }
+    func value(_ key: String) -> Double? {
+        guard let r = out.range(of: "\"\(key)\"=") else { return nil }
+        return Double(out[r.upperBound...].prefix { $0.isNumber })
+    }
+    return (value("In use system memory").map { $0 / 1_048_576 }, value("Device Utilization %"),
+            value("Renderer Utilization %"), value("Tiler Utilization %"))
+}
+
+/// System-wide pages (MB): what every process and the kernel hold. Anonymous memory (internal), wired memory (which
+/// includes memory the GPU has pinned), and the compressor (both what it occupies and what it holds uncompressed).
+func systemMemoryMB() -> JSON {
+    var s = vm_statistics64_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+    _ = withUnsafeMutablePointer(to: &s) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+        }
+    }
+    let page = Double(vm_kernel_page_size) / 1_048_576
+    let internalMB = Double(s.internal_page_count) * page, wired = Double(s.wire_count) * page
+    let occupied = Double(s.compressor_page_count) * page
+    let held = Double(s.total_uncompressed_pages_in_compressor) * page
+    return ["internal": r(internalMB, 1), "wired": r(wired, 1), "compressorOccupies": r(occupied, 1),
+            "compressorHolds": r(held, 1), "free": r(Double(s.free_count) * page, 1),
+            "fileBacked": r(Double(s.external_page_count) * page, 1),
+            "anonymousWiredCompressed": r(internalMB + wired + occupied, 1)]
+}

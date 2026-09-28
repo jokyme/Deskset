@@ -1,0 +1,373 @@
+{
+ "architecture": "x86_64 (Rosetta)",
+ "arguments": [
+  "--partitions-only",
+  "--scale",
+  "2",
+  "--out",
+  "results/q5-partitions/x86_64-rosetta-2x.json"
+ ],
+ "command": "q5",
+ "loadAverageAtEnd": [
+  9.27,
+  8.82,
+  8.63
+ ],
+ "note": "pure CoreGraphics, sRGB 8-bit premultiplied; worst of ticks 0, 1, 7, 60, 61",
+ "partitionsComposedOffline": {
+  "design": {
+   "baseElements": 1,
+   "differingPixelsByGroup": {
+    "MeterRing+MeterRingText": 33
+   },
+   "groupPixels": 232224,
+   "groups": 8,
+   "inkEscapes": {},
+   "largestGroupPixels": 79948,
+   "naiveRedrawBasePerGroup": {
+    "byMaxDiff": {
+     "1": 137644,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     69,
+     77,
+     610,
+     580
+    ],
+    "differingPercent": 26.552,
+    "differingPixels": 137644,
+    "maxChannelDiff": 1,
+    "pixels": 518400
+   },
+   "scratchWindowBitmapWorstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 518400
+   },
+   "tiles": 25,
+   "translationOnly": {
+    "grid16px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 32
+     },
+     "differingPixelsOver5Ticks": 32,
+     "maxChannelDiff": 2
+    },
+    "grid1px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 30
+     },
+     "differingPixelsOver5Ticks": 30,
+     "maxChannelDiff": 2
+    },
+    "grid2px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 30
+     },
+     "differingPixelsOver5Ticks": 30,
+     "maxChannelDiff": 2
+    },
+    "grid32px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 32
+     },
+     "differingPixelsOver5Ticks": 32,
+     "maxChannelDiff": 2
+    },
+    "grid4px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 30
+     },
+     "differingPixelsOver5Ticks": 30,
+     "maxChannelDiff": 2
+    },
+    "grid64px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 26
+     },
+     "differingPixelsOver5Ticks": 26,
+     "maxChannelDiff": 1
+    },
+    "grid8px": {
+     "byGroup": {
+      "MeterRing+MeterRingText": 32
+     },
+     "differingPixelsOver5Ticks": 32,
+     "maxChannelDiff": 2
+    }
+   },
+   "windowPixels": 518400,
+   "worstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 10,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     365,
+     429,
+     228,
+     149
+    ],
+    "differingPercent": 0.002,
+    "differingPixels": 10,
+    "maxChannelDiff": 1,
+    "pixels": 518400
+   }
+  },
+  "system": {
+   "baseElements": 1,
+   "differingPixelsByGroup": {
+    "MeterCPUFill+MeterCPUGraph": 45,
+    "MeterCPUPill+MeterCPUValue": 10,
+    "MeterCore4": 1,
+    "MeterCore7": 1
+   },
+   "groupPixels": 122949,
+   "groups": 19,
+   "inkEscapes": {},
+   "largestGroupPixels": 40128,
+   "naiveRedrawBasePerGroup": {
+    "byMaxDiff": {
+     "1": 69538,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     32,
+     25,
+     460,
+     338
+    ],
+    "differingPercent": 34.114,
+    "differingPixels": 69538,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   },
+   "scratchWindowBitmapWorstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 203840
+   },
+   "tiles": 38,
+   "translationOnly": {
+    "grid16px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 44,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 46,
+     "maxChannelDiff": 1
+    },
+    "grid1px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 44,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 46,
+     "maxChannelDiff": 1
+    },
+    "grid2px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 44,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 46,
+     "maxChannelDiff": 1
+    },
+    "grid32px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 36,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 38,
+     "maxChannelDiff": 1
+    },
+    "grid4px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 44,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 46,
+     "maxChannelDiff": 1
+    },
+    "grid64px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 36,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 38,
+     "maxChannelDiff": 1
+    },
+    "grid8px": {
+     "byGroup": {
+      "MeterCPUFill+MeterCPUGraph": 44,
+      "MeterCore4": 1,
+      "MeterCore7": 1
+     },
+     "differingPixelsOver5Ticks": 46,
+     "maxChannelDiff": 1
+    }
+   },
+   "windowPixels": 203840,
+   "worstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 18,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     49,
+     107,
+     441,
+     96
+    ],
+    "differingPercent": 0.009,
+    "differingPixels": 18,
+    "maxChannelDiff": 1,
+    "pixels": 203840
+   }
+  },
+  "visualizer": {
+   "baseElements": 1,
+   "differingPixelsByGroup": {
+    "MeterBar10": 1
+   },
+   "groupPixels": 68320,
+   "groups": 34,
+   "inkEscapes": {},
+   "largestGroupPixels": 10824,
+   "naiveRedrawBasePerGroup": {
+    "byMaxDiff": {
+     "1": 33506,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     27,
+     21,
+     460,
+     202
+    ],
+    "differingPercent": 26.848,
+    "differingPixels": 33506,
+    "maxChannelDiff": 1,
+    "pixels": 124800
+   },
+   "scratchWindowBitmapWorstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 0,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingPercent": 0,
+    "differingPixels": 0,
+    "maxChannelDiff": 0,
+    "pixels": 124800
+   },
+   "tiles": 22,
+   "translationOnly": {
+    "grid16px": {
+     "byGroup": {},
+     "differingPixelsOver5Ticks": 0,
+     "maxChannelDiff": 0
+    },
+    "grid1px": {
+     "byGroup": {
+      "MeterBar10": 1
+     },
+     "differingPixelsOver5Ticks": 1,
+     "maxChannelDiff": 1
+    },
+    "grid2px": {
+     "byGroup": {
+      "MeterBar10": 1
+     },
+     "differingPixelsOver5Ticks": 1,
+     "maxChannelDiff": 1
+    },
+    "grid32px": {
+     "byGroup": {},
+     "differingPixelsOver5Ticks": 0,
+     "maxChannelDiff": 0
+    },
+    "grid4px": {
+     "byGroup": {
+      "MeterBar10": 1
+     },
+     "differingPixelsOver5Ticks": 1,
+     "maxChannelDiff": 1
+    },
+    "grid64px": {
+     "byGroup": {},
+     "differingPixelsOver5Ticks": 0,
+     "maxChannelDiff": 0
+    },
+    "grid8px": {
+     "byGroup": {
+      "MeterBar10": 1
+     },
+     "differingPixelsOver5Ticks": 1,
+     "maxChannelDiff": 1
+    }
+   },
+   "windowPixels": 124800,
+   "worstOf5Ticks": {
+    "byMaxDiff": {
+     "1": 1,
+     "2": 0,
+     "3": 0,
+     "4-7": 0,
+     "8+": 0
+    },
+    "differingBounds": [
+     174,
+     140,
+     1,
+     1
+    ],
+    "differingPercent": 0.001,
+    "differingPixels": 1,
+    "maxChannelDiff": 1,
+    "pixels": 124800
+   }
+  }
+ },
+ "scale": 2
+}

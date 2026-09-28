@@ -16,13 +16,21 @@
 //                   copies it, so differences here come from CoreGraphics / CoreText, not from the GPU
 //        g2-single  the pixel gate's reference: a widget (gradient panel with values, a bar, a ring, a chart) as one
 //                   layer showing one bitmap
-//        g2-tiles   the same widget partitioned as the plan does it: base tiles that all show one base bitmap through
-//                   contentsRect, and one layer per group showing that group's pixels (bitmaps as contents)
-//        g2-e       the same partition with group layers that paint in draw(in:) (CA's own backing stores)
+//        g2-tiles   the same widget partitioned: base tiles that all show one base bitmap through contentsRect, and
+//                   one layer per group showing its box cut out of the one-layer bitmap (bitmaps as contents). The
+//                   groups' pixels are copies of g2-single's, so this checks only that CA composites copied pixels
+//                   exactly (like a partition drawn through a window-sized scratch bitmap)
+//        g2-e       the same with group layers that copy those crops in draw(in:) (CA's own backing stores)
+//        g2-groups  the partition as the plan draws it (DESK-RUNTIME §6.2): each group's bitmap is the base bitmap's
+//                   crop copied in, then the group's elements drawn into the group's own bitmap, moved by whole
+//                   pixels; bitmaps as contents
+//        g2-e-drawn the same drawing done in each group layer's draw(in:) (approach E)
 //      A texture on a GPU without unified memory is managed and synchronized before the read-back. Every scene
 //      records whether the read-back is still the garbage written before the render ("stillScribbled").
-//      It checks image == its source, cg == its source, g2-single == its source, g2-tiles == g2-single and
-//      g2-e == g2-single.
+//      It checks image == its source, cg == its source, g2-single == its source, g2-tiles == g2-single,
+//      g2-e == g2-single, g2-groups == g2-single and g2-e-drawn == g2-single, and (on the CPU, no Core Animation) the
+//      partition composed from the group bitmaps against the one-layer bitmap: whatever that last check finds is
+//      CoreGraphics' own translation noise, the rest would come from compositing.
 //   3. With --reference DIR (an earlier run's --out), compares every scene with that run's pixels.
 //   4. Times renders of the partitioned widget: --rounds rounds (default 3) of --renders renders (default 20) in
 //      several ways (same tree again, a new tree each time, a new renderer each time), with the load average before
@@ -415,10 +423,16 @@ let g2Groups: [CGRect] = [
 ]
 
 func drawG2Elements(_ ctx: CGContext) {
+    for i in g2Groups.indices { drawG2Group(ctx, i) }
+}
+
+/// Group `i`'s elements, in points, y down, clipped to the group's rectangle.
+func drawG2Group(_ ctx: CGContext, _ i: Int) {
     let accent = color(0.30, 0.62, 1.0)
     let text = color(0.96, 0.97, 1.0)
     let dim = color(1, 1, 1, 0.55)
-    for (i, g) in g2Groups.enumerated() {
+    do {
+        let g = g2Groups[i]
         ctx.saveGState()
         ctx.clip(to: g)
         switch i {
@@ -527,13 +541,26 @@ final class QuietLayer: CALayer {
 var drawContexts: [String] = []
 
 /// A group layer that paints its pixels itself in draw(in:) into CA's backing store (the plan's approach E).
+/// `image`: copies it in (g2-e); `paint`: draws whatever the closure draws, in points with y down and the group's
+/// top left at the origin (g2-e-drawn).
 final class PaintLayer: CALayer {
     var image: CGImage?
+    var paint: ((CGContext) -> Void)?
     override func action(forKey event: String) -> CAAction? { NSNull() }
     override func draw(in ctx: CGContext) {
         let space = ctx.colorSpace?.name.map { $0 as String } ?? "none"
         let note = "\(space), \(ctx.bitsPerComponent) bpc"
         if !drawContexts.contains(note) { drawContexts.append(note) }
+        if let paint {
+            ctx.saveGState()
+            if ctx.ctm.d > 0 {
+                ctx.translateBy(x: 0, y: bounds.height)
+                ctx.scaleBy(x: 1, y: -1)
+            }
+            paint(ctx)
+            ctx.restoreGState()
+            return
+        }
         guard let image else { return }
         // Draw the image upright whichever way the context points.
         if ctx.ctm.d < 0 {
@@ -808,6 +835,11 @@ struct Sources {
     let g2Base: [UInt8]            // RGBA: the panel only
     let g2Full: [UInt8]            // RGBA: the panel with every group's elements
     let groupRects: [PixelRect]
+    /// Each group drawn as the plan does it: the base's crop copied in, then the group's elements moved by whole
+    /// pixels into the group's own bitmap (RGBA, the group's box).
+    let groupBitmaps: [[UInt8]]
+    /// The partition composed on the CPU (base, then every group bitmap copied to its box) vs g2Full.
+    let composedOffline: [UInt8]
 
     init(scale: CGFloat) {
         self.scale = scale
@@ -819,7 +851,51 @@ struct Sources {
         g2Base = contextBytes(base)
         drawG2Elements(base)
         g2Full = contextBytes(base)
-        groupRects = g2Groups.map { PixelRect.of($0, scale: scale) }
+        let rects = g2Groups.map { PixelRect.of($0, scale: scale) }
+        groupRects = rects
+        let baseImage = rgbaImage(g2Base, pw, ph)
+        var bitmaps: [[UInt8]] = []
+        for (i, g) in rects.enumerated() {
+            let ctx = CGContext(data: nil, width: g.width, height: g.height, bitsPerComponent: 8,
+                                bytesPerRow: g.width * 4, space: sRGB,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            Sources.drawGroup(ctx, i, rect: g, base: baseImage, scale: scale)
+            bitmaps.append(contextBytes(ctx))
+        }
+        groupBitmaps = bitmaps
+        // Composed on the CPU: the base, then each group's bitmap in its box (rows top first).
+        var composed = g2Base
+        for (g, b) in zip(rects, bitmaps) {
+            for y in 0..<g.height {
+                let dst = ((g.y0 + y) * pw + g.x0) * 4
+                composed.replaceSubrange(dst..<dst + g.width * 4, with: b[y * g.width * 4..<(y + 1) * g.width * 4])
+            }
+        }
+        composedOffline = composed
+    }
+
+    /// Group `i` into `ctx` (a bitmap or a layer's context, device origin at the group's top left, y up): the base
+    /// image's crop copied in with .copy and no interpolation, then the group's elements in points, y down,
+    /// translated by the group's whole-pixel origin. The same settings as pointContext.
+    static func drawGroup(_ ctx: CGContext, _ i: Int, rect g: PixelRect, base: CGImage, scale: CGFloat) {
+        let crop = base.cropping(to: g.cg)!
+        ctx.saveGState()
+        ctx.concatenate(ctx.ctm.inverted())   // device space, y up
+        ctx.setBlendMode(.copy)
+        ctx.interpolationQuality = .none
+        ctx.draw(crop, in: CGRect(x: 0, y: 0, width: g.width, height: g.height))
+        ctx.restoreGState()
+        ctx.saveGState()
+        ctx.concatenate(ctx.ctm.inverted())
+        ctx.translateBy(x: 0, y: CGFloat(g.height))
+        ctx.scaleBy(x: scale, y: -scale)
+        ctx.translateBy(x: -CGFloat(g.x0) / scale, y: -CGFloat(g.y0) / scale)
+        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsFontSmoothing(false)
+        ctx.interpolationQuality = .high
+        drawG2Group(ctx, i)
+        ctx.restoreGState()
     }
 
     var hashes: JSON {
@@ -840,6 +916,40 @@ struct Sources {
                 root.addSublayer(imageLayer(rgbaImage(cgScene, pw, ph), frame: bounds, scale: scale))
             case "g2-single":
                 root.addSublayer(imageLayer(rgbaImage(g2Full, pw, ph), frame: bounds, scale: scale))
+            case "g2-groups", "g2-e-drawn":
+                let window = PixelRect(x0: 0, y0: 0, x1: pw, y1: ph)
+                let base = rgbaImage(g2Base, pw, ph)
+                for t in tiles(window, minus: groupRects) {
+                    let l = imageLayer(base, frame: t.points(scale), scale: scale)
+                    l.contentsRect = CGRect(x: CGFloat(t.x0) / CGFloat(pw), y: CGFloat(t.y0) / CGFloat(ph),
+                                            width: CGFloat(t.width) / CGFloat(pw),
+                                            height: CGFloat(t.height) / CGFloat(ph))
+                    root.addSublayer(l)
+                }
+                for (i, g) in groupRects.enumerated() {
+                    if scene == "g2-groups" {
+                        let image = rgbaImage(groupBitmaps[i], g.width, g.height)
+                        root.addSublayer(imageLayer(image, frame: g.points(scale), scale: scale))
+                    } else {
+                        let l = PaintLayer()
+                        l.anchorPoint = .zero
+                        l.contentsScale = scale
+                        l.contentsFormat = .RGBA8Uint
+                        l.needsDisplayOnBoundsChange = false
+                        l.frame = g.points(scale)
+                        let s = scale
+                        // The layer's context: device origin at the group's top left once flipped to y up.
+                        l.paint = { ctx in
+                            ctx.saveGState()
+                            // paint() gets y down (flipped by PaintLayer); drawGroup wants its device space y up.
+                            Sources.drawGroup(ctx, i, rect: g, base: base, scale: s)
+                            ctx.restoreGState()
+                        }
+                        root.addSublayer(l)
+                        l.setNeedsDisplay()
+                        l.displayIfNeeded()
+                    }
+                }
             case "g2-tiles", "g2-e":
                 let window = PixelRect(x0: 0, y0: 0, x1: pw, y1: ph)
                 let base = rgbaImage(g2Base, pw, ph)
@@ -881,7 +991,7 @@ struct Sources {
     }
 }
 
-let sceneNames = ["image", "solids", "vector", "cg", "g2-single", "g2-tiles", "g2-e"]
+let sceneNames = ["image", "solids", "vector", "cg", "g2-single", "g2-tiles", "g2-e", "g2-groups", "g2-e-drawn"]
 var scenes: JSON = [:]
 var checks: JSON = [:]
 var rendered: [String: (bytes: [UInt8], w: Int, h: Int)] = [:]
@@ -931,6 +1041,13 @@ for scale: CGFloat in [1, 2] {
     check("g2-single == its source", rendered["g2-single" + tag]!.bytes, bgra(fromRGBA: sources.g2Full))
     check("g2-tiles == g2-single", rendered["g2-tiles" + tag]!.bytes, rendered["g2-single" + tag]!.bytes)
     check("g2-e == g2-single", rendered["g2-e" + tag]!.bytes, rendered["g2-single" + tag]!.bytes)
+    check("g2-groups == g2-single", rendered["g2-groups" + tag]!.bytes, rendered["g2-single" + tag]!.bytes)
+    check("g2-e-drawn == g2-single", rendered["g2-e-drawn" + tag]!.bytes, rendered["g2-single" + tag]!.bytes)
+    check("g2-e-drawn == g2-groups", rendered["g2-e-drawn" + tag]!.bytes, rendered["g2-groups" + tag]!.bytes)
+    check("partition composed on the CPU == g2-single's source", bgra(fromRGBA: sources.composedOffline),
+          bgra(fromRGBA: sources.g2Full))
+    check("g2-groups == the partition composed on the CPU", rendered["g2-groups" + tag]!.bytes,
+          bgra(fromRGBA: sources.composedOffline))
 }
 report["scenes"] = scenes
 report["checks"] = checks

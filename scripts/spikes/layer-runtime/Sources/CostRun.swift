@@ -26,6 +26,15 @@
 //   --off-shown        off phases keep the windows on screen and only stop their updates (instead of ordering them
 //                      out): the difference is then only what the updates cost, without the window server's work of
 //                      ordering windows out and in (which spills into the next phase)
+//   --coalesce         one timer per skin thread updates all of that thread's widgets in one transaction with one
+//                      flush (updates that fall due together, coalesced); with --one-thread: one wakeup and one
+//                      commit per second for all 10 widgets
+//   --gpu              also sample the GPU's utilization (whole system, I/O Registry) every 0.5 s during each phase
+//
+// Every phase also records proc_pid_rusage v6 counters of this process (instructions, cycles, the share of both on
+// performance cores, energy, time runnable but waiting for a core): CPU time alone cannot tell more work from the
+// same work on a slower or not yet ramped-up core. Every update records its cost as wall-clock time and as the
+// skin thread's CPU time.
 //
 // Order: warm-up, the scenario (memory, CPU phases, memory, close), then the extra WindowServer cycles, so this
 // process's memory is measured before anything else was opened and closed. Every open and close runs in its own
@@ -97,7 +106,44 @@ func costRun() -> JSON {
 
     /// --stagger: widget i updates i / count of an interval after the first one (default: all at the same moment).
     func stagger(_ i: Int) -> Double { flag("--stagger") ? Double(i) * interval / Double(count) : 0 }
+    let coalesce = flag("--coalesce") && mode.isLayered
+    j["coalesced"] = coalesce
     var threads: [RunLoopThread] = []
+    /// --coalesce: one timer per skin thread for all its widgets (see the header).
+    var coalescers: [(thread: RunLoopThread, timer: Timer)] = []
+    let coalescedLock = NSLock()
+    var coalescedCommits: [Double] = []
+    func startUpdates(_ ws: [SkinWindow]) {
+        guard coalesce else {
+            for (i, w) in ws.enumerated() { w.start(interval: interval, after: stagger(i)) }
+            return
+        }
+        for t in threads {
+            let mine = ws.filter { $0.thread === t }
+            guard !mine.isEmpty else { continue }
+            let timer = Timer(fire: Date().addingTimeInterval(interval), interval: interval, repeats: true) { _ in
+                autoreleasepool {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    for w in mine { w.step(flush: false) }
+                    let a = now()
+                    CATransaction.commit()
+                    CATransaction.flush()
+                    coalescedLock.lock()
+                    coalescedCommits.append(now() - a)
+                    coalescedLock.unlock()
+                }
+            }
+            timer.tolerance = interval >= 0.5 ? 0.01 : 0.001
+            t.perform { RunLoop.current.add(timer, forMode: .default) }
+            coalescers.append((t, timer))
+        }
+    }
+    func stopUpdates(_ ws: [SkinWindow]) {
+        for w in ws { w.stop() }
+        for c in coalescers { c.thread.sync { c.timer.invalidate() } }
+        coalescers = []
+    }
     func open(_ n: Int, start: Bool = true) -> [SkinWindow] {
         autoreleasepool {
             var ws: [SkinWindow] = []
@@ -112,7 +158,7 @@ func costRun() -> JSON {
                 w.show()
                 ws.append(w)
             }
-            if start { for (i, w) in ws.enumerated() { w.start(interval: interval, after: stagger(i)) } }
+            if start { startUpdates(ws) }
             return ws
         }
     }
@@ -187,7 +233,7 @@ func costRun() -> JSON {
     /// background queue, so the main thread (where today's view drawing runs) is not blocked during the phase.
     final class Sample {
         let commits: Int
-        let t = now(), cpu = cpuSeconds(), wk = wakeups()
+        let t = now(), cpu = cpuSeconds(), wk = wakeups(), counters = procCounters()
         let wsCPU = windowServerCPUSeconds()
         let load = loadAverage()
         private let done = DispatchGroup()
@@ -212,10 +258,13 @@ func costRun() -> JSON {
     /// The first window's commits during the last "on" phase (frame pacing is measured inside one phase: the
     /// timers stop between phases).
     var lastOnCommits = 0..<0
+    let sampleGPU = flag("--gpu")
     func phase(_ label: String) -> JSON {
         let a = Sample(commitCount(), top: sampleTop)
         let firstWindowCommits = windows.first?.commitTimes.count ?? 0
+        let gpu = sampleGPU ? GPUSampler(every: 0.5) : nil
         pump(seconds)
+        let gpuStats = gpu?.finish()
         let lastWindowCommits = windows.first?.commitTimes.count ?? 0
         let b = Sample(commitCount(), top: sampleTop)
         if label == "on" { lastOnCommits = firstWindowCommits..<lastWindowCommits }
@@ -225,7 +274,9 @@ func costRun() -> JSON {
                        "processPercentOfOneCore": r((b.cpu - a.cpu) / dt * 100, 3),
                        "interruptWakeupsPerSecond": r((b.wk.interrupt - a.wk.interrupt) / dt, 2),
                        "idleWakeupsPerSecond": r((b.wk.idle - a.wk.idle) / dt, 2),
-                       "framesPerSecond": r(Double(b.commits - a.commits) / dt, 2)]
+                       "framesPerSecond": r(Double(b.commits - a.commits) / dt, 2),
+                       "counters": a.counters.rates(to: b.counters, seconds: dt)]
+        if let gpuStats { p["gpu"] = gpuStats }
         if let x = a.wsCPU, let y = b.wsCPU { p["windowServerPercentOfOneCore"] = r((y - x) / dt * 100, 2) }
         if let x = a.wsIdle, let y = b.wsIdle, y.t > x.t {
             p["windowServerIdleWakeupsPerSecond"] = r((y.value - x.value) / (y.t - x.t), 1)
@@ -235,16 +286,12 @@ func costRun() -> JSON {
     var phases: [JSON] = []
     for i in 0..<pairs {
         phases.append(phase("on"))
-        for w in windows {
-            w.stop()
-            if !offShown { w.panel.orderOut(nil) }
-        }
+        stopUpdates(windows)
+        for w in windows where !offShown { w.panel.orderOut(nil) }
         pump(0.5)
         phases.append(phase("off"))
-        for (k, w) in windows.enumerated() {
-            if !offShown { w.show() }
-            w.start(interval: interval, after: stagger(k))
-        }
+        for w in windows where !offShown { w.show() }
+        startUpdates(windows)
         pump(i == pairs - 1 ? 0.5 : offShown ? 0.5 : reshowWait)
     }
     j["phases"] = phases
@@ -262,6 +309,14 @@ func costRun() -> JSON {
         }
     }
     cpu["provisional"] = phases.contains { $0["provisional"] as? Bool == true }
+    // The counters of the on phases, averaged.
+    var counters: JSON = [:]
+    let onCounters = phases.filter { $0["phase"] as? String == "on" }.compactMap { $0["counters"] as? JSON }
+    for key in onCounters.first?.keys.sorted() ?? [] {
+        let v = onCounters.compactMap { $0[key] as? Double }
+        if !v.isEmpty { counters[key] = r(v.reduce(0, +) / Double(v.count), 3) }
+    }
+    cpu["countersOn"] = counters
     j["cpu"] = cpu
     // Cost per update on the skin's executor (all windows): drawing before the commit (A: draw(_:) on the main
     // thread, which only records), and the commit with its flush.
@@ -276,19 +331,27 @@ func costRun() -> JSON {
             f["commitP50us"] = r(percentile(commits, 0.5) * 1e6, 0)
             f["commitP99us"] = r(percentile(commits, 0.99) * 1e6, 0)
         }
+        let cpuCosts = windows.flatMap(\.frameCPUCosts)
+        if !cpuCosts.isEmpty { f["threadCPUp50us"] = r(percentile(cpuCosts, 0.5) * 1e6, 0) }
+        let commitCPU = windows.flatMap(\.commitCPUCosts)
+        if !commitCPU.isEmpty { f["commitThreadCPUp50us"] = r(percentile(commitCPU, 0.5) * 1e6, 0) }
+        coalescedLock.lock()
+        let coalesced = coalescedCommits
+        coalescedLock.unlock()
+        if !coalesced.isEmpty { f["coalescedCommitP50us"] = r(percentile(coalesced, 0.5) * 1e6, 0) }
         j["frameCost"] = f
     }
     // B+kept: what the last frame copied and drew, and its picture against a full drawing (Deskset allows 8 levels:
     // copied pictures composite like direct drawing, but each 8-bit step rounds).
     // The widgets stop for it (a 60 Hz widget would otherwise move on between its last picture and the check).
     if let w = windows.first, let v = w.drawView, v.keptPictures {
-        for w in windows { w.stop() }
+        stopUpdates(windows)
         pump(0.2)
         let k = v.keptStats
         j["keptPicturesLastFrame"] = ["picturesCopied": k.copied, "picturesMade": k.made, "elementsDrawn": k.drawn,
                                       "elements": w.widget.elements.count]
         if let c = v.keptCheck(tick: w.tick) { j["keptPicturesVsFullDrawing"] = c }
-        for (k, w) in windows.enumerated() { w.start(interval: interval, after: stagger(k)) }
+        startUpdates(windows)
         pump(0.5)
     }
 
@@ -314,6 +377,7 @@ func costRun() -> JSON {
         j["frames"] = frames
         if flag("--frames") && canCapture { j["onScreen"] = sampleFrames(w, seconds: 5) }
     }
+    stopUpdates(windows)
     close(&windows)
     pump(1.5)
     let wsClosed = windowServerMB()
@@ -374,22 +438,86 @@ func sampleFrames(_ w: SkinWindow, seconds: Double) -> JSON {
     lock.unlock()
     let read = all.compactMap(\.frame)
     var longest = 0.0
+    var longestSpan: (from: Double, to: Double, frame: Int, next: Int)?
     var current: (t: Double, frame: Int)?
     var gaps: [Double] = []
     for s in all {
         guard let f = s.frame else { continue }
         if let c = current, c.frame != f {
-            longest = max(longest, s.t - c.t)
+            if s.t - c.t > longest {
+                longest = s.t - c.t
+                longestSpan = (c.t, s.t, c.frame, f)
+            }
             gaps.append(s.t - c.t)
             current = (s.t, f)
         }
         if current == nil { current = (s.t, f) }
     }
-    return ["samples": all.count, "samplesPerSecond": r(Double(all.count) / seconds, 0),
-            "unreadable": all.count - read.count, "distinctFramesSeen": Set(read).count,
-            "framesCommitted": committed, "longestSameFrameMs": r(longest * 1000, 1),
-            "frameChangeIntervalP50ms": r(percentile(gaps, 0.5) * 1000, 1),
-            "frameChangeIntervalP99ms": r(percentile(gaps, 0.99) * 1000, 1)]
+    var j: JSON = ["samples": all.count, "samplesPerSecond": r(Double(all.count) / seconds, 0),
+                   "unreadable": all.count - read.count, "distinctFramesSeen": Set(read).count,
+                   "framesCommitted": committed, "longestSameFrameMs": r(longest * 1000, 1),
+                   "frameChangeIntervalP50ms": r(percentile(gaps, 0.5) * 1000, 1),
+                   "frameChangeIntervalP99ms": r(percentile(gaps, 0.99) * 1000, 1)]
+    // Around the longest freeze: when the frames on either side were committed on the skin thread, and what the
+    // captures saw. Commits on time during a freeze mean the skin thread kept going and the frames did not reach
+    // the screen; commits late mean the skin thread (or its timer) stalled.
+    if let span = longestSpan {
+        let times = w.commitTimes, ticks = w.commitTicks, costs = w.frameCosts, commits = w.commitCosts
+        var around: [JSON] = []
+        // The frame code holds 14 bits (FrameCode.bits): ticks are compared modulo 16384.
+        for (k, t) in ticks.enumerated() where t % 16384 >= span.frame - 3 && t % 16384 <= span.next + 3
+            && k < times.count {
+            var e: JSON = ["tick": t, "committedAtMs": r(times[k] * 1000, 1)]
+            if k > 0 { e["sincePreviousCommitMs"] = r((times[k] - times[k - 1]) * 1000, 1) }
+            if k < costs.count { e["drawUs"] = r(costs[k] * 1e6, 0) }
+            if k < commits.count { e["commitUs"] = r(commits[k] * 1e6, 0) }
+            around.append(e)
+        }
+        let seen = all.filter { $0.t >= span.from - 0.05 && $0.t <= span.to + 0.05 }
+            .map { ["atMs": r($0.t * 1000, 1), "frame": $0.frame ?? -1] as JSON }
+        j["longestFreeze"] = ["frameShown": span.frame, "nextFrameSeen": span.next,
+                              "fromMs": r(span.from * 1000, 1), "toMs": r(span.to * 1000, 1),
+                              "commitsAround": around, "capturesAround": seen]
+    }
+    return j
+}
+
+/// Samples the GPU's utilization and memory in use every `every` seconds on a background thread until `finish()`.
+final class GPUSampler {
+    private let lock = NSLock()
+    private var device: [Double] = [], renderer: [Double] = [], tiler: [Double] = [], inUse: [Double] = []
+    private var running = true
+    private let done = DispatchSemaphore(value: 0)
+    init(every: Double) {
+        Thread.detachNewThread { [self] in
+            while true {
+                lock.lock()
+                let go = running
+                lock.unlock()
+                guard go else { break }
+                let g = gpuStatistics()
+                lock.lock()
+                if let v = g.device { device.append(v) }
+                if let v = g.renderer { renderer.append(v) }
+                if let v = g.tiler { tiler.append(v) }
+                if let v = g.inUseMB { inUse.append(v) }
+                lock.unlock()
+                Thread.sleep(forTimeInterval: every)
+            }
+            done.signal()
+        }
+    }
+    /// Means of the samples taken.
+    func finish() -> JSON {
+        lock.lock()
+        running = false
+        lock.unlock()
+        done.wait()
+        func mean(_ v: [Double]) -> Double { v.isEmpty ? 0 : v.reduce(0, +) / Double(v.count) }
+        return ["samples": device.count, "deviceUtilizationPercent": r(mean(device), 2),
+                "rendererUtilizationPercent": r(mean(renderer), 2), "tilerUtilizationPercent": r(mean(tiler), 2),
+                "inUseMB": r(mean(inUse), 1)]
+    }
 }
 
 /// `memtrace`: this process's footprint every second while one mode runs a scenario (after a warm-up window), with

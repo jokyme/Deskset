@@ -12,6 +12,8 @@
 //   cost          memory, CPU and wakeups of one mode in one scenario (q2 / q3; run.sh repeats and interleaves)
 //   memtrace      this process's footprint every second while one mode runs a scenario (when memory settles)
 //   wsmem         WindowServer's footprint when a fresh process opens several widgets of one scenario and mode
+//   sysmem        what opening windows costs the whole machine (GPU memory in use, system pages), with a positive
+//                 control (SysMem.swift)
 //   q5            gradients cut at box edges (pure CoreGraphics)
 //   q6            base tiles sharing one image through contentsRect: memory and read-back
 //   q7            ContentHost flipping: resizing, and what AppKit does to contentRoot
@@ -143,6 +145,8 @@ case "memtrace":
     runApp { memTrace() }
 case "wsmem":
     runApp { windowServerMemoryRun() }
+case "sysmem":
+    runApp { systemMemoryRun() }
 case "q6":
     runApp { q6SharedBase() }
 case "q7":

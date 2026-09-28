@@ -111,8 +111,9 @@ final class SkinDrawView: NSView {
     /// B with kept pictures: draws elements `range` (file order), and each element's state now (what it draws).
     var paintItems: ((CGContext, Range<Int>) -> Void)?
     var itemStates: (() -> [Int])?
-    /// How long each drawing took (A: recording the display list, rasterized later; B: drawing the bitmap).
-    var onDrawn: ((Double) -> Void)?
+    /// How long each drawing took, wall clock and this thread's CPU time (A: recording the display list, rasterized
+    /// later; B: drawing the bitmap).
+    var onDrawn: ((Double, Double) -> Void)?
     var label = "A"
     /// B: draw into our own bitmaps (updateLayer) instead of draw(_:).
     var ownBitmap = false
@@ -136,11 +137,11 @@ final class SkinDrawView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let start = now()
+        let start = now(), startCPU = threadCPUSeconds()
         noteContext(ctx, label)
         ctx.clear(bounds)
         paint?(ctx)
-        onDrawn?(now() - start)
+        onDrawn?(now() - start, threadCPUSeconds() - startCPU)
     }
 
     private static func makeContext(_ w: Int, _ h: Int, _ space: CGColorSpace) -> CGContext? {
@@ -164,7 +165,7 @@ final class SkinDrawView: NSView {
             previousStates = nil
         }
         guard bitmaps.count == 2 else { return }
-        let start = now()
+        let start = now(), startCPU = threadCPUSeconds()
         let ctx = bitmaps[nextBitmap]
         nextBitmap = 1 - nextBitmap
         func inSkinSpace(_ c: CGContext, _ body: () -> Void) {
@@ -235,7 +236,7 @@ final class SkinDrawView: NSView {
         let image = ctx.makeImage()
         layer.contents = image
         lastImage = image
-        onDrawn?(now() - start)
+        onDrawn?(now() - start, threadCPUSeconds() - startCPU)
     }
 
     /// B: the picture it showed last.
@@ -467,23 +468,36 @@ final class SkinWindow {
     // Statistics (written on the skin's executor, read from anywhere).
     private let statsLock = NSLock()
     private var _commitTimes: [Double] = []
+    private var _commitTicks: [Int] = []
     private var _frameCosts: [Double] = []
     private var _commitCosts: [Double] = []
+    private var _frameCPUCosts: [Double] = []
+    private var _commitCPUCosts: [Double] = []
     var commitTimes: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _commitTimes }
+    /// The tick each commit showed (same order as commitTimes).
+    var commitTicks: [Int] { statsLock.lock(); defer { statsLock.unlock() }; return _commitTicks }
+    /// The same costs as this thread's CPU time (wall-clock costs include time the thread was preempted).
+    var frameCPUCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _frameCPUCosts }
+    var commitCPUCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _commitCPUCosts }
     /// Drawing of one update on the skin's executor, before the commit (A: its draw(_:), recording only).
     var frameCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _frameCosts }
     /// CATransaction.commit plus flush of one update on the skin's executor (layered modes).
     var commitCosts: [Double] { statsLock.lock(); defer { statsLock.unlock() }; return _commitCosts }
-    private func record(commit: Double, cost: Double?, commitCost: Double? = nil) {
+    private func record(commit: Double, tick: Int, cost: Double?, commitCost: Double? = nil, cpu: Double? = nil,
+                        commitCPU: Double? = nil) {
         statsLock.lock()
         _commitTimes.append(commit)
+        _commitTicks.append(tick)
         if let cost { _frameCosts.append(cost) }
         if let commitCost { _commitCosts.append(commitCost) }
+        if let cpu { _frameCPUCosts.append(cpu) }
+        if let commitCPU { _commitCPUCosts.append(commitCPU) }
         statsLock.unlock()
     }
-    private func recordDraw(_ cost: Double) {
+    private func recordDraw(_ cost: Double, _ cpu: Double) {
         statsLock.lock()
         _frameCosts.append(cost)
+        _frameCPUCosts.append(cpu)
         statsLock.unlock()
     }
     private var timer: Timer?
@@ -507,7 +521,7 @@ final class SkinWindow {
             v.paint = { [unowned self] ctx in widget.draw(ctx, tick: tick) }
             v.paintItems = { [unowned self] ctx, range in widget.draw(ctx, tick: tick, Array(widget.elements[range])) }
             v.itemStates = { [unowned self] in widget.elements.map { $0.state(at: tick) } }
-            v.onDrawn = { [unowned self] d in recordDraw(d) }
+            v.onDrawn = { [unowned self] d, c in recordDraw(d, c) }
             container.addSubview(v)
             drawView = v
         } else {
@@ -908,14 +922,16 @@ final class SkinWindow {
     }
 
     /// One update: the next tick, redrawing what changed, in one transaction (flushed off the main thread).
-    func step() {
+    /// `flush: false` (coalesced updates): the caller has a transaction open around several windows' steps and
+    /// commits and flushes it once.
+    func step(flush: Bool = true) {
         let next = tick + 1
-        let a = now()
+        let a = now(), aCPU = threadCPUSeconds()
         tick = next
         guard widget.changed(at: next) else { return }
         if config.mode.isView {
             drawView?.needsDisplay = true
-            record(commit: now(), cost: nil)
+            record(commit: now(), tick: next, cost: nil)
             return
         }
         CATransaction.begin()
@@ -948,11 +964,11 @@ final class SkinWindow {
             if config.scratch { drawScratch(dirty) }
             for i in dirty { drawGroupD(i) }
         }
-        let b = now()
+        let b = now(), bCPU = threadCPUSeconds()
         CATransaction.commit()
-        if !Thread.isMainThread { CATransaction.flush() }
-        let c = now()
-        record(commit: c, cost: b - a, commitCost: c - b)
+        if flush && !Thread.isMainThread { CATransaction.flush() }
+        let c = now(), cCPU = threadCPUSeconds()
+        record(commit: c, tick: next, cost: b - a, commitCost: c - b, cpu: bCPU - aCPU, commitCPU: cCPU - bCPU)
     }
 
     /// Bytes of bitmaps this window's runtime owns itself (D surface pools, the base bitmap, the scratch bitmap).

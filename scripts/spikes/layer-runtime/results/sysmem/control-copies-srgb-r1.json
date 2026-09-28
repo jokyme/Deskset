@@ -1,0 +1,255 @@
+{
+ "arguments": [
+  "--control",
+  "copies",
+  "--window-cs",
+  "srgb",
+  "--cycles",
+  "3",
+  "--out",
+  "ctl-copies.json"
+ ],
+ "command": "sysmem",
+ "control": "copies",
+ "cycles": [
+  {
+   "before": {
+    "attempts": 8,
+    "footprintMB": 12,
+    "gpuInUseMB": 1320.3,
+    "gpuSpreadMB": 294.4,
+    "load": 13.76,
+    "systemAnonymousWiredCompressedMB": 18157.9,
+    "systemWiredMB": 4066.6,
+    "windowServerMB": 1997
+   },
+   "closed": {
+    "attempts": 4,
+    "footprintMB": 14.55,
+    "gpuInUseMB": 1287.4,
+    "gpuSpreadMB": 3.8,
+    "load": 10.16,
+    "systemAnonymousWiredCompressedMB": 19071.4,
+    "systemWiredMB": 4060.8,
+    "windowServerMB": 2003
+   },
+   "open": {
+    "attempts": 3,
+    "footprintMB": 23.22,
+    "gpuInUseMB": 1300.4,
+    "gpuSpreadMB": 3.3,
+    "load": 11.9,
+    "systemAnonymousWiredCompressedMB": 19016.8,
+    "systemWiredMB": 4085.2,
+    "windowServerMB": 2000
+   },
+   "steps": {
+    "footprintMBClose": -8.7,
+    "footprintMBOpen": 11.2,
+    "gpuInUseMBClose": -13,
+    "gpuInUseMBOpen": -19.9,
+    "systemAnonymousWiredCompressedMBClose": 54.6,
+    "systemAnonymousWiredCompressedMBOpen": 858.9,
+    "systemWiredMBClose": -24.4,
+    "systemWiredMBOpen": 18.6,
+    "windowServerMBClose": 3,
+    "windowServerMBOpen": 3
+   }
+  },
+  {
+   "before": {
+    "attempts": 8,
+    "footprintMB": 17.45,
+    "gpuInUseMB": 1273.7,
+    "gpuSpreadMB": 14.8,
+    "load": 8.7,
+    "systemAnonymousWiredCompressedMB": 19342.8,
+    "systemWiredMB": 4041.6,
+    "windowServerMB": 2001
+   },
+   "closed": {
+    "attempts": 8,
+    "footprintMB": 33,
+    "gpuInUseMB": 1284.8,
+    "gpuSpreadMB": 13.5,
+    "load": 7.32,
+    "systemAnonymousWiredCompressedMB": 19775,
+    "systemWiredMB": 4041.7,
+    "windowServerMB": 2092
+   },
+   "open": {
+    "attempts": 8,
+    "footprintMB": 30.49,
+    "gpuInUseMB": 1297.9,
+    "gpuSpreadMB": 11.2,
+    "load": 8.17,
+    "systemAnonymousWiredCompressedMB": 19784.3,
+    "systemWiredMB": 4052.9,
+    "windowServerMB": 2016
+   },
+   "steps": {
+    "footprintMBClose": 2.5,
+    "footprintMBOpen": 13,
+    "gpuInUseMBClose": -13.1,
+    "gpuInUseMBOpen": 24.2,
+    "systemAnonymousWiredCompressedMBClose": -9.3,
+    "systemAnonymousWiredCompressedMBOpen": 441.5,
+    "systemWiredMBClose": -11.2,
+    "systemWiredMBOpen": 11.3,
+    "windowServerMBClose": 76,
+    "windowServerMBOpen": 15
+   }
+  },
+  {
+   "before": {
+    "attempts": 8,
+    "footprintMB": 35.91,
+    "gpuInUseMB": 1284.3,
+    "gpuSpreadMB": 12.5,
+    "load": 7.34,
+    "systemAnonymousWiredCompressedMB": 17536.7,
+    "systemWiredMB": 4024.6,
+    "windowServerMB": 2125
+   },
+   "closed": {
+    "attempts": 8,
+    "footprintMB": 41.66,
+    "gpuInUseMB": 1274.9,
+    "gpuSpreadMB": 8.2,
+    "load": 7.52,
+    "systemAnonymousWiredCompressedMB": 19081.5,
+    "systemWiredMB": 4063.7,
+    "windowServerMB": 2143
+   },
+   "open": {
+    "attempts": 8,
+    "footprintMB": 39.08,
+    "gpuInUseMB": 1294.4,
+    "gpuSpreadMB": 92.3,
+    "load": 6.98,
+    "systemAnonymousWiredCompressedMB": 18968.5,
+    "systemWiredMB": 4072,
+    "windowServerMB": 2141
+   },
+   "steps": {
+    "footprintMBClose": 2.6,
+    "footprintMBOpen": 3.2,
+    "gpuInUseMBClose": -19.5,
+    "gpuInUseMBOpen": 10.1,
+    "systemAnonymousWiredCompressedMBClose": 113,
+    "systemAnonymousWiredCompressedMBOpen": 1431.8,
+    "systemWiredMBClose": -8.3,
+    "systemWiredMBOpen": 47.4,
+    "windowServerMBClose": 2,
+    "windowServerMBOpen": 16
+   }
+  }
+ ],
+ "imageMB": 9.77,
+ "loadAverageAtEnd": [
+  7.52,
+  8.17,
+  8.59
+ ],
+ "loadAverageAtStart": [
+  7.71,
+  8.22,
+  8.66
+ ],
+ "memoryPressureAtEnd": {
+  "compressorOccupiesGB": 6.51,
+  "freeGB": 0.68,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "memoryPressureAtStart": {
+  "compressorOccupiesGB": 5.84,
+  "freeGB": 0.12,
+  "pressureLevel": 1,
+  "pressureLevelMeaning": "1 normal, 2 warning, 4 critical"
+ },
+ "settleSeconds": 4,
+ "summary": {
+  "footprintMB": {
+   "closeStepMedian": 2.5,
+   "closeSteps": [
+    -8.7,
+    2.5,
+    2.6
+   ],
+   "meanOfOpenAndMinusClose": 5.3,
+   "openStepMedian": 11.2,
+   "openSteps": [
+    11.2,
+    13,
+    3.2
+   ],
+   "perWidget": 5.265
+  },
+  "gpuInUseMB": {
+   "closeStepMedian": -13.1,
+   "closeSteps": [
+    -13,
+    -13.1,
+    -19.5
+   ],
+   "meanOfOpenAndMinusClose": 14.8,
+   "openStepMedian": 10.1,
+   "openSteps": [
+    -19.9,
+    24.2,
+    10.1
+   ],
+   "perWidget": 14.8
+  },
+  "systemAnonymousWiredCompressedMB": {
+   "closeStepMedian": 54.6,
+   "closeSteps": [
+    54.6,
+    -9.3,
+    113
+   ],
+   "meanOfOpenAndMinusClose": 402.1,
+   "openStepMedian": 858.9,
+   "openSteps": [
+    858.9,
+    441.5,
+    1431.8
+   ],
+   "perWidget": 402.15
+  },
+  "systemWiredMB": {
+   "closeStepMedian": -11.2,
+   "closeSteps": [
+    -24.4,
+    -11.2,
+    -8.3
+   ],
+   "meanOfOpenAndMinusClose": 21.5,
+   "openStepMedian": 18.6,
+   "openSteps": [
+    18.6,
+    11.3,
+    47.4
+   ],
+   "perWidget": 21.5
+  },
+  "windowServerMB": {
+   "closeStepMedian": 3,
+   "closeSteps": [
+    3,
+    76,
+    2
+   ],
+   "meanOfOpenAndMinusClose": 0,
+   "openStepMedian": 15,
+   "openSteps": [
+    3,
+    15,
+    16
+   ],
+   "perWidget": 0
+  }
+ },
+ "windowColorSpace": "srgb"
+}
