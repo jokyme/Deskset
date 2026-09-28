@@ -270,7 +270,12 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
     private var spec = WeatherLocationSpec.none
     private var subscription: WeatherSubscription?
     private weak var service: WeatherService?
-    private(set) lazy var binding = Binding(now: skin.skinClock.now())
+    private(set) var binding: Binding
+
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        binding = Binding(now: skin.skinClock.now())
+        super.init(name: name, section: section, skin: skin, type: type)
+    }
     private var seenVersion = 0
     /// The place whose failure streak `seenStreak` counts (nil: none seen yet, or none now).
     private var streakCoordinate: RoundedCoordinate?
