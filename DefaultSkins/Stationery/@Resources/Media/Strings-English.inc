@@ -55,6 +55,9 @@ SpectrumAllowAudioTitle=Allow System Audio Recording
 SpectrumAllowAudioBody=Spectrum needs it to draw the sound your Mac plays.#CRLF#Nothing is recorded or saved.
 SpectrumAllowScreenTitle=Allow Screen Recording
 SpectrumAllowScreenBody=Spectrum hears system audio through Screen Recording.#CRLF#Allow Deskset, then quit and reopen it.
+; the Strip says each on one line
+SpectrumStripAudioBody=Spectrum needs it to draw the sound your Mac plays. Nothing is recorded or saved.
+SpectrumStripScreenBody=Spectrum hears system audio through Screen Recording. Allow Deskset, then quit and reopen it.
 ; the tooltip: live, at rest, paused at rest, and the two permissions
 SpectrumTipLive=Showing the sound your Mac plays, from 40 Hz on the left to 16 kHz on the right.
 SpectrumTipRest=Nothing is playing.

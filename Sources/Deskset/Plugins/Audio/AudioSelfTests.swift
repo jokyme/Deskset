@@ -1105,12 +1105,14 @@ enum AudioSelfTests {
             engine.isCaptureAllowed = true
             engine.stopDelay = 0
             engine.makeBackend = { _ in RefusedBackend() }
-            func file(_ config: String) -> URL { root.appendingPathComponent("Stationery/\(config)/Medium.ini") }
-            func load(_ config: String) throws -> Skin {
+            func file(_ config: String, _ name: String = "Medium.ini") -> URL {
+                root.appendingPathComponent("Stationery/\(config)/\(name)")
+            }
+            func load(_ config: String, _ name: String = "Medium.ini") throws -> Skin {
                 // The last widget's source goes first (stopDelay 0), so this one starts its own capture.
                 engine.drain()
                 engine.drain()
-                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config), skinsDirectory: root,
+                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config, name), skinsDirectory: root,
                                 system: SystemMonitor.shared, host: host)
                 try skin.load()
                 for case let m as AudioLevelMeasure in skin.measures {
@@ -1126,8 +1128,8 @@ enum AudioSelfTests {
                 for _ in 0..<80 { skin.update() }
                 return skin
             }
-            func variable(_ config: String, _ key: String) -> String? {
-                let text = (try? String(contentsOf: file(config), encoding: .utf8)) ?? ""
+            func variable(_ config: String, _ key: String, _ name: String = "Medium.ini") -> String? {
+                let text = (try? String(contentsOf: file(config, name), encoding: .utf8)) ?? ""
                 guard let line = text.components(separatedBy: "\n").first(where: { $0.hasPrefix(key + "=") }) else {
                     return nil
                 }
@@ -1143,6 +1145,22 @@ enum AudioSelfTests {
             t.equal(variable("Spectrum", "Tempo"), "Rest", "a Notice runs at the Rest tempo")
             spectrum.close()
 
+            // The Strip has no card, but shows the Notice too, in place of its bars and its row of dots.
+            let strip = try load("Spectrum", "Strip.ini")
+            for meter in ["MeterNoticeSymbol", "MeterNoticeTitle", "MeterNoticeBody", "MeterNoticeAction"] {
+                t.equal(strip.meter(named: meter)?.hidden, false, "the Strip shows its Notice: \(meter)")
+            }
+            t.equal((strip.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow System Audio Recording")
+            t.equal((strip.meter(named: "MeterNoticeBody") as? StringMeter)?.text,
+                    "Spectrum needs it to draw the sound your Mac plays. Nothing is recorded or saved.")
+            t.equal((strip.meter(named: "MeterNoticeAction") as? StringMeter)?.text, "Open Privacy Settings")
+            t.equal(strip.meter(named: "MeterRestDots")?.hidden, true, "not the dots")
+            t.equal(strip.meter(named: "MeterBar0")?.hidden, true, "nor the bars")
+            t.check(strip.meter(named: "MeterHitArea")?.toolTipText.contains("System Audio Recording") == true,
+                    "its tooltip says what to allow")
+            t.equal(variable("Spectrum", "Tempo", "Strip.ini"), "Rest", "the Strip's Notice runs at the Rest tempo")
+            strip.close()
+
             let studio = try load("StudioVU")
             t.equal((studio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow System Audio Recording",
                     "Studio VU says so in its row")
@@ -1156,12 +1174,12 @@ enum AudioSelfTests {
 
             // macOS 13 – 14.1 (the OS check made to match): Screen Recording refused.
             engine.makeBackend = { _ in ScreenRefusedBackend() }
-            for config in ["Spectrum", "StudioVU"] {
-                var text = try String(contentsOf: file(config), encoding: .utf8)
+            for url in [file("Spectrum"), file("StudioVU"), file("Spectrum", "Strip.ini")] {
+                var text = try String(contentsOf: url, encoding: .utf8)
                 text = text.replacingOccurrences(of: "\nTempo=Rest\n", with: "\nTempo=Live\n")
                     .replacingOccurrences(of: "\nTempoLive=0\n", with: "\nTempoLive=1\n")
                     .replacingOccurrences(of: "\nStudioFast=0\n", with: "\nStudioFast=1\n")
-                try text.write(to: file(config), atomically: true, encoding: .utf8)
+                try text.write(to: url, atomically: true, encoding: .utf8)
             }
             let audioInc = root.appendingPathComponent("Stationery/@Resources/Spectrum/Audio.inc")
             for url in [audioInc, file("StudioVU")] {
@@ -1174,6 +1192,14 @@ enum AudioSelfTests {
             t.equal((oldSpectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording")
             t.equal(oldSpectrum.meter(named: "MeterNoticeTitle")?.hidden, false)
             oldSpectrum.close()
+            let oldStrip = try load("Spectrum", "Strip.ini")
+            t.equal((oldStrip.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "the Strip on macOS 13 – 14.1")
+            t.equal((oldStrip.meter(named: "MeterNoticeBody") as? StringMeter)?.text,
+                    "Spectrum hears system audio through Screen Recording. Allow Deskset, then quit and reopen it.")
+            t.equal(oldStrip.meter(named: "MeterNoticeTitle")?.hidden, false)
+            t.equal(oldStrip.meter(named: "MeterRestDots")?.hidden, true)
+            oldStrip.close()
             let oldStudio = try load("StudioVU")
             t.equal((oldStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
                     "Studio VU on macOS 13 – 14.1")
