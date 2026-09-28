@@ -1435,6 +1435,25 @@ suite's `TestThreadExecutor`.
    - The debug comparison with the live skin is on for the whole app suite. A new Core suite compares the hit map with
      the live skin on a grid of points for every test and default skin. The cost of building snapshots is measured
      on the busiest default skins and written down here.
+   - **Done (2026-09-28):** `Engine/SkinHitMap.swift` (`MouseShape`, `SkinHitMap`, `Skin.makeHitMap`; `Meter.isHit`
+     and the Shape and Button `mouseShape`s are the one hit test), `Skin.snapshotGeneration` and
+     `SkinHost.skinDidFinishWork`, `SkinSnapshot.swift` (`SkinSnapshot`, `SkinSnapshotChanges`, `SnapshotAudit`);
+     `SkinView`, the skin and status menus, the Manage window, `CodeEditorRouter`, `OutsidePointerMonitor` and the
+     group lookups read snapshots. Differences from the plan:
+     - The generation moves when a value the hit map reads changes (a frame, Hidden, an action or its state, a
+       tooltip, a cursor, a Shape's shapes, a Button's image or state, the glass, the size, the notes, the needs
+       outside the window, what loading read), not at every option read: a skin with `DynamicVariables=1` meters would
+       otherwise build its snapshot at every update. Tooltips that show `%1` move it after every piece of work.
+     - The hit map keeps only the meters the mouse can find something on (an action, a tooltip,
+       `MouseActionCursor=0`, a Button); the others never change an answer.
+     - The context menu items are read again when the skin's variables or its `ContextTitle` options change
+       (`Skin.variablesGeneration`), not after every update: reading them took four times as long as a visualizer's
+       whole update. They are only the menu's fallback (step 5).
+     - `.outsidePointerNeedsChanged` became part of `.snapshotChanged`, which carries what changed (tooltip areas,
+       notes, metadata, groups, the needs outside the window, size, glass, focus). The "skins changed" notification
+       for new notes comes on the next turn, once, not in the middle of the skin's work.
+     - Cost (`App: skin snapshot: what building snapshots costs…`, M4 Pro, `DESKSET_AUDIO_DEMO=1` so the visualizers
+       move; an update here is the engine's alone, without drawing): SNAPSHOT_COST_TABLE
 3. **The window model, `EnvironmentStore` and `SkinDirectory`.**
    - A skin's own window bangs change its model at once: KeepOnScreen clamps with the store's screens and
      `!SetWindowPosition` is resolved with them. They then post `.window(model, sequence)`.

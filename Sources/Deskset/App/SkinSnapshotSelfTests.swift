@@ -203,6 +203,8 @@ enum SkinSnapshotSelfTests {
             let updates = 240
             var updateTime = 0.0, snapshotTime = 0.0, rebuilds = 0
             for _ in 0..<updates {
+                // With the demo signal, the sound arrives between the updates, as it does on the desktop.
+                if AudioCaptureEngine.demoSignal { RenderCommand.wait(milliseconds: 16) }
                 let t0 = now()
                 skin.update()
                 let t1 = now()
