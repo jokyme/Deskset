@@ -269,6 +269,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         return String(config.split(separator: "\\").last ?? Substring(config))
     }
 
+    /// Values show in the file's own notation (`10R`, `(#A# + 5)`, `52,199,89`): in a Rainmeter skin, or with Rainmeter
+    /// details on (§4.4); elsewhere as the Studio's words (a calculated position, `#34C759`).
+    var showsFileNotation: Bool {
+        if app.state.editor.showIniNames { return true }
+        if case .rainmeter? = link?.provenance { return true }
+        return false
+    }
+
     /// The sentence under the name: which copy the Studio changes.
     var copySentence: String {
         guard let link else { return "" }

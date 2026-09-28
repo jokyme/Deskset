@@ -193,7 +193,9 @@ extension StudioPartPage {
         var items: [StudioPage.Item] = []
         if let data = liveMeasure(m) {
             let name = StudioWords.data(StudioWidgetFacts.dataName(data, in: skin).name)
-            let pattern = textPattern(m)
+            // The widget's own words in the pattern are shown as they read (never as `#Name#`).
+            let pattern = window.showsFileNotation ? textPattern(m)
+                : skin.resolve(textPattern(m), in: m, sectionVariables: false)
             var parts: [StudioPage.Token.Part] = []
             let pieces = pattern.components(separatedBy: "%1")
             if let before = pieces.first, !before.isEmpty { parts.append(.text(before)) }
@@ -225,13 +227,25 @@ extension StudioPartPage {
             }
         } else {
             let text = m.fileOption("Text") ?? ""
-            var row = StudioPage.Row(label: StudioText[.sectionText], control: .number(.init(
-                text: text, value: nil, placeholder: "", isText: true)))
-            row.labelWidth = 58
-            row.detail = showsIniNames ? "Text" : nil
-            items.append(.init(id: "shows.text", kind: .row(row)))
-            rows["shows.text"] = StudioPartRow(key: "Text", kind: .text, name: StudioText[.sectionText],
-                                              title: StudioText[.sectionText], section: "shows")
+            if !window.showsFileNotation, text.contains("#"), !SkinInspection.referencedVariables(in: text).isEmpty {
+                // Words the widget keeps elsewhere (its strings, in each language): what they say, read-only, and
+                // where they are written.
+                var row = StudioPage.Row(label: StudioText[.sectionText], control: .text(
+                    skin.resolve(text, in: m, sectionVariables: false)))
+                row.labelWidth = 58
+                items.append(.init(id: "shows.text", kind: .row(row)))
+                items.append(.init(id: "shows.words", kind: .note(.init(text: StudioText[.wordsElsewhere],
+                                                                        link: StudioText[.showInCode],
+                                                                        symbol: "character.bubble"))))
+            } else {
+                var row = StudioPage.Row(label: StudioText[.sectionText], control: .number(.init(
+                    text: text, value: nil, placeholder: "", isText: true)))
+                row.labelWidth = 58
+                row.detail = showsIniNames ? "Text" : nil
+                items.append(.init(id: "shows.text", kind: .row(row)))
+                rows["shows.text"] = StudioPartRow(key: "Text", kind: .text, name: StudioText[.sectionText],
+                                                  title: StudioText[.sectionText], section: "shows")
+            }
         }
         return StudioPage.Section(id: "shows", title: StudioText[.sectionShows], items: items)
     }
@@ -560,13 +574,26 @@ extension StudioPartPage {
     func layoutSection(_ m: Meter, skin: Skin) -> StudioPage.Section {
         var items: [StudioPage.Item] = []
         let raw = m.rawGeometry
-        var relative = false
+        // The file's own notation (`10R`, `(#Col2# + 5)`) shows in a Rainmeter skin or with Rainmeter details on
+        // (§4.4); elsewhere a position worked out from other values is its value, read-only, with Show in Code.
+        let notation = window.showsFileNotation
+        var relative: String?
+        var calculated = false
         for (id, key, text) in [("layout.x", "X", raw.x), ("layout.y", "Y", raw.y)] {
             let written = (text ?? "").trimmingCharacters(in: .whitespaces)
             let value = key == "X" ? m.frame.x : m.frame.y
             let meaning = geometryMeaning(written, key: key, of: m, skin: skin)
-            if meaning != nil || written.hasPrefix("(") || written.contains("#") { relative = true }
-            var row = StudioPage.Row(label: StudioText[key == "X" ? .rowX : .rowY], control: .number(.init(
+            let label = StudioText[key == "X" ? .rowX : .rowY]
+            if !notation, Self.isCalculated(written) {
+                let row = StudioPage.Row(label: label, control: .text(StudioText.format(.calculatedValue,
+                                                                                        NumberFormatting.plain(value))))
+                items.append(.init(id: id, kind: .row(row)))
+                calculated = true
+                continue
+            }
+            // Only a value that really is relative says how dragging writes it: that value, and where a drag takes it.
+            if meaning != nil, relative == nil { relative = written }
+            var row = StudioPage.Row(label: label, control: .number(.init(
                 text: written.isEmpty ? "0" : written, value: value, defaultText: "0",
                 width: meaning == nil ? nil : 96, meaning: meaning)))
             row.detail = showsIniNames ? key : nil
@@ -574,22 +601,41 @@ extension StudioPartPage {
             rows[id] = StudioPartRow(key: key, kind: .geometry, name: StudioText[.undoPosition],
                                      title: StudioText[.undoPosition], section: "layout")
         }
+        if calculated {
+            items.append(.init(id: "layout.calculated", kind: .note(.init(text: StudioText[.calculatedNote],
+                                                                          link: StudioText[.showInCode],
+                                                                          symbol: "function"))))
+        }
         let w = (raw.w ?? "").trimmingCharacters(in: .whitespaces), h = (raw.h ?? "").trimmingCharacters(in: .whitespaces)
-        var size = StudioPage.Row(label: StudioText[.rowSize], control: .pair([
-            .number(.init(text: w, value: m.frame.width, prefix: StudioText[.widthPrefix], placeholder: StudioText[.fit],
-                          defaultText: "")),
-            .number(.init(text: h, value: m.frame.height, prefix: StudioText[.heightPrefix], placeholder: StudioText[.fit],
-                          defaultText: "")),
-        ]))
-        size.detail = showsIniNames ? "W · H" : nil
-        items.append(.init(id: "layout.size", kind: .row(size)))
-        rows["layout.size"] = StudioPartRow(key: "W", kind: .geometry, name: StudioText[.undoPartSize],
-                                           title: StudioText[.rowSize], section: "layout")
-        if relative {
-            items.append(.init(id: "layout.notation", kind: .note(.init(text: StudioText[.dragKeepsNotation],
-                                                                          symbol: "arrow.left.and.right"))))
+        if !notation, [w, h].contains(where: Self.isCalculated) {
+            // Worked out from other values: its size, read-only (the canvas's handles still resize it).
+            let size = StudioPage.Row(label: StudioText[.rowSize], control: .text(StudioText.format(
+                .calculatedSize, NumberFormatting.plain(m.frame.width), NumberFormatting.plain(m.frame.height))))
+            items.append(.init(id: "layout.size", kind: .row(size)))
+            calculated = true
+        } else {
+            var size = StudioPage.Row(label: StudioText[.rowSize], control: .pair([
+                .number(.init(text: w, value: m.frame.width, prefix: StudioText[.widthPrefix], placeholder: StudioText[.fit],
+                              defaultText: "")),
+                .number(.init(text: h, value: m.frame.height, prefix: StudioText[.heightPrefix], placeholder: StudioText[.fit],
+                              defaultText: "")),
+            ]))
+            size.detail = showsIniNames ? "W · H" : nil
+            items.append(.init(id: "layout.size", kind: .row(size)))
+            rows["layout.size"] = StudioPartRow(key: "W", kind: .geometry, name: StudioText[.undoPartSize],
+                                               title: StudioText[.rowSize], section: "layout")
+        }
+        if let relative {
+            items.append(.init(id: "layout.notation", kind: .note(.init(
+                text: StudioText.format(.dragKeepsNotation, relative, GeometryEdit.offset(relative, by: 20)),
+                symbol: "arrow.left.and.right"))))
         }
         return StudioPage.Section(id: "layout", title: StudioText[.sectionLayout], items: items)
+    }
+
+    /// A value worked out from others: a formula, a variable, a section's value.
+    static func isCalculated(_ written: String) -> Bool {
+        written.hasPrefix("(") || written.contains("#") || written.contains("[")
     }
 
     /// What a relative position means: "after “23%”" (`R`: after the part before it), "level with “CPU”" (`r`).

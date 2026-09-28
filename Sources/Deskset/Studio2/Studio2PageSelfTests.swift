@@ -340,7 +340,7 @@ enum Studio2PageSelfTests {
             // A color: the confirmation under the swatches, and Undo named in the toolbar.
             page.handle(.swatch(item: "colors", swatch: "part:0"))
             page.colorPopover?.takeFieldText("#40BA5C")
-            t.equal(page.colorPopover?.field.stringValue, "64,186,92", "shown in the file's own notation")
+            t.equal(page.colorPopover?.field.stringValue, "#40BA5C", "a built-in widget's color field shows #RRGGBB")
             page.colorPopover?.close()
             t.check(page.colorPopover == nil, "closed")
             t.check(text(medium).contains("CPUColor=64,186,92"), "written in R,G,B like the file")
@@ -554,6 +554,9 @@ enum Studio2PageSelfTests {
         for w in englishWords where words.contains(w) { found.append(w) }
         if lower.range(of: #"#[a-z@][a-z0-9_]*#"#, options: .regularExpression) != nil { found.append("#…#") }
         if lower.range(of: #"\b\d+\s?ms\b"#, options: .regularExpression) != nil { found.append("ms") }
+        // A color written as R,G,B (the hex a color shows is not an engine word).
+        if lower.range(of: #"(?<![\d.])\d{1,3}\s?,\s?\d{1,3}\s?,\s?\d{1,3}(\s?,\s?\d{1,3})?(?![\d.])"#,
+                       options: .regularExpression) != nil { found.append("R,G,B") }
         if chinese { for w in chineseWords where text.contains(w) { found.append(w) } }
         return found
     }
@@ -579,6 +582,8 @@ enum Studio2PageSelfTests {
             t.equal(engineWords(in: "#TextColor# and 10 ms", chinese: false), ["#…#", "ms"])
             t.equal(engineWords(in: "变量", chinese: true), ["变量"])
             t.equal(engineWords(in: "Colors · Mint", chinese: false), [])
+            t.equal(engineWords(in: "52,199,89", chinese: false), ["R,G,B"])
+            t.equal(engineWords(in: "#34C759 · 1,234 GB", chinese: false), [])
             for (screen, name) in [("03-customize", "System"), ("03b-weather", "Weather")] {
                 for language in [StudioLanguage.english, .chinese] {
                     StudioText.languageOverride = language
@@ -589,8 +594,7 @@ enum Studio2PageSelfTests {
                     _ = studio.widgetPage.colorPopover?.view
                     var text = words(in: studio.inspectorController.pageView)
                     if let popover = studio.widgetPage.colorPopover {
-                        // The color field shows the file's own notation (the design allows it for INI skins).
-                        popover.field.stringValue = ""
+                        // The color field too: a built-in widget's shows #RRGGBB.
                         text += " " + words(in: popover.view)
                     }
                     let found = engineWords(in: text, chinese: language == .chinese)

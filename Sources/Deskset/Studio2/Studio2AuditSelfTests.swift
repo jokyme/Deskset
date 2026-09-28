@@ -610,10 +610,9 @@ enum Studio2AuditSelfTests {
                         let page = studio.inspectorController.pageView
                         // The widget page, as it opens.
                         scan(Studio2PageSelfTests.words(in: page), "\(name): the widget page")
-                        // The color popover (its color field shows the file's own notation, allowed for INI).
+                        // The color popover, its color field included (#RRGGBB in a built-in widget).
                         studio.widgetPage.handle(.swatch(item: "colors", swatch: "part:0"))
                         if let popover = studio.widgetPage.colorPopover {
-                            popover.field.stringValue = ""
                             scan(Studio2PageSelfTests.words(in: popover.view), "\(name): the color popover")
                             popover.close()
                         }

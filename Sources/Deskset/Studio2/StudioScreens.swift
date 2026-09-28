@@ -122,8 +122,7 @@ struct StudioScreen {
         StudioScreen(name: "03-customize", fixture: .system, zoom: 1.65, updates: 4, pinned: systemReadings,
                      colorPopover: "part:1",
                      recentColors: [RGBA(r: 250, g: 115, b: 89), RGBA(r: 92, g: 107, b: 242)],
-                     later: ["INI: the color field shows the file's own notation (52,199,89)",
-                             "S3: Different in Dark Mode (an INI color has one value)",
+                     later: ["S3: Different in Dark Mode (an INI color has one value)",
                              "the look asks first (§3.5): a scope sentence under the looks, This widget only · All 23 Widgets",
                              "a check mark beside the chosen size in Dark Mode (the accent alone is under 3 : 1)"]),
         // The same after the Memory ring's color became Mint: the confirmation, Revert to Original in the footer, "Edited

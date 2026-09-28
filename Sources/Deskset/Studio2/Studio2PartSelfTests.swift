@@ -557,15 +557,29 @@ enum Studio2PartSelfTests {
                 guard let opened = open(t, "04-part") else { continue }
                 defer { opened.close() }
                 let studio = opened.controller
-                click(studio, "MeterCPUValue")
                 let view = studio.inspectorController.pageView
-                // X and Y are shown as the file writes them (the design's notation pills): left out.
-                var text = ""
-                for sub in view.subviews where sub !== view.itemView("layout.x") && sub !== view.itemView("layout.y") {
-                    text += " " + Studio2PageSelfTests.words(in: sub)
+                // Every part's page, X and Y included (a calculated position is its value, not its formula).
+                for m in studio.skin?.meters ?? [] where !m.hidden {
+                    studio.select(part: m.name)
+                    guard studio.partPage.page != nil else { continue }
+                    view.layoutSubtreeIfNeeded()
+                    let found = Studio2PageSelfTests.engineWords(in: Studio2PageSelfTests.words(in: view),
+                                                                 chinese: language == .chinese)
+                    t.equal(found, [], "\(language.rawValue), \(m.name): \(found)")
                 }
-                let found = Studio2PageSelfTests.engineWords(in: text, chinese: language == .chinese)
-                t.equal(found, [], "\(language.rawValue): \(found)")
+                // The color popover of a text, its field included.
+                studio.select(part: "MeterCPUValue")
+                studio.partPage.handle(.swatch(item: "text.color", swatch: ""))
+                if let popover = studio.partPage.colorPopover {
+                    _ = popover.view
+                    t.equal(popover.field.stringValue.first, "#", "a built-in widget's color field shows #RRGGBB")
+                    let found = Studio2PageSelfTests.engineWords(in: Studio2PageSelfTests.words(in: popover.view),
+                                                                 chinese: language == .chinese)
+                    t.equal(found, [], "\(language.rawValue), the color popover: \(found)")
+                    popover.close()
+                } else {
+                    t.check(false, "the text color's popover")
+                }
             }
         }
     }

@@ -279,7 +279,10 @@ final class StudioPartPage {
             refresh()
         case .link(let id): link(id)
         case .undo, .topUndo: session?.undoStack.undo()
-        case .percent, .hoverSwatch, .thumbnail, .noteLink, .textSize, .suggestion: break
+        case .noteLink(let item):
+            // A position worked out from other values: its line in the code.
+            if item == "layout.calculated" || item == "shows.words" { window.showInCode(nil) }
+        case .percent, .hoverSwatch, .thumbnail, .textSize, .suggestion: break
         }
     }
 
@@ -504,7 +507,8 @@ final class StudioPartPage {
         activeSwatch = item
         let reach = scope(for: key, of: m)?.visibleParts.count ?? 1
         let target = StudioColorPopover.Target(title: rowTitle(item, m), color: current.color, written: current.written,
-                                               parts: max(reach, 1), acceptsAlpha: true)
+                                               parts: max(reach, 1), acceptsAlpha: true,
+                                               showsNotation: window.showsFileNotation)
         let popover = StudioColorPopover(target: target, widgetColors: StudioCanvasOverlay.colors(of: skin),
                                          presentsWindows: window.app.presentsWindows)
         popover.onPreview = { [weak self] c in

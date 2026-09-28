@@ -794,7 +794,7 @@ final class StudioWidgetPage {
         let written = StudioColorWriting.currentText(role, skin: skin)
         let target = StudioColorPopover.Target(title: Self.title(role),
                                                color: role.color, written: written, parts: role.parts,
-                                               acceptsAlpha: role.acceptsAlpha)
+                                               acceptsAlpha: role.acceptsAlpha, showsNotation: window.showsFileNotation)
         let widgetColors = facts.colors.parts.map(\.color) + [facts.colors.text, facts.colors.card].compactMap { $0?.color }
             + facts.colors.accents.map(\.color)
         let popover = StudioColorPopover(target: target, widgetColors: widgetColors, presentsWindows: app.presentsWindows)

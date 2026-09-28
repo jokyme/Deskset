@@ -291,6 +291,10 @@ enum StudioText {
         case scopeDetailVariable = "scope.detail.variable"
         case scopeDetailFile = "scope.detail.file"
         case dragKeepsNotation = "part.dragKeepsNotation"
+        case calculatedValue = "part.calculatedValue"
+        case calculatedNote = "part.calculatedNote"
+        case calculatedSize = "part.calculatedSize"
+        case wordsElsewhere = "part.wordsElsewhere"
         case kindNumber = "kind.number"
         case kindNumbers = "kind.numbers"
         case kindText = "kind.text"
@@ -858,7 +862,11 @@ enum StudioText {
         .scopeDetailStyle: ("shared style %@ (%d meters)", "改共用样式 %@（%d 个 meter）"),
         .scopeDetailVariable: ("variable %@ (%d meters)", "改变量 %@（%d 个 meter）"),
         .scopeDetailFile: ("shared file %@ (%d widgets)", "改共用文件 %@（%d 个小组件）"),
-        .dragKeepsNotation: ("Dragging keeps how it is written (10R → 30R)", "拖动保留写法（10R → 30R）"),
+        .dragKeepsNotation: ("Dragging keeps how it is written (%@ → %@)", "拖动保留写法（%@ → %@）"),
+        .calculatedValue: ("%@ pt · calculated", "%@ 点 · 计算出的值"),
+        .calculatedNote: ("Worked out from other values", "由其他值算出"),
+        .calculatedSize: ("%@ × %@ pt · calculated", "%@ × %@ 点 · 计算出的值"),
+        .wordsElsewhere: ("The widget's words, in each language", "小组件自己的文字，每种语言一份"),
         .kindNumber: ("number", "数字"),
         .kindNumbers: ("numbers", "数字"),
         .kindText: ("text", "文字"),

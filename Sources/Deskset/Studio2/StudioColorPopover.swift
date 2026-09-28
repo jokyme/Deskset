@@ -15,6 +15,9 @@ final class StudioColorPopover: NSViewController, NSPopoverDelegate, NSTextField
         var written: String
         var parts: Int
         var acceptsAlpha: Bool
+        /// The field shows the file's own notation (a Rainmeter skin, or Rainmeter details on); else `#RRGGBB` (§3.3:
+        /// no R,G,B text by default). What is written keeps the file's notation either way.
+        var showsNotation = true
     }
 
     /// A Mac color: its name in English (for the confirmation) and the color.
@@ -308,7 +311,9 @@ final class StudioColorPopover: NSViewController, NSPopoverDelegate, NSTextField
                                                             : StudioText.format(.colorPartsMany, target.parts))
         opacitySlider.doubleValue = c.a / 255 * 100
         opacityLabel.stringValue = "\(Int((c.a / 255 * 100).rounded())) %"
-        field.stringValue = StudioColorWriting.text(c, like: target.written, acceptsAlpha: target.acceptsAlpha)
+        field.stringValue = target.showsNotation
+            ? StudioColorWriting.text(c, like: target.written, acceptsAlpha: target.acceptsAlpha)
+            : StudioColorInput.hex(target.acceptsAlpha ? c : RGBA(r: c.r, g: c.g, b: c.b, a: 255))
         let key = ValueUsageIndex.colorKey(c)
         for (i, dot) in widgetSwatches.enumerated() {
             dot.selected = ValueUsageIndex.colorKey(widgetColors[i]) == key
