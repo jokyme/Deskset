@@ -249,7 +249,7 @@ extension DeskSnapshot {
     /// The facts classification reads inside a range of the file, relative to its start.
     func semanticBlockFacts(_ range: Range<Int>) -> DeskSemanticBlockFacts {
         let facts = semanticFacts
-        let names = symbolIndex.names
+        let names = isChecked ? symbolIndex.names : []
         var out = DeskSemanticBlockFacts()
         // The first name at or after the range's start (names are sorted and never overlap).
         var low = 0, high = names.count
@@ -294,9 +294,11 @@ extension DeskSnapshot {
         }
     }
 
-    /// What classification reads besides the tree: built once per snapshot.
+    /// What classification reads besides the tree: built once per snapshot. A snapshot with only the syntax
+    /// results (`isChecked` false) has none: its words are classified from the tree and the catalog alone, without
+    /// building the symbol index, which costs about as much without the checker's names as with them.
     var semanticFacts: DeskSemanticFacts {
-        caches.semanticFacts.value { DeskSemanticFacts(snapshot: self) }
+        caches.semanticFacts.value { isChecked ? DeskSemanticFacts(snapshot: self) : DeskSemanticFacts() }
     }
 }
 
@@ -310,6 +312,14 @@ final class DeskSemanticFacts: Sendable {
     let unused: Set<Range<Int>>
     /// Calls that make an element (by the call's text start).
     let elementCalls: Set<Int>
+
+    /// No facts: every word is classified from the tree and the catalog.
+    init() {
+        names = [:]
+        translationKeys = []
+        unused = []
+        elementCalls = []
+    }
 
     init(snapshot: DeskSnapshot) {
         let index = snapshot.symbolIndex
