@@ -105,6 +105,10 @@ final class MediaUIWorker {
 
     /// Every worker (weakly), for `waitForAll`.
     private static let all = Guarded([WeakWorker]())
+    /// Jobs given to any worker so far, for `--render` in virtual time: whether delivering what the workers handed to
+    /// the main thread gave them more to do.
+    private static let queued = Guarded(0)
+    static var jobsQueued: Int { queued.access { $0 } }
 
     private struct WeakWorker {
         weak var worker: MediaUIWorker?
@@ -139,6 +143,7 @@ final class MediaUIWorker {
     }
 
     func async(_ job: @escaping () -> Void) {
+        MediaUIWorker.queued.access { $0 &+= 1 }
         if runsInline {
             job()
             return

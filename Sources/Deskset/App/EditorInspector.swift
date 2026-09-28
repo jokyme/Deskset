@@ -27,6 +27,7 @@ extension InspectorWindowController {
         let tokenFocus = focusedTokenField()
         let focus = fieldFocus == nil && tokenFocus == nil ? focusedInspectorIdentifier() : nil
         inspectorRebuildCount += 1
+        beginInPlaceBuild()
         state.generation += 1
         state.isRebuilding = true
         defer { state.isRebuilding = false }
@@ -58,7 +59,7 @@ extension InspectorWindowController {
             // A shape color being picked whose swatch is gone (another layer) no longer receives the color panel.
             ShapeColorPicker.shared.inspectorRebuilt(self)
             self.startLiveUpdates()
-            self.lastInspectorInputs = self.inspectorInputs()
+            self.lastInspectorInputs = self.finishInPlaceBuild()
             if let fieldFocus {
                 self.restoreInspectorFocus(fieldFocus)
             } else if let tokenFocus {
@@ -195,13 +196,28 @@ extension InspectorWindowController {
     /// section (values that follow live data — section variables — left out: the live labels update those), the
     /// sections, variables and styles the menus and links list, and the inspector's own open disclosures. After a
     /// refresh that changed none of it the inspector is kept as it is (`reloadDetail`).
-    func inspectorInputs() -> String? {
+    func inspectorInputs() -> String? { inspectorInputParts()?.text }
+
+    /// The inputs split in two (`InspectorInPlace`): the values of the rows the page's slots show, by row id, and
+    /// everything else — the structure the page is built from.
+    func inspectorInputParts() -> InspectorInputs? {
         guard let skin else { return nil }
-        var lines: [String] = []
-        func add(_ parts: [Any]) { lines.append(parts.map { "\($0)" }.joined(separator: "\u{1F}")) }
-        func addRows(_ tag: String, _ rows: [Row]) {
-            for r in rows {
-                add([tag, r.key, r.raw, r.raw.contains("[") ? "" : r.resolved, r.source, r.sourceTip, "\(r.style)"])
+        var inputs = InspectorInputs()
+        let claims = inPlace.claims
+        func add(_ parts: [Any]) { inputs.structure.append(parts.map { "\($0)" }.joined(separator: "\u{1F}")) }
+        func addRows(_ tag: String, _ rows: [Row], section: String?) {
+            // The pages list a section's rows in the schema's order; only the lists of every line (Rainmeter Details,
+            // the other options) follow the files' order, which a value set on the layer itself changes (its own
+            // lines come before its look's).
+            let ordered = app.state.editor.showIniNames || advancedOpen || section == nil
+            for r in ordered ? rows : rows.sorted(by: { $0.key.lowercased() < $1.key.lowercased() }) {
+                let values = [r.raw, r.raw.contains("[") ? "" : r.resolved, r.source, r.sourceTip, "\(r.style)"]
+                if let section, case let id = InspectorInPlace.rowID(section, r.key), claims.contains(id) {
+                    // Whether it is set at all is the row's own too (a value set on the layer, or taken away).
+                    inputs.values[id, default: ""] += ([tag, r.key] + values).joined(separator: "\u{1F}")
+                } else {
+                    add([tag, r.key] + values)
+                }
             }
         }
         add(["selection", selectedSection ?? "", selectedKind.map { "\($0)" } ?? "", selectedMeters.joined(separator: ","),
@@ -212,32 +228,45 @@ extension InspectorWindowController {
              inspectorState.insetLinks.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ","),
              inspectorScroll.scrollerStyle.rawValue])
         for item in allItems { add(["section", item.title, item.kind.map { "\($0)" } ?? "", item.detail]) }
-        for v in skin.inspectedVariables() { add(["variable", v.name, v.raw, v.current, v.location?.description ?? ""]) }
+        for v in skin.inspectedVariables() {
+            let id = InspectorInPlace.rowID("Variables", v.name)
+            if claims.contains(id) {
+                add(["variable", v.name])
+                inputs.values[id, default: ""] += "\u{1E}" + [v.raw, v.current, v.location?.description ?? ""].joined(separator: "\u{1F}")
+            } else {
+                add(["variable", v.name, v.raw, v.current, v.location?.description ?? ""])
+            }
+        }
         add(["issues"] + skin.issues)
         add(["fonts"] + skin.settings.localFonts)
-        addRows("row", rows)
-        // The selection pages: locks, the layers cut off, the nudge hint's first selections.
+        addRows("row", rows, section: selectedKind == .variables ? "Variables" : isMultiSelection ? nil : selectedSection)
+        // The selection pages: locks, the layers cut off (the identity strip's, when it follows in place), the nudge
+        // hint's first selections.
         add(["pages", (app.state.editor.editorLocks[config.lowercased()] ?? []).sorted().joined(separator: ","),
              app.state.editor.unlockedBackgrounds.contains(config.lowercased()), pageState.selections > 3,
-             (isMultiSelection ? selectedMeters : selectedSection.map { [$0] } ?? []).filter(isLayerCutOff).joined(separator: ",")])
+             claims.contains("strip") ? ""
+                : (isMultiSelection ? selectedMeters : selectedSection.map { [$0] } ?? []).filter(isLayerCutOff).joined(separator: ",")])
         if isMultiSelection {
             for name in selectedMeters {
                 if let m = skin.meter(named: name) {
                     add(["layer", m.name, m.type, m.frame.width, m.frame.height, m.hidden])
-                    addRows("layer-row", self.rows(of: m.name, kind: .meter))
+                    addRows("layer-row", self.rows(of: m.name, kind: .meter), section: nil)
                 }
             }
         } else if let name = selectedSection {
             add(["header", skin.sources.location(section: selectedKind == .variables ? "Variables" : name)?.description ?? ""])
             switch selectedKind {
             case .meter?:
-                // (The sizes and positions in effect follow live: `positionCard`.)
-                if let m = skin.meter(named: name) { add(["meter", m.type, m.hidden] + m.measures.map(\.name)) }
+                // (The sizes and positions in effect follow live: `positionCard`. Whether it is hidden is the identity
+                // strip's, when it follows in place.)
+                if let m = skin.meter(named: name) {
+                    add(["meter", m.type, claims.contains("strip") ? "" : "\(m.hidden)"] + m.measures.map(\.name))
+                }
             case .measure?:
                 if let m = skin.measure(named: name) {
                     let users = self.users(of: m, in: skin)
                     add(["measure", m.type, users.widget, users.runsActions] + users.layers + users.data)
-                    if let parent = m.rawOption("Parent") { addRows("parent", self.rows(of: parent, kind: .measure)) }
+                    if let parent = m.rawOption("Parent") { addRows("parent", self.rows(of: parent, kind: .measure), section: nil) }
                 }
             case .other?, nil:
                 add(["style users"] + Self.styleUsers(name, in: skin))
@@ -245,16 +274,17 @@ extension InspectorWindowController {
                 break
             }
         } else {
-            addRows("skin", self.rows(of: "Rainmeter", kind: .rainmeter))
-            addRows("about", self.rows(of: "Metadata", kind: .metadata))
+            addRows("skin", self.rows(of: "Rainmeter", kind: .rainmeter), section: "Rainmeter")
+            addRows("about", self.rows(of: "Metadata", kind: .metadata), section: "Metadata")
             add(["skin", skin.width, skin.height, skin.meters.count, skin.measures.count,
                  skin.sources.location(section: "Rainmeter")?.description ?? ""])
             for style in allItems where style.kind == .other {
                 add(["style", style.title, Self.styleUsers(style.title, in: skin).count])
             }
-            for line in widgetPageInputs() { add(["widget", line]) }
+            for line in widgetPageInputs(values: &inputs.values, claims: claims) { add(["widget", line]) }
         }
-        return lines.joined(separator: "\n")
+        for line in inPlaceStructureExtras() { add(["derived", line]) }
+        return inputs
     }
 
     func add(_ view: NSView) {
@@ -712,7 +742,8 @@ extension InspectorWindowController {
         }
         if dot, let l = label { label = dotted(l) }
         if let label { attach(menu, to: label) }
-        return InspectorRow(label: label, control: cell)
+        return inPlaceRow(InspectorRow(label: label, control: cell), property: p, section: section, key: key, control: control,
+                          groups: groups, friendly: friendly, dot: dot, selection: selection)
     }
 
     /// A row's tooltip in plain words (the option's name only with Rainmeter Details).

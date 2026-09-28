@@ -145,6 +145,13 @@ public final class Skin {
     /// text its editing session holds in memory. Set before `load()`; also asked by the editor's lookups that read the
     /// files (`definingFiles`, `sharedDefinition`, `switchedInclude`).
     public var sourceProvider: SourceProvider?
+    /// Counts the patches that gave this skin object new source text (`patch(sources:)`): anything kept per skin object
+    /// that was read from its files (a layer's name, a thumbnail, where a value is used) is out of date once it moves.
+    /// Never decreases.
+    public internal(set) var sourceGeneration = 0
+    /// A patch came while an editor preview showed: the window is sized when the preview ends (`endPreview`), not with
+    /// the preview's values.
+    var sizeWaitsForPreviewEnd = false
     /// Asked before each action of the skin's own runs (nil: everything runs). The Studio's instance of a widget runs what
     /// stays inside it and records what would reach outside (`StudioActionPolicy`): the copy on the desktop does that.
     public var actionPolicy: SkinActionPolicy?
@@ -1136,15 +1143,22 @@ public final class Skin {
         variableValue(name, section: nil)
     }
 
-    /// The skin's variables as they stand, sorted by name, for summaries of its state (the runtime design: two runs
-    /// that took the same inputs list the same variables): its `[Variables]` as loaded — after `!WriteKeyValue` and a
-    /// refresh, the values written — with what `!SetVariable` changed since, and the built-in variables fixed at load
-    /// (`#@#`, `#CURRENTCONFIG#`, `#SKINSPATH#`…). The built-ins that follow the window, the screens and the appearance
-    /// (`#CURRENTCONFIGX#`, `#SCREENAREAWIDTH#`, `#MACDARKMODE#`…) are read when used and not listed. Names are lower
-    /// case: variable names are not case-sensitive.
+    /// The skin's variables as it runs them, sorted by name: for summaries of its state (the runtime design: two runs
+    /// that took the same inputs list the same variables) and for seeding another instance of the widget with the ones
+    /// set while it ran (`runtimeState(as:including:)`, which compares them with `variableDefinitions`). Its
+    /// `[Variables]` as loaded — after `!WriteKeyValue` and a refresh, the values written — with what `!SetVariable`
+    /// changed since, and the built-in variables fixed at load (`#@#`, `#CURRENTCONFIG#`, `#SKINSPATH#`…). The built-ins
+    /// that follow the window, the screens and the appearance (`#CURRENTCONFIGX#`, `#SCREENAREAWIDTH#`, `#MACDARKMODE#`…)
+    /// are read when used and not listed. An editor preview's values are not the skin's: what a preview replaced is
+    /// listed (or nothing, for a variable only the preview made). Names are lower case: variable names are not
+    /// case-sensitive.
     public var runtimeVariables: [SkinVariable] {
         assertOwned()
-        return variables.map { SkinVariable(name: $0.key, value: $0.value) }.sorted { $0.name < $1.name }
+        var values = variables
+        for (key, saved) in previewSavedVariables {
+            if let saved { values[key] = saved } else { values.removeValue(forKey: key) }
+        }
+        return values.map { SkinVariable(name: $0.key, value: $0.value) }.sorted { $0.name < $1.name }
     }
 
     /// `!SetVariable`: built-in variables "cannot be directly modified by actions in a skin".
@@ -2325,4 +2339,89 @@ protocol SkinOutsidePointerObserver: SkinPointerObserver {
     /// What it wants from outside the skin window now: nothing while it is disabled, paused or closed, or has no
     /// action that such input could run.
     func outsidePointerNeeds() -> OutsidePointerNeeds
+}
+
+// MARK: - What a patch replaces (SkinPatch.swift)
+
+extension Skin {
+    /// Puts a patch's merged text in place of the loaded one (`patch(sources:)`): the document, its files, where each
+    /// section and option was written, the section and style lookups built from it and `[Metadata]`. The caller has
+    /// checked that the files and the sections are the same ones.
+    func installPatchedSource(_ loaded: LoadedIniFile, mentionsAppearance: Bool) {
+        document = loaded.document
+        includedFiles = loaded.includedFiles
+        sources = loaded.sources
+        sectionIndex = [:]
+        styleValueIndex = [:]
+        for section in document.sections {
+            let key = section.name.lowercased()
+            if sectionIndex[key] == nil { sectionIndex[key] = section }
+        }
+        metadata = [:]
+        for e in document.section(named: "Metadata")?.entries ?? [] { metadata[e.key] = e.value }
+        if mentionsAppearance { usesMacAppearance = true }
+    }
+
+    /// The `[Variables]` definitions as last resolved, and the built-in values they were resolved with (the appearance
+    /// variables as they are now).
+    var variableDefinitions: (values: [String: String], builtins: [String: String]) {
+        (definedVariables, definitionBuiltins.merging(currentEnvironment().appearance.variables) { _, new in new })
+    }
+
+    /// New definitions of the `[Variables]` in `changed` (nil: no longer defined). The new definition wins over a value
+    /// set while the skin ran (`!SetVariable`), as after a reload — and as `seed(from:)` takes such a value only while its
+    /// definition is the one it was set over. An editor preview goes on showing its value, and gives back the new
+    /// definition when it ends.
+    func redefineVariables(_ changed: [String: String?]) {
+        for (key, value) in changed {
+            definedVariables[key] = value
+            if previewSavedVariables[key] != nil {
+                previewSavedVariables[key] = .some(value)
+            } else {
+                variables[key] = value
+            }
+        }
+    }
+
+    /// Whether `close()` ran: the skin no longer updates.
+    var isClosed: Bool { closed }
+
+    /// Meter frames are computed again before the next read of a meter's position or size (a patch reads its sections
+    /// in file order, and a later one may use an earlier one's new place).
+    func markLayoutPending() { layoutPending = true }
+
+    /// Lays the skin out after a patch and sizes the window again (the new text may make it larger or smaller, as a
+    /// reload would) — once a preview showing now ends — then asks the host to draw.
+    func finishPatch() {
+        layout()
+        if isPreviewing {
+            sizeWaitsForPreviewEnd = true
+        } else {
+            updateSize(force: true)
+        }
+        needsDisplay()
+    }
+
+    /// When the last preview ends: the window takes the size a patch made while it showed.
+    func sizeAfterPatchDuringPreview() {
+        guard sizeWaitsForPreviewEnd else { return }
+        sizeWaitsForPreviewEnd = false
+        updateSize(force: true)
+    }
+}
+
+// MARK: - What seeding reads and sets (Session/Seeding.swift)
+
+extension Skin {
+    /// Before the first update: the Calc `Counter` goes on from `counter` — its next update computes it again when the
+    /// source keeps running beside this instance (`mirroring`, as `mirrorCounter(of:)`), else the one after it (as
+    /// `continueCounter(from:)`).
+    func seedCounter(_ counter: Int, mirroring: Bool) {
+        counterBase = mirroring ? max(counter, 1) - 1 : counter
+    }
+
+    /// A variable set while another instance of the widget ran (`SkinRuntimeState`), as `!SetVariable` sets it.
+    func seedVariable(_ key: String, _ value: String) {
+        variables[key] = value
+    }
 }

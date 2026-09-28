@@ -13,7 +13,7 @@ extension InspectorWindowController {
     func meterPage(_ m: Meter, skin: Skin) {
         noteSelectionShown(m.name)
         let groups = EditorSchema.meterGroups(m.type)
-        add(layerStrip(m, skin: skin))
+        add(inPlaceStrip(layerStrip(m, skin: skin), meter: m))
         let type = m.type.lowercased()
         let own = groups.filter { !["Box Behind It", "When Clicked", "Layer"].contains($0.title) }
         switch type {
@@ -258,7 +258,7 @@ extension InspectorWindowController {
             let field = textField(ctx, value: ctx.raw, placeholder: "Type the words to show")
             field.font = .systemFont(ofSize: 12.5)
             field.identifier = NSUserInterfaceItemIdentifier("\(ctx.section)/Text")
-            return InspectorRow(label: label, control: field)
+            return inPlaceText(InspectorRow(label: label, control: field), context: ctx, meter: m, data: false)
         }
         let names: [Int: String] = Dictionary(uniqueKeysWithValues: m.measureSlots.enumerated().compactMap { i, slot in
             guard let slot, let skin = self.skin else { return nil }
@@ -279,7 +279,7 @@ extension InspectorWindowController {
         let caption = cardNote("The blue tag shows the live data.")
         let stack = EditorStyle.vstack([field, caption], spacing: 4)
         field.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return InspectorRow(label: label, control: stack)
+        return inPlaceText(InspectorRow(label: label, control: stack), context: ctx, meter: m, data: true)
     }
 
     /// The token field being edited when the inspector is rebuilt: its typed text goes on in the rebuilt field.
@@ -432,9 +432,9 @@ extension InspectorWindowController {
         let seg = wordedSegments(["Left", "Center", "Right"], symbols: ["text.alignleft", "text.aligncenter", "text.alignright"],
                                  selected: h, id: "StringAlign") { i in write(Self.alignValue(h: i, v: v)) }
         seg.setAccessibilityLabel("Align")
-        return InspectorRow(label: EditorStyle.rowLabel("Align", key: showsDetails ? ctx.key : nil,
-                                                        tooltip: "Where X and Y are on the text: left, center or right"),
-                            control: seg)
+        return inPlaceAlign(InspectorRow(label: EditorStyle.rowLabel("Align", key: showsDetails ? ctx.key : nil,
+                                                                     tooltip: "Where X and Y are on the text: left, center or right"),
+                                         control: seg), context: ctx, vertical: false)
     }
 
     /// Up and down (More Text Options): Top | Middle | Bottom, the vertical part of StringAlign.
@@ -448,7 +448,7 @@ extension InspectorWindowController {
         let seg = wordedSegments(["Top", "Middle", "Bottom"], symbols: ["arrow.up.to.line", "arrow.up.and.down", "arrow.down.to.line"],
                                  selected: v, id: "StringAlign.vertical") { i in write(Self.alignValue(h: h, v: i)) }
         let label = EditorStyle.rowLabel("Up and down", key: nil, tooltip: "Where Y is on the text: top, middle or bottom")
-        return (InspectorRow(label: v != 0 ? dotted(label) : label, control: seg), v != 0)
+        return (inPlaceAlign(InspectorRow(label: v != 0 ? dotted(label) : label, control: seg), context: ctx, vertical: true), v != 0)
     }
 
     /// Capitals, each choice written in its own case.
@@ -561,7 +561,13 @@ extension InspectorWindowController {
         let stack = EditorStyle.vstack(views, spacing: 3)
         popup.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         let label = EditorStyle.rowLabel(ctx.property.label, key: showsDetails ? ctx.key : nil, tooltip: "The live data it shows")
-        return InspectorRow(label: label, control: stack)
+        let p = ctx.property, name = m.name
+        return inPlaceRemadeRow(InspectorRow(label: label, control: stack), section: section, claims: [key],
+                                describe: { [weak self] in self?.describeShowsRow(p, section: section) },
+                                remake: { [weak self] in
+                                    guard let self, let m = self.skin?.meter(named: name) else { return nil }
+                                    return self.showsRow(self.context(p, section: section, rows: self.rows), meter: m, rightNow: rightNow)
+                                })
     }
 
     /// The Shows menu (docs/editor-friendly.md §8.3): IN THIS WIDGET (repeated data folded: "Sound bands ▸"), then
@@ -779,6 +785,17 @@ extension InspectorWindowController {
     }
 
     func numberRow(_ ctx: PropertyContext, meter m: Meter, skin: Skin) -> InspectorRow? {
+        guard let row = makeNumberRow(ctx, meter: m, skin: skin) else { return nil }
+        let name = m.name, section = ctx.section, p = ctx.property
+        return inPlaceRemadeRow(row, section: section, claims: FormatPresets.numberKeys,
+                                describe: { [weak self] in self?.describeNumberRow(meter: name, section: section) },
+                                remake: { [weak self] in
+                                    guard let self, let skin = self.skin, let m = skin.meter(named: name) else { return nil }
+                                    return self.makeNumberRow(self.context(p, section: section, rows: self.rows), meter: m, skin: skin)
+                                })
+    }
+
+    func makeNumberRow(_ ctx: PropertyContext, meter m: Meter, skin: Skin) -> InspectorRow? {
         guard let measure = m.measures.first else { return nil }
         if isTime(measure) { return timeFormatRow(measure, skin: skin) }
         let presets = numberPresets(for: measure, skin: skin, section: ctx.section)
@@ -1163,7 +1180,7 @@ extension InspectorWindowController {
         for v in views { v.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true }
         popup.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         let rowLabel = EditorStyle.rowLabel(label, key: showsDetails ? key : nil, tooltip: ctx.property.help)
-        return InspectorRow(label: rowLabel, control: stack)
+        return inPlaceClickRow(InspectorRow(label: rowLabel, control: stack), context: ctx, meter: m, label: label, pointing: pointing)
     }
 
     /// The line under a click choice: the address field, the app, the layer menu, or the sentence of a custom action.
@@ -1262,37 +1279,9 @@ extension InspectorWindowController {
             }
             return popup
         case .color:
-            var current = ""
-            if case .changeColor(_, _, let c) = parsed { current = c }
-            let colorKey = Self.colorKey(forMeterType: m.type)
             let popup = CompactPopUpButton()
             popup.identifier = NSUserInterfaceItemIdentifier("\(section)/\(key)/color")
-            let menu = NSMenu()
-            for (title, value) in widgetColors(skin) {
-                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-                item.representedObject = value
-                if let rgba = OptionValue.color(skin.resolve(value, in: nil, sectionVariables: false)) {
-                    item.image = Self.swatchImage(rgba)
-                }
-                menu.addItem(item)
-            }
-            popup.menu = menu
-            // The choice written, else the one of the same color (same-value colors are one choice).
-            let resolved = OptionValue.color(skin.resolve(current, in: nil, sectionVariables: false))
-            if let item = menu.items.first(where: { ($0.representedObject as? String) == current })
-                ?? menu.items.first(where: { item in
-                    (item.representedObject as? String).flatMap { OptionValue.color(skin.resolve($0, in: nil, sectionVariables: false)) } == resolved
-                        && resolved != nil
-                }) {
-                popup.select(item)
-            }
-            popup.toolTip = popup.titleOfSelectedItem
-            let original = skin.section(named: section)?.rawOption(colorKey) ?? ""
-            popup.onAction { c in
-                guard let v = (c as? NSPopUpButton)?.selectedItem?.representedObject as? String else { return }
-                write(.changeColor(section: section, key: colorKey, color: v),
-                      leave: .changeColor(section: section, key: colorKey, color: original.isEmpty ? "255,255,255,255" : original))
-            }
+            fillColorChoice(popup, parsed: parsed, section: section, key: key, meter: m, skin: skin)
             return popup
         case .custom:
             let written: String? = {
@@ -1320,6 +1309,42 @@ extension InspectorWindowController {
     }
 
     /// A choice made in a click picker: written at once when it needs nothing more, otherwise its detail is shown.
+    /// "Change Color To…": the widget's colors, the one written chosen; picking one writes it, and leaving puts back
+    /// the layer's color as it is now.
+    func fillColorChoice(_ popup: CompactPopUpButton, parsed: ClickAction, section: String, key: String, meter m: Meter,
+                         skin: Skin) {
+        var current = ""
+        if case .changeColor(_, _, let c) = parsed { current = c }
+        let colorKey = Self.colorKey(forMeterType: m.type)
+        let menu = NSMenu()
+        for (title, value) in widgetColors(skin) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.representedObject = value
+            if let rgba = OptionValue.color(skin.resolve(value, in: nil, sectionVariables: false)) {
+                item.image = Self.swatchImage(rgba)
+            }
+            menu.addItem(item)
+        }
+        popup.menu = menu
+        // The choice written, else the one of the same color (same-value colors are one choice).
+        let resolved = OptionValue.color(skin.resolve(current, in: nil, sectionVariables: false))
+        if let item = menu.items.first(where: { ($0.representedObject as? String) == current })
+            ?? menu.items.first(where: { item in
+                (item.representedObject as? String).flatMap { OptionValue.color(skin.resolve($0, in: nil, sectionVariables: false)) } == resolved
+                    && resolved != nil
+            }) {
+            popup.select(item)
+        }
+        popup.toolTip = popup.titleOfSelectedItem
+        let original = skin.section(named: section)?.rawOption(colorKey) ?? ""
+        popup.onAction { [weak self] c in
+            guard let v = (c as? NSPopUpButton)?.selectedItem?.representedObject as? String else { return }
+            self?.writeClickAction(.changeColor(section: section, key: colorKey, color: v),
+                                   leave: .changeColor(section: section, key: colorKey, color: original.isEmpty ? "255,255,255,255" : original),
+                                   section: section, key: key)
+        }
+    }
+
     func clickChoiceMade(_ choice: ClickChoice, section: String, key: String, pointing: Bool, meter: String) {
         let prefix = "click/\(section.lowercased())/\(key.lowercased())="
         inspectorState.disclosures = inspectorState.disclosures.filter { !$0.hasPrefix(prefix) }

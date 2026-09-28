@@ -226,9 +226,7 @@ open class Meter: SkinSection {
         styles = OptionValue.list(styleText)
         // `MeterStyle=A | B[MeasureX]` read without section variables (the load-time read of a section without
         // DynamicVariables in the meter itself): read once more at the first update, like any other option.
-        if !styleSectionVariables, !mentionsSectionVariables, styleText.utf8.contains(UInt8(ascii: "[")) {
-            mentionsSectionVariables = skin.mentionsSectionVariable(styleText)
-        }
+        noteSectionVariables(raw: styleOption, resolved: styleText, sectionVariablesResolved: styleSectionVariables)
         reportMissingStyles(styleOption, sectionVariablesResolved: styleSectionVariables)
 
         super.readOptions()

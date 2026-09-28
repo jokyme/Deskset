@@ -481,7 +481,11 @@ extension AppSelfTest {
             func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
             guard let window = editor.window else { return t.check(false, "window") }
             editor.select(section: "VarText")
-            // Typing in a field, then Tab: the value is written, the skin refreshes, and the next field keeps the focus.
+            // Typing in a field, then Tab: the value is written, the skin refreshes, and the next field keeps the focus —
+            // across a rebuild of the inspector (a value step follows in place, which keeps the fields themselves: the
+            // page is built again here, as when a step changes what it is made of).
+            InspectorInPlace.isOffForTests = true
+            defer { InspectorInPlace.isOffForTests = false }
             guard let field = editor.inspectorControl(for: "Text") as? ValueField,
                   let next = editor.inspectorStack.findSubview(where: { $0.identifier?.rawValue == "VarText/Prefix" }) as? ValueField
             else { return t.check(false, "fields") }

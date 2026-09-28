@@ -419,6 +419,14 @@ open class Measure: SkinSection {
         return Int64(v.rounded().clamped(-9e18, 9e18))
     }
 
+    /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch
+    /// (`Skin.patch(sources:)`) updates a measure whose options changed this way — a reload would not report its new
+    /// string as a change either.
+    func forgetChangeBaseline() {
+        lastValue = nil
+        lastString = nil
+    }
+
     // MARK: Values for meters and section variables
 
     /// String value with Substitute applied; number-only measures print their number.
@@ -474,5 +482,36 @@ open class Measure: SkinSection {
     func setPaused(_ flag: Bool) {
         if !flag && paused { needsOptionRead = true }
         paused = flag
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension Measure {
+    /// What this measure has seen so far, for a new instance of the widget (`SkinRuntimeState.MeasureState`).
+    var runtimeSnapshot: SkinRuntimeState.MeasureState {
+        SkinRuntimeState.MeasureState(
+            type: type, kind: String(describing: Swift.type(of: self)), own: own, value: value, rawString: rawString,
+            average: averageSize > 1 && !history.isEmpty
+                ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
+            observedMin: observedMin, observedMax: observedMax, webParser: nil)
+    }
+
+    /// Takes what the same measure of another instance of the widget has seen (loaded, before the first update): its
+    /// value and string, the samples it averages (when it averages as many) and the range it observed. The first update
+    /// then computes the next value from there.
+    func seed(_ state: SkinRuntimeState.MeasureState) {
+        value = state.value.isFinite ? state.value : 0
+        rawString = state.rawString
+        if let average = state.average, averageSize > 1, !average.samples.isEmpty,
+           average.samples.count <= averageSize {
+            history = average.samples
+            historyNext = min(max(average.next, 0), averageSize - 1)
+        }
+        if tracksValueRange {
+            observedMin = state.observedMin
+            observedMax = state.observedMax
+            refreshRange()
+        }
     }
 }

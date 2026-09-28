@@ -207,7 +207,6 @@ extension InspectorWindowController {
             button.toolTip = "Select \(displayName(ofSection: name))" + (showsDetails ? " (\(name))" : "")
             button.onHover = { [weak self] inside in
                 self?.canvas.hoverHighlight = inside ? [name] : []
-                self?.canvas.needsDisplay = true
             }
             button.onAction { [weak self] _ in
                 // The veil the pointer put over the canvas goes with the page (as the look badge's does).

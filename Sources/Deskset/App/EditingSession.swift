@@ -5,8 +5,14 @@ import os
 /// What happened in an editing session, for the Studio window that shows it.
 enum SessionChange {
     /// The Studio's instance of the widget was loaded again: after a step, an undo or redo, a change on disk, a refresh
-    /// of the widget. Whatever showed the old one follows the new one.
-    case reloaded
+    /// of the widget. Whatever showed the old one follows the new one. With a step, an undo or a redo, the edits it made
+    /// to each file's text (the code pane makes them in its own copy); nil when they are not known (a change on disk, a
+    /// refresh: the code pane reads the files again).
+    case reloaded(SourceTextEdits?)
+    /// The Studio's instance took a step, an undo or a redo without loading again (`applyToStudio`): the same object
+    /// shows the new text and keeps what it has shown (graphs, the counter, values set by clicks). Whatever showed it
+    /// follows it as after `reloaded`, the code pane by the edits made to each file's text.
+    case patched(SkinPatchSummary, SourceTextEdits?)
     /// A step was made: in memory, on disk, on the desktop, on the undo stack.
     case applied(Transaction)
     /// A step was undone (`undo`) or redone.
@@ -49,14 +55,17 @@ enum SessionError: Error, CustomStringConvertible {
 ///   writers always read the file they change.
 /// - **The Studio edits its own instance** of the widget (`studioSkin`, hosted by `StudioHost`): loaded from the text in
 ///   memory, on the main thread, running what stays inside the widget of its actions (`StudioActionPolicy`). The widget
-///   on the desktop keeps running in its own window: it shows the previews of a gesture as they happen and reloads when
-///   a step is written (`refreshDesktop`), as it did when the Studio edited it directly.
+///   on the desktop keeps running in its own window: it shows the previews of a gesture as they happen and follows a
+///   step once it is written — as a patch when the Studio's instance took it as one (`followStep`), else by loading
+///   again (`refreshDesktop`).
 final class EditingSession {
     /// The widget's config, lowercased (the app's key for the session).
     let key: String
     private(set) var config: String
     unowned let app: AppController
     let buffers = SourceBuffers()
+    /// What the Studio's instance reads: the text in memory, and typed code not written yet (`showTypedCode`).
+    lazy var studioSources = StudioSources(buffers: buffers)
     let diskSync: DiskSync
     /// The widget's undo stack (the Studio window uses it as its own: ⌘Z, the toolbar, the toasts).
     let undoStack = EditorUndoManager()
@@ -82,9 +91,14 @@ final class EditingSession {
     private var awaitedReload: (key: String, deadline: Date)?
     static let ownReloadTimeout: TimeInterval = 5
     /// How long the phases of the last step, undo or redo took (milliseconds): `plan`, `apply`, `write`, `studio`
-    /// (loading the Studio's instance and the Studio following it), `total` — and, once it ran, `desktop` (the reload of
-    /// the desktop copy, on the next turn of the run loop).
+    /// (loading the Studio's instance and the Studio following it) with its parts (`reloadPhases`: `studio.load`,
+    /// `studio.update`, `window`, `window.<part>`), `total` — and, once it ran, `desktop` (the reload of the desktop
+    /// copy, on the next turn of the run loop).
     private(set) var lastTimings: [String: Double] = [:]
+    /// The phases of the Studio's last reload (`reloadStudioSkin`); the Studio window times its parts here.
+    let reloadPhases = StudioPhaseClock()
+    /// The desktop copy's patch waiting for its turn, and how the Studio's instance took the last step (DesktopFollowing).
+    let follow = SessionFollowing()
     /// The reload of the desktop copy waiting for the next turn of the run loop (`scheduleDesktopRefresh`), and where
     /// the widget's window goes once it ran (a step that moves it with the files).
     private var scheduledRefresh: Timer?
@@ -155,24 +169,25 @@ final class EditingSession {
     /// Loads the Studio's own instance again from the text in memory — after buffers without edits of their own took
     /// what changed on disk — and tells the Studio window. The Calc `Counter` goes on from the old instance, which is
     /// closed once the new one had its first update (nothing in between shows nothing); the first instance takes the
-    /// counter and the graphs of the widget on the desktop (`Skin.mirrorCounter`, `Skin.takeGraphs`). Keeps the old one
-    /// when the widget's file cannot be read.
+    /// counter, the graphs and what else the widget on the desktop has shown (`runtimeSeed`). Keeps the old one when the
+    /// widget's file cannot be read.
     @discardableResult
     func reloadStudioSkin(notify: Bool = true) -> Skin? {
         guard let fileURL else { return studioSkin }
+        reloadPhases.reset()
         diskSync.adoptChanges()
         // In memory before it loads, so it reads them from there (files it includes that are new come in after).
         _ = try? buffers.load(fileURL)
         for url in studioSkin?.includedFiles ?? [] { _ = try? buffers.load(url) }
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: app.skinsDirectory, system: SystemMonitor.shared,
                         host: host)
-        skin.sourceProvider = buffers
+        skin.sourceProvider = studioSources
         skin.actionPolicy = host.policy
         // A new instance reads the widget's real files again, as the desktop copy does when it reloads.
         host.policy.resetFiles()
         let stamps = diskSync.modificationDates()
         do {
-            try skin.load()
+            try reloadPhases.measure("studio.load") { try skin.load() }
         } catch {
             Log.write("Studio: cannot load \(fileURL.lastPathComponent): \(error)", level: .warning, source: config)
             return studioSkin
@@ -188,19 +203,17 @@ final class EditingSession {
            SourceFileID(running.fileURL) == SourceFileID(fileURL) {
             mirrored = running
         }
-        if let old {
-            skin.continueCounter(from: old)
-        } else if let mirrored {
-            skin.mirrorCounter(of: mirrored)
-        }
-        skin.update()
+        let seed = runtimeSeed(old: old, mirrored: mirrored)
+        if let seed { skin.seed(from: seed) }
+        reloadPhases.measure("studio.update") { skin.update() }
         takeOwnWrites(since: stamps)
-        if let mirrored { skin.takeGraphs(from: mirrored) }
+        if let seed { skin.seedGraphs(from: seed) }
         studioSkin = skin
+        studioSources.waiting = nil
         startUpdates(skin)
         old?.close()
         watcher.watch(skin.sourceFiles)
-        if notify { client?.session(self, didChange: .reloaded) }
+        if notify { reloadPhases.measure("window") { client?.session(self, didChange: .reloaded(nil)) } }
         return skin
     }
 
@@ -249,7 +262,7 @@ final class EditingSession {
     /// shows it: `reloaded`) and no live reload follows, which would load the instance again, and it would write again.
     /// Not for its later updates: a save in another app landing in one of them (every 16 ms for a visualizer) would be
     /// taken for the instance's and not reload the widget.
-    private func takeOwnWrites(since stamps: [SourceFileID: Date]) {
+    func takeOwnWrites(since stamps: [SourceFileID: Date]) {
         let now = diskSync.modificationDates(stamps.keys.map(\.url))
         let written = stamps.filter { now[$0.key] != $0.value }.map(\.key.url)
         guard !written.isEmpty else { return }
@@ -262,13 +275,13 @@ final class EditingSession {
     // MARK: Steps
 
     /// Makes a step: plans `ops` on the text in memory (buffers without edits of their own take what changed on disk
-    /// first), makes the changes, writes them (for now every step is written: each ends a gesture), loads the Studio's
-    /// instance again and — when `verify` finds the change in effect there —
+    /// first), makes the changes, writes them (for now every step is written: each ends a gesture), gives them to the
+    /// Studio's instance (`applyToStudio`: a patch, else a reload) and — when `verify` finds the change in effect there —
     /// reloads the widget on the desktop and puts the step on the undo stack (unless `registersUndo` is false: the
     /// caller folds it into a step of its own). Returns nil when nothing changes.
     ///
     /// Throws when the step cannot be planned or written — nothing changed then — or when `verify` says the widget does
-    /// not show it (`SessionError.notInEffect`): the files are put back and the Studio's instance loaded again.
+    /// not show it (`SessionError.notInEffect`): the files are put back, and so is the Studio's instance.
     @discardableResult
     func apply(_ name: String, _ ops: [EditOp], commands: [TransactionCommand] = [], selectionBefore: [String] = [],
                selectionAfter: [String] = [], registersUndo: Bool = true, verify: ((Skin) -> Bool)? = nil) throws
@@ -304,20 +317,21 @@ final class EditingSession {
 
         t0 = DispatchTime.now().uptimeNanoseconds
         let runtime = Self.signposter.beginInterval("runtime.apply")
-        let reloaded = studioSkin != nil ? reloadStudioSkin() : nil
+        let reloaded = studioSkin != nil ? applyToStudio(changes) : nil
         Self.signposter.endInterval("runtime.apply", runtime)
         lap("studio", t0)
+        if reloaded != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
         if let verify, let reloaded, !verify(reloaded) {
             try? buffers.apply(changes, reverse: true)
             try? write()
-            if studioSkin != nil { reloadStudioSkin() }
+            if studioSkin != nil { applyToStudio(changes, undo: true) }
             throw SessionError.notInEffect
         }
 
-        // The desktop copy loads the files on the next turn: the canvas shows the step first.
+        // The desktop copy follows on the next turn (a patch, or a load): the canvas shows the step first.
         var place: WidgetPosition?
         for case .moveWidget(_, let to) in commands { place = to }
-        scheduleDesktopRefresh(thenMoveTo: place)
+        followStep(changes, thenMoveTo: place)
         let t = Transaction(name: name, changes: changes, selectionBefore: selectionBefore, selectionAfter: selectionAfter,
                             commands: commands)
         if registersUndo { registerUndo(t) }
@@ -350,7 +364,8 @@ final class EditingSession {
 
     /// Undoes (`undo`) or redoes a step: the files must hold what the step left in them (else nothing changes and the
     /// Studio hears why), the other side of the step goes on the stack, the widget's window moves with the files
-    /// (`TransactionCommand`), the Studio's instance and the desktop copy load the files again.
+    /// (`TransactionCommand`), the Studio's instance takes the text (`applyToStudio`) and the desktop copy loads the
+    /// files again.
     func revert(_ t: Transaction, undo: Bool) {
         client?.sessionWillRevert(self)
         let start = DispatchTime.now().uptimeNanoseconds
@@ -378,10 +393,11 @@ final class EditingSession {
         var place: WidgetPosition?
         for case .moveWidget(let from, let to) in t.commands { place = undo ? from : to }
         let t0 = DispatchTime.now().uptimeNanoseconds
-        if studioSkin != nil { reloadStudioSkin() }
+        if studioSkin != nil { applyToStudio(t.changes, undo: undo) }
         timings["studio"] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
-        // The window moves with the files once the desktop copy loaded them (next turn).
-        scheduleDesktopRefresh(thenMoveTo: place)
+        if studioSkin != nil { timings.merge(reloadPhases.take()) { own, _ in own } }
+        // The window moves with the files once the desktop copy took them (next turn).
+        followStep(t.changes, thenMoveTo: place)
         client?.session(self, didChange: .reverted(t, undo: undo))
     }
 
@@ -633,4 +649,14 @@ final class GrowingStep {
         transaction = combined
         return true
     }
+}
+
+// MARK: - What DesktopFollowing.swift uses of the session
+
+extension EditingSession {
+    /// Runs `work` on the desktop copy where it is owned (`desktopSkin`).
+    func runOnDesktopSkin(_ work: @escaping (Skin) -> Void) { desktopSkin(work) }
+
+    /// How long the desktop copy took to follow the last step (milliseconds; `lastTimings["desktop"]`).
+    func noteDesktopTiming(_ milliseconds: Double) { lastTimings["desktop"] = milliseconds }
 }

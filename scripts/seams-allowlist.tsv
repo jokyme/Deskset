@@ -58,6 +58,11 @@ random.UUID	Sources/Deskset/App/ComponentLibraryView.swift	*	Skin Studio, Manage
 effect.fileWrite	Sources/Deskset/App/DefaultSkins.swift	6	installing the default skins
 effect.iniWrite	Sources/Deskset/App/DefaultSkins.swift	1	installing the default skins
 
+background.mainHop	Sources/Deskset/App/DesktopFollowing.swift	1	Skin Studio: the desktop copy tells the Studio on the main thread that it took a patch (the Studio UI, not a skin input)
+mono.DispatchTime.now	Sources/Deskset/App/DesktopFollowing.swift	2	Skin Studio session timing: how long the desktop copy took to patch
+timer.Timer	Sources/Deskset/App/DesktopFollowing.swift	1	Skin Studio session timing and debounces: the desktop copy is patched on the next turn, after the canvas draws the step
+timer.runLoopAdd	Sources/Deskset/App/DesktopFollowing.swift	1	Skin Studio session timing and debounces: the desktop copy is patched on the next turn, after the canvas draws the step
+
 effect.fileWrite	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
 mono.systemUptime	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
 random.UUID	Sources/Deskset/App/DrawingCacheCheck.swift	*	command-line tooling, not a skin input
@@ -118,6 +123,10 @@ timer.asyncAfter	Sources/Deskset/App/EditorViews.swift	*	Skin Studio, Manage or 
 effect.pasteboard	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.workspace	Sources/Deskset/App/EditorWidgetPage.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.mainHop	Sources/Deskset/App/InspectorInPlace.swift	1	Skin Studio UI: the inspector names what a step changed on the next turn; never runs inside a skin
+effect.fileWrite	Sources/Deskset/App/InspectorInPlace.swift	4	Skin Studio self-check tooling: with DESKSET_VERIFY_IN_PLACE_DIR set, a page followed in place that differs from the page built again is saved for a look; never runs inside a skin
+wall.Date()	Sources/Deskset/App/InspectorInPlace.swift	2	Skin Studio UI: the time format presets and a custom format show today's date, as the layer page's menu does (EditorLayerPages.swift)
+
 background.mainHop	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.sound	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 effect.workspace	Sources/Deskset/App/InspectorWindowController.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
@@ -161,6 +170,10 @@ background.global	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI,
 background.mainHop	Sources/Deskset/App/SkinInstallFlow.swift	*	skin installer UI, runs outside any skin
 
 background.fileEvents	Sources/Deskset/App/SourceWatcher.swift	2	Skin Studio watches the files of the skin it edits
+
+mono.DispatchTime.now	Sources/Deskset/App/StudioPatching.swift	2	Skin Studio session timing: how long loading the Studio's instance again took
+
+mono.DispatchTime.now	Sources/Deskset/App/StudioTimings.swift	2	Skin Studio session timing: the phases of a step (the latency suite reads them)
 
 effect.fileWrite	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
 random.UUID	Sources/Deskset/App/UISnapshot.swift	*	command-line tooling, not a skin input
@@ -300,6 +313,7 @@ background.dispatch	Sources/Deskset/Plugins/UI/WiFiStatus.swift	4	the Wi-Fi read
 mono.systemUptime	Sources/Deskset/Plugins/UI/WiFiStatus.swift	2	Wi-Fi service: faked in verification
 random.hashOrder	Sources/Deskset/Plugins/UI/WiFiStatus.swift	1	sorted by signal and then by name: a total order, whatever the dictionary's
 
+background.mainHop	Sources/Deskset/RenderCommand.swift	1	--render in virtual time: a marker queued behind what the services handed to the main thread, so that all of it is delivered before an update (tooling, not a skin input)
 effect.fileWrite	Sources/Deskset/RenderCommand.swift	3	--render: real-time pacing without --clock and the output files (the image, --state); with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.runLoop	Sources/Deskset/RenderCommand.swift	2	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
 wait.sleep	Sources/Deskset/RenderCommand.swift	1	--render: real-time pacing without --clock and the output file; with --clock virtual time, and a real-time limit on the wait for real background work and services
@@ -463,6 +477,8 @@ effect.fileWrite	Sources/DesksetCore/Engine/SkinFileSandbox.swift	9	the recordin
 random.UUID	Sources/DesksetCore/Engine/SkinFileSandbox.swift	1	the Lua io sandbox: temporary copies of files a script writes
 
 effect.iniWrite	Sources/DesksetCore/Engine/SkinInspection.swift	2	Skin Studio writes through the inspection API
+
+random.hashOrder	Sources/DesksetCore/Engine/SkinPatch.swift	7	a patch's plan collects the changed option names into sets and the changed variables into a dictionary, for lookups only: sections are read again in file order, and the option names are sorted where their order shows (the reason a patch is refused, the summary)
 
 random.UUID	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation
 random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live(): the seam's live implementation

@@ -59,6 +59,10 @@ enum AppSelfTest {
         ThreadStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
+        InspectorInPlaceSelfTests.run(t)
+        StudioDesktopFollowSelfTests.run(t)
+        CodeFollowingSelfTests.run(t)
+        CanvasPlanesSelfTests.run(t)
         // The friendlier studio (docs/editor-friendly.md §14): one suite family per work package.
         FriendlySidebarSelfTests.run(t)
         FriendlyWidgetPageSelfTests.run(t)
@@ -76,7 +80,8 @@ enum AppSelfTest {
         #if DEBUG
         LegacyRenderSelfTests.run(t)
         #endif
-        // Last: it stops the widgets of every earlier suite, so the numbers are not theirs.
+        // Last: they stop the widgets of every earlier suite, so the numbers are not theirs.
+        StudioMemorySelfTests.run(t)
         StudioLatencySelfTests.run(t)
         return t.finish()
     }

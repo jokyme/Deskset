@@ -46,6 +46,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private var updateCounter = 0
     private var fetchGeneration = 0
     private var fetchInFlight = false
+    /// Where this parent is in its UpdateRate cycle came from another instance of the widget (`seed(webParser:)`), which
+    /// fetched the page it shows: it passes that on as if it had fetched it itself.
+    private var seededCycle = false
     /// The transfers in flight (tests check that unloading the skin cancels them).
     private(set) var fetchHandle: WebParserFetchHandle?
     private var downloadGeneration = 0
@@ -663,5 +666,38 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private func report(_ kind: String, _ message: String) {
         guard reported.insert(kind).inserted else { return }
         skin.log(message, level: .warning)
+    }
+}
+
+// MARK: - Seeding (Session/Seeding.swift)
+
+extension WebParserMeasure {
+    /// What this measure read (nil before anything was read): its result, captures and observed range, and — for a
+    /// parent whose last page arrived, or that was seeded with where another instance was — where it is in its
+    /// UpdateRate cycle.
+    var runtimeWebParserState: SkinRuntimeState.WebParser? {
+        guard fetchCount > 0 && !fetchInFlight || !resultString.isEmpty || !captures.isEmpty else { return nil }
+        return SkinRuntimeState.WebParser(
+            result: resultString, number: resultNumber, captures: captures, substringCount: substringCount,
+            observedMin: observedMin, observedMax: observedMax,
+            updateCounter: parentName == nil && (fetchCount > 0 || seededCycle) && !fetchInFlight ? updateCounter : nil)
+    }
+
+    /// Takes what the same measure of another instance of the widget read (loaded, before the first update): it shows
+    /// that result at once, and a parent fetches again only when the source would have (its cycle goes on).
+    func seed(webParser state: SkinRuntimeState.WebParser) {
+        resultString = state.result
+        resultNumber = state.number
+        captures = state.captures
+        substringCount = state.substringCount
+        observedMin = state.observedMin
+        observedMax = state.observedMax
+        if !hasMinOption { minValue = automaticMinValue }
+        if !hasMaxOption { maxValue = automaticMaxValue }
+        if !disabled && !paused { rawString = resultString }
+        if let counter = state.updateCounter, parentName == nil {
+            updateCounter = counter
+            seededCycle = true
+        }
     }
 }
