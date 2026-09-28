@@ -893,7 +893,9 @@ public final class Skin {
             break
         }
         guard anyContainer || meters.contains(where: { $0.container != nil || $0.isContainer }) else { return }
-        for m in meters { m.isContainer = false }
+        // Set once each, not reset and set again: the skin's snapshot follows every change of them.
+        var containers: Set<ObjectIdentifier> = []
+        defer { for m in meters { m.isContainer = containers.contains(ObjectIdentifier(m)) } }
         for m in meters {
             guard !m.containerName.isEmpty else {
                 m.container = nil
@@ -901,7 +903,7 @@ public final class Skin {
             }
             if let target = meter(named: m.containerName), target !== m, target.containerName.isEmpty {
                 m.container = target
-                target.isContainer = true
+                containers.insert(ObjectIdentifier(target))
             } else {
                 m.container = nil
                 // An authoring error (Rainmeter rejects it too): a log line, not a compatibility issue.

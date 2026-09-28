@@ -144,27 +144,49 @@ public struct SkinHitMap: Equatable {
     }
 
     /// One meter the mouse can find: it has a mouse action, a tooltip or `MouseActionCursor=0`, or is a Button. Hidden
-    /// meters are left out (the mouse never finds them).
-    public struct Entry: Equatable {
-        public var name: String
-        public var frame: SkinRect
+    /// meters are left out (the mouse never finds them). Immutable, so it can be read on any thread; a class, so the
+    /// lookups that walk the entries on every mouse move do not copy them.
+    public final class Entry: Equatable {
+        public let name: String
+        public let frame: SkinRect
         /// `Meter.hitTest`'s area.
-        public var shape: MouseShape
+        public let shape: MouseShape
         /// The container's `hitTest` area (`.nowhere` while it is hidden); nil when the meter is not content.
-        public var container: MouseShape?
+        public let container: MouseShape?
         /// The glass shown behind the meter (`Skin.shownGlassRegion`).
-        public var glass: GlassRegion?
+        public let glass: GlassRegion?
         /// A Button: it reacts to the mouse itself (`Meter.handlesMouseItself`).
-        public var isButton: Bool
+        public let isButton: Bool
         /// The mouse actions that are not `.absent`.
-        public var actions: [MouseEventKind: Action]
+        public let actions: [MouseEventKind: Action]
         /// `MouseActionCursor` and `MouseActionCursorName`.
-        public var cursor: Bool
-        public var cursorName: String
+        public let cursor: Bool
+        public let cursorName: String
         /// The tooltip with `%1`, `%2`… as they were (nil: none shown).
-        public var toolTip: ToolTipInfo?
+        public let toolTip: ToolTipInfo?
+
+        public init(name: String, frame: SkinRect, shape: MouseShape, container: MouseShape?, glass: GlassRegion?,
+                    isButton: Bool, actions: [MouseEventKind: Action], cursor: Bool, cursorName: String,
+                    toolTip: ToolTipInfo?) {
+            self.name = name
+            self.frame = frame
+            self.shape = shape
+            self.container = container
+            self.glass = glass
+            self.isButton = isButton
+            self.actions = actions
+            self.cursor = cursor
+            self.cursorName = cursorName
+            self.toolTip = toolTip
+        }
 
         public func action(_ kind: MouseEventKind) -> Action { actions[kind] ?? .absent }
+
+        public static func == (a: Entry, b: Entry) -> Bool {
+            a === b || (a.name == b.name && a.frame == b.frame && a.shape == b.shape && a.container == b.container
+                        && a.glass == b.glass && a.isButton == b.isButton && a.actions == b.actions
+                        && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip)
+        }
     }
 
     /// Top first: the reverse of file order, the order the engine tries meters in.
