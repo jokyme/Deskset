@@ -1834,7 +1834,25 @@ suite's `TestThreadExecutor`.
      end. Threads: 11–13 throughout. No crash.
    - The log: no error, no warning and no main-thread step over 250 ms in the hour.
    - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers at 60 frames a second).
-5. **§10's measurements**: not taken yet; they need a quiet machine with nobody at it.
+5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac). The machine did not get quiet: other
+   work kept the 1-minute load average at 3.4–5.3 for the whole hour, so the numbers were taken under that load
+   (noted). Each copy of the app had a home of its own and the demo audio and player.
+   - **CPU and energy, ten typical skins** (the soak's ten: five Stationery widgets, Spectrum among them, and five from
+     the corpus, one a visualizer), above other windows (`AlwaysOnTop=1`), averaged over 120 s after 30 s, main and
+     engine alternately, twice: Deskset 14.2 % and 13.9 % of a core with `main`, 14.3 % and 13.2 % with `engine`;
+     top's energy impact 14.0 and 15.7 against 14.1 and 13.3. WindowServer: 53.4 % without the test copy, 43.5 % and
+     48.2 % with `main`, 46.2 % and 47.3 % with `engine`: other apps moved it by more than the skins did, so no
+     difference shows. Footprint: 105 and 75 MB with `main`, 115 and 109 MB with `engine` (mostly malloc; flat over
+     the soak's hour). Threads: 10–11 against 11–12.
+   - The same skins on the desktop, behind other windows (their default, `AlwaysOnTop=-2`, while the Mac's windows
+     covered them), draw no frames: 4.0 % and 3.9 % with `main`, 3.6 % and 3.6 % with `engine`, their updates alone.
+   - **Frame pacing of an AudioLevel visualizer while the Studio is open on another skin**: Stationery Spectrum (a
+     frame every 33 ms), System, Clock and Calendar, and a probe skin that opens the Studio (`!EditSkin`) on System,
+     then switches it to Clock, System and Calendar, 20 s apart; `FrameTimingLog` every 5 s. The Studio's work on the
+     main thread is the same in both modes (steps of 270–350 ms each time it opens or switches).
+     - `main`: the visualizer stops for as long: its longest gap between frames was 392, 562, 582 and 362 ms at the
+       four moments, with 133–145 frames in those 5 s instead of 152.
+     - `engine`: 152 frames in every 5 s, the longest gap 35.6–38.6 ms throughout, the 95th percentile 34.6–35.5 ms.
 6. **The default is `engine`.** `SkinThreading.chosen` answers `engine` without the key and for a value that is
    neither mode (logged); `defaults write app.deskset.Deskset SkinThreading main` (or `-SkinThreading main` for one
    launch) keeps every skin on the main thread, for debugging, and says so in the log at launch. The headless modes,
