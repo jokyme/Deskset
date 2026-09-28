@@ -112,7 +112,7 @@ Deskset 从不主动请求“辅助功能”权限（只在你已经授予时才
 | MacWeather / MacSun `Location=auto`（Deskset 扩展） | 定位服务（降低精度；取整到约 1 公里，只保存在内存中） | 含 `Location=auto` 的皮肤第一次在皮肤窗口中运行时 | `Status` 为 5 并显示一条提示；可改用地名 |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`、FileView `Properties` | 自动化 → 访达 | 第一次使用时 | 不清空废纸篓 / 不打开“显示简介”窗口 |
 | RecycleManager `RecycleType=Size` | 完全磁盘访问权限（没有弹窗；需在“系统设置 → 隐私与安全性”中手动开启） | — | 大小读数为 0；兼容性提示和日志会说明在哪里授权。`Count` 不需要权限 |
-| 皮肤使用桌面、文稿、下载、可移除卷或网络卷中的任何文件（Quote、FolderInfo、FileView、Lua `io`、图片以及皮肤指定的其他文件） | 文件与文件夹 | 第一次访问该文件夹时 | 数值为空、图片不显示；Lua 的 `io.open` 返回 nil 和错误信息 |
+| 皮肤使用桌面、文稿、下载、可移除卷或网络卷中的任何文件（Quote、FolderInfo、FileView、Lua `io`、图片以及皮肤指定的其他文件） | 文件与文件夹 | 第一次访问该文件夹时 | 数值为空、图片不显示；Lua 的 `io.open` 返回 nil 和错误信息。Chameleon `Type=Desktop` 从不读取放在这些位置的壁纸，因此从不询问（改用后备颜色） |
 | 以真实媒体键事件发送 MediaKey（音量 HUD、任意播放器） | 辅助功能（从不主动请求） | — | 切歌键通过自动化发给 Music / Spotify；音量键直接修改音量（不显示 HUD） |
 | GetActiveTitle 读取窗口标题 | 辅助功能或屏幕录制（从不主动请求） | — | 显示最前面 App 的名称，而不是窗口标题 |
 | WebParser 或 Ping 访问本地网络中的设备 | 本地网络 | 第一次发出这类请求时 | 请求失败 |
@@ -761,7 +761,8 @@ Rainmeter 没有的选项。它们的名字都以 `Mac` 开头；Rainmeter 会�
 变量以及时钟、每周首日和温度单位变量和 `MacOnAppearanceChangeAction`（[§6.3](#63-皮肤文件变量公式与选项)），以及把 SF Symbols 用作图片和 `MacSymbol…` 选项
 （[§6.5](#65-meter-与绘制)）；FreeDiskSpace 的 `MacAvailable`（访达的“可用”空间）写在 measure 一节（[§6.4](#64-measure)），
 NowPlaying 的 `PlayerType=MacPermission` 写在音乐播放器一节（[§10.4](#104-音乐播放器nowplayingituneswebnowplayingmediakey)），
-AudioLevel 的 `DeviceStatus` 值 2 写在音频插件一节（[§10.1](#101-audiolevel频谱与电平表)）。
+AudioLevel 的 `DeviceStatus` 值 2 写在音频插件一节（[§10.1](#101-audiolevel频谱与电平表)），Chameleon 的 `CropDesktop=Skin`
+写在桌面相关插件一节（[§10.7](#107-窗口桌面与颜色插件第三方)）。
 Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传感器写在一起
 （[§9.3](#93-硬件传感器coretempspeedfanmsi-afterburnermacsensors)），MacWeather 和 MacSun 见
 [§10.8](#108-天气与日出日落deskset-扩展)。
@@ -1097,9 +1098,11 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** 没有对应功能。
 - **Mac：** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` 在没有窗口的情况下加载皮肤，执行 N 次更新（默认 2 次，
-  间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C（或指定的值；`system` 表示使用 Mac
-  自己的设置）绘制，并输出兼容性提示和日志行。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] [--screen WxH] [--skins-dir DIR]` 在没有窗口的情况下
+  加载皮肤，执行 N 次更新（默认 2 次，间隔 1 000 ms），按比例 S（默认 2）以浅色外观、24 小时制、每周从星期日开始和 °C
+  （或指定的值；`system` 表示使用 Mac 自己的设置）绘制，并输出兼容性提示和日志行。`--wallpaper` 指定一张图片代替桌面壁纸
+  （Chameleon 从它取样，皮肤下方的部分画在皮肤背后），屏幕大小为 `--screen`（默认 1512 × 982 点），皮肤左上角位于 `--at`
+  （默认 0,0）；不给 `--wallpaper` 时，`--background` 代表一张该颜色的纯色壁纸。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目，`=refused` 模拟正在运行但拒绝了自动化权限的 Music）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
@@ -2070,10 +2073,21 @@ M1–M3 的规则和 Intel Mac 尚未测试。
 - **Windows：** 从壁纸（`Type=Desktop`）或图片（`Type=File`）中取色：Background1/2、Foreground1/2、Light1–4、Dark1–4、
   Average、Luminance。
 - **Mac：** 使用皮肤所在屏幕的壁纸（轮换壁纸的文件夹 → 其中第一张图片）或指定文件，在其变化时于后台取样。颜色来自 Deskset 自己
-  的聚类方法（原插件的算法没有公开）。ContextAwareColors 和 ForceIcon 被忽略；不是图片文件的动态 / 航拍壁纸使用后备颜色。
-- **原因：** 无法得知原插件的方法。
+  的聚类方法（原插件的算法没有公开）。动态壁纸（Sonoma 等）按当前外观取其浅色或深色那一张。放在桌面、文稿、下载、iCloud 云盘或
+  其他卷上的壁纸从不读取（macOS 会先询问），改用后备颜色。ContextAwareColors 和 ForceIcon 被忽略；不是图片文件的壁纸（航拍、
+  下载的 `.madesktop` 壁纸）使用后备颜色。
+- **原因：** 无法得知原插件的方法；不为用户没有交给 Deskset 的文件夹弹出询问。
 - **对皮肤的影响：** 颜色思路相似，但不完全相同。
 - **状态：** 模拟实现
+
+#### Chameleon `CropDesktop=Skin`（皮肤下方的壁纸）
+- **Windows：** 没有对应功能（`CropDesktop` 只有 1 或 0）。
+- **Mac：** `Type=Desktop` 的父 measure 只取皮肤窗口下方那部分壁纸，按 macOS 铺放壁纸的方式计算（填充、适合、拉伸、居中），
+  位置来自窗口所在处（不截屏），窗口停止移动后立即重新取样；颜色变化时，它的子 measure 立即更新（`UpdateDivider=-1` 的除外），
+  因此它们的 OnChangeAction 会执行。`CropX/Y/W/H` 优先。
+- **原因：** Deskset 扩展：没有卡片的皮肤必须判断它背后实际的壁纸。
+- **对皮肤的影响：** Rainmeter 中不可用；皮肤在那里照样能加载。详见 [`compat/media-ui.md`](compat/media-ui.md)。
+- **状态：** Mac 专有
 
 #### IsFullScreen
 - **Windows：** 焦点窗口全屏时为 1；字符串 = 其进程名（`chrome.exe`）。

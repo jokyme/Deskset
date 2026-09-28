@@ -547,9 +547,15 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
 - Windows (Rainmeter): n/a.
 - Mac (Deskset): `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates
-  (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a side) on a transparent or given
-  background and prints compatibility notes and skin log lines. The skin sees the Light appearance (the appearance
+  [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] [--screen WxH] [--skins-dir DIR]` loads the skin
+  without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2, at most 16 384 pixels a
+  side) on a transparent or given background and prints compatibility notes and skin log lines. `--wallpaper` names a
+  picture that stands in for the desktop picture, on a screen of `--screen` points (default 1512 × 982, a 14-inch
+  MacBook Pro's) laid as macOS lays it by default (Fill Screen): Chameleon `Type=Desktop` samples it (a dynamic
+  picture's light or dark one, as the appearance is), and the part under the skin is drawn behind it. `--at` puts the
+  skin window's top-left corner there (default 0,0; `#CURRENTCONFIGX#`, `CropDesktop=Skin`). Without `--wallpaper`,
+  `--background` stands in for a desktop of that one color, so a frameless skin picks the ink the image shows; with
+  neither, Chameleon reads the Mac's own wallpaper. The skin sees the Light appearance (the appearance
   variables, SysColor) unless `--appearance dark` / `--dark` or `--appearance system` (the Mac's own setting), and a
   24-hour clock, weeks from Sunday and °C (`#MACCLOCKHOURS#`, `#MACFIRSTWEEKDAY#`, `#MACTEMPERATUREUNIT#` and the weather
   plugins' defaults) unless `--clock-hours`, `--first-weekday` or `--temperature-unit` give another value or `system`

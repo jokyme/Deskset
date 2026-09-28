@@ -119,7 +119,7 @@ it), and asks for Screen Recording only for audio visualizers on macOS 13 – 14
 | MacWeather / MacSun `Location=auto` (Deskset extension) | Location Services (reduced accuracy; rounded to about 1 km, kept in memory only) | First time a skin with `Location=auto` runs in a skin window | `Status` 5 and a note; use a place name instead |
 | RecycleManager `EmptyBin` / `EmptyBinSilent`, FileView `Properties` | Automation → Finder | First use | Nothing is emptied / no Get Info window |
 | RecycleManager `RecycleType=Size` | Full Disk Access (no prompt; set it in System Settings → Privacy & Security) | — | Size reads 0; a compatibility note and the log say where to grant it. `Count` needs no permission |
-| Any skin file in Desktop, Documents, Downloads, removable or network volumes (Quote, FolderInfo, FileView, Lua `io`, images and other files a skin names) | Files and Folders | First access to that folder | Empty values, missing images; Lua's `io.open` returns nil and an error |
+| Any skin file in Desktop, Documents, Downloads, removable or network volumes (Quote, FolderInfo, FileView, Lua `io`, images and other files a skin names) | Files and Folders | First access to that folder | Empty values, missing images; Lua's `io.open` returns nil and an error. Chameleon `Type=Desktop` never reads a wallpaper kept there, so it never asks (its fallback colors instead) |
 | MediaKey as real media-key events (volume HUD, any player) | Accessibility (never requested) | — | Track keys go to Music / Spotify through Automation; volume keys change the volume directly (no HUD) |
 | GetActiveTitle window titles | Accessibility, or Screen Recording (never requested) | — | The frontmost app's name instead of the window title |
 | WebParser or Ping reaching a device on your local network | Local Network | First such request | The request fails |
@@ -839,7 +839,8 @@ temperature variables with `MacOnAppearanceChangeAction` ([§6.3](#63-skin-files
 the `MacSymbol…` options ([§6.5](#65-meters-and-drawing)); FreeDiskSpace's `MacAvailable` (Finder's available space) is
 with the measures ([§6.4](#64-measures)), NowPlaying's `PlayerType=MacPermission` with the music players
 ([§10.4](#104-music-players-nowplaying-itunes-webnowplaying-mediakey)), AudioLevel's `DeviceStatus` value 2 with the audio plugins
-([§10.1](#101-audiolevel-visualizers-and-level-meters)). Deskset's own plugins are with the plugins of their area:
+([§10.1](#101-audiolevel-visualizers-and-level-meters)), Chameleon's `CropDesktop=Skin` with the desktop plugins
+([§10.7](#107-window-desktop-and-color-plugins-third-party)). Deskset's own plugins are with the plugins of their area:
 MacSensors with the hardware sensors ([§9.3](#93-hardware-sensors-coretemp-speedfan-msi-afterburner-macsensors)),
 MacWeather and MacSun in [§10.8](#108-weather-and-sun-deskset-extensions).
 
@@ -1208,9 +1209,12 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
 - **Windows:** no counterpart.
 - **Mac:** `Deskset --render Skin.ini --out x.png [--updates N] [--interval ms] [--scale S] [--background R,G,B[,A]]
   [--appearance light|dark|system] [--dark] [--clock-hours 12|24|system] [--first-weekday 0-6|system]
-  [--temperature-unit C|F|system] [--skins-dir DIR]` loads the skin without a window, runs N updates (default 2,
-  1 000 ms apart), draws it at scale S (default 2) in the Light appearance with a 24-hour clock, weeks from Sunday and
-  °C (or the ones asked for; `system` is the Mac's own) and prints compatibility notes and log lines. Window, config and app bangs are ignored, mouse actions
+  [--temperature-unit C|F|system] [--wallpaper FILE] [--at X,Y] [--screen WxH] [--skins-dir DIR]` loads the skin
+  without a window, runs N updates (default 2, 1 000 ms apart), draws it at scale S (default 2) in the Light appearance
+  with a 24-hour clock, weeks from Sunday and °C (or the ones asked for; `system` is the Mac's own) and prints
+  compatibility notes and log lines. `--wallpaper` stands in for the desktop picture (Chameleon samples it; the part
+  under the skin is drawn behind it) on a `--screen` of 1512 × 982 points unless given, with the skin's top-left corner
+  at `--at` (default 0,0); without it, `--background` stands in for a desktop of that color. Window, config and app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing
   track, `=refused` a running Music that refused Automation). FrostedGlass blur is not visible in the image, MacGlass is drawn as a stand-in
@@ -2288,11 +2292,23 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   Light1–4, Dark1–4, Average, Luminance.
 - **Mac:** the wallpaper of the skin's screen (a folder of rotating wallpapers → its first image) or the file,
   sampled in the background when it changes. Colors come from Deskset's own clustering (the plugin's algorithm is not
-  documented). ContextAwareColors and ForceIcon are ignored; dynamic / aerial wallpapers that are not image files give
-  the fallback colors.
-- **Why:** no access to the plugin's method.
+  documented). A dynamic wallpaper (Sonoma…) is judged by its light or dark picture, as the appearance is. A wallpaper
+  kept in Desktop, Documents, Downloads, iCloud Drive or on another volume is never read (macOS would ask first): the
+  fallback colors apply. ContextAwareColors and ForceIcon are ignored; wallpapers that are not image files (Aerials,
+  downloaded `.madesktop` ones) give the fallback colors.
+- **Why:** no access to the plugin's method; no prompt for a folder the person did not give Deskset.
 - **Skin impact:** colors are similar in spirit, not identical.
 - **Status:** emulated
+
+#### Chameleon `CropDesktop=Skin` (the wallpaper under the skin)
+- **Windows:** no counterpart (`CropDesktop` is 1 or 0).
+- **Mac:** a `Type=Desktop` parent samples only the part of the wallpaper under the skin window, laid on the screen as
+  macOS lays it (Fill, Fit, Stretch, Center), from the window's place (no screen capture), and again as soon as the
+  window has stopped moving; when the colors change, its children update at once (except `UpdateDivider=-1`), so their
+  OnChangeAction runs. `CropX/Y/W/H` win over it.
+- **Why:** Deskset extension: a skin without a card must judge the wallpaper actually behind it.
+- **Skin impact:** not available in Rainmeter; the skin still loads there. Details: [`compat/media-ui.md`](compat/media-ui.md).
+- **Status:** Mac-only
 
 #### IsFullScreen
 - **Windows:** 1 when the focused window is full screen; string = its process name (`chrome.exe`).
