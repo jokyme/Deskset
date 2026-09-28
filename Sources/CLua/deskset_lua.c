@@ -4,6 +4,7 @@
  */
 #include "deskset_lua.h"
 
+#include <math.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdatomic.h>
@@ -65,6 +66,9 @@ struct deskset_lua {
     char *result_strings[DESKSET_MAX_RESULTS];
     int result_count;
     char *error;
+
+    /* Where os.time / os.date / os.clock / math.random read from (see deskset_lua_set_time_source). */
+    deskset_lua_time_source time_source;
 };
 
 /* MARK: - Helpers */
@@ -273,8 +277,234 @@ static void start_clock_once(void) {
 void deskset_lua_start_clock(void) { pthread_once(&clock_once, start_clock_once); }
 
 static int deskset_os_clock(lua_State *L) {
-    lua_pushnumber(L, monotonic_seconds() - clock_origin);
+    deskset_lua *p = state_of(L);
+    if (p->time_source.clock) {
+        lua_pushnumber(L, p->time_source.clock(p->time_source.context));
+    } else {
+        lua_pushnumber(L, monotonic_seconds() - clock_origin);
+    }
     return 1;
+}
+
+/* MARK: - Time and random numbers
+ *
+ * os.time, os.date, math.random and math.randomseed, as in Lua 5.1.5 (loslib.c and lmathlib.c, MIT licence; see
+ * COPYRIGHT), except that they read the state's time source (deskset_lua_set_time_source) when the host set one.
+ * Without one they do exactly what Lua's own functions do, with the same C library calls. With one, nothing depends
+ * on the process: the local time is the source's zone, and %z / %s, which the C library works out from the process
+ * time zone, are written from it. */
+
+void deskset_lua_set_time_source(deskset_lua *p, const deskset_lua_time_source *source) {
+    if (p == NULL) return;
+    if (source) {
+        p->time_source = *source;
+    } else {
+        memset(&p->time_source, 0, sizeof(p->time_source));
+    }
+}
+
+static void date_setfield(lua_State *L, const char *key, int value) {
+    lua_pushinteger(L, value);
+    lua_setfield(L, -2, key);
+}
+
+static void date_setboolfield(lua_State *L, const char *key, int value) {
+    if (value < 0) return; /* undefined: does not set the field */
+    lua_pushboolean(L, value);
+    lua_setfield(L, -2, key);
+}
+
+static int date_getboolfield(lua_State *L, const char *key) {
+    int res;
+    lua_getfield(L, -1, key);
+    res = lua_isnil(L, -1) ? -1 : lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    return res;
+}
+
+static int date_getfield(lua_State *L, const char *key, int d) {
+    int res;
+    lua_getfield(L, -1, key);
+    if (lua_isnumber(L, -1)) {
+        res = (int)lua_tointeger(L, -1);
+    } else {
+        if (d < 0) return luaL_error(L, "field " LUA_QS " missing in date table", key);
+        res = d;
+    }
+    lua_pop(L, 1);
+    return res;
+}
+
+/* The source's wall clock as a time_t (whole seconds, like time()). */
+static time_t source_time(const deskset_lua_time_source *src) {
+    double now = src->now(src->context);
+    if (!(now == now)) return (time_t)0; /* NaN */
+    return (time_t)floor(now);
+}
+
+/* `t` in the source's zone. `name` receives the zone's abbreviation and must outlive the result. */
+static struct tm *source_localtime(const deskset_lua_time_source *src, time_t t, struct tm *out, long *offset,
+                                   char *name, size_t size) {
+    int is_dst = 0;
+    time_t shifted;
+    name[0] = '\0';
+    *offset = src->zone(src->context, (double)t, &is_dst, name, size);
+    name[size - 1] = '\0';
+    shifted = t + (time_t)*offset;
+    if (gmtime_r(&shifted, out) == NULL) return NULL;
+    out->tm_isdst = is_dst ? 1 : 0;
+    out->tm_gmtoff = *offset;
+    out->tm_zone = name;
+    return out;
+}
+
+/* mktime in the source's zone: the fields read as UTC (timegm normalises them as mktime does), then moved by the
+   zone's offset at that instant, looked up twice for times near a change of offset. `isdst` is not used: the zone
+   decides. */
+static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
+    int is_dst = 0;
+    char name[64];
+    time_t wall, first;
+    long offset;
+    ts->tm_isdst = 0;
+    wall = timegm(ts);
+    if (wall == (time_t)(-1)) return wall;
+    offset = src->zone(src->context, (double)wall, &is_dst, name, sizeof(name));
+    first = wall - (time_t)offset;
+    offset = src->zone(src->context, (double)first, &is_dst, name, sizeof(name));
+    return wall - (time_t)offset;
+}
+
+static int deskset_os_date(lua_State *L) {
+    deskset_lua *p = state_of(L);
+    const deskset_lua_time_source *src = &p->time_source;
+    int from_source = src->now != NULL && src->zone != NULL;
+    const char *s = luaL_optstring(L, 1, "%c");
+    time_t t = from_source ? luaL_opt(L, (time_t)luaL_checknumber, 2, source_time(src))
+                           : luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
+    struct tm *stm;
+    struct tm own;
+    long offset = 0;
+    char zone_name[64];
+    if (*s == '!') { /* UTC? */
+        stm = from_source ? gmtime_r(&t, &own) : gmtime(&t);
+        s++; /* skip `!' */
+    } else if (from_source) {
+        stm = source_localtime(src, t, &own, &offset, zone_name, sizeof(zone_name));
+    } else {
+        stm = localtime(&t);
+    }
+    if (stm == NULL) { /* invalid date? */
+        lua_pushnil(L);
+    } else if (strcmp(s, "*t") == 0) {
+        lua_createtable(L, 0, 9); /* 9 = number of fields */
+        date_setfield(L, "sec", stm->tm_sec);
+        date_setfield(L, "min", stm->tm_min);
+        date_setfield(L, "hour", stm->tm_hour);
+        date_setfield(L, "day", stm->tm_mday);
+        date_setfield(L, "month", stm->tm_mon + 1);
+        date_setfield(L, "year", stm->tm_year + 1900);
+        date_setfield(L, "wday", stm->tm_wday + 1);
+        date_setfield(L, "yday", stm->tm_yday + 1);
+        date_setboolfield(L, "isdst", stm->tm_isdst);
+    } else {
+        char cc[3];
+        luaL_Buffer b;
+        cc[0] = '%';
+        cc[2] = '\0';
+        luaL_buffinit(L, &b);
+        for (; *s; s++) {
+            if (*s != '%' || *(s + 1) == '\0') { /* no conversion specifier? */
+                luaL_addchar(&b, *s);
+            } else {
+                size_t reslen;
+                char buff[200]; /* should be big enough for any conversion result */
+                cc[1] = *(++s);
+                if (from_source && cc[1] == 'z') {
+                    long minutes = (offset < 0 ? -offset : offset) / 60;
+                    reslen = (size_t)snprintf(buff, sizeof(buff), "%c%02ld%02ld", offset < 0 ? '-' : '+',
+                                              minutes / 60, minutes % 60);
+                } else if (from_source && cc[1] == 's') {
+                    reslen = (size_t)snprintf(buff, sizeof(buff), "%lld", (long long)t);
+                } else {
+                    reslen = strftime(buff, sizeof(buff), cc, stm);
+                }
+                luaL_addlstring(&b, buff, reslen);
+            }
+        }
+        luaL_pushresult(&b);
+    }
+    return 1;
+}
+
+static int deskset_os_time(lua_State *L) {
+    deskset_lua *p = state_of(L);
+    const deskset_lua_time_source *src = &p->time_source;
+    int from_source = src->now != NULL && src->zone != NULL;
+    time_t t;
+    if (lua_isnoneornil(L, 1)) { /* called without args? */
+        t = from_source ? source_time(src) : time(NULL); /* get current time */
+    } else {
+        struct tm ts;
+        luaL_checktype(L, 1, LUA_TTABLE);
+        lua_settop(L, 1); /* make sure table is at the top */
+        ts.tm_sec = date_getfield(L, "sec", 0);
+        ts.tm_min = date_getfield(L, "min", 0);
+        ts.tm_hour = date_getfield(L, "hour", 12);
+        ts.tm_mday = date_getfield(L, "day", -1);
+        ts.tm_mon = date_getfield(L, "month", -1) - 1;
+        ts.tm_year = date_getfield(L, "year", -1) - 1900;
+        ts.tm_isdst = date_getboolfield(L, "isdst");
+        t = from_source ? source_mktime(src, &ts) : mktime(&ts);
+    }
+    if (t == (time_t)(-1)) {
+        lua_pushnil(L);
+    } else {
+        lua_pushnumber(L, (lua_Number)t);
+    }
+    return 1;
+}
+
+static int deskset_math_random(lua_State *L) {
+    deskset_lua *p = state_of(L);
+    const deskset_lua_time_source *src = &p->time_source;
+    /* the `%' avoids the (rare) case of r==1, and is needed also because on some systems (SunOS!) `rand()' may
+       return a value larger than RAND_MAX */
+    lua_Number r = src->random ? (lua_Number)src->random(src->context)
+                               : (lua_Number)(rand() % RAND_MAX) / (lua_Number)RAND_MAX;
+    switch (lua_gettop(L)) { /* check number of arguments */
+    case 0: { /* no arguments */
+        lua_pushnumber(L, r); /* Number between 0 and 1 */
+        break;
+    }
+    case 1: { /* only upper limit */
+        int u = luaL_checkint(L, 1);
+        luaL_argcheck(L, 1 <= u, 1, "interval is empty");
+        lua_pushnumber(L, floor(r * u) + 1); /* int between 1 and `u' */
+        break;
+    }
+    case 2: { /* lower and upper limits */
+        int l = luaL_checkint(L, 1);
+        int u = luaL_checkint(L, 2);
+        luaL_argcheck(L, l <= u, 2, "interval is empty");
+        lua_pushnumber(L, floor(r * (u - l + 1)) + l); /* int between `l' and `u' */
+        break;
+    }
+    default:
+        return luaL_error(L, "wrong number of arguments");
+    }
+    return 1;
+}
+
+static int deskset_math_randomseed(lua_State *L) {
+    deskset_lua *p = state_of(L);
+    const deskset_lua_time_source *src = &p->time_source;
+    if (src->seed) {
+        src->seed(src->context, luaL_checkint(L, 1));
+    } else {
+        srand(luaL_checkint(L, 1));
+    }
+    return 0;
 }
 
 static int deskset_panic(lua_State *L) {
@@ -668,12 +898,12 @@ static int protected_main(lua_State *L) {
         set_function(L, "debug", "setfenv", safe_setfenv);
         set_function(L, "debug", "setlocal", safe_setlocal);
         deskset_lua_install_patterns(L);
-        lua_getglobal(L, "os");
-        if (lua_istable(L, -1)) {
-            lua_pushcfunction(L, deskset_os_clock);
-            lua_setfield(L, -2, "clock");
-        }
-        lua_pop(L, 1);
+        /* The time and random numbers (see "Time and random numbers"), before the prelude wraps os.date. */
+        set_function(L, "os", "clock", deskset_os_clock);
+        set_function(L, "os", "date", deskset_os_date);
+        set_function(L, "os", "time", deskset_os_time);
+        set_function(L, "math", "random", deskset_math_random);
+        set_function(L, "math", "randomseed", deskset_math_randomseed);
         guard_function(L, NULL, "pcall");
         guard_function(L, NULL, "xpcall");
         guard_function(L, NULL, "load");

@@ -127,6 +127,7 @@ public final class ScriptMeasure: Measure, SectionVariableFunctions {
             guard let self else { throw LuaHostError("the script measure no longer exists") }
             return try self.host(args)
         }
+        state.useTimeSource(clock: skin.skinClock, random: skin.random)
         lua = state
         if case .failure(let message) = invoke("start", flush: false, { state.callInternal("start", [.text(name)]) }) {
             report(message, level: .error)
