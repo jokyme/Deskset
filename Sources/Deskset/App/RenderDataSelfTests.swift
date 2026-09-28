@@ -226,6 +226,35 @@ enum RenderDataSelfTests {
             t.equal(MediaUICache.root, appCache, "the app's cache folder again after the render")
         }
 
+        t.suite("App: render: --render starts again with deterministic hashing") {
+            // The order of sets and dictionaries is seeded per process unless SWIFT_DETERMINISTIC_HASHING is set; the
+            // command-line render sets it and starts again, so that order is the same in every run.
+            guard let binary = Bundle.main.executableURL else { return t.check(false, "the app binary") }
+            let dir = t.temporaryDirectory("hash-render").appendingPathComponent("Skins/Hash/Render")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try "[Rainmeter]\nUpdate=1000\n[S]\nMeasure=Script\nScriptFile=#CURRENTPATH#h.lua\n[T]\nMeter=String\nMeasureName=S\n"
+                .write(to: dir.appendingPathComponent("Render.ini"), atomically: true, encoding: .utf8)
+            try "function Update() return tostring(os.getenv('SWIFT_DETERMINISTIC_HASHING')) end\n"
+                .write(to: dir.appendingPathComponent("h.lua"), atomically: true, encoding: .utf8)
+            let out = t.temporaryDirectory("hash-render-out")
+            let process = Process()
+            process.executableURL = binary
+            process.arguments = ["--render", dir.appendingPathComponent("Render.ini").path, "--updates", "1",
+                                 "--out", out.appendingPathComponent("h.png").path,
+                                 "--state", out.appendingPathComponent("h.json").path]
+            var environment = ProcessInfo.processInfo.environment
+            environment["SWIFT_DETERMINISTIC_HASHING"] = nil
+            process.environment = environment
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            t.equal(process.terminationStatus, 0)
+            let state = (try? Data(contentsOf: out.appendingPathComponent("h.json"))).flatMap { try? JSONValue.parse($0) }
+            t.equal(state?["measures"]?.array?.first { $0["name"]?.string == "S" }?["string"]?.string, "1",
+                    "the skin runs with deterministic hashing")
+        }
+
         t.suite("App: render: the data's fakes") {
             // Wi-Fi.
             let wifi = FixedWiFi(.value(SkinInputData.WiFi(current: SkinInputData.WiFiNetwork(ssid: "Home", rssi: -60),

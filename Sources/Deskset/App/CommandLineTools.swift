@@ -122,6 +122,22 @@ enum CommandLineTools {
         }
     }
 
+    /// `--render` runs again as a new process image with `SWIFT_DETERMINISTIC_HASHING=1` when that is not set yet:
+    /// Swift seeds the order of every set and dictionary at random in each process (and for each instance), and a few
+    /// places still let that order reach a skin (Chameleon's colors of equal weight), so without it two renders with
+    /// the same `--clock`, `--seed` and `--data` could differ. Called first thing at startup; returns only when there is
+    /// nothing to do or the new image could not be started (the render then goes on with the process's own seed).
+    static func makeHashingDeterministic(for arguments: [String]) {
+        guard arguments.dropFirst().contains("--render"),
+              ProcessInfo.processInfo.environment["SWIFT_DETERMINISTIC_HASHING"] == nil,
+              let path = Bundle.main.executablePath else { return }
+        setenv("SWIFT_DETERMINISTIC_HASHING", "1", 1)
+        var argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) }
+        argv.append(nil)
+        execv(path, &argv)
+        unsetenv("SWIFT_DETERMINISTIC_HASHING")
+    }
+
     /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
     /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
     /// missing), so the Stationery widgets save as they do in the app.

@@ -1,5 +1,8 @@
 import AppKit
 
+// --render: the same order of sets and dictionaries in every run (it starts again with deterministic hashing).
+CommandLineTools.makeHashingDeterministic(for: CommandLine.arguments)
+
 // Legacy ANSI skin files are read in the code page of the user's language (GBK for Simplified Chinese…), except
 // under --self-test; set before anything can load a skin.
 CommandLineTools.useANSICodePage(for: CommandLine.arguments)
