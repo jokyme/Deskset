@@ -111,7 +111,7 @@ enum Studio2AuditSelfTests {
         }
     }
 
-    /// The tasks and their targets (the design's §2.2; a task returns its steps, nil when it could not run).
+    /// The tasks and their step targets (a task returns its steps, nil when it could not run).
     static let tasks: [(String, (AppTestRunner, String) -> Int?)] = [
         ("T1.3 a color (at most 5)", color),
         ("T1.3 the card's color (at most 5)", cardColor),
