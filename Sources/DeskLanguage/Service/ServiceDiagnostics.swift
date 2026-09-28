@@ -110,13 +110,15 @@ public struct DeskProblemCount: Sendable, Hashable, CustomStringConvertible {
 extension DeskSnapshot {
     /// The open file's diagnostics, in the checker's order: `diagnostics[i]` is `checked.diagnostics[i]`.
     public var diagnostics: [DeskServiceDiagnostic] {
-        caches.diagnostics.value { checked.diagnostics.map(serviceDiagnostic) }
+        guard hasStackRoom else { return onLargeStack { diagnostics } }
+        return caches.diagnostics.value { checked.diagnostics.map(serviceDiagnostic) }
     }
 
     /// `package.desk`'s own diagnostics when a widget is open (the package checked on its own); empty when the
     /// folder has no package or the open file is the package.
     public var packageDiagnostics: [DeskServiceDiagnostic] {
-        caches.packageDiagnostics.value {
+        guard hasStackRoom else { return onLargeStack { packageDiagnostics } }
+        return caches.packageDiagnostics.value {
             guard let package, !isPackage else { return [] }
             return package.diagnostics.map(serviceDiagnostic)
         }
@@ -142,6 +144,7 @@ extension DeskSnapshot {
 
     /// The diagnostics of another widget of the folder (checks the other widgets: `folderResults`).
     public func folderDiagnostics(of file: DeskFileID) -> [DeskServiceDiagnostic] {
+        guard hasStackRoom else { return onLargeStack { folderDiagnostics(of: file) } }
         if file == self.file && !isPackage { return diagnostics }
         return folderResults()[file]?.diagnostics.map(serviceDiagnostic) ?? []
     }
@@ -149,6 +152,7 @@ extension DeskSnapshot {
     /// Every fix-it of `group` in the open file's diagnostics, as one edit ("Fix all"); edits that would overlap an
     /// earlier one are left out.
     public func fixAll(group: String) -> DeskWorkspaceEdit {
+        guard hasStackRoom else { return onLargeStack { fixAll(group: group) } }
         var files: [DeskFileID: [DeskTextEditU16]] = [:]
         for d in diagnostics {
             for fix in d.fixIts where fix.group == group {

@@ -9,6 +9,7 @@ import Foundation
 extension DeskSnapshot {
     /// The name a rename at a position would change, or why nothing there can be renamed.
     public func prepareRename(at position: DeskPosition) -> Result<DeskRenamePlace, DeskRenameRefusal> {
+        guard hasStackRoom else { return onLargeStack { prepareRename(at: position) } }
         let offset = index.utf8Offset(ofUTF16: index.clampedUTF16(position.offset))
         guard let o = symbolIndex.occurrence(at: offset) else {
             return .failure(refusal(isInsideText(offset) ? .insideText : .notAName, name: ""))
@@ -27,6 +28,7 @@ extension DeskSnapshot {
 
     /// Renames the own name at a position everywhere it is declared and read, in every file that has it.
     public func rename(at position: DeskPosition, to newName: String) -> Result<DeskRename, DeskRenameRefusal> {
+        guard hasStackRoom else { return onLargeStack { rename(at: position, to: newName) } }
         let place: DeskRenamePlace
         switch prepareRename(at: position) {
         case .failure(let refusal): return .failure(refusal)

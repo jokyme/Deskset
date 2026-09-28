@@ -6,13 +6,15 @@ extension DeskSnapshot {
     /// The edits that bring the open file to the canonical style, sorted and not overlapping. Empty when the file is
     /// already formatted, or when formatting could not keep its tokens (`Desk.format` then gives nothing).
     public func formatDocument() -> [DeskTextEditU16] {
-        formatEdits8().map { DeskTextEditU16(range: index.range(utf8: $0.range), newText: $0.replacement) }
+        guard hasStackRoom else { return onLargeStack { formatDocument() } }
+        return formatEdits8().map { DeskTextEditU16(range: index.range(utf8: $0.range), newText: $0.replacement) }
     }
 
     /// The formatting edits of a selection: the selection is widened to the whole statements it touches and then to
     /// whole lines (`formattingRange(for:)`), and the edits of `formatDocument` that meet that range are kept.
     /// Formatting only changes the space between tokens, so any subset of its edits keeps the code's meaning.
     public func formatRange(_ range: DeskRange) -> [DeskTextEditU16] {
+        guard hasStackRoom else { return onLargeStack { formatRange(range) } }
         let widened = index.utf8Range(of: formattingRange(for: range))
         return formatEdits8()
             .filter { $0.range.lowerBound <= widened.upperBound && $0.range.upperBound >= widened.lowerBound }
@@ -30,6 +32,7 @@ extension DeskSnapshot {
     /// top-level blocks whose text holds the selection's first and last characters that are not blanks; a cursor
     /// touches the rest of its line. A selection that ends at the start of a line does not take that line.
     public func formattingRange(for range: DeskRange) -> DeskRange {
+        guard hasStackRoom else { return onLargeStack { formattingRange(for: range) } }
         let span = index.utf8Range(of: range)
         let bytes = index.bytes
         var first = span.lowerBound

@@ -107,6 +107,7 @@ public struct DeskSignatureHelp: Sendable, Hashable {
 extension DeskSnapshot {
     /// The signatures of the call whose parentheses hold a position; nil outside any call.
     public func signatureHelp(at position: DeskPosition) -> DeskSignatureHelp? {
+        guard hasStackRoom else { return onLargeStack { signatureHelp(at: position) } }
         let offset = index.utf8Offset(ofUTF16: index.clampedUTF16(position.offset))
         guard let site = callSite(at: offset) else { return nil }
         let catalog = options.catalog

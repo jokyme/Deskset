@@ -60,6 +60,7 @@ extension DeskSnapshot {
     /// in the file; then, with `source`, the source actions. With `folder`, the folder's own checks are included
     /// (this checks the other widgets once per snapshot: `packageCheck`).
     public func codeActions(in range: DeskRange, source: Bool = true, folder: Bool = true) -> [DeskCodeAction] {
+        guard hasStackRoom else { return onLargeStack { codeActions(in: range, source: source, folder: folder) } }
         let all = actionableDiagnostics(folder: folder)
         let touching = all.filter { $0.diagnostic.range.meets(range) }
         var out: [DeskCodeAction] = []
@@ -93,13 +94,15 @@ extension DeskSnapshot {
 
     /// The actions of one diagnostic: its fix-its, then the "Fix all" of their groups.
     public func codeActions(for diagnostic: DeskServiceDiagnostic) -> [DeskCodeAction] {
-        codeActions(in: diagnostic.range, source: false).filter { action in
+        guard hasStackRoom else { return onLargeStack { codeActions(for: diagnostic) } }
+        return codeActions(in: diagnostic.range, source: false).filter { action in
             action.diagnostics.contains(diagnostic)
         }
     }
 
     /// The actions for the whole file: format it, and add every permission it needs.
     public func sourceActions() -> [DeskCodeAction] {
+        guard hasStackRoom else { return onLargeStack { sourceActions() } }
         var out: [DeskCodeAction] = []
         let format = formatDocument()
         if !format.isEmpty {
@@ -113,7 +116,8 @@ extension DeskSnapshot {
     /// Every fix-it of `group` in the file as one action; edits that would overlap an earlier one are left out.
     /// Nil when the file has fewer than two such fix-its (the quick fix already does it).
     public func fixAllAction(group: String) -> DeskCodeAction? {
-        fixAllAction(group: group, in: actionableDiagnostics(folder: false).map(\.diagnostic))
+        guard hasStackRoom else { return onLargeStack { fixAllAction(group: group) } }
+        return fixAllAction(group: group, in: actionableDiagnostics(folder: false).map(\.diagnostic))
     }
 
     // MARK: Pieces

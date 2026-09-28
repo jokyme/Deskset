@@ -267,7 +267,8 @@ extension DeskSnapshot {
 
     /// The completion context at a position: what may be written there, what is typed, and what an item replaces.
     public func completionContext(at position: DeskPosition) -> DeskCompletionContext {
-        scanCompletion(at: position).context
+        guard hasStackRoom else { return onLargeStack { completionContext(at: position) } }
+        return scanCompletion(at: position).context
     }
 
     // MARK: Scanning

@@ -187,7 +187,8 @@ extension DeskSnapshot {
 
     /// Every semantic token of the open text, sorted.
     public func semanticTokens() -> DeskSemanticTokens {
-        caches.semanticTokens.value {
+        guard hasStackRoom else { return onLargeStack { semanticTokens() } }
+        return caches.semanticTokens.value {
             var tokens: [DeskSemanticToken] = []
             for k in semanticBlockRanges.indices { tokens += semanticTokens(ofBlock: k) }
             return DeskSemanticTokens(tokens: tokens, index: index)
@@ -197,6 +198,7 @@ extension DeskSnapshot {
     /// The semantic tokens that overlap a range of the open text (an empty range: those holding its position):
     /// the same tokens as `semanticTokens()` has there, classifying only the blocks the range touches.
     public func semanticTokens(in range: DeskRange) -> DeskSemanticTokens {
+        guard hasStackRoom else { return onLargeStack { semanticTokens(in: range) } }
         // Offsets clamped to the text: a range no text view gives (negative, huge, reversed) never overflows.
         let count = index.utf16Count
         let lower = min(max(range.start.offset, 0), count)

@@ -386,7 +386,8 @@ public final class DeskSnapshot: Sendable {
     /// know (§4.20). Built on first use: the open file's and the package's results are reused, the other widgets
     /// are parsed and checked.
     public func folderResults() -> [DeskFileID: CheckedFile] {
-        caches.folder.value {
+        guard hasStackRoom else { return onLargeStack { folderResults() } }
+        return caches.folder.value {
             let context = options.checkContext(package: nil, resources: resources)
             let packageText = folder[packageFile]
             var widgets: [(tree: SyntaxTree, checked: CheckedFile?)] = []
@@ -412,7 +413,8 @@ public final class DeskSnapshot: Sendable {
     /// cross-file index, and from it the languages, options panels and install summary. The folder is the one the
     /// service was made with, holding this snapshot's texts; without one, a folder of just the `.desk` texts.
     public func packageCheck() -> CheckedDeskPackage {
-        caches.packageCheck.value {
+        guard hasStackRoom else { return onLargeStack { packageCheck() } }
+        return caches.packageCheck.value {
             var model = self.model ?? DeskPackage()
             for (file, text) in folder where model.texts[file] != text {
                 model = model.settingText(text, of: file)
@@ -471,6 +473,8 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let tokenTable = DeskLazy<DeskTokenTable>()
     /// The UTF-8 ranges of the file's top-level children.
     let blockRanges = DeskLazy<[Range<Int>]>()
+    /// The stack a request may need (`stackNeeded`).
+    let stackNeeded = DeskLazy<Int>()
 }
 
 /// A value built once, on first use, under a lock (a second reader waits for the first).

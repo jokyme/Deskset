@@ -110,6 +110,7 @@ extension DeskSnapshot {
 
     /// The innermost element whose code holds a position (its call, block or modifiers, their actions included).
     public func elementAt(_ position: DeskPosition) -> DeskElementHit? {
+        guard hasStackRoom else { return onLargeStack { elementAt(position) } }
         let table = nodeTable
         let offset = index.utf8Offset(ofUTF16: index.clampedUTF16(position.offset))
         guard let i = table.innermost(at: offset, where: { $0.kind == .callStmt && checked.elements[self.nodeID($0)] != nil })
@@ -119,6 +120,7 @@ extension DeskSnapshot {
 
     /// Where an element of this snapshot is (nil for a reference of another snapshot).
     public func range(of element: ElementRef) -> DeskElementHit? {
+        guard hasStackRoom else { return onLargeStack { range(of: element) } }
         let table = nodeTable
         guard let i = table.indexes(of: element).first(where: { table.entries[$0].kind == .callStmt }),
               checked.elements[element] != nil else { return nil }
@@ -127,6 +129,7 @@ extension DeskSnapshot {
 
     /// Every element of the file, in document order.
     public func elements() -> [DeskElementHit] {
+        guard hasStackRoom else { return onLargeStack { elements() } }
         let table = nodeTable
         return table.entries.indices.filter {
             table.entries[$0].kind == .callStmt && checked.elements[table.id($0)] != nil
@@ -162,7 +165,8 @@ extension DeskSnapshot {
     /// The outline of the open file. A top-level block the previous snapshot outlined, with the same element names
     /// and language, is not outlined again (`DeskBlockMemo`).
     public func documentSymbols() -> [DeskDocumentSymbol] {
-        caches.outline.value {
+        guard hasStackRoom else { return onLargeStack { documentSymbols() } }
+        return caches.outline.value {
             let elements = elementNamesByStart()
             var builder: OutlineBuilder?
             var items: [DeskOutlineItem] = []
@@ -234,7 +238,8 @@ extension DeskSnapshot {
     /// lines, runs of comment lines, modifier chains on their own lines, and the languages of `translations`. A
     /// top-level block the previous snapshot folded is not looked at again (`DeskBlockMemo`).
     public func foldingRanges() -> [DeskFoldingRange] {
-        caches.folding.value {
+        guard hasStackRoom else { return onLargeStack { foldingRanges() } }
+        return caches.folding.value {
             var builder: FoldingBuilder?
             var out: [DeskFoldingRange] = []
             var offset = 0

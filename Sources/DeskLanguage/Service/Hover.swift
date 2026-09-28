@@ -149,6 +149,7 @@ extension DeskSnapshot {
     /// The hover card for the position: a built-in or own name, an argument label, a number, a text people read,
     /// a picture's path. Nil elsewhere (punctuation, keywords, blanks).
     public func hover(at position: DeskPosition) -> DeskHover? {
+        guard hasStackRoom else { return onLargeStack { hover(at: position) } }
         let offset = index.utf8Offset(ofUTF16: index.clampedUTF16(position.offset))
         let table = nodeTable
         // A number: its token holds the position.

@@ -145,6 +145,7 @@ extension DeskSnapshot {
     /// What the name at a position is: an own name, a built-in, a text or a picture's path. Nil on anything else
     /// (a keyword, a number, a comment).
     public func symbol(at position: DeskPosition) -> DeskSymbolInfo? {
+        guard hasStackRoom else { return onLargeStack { symbol(at: position) } }
         guard let o = occurrence(at: position) else { return nil }
         return DeskSymbolInfo(name: o.name, kind: o.kind, role: o.role, range: index.range(utf8: o.range), catalogPath: o.path)
     }
@@ -154,6 +155,7 @@ extension DeskSnapshot {
     /// `.name(…)`. A text: its entries in the file's and the package's translations. A picture's path: the picture
     /// (an empty range at the start of the file). Built-in names have no declaration in the folder.
     public func definition(at position: DeskPosition) -> [DeskLocation] {
+        guard hasStackRoom else { return onLargeStack { definition(at: position) } }
         guard let o = occurrence(at: position), let key = o.key else { return [] }
         let own = symbolIndex.occurrences(of: key).filter { $0.role == .declaration }
         switch key {
@@ -197,6 +199,7 @@ extension DeskSnapshot {
     /// package's styles and options (with the widgets' declarations that replace them), texts, pictures and
     /// built-in names; in the open file for everything else. Sorted by file (the open file first) and position.
     public func references(at position: DeskPosition, includeDeclaration: Bool = true) -> [DeskLocation] {
+        guard hasStackRoom else { return onLargeStack { references(at: position, includeDeclaration: includeDeclaration) } }
         guard let o = occurrence(at: position), let key = o.key else { return [] }
         var out: [DeskLocation] = []
         for file in files(searchedFor: key) {
@@ -210,6 +213,7 @@ extension DeskSnapshot {
     /// Every place in the open file where the name at a position occurs, with whether it is declared, read or
     /// assigned there.
     public func documentHighlights(at position: DeskPosition) -> [DeskHighlight] {
+        guard hasStackRoom else { return onLargeStack { documentHighlights(at: position) } }
         guard let o = occurrence(at: position), let key = o.key else { return [] }
         return symbolIndex.occurrences(of: key).map { DeskHighlight(range: index.range(utf8: $0.range), role: $0.role) }
     }
