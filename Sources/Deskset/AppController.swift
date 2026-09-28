@@ -85,7 +85,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Paths.ensureDirectories()
         Log.rotateIfNeeded()
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
-                  + ProcessInfo.processInfo.operatingSystemVersionString)
+                  + ProcessInfo.processInfo.operatingSystemVersionString
+                  + "; legacy ANSI skins use code page \(TextDecoding.ansiCodePage)")
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
         if !Paths.isAppBundle { NSApp.applicationIconImage = AppIcon.image(size: 512) }
