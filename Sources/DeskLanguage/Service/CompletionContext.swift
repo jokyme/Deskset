@@ -671,9 +671,12 @@ extension DeskSnapshot {
         switch table.entries[owner].kind {
         case .widgetBlock:
             s.context.place = .views
+            // The word being typed is a statement of its own (`var|`): it does not count as an element before.
+            let typed = s.utf8Range.lowerBound
             s.context.allowsDeclarations = !table.children(of: block).contains { c in
                 let e = table.entries[c]
-                return e.textEnd <= offset && e.kind != .declaration && e.kind != .unexpected && e.kind != .foreignConstruct
+                return e.textEnd <= offset && e.textStart < typed && e.kind != .declaration && e.kind != .unexpected
+                    && e.kind != .foreignConstruct
             }
         case .infoBlock, .packageBlock:
             s.context.place = .fields
