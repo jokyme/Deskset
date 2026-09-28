@@ -14,6 +14,16 @@ enum LegacyRenderSelfTests {
     /// Left to the command-line comparison: String/Review draws a very long text with combining marks, seconds per
     /// picture in a debug build.
     static let skipped = ["String/Review/Review.ini"]
+    /// `DESKSET_LEGACY_RENDER_EXTRA`: more skins to draw both ways, as `.ini` files or folders of them separated by
+    /// colons (a local corpus, or skins whose data changes from run to run, which only a comparison in one process at
+    /// one moment can check). They are drawn where they are, so pass copies: skins may write their own files.
+    static var extraSkins: [URL] {
+        let list = ProcessInfo.processInfo.environment["DESKSET_LEGACY_RENDER_EXTRA"] ?? ""
+        return list.split(separator: ":").flatMap { item -> [URL] in
+            let url = URL(fileURLWithPath: String(item)).standardizedFileURL
+            return url.pathExtension.lowercased() == "ini" ? [url] : iniFiles(in: url)
+        }
+    }
 
     static func run(_ t: AppTestRunner) {
         t.suite("Runtime: legacy renderer: draws the TestSkins byte for byte as the renderer does") {
@@ -24,9 +34,10 @@ enum LegacyRenderSelfTests {
             // A copy: skins may write their own files.
             let skins = t.temporaryDirectory("legacy-render").appendingPathComponent("TestSkins")
             try FileManager.default.copyItem(at: testSkins, to: skins)
-            let files = folders.flatMap { iniFiles(in: skins.appendingPathComponent($0)) }
+            let set = folders.flatMap { iniFiles(in: skins.appendingPathComponent($0)) }
                 .filter { file in !skipped.contains { file.path.hasSuffix("/" + $0) } }
-            t.check(files.count >= 30, "the TestSkins set is there: \(files.count) skins")
+            t.check(set.count >= 30, "the TestSkins set is there: \(set.count) skins")
+            let files = set + extraSkins
             let savedAppearance = NSApp.appearance
             defer {
                 NSApp.appearance = savedAppearance
@@ -39,9 +50,10 @@ enum LegacyRenderSelfTests {
                 for file in files {
                     let name = file.path.replacingOccurrences(of: skins.path + "/", with: "")
                         + " (\(appearance.rawValue))"
-                    let (_, config) = RenderCommand.locate(file, skinsDir: skins.path)
+                    let inSet = file.path.hasPrefix(skins.path + "/")
+                    let (root, config) = RenderCommand.locate(file, skinsDir: inSet ? skins.path : nil)
                     let host = RenderHost()
-                    let skin = Skin(config: config, fileURL: file, skinsDirectory: skins, system: SystemMonitor.shared,
+                    let skin = Skin(config: config, fileURL: file, skinsDirectory: root, system: SystemMonitor.shared,
                                     host: host)
                     // The skin holds its host weakly.
                     withExtendedLifetime(host) {
@@ -61,7 +73,7 @@ enum LegacyRenderSelfTests {
             }
             t.check(drawn >= files.count * 2 * 4, "every skin drawn both ways at 1x and 2x: \(drawn) pictures")
             // Not an empty comparison: nearly every skin draws something.
-            t.check(withPixels >= files.count * 2 - 4, "\(withPixels) of \(files.count * 2) drawings have pixels")
+            t.check(withPixels >= set.count * 2 - 4, "\(withPixels) of \(files.count * 2) drawings have pixels")
         }
 
         t.suite("Runtime: legacy renderer: a difference is found") {
