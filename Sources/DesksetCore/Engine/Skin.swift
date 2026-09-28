@@ -159,6 +159,8 @@ public final class Skin {
         set { assignedSideEffects = newValue }
     }
     private var assignedSideEffects: SideEffects = LiveSideEffects.shared
+    /// Sample data in place of what the measures read (the Studio's instance; nil: live).
+    public var measureValues: MeasureValueOverride?
     /// Told of each input the skin took from the person using it — a click, a hover, the wheel, the pointer for
     /// `Plugin=Mouse`, a context menu item, text typed into InputText — and of each bang another widget sent it, after
     /// the skin acted on it, while it is still loaded (an input that refreshed it is not passed on). The Studio replays

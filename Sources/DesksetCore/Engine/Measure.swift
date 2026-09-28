@@ -320,6 +320,8 @@ open class Measure: SkinSection {
             notedInputs = true
             if skin.runsInVirtualTime { for kind in liveInputs { skin.noteService(kind) } }
         }
+        // The Studio's sample data (`MeasureValueOverride`): its value in place of the computed one; the rules still run.
+        if let sample = skin.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
         computedPlaceholder = false
         var v = computeValue()
         if !v.isFinite { v = 0 }
@@ -340,6 +342,12 @@ open class Measure: SkinSection {
         refreshRange()
         if invert && !placeholder { v = maxValue - (v - minValue) }
         value = v.isFinite ? v : 0
+        updateCount += 1
+        runActions()
+    }
+
+    private func finishOverride() {
+        value = value.isFinite ? value : 0
         updateCount += 1
         runActions()
     }
