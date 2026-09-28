@@ -843,7 +843,18 @@ extension InspectorWindowController {
             FileHandle.standardError.write(Data("Studio in place: \(text.joined(separator: " | "))\n".utf8))
         }
         var ok = true
+        // A field being edited in a row made again keeps its focus and its typing, as in a page built again: its editing
+        // ends while nothing it does is written, and the new row's field takes it back (`restoreInspectorFocus`).
+        let remade = plan.compactMap { $0.2 == .row || $0.2 == .part ? ($0.0.control ?? $0.0.part) : nil }
+        let responder = (window?.firstResponder as? NSTextView).flatMap { $0.isFieldEditor ? $0.delegate as? NSView : $0.superview }
+        let inRemade = responder.map { r in remade.contains { r.isDescendant(of: $0) } } ?? false
+        let fieldFocus = inRemade ? focusedInspectorField() : nil
+        let tokenFocus = inRemade ? focusedTokenField() : nil
         inspectorState.isRebuilding = true
+        if fieldFocus != nil || tokenFocus != nil { window?.makeFirstResponder(nil) }
+        defer {
+            if let fieldFocus { restoreInspectorFocus(fieldFocus) } else if let tokenFocus { restoreTokenFieldFocus(tokenFocus) }
+        }
         namingShared {
             for (slot, shown, action) in plan where ok {
                 switch action {

@@ -12,6 +12,48 @@ enum InspectorInPlaceSelfTests {
         defer { InspectorInPlace.defersNamingForTests = nil }
         pixelTests(t)
         structureTests(t)
+        focusTests(t)
+    }
+
+    static func focusTests(_ t: AppTestRunner) {
+        t.suite("App: studio in place: a field being edited keeps its focus and its typing") {
+            guard let (_, editor) = try FriendlyFixtures.openEditor(t, config: "Deskset\\Clock", from: "TestSkins"),
+                  let window = editor.window else { return }
+            defer { window.close() }
+            editor.select(section: "MeterWeekday")
+            EditorWindowSelfTests.settle()
+            func field(_ id: String) -> ValueField? {
+                editor.inspectorStack.findSubview { $0.identifier?.rawValue == id } as? ValueField
+            }
+            func focused() -> NSTextField? {
+                guard let e = window.firstResponder as? NSTextView, e.isFieldEditor else { return nil }
+                return e.delegate as? NSTextField
+            }
+            // The size its look sets, typed on the layer and committed with the field still focused (Return): the row is
+            // made again (the value is the layer's own now), and its new field has the focus.
+            guard let size = field("MeterWeekday/FontSize"), window.makeFirstResponder(size) else {
+                return t.check(false, "the size field takes the focus")
+            }
+            let rebuilds = editor.inspectorRebuildCount, remade = editor.inPlace.remadeRows
+            size.currentEditor()?.string = "17"
+            size.finishEditing(deferred: false)
+            editor.flushInPlaceFollowUp()
+            t.equal(editor.skin?.meter(named: "MeterWeekday")?.rawOption("FontSize"), "17", "written")
+            t.equal(editor.inspectorRebuildCount, rebuilds, "followed in place")
+            t.check(editor.inPlace.remadeRows > remade, "its row made again")
+            t.equal(focused()?.identifier?.rawValue, "MeterWeekday/FontSize", "the size field has the focus")
+            t.check(focused() !== size, "the new row's field")
+            t.equal(focused()?.currentEditor()?.string, "17")
+            // Typing in X while another row follows a step: X keeps its focus and what was typed.
+            guard let x = field("MeterWeekday/X"), window.makeFirstResponder(x) else { return t.check(false, "X takes the focus") }
+            x.currentEditor()?.string = "99"
+            editor.commit([.init(section: "MeterWeekday", key: "FontColor", value: "13,121,201,254", own: true)], name: "Change Text Color")
+            editor.flushInPlaceFollowUp()
+            t.equal(editor.inspectorRebuildCount, rebuilds, "still in place")
+            t.check(focused() === x, "X keeps the focus")
+            t.equal(x.currentEditor()?.string, "99", "and what was typed")
+            window.makeFirstResponder(nil)
+        }
     }
 
     /// One kind of step on the selected layer: the value it writes, from the value written before.
