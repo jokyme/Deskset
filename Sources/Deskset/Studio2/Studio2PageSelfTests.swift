@@ -319,11 +319,16 @@ enum Studio2PageSelfTests {
             studio.setSidebarOpen(false)
             t.equal(data(medium), original)
 
-            // The look: the suite's file, and every Stationery widget follows.
+            // The look: the suite's file, and every Stationery widget follows (and follows its undo).
             let variables = file(opened, "Stationery/@Resources/Variables.inc")
             let suite = data(variables)
+            let clock = opened.app.activate(config: "Stationery\\Clock", file: "Medium.ini")
+            t.check(clock != nil, "another widget of the suite")
             page.handle(.thumbnail(item: "look", index: 2))
             t.check(text(variables).contains("\nLook=Dark"), "the suite's look")
+            t.check(AppSelfTest.spin { opened.app.controller(for: "Stationery\\Clock") !== clock },
+                    "the other widget loaded again")
+            let clockDark = opened.app.controller(for: "Stationery\\Clock")
             t.equal(session.undoStack.undoActionName, "Look")
             guard case .confirmation(let look)? = page.page?.item("look.confirm")?.kind else {
                 return t.check(false, "the look's confirmation")
@@ -331,6 +336,8 @@ enum Studio2PageSelfTests {
             t.equal(look.text, "The look is now Dark")
             session.undoStack.undo()
             t.equal(data(variables), suite, "the look undone byte for byte")
+            t.check(AppSelfTest.spin { opened.app.controller(for: "Stationery\\Clock") !== clockDark },
+                    "and loaded again for the undo")
 
             // The size: another variant runs on the desktop; undone, the first one again.
             page.handle(.segment(item: "size", index: 2))

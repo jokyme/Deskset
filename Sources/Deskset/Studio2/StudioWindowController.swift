@@ -377,9 +377,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         switch change {
         case .reloaded:
             widgetChanged()
-        case .applied:
+        case .applied(let t):
+            refreshOthers(t)
             updateToolbar()
-        case .reverted:
+        case .reverted(let t, _):
+            refreshOthers(t)
             widgetPage.stepReverted()
             widgetPage.refresh()
             updateToolbar()
@@ -391,6 +393,13 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         case .desktopWroteFiles:
             session.reloadStudioSkin()
         }
+    }
+
+    /// A step that changed a file other widgets read too (the suite's look): they load again, whichever way it went.
+    private func refreshOthers(_ t: Transaction) {
+        guard let skin else { return }
+        let shared = t.files.filter { !skin.isOwnFile($0) }
+        if !shared.isEmpty { link?.refreshOthers(reading: shared) }
     }
 
     /// Live reload: a file of the widget changed on disk by something other than the session reloads the widget (the

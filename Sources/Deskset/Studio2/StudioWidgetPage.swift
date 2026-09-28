@@ -584,7 +584,8 @@ final class StudioWidgetPage {
     }
 
     /// A look (a thumbnail): the suite's look variable, in the file the suite shares (a look for one widget alone is
-    /// not something the suite's files can say: the look is read before the widget's own values).
+    /// not something the suite's files can say: the look is read before the widget's own values). The other widgets
+    /// that read the file load again (the window does that for any step on a shared file).
     private func chooseLook(_ index: Int) {
         guard let look = facts?.look, look.values.indices.contains(index), let file = look.file,
               look.values[index].caseInsensitiveCompare(look.current) != .orderedSame else { return }
@@ -592,7 +593,6 @@ final class StudioWidgetPage {
         apply(StudioText[.undoLook], [.setValue(file: file, section: "Variables", key: look.variable, value: value,
                                                 afterIncludes: false)],
               confirm: StudioText.format(.confirmLook, Self.lookTitle(value)), item: "look", section: "look")
-        window.link?.refreshOthers(reading: [file])
     }
 
     /// Small, Medium or Large: the desktop runs that variant file instead (undoable).
@@ -603,9 +603,11 @@ final class StudioWidgetPage {
         let from = v.current + ".ini", to = v.files[index] + ".ini"
         guard link.switchVariant(to: to) else { return }
         let name = StudioText[.undoSize]
+        // On the widget's own undo stack, which outlives the window: the app loads the variant, and a window showing
+        // the widget follows it (`DesktopLink` hears the desktop change).
         func register(_ back: String, _ forward: String) {
-            session.undoStack.registerUndo(withTarget: link) { link in
-                if link.switchVariant(to: back) { register(forward, back) }
+            session.undoStack.registerUndo(withTarget: session) { session in
+                if session.app.activate(config: session.config, file: back) != nil { register(forward, back) }
             }
             session.undoStack.setActionName(name)
         }
