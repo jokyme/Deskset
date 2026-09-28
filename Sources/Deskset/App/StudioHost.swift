@@ -19,18 +19,30 @@ protocol LiveSkinHost: SkinHost {
 /// text and images are measured as the desktop measures them, its screens and window place are the desktop copy's, and
 /// of its actions it runs only what stays inside the widget (`StudioActionPolicy`) — the rest is recorded, since the
 /// desktop copy does it. What it would log is kept here, not written to the app's log a second time.
+///
+/// It runs on the main thread, where the desktop copy's window controller is, and reads that controller, never the
+/// desktop copy's skin (which may run on another thread): the window as the controller last told its runtime
+/// (`SkinWindowController.publishedFacts`), with the environment store's screens and paths.
 final class StudioHost: LiveSkinHost {
     /// The widget on the desktop (its window's place and screens).
     weak var desktop: SkinWindowController?
     let policy = StudioActionPolicy()
     /// The editing session pauses its instance with the widgets on the desktop (`EditingSession.setUpdatesPaused`).
     var updatesPaused = false
+    /// The window of the last desktop copy that had started (placed): a reload's new copy, linked before it started,
+    /// has not placed its window yet, and the old one's stays where the widget is until then.
+    private var knownWindow: SkinWindowFacts?
 
     var areUpdatesPaused: Bool { updatesPaused }
 
-    /// The desktop copy's display: a Chameleon widget on a second display takes its colors from that wallpaper. The
-    /// Studio's instance runs on the main thread, where the window is.
-    var windowDisplay: CGDirectDisplayID? { desktop?.window.screen.flatMap(DesktopInputs.displayID(of:)) }
+    /// The desktop copy's window, as its controller last told its runtime (main thread).
+    var desktopWindow: SkinWindowFacts? {
+        if let c = desktop, c.isStarted, let facts = c.publishedFacts { knownWindow = facts }
+        return knownWindow
+    }
+
+    /// The desktop copy's display: a Chameleon widget on a second display takes its colors from that wallpaper.
+    var windowDisplay: CGDirectDisplayID? { desktopWindow?.display }
     /// The instance's log lines, the last `logLimit`.
     private(set) var logs: [(level: SkinLogLevel, message: String)] = []
     var logLimit = 200
@@ -62,10 +74,18 @@ final class StudioHost: LiveSkinHost {
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
 
     /// The desktop copy's screens and window place (`#CURRENTCONFIGX#`, `#WORKAREAWIDTH#`…), with this instance's size.
+    /// Debug builds compare it with the live window while the desktop copy runs on the main executor.
     func environment(for skin: Skin) -> SkinEnvironment {
         var env: SkinEnvironment
-        if let c = desktop, !c.isStopped {
-            env = c.environment
+        if let window = desktopWindow {
+            env = EnvironmentStore.shared.environment(windowFrame: window.frame, zPosition: window.settings.zPosition,
+                                                      autoSelectScreen: window.settings.autoSelectScreen)
+            #if DEBUG
+            if let c = desktop, c.isStarted, !c.isStopped, c.heldMove == nil, SnapshotAudit.isActive(c.runtime) {
+                SnapshotAudit.compare("the Studio's environment", c.runtime, snapshot: env, live: c.environment,
+                                      sides: ("the window facts", "the window"))
+            }
+            #endif
         } else {
             env = EnvironmentStore.shared.environment(windowFrame: nil)
         }
