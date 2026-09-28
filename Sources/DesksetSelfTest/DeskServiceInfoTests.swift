@@ -22,6 +22,10 @@ func runDeskServiceInfoTests(_ t: TestRunner) {
         for line in deskTokenLines(snapshot, snapshot.semanticTokens().tokens) { print(line) }
         return
     }
+    if ProcessInfo.processInfo.environment["DESK_CATALOG_LEAKS"] != nil {
+        for line in deskCatalogProseLeaks() { print(line) }
+        return
+    }
     if let path = ProcessInfo.processInfo.environment["DESK_HOVER_DUMP"] {
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { print("cannot read \(path)"); return }
         let language: DiagnosticLanguage = ProcessInfo.processInfo.environment["DESK_HOVER_ZH"] != nil ? .simplifiedChinese : .english
@@ -371,4 +375,81 @@ func runDeskHoverTests(_ t: TestRunner) {
         t.check(examples > 400, "examples: \(examples)")
         print("    \(examples) examples, \(hovers) hovers")
     }
+
+    t.suite("Desk: service — hover and signature help, every name of every file") {
+        var positions = 0
+        var hovers = 0
+        var helps = 0
+        var leaks: [String: Int] = [:]
+        func leakCheck(_ texts: [String], _ what: String) {
+            for text in texts {
+                for leak in deskMessageLeaks(text) where leaks[what + " " + leak, default: 0] < 3 {
+                    leaks[what + " " + leak, default: 0] += 1
+                    t.check(false, "\(what) leaks \(leak): \(text)")
+                }
+            }
+        }
+        for (label, file, texts) in deskNavSweepTexts() {
+            var folder: [DeskFileID: String] = [:]
+            for (path, text) in texts { folder[DeskFileID(path: path)] = text }
+            let snapshot = DeskLanguageService(openFile: DeskFileID(path: file), files: folder).snapshot
+            let length = snapshot.index.utf16Count
+            var offsets = Set([0, length])
+            for token in deskNavTokenStarts(snapshot.tree) {
+                offsets.insert(snapshot.index.utf16Offset(ofUTF8: token.lowerBound))
+                offsets.insert(snapshot.index.utf16Offset(ofUTF8: token.upperBound))
+            }
+            for offset in offsets.sorted() {
+                positions += 1
+                let position = snapshot.index.position(utf16: offset)
+                if let hover = snapshot.hover(at: position) {
+                    hovers += 1
+                    if hover.range.end.offset > length || !hover.range.contains(offset) && hover.range.end.offset != offset {
+                        t.check(false, "\(label): hover at \(position) covers \(hover.range)")
+                    }
+                    for language in DiagnosticLanguage.allCases {
+                        leakCheck(hover.prose(language), "hover")
+                        if hover.markdown(language).isEmpty { t.check(false, "\(label): empty hover") }
+                    }
+                }
+                if let help = snapshot.signatureHelp(at: position) {
+                    helps += 1
+                    if help.range.end.offset > length { t.check(false, "\(label): signature help range \(help.range)") }
+                    if !help.signatures.indices.contains(help.activeSignature) { t.check(false, "\(label): active signature") }
+                    if let p = help.activeParameter, !help.signatures[help.activeSignature].parameters.indices.contains(p) {
+                        t.check(false, "\(label): active parameter \(p)")
+                    }
+                    for language in DiagnosticLanguage.allCases {
+                        var prose = [help.title.text(in: language), help.doc?.text(in: language) ?? ""]
+                        for signature in help.signatures {
+                            for p in signature.parameters {
+                                prose += [p.type.text(in: language), p.doc.text(in: language), p.defaultValue?.text(in: language) ?? ""]
+                            }
+                        }
+                        leakCheck(prose, "signature help")
+                    }
+                }
+            }
+        }
+        print("    \(positions) positions: \(hovers) hovers, \(helps) signature helps")
+    }
+}
+
+func deskCatalogProseLeaks() -> [String] {
+    var out: [String] = []
+    func check(_ place: String, _ text: String) {
+        let leaks = deskMessageLeaks(text)
+        if !leaks.isEmpty { out.append("\(place): \(leaks) \(text)") }
+    }
+    let catalog = DeskCatalog.current
+    for item in catalog.documentedItems() {
+        check("\(item.path) doc", item.doc.en); check("\(item.path) doc zh", item.doc.zh)
+        if let title = item.title { check("\(item.path) title", title.en); check("\(item.path) title zh", title.zh) }
+    }
+    for p in catalog.allParameters() { check(p.place, p.value.doc.en); check(p.place + " zh", p.value.doc.zh) }
+    for d in catalog.displayNames { check(d.id, d.name.en); check(d.id + " zh", d.name.zh) }
+    for f in catalog.facets { check("facet \(f.id)", f.displayName.en); check("facet \(f.id) zh", f.displayName.zh) }
+    for e in catalog.enums { for c in e.cases { if let t = c.title { check("\(e.id).\(c.name)", t.en); check("\(e.id).\(c.name) zh", t.zh) } } }
+    for p in catalog.permissions { check("permission \(p.id)", p.needsPhrase.en); check("permission \(p.id) zh", p.needsPhrase.zh) }
+    return out
 }

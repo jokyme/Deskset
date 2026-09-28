@@ -420,7 +420,7 @@ extension DeskSnapshot {
                 hover.facts.append(DeskHoverFact(DeskHoverWords.control, LocalizedText("\(controlTitle.en) (`\(facts.control)`)",
                                                                                         "\(controlTitle.zh)（`\(facts.control)`）")))
                 if let declaring, let label = DeskSnapshot.controlLabel(declaring.node) {
-                    hover.facts.append(DeskHoverFact(DeskHoverWords.label, LocalizedText("“\(label)”", "“\(label)”")))
+                    hover.facts.append(DeskHoverFact(DeskHoverWords.label, DeskServiceWords.quoted(label)))
                 }
                 if facts.type != .any {
                     let semType = SemType(type: facts.type, displayBase: facts.displayBase)
@@ -487,7 +487,7 @@ extension DeskSnapshot {
     func translationHover(_ o: DeskOccurrence, range: DeskRange) -> DeskHover {
         var hover = DeskHover(range: range, title: DeskHoverWords.kind(.translationKey),
                               paragraphs: [DeskHoverWords.explanation(.translationKey)])
-        hover.facts.append(DeskHoverFact(DeskHoverWords.key, LocalizedText("“\(o.name)”", "“\(o.name)”")))
+        hover.facts.append(DeskHoverFact(DeskHoverWords.key, DeskServiceWords.quoted(o.name)))
         // The widget's translations win over the package's (§8.6).
         var languages: [String: String] = [:]
         if !isPackage, let package {
@@ -501,7 +501,7 @@ extension DeskSnapshot {
             hover.facts.append(DeskHoverFact(DeskHoverWords.translations, DeskHoverWords.noTranslations))
         }
         for tag in languages.keys.sorted() {
-            hover.facts.append(DeskHoverFact(LocalizedText(tag, tag), LocalizedText("“\(languages[tag]!)”", "“\(languages[tag]!)”")))
+            hover.facts.append(DeskHoverFact(LocalizedText(tag, tag), DeskServiceWords.quoted(languages[tag]!)))
         }
         hover.reference = "translations"
         return hover

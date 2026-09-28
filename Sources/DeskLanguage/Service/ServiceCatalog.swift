@@ -244,6 +244,17 @@ enum DeskServiceWords {
         return sign + String(out.reversed())
     }
 
+    /// The author's own text inside a card's Markdown: characters Markdown would read as formatting are escaped
+    /// (`*`, `_`, `` ` ``, braces, brackets), so the text shows as written.
+    static func quoted(_ text: String) -> L {
+        var out = ""
+        for c in text {
+            if "\\`*_{}[]<>#|".contains(c) { out.append("\\") }
+            out.append(c)
+        }
+        return L("“\(out)”", "“\(out)”")
+    }
+
     static let since = L("Since", "引入版本")
     static let macOnly = L("Mac only", "Mac 专有")
     static let yes = L("Yes", "是")

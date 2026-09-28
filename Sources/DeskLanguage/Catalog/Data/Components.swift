@@ -99,7 +99,7 @@ extension CatalogData {
     static let content: [ComponentSpec] = [
         component("Text", .text, .content, "Text", "文字", [sig(
             pos("content", .any, role: .display, translatable: true, preview: #""Wednesday, 30 September""#,
-                "What it shows: text in quotes, data, or text with {data} in it", "显示的内容：引号里的文字、数据，或放了 {数据} 的文字",
+                "What it shows: text in quotes, data, or text with data in braces", "显示的内容：引号里的文字、数据，或放了 {数据} 的文字",
                 page: page(.content, "Text", "文字", .textField, .essential, long: #""Wednesday, 30 September 2026""#),
                 rm: [meter("String", "Text"), meter("String", "MeasureName"), meter("String", "Prefix"),
                      meter("String", "Postfix")]))],
