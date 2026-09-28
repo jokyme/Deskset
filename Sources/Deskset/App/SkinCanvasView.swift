@@ -465,7 +465,14 @@ final class SkinCanvasView: NSView {
         return min(max(z, Self.minZoom), Self.maxZoom)
     }
 
-    func zoomToFit() { setZoom(fitZoom(), centeredAt: NSPoint(x: bounds.midX, y: bounds.midY)) }
+    func zoomToFit() {
+        // Fitted already, the whole canvas in view (centred by the clip view): the same magnification set again would
+        // only reset the clip view and draw every plane again, the workbench too (the editor fits after each step).
+        let z = fitZoom()
+        if abs(z - zoom) < 0.000_1, let clip = enclosingScrollView?.contentView,
+           clip.bounds.width >= frame.width - 0.5, clip.bounds.height >= frame.height - 0.5 { return }
+        setZoom(z, centeredAt: NSPoint(x: bounds.midX, y: bounds.midY))
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.shift, .numericPad]) == .command,
