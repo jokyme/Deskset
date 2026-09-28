@@ -104,6 +104,20 @@ public final class RainmeterSection: SkinSection {
     }
 }
 
+/// A variable of a skin and its value (`Skin.runtimeVariables`).
+public struct SkinVariable: Equatable, Sendable, CustomStringConvertible {
+    /// Lower case.
+    public let name: String
+    public let value: String
+
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    public var description: String { "\(name)=\(value)" }
+}
+
 /// One loaded skin: sections, variables, the update cycle and bang execution. Drawing is done by the host.
 ///
 /// Update cycle (manual: /manual/skins/ "Update", /manual/measures/ "Order", /manual/meters/ "Order",
@@ -1120,6 +1134,17 @@ public final class Skin {
 
     public func variable(_ name: String) -> String? {
         variableValue(name, section: nil)
+    }
+
+    /// The skin's variables as they stand, sorted by name, for summaries of its state (the runtime design: two runs
+    /// that took the same inputs list the same variables): its `[Variables]` as loaded — after `!WriteKeyValue` and a
+    /// refresh, the values written — with what `!SetVariable` changed since, and the built-in variables fixed at load
+    /// (`#@#`, `#CURRENTCONFIG#`, `#SKINSPATH#`…). The built-ins that follow the window, the screens and the appearance
+    /// (`#CURRENTCONFIGX#`, `#SCREENAREAWIDTH#`, `#MACDARKMODE#`…) are read when used and not listed. Names are lower
+    /// case: variable names are not case-sensitive.
+    public var runtimeVariables: [SkinVariable] {
+        assertOwned()
+        return variables.map { SkinVariable(name: $0.key, value: $0.value) }.sorted { $0.name < $1.name }
     }
 
     /// `!SetVariable`: built-in variables "cannot be directly modified by actions in a skin".
