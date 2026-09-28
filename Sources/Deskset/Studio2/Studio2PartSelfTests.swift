@@ -122,7 +122,7 @@ enum Studio2PartSelfTests {
             for (name, kind, sections) in [
                 ("MeterLabel", StudioPartKind.text, ["shows", "text", "layout", "clicks"]),
                 ("MeterIcon", .symbol, ["shows", "look", "layout", "clicks"]),
-                ("MeterBar", .shape, ["shape", "stroke", "layout", "clicks"]),
+                ("MeterBar", .shape, ["shows", "shape", "stroke", "layout", "clicks"]),
             ] {
                 studio.select(part: name)
                 guard let m = studio.skin?.meter(named: name), let page = studio.partPage.page else {

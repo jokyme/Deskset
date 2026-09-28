@@ -560,6 +560,11 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         pendingDiskCheck = nil
         flush()
         unbindSession()
+        // What the window listened to goes with it: a closed window never answers another app's notifications (a new
+        // app state can take the address of this window's gone one).
+        for o in sidebarState.observers + codeState.observers { NotificationCenter.default.removeObserver(o) }
+        sidebarState.observers = []
+        codeState.observers = []
         Self.openWindows.removeAll { $0 === self }
     }
 }
