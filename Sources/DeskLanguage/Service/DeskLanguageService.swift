@@ -13,15 +13,22 @@ public final class DeskLanguageService {
     public let openFile: DeskFileID
     /// The folder's `package.desk` (next to the open file), whether or not it exists yet.
     public let packageFile: DeskFileID
-    public let resources: ResourceResolving?
+    public private(set) var resources: ResourceResolving?
+    /// The folder the open file belongs to, when the service was made with one (`init(package:openFile:)`): its
+    /// pictures, fonts and what loading found. Its texts are those it was made with; a snapshot's `packageCheck()`
+    /// uses the snapshot's texts.
+    public private(set) var package: DeskPackage?
     public private(set) var options: DeskServiceOptions
     /// The latest snapshot.
     public private(set) var snapshot: DeskSnapshot
 
     /// The texts of every `.desk` file of the folder but the open one.
     public private(set) var otherFiles: [DeskFileID: String]
-    private var package: PackageState?
+    private var packageState: PackageState?
     private var generation = 0
+    /// The other widgets' checks, shared by the snapshots: reused while a widget's text and `package.desk`'s text
+    /// are unchanged, so editing `package.desk` checks every widget again and editing a widget checks no other.
+    private var siblings = DeskSiblingChecks()
 
     /// How many times `package.desk` was parsed and checked on its own (tests read it).
     private(set) var packageChecks = 0
@@ -38,9 +45,15 @@ public final class DeskLanguageService {
     ///   - openFile: the file being edited; its text is `files[openFile]` (empty when absent).
     ///   - files: the `.desk` texts of the folder, the open file's included.
     ///   - version: the text view's version of the open text, given back in each snapshot.
-    public init(openFile: DeskFileID, files: [DeskFileID: String], resources: ResourceResolving? = nil,
-                options: DeskServiceOptions = DeskServiceOptions(), version: Int = 0) {
+    public convenience init(openFile: DeskFileID, files: [DeskFileID: String], resources: ResourceResolving? = nil,
+                            options: DeskServiceOptions = DeskServiceOptions(), version: Int = 0) {
+        self.init(openFile: openFile, files: files, resources: resources, options: options, version: version, package: nil)
+    }
+
+    private init(openFile: DeskFileID, files: [DeskFileID: String], resources: ResourceResolving?,
+                 options: DeskServiceOptions, version: Int, package: DeskPackage?) {
         self.openFile = openFile
+        self.package = package
         let folder = (openFile.path as NSString).deletingLastPathComponent
         packageFile = DeskFileID(path: folder.isEmpty ? "package.desk" : folder + "/package.desk")
         self.resources = resources
@@ -51,6 +64,13 @@ public final class DeskLanguageService {
         // A placeholder until the first real snapshot is made below.
         snapshot = DeskSnapshot.placeholder(file: openFile, options: options)
         snapshot = makeSnapshot(tree: Desk.parse(text, file: openFile), version: version)
+    }
+
+    /// A service for a file of a loaded folder: the folder's `.desk` texts and its pictures and fonts as resources.
+    public convenience init(package: DeskPackage, openFile: DeskFileID, options: DeskServiceOptions = DeskServiceOptions(),
+                            version: Int = 0) {
+        self.init(openFile: openFile, files: package.texts, resources: PackageResources(package: package), options: options,
+                  version: version, package: package)
     }
 
     /// The open file is `package.desk`.
@@ -98,11 +118,27 @@ public final class DeskLanguageService {
         return snapshot
     }
 
+    /// The folder changed on disk (a picture added, a widget removed): its other `.desk` texts, pictures and fonts
+    /// are taken from `package`; the open file keeps its text. Everything is checked again.
+    @discardableResult
+    public func setPackage(_ package: DeskPackage) -> DeskSnapshot {
+        self.package = package
+        resources = PackageResources(package: package)
+        var others = package.texts
+        others[openFile] = nil
+        otherFiles = others
+        packageState = nil
+        siblings = DeskSiblingChecks()
+        snapshot = makeSnapshot(tree: snapshot.tree, version: snapshot.version)
+        return snapshot
+    }
+
     /// New options: everything is checked again.
     @discardableResult
     public func setOptions(_ options: DeskServiceOptions) -> DeskSnapshot {
         self.options = options
-        package = nil
+        packageState = nil
+        siblings = DeskSiblingChecks()
         snapshot = makeSnapshot(tree: snapshot.tree, version: snapshot.version)
         return snapshot
     }
@@ -128,30 +164,32 @@ public final class DeskLanguageService {
                 : snapshot.checked
             return DeskSnapshot(version: version, generation: generation, file: openFile, tree: tree,
                                 checked: checked, index: index, options: options, packageFile: packageFile,
-                                package: checked, packageIndex: index, folder: folder, resources: resources)
+                                package: checked, packageIndex: index, folder: folder, resources: resources,
+                                model: package, siblings: siblings)
         }
-        let state = packageState()
+        let state = currentPackageState()
         let checked = recheck || snapshot.isPlaceholder
             ? Desk.check(tree, context: options.checkContext(package: state?.wrapped, resources: resources))
             : snapshot.checked
         return DeskSnapshot(version: version, generation: generation, file: openFile, tree: tree, checked: checked,
                             index: index, options: options, packageFile: packageFile, package: state?.checked,
-                            packageIndex: state?.index, folder: folder, resources: resources)
+                            packageIndex: state?.index, folder: folder, resources: resources, model: package,
+                            siblings: siblings)
     }
 
     /// `package.desk` checked on its own, reused while its text is the same.
-    private func packageState() -> PackageState? {
+    private func currentPackageState() -> PackageState? {
         guard let text = otherFiles[packageFile] else {
-            package = nil
+            packageState = nil
             return nil
         }
-        if let package, package.text == text { return package }
+        if let packageState, packageState.text == text { return packageState }
         let tree = Desk.parse(text, file: packageFile)
         let checked = Desk.check(tree, context: options.checkContext(package: nil, resources: resources))
         packageChecks += 1
         let state = PackageState(text: text, checked: checked, index: DeskTextIndex(tree: tree),
                                  wrapped: CheckedPackage(file: checked))
-        package = state
+        packageState = state
         return state
     }
 }
@@ -178,12 +216,16 @@ public final class DeskSnapshot: Sendable {
     /// Every `.desk` text of the folder at this snapshot, the open file's included.
     public let folder: [DeskFileID: String]
     let resources: ResourceResolving?
+    /// The folder the service was made with, if any.
+    let model: DeskPackage?
+    let siblings: DeskSiblingChecks?
     let caches = DeskSnapshotCaches()
     let isPlaceholder: Bool
 
     init(version: Int, generation: Int, file: DeskFileID, tree: SyntaxTree, checked: CheckedFile, index: DeskTextIndex,
          options: DeskServiceOptions, packageFile: DeskFileID, package: CheckedFile?, packageIndex: DeskTextIndex?,
-         folder: [DeskFileID: String], resources: ResourceResolving?, isPlaceholder: Bool = false) {
+         folder: [DeskFileID: String], resources: ResourceResolving?, model: DeskPackage? = nil,
+         siblings: DeskSiblingChecks? = nil, isPlaceholder: Bool = false) {
         self.version = version
         self.generation = generation
         self.file = file
@@ -196,6 +238,8 @@ public final class DeskSnapshot: Sendable {
         self.packageIndex = packageIndex
         self.folder = folder
         self.resources = resources
+        self.model = model
+        self.siblings = siblings
         self.isPlaceholder = isPlaceholder
     }
 
@@ -251,15 +295,67 @@ public final class DeskSnapshot: Sendable {
     public func folderResults() -> [DeskFileID: CheckedFile] {
         caches.folder.value {
             let context = options.checkContext(package: nil, resources: resources)
+            let packageText = folder[packageFile]
             var widgets: [(tree: SyntaxTree, checked: CheckedFile?)] = []
             if !isPackage { widgets.append((tree, checked)) }
             for (file, text) in folder.sorted(by: { $0.key.path < $1.key.path })
                 where file != self.file && file != packageFile && file.path.hasSuffix(".desk") {
-                widgets.append((Desk.parse(text, file: file), nil))
+                if let known = siblings?.checked(file, text: text, packageText: packageText) {
+                    widgets.append((known.tree, known))
+                } else {
+                    widgets.append((Desk.parse(text, file: file), nil))
+                }
             }
             let packageTree = package?.tree
-            return Desk.checkFolder(package: packageTree, checkedPackage: package, widgets: widgets, context: context)
+            let results = Desk.checkFolder(package: packageTree, checkedPackage: package, widgets: widgets, context: context)
+            for (file, text) in folder where file != self.file && file != packageFile {
+                if let result = results[file] { siblings?.store(file, text: text, packageText: packageText, checked: result) }
+            }
+            return results
         }
+    }
+
+    /// The folder checked as a whole: every file's results (`folderResults`), the folder checks (DK86xx), the
+    /// cross-file index, and from it the languages, options panels and install summary. The folder is the one the
+    /// service was made with, holding this snapshot's texts; without one, a folder of just the `.desk` texts.
+    public func packageCheck() -> CheckedDeskPackage {
+        caches.packageCheck.value {
+            var model = self.model ?? DeskPackage()
+            for (file, text) in folder where model.texts[file] != text {
+                model = model.settingText(text, of: file)
+            }
+            for file in model.texts.keys where folder[file] == nil {
+                model = model.settingText(nil, of: file)
+            }
+            return CheckedDeskPackage(package: model, results: folderResults(), catalog: options.catalog)
+        }
+    }
+}
+
+/// The other widgets' checks, shared by a service's snapshots (each snapshot may be read on any thread).
+final class DeskSiblingChecks: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [DeskFileID: (text: String, packageText: String?, checked: CheckedFile)] = [:]
+
+    /// The check of a widget with this text against this `package.desk` text, if it was made.
+    func checked(_ file: DeskFileID, text: String, packageText: String?) -> CheckedFile? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = stored[file], entry.text == text, entry.packageText == packageText else { return nil }
+        return entry.checked
+    }
+
+    func store(_ file: DeskFileID, text: String, packageText: String?, checked: CheckedFile) {
+        lock.lock()
+        defer { lock.unlock() }
+        stored[file] = (text, packageText, checked)
+    }
+
+    /// How many widgets have a stored check (tests read it).
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored.count
     }
 }
 
@@ -269,6 +365,7 @@ final class DeskSnapshotCaches: @unchecked Sendable {
     let packageDiagnostics = DeskLazy<[DeskServiceDiagnostic]>()
     let formatEdits = DeskLazy<[TextEdit]>()
     let folder = DeskLazy<[DeskFileID: CheckedFile]>()
+    let packageCheck = DeskLazy<CheckedDeskPackage>()
     let fileIndexes = DeskLazyMap<DeskFileID, DeskTextIndex>()
 }
 
