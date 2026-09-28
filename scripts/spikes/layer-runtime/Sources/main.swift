@@ -6,7 +6,7 @@
 // them in the ways listed in Runtime.swift. Each subcommand answers one question and prints JSON:
 //
 //   env           machine, system, screen and color spaces
-//   q1            partitioned layers vs one E layer vs today's view drawing, read back from the screen
+//   q1            partitioned layers vs one E layer vs Deskset's drawing (A, B), read back from the screen
 //   q4            the draw(in:) context and the backing store per contentsFormat and window color space, and
 //                 which combination brings E closest to A
 //   cost          memory, CPU and wakeups of one mode in one scenario (q2 / q3; run.sh repeats and interleaves)
@@ -159,8 +159,9 @@ case "probes":
     emit(probes())
 default:
     print("""
-        usage: spike env | q1 | q4 | q5 | q6 | q7 | offmain | glass | swap | click | probes | cost --mode A|E1|EP|D1|DP \
-        --scenario idle|ten|design|sixty [--seconds N] [--out file.json] [--crops dir]
+        usage: spike env | q1 | q4 | q5 | q6 | q7 | offmain | glass | swap | click | probes | memtrace | wsmem | \
+        cost --mode A|B|E1|EP|D1|DP [--kept] [--cgimage] [--window-space-base] [--scratch] [--one-thread] [--stagger] \
+        --scenario ten|design|sixty [--seconds N] [--out file.json] [--crops dir]  (run.sh runs them all)
         """)
     exit(2)
 }

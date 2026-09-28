@@ -11,6 +11,9 @@
 //        per group that the skin thread redraws with draw(in:) (base pixels copied in, then the group's elements).
 //   D1   one layer whose contents is an IOSurface the skin thread draws into (sRGB, 8-bit, premultiplied).
 //   DP   the partition with IOSurface contents for the groups.
+//   +cgimage  (D1, DP; "C1", "CP" in the results) the contents are images of two bitmaps of our own used in turn, in
+//        the window's color space, instead of sRGB IOSurfaces: what B does, per layer and from the skin thread.
+//   +windowSpaceBase  (EP, DP) the base bitmap (and the scratch bitmap) in the window's color space instead of sRGB.
 //   +scratch  (EP, DP) groups are not drawn moved into their own bitmap: the dirty groups are drawn at their window
 //        position into one window-sized scratch bitmap (base pixels restored under their boxes first), and each
 //        group's box is copied out of it. CoreGraphics is not exact under whole-pixel translation (q5), this is.
