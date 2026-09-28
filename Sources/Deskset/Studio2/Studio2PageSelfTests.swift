@@ -12,6 +12,7 @@ enum Studio2PageSelfTests {
         walkthroughTests(t)
         stepTests(t)
         revertKeepsOptionsTests(t)
+        textSizeCommandTests(t)
         popoverTests(t)
         wordTests(t)
     }
@@ -324,6 +325,38 @@ enum Studio2PageSelfTests {
                 opened.app.controller(for: "Stationery\\Weather")?.skin.variable("TempUnit") == "F"
             }, "the desktop still shows °F")
             t.equal(studio.session?.undoStack.undoActionName, StudioText[.revertToOriginal], "one step")
+        }
+    }
+
+    /// ⌥⌘= / ⌥⌘−: with nothing selected, every text of the widget one step bigger (A− / A+ of the widget page); with a
+    /// text selected, its own size by the same step (A− / A+ of its page).
+    static func textSizeCommandTests(_ t: AppTestRunner) {
+        t.suite("Studio2: page: text size from the menu and the keys") {
+            Studio2SelfTests.prepare(t)
+            guard let opened = open(t, "03-customize") else { return }
+            defer { opened.close() }
+            let studio = opened.controller
+            guard let session = studio.session else { return t.check(false, "a session") }
+            t.check(studio.canStepText)
+            studio.studioTextBigger(nil)
+            t.equal(session.undoStack.undoActionName, StudioText[.undoTextSize], "one step for the whole widget")
+            session.undoStack.undo()
+            // A part: the same step as the widget's (×1.125), from the menu and from its A+.
+            studio.select(part: "MeterCPUValue")
+            func size() -> Double { (studio.skin?.meter(named: "MeterCPUValue") as? StringMeter)?.style.fontSize ?? 0 }
+            let before = size()
+            studio.studioTextBigger(nil)
+            let byMenu = size()
+            t.check(byMenu > before, "bigger: \(before) → \(byMenu)")
+            t.check(abs(TextStyle.pixelSize(points: byMenu)
+                        - StudioWidgetPage.scaled(TextStyle.pixelSize(points: before), by: StudioWidgetPage.textStep)) < 0.01,
+                    "one step of ×1.125")
+            session.undoStack.undo()
+            studio.partPage.number("text.size", part: 0, .textStep(1))
+            t.equal(size(), byMenu, "A+ is the same command")
+            session.undoStack.undo()
+            studio.studioTextSmaller(nil)
+            t.check(size() < before, "smaller")
         }
     }
 

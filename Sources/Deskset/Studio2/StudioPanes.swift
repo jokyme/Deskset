@@ -228,6 +228,18 @@ final class StudioCanvasViewController: NSViewController {
         geometryChanged()
     }
 
+    /// Zooms so that `rect` (canvas coordinates) fills the pane, at most 800%, centered on it: the user's own zoom.
+    func zoom(to rect: CGRect) {
+        guard let scroll = canvas.enclosingScrollView, rect.width > 0, rect.height > 0 else { return }
+        autoFit = false
+        fixedZoom = nil
+        let available = scroll.contentSize
+        let z = min(available.width / (rect.width + 2 * SkinCanvasView.margin),
+                    available.height / (rect.height + 2 * SkinCanvasView.margin), 8)
+        canvas.setZoom(z, centeredAt: NSPoint(x: rect.midX, y: rect.midY))
+        geometryChanged()
+    }
+
     func zoomToFit() {
         fixedZoom = nil
         autoFit = true

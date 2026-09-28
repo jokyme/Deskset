@@ -50,8 +50,8 @@ extension StudioWindowController {
         let canvas = canvasController.canvas
         canvas.isLocked = { [weak self] name in self?.lockedParts.contains(name.lowercased()) ?? false }
         canvas.onDelete = { [weak self] in
-            guard let self, let name = self.canvasController.canvas.selectedNames.last else { return }
-            self.delete(part: name)
+            guard let self else { return }
+            self.deleteParts(self.canvasController.canvas.selectedNames)
         }
         canvasController.compatState = { [weak self] in
             guard let self, let session = self.session, self.isRainmeterSkin else {

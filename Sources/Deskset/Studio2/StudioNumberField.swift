@@ -7,8 +7,10 @@ enum StudioNumberChange: Equatable {
     /// The label is being dragged: `delta` steps from where the drag began; `done` when it is released.
     case drag(delta: Double, done: Bool)
     case typed(String)
-    /// ±1 (an arrow key, A− / A+), ±10 with ⇧.
+    /// ±1 (an arrow key), ±10 with ⇧.
     case step(Double)
+    /// A− / A+ beside a text size: one step of the text-size command (⌥⌘− / ⌥⌘=), the same on a part as on the widget.
+    case textStep(Int)
     case reset
 }
 

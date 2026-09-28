@@ -115,24 +115,42 @@ extension StudioWindowController {
     /// Deletes a part: every block of its section in the widget's own files. One step, "Delete". A part a file other
     /// widgets read defines is theirs too, and is not deleted here.
     @discardableResult
-    func delete(part name: String) -> Bool {
-        guard let skin, let m = skin.meter(named: name) else { return false }
-        if let file = skin.sources.location(section: m.name)?.file, !skin.isOwnFile(file) {
-            if app.presentsWindows { NSSound.beep() }
+    func delete(part name: String) -> Bool { deleteParts([name]) }
+
+    /// Deletes parts as one step ("Delete", undone at once). Those a file other widgets read defines stay (and the
+    /// page says why); nothing is deleted when that is all of them.
+    @discardableResult
+    func deleteParts(_ names: [String]) -> Bool {
+        guard let skin else { return false }
+        let meters = names.compactMap { skin.meter(named: $0) }
+        let shared = meters.filter { m in
+            guard let file = skin.sources.location(section: m.name)?.file else { return false }
+            return !skin.isOwnFile(file)
+        }
+        let own = meters.filter { m in !shared.contains { $0 === m } }
+        if let first = shared.first, own.isEmpty {
+            partPage.sharedPartRefused(first)
             return false
         }
-        let title = partTitle(m)
+        guard !own.isEmpty else { return false }
+        let title = own.count == 1 ? partTitle(own[0]) : StudioText.format(.partsCount, own.count)
         let step = StudioText[.stepDelete]
         canvasController.canvas.setSelection(nil)
         pendingAnnouncement = StudioText.format(.confirmDeleted, title)
-        guard partPage.apply(step, [skin.op(removingSection: m.name)]) else { return false }
+        guard partPage.apply(step, own.map { skin.op(removingSection: $0.name) }) else { return false }
         partPage.show(part: nil)
         partPage.reset()
         widgetPage.refresh()
         refreshLayers()
         partPage.confirm(StudioText.format(.confirmDeleted, title), step: step, item: "", section: "",
                          change: .invisible, fromCanvas: true)
-        if let c = partPage.topConfirmation { widgetPage.showTop(c) }
+        if var c = partPage.topConfirmation {
+            // Some stayed: the confirmation says which, and why.
+            if !shared.isEmpty {
+                c.suggestion = StudioText.format(.sharedPartsKept, StudioWords.list(shared.map { partTitle($0) }))
+            }
+            widgetPage.showTop(c)
+        }
         return true
     }
 

@@ -13,6 +13,37 @@ enum Studio2CodeSelfTests {
         selectionTests(t)
         logTests(t)
         menuTests(t)
+        duplicateDeleteTests(t)
+    }
+
+    /// ⌘D as the old Studio makes it (10 points right and down, at the end of the file, one step); Delete of several
+    /// parts as one step.
+    static func duplicateDeleteTests(_ t: AppTestRunner) {
+        t.suite("Studio2: menus: Duplicate and Delete as one step each") {
+            guard let (_, studio, url, _) = open(t, "CodeDuplicate", code: false),
+                  let session = studio.session else { return }
+            let original = (try? Data(contentsOf: url)) ?? Data()
+            studio.select(part: "MeterTitle")
+            studio.studioDuplicate(nil)
+            guard let copy = studio.skin?.meter(named: "MeterTitle2"), let first = studio.skin?.meter(named: "MeterTitle")
+            else { return t.check(false, "the copy") }
+            t.equal(copy.frame.x, first.frame.x + 10, "10 points to the right")
+            t.equal(copy.frame.y, first.frame.y + 10, "and down: not on top of it")
+            t.equal(studio.skin?.meters.last?.name, "MeterTitle2", "at the end of the file")
+            t.equal(session.undoStack.undoActionName, StudioText[.stepDuplicate])
+            t.equal(studio.canvasController.canvas.selectedNames, ["MeterTitle2"], "the copy is selected")
+            session.undoStack.undo()
+            t.equal((try? Data(contentsOf: url)) ?? Data(), original, "undone byte for byte")
+            // Three parts deleted: one step, undone at once.
+            studio.canvasController.canvas.setSelection(names: ["MeterTitle", "MeterValue", "MeterBar"])
+            studio.selectionChanged(["MeterTitle", "MeterValue", "MeterBar"])
+            studio.delete(nil)
+            t.check(studio.skin?.meter(named: "MeterTitle") == nil && studio.skin?.meter(named: "MeterBar") == nil,
+                    "all three went")
+            t.equal(session.undoStack.undoActionName, StudioText[.stepDelete])
+            session.undoStack.undo()
+            t.equal((try? Data(contentsOf: url)) ?? Data(), original, "one undo brings all three back")
+        }
     }
 
     /// A widget with a shared style in an included file and CRLF line endings (so byte-exactness shows).
@@ -377,7 +408,11 @@ enum Studio2CodeSelfTests {
                                          (#selector(StudioWindowController.showOnDesktop(_:)), "d", [.command, .shift]),
                                          (#selector(StudioWindowController.toggleRainmeterDetails(_:)), "r", [.command, .option]),
                                          (#selector(StudioWindowController.studioRefresh(_:)), "r", [.command]),
-                                         (#selector(StudioWindowController.toggleInteract(_:)), "p", [.command, .option])]
+                                         (#selector(StudioWindowController.toggleInteract(_:)), "p", [.command, .option]),
+                                         (#selector(StudioWindowController.studioTextBigger(_:)), "=", [.command, .option]),
+                                         (#selector(StudioWindowController.studioTextSmaller(_:)), "-", [.command, .option]),
+                                         (#selector(StudioWindowController.studioZoomToSelection(_:)), "9",
+                                          [.command, .shift])]
             for (action, key, flags) in expected {
                 let item = find(action)
                 t.equal(item?.keyEquivalent, key, "\(item?.title ?? NSStringFromSelector(action))")
@@ -397,14 +432,33 @@ enum Studio2CodeSelfTests {
                   let left = items.first(where: { ($0.representedObject as? String) == EditorAlign.Mode.left.rawValue }) else {
                 return t.check(false, "Align's items")
             }
-            t.equal(studio.validateMenuItem(hint), false)
+            t.equal(studio.validateMenuItem(hint), true, "said, not greyed out")
             t.check(!hint.isHidden, "the hint shows")
             t.equal(hint.title, "To line up widgets on your desktop, use Arrange Widgets")
+            studio.studioArrangeWidgetsHint(hint)
+            t.equal(studio.widgetPage.page?.topConfirmation?.text, StudioText[.arrangeWidgetsLater],
+                    "until Arrange Widgets is there, the page says so")
+            // File ▸ Revert to Original: only while there is something to put back (not a built-in widget here).
+            if let revert = find(#selector(StudioWindowController.studioRevertToOriginal(_:))) {
+                t.equal(studio.validateMenuItem(revert), false, "nothing to revert")
+            } else {
+                t.check(false, "File ▸ Revert to Original")
+            }
+            if let zoom = find(#selector(StudioWindowController.studioZoomToSelection(_:))) {
+                t.equal(studio.validateMenuItem(zoom), false, "nothing selected: nothing to zoom to")
+            }
             t.equal(studio.validateMenuItem(left), false, "nothing to align")
             studio.select(part: "MeterTitle")
             _ = studio.validateMenuItem(hint)
             t.check(hint.isHidden, "a part selected: no hint")
             t.equal(studio.validateMenuItem(left), true)
+            if let zoom = find(#selector(StudioWindowController.studioZoomToSelection(_:))) {
+                t.equal(studio.validateMenuItem(zoom), true)
+                let before = studio.canvasController.canvas.zoom
+                studio.studioZoomToSelection(zoom)
+                t.check(studio.canvasController.canvas.zoom > before, "the selection fills the canvas")
+                studio.fitClicked()
+            }
             // Undo is named after the step.
             t.check(type(studio, replacing: "Text=Hello", with: "Text=Hi"))
             studio.codeView.commitNow()

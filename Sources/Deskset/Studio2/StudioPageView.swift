@@ -694,7 +694,7 @@ final class StudioRowView: NSView, StudioPageItemView {
             if n.steppers {
                 if steppers == nil {
                     let b = StudioTextSizeButtons()
-                    b.onStep = { [weak self] step in self?.onEvent?(.number(part: 0, .step(Double(step)))) }
+                    b.onStep = { [weak self] step in self?.onEvent?(.number(part: 0, .textStep(step))) }
                     steppers = b
                     addSubview(b)
                 }

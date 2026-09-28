@@ -195,6 +195,11 @@ extension StudioPartPage {
             let pt = (now + d).rounded()
             write("FontSize", fileValue(pt), of: m, name: spec.name,
                   confirm: StudioText.format(.confirmOption, spec.title, shown(pt)), item: item, section: spec.section)
+        case .textStep(let step):
+            // The widget page's step (×1.125, to a quarter point), so A− / A+ is one command everywhere.
+            let pt = StudioWidgetPage.scaled(now, by: step > 0 ? StudioWidgetPage.textStep : 1 / StudioWidgetPage.textStep)
+            write("FontSize", fileValue(pt), of: m, name: spec.name,
+                  confirm: StudioText.format(.confirmOption, spec.title, shown(pt)), item: item, section: spec.section)
         case .reset:
             write("FontSize", nil, of: m, name: spec.name, confirm: StudioText.format(.confirmReset, spec.title),
                   item: item, section: spec.section, change: .revert, elementOnly: true)
@@ -244,6 +249,8 @@ extension StudioPartPage {
         case .reset:
             write(key, nil, of: m, name: name, confirm: StudioText.format(.confirmReset, key), item: item,
                   section: spec.section, change: .revert, elementOnly: true)
+        case .textStep:
+            break
         }
     }
 
@@ -288,6 +295,8 @@ extension StudioPartPage {
         case .reset:
             write(spec.key, nil, of: m, name: spec.name, confirm: StudioText.format(.confirmReset, spec.title),
                   item: item, section: spec.section, change: .revert, elementOnly: true)
+        case .textStep:
+            break
         }
     }
 
@@ -323,6 +332,7 @@ extension StudioPartPage {
         case .typed(let t): target = StudioNumberInput.evaluate(t)
         case .step(let d): target = current + d
         case .reset: target = isRadius ? 0 : 1
+        case .textStep: return
         }
         guard let v = target.map({ max($0, 0) }) else { return beep() }
         let text = StudioNumberInput.text(v)

@@ -772,7 +772,7 @@ extension StudioWindowController {
         goUp()
     }
 
-    /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code; the sidebar's keys.
+    /// ⌥⌘E: Every Setting; ⌥⌘↩: Show in Code; ⌥⌘= and ⌥⌘−: text size; the sidebar's keys.
     func keyEquivalent(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return false }
         if sidebarKeyEquivalent(event) { return true }
@@ -784,6 +784,15 @@ extension StudioWindowController {
         }
         if event.keyCode == 36 || event.keyCode == 76 {
             showInCode(nil)
+            return true
+        }
+        // ⌥⌘= / ⌥⌘−: one step of text size (the Edit menu has them too).
+        if [24, 69].contains(event.keyCode), canStepText {
+            stepText(1)
+            return true
+        }
+        if [27, 78].contains(event.keyCode), canStepText {
+            stepText(-1)
             return true
         }
         return false

@@ -282,6 +282,18 @@ final class StudioPreviewController {
         refreshAll()
     }
 
+    /// Zoom to Selection (⇧⌘9): the selected parts fill the canvas (at most 800%), centered.
+    func zoomToSelection() {
+        let canvas = canvasController.canvas
+        guard let skin = session?.studioSkin else { return }
+        let frames = canvas.selectedNames.compactMap { skin.meter(named: $0)?.frame }.map(canvas.viewRect)
+        guard var r = frames.first else { return zoomToFit() }
+        for f in frames.dropFirst() { r = r.union(f) }
+        isActualSize = false
+        canvasController.zoom(to: r)
+        refreshAll()
+    }
+
     /// Actual Size (⌘0): 100 %, the backdrop lined up with where the widget really is, the other widgets around it.
     func actualSize() {
         canvasController.setZoom(1)

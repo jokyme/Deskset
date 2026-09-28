@@ -44,6 +44,8 @@ enum StudioMenus {
         file.addItem(item(StudioText[.menuClose], #selector(NSWindow.performClose(_:)), key: "w"))
         file.addItem(item(StudioText[.menuSave], #selector(S.studioSave(_:)), key: "s"))
         file.addItem(.separator())
+        file.addItem(item(StudioText[.revertToOriginal], #selector(S.studioRevertToOriginal(_:))))
+        file.addItem(.separator())
         file.addItem(item(StudioText[.menuShare], #selector(S.studioShare(_:))))
         file.addItem(item(StudioText[.showInFinder], #selector(S.studioShowInFinder(_:))))
         add(file, to: main)
@@ -58,6 +60,12 @@ enum StudioMenus {
         edit.addItem(item(StudioText[.menuDuplicate], #selector(S.studioDuplicate(_:)), key: "d"))
         edit.addItem(item(StudioText[.menuDelete], #selector(S.delete(_:))))
         edit.addItem(item(StudioText[.menuSelectAll], #selector(NSResponder.selectAll(_:)), key: "a"))
+        edit.addItem(.separator())
+        // The text size, one step (the widget's A− / A+ with nothing selected, the part's with one).
+        edit.addItem(item(StudioText[.menuTextBigger], #selector(S.studioTextBigger(_:)), key: "=",
+                          modifiers: [.command, .option]))
+        edit.addItem(item(StudioText[.menuTextSmaller], #selector(S.studioTextSmaller(_:)), key: "-",
+                          modifiers: [.command, .option]))
         edit.addItem(.separator())
         let find = NSMenu(title: StudioText[.menuFind])
         find.addItem(item(StudioText[.menuFindChange], #selector(S.studioFind(_:)), key: "f"))
@@ -143,6 +151,8 @@ enum StudioMenus {
         view.addItem(item(StudioText[.zoomOut], #selector(S.zoomOutClicked), key: "-"))
         view.addItem(item(StudioText[.actualSize], #selector(S.actualSizeClicked), key: "0"))
         view.addItem(item(StudioText[.zoomToFit], #selector(S.fitClicked), key: "9"))
+        view.addItem(item(StudioText[.zoomToSelection], #selector(S.studioZoomToSelection(_:)), key: "9",
+                          modifiers: [.command, .shift]))
         view.addItem(.separator())
         view.addItem(item(StudioText[.showOnDesktop], #selector(S.showOnDesktop(_:)), key: "d",
                           modifiers: [.command, .shift]))
@@ -248,23 +258,33 @@ extension StudioWindowController {
         if isCodeShown { showCodeFileInFinder() } else { link?.showInFinder() }
     }
 
-    /// ⌘D: a copy of the selected part, after it.
+    /// ⌘D: a copy of each selected part, 10 points right and down so it shows, at the end of the widget's file (as
+    /// the old Studio makes it): one step, the copies selected.
     @objc func studioDuplicate(_ sender: Any?) {
-        guard let skin, let name = canvasController.canvas.selectedNames.last,
-              let section = skin.document.section(named: name) else { return }
-        var number = 2
-        var copy = name + "2"
-        while skin.document.section(named: copy) != nil {
-            number += 1
-            copy = name + String(number)
+        guard let skin else { return }
+        let names = canvasController.canvas.selectedNames.filter { skin.meter(named: $0) != nil }
+        guard !names.isEmpty else { return }
+        var taken = skin.sectionNames
+        let sections = names.compactMap { skin.duplicateSections($0, dx: 10, dy: 10, taken: &taken) }
+        guard !sections.isEmpty else { return }
+        let title = names.count == 1 ? skin.meter(named: names[0]).map { partPage.partTitle($0, skin: skin) } ?? names[0]
+            : StudioText.format(.partsCount, names.count)
+        let step = StudioText[.stepDuplicate]
+        pendingAnnouncement = StudioText.format(.confirmAdded, title)
+        guard partPage.apply(step, [skin.op(appending: sections)]) else { return }
+        refreshLayers()
+        let copies = sections.map(\.name).filter { self.skin?.meter(named: $0) != nil }
+        if copies.count == 1 {
+            select(part: copies[0])
+        } else if !copies.isEmpty {
+            canvasController.canvas.setSelection(names: copies)
+            selectionChanged(copies)
         }
-        let title = skin.meter(named: name).map { partPage.partTitle($0, skin: skin) } ?? name
-        insert([StudioAddCatalog.copy(of: section, named: copy)], title: title)
     }
 
-    /// Delete: the selected parts.
+    /// Delete: the selected parts, as one step (parts a file other widgets share defines stay, and the page says so).
     @objc func delete(_ sender: Any?) {
-        for name in canvasController.canvas.selectedNames { _ = delete(part: name) }
+        deleteParts(canvasController.canvas.selectedNames)
     }
 
     /// ⌘A on the canvas: every part.
@@ -335,8 +355,41 @@ extension StudioWindowController {
         geometry.end(keep: true)
     }
 
-    /// The hint in Align while nothing is selected: lining up widgets is Arrange Widgets' (which comes later).
-    @objc func studioArrangeWidgetsHint(_ sender: Any?) {}
+    /// The hint in Align while nothing is selected: lining up widgets is Arrange Widgets', which is not there yet —
+    /// the hint says so (instead of greying out).
+    @objc func studioArrangeWidgetsHint(_ sender: Any?) {
+        widgetPage.showTop(.init(text: StudioText[.arrangeWidgetsLater], undo: ""))
+        announce(StudioText[.arrangeWidgetsLater])
+    }
+
+    /// ⌥⌘= / ⌥⌘−: one step of text size — every text of the widget with nothing selected (A− / A+ of its page), the
+    /// selected text's own size with one (A− / A+ of the part's page).
+    @objc func studioTextBigger(_ sender: Any?) { stepText(1) }
+    @objc func studioTextSmaller(_ sender: Any?) { stepText(-1) }
+
+    func stepText(_ step: Int) {
+        if let name = canvasController.canvas.selectedNames.last, skin?.meter(named: name) is StringMeter {
+            if partPage.focus == nil || partPage.meter?.name.caseInsensitiveCompare(name) != .orderedSame {
+                select(part: name)
+            }
+            partPage.number("text.size", part: 0, .textStep(step))
+        } else {
+            widgetPage.scaleText(step)
+        }
+    }
+
+    /// Whether ⌥⌘= / ⌥⌘− has text to change.
+    var canStepText: Bool {
+        guard let skin else { return false }
+        if let name = canvasController.canvas.selectedNames.last { return skin.meter(named: name) is StringMeter }
+        return !(widgetPage.facts?.textSizes.isEmpty ?? true)
+    }
+
+    /// File ▸ Revert to Original: the widget page's footer command.
+    @objc func studioRevertToOriginal(_ sender: Any?) { widgetPage.revertToOriginal() }
+
+    /// ⇧⌘9: the selection fills the canvas.
+    @objc func studioZoomToSelection(_ sender: Any?) { preview.zoomToSelection() }
     @objc func studioArrangeWidgets(_ sender: Any?) {}
 
     @objc func showDesignOnly(_ sender: Any?) { setCodeMode(.hidden) }
@@ -386,7 +439,15 @@ extension StudioWindowController {
             return false
         case #selector(studioArrangeWidgetsHint(_:))?:
             item.isHidden = !selected.isEmpty
-            return false
+            return true
+        case #selector(studioTextBigger(_:))?, #selector(studioTextSmaller(_:))?:
+            return canStepText
+        case #selector(studioRevertToOriginal(_:))?:
+            let link = widgetPage.revertLink()
+            item.title = link.map { StudioText.format(.menuRevertCount, $0.detail ?? "") } ?? StudioText[.revertToOriginal]
+            return link != nil
+        case #selector(studioZoomToSelection(_:))?:
+            return !selected.isEmpty
         case #selector(studioAlign(_:))?:
             let mode = (item.representedObject as? String).flatMap(EditorAlign.Mode.init(rawValue:))
             if mode == .distributeX || mode == .distributeY { return selected.count >= 3 }

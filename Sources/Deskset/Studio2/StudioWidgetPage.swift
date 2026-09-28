@@ -597,10 +597,13 @@ final class StudioWidgetPage {
         }
     }
 
+    /// One step of text size (A− / A+, ⌥⌘− / ⌥⌘=), on the widget and on a part alike.
+    static let textStep = 1.125
+
     /// A− / A+: every text size of the widget one step smaller or bigger (×1.125), in one step.
     func scaleText(_ step: Int) {
         guard let facts, let skin, !facts.textSizes.isEmpty else { return }
-        let factor = step > 0 ? 1.125 : 1 / 1.125
+        let factor = step > 0 ? Self.textStep : 1 / Self.textStep
         var ops: [EditOp] = []
         for size in facts.textSizes {
             let value = Self.scaled(size.value, by: factor)

@@ -594,6 +594,11 @@ enum StudioText {
         case distributeX = "distribute.x"
         case distributeY = "distribute.y"
         case alignWidgetsHint = "align.widgetsHint"
+        case arrangeWidgetsLater = "align.arrangeLater"
+        case menuTextBigger = "menu.textBigger"
+        case menuTextSmaller = "menu.textSmaller"
+        case menuRevertCount = "menu.revertCount"
+        case zoomToSelection = "zoom.selection"
         case arrangeWidgets = "menu.arrangeWidgets"
         case stepAlign = "step.align"
         case stepDistribute = "step.distribute"
@@ -1165,6 +1170,12 @@ enum StudioText {
         .distributeY: ("Vertically", "垂直"),
         .alignWidgetsHint: ("To line up widgets on your desktop, use Arrange Widgets", "要对齐桌面上的几个小组件，请用“整理小组件”"),
         .arrangeWidgets: ("Arrange Widgets…", "整理小组件…"),
+        .arrangeWidgetsLater: ("Arrange Widgets comes in a later version: for now, drag the widgets on your desktop",
+                               "“整理小组件”会在以后的版本里加入：现在请在桌面上拖动小组件"),
+        .menuTextBigger: ("Make Text Bigger", "放大文字"),
+        .menuTextSmaller: ("Make Text Smaller", "缩小文字"),
+        .menuRevertCount: ("Revert to Original (%@)", "恢复为原件（%@）"),
+        .zoomToSelection: ("Zoom to Selection", "缩放到所选内容"),
         .stepAlign: ("Align", "对齐"),
         .stepDistribute: ("Distribute", "分布"),
         .stepDuplicate: ("Duplicate", "复制"),
