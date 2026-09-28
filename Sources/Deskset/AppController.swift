@@ -127,6 +127,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let threadingNote { Log.write(threadingNote, level: threading == .main ? .warning : .notice) }
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
+        // `defaults write app.deskset.Deskset FrameTimingLog -int 10`: how evenly each skin's frames come, in the log.
+        FrameTimingLog.configure(from: .standard)
         if !Paths.isAppBundle { NSApp.applicationIconImage = AppIcon.image(size: 512) }
         NSApp.mainMenu = MainMenu.make(app: self)
         CodeEditorRouter.install(app: self)

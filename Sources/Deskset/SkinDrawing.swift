@@ -350,6 +350,8 @@ final class SkinFrameProducer {
     /// Seconds spent drawing frames, in all and the longest frame (tests and measurements; on the executor).
     private(set) var drawingTime: TimeInterval = 0
     private(set) var longestFrame: TimeInterval = 0
+    /// What `FrameTimingLog` reports next: when each frame was presented, and the longest drawing, since the last report.
+    private var timing = FrameTimingLog.Window()
 
     /// How long a turn may run before a frame asked for in it is drawn anyway (a thread that never waits).
     static let frameInterval: TimeInterval = 1.0 / 60
@@ -491,11 +493,63 @@ final class SkinFrameProducer {
         provider.present(SkinFrame(image: picture, scale: scale))
         framesDrawn += 1
         drewThisTurn = true
+        if FrameTimingLog.period > 0 {
+            let now = ProcessInfo.processInfo.systemUptime
+            timing.note(presentedAt: now, drawing: now - began)
+            if let report = timing.report(at: now, every: FrameTimingLog.period) {
+                Log.write("Frames: \(report)", source: skin.config)
+            }
+        }
     }
 
     /// Runs `body` with the appearance named `name` as the thread's drawing appearance.
     static func withAppearance(_ name: String, _ body: () -> Void) {
         guard let appearance = NSAppearance(named: NSAppearance.Name(rawValue: name)) else { return body() }
         appearance.performAsCurrentDrawingAppearance(body)
+    }
+}
+
+/// `defaults write app.deskset.Deskset FrameTimingLog -int 10`: every 10 seconds, each skin that presented frames logs
+/// how evenly they came (the time between two frames presented: median, 95th percentile and longest), how many there
+/// were and its longest drawing. For measuring frame pacing (docs/skin-threading.md §15); read at launch, off by
+/// default. A skin that presents no frame for a while logs nothing for that while; its next report counts the gap.
+enum FrameTimingLog {
+    static let defaultsKey = "FrameTimingLog"
+    /// Seconds between two reports of a skin (0: off). Set at launch, before any skin loads.
+    static var period: TimeInterval = 0
+
+    static func configure(from defaults: UserDefaults) {
+        let value = defaults.object(forKey: defaultsKey)
+        let seconds = (value as? NSNumber)?.doubleValue ?? (value as? String).flatMap(Double.init) ?? 0
+        period = seconds.isFinite && seconds > 0 ? seconds : 0
+        if period > 0 { Log.write("Frame timing log on: every \(Int(period)) s") }
+    }
+
+    /// The frames of one skin since its last report. On the skin's executor.
+    struct Window {
+        private var presented: [TimeInterval] = []
+        private var longestDrawing: TimeInterval = 0
+        private var since: TimeInterval?
+
+        mutating func note(presentedAt time: TimeInterval, drawing: TimeInterval) {
+            if since == nil { since = time }
+            if presented.count < 4096 { presented.append(time) }
+            longestDrawing = max(longestDrawing, drawing)
+        }
+
+        /// The report when `period` has passed since the window began, and a new window from the last frame on.
+        mutating func report(at now: TimeInterval, every period: TimeInterval) -> String? {
+            guard let since, now - since >= period, presented.count >= 2 else { return nil }
+            let gaps = zip(presented.dropFirst(), presented).map { ($0 - $1) * 1000 }.sorted()
+            func at(_ q: Double) -> Double { gaps[min(gaps.count - 1, Int((Double(gaps.count - 1) * q).rounded()))] }
+            let text = String(format: "%d in %.1f s; between frames p50 %.1f ms, p95 %.1f ms, longest %.1f ms; "
+                              + "longest drawing %.1f ms", gaps.count, now - since, at(0.5), at(0.95),
+                              gaps.last ?? 0, longestDrawing * 1000)
+            let last = presented.last ?? now
+            presented = [last]
+            longestDrawing = 0
+            self.since = last
+            return text
+        }
     }
 }
