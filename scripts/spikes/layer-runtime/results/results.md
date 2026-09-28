@@ -446,7 +446,8 @@ skin thread (A and B: the main thread).
   tens of MB on its own on a busy screen, so it is measured on its own (`wsmem`): one opening per fresh process, the
   step between the median of 5 `top` samples before opening and after 8 s of updates; a round counts as clean when the
   footprint went back to its start after closing (within 2 MB). With it: WindowServer's resident size (`ps`) and the
-  GPU's "In use system memory" (the whole system, from the I/O Registry).
+  GPU's "In use system memory" (the whole system, from the I/O Registry). (After review: none of these can see the
+  layers' contents, and the clean-round filter selects on the outcome; see Conditions.)
 - Frame cost: time to draw one update (A: recording in `draw(_:)`; B: drawing the bitmap in `updateLayer`; E / D:
   drawing before the commit, on the skin thread) and to commit it.
 - Rounds: every combination 3 times (the cost and wscpu tables), WindowServer memory 5 times. Tables give the median
@@ -571,7 +572,11 @@ between modes, so the process-MB column is not used to rank modes; see "After re
 | 09-28 | ten, EPw, default window | -0.50 (-4.36–8.74) | -0.153 ± 0.44 | 1.44 (1.36–1.52) | 6.54 |
 
 **WindowServer memory** (wsmem: `top` step when the widgets open, per widget; "ten" is 20 System widgets in the first
-campaign and 10 in the second; the GPU's "in use" memory is the whole system's and moves by tens of MB on its own)
+campaign and 10 in the second; the GPU's "in use" memory is the whole system's and moves by tens of MB on its own).
+**Not evidence (corrected after review):** `top` cannot see layer contents (Conditions, question 6: one image and 8
+copies of it both +12–13 MB), and the "clean round" filter selects on the outcome (design EP sRGB's 0.00 MB is 1 of
+5 rounds, whose other steps were +3, +5, +5 MB; design DP had no clean round). The table stays as a raw record; the
+"all rounds" column gives every step.
 
 | campaign | scenario | mode | widgets | clean / rounds | WS MB per widget, clean rounds | WS open steps MB, all rounds | GPU in use MB per widget | process MB per widget |
 |---|---|---|---|---|---|---|---|---|
@@ -655,6 +660,9 @@ campaign and 10 in the second; the GPU's "in use" memory is the whole system's a
   one core, the scratch variants 1.72–1.91 %, one layer (E1, C1, D1) and B drawn in full 1.56–2.08 %; today's B+kept
   0.75 % and A 0.62–0.78 % (both on the main thread). At 60 Hz: B+kept 3.98 %, CPw 4.07 %, DP 4.18 %, EPw 5.57 %,
   E1 6.49 %, B 7.73 %, A 8.11 %. The design skin is cheap in every mode that redraws only what changed (0.09–0.15 %).
+  (Corrected after review: these 60 Hz figures mix separate batches and loads; C and the B+kept rerun were not
+  interleaved with E, and all EPw rounds were above load 8. The interleaved batch and the paired step above replace
+  them for ranking.)
 - **Most of the partition's cost in the 10-widget runs comes from how the updates are timed, not from the layers.**
   The same 10 widgets on **one shared skin thread**, updating one after another: EPw 0.62 %, CPw 0.58 % (below
   B+kept), E1 1.41 %, C1 1.50 %. On ten threads with their updates **spread over the second** instead of at the same
