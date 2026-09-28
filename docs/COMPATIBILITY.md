@@ -1226,7 +1226,9 @@ window, config and app bangs. Details: [`compat/app.md`](compat/app.md).
   reaches further (the network, programs, live system state) runs for real, gets up to one interval to come back, and
   is listed on stderr as not verifiable. `--seed` makes its random numbers (Calc `Random`, QuotePlugin, Lua
   `math.random`…) the same in every run. The image is drawn in the device RGB space; `--color-space srgb` draws it
-  into an 8-bit premultiplied sRGB bitmap instead (the space reference images are compared in). Window, config and
+  into an 8-bit premultiplied sRGB bitmap instead (the space reference images are compared in). Development builds
+  also take `--legacy`: a frozen copy of the renderer measures and draws the skin (the reference the renderer is
+  compared with, byte for byte, while its code moves); release builds reject it. Window, config and
   app bangs are ignored, mouse actions
   never run, and nothing asks for a permission: no audio is captured, since only skins in skin windows capture
   (`DESKSET_AUDIO_DEMO=1` feeds a generated signal), players look closed (`DESKSET_NOWPLAYING_DEMO=1` fakes a playing

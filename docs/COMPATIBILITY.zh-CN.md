@@ -1110,7 +1110,8 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
   本地文件（QuotePlugin、FolderInfo、FileView、WebParser 的 `file://`）当作固定输入读取；需要网络、外部程序或实时系统状态
   的工作照常执行，最多等一个间隔拿回结果，并在 stderr 中标为无法验证。`--seed` 让皮肤的随机数（Calc 的 `Random`、
   QuotePlugin、Lua 的 `math.random`…）每次运行都相同。图片画在设备 RGB 色彩空间里；`--color-space srgb` 改为画进 8 位、
-  预乘的 sRGB 位图（参考图比较用的色彩空间）。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
+  预乘的 sRGB 位图（参考图比较用的色彩空间）。开发版还接受 `--legacy`：由一份冻结的渲染器副本来测量和绘制皮肤（渲染代码搬动期间，
+  渲染器要和它逐字节比较）；发布版不接受这个选项。窗口、配置和应用程序类 bang 被忽略，鼠标动作从不执行，也不会请求任何权限：不采集任何音频，因为只有
   皮肤窗口中的皮肤才会采集（`DESKSET_AUDIO_DEMO=1` 提供生成的信号），播放器显示为关闭
   （`DESKSET_NOWPLAYING_DEMO=1` 模拟一首正在播放的曲目）。图片中看不到 FrostedGlass 的模糊效果，MacGlass 以替代图形绘制
   （[§6.8](#68-deskset-扩展)）；WebParser 的 `file://` 只能
