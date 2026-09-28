@@ -1841,9 +1841,9 @@ suite's `TestThreadExecutor`.
    - The log: no error, no warning and no main-thread step over 250 ms in the hour.
    - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers: Simple Clean's at `Update=0`,
      the 16 ms minimum, about 60 frames a second, and Spectrum at 33 ms, 30 frames a second).
-5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac). The machine did not get quiet: other
-   work kept the 1-minute load average at 3.5–6.4 for the whole hour, so the numbers were taken under that load
-   (noted). Each copy of the app had a home of its own and the demo audio and player.
+5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac; measured again against the right
+   baseline in the review below, item 9). The machine did not get quiet: other work kept the 1-minute load average at
+   3.5–6.4 for the whole hour, so the numbers were taken under that load (noted). Each copy of the app had a home of its own and the demo audio and player.
    - **CPU and energy, ten typical skins** (the soak's ten: five Stationery widgets, Spectrum among them, and five from
      the corpus, one a visualizer), above other windows (`AlwaysOnTop=1`), averaged over 120 s after 30 s, main and
      engine alternately, twice: Deskset 14.2 % and 13.9 % of a core with `main`, 14.3 % and 13.2 % with `engine`;
