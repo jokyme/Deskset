@@ -595,6 +595,13 @@ How to read these:
 - D (IOSurface) is the fallback for anything the recording path mishandles.
 - B (hop to main) is *not* a fallback for the goal: it keeps skins apart from each other but not from the UI.
 
+*Since 2026-09-27* skin windows no longer let the window server rasterize a recording: the view draws into a bitmap
+of its own and keeps pictures of the meters that did not change (§2.1). E now builds on that. The skin's executor
+produces that bitmap (`SkinBitmapDrawing`) and commits it as the contents of the skin's own `contentLayer`, whichever
+executor runs the skin, the main one included. Nothing records and nothing calls `draw(in:)`. The commit rules below
+are unchanged. The layer sits behind a `ContentProvider` seam, so that a later, layer-based runtime can replace it
+(§15, phase 2 plan).
+
 Rules for committing off the main thread:
 1. Draw only into a **sublayer the skin owns** (`contentLayer`). The layer AppKit creates for the view stays
    AppKit's and is touched only on main.
@@ -1300,3 +1307,194 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
 - the FrostedGlass and InputText companions, and AudioLevel capture and live NowPlaying for skins outside
   `SkinController` (idle in the suite); a NowPlaying measure read on demand still asks its `SkinController` whether
   updates are paused (`currentSnapshot`), a main-thread object (§4.6).
+
+### Phase 2: plan (2026-09-28)
+
+The goal is §10's: every desktop skin runs on one shared engine thread, the UI (menus, the Manage window, the Studio,
+the installer) no longer stalls skins, and `SkinThreading=main` switches back. The plan is for the code as it is on
+2026-09-28. Later work fixed four things that §5–§8 do not say:
+
+1. **A content seam.** `protocol ContentProvider { present(_ frame: SkinFrame); setVisible(_: Bool);
+   setScale(_: CGFloat); teardown() }`. The `contentLayer` of §7.3 is its first implementation
+   (`LayerContentProvider`). A later, layer-based runtime will replace it, so nothing outside the provider touches
+   `contentLayer`.
+2. **Frames are bitmaps** (§2.1, §7.3). The skin's executor produces the bitmap with `SkinBitmapDrawing`, which keeps
+   pictures of the meters whose drawing generation did not change, and presents it through the provider. This holds
+   whichever executor runs the skin, the main one included.
+3. **The Studio edits an instance of its own** (§8.5). The desktop copy stays on the engine thread while the Studio is
+   open, and its reloads carry a ticket.
+4. **A `SkinThreading` defaults key**, `main` or `engine` (`perSkin` comes in phase 3). The app's default stays
+   `main` through these steps. It becomes `engine` only after the stress suite and a soak have run with it, and `main`
+   stays selectable for debugging. The headless modes, the Manage window's dry runs, thumbnails, the Studio's own
+   instance and the existing self-tests keep `MainSkinExecutor` (§8.7).
+
+**How the pieces fit**
+
+| Piece | Where | What it does |
+|---|---|---|
+| `SkinRuntime` | the skin's executor; `SkinRuntime.swift` | Owns the `Skin` and is its `SkinHost`, `LiveSkinHost` and `SkinImageQueries`. Runs the update clock, pause and wake, the window model and the frame producer; publishes the snapshot; handles messages; sends requests. Closes the skin and lets go of it on the executor. |
+| `SkinWindowController` | main; today's `SkinController`, renamed (a `typealias SkinController` stays until phase 5, so the Studio and the tests keep compiling) | The panel, `SkinView`, the glass views, fades, hover polling, drag, snap and keep-on-screen, `AppState`. Applies requests, publishes window facts. |
+| `SkinMessage`, `SkinRequest` | `SkinMessages.swift` | §5.4's lists, plus what the steps below add. |
+| `SkinSnapshot`, `SkinHitMap` | the hit map in DesksetCore (`Engine/SkinHitMap.swift`), the snapshot in the app | §5.5. |
+| `SkinWindowModel`, `EnvironmentStore`, `SkinDirectory` | the app | §8.1, §4.2, §5.4. |
+| `ContentProvider`, `LayerContentProvider` | `ContentProvider.swift` | Above. |
+| `SkinThreadExecutor` | DesksetCore, `Engine/SkinThreadExecutor.swift` | The stress suite's `TestThreadExecutor`, promoted. One shared engine thread in this phase. |
+
+**Delivery rules.** These keep `SkinThreading=main` exactly as it is today, while the same code queues its work
+when a skin runs on the engine thread.
+- A message to a runtime runs **inline when the sender is on the runtime's executor**; otherwise it is queued there,
+  first in, first out (hover and window facts are coalesced to the latest). With the main executor every UI event
+  still reaches the skin synchronously and in the same order.
+- A request to the main thread runs inline on the main thread. From anywhere else it is queued with
+  `DispatchQueue.main.async`, the queue of `AppController.later`, so lifecycle bangs keep their order.
+- Inline delivery hands back what the live skin answered (whether a mouse event was handled). The view uses that
+  answer when it has one and the snapshot's prediction otherwise. In debug builds with the main executor, every answer
+  the snapshot or the window facts give is also asked of the live skin or window, and a difference fails the
+  self-tests. So the existing suites check the snapshot wherever they click, hover or ask for a tooltip.
+- Bangs between skins go through the `SkinDirectory` to the target's runtime under the same rule: inline when the
+  target runs on the sender's thread. On this phase's one engine thread every skin does, so **bangs between skins stay
+  synchronous in phase 2**. §8.2's asynchronous delivery, and its compatibility note (§9), take effect with threads of
+  their own in phase 3. A hop count carried with the bang replaces the static `forwardDepth` (the limit stays 16).
+- **Exclusive access belongs to the executor**: `executor.exclusive(timeout:) { … }`.
+  - On the owner it runs at once (the main executor on the main thread).
+  - From the main thread to a skin on another thread, it queues a block that parks that thread between two pieces of
+    work, and waits for the park with the timeout. A park that comes after the timeout finds itself cancelled and
+    returns at once.
+  - While the main thread holds it, `isCurrent` is true on the main thread and false on the parked one, so
+    `assertOwned`, the inline rule and requests all treat the main thread as the owner.
+  - On the shared engine thread it parks every skin at once, for the few milliseconds a context menu needs.
+
+**Frames** (E, on bitmaps):
+- The runtime's frame producer takes over the `SkinBitmapDrawing` that `SkinView` owns today. `skinNeedsDisplay` marks
+  the skin dirty. The producer draws at most once per turn of its executor's run loop: in a before-waiting observer
+  ordered before Core Animation's commit, which is where AppKit's display pass drew. A skin thread that never waits
+  also draws once a turn has run for longer than a frame.
+- It draws at the backing scale, in the color space and with the appearance that the main thread publishes in the
+  window facts; today the view reads the same three from its window.
+- It does not draw while the window cannot be seen: not shown yet, ordered out, occluded, hidden by a bang, or never
+  shown at all, as in the headless self-tests, where AppKit never displayed the view either. When the window can be
+  seen again it draws one frame. The first frame is drawn before the window is first shown.
+- `LayerContentProvider`: `contentLayer` is a sublayer of `SkinView`'s layer, anchored top-left under the flipped
+  view, with no implicit actions. Its bounds are always the size of the frame it shows, so nothing is stretched.
+  `present` sets bounds and contents in an explicit transaction (§7.3, rule 2; `flush` only off the main thread).
+- A size change: the content layer's bounds change in the same transaction as the frame, and the window is resized
+  by a `.resize` request (top-left corner fixed, as now). For at most one frame the window clips the frame or leaves
+  a transparent margin; it never stretches it.
+- `SkinView` keeps `draw(_:)`, for `cacheDisplay` snapshots, and gives its own layer no contents.
+
+**The snapshot** (§5.5) is built when a piece of top-level work ends. The engine gets one new host callback,
+`skinDidFinishWork`, at the end of an update, an action or bang from outside, a mouse entry, a hop's work or a preview
+(`actionDepth == 0 && updateDepth == 0`).
+- It is built again only when `Skin.snapshotGeneration` moved. The engine bumps it for layout, visibility, the state of
+  mouse actions, options, tooltips that show measure values, issues and groups.
+- A reader on the skin's own thread publishes a pending snapshot before it reads.
+- The hit map holds value-type mouse shapes (`MouseShape`: a rectangle; a Shape's items with its transform and
+  background; a Button's image, frames and flips). `Meter.isHit`, `ShapeMeter.hitTest` and `ButtonMeter.hitTest` use
+  the same values, so there is one hit test, not two that could drift apart.
+
+**Not in these steps** (a later pass does them): stress runs on the engine thread, §10's measurements (Deskset and
+WindowServer CPU for ten skins, a visualizer's frame pacing while the Studio is open, energy), the soak, and making
+`engine` the default.
+
+**Steps.** Every step ends with all of these passing:
+- `swift build` and `swift run DesksetSelfTest`;
+- `.build/debug/Deskset --self-test` in one process, once for each scroller style: the default, then
+  `-AppleShowScrollBars WhenScrolling`, then `-AppleShowScrollBars Always` (placed before `--self-test`);
+- `scripts/check-main-thread.sh` with the step's suites.
+
+Steps 1–6 change nothing with `SkinThreading=main`, the only mode until step 7; the one exception is a visible
+difference that step 4 might find, which it records. Timing checks wait for a condition, never for a fixed time (CI's
+Intel runner is about three times slower). Tests that need a skin on another thread before step 7 use the stress
+suite's `TestThreadExecutor`.
+
+1. **Split `SkinController` into `SkinRuntime` and `SkinWindowController`**, still on the main executor.
+   - Everything that touches the `Skin` moves into the runtime: `SkinHost`, `LiveSkinHost`, `SkinImageQueries`, the
+     update clock, pause, resume and wake, fonts and appearance changes, close.
+   - `SkinMessage` and `SkinRequest` as in §5.4, with the delivery rules above. The host bangs are split into a pure
+     classification, which answers `skin(_:handle:)` on the runtime, and their effects, which stay on the main thread
+     as requests and are applied by the code that applies them today.
+   - `executor.exclusive(timeout:)`, including the park on `TestThreadExecutor`.
+   - `SkinView`, `AppController`, the menus, the Studio and the plugins reach the skin only through the runtime. In
+     this step they still read the live skin, through inline exclusive access.
+   - New suites "App: skin runtime: …": messages inline on the owner and in order on a test thread; requests likewise;
+     exclusive access at once, parking a busy test thread between two pieces of work, timing out while it is stuck
+     and the late park returning at once, re-entrant; after close the skin is released on its executor.
+2. **The snapshot and the hit map; the UI decides from them.**
+   - `SkinHitMap` and `MouseShape` in DesksetCore, shared with `Meter.isHit`; `skinDidFinishWork` and
+     `snapshotGeneration`; the runtime publishes the snapshot under a lock and posts `.snapshotChanged` only when
+     something the main thread uses changed.
+   - `SkinView` takes the drag decision, the Button test, the skin-menu decision, the cursor, the tooltip rectangles
+     and texts and `needsPanelToBecomeKey` from the snapshot. Presses, releases, drags, the wheel, hover, leaving and
+     focus become messages.
+   - The Manage window, the status menu, `CodeEditorRouter`, `OutsidePointerMonitor`'s needs and the app's group
+     lookups read snapshots.
+   - The debug comparison with the live skin is on for the whole app suite. A new Core suite compares the hit map with
+     the live skin on a grid of points for every test and default skin. The cost of building snapshots is measured
+     on the busiest default skins and written down here.
+3. **The window model, `EnvironmentStore` and `SkinDirectory`.**
+   - A skin's own window bangs change its model at once: KeepOnScreen clamps with the store's screens and
+     `!SetWindowPosition` is resolved with them. They then post `.window(model, sequence)`.
+   - The main thread applies requests in order to `AppState` and the panel, and makes a restack and one "settings
+     changed" notification per batch, as the loops of `handleHostBang` do. It echoes what it really did in the window
+     facts (frame, screen, occlusion, scale, color space, appearance, whether the window takes the pointer, sequence).
+     The last writer wins, and during a drag the skin's moves wait for the mouse-up.
+   - `environment(for:)` comes from the store and the model. `SkinController.settingsPath` becomes the store's.
+   - `SkinDirectory` holds configs, load order, pending loads, and groups through the snapshots. It carries bangs for
+     other configs, `*` and groups: `!UpdateGroup`, `!RedrawGroup`, `!SetVariableGroup`, the skin-group mouse bangs and
+     window bangs aimed at other configs. A bang for a config that is loading goes to the main thread, which queues it
+     behind the load.
+   - Tests: on a test thread, a skin reads the new `#CURRENTCONFIGX#` right after `!Move`, before the main thread
+     has moved its window; both sides end at the same frame and state; a drag in progress wins; bangs between skins
+     arrive in order and the 17th hop is dropped and logged once.
+4. **`ContentProvider` and frame delivery E, still on the main executor.**
+   - The provider and `LayerContentProvider`. The frame producer, with `SkinBitmapDrawing` moved out of `SkinView`,
+     presents at the end of the turn and skips while the window cannot be seen.
+   - Window facts carry scale, color space and appearance (`viewDidChangeBackingProperties` and
+     `viewDidChangeEffectiveAppearance` publish them). FrostedGlass's rounding of the content view clips the sublayer
+     as it clipped the view's own contents.
+   - The stress suite draws each update through `SkinBitmapDrawing`, as the producer will, so Main Thread Checker
+     sees the frame path off the main thread.
+   - **Visible differences from the old view drawing**, checked in-process for every default and test skin: the
+     content layer's image against the old `updateLayer` result and a full drawing, through size, backing scale,
+     color space and appearance changes, occlusion, `!Hide` and `!Show`, fades, MacGlass and FrostedGlass. A
+     difference that remains goes into `docs/compat/engine.md` and both summaries (format:
+     `docs/compat/README.md`); if none remains, this section says so.
+   - What only a person at the Mac can see (§7.3: clicks through fully transparent pixels, Mission Control and Spaces,
+     live resizing) is listed for them. Nothing here reads the screen back, so nothing asks for screen recording.
+5. **Lifecycle messages, window companions, the context menu through exclusive access.**
+   - `activate` makes the window controller and the runtime and registers them. The runtime loads the skin,
+     registers its fonts, seeds the window defaults, runs the first update, draws the first frame and reports
+     `.started(facts)` or `.failed`. The main thread then places and shows the window and attaches the Studio. With
+     the main executor all of this happens inside `activate`, which still returns nil when the load fails.
+   - Closing: `.close(fadeOut:)`, then `.closed`. Quitting sends `.close` in reverse load order and waits at most 2 s
+     in all. The installer waits for `.closed` before it replaces files.
+   - Pause, resume, wake, screens, fonts and appearance are messages: `AppController` no longer checks
+     `executor.isCurrent`.
+   - FrostedGlass's backdrop and InputText's prompt become window companions on the main thread. `.companion`
+     requests carry values (the style; the prompt's settings and the skin's size); the prompt's result comes back as
+     a message. No plugin reaches `SkinController` any more.
+   - The skin menu, `!SkinMenu` and `!SkinCustomMenu` read the custom items, the name and the weather credit with
+     exclusive access and a 50 ms timeout, else from the snapshot. A chosen item is an `.execute` message.
+   - NowPlaying asks the runtime whether updates are paused; Chameleon gets the window's screen from the window facts
+     (`DesktopInputs` published per display).
+6. **The Studio beside a desktop copy on another executor** (§8.5).
+   - Previews are messages. `keyValueWrites` comes from the snapshot. `StudioHost` gets its environment and screen
+     from the window controller. The counter and the graphs are copied with exclusive access.
+   - Reloads carry a ticket (§8.5): `desktopReloaded` decides "own reload" by the ticket, the writes are taken when
+     the ticket ends, FSEvents changes wait for it, and the move after a step goes with the reload.
+   - The "App: studio session: …" suites about reloads and following the desktop copy run again with the desktop
+     copy on a test thread, also with the old copy's OnCloseAction forced to arrive after the new copy started.
+7. **The engine thread, the `SkinThreading` key, and suites that run skins on it.**
+   - `SkinThreadExecutor` in DesksetCore (`TestThreadExecutor` promoted: a dedicated thread with an 8 MB stack and a
+     run loop of its own, plus the park). One shared engine thread for every desktop runtime, at `.userInitiated`.
+   - `SkinThreading` is read once at launch in `main.swift` and handed to `AppController` (an unknown value means
+     `main` and is logged). The default stays `main`. The self-tests build their `AppController` with `.main`.
+   - Debug builds assert that a skin thread never waits for the main thread (`MainPublished` and `MediaUIMainHop`
+     check that the caller is not a skin thread).
+   - New suites "App: engine thread: …" with the engine thread: load, refresh, unload and quit; frames presented to
+     the provider while the main thread is blocked for 500 ms; the mouse, hover, the wheel, focus, tooltips and the
+     cursor; window bangs and the environment; bangs between skins; FrostedGlass and InputText; the context menu's
+     fallback; the Studio's ticketed reload; pause, wake, fonts and appearance. They also run under Main Thread
+     Checker, under `taskpolicy -b` and as the x86_64 build under Rosetta.
+   - A copy of the app started with `SkinThreading=engine` and a user folder of its own (`CFFIXED_USER_HOME`) loads
+     the default suite with no ownership assertion.
