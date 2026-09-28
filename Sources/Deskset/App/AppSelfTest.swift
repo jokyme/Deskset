@@ -52,6 +52,7 @@ enum AppSelfTest {
         SkinSnapshotSelfTests.run(t)
         SkinWindowModelSelfTests.run(t)
         SkinLifecycleSelfTests.run(t)
+        EngineThreadSelfTests.run(t)
         RenderContextSelfTests.run(t)
         SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
@@ -700,8 +701,9 @@ enum AppSelfTest {
     }
 
     /// A headless app over a temporary Skins folder holding TestSkins/App and TestSkins/Deskset (the example skins of
-    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins).
-    static func makeApp(_ t: AppTestRunner) throws -> AppController? {
+    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins). Its desktop skins run on the main thread, as
+    /// every existing suite expects, unless `threading` says otherwise (the engine thread's suites).
+    static func makeApp(_ t: AppTestRunner, threading: SkinThreading = .main) throws -> AppController? {
         guard let testSkins = Paths.repositoryFolder("TestSkins") else {
             print("    (skipped: TestSkins not found; run from the repository)")
             return nil
@@ -715,7 +717,8 @@ enum AppSelfTest {
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
-                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
+                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false,
+                                threading: threading)
         retainedApps.append(app)
         return app
     }
