@@ -1454,7 +1454,7 @@ enum ContentLayerCheck {
                 old.view.updateLayer()
                 let rest = SkinDrawingSelfTests.differenceOfContexts(a, unstretched)
                 if rest <= SkinBitmapDrawing.tolerance {
-                    result.stretchedBefore.append("\(label) at \(scale)x: \(composites)")
+                    result.stretchedBefore.append("\(label) (\(Int(scale))x): \(composites)")
                     composites = rest
                 }
             }
