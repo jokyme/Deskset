@@ -545,8 +545,8 @@ func summary(_ hits: [Hit]) {
     }
 }
 
-/// Per class: the uses in code that runs inside or for a skin first, then those in UI and tooling code (the allow
-/// list's * entries), each with the allow list's note.
+/// Per class: the uses the allow list counts file by file (the engine, plugins, services, the app's skin handling)
+/// first, then those in UI and tooling code (the allow list's * entries), each with the allow list's note.
 func markdown(_ hits: [Hit]) {
     var notes: [Key: Allowance] = [:]
     for a in readAllowList() { notes[Key(kind: a.kind, file: a.file)] = a }
@@ -565,7 +565,7 @@ func markdown(_ hits: [Hit]) {
         guard !inClass.isEmpty else { continue }
         let ui = inClass.filter { notes[Key(kind: $0.kind.id, file: $0.file)].map { $0.count == nil } ?? false }
         let skin = inClass.filter { notes[Key(kind: $0.kind.id, file: $0.file)].map { $0.count != nil } ?? true }
-        write("\n#### \(klass.title) (\(inClass.count): \(skin.count) in skin code, \(ui.count) in UI and tooling)\n")
+        write("\n#### \(klass.title) (\(inClass.count): \(skin.count) counted file by file, \(ui.count) in UI and tooling)\n")
         if !skin.isEmpty { table(skin) }
         if !ui.isEmpty {
             write("\nUI and tooling:\n")
