@@ -855,8 +855,10 @@ enum AudioSelfTests {
             engine.standbyDelay = 0.05
             engine.outputActivity = activity
             engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
-            // No new tap in the first part: the delays come later.
+            // No new tap in the first part: the delays and the quick window come later.
             engine.retapDelays = [3600]
+            engine.quickRetapWindow = 0
+            engine.permissionRetapMinAge = 0
             var watching = 0
             engine.watchPermissionChanges = { _ in watching += 1 }
             engine.makeBackend = { _ in
@@ -966,6 +968,8 @@ enum AudioSelfTests {
             engine.silenceCheckInterval = 0.05
             engine.appsPlayingAudio = { appsLock.lock(); defer { appsLock.unlock() }; return apps }
             engine.retapDelays = [0.2, 0.6]
+            // The delays alone (the quick window has a test of its own).
+            engine.quickRetapWindow = 0
             engine.makeBackend = { _ in
                 lock.lock(); made += 1; lock.unlock()
                 return AppSelfTest.SilenceBackend()
@@ -995,6 +999,114 @@ enum AudioSelfTests {
             engine.unsubscribe(a)
             engine.drain()
             engine.drain()
+        }
+
+        t.suite("App: Audio while the verdict stands, every look takes a new tap for a while, then the delays go on") {
+            // The uptimes at which taps were taken.
+            var taken: [TimeInterval] = []
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.appsPlayingAudio = { [501] }
+            // Every look for 1 s after the verdict (a look 0.05 s after each tap, the tap 0.3 s after the look); the
+            // first delay falls in that second, the second one ends 3 s after the tap that used the first.
+            engine.quickRetapWindow = 1
+            engine.retapDelays = [0.2, 3]
+            engine.makeBackend = { _ in
+                lock.lock(); taken.append(ProcessInfo.processInfo.systemUptime); lock.unlock()
+                return AppSelfTest.SilenceBackend()
+            }
+            func taps() -> [TimeInterval] { lock.lock(); defer { lock.unlock() }; return taken }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: key)
+            engine.drain()
+            t.check(wait { engine.status(for: key).refusalSuspected }, "the verdict")
+            let verdict = ProcessInfo.processInfo.systemUptime
+            let before = taps().count
+            t.check(wait { taps().count >= before + 2 }, "new taps, one look after another")
+            t.check(wait { (taps().last ?? 0) > verdict + 2 }, "and one more after the window, when the delay is over")
+            let after = Array(taps().dropFirst(before))
+            let quick = after.filter { $0 <= verdict + 2 }
+            let late = after.filter { $0 > verdict + 2 }
+            t.check(quick.count >= 2, "at every look in the window: \(quick.map { $0 - verdict })")
+            t.check((late.first ?? 0) - verdict >= 2.9, "then the next delay: \(late.map { $0 - verdict })")
+            // The delays are used up.
+            Thread.sleep(forTimeInterval: 1.0)
+            t.equal(taps().count, before + after.count, "no more new taps")
+            t.check(engine.status(for: key).refusalSuspected, "the verdict stands")
+            engine.unsubscribe(a)
+            engine.drain()
+            engine.drain()
+        }
+
+        t.suite("App: Audio a permission that may have changed takes a new tap at once, once the tap is old enough") {
+            var taken: [TimeInterval] = []
+            let lock = NSLock()
+            let engine = AudioCaptureEngine()
+            engine.isCaptureAllowed = true
+            engine.stopDelay = 0
+            engine.silenceCheckInterval = 0.05
+            engine.appsPlayingAudio = { [501] }
+            // No new taps of the watchdog's own: only the permission changes take them.
+            engine.quickRetapWindow = 0
+            engine.retapDelays = [3600]
+            engine.permissionRetapMinAge = 1.5
+            engine.makeBackend = { _ in
+                lock.lock(); taken.append(ProcessInfo.processInfo.systemUptime); lock.unlock()
+                return AppSelfTest.SilenceBackend()
+            }
+            func taps() -> [TimeInterval] { lock.lock(); defer { lock.unlock() }; return taken }
+            let key = AudioSourceKey(kind: .output, deviceID: nil)
+            let a = AudioAnalyzer(settings: AudioAnalysisSettings())
+            engine.subscribe(a, to: key)
+            engine.drain()
+            t.check(wait { engine.status(for: key).refusalSuspected }, "the verdict")
+            let count = taps().count
+            // The tap is older than permissionRetapMinAge: the new one comes at once.
+            let oldEnough = (taps().last ?? 0) + 1.6
+            let now = ProcessInfo.processInfo.systemUptime
+            if oldEnough > now { Thread.sleep(forTimeInterval: oldEnough - now) }
+            let asked = ProcessInfo.processInfo.systemUptime
+            AudioHAL.queue.sync { engine.permissionMayHaveChanged() }
+            t.check(wait { taps().count == count + 1 }, "a new tap")
+            t.check((taps().last ?? 0) - asked < 1.2, "at once: \((taps().last ?? 0) - asked)")
+            // Again straight away (taking the tap may have brought macOS's prompt up, and the prompt went away): the
+            // next one waits until this one is permissionRetapMinAge old.
+            let young = taps().last ?? 0
+            AudioHAL.queue.sync { engine.permissionMayHaveChanged() }
+            t.check(wait { taps().count == count + 2 }, "then another")
+            t.check((taps().last ?? 0) - young >= 1.4, "once the tap is old enough: \((taps().last ?? 0) - young)")
+            engine.unsubscribe(a)
+            engine.drain()
+            engine.drain()
+        }
+
+        t.suite("App: Audio a permission may have changed when System Settings or the prompt goes, or Deskset turns active or inactive") {
+            t.check(AudioPermissions.isPermissionApp("com.apple.systempreferences"), "System Settings")
+            t.check(AudioPermissions.isPermissionApp("com.apple.UserNotificationCenter"), "macOS's permission prompts")
+            t.check(!AudioPermissions.isPermissionApp("com.apple.Safari"))
+            t.check(!AudioPermissions.isPermissionApp(nil))
+            // Stand-ins for NSWorkspace's and the app's notification centers.
+            let workspace = NotificationCenter()
+            let app = NotificationCenter()
+            var calls = 0
+            AudioPermissions.watchPermissionChanges(workspace: workspace, app: app) { calls += 1 }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))   // it sets up on the main queue
+            app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            t.equal(calls, 1, "Deskset became active")
+            app.post(name: NSApplication.didResignActiveNotification, object: nil)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            t.equal(calls, 2, "and inactive")
+            // Another app, or none named, going away changes nothing.
+            workspace.post(name: NSWorkspace.didDeactivateApplicationNotification, object: nil)
+            workspace.post(name: NSWorkspace.didTerminateApplicationNotification, object: nil,
+                           userInfo: [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            t.equal(calls, 2, "not for other apps")
         }
 
         t.suite("App: Audio !DisableMeasure releases the capture") {
@@ -1105,12 +1217,14 @@ enum AudioSelfTests {
             engine.isCaptureAllowed = true
             engine.stopDelay = 0
             engine.makeBackend = { _ in RefusedBackend() }
-            func file(_ config: String) -> URL { root.appendingPathComponent("Stationery/\(config)/Medium.ini") }
-            func load(_ config: String) throws -> Skin {
+            func file(_ config: String, _ name: String = "Medium.ini") -> URL {
+                root.appendingPathComponent("Stationery/\(config)/\(name)")
+            }
+            func load(_ config: String, _ name: String = "Medium.ini") throws -> Skin {
                 // The last widget's source goes first (stopDelay 0), so this one starts its own capture.
                 engine.drain()
                 engine.drain()
-                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config), skinsDirectory: root,
+                let skin = Skin(config: "Stationery\\\(config)", fileURL: file(config, name), skinsDirectory: root,
                                 system: SystemMonitor.shared, host: host)
                 try skin.load()
                 for case let m as AudioLevelMeasure in skin.measures {
@@ -1126,8 +1240,8 @@ enum AudioSelfTests {
                 for _ in 0..<80 { skin.update() }
                 return skin
             }
-            func variable(_ config: String, _ key: String) -> String? {
-                let text = (try? String(contentsOf: file(config), encoding: .utf8)) ?? ""
+            func variable(_ config: String, _ key: String, _ name: String = "Medium.ini") -> String? {
+                let text = (try? String(contentsOf: file(config, name), encoding: .utf8)) ?? ""
                 guard let line = text.components(separatedBy: "\n").first(where: { $0.hasPrefix(key + "=") }) else {
                     return nil
                 }
@@ -1143,6 +1257,22 @@ enum AudioSelfTests {
             t.equal(variable("Spectrum", "Tempo"), "Rest", "a Notice runs at the Rest tempo")
             spectrum.close()
 
+            // The Strip has no card, but shows the Notice too, in place of its bars and its row of dots.
+            let strip = try load("Spectrum", "Strip.ini")
+            for meter in ["MeterNoticeSymbol", "MeterNoticeTitle", "MeterNoticeBody", "MeterNoticeAction"] {
+                t.equal(strip.meter(named: meter)?.hidden, false, "the Strip shows its Notice: \(meter)")
+            }
+            t.equal((strip.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow System Audio Recording")
+            t.equal((strip.meter(named: "MeterNoticeBody") as? StringMeter)?.text,
+                    "Spectrum needs it to draw the sound your Mac plays. Nothing is recorded or saved.")
+            t.equal((strip.meter(named: "MeterNoticeAction") as? StringMeter)?.text, "Open Privacy Settings")
+            t.equal(strip.meter(named: "MeterRestDots")?.hidden, true, "not the dots")
+            t.equal(strip.meter(named: "MeterBar0")?.hidden, true, "nor the bars")
+            t.check(strip.meter(named: "MeterHitArea")?.toolTipText.contains("System Audio Recording") == true,
+                    "its tooltip says what to allow")
+            t.equal(variable("Spectrum", "Tempo", "Strip.ini"), "Rest", "the Strip's Notice runs at the Rest tempo")
+            strip.close()
+
             let studio = try load("StudioVU")
             t.equal((studio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow System Audio Recording",
                     "Studio VU says so in its row")
@@ -1156,12 +1286,12 @@ enum AudioSelfTests {
 
             // macOS 13 – 14.1 (the OS check made to match): Screen Recording refused.
             engine.makeBackend = { _ in ScreenRefusedBackend() }
-            for config in ["Spectrum", "StudioVU"] {
-                var text = try String(contentsOf: file(config), encoding: .utf8)
+            for url in [file("Spectrum"), file("StudioVU"), file("Spectrum", "Strip.ini")] {
+                var text = try String(contentsOf: url, encoding: .utf8)
                 text = text.replacingOccurrences(of: "\nTempo=Rest\n", with: "\nTempo=Live\n")
                     .replacingOccurrences(of: "\nTempoLive=0\n", with: "\nTempoLive=1\n")
                     .replacingOccurrences(of: "\nStudioFast=0\n", with: "\nStudioFast=1\n")
-                try text.write(to: file(config), atomically: true, encoding: .utf8)
+                try text.write(to: url, atomically: true, encoding: .utf8)
             }
             let audioInc = root.appendingPathComponent("Stationery/@Resources/Spectrum/Audio.inc")
             for url in [audioInc, file("StudioVU")] {
@@ -1174,6 +1304,14 @@ enum AudioSelfTests {
             t.equal((oldSpectrum.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording")
             t.equal(oldSpectrum.meter(named: "MeterNoticeTitle")?.hidden, false)
             oldSpectrum.close()
+            let oldStrip = try load("Spectrum", "Strip.ini")
+            t.equal((oldStrip.meter(named: "MeterNoticeTitle") as? StringMeter)?.text, "Allow Screen Recording",
+                    "the Strip on macOS 13 – 14.1")
+            t.equal((oldStrip.meter(named: "MeterNoticeBody") as? StringMeter)?.text,
+                    "Spectrum hears system audio through Screen Recording. Allow Deskset, then quit and reopen it.")
+            t.equal(oldStrip.meter(named: "MeterNoticeTitle")?.hidden, false)
+            t.equal(oldStrip.meter(named: "MeterRestDots")?.hidden, true)
+            oldStrip.close()
             let oldStudio = try load("StudioVU")
             t.equal((oldStudio.meter(named: "MeterTitle") as? StringMeter)?.text, "Allow Screen Recording",
                     "Studio VU on macOS 13 – 14.1")

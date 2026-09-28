@@ -33,22 +33,35 @@ enum AudioPermissions {
     private static let lock = NSLock()
     private static var logged: Set<String> = []
 
-    /// Calls `changed` (main thread) whenever the user leaves System Settings or quits it: a permission may have been
-    /// given there (macOS says nothing when one is). Watches for the rest of the app's run.
-    static func watchSystemSettings(_ changed: @escaping () -> Void) {
+    /// Calls `changed` (main thread) whenever a permission may just have been given (macOS says nothing when one is):
+    /// when the user leaves or quits System Settings (its Privacy & Security pane) or macOS's permission prompt goes
+    /// away, and when Deskset itself becomes active or inactive (a click on a skin, its menu, the prompt or the pane
+    /// coming and going). Watches for the rest of the app's run. `workspace` and `app` stand in for
+    /// `NSWorkspace.shared.notificationCenter` and `NotificationCenter.default` in tests.
+    static func watchPermissionChanges(workspace: NotificationCenter = NSWorkspace.shared.notificationCenter,
+                                       app: NotificationCenter = .default, _ changed: @escaping () -> Void) {
         DispatchQueue.main.async {
-            let center = NSWorkspace.shared.notificationCenter
             for name in [NSWorkspace.didDeactivateApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-                _ = center.addObserver(forName: name, object: nil, queue: .main) { note in
-                    let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                    if app?.bundleIdentifier == systemSettingsBundleID { changed() }
+                _ = workspace.addObserver(forName: name, object: nil, queue: .main) { note in
+                    let other = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                    if isPermissionApp(other?.bundleIdentifier) { changed() }
                 }
+            }
+            for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+                _ = app.addObserver(forName: name, object: nil, queue: .main) { _ in changed() }
             }
         }
     }
 
     /// System Settings (and System Preferences before macOS 13).
     static let systemSettingsBundleID = "com.apple.systempreferences"
+    /// The system app whose windows are macOS's permission prompts ("Deskset would like to…").
+    static let permissionPromptBundleID = "com.apple.UserNotificationCenter"
+
+    /// Whether leaving or quitting the app with `bundleID` may have given Deskset a permission.
+    static func isPermissionApp(_ bundleID: String?) -> Bool {
+        bundleID == systemSettingsBundleID || bundleID == permissionPromptBundleID
+    }
 
     /// Logs a capture problem once per app run (the skins show 0 meanwhile).
     static func logOnce(_ message: String) {

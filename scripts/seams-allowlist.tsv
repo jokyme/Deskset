@@ -226,7 +226,7 @@ background.mainHop	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	au
 background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
 event.captureStream	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	audio service (AudioLevel, AppVolume): faked in verification
 event.coreAudio	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
-event.notification	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	the capture engine hears when System Settings, where a permission may have been given, goes to the background or quits: live audio only (never in a command-line mode; --data's audio replaces the engine)
+event.notification	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	the capture engine hears when System Settings or macOS's permission prompt, where a permission may have been given, goes to the background or quits, and when Deskset becomes active or inactive: live audio only (never in a command-line mode; --data's audio replaces the engine)
 mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	2	audio service (AudioLevel, AppVolume): faked in verification
 random.UUID	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	audio service (AudioLevel, AppVolume): faked in verification
 random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	3	the output-activity watch listens to each audio process on its own: the order its listeners are added and removed in reaches no skin
@@ -235,7 +235,7 @@ timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureBackends.swift	1	
 
 background.dispatch	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	12	the capture engine's own queues (AudioHAL, analysis): live audio, the audio kind (reported in virtual time; --data's audio replaces the engine)
 background.queue	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification
-mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	4	audio service (AudioLevel, AppVolume): faked in verification; the silence watchdog's looks are timed on the uptime
+mono.systemUptime	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	audio service (AudioLevel, AppVolume): faked in verification; the silence watchdog's looks and the age of a tap are timed on the uptime
 random.hashOrder	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	the engine's capture sources, each on its own: the order they are visited in reaches no skin
 timer.asyncAfter	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	5	audio service (AudioLevel, AppVolume): faked in verification; system audio waits in standby a moment after the other apps stop playing
 timer.dispatchSource	Sources/Deskset/Plugins/Audio/AudioCaptureEngine.swift	1	audio service (AudioLevel, AppVolume): faked in verification

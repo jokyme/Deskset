@@ -2173,13 +2173,17 @@ plugins (§10.8): [`compat/weather.md`](compat/weather.md). Permissions are summ
   carries only digital silence: when a tap carries nothing else at two looks 10 s apart while the same app plays
   each time (an app with a Dock icon, its helpers included; not daemons or agents), and no system-audio tap has
   carried sound since Deskset started, `MacPermission` reads 1 and the skin gets a compatibility note. It holds while
-  the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s). Meanwhile the tap is
-  kept; new taps come after 10 s, 30 s, 60 s, 3 min and 5 min of silence and then stop until another app plays, and
-  leaving System Settings takes one at once, so a permission given there reaches the capture. `DeviceStatus` stays 1.
-- **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing.
+  the tap waits for sound and in the next taps, until one carries sound (cleared within 10 s). While it holds and an
+  app plays, every look (10 s) takes a new tap for the first 3 minutes; then the tap is kept, with new ones about
+  4 min 40 s and 9 min 40 s after the verdict, and none after that until another app plays (which starts it all
+  again). Leaving or quitting System Settings, macOS's permission prompt going away, and Deskset becoming active or
+  inactive take a new tap at once (never on a tap younger than 2 s), so a permission given there reaches the capture
+  within seconds. `DeviceStatus` stays 1.
+- **Why:** Deskset extension: without it a skin can only say "nothing playing" when the permission is missing. The
+  quick new taps: an ad-hoc build that lost its grant stayed still for minutes after the user allowed it again.
 - **Skin impact:** none for skins that do not use it. It is a suspicion: an app that sends only digital silence to
-  its output from the moment Deskset starts looks the same. Deskset's Spectrum and Studio VU show "Allow System Audio
-  Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security.
+  its output from the moment Deskset starts looks the same. Deskset's Spectrum (card and strip) and Studio VU show
+  "Allow System Audio Recording" (before macOS 14.2 "Allow Screen Recording") and open Privacy & Security.
 - **Status:** Mac-only
 
 ### 10.2 Win7Audio (volume, mute, output device)
