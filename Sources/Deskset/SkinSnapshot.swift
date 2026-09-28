@@ -141,8 +141,9 @@ struct SkinSnapshotChanges: OptionSet {
 
 /// Debug builds: every answer the window takes from a snapshot is also asked of the live skin when the skin runs on the
 /// main executor, and a difference is reported (the self-tests fail the suite that ran into it). The existing suites
-/// thus check the snapshot wherever they click, hover or ask for a tooltip. Release builds only return the snapshot's
-/// answer. Main thread.
+/// thus check the snapshot wherever they click, hover or ask for a tooltip. The runtime's window model is checked the
+/// same way against the live window (the environment, whether the window takes the pointer). Release builds only
+/// return the snapshot's answer. Main thread.
 enum SnapshotAudit {
     /// Told of each difference (the self-tests record a failure).
     static var onDifference: ((String) -> Void)?

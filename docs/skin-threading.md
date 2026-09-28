@@ -1512,8 +1512,9 @@ suite's `TestThreadExecutor`.
        config that does not run is still ignored without a log line.
      - Until step 5's lifecycle messages, the self-tests put app skins on a test thread with
        `AppController.skinExecutor`; such a skin loads on its thread under exclusive access.
-     - New suites "App: window model: …" and "App: skin directory: …" (73 checks). The app suite made COMPARISONS
-       debug comparisons with no difference; Main Thread Checker reported nothing for the new suites.
+     - New suites "App: window model: …" and "App: skin directory: …" (73 checks). The app suite (9,944 checks in
+       each scroller style) made 4,442–4,483 debug comparisons with no difference; Main Thread Checker reported
+       nothing for the new suites.
 4. **`ContentProvider` and frame delivery E, still on the main executor.**
    - The provider and `LayerContentProvider`. The frame producer, with `SkinBitmapDrawing` moved out of `SkinView`,
      presents at the end of the turn and skips while the window cannot be seen.

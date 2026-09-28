@@ -82,7 +82,7 @@ enum SkinMessage {
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
 struct HostBang {
     var bang: Bang
-    /// The hops of the work that sent it: bangs the main thread passes on to other skins for it carry them.
+    /// The hops of the work that sent it.
     var hops: Int
     /// Sent while the skin's OnCloseAction runs: then the skin cannot reload or unload itself.
     var whileClosing: Bool
