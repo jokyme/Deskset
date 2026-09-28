@@ -140,7 +140,13 @@ enum StudioText {
         case previewingNoData = "capsule.previewing.noData"
         case previewingTime = "capsule.previewing.time"
         case wouldOpen = "capsule.wouldOpen"
-        case wouldRun = "capsule.wouldRun"
+        case wouldOpenWidget = "capsule.wouldOpenWidget"
+        case wouldCloseWidget = "capsule.wouldCloseWidget"
+        case wouldSaveSetting = "capsule.wouldSaveSetting"
+        case wouldChangeWindow = "capsule.wouldChangeWindow"
+        case wouldRunCommand = "capsule.wouldRunCommand"
+        case wouldUseDeskset = "capsule.wouldUseDeskset"
+        case wouldActOutside = "capsule.wouldActOutside"
         case wouldChange = "capsule.wouldChange"
         case open = "capsule.open"
         case run = "capsule.run"
@@ -265,7 +271,13 @@ enum StudioText {
         .previewingNoData: ("no data", "没有数据"),
         .previewingTime: ("the time %@", "时间 %@"),
         .wouldOpen: ("Would open %@", "会打开 %@"),
-        .wouldRun: ("Would run %@", "会执行 %@"),
+        .wouldOpenWidget: ("Would open another widget", "会打开另一个小组件"),
+        .wouldCloseWidget: ("Would close a widget", "会关掉一个小组件"),
+        .wouldSaveSetting: ("Would save a setting to its file", "会把一个设置存进文件"),
+        .wouldChangeWindow: ("Would change the widget’s window on the desktop", "会改动桌面上组件的窗口"),
+        .wouldRunCommand: ("Would run a command", "会执行一个命令"),
+        .wouldUseDeskset: ("Would ask Deskset to do something", "会让 Deskset 做一件事"),
+        .wouldActOutside: ("Would act outside the widget", "会作用到组件以外"),
         .wouldChange: ("Would change %@", "会改动 %@"),
         .open: ("Open", "打开"),
         .run: ("Run", "执行"),

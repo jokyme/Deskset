@@ -305,8 +305,10 @@ final class StudioPreviewController {
             canvas.statusCapsule.show(heldAction.sentence, symbol: "hand.point.up.left", action: heldAction.button) {
                 [weak self] in self?.performHeldAction()
             }
+            canvas.statusCapsule.toolTip = heldAction.recorded.text
             canvas.statusCapsule.isHidden = false
         } else if let sentence = state.previewingSentence {
+            canvas.statusCapsule.toolTip = nil
             canvas.statusCapsule.show(sentence)
             canvas.statusCapsule.isHidden = false
         } else {

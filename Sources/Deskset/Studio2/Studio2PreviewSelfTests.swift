@@ -641,7 +641,8 @@ enum Studio2PreviewSelfTests {
             t.equal(recorded.map(\.kind), [.execute, .bang], "the web page and the other widget: recorded")
             t.equal(recorded.first?.name, "https://www.example.com/page")
             t.check(app.controller(for: "Studio2\\Elsewhere") == nil, "no other widget was loaded")
-            t.equal(preview.heldAction?.sentence, "Would run !ActivateConfig Studio2\\Elsewhere")
+            t.equal(preview.heldAction?.sentence, "Would open another widget", "in everyday words")
+            t.equal(canvas.statusCapsule.toolTip, "!ActivateConfig Studio2\\Elsewhere", "the bang in the tooltip")
             t.equal(StudioHeldAction(recorded[0]).sentence, "Would open example.com")
             t.equal(StudioHeldAction(recorded[0]).button, "Open")
             t.check(!canvas.statusCapsule.isHidden, "the capsule offers it")
@@ -735,7 +736,32 @@ enum Studio2PreviewSelfTests {
 
     // MARK: The designed screens
 
+    /// Engine words that never show on the canvas's controls (the design's word scan), English and Chinese.
+    static let bannedEnglish = ["skin", "skins", "meter", "meters", "measure", "measures", "section", "variable",
+                                "variables", "computed", "modifier", "binding", "freeform", "ini", "ms", "try", "ink"]
+    static let bannedChinese = ["皮肤", "测量", "节", "变量", "修饰符", "绑定", "毫秒", "墨色"]
+
     static func snapshotTests(_ t: AppTestRunner) {
+        t.suite("Studio2: canvas: words") {
+            let prefixes = ["backdrop.", "preview.", "data.", "capsule.", "zoom", "caption.", "size.", "desktop."]
+            for key in StudioText.Key.allCases where prefixes.contains(where: { key.rawValue.hasPrefix($0) }) {
+                guard let entry = StudioText.table[key] else { continue }
+                let words = entry.en.lowercased().components(separatedBy: CharacterSet.letters.inverted)
+                for banned in bannedEnglish where words.contains(banned) {
+                    t.check(false, "\(key.rawValue): “\(banned)” in “\(entry.en)”")
+                }
+                for banned in bannedChinese where entry.zh.contains(banned) {
+                    t.check(false, "\(key.rawValue): “\(banned)” in “\(entry.zh)”")
+                }
+            }
+            // Held-back actions say what they would do, not the bang.
+            for name in ["activateconfig", "writekeyvalue", "move", "commandmeasure", "quit", "setoption", "x"] {
+                let sentence = StudioHeldAction.bangSentence(name)
+                t.check(!sentence.contains("!") && !sentence.lowercased().contains(name), "\(name): \(sentence)")
+            }
+        }
+
+
         t.suite("Studio2: canvas: the designed screens") {
             Studio2SelfTests.prepare(t)
             guard let screen = StudioScreen.named("03-customize"), let opened = StudioSnapshot.open(screen) else {

@@ -180,11 +180,32 @@ struct StudioHeldAction: Equatable {
             sentence = StudioText.format(.wouldOpen, Self.displayName(of: recorded.name))
             button = StudioText[.open]
         case .bang:
-            sentence = StudioText.format(.wouldRun, recorded.text)
+            sentence = Self.bangSentence(recorded.name)
             button = StudioText[.run]
         case .file:
             sentence = StudioText.format(.wouldChange, recorded.text)
             button = nil
+        }
+    }
+
+    /// What a held-back bang would do, in everyday words (its own text is the capsule's tooltip).
+    static func bangSentence(_ name: String) -> String {
+        switch name {
+        case "activateconfig", "toggleconfig", "loadlayout":
+            return StudioText[.wouldOpenWidget]
+        case "deactivateconfig", "deactivateconfiggroup":
+            return StudioText[.wouldCloseWidget]
+        case "writekeyvalue":
+            return StudioText[.wouldSaveSetting]
+        case "move", "zpos", "settransparency", "hide", "show", "toggle", "hidefade", "showfade", "togglefade",
+             "fadeduration", "draggable", "clickthrough", "keeponscreen", "snapedges", "setwallpaper":
+            return StudioText[.wouldChangeWindow]
+        case "commandmeasure", "pluginbang", "execute":
+            return StudioText[.wouldRunCommand]
+        case "refreshapp", "quit", "manage", "skinmenu", "trayinfo", "about":
+            return StudioText[.wouldUseDeskset]
+        default:
+            return StudioText[.wouldActOutside]
         }
     }
 
