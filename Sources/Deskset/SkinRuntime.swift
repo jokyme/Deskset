@@ -4,10 +4,9 @@ import DesksetCore
 /// The half of a running skin that owns the `Skin` (docs/skin-threading.md §5.4): it is the skin's `SkinHost`, runs its
 /// update clock, pause and wake, draws its frames (`frames`), handles the messages sent to it (`send`), publishes what
 /// the main thread reads of the skin (`snapshot`) and asks the main thread for what only the main thread can do
-/// (`request`). Everything here runs on
-/// the skin's executor, except reading the snapshot; the window half, `SkinWindowController`, stays on the main thread
-/// and reaches the skin only through this object: messages, the snapshot, or exclusive access (`exclusive`) where it
-/// still needs the live skin at once.
+/// (`request`). Everything here runs on the skin's executor, except reading the snapshot; the window half,
+/// `SkinWindowController`, stays on the main thread and reaches the skin only through this object: messages, the
+/// snapshot, or exclusive access (`exclusive`) where it still needs the live skin at once.
 ///
 /// Every skin runs on the main executor so far (phase 2 of the design moves the desktop's skins to an engine thread
 /// later), so messages and requests run inline and in the order they always did.

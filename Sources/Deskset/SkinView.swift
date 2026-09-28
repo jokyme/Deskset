@@ -525,8 +525,8 @@ final class SkinView: NSView, NSViewToolTipOwner {
     /// Registers one tooltip area per meter that has a tooltip, so AppKit shows a new tooltip when the pointer moves
     /// from one meter to another (a single view-wide tooltip keeps showing the first text). The areas come from the
     /// snapshot (`SkinHitMap.toolTipAreas`: a meter's area includes its glass), the text is read when the tooltip
-    /// appears. Called when the snapshot's areas change and after every redraw request; AppKit is only touched when the
-    /// areas change.
+    /// appears. Called when the snapshot's areas change and when the window follows a new size; AppKit is only touched
+    /// when the areas change.
     func updateToolTips() {
         var rects: [CGRect] = []
         if let c = controller, !c.isStopped, !c.state.clickThrough {
