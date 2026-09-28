@@ -584,16 +584,19 @@ extension InspectorWindowController {
         return EditorSchema.canonical(value, kind: p.kind) != EditorSchema.canonical(d, kind: p.kind)
     }
 
-    /// The look (MeterStyle) most of `group`'s values of `section` come from, and the layers that use it.
+    /// The look (MeterStyle) most of `group`'s values of `section` come from, and the layers that use it. Looks with as
+    /// many values: the one the group's first such value comes from (the same look every time the page is built).
     func lookBehind(_ group: EditorSchema.Group, section: String, rows: [Row]) -> (look: String, users: [String])? {
         guard let skin else { return nil }
         var counts: [String: Int] = [:]
+        var order: [String] = []
         for p in group.properties {
             guard let r = row(for: p, in: rows), r.style == .inherited, let look = inheritedStyle(section: section, key: r.key)
             else { continue }
+            if counts[look] == nil { order.append(look) }
             counts[look, default: 0] += 1
         }
-        guard let look = counts.max(by: { $0.value < $1.value })?.key else { return nil }
+        guard let most = counts.values.max(), let look = order.first(where: { counts[$0] == most }) else { return nil }
         return (look, Self.styleUsers(look, in: skin))
     }
 
@@ -703,7 +706,8 @@ extension InspectorWindowController {
         let title = options.title ?? group.title
         if !title.isEmpty, !options.moreOnly {
             let badge = options.lookBadge ? lookBehind(group, section: section, rows: rows).map { lookBadge(look: $0.look, users: $0.users) } : nil
-            views.append(cardTitleRow(title, accessory: badge))
+            views.append(inPlaceCardTitle(cardTitleRow(title, accessory: badge), group: group, section: section,
+                                          title: title, badge: options.lookBadge))
         }
         let note = options.note ?? group.summary
         if !note.isEmpty, !options.moreOnly { views.append(cardNote(note)) }
@@ -910,25 +914,7 @@ extension InspectorWindowController {
             items.append(shapeSizeRow(m, item: only, index: 3, label: "Height", raw: rect.height,
                                       resolved: only.resolved?.rectangle?.height, skin: skin))
         } else if fits, ["string", "image", "button", "bitmap", "rotator", "shape"].contains(type) {
-            let what = type == "string" ? "the text" : type == "shape" ? "its shapes" : "the picture"
-            let n = EditorStyle.number
-            let label = EditorStyle.label("Fits \(what) · \(n(m.frame.width)) × \(n(m.frame.height))", size: 12, color: .secondaryLabelColor)
-            label.identifier = NSUserInterfaceItemIdentifier("fits-size")
-            let set = NSButton(title: "Set a Size…", target: nil, action: nil)
-            set.bezelStyle = .rounded
-            set.controlSize = .small
-            set.identifier = NSUserInterfaceItemIdentifier("set-size")
-            set.toolTip = "Give it a fixed width and height (now \(n(m.frame.width)) × \(n(m.frame.height)))"
-            let name = m.name, w = m.frame.width, h = m.frame.height
-            set.onAction { [weak self] _ in
-                guard let self else { return }
-                self.commitPlainly([Edit(section: name, key: "W", value: GeometryEdit.format(w), own: true),
-                                    Edit(section: name, key: "H", value: GeometryEdit.format(h), own: true)],
-                                   name: "Set Size of \(self.displayName(ofSection: name))",
-                                   message: "\(self.displayName(ofSection: name)) is now \(n(w)) × \(n(h)) px")
-            }
-            items.append(InspectorRow(label: EditorStyle.rowLabel("Size", key: nil, tooltip: "Width and height"),
-                                      control: EditorStyle.vstack([label, set], spacing: 4)))
+            items.append(inPlaceFitsRow(fitsSizeRow(m), meter: m))
         } else {
             items.append(geometryRow(m, key: "W", raw: raw.w ?? "", current: m.frame.width, skin: skin))
             items.append(geometryRow(m, key: "H", raw: raw.h ?? "", current: m.frame.height, skin: skin))
@@ -960,6 +946,30 @@ extension InspectorWindowController {
             }
         }
         return card
+    }
+
+    /// "Fits the text · 120 × 20 [Set a Size…]": the size of a layer that fits its content.
+    func fitsSizeRow(_ m: Meter) -> InspectorRow {
+        let type = m.type.lowercased()
+        let what = type == "string" ? "the text" : type == "shape" ? "its shapes" : "the picture"
+        let n = EditorStyle.number
+        let label = EditorStyle.label("Fits \(what) · \(n(m.frame.width)) × \(n(m.frame.height))", size: 12, color: .secondaryLabelColor)
+        label.identifier = NSUserInterfaceItemIdentifier("fits-size")
+        let set = NSButton(title: "Set a Size…", target: nil, action: nil)
+        set.bezelStyle = .rounded
+        set.controlSize = .small
+        set.identifier = NSUserInterfaceItemIdentifier("set-size")
+        set.toolTip = "Give it a fixed width and height (now \(n(m.frame.width)) × \(n(m.frame.height)))"
+        let name = m.name, w = m.frame.width, h = m.frame.height
+        set.onAction { [weak self] _ in
+            guard let self else { return }
+            self.commitPlainly([Edit(section: name, key: "W", value: GeometryEdit.format(w), own: true),
+                                Edit(section: name, key: "H", value: GeometryEdit.format(h), own: true)],
+                               name: "Set Size of \(self.displayName(ofSection: name))",
+                               message: "\(self.displayName(ofSection: name)) is now \(n(w)) × \(n(h)) px")
+        }
+        return InspectorRow(label: EditorStyle.rowLabel("Size", key: nil, tooltip: "Width and height"),
+                            control: EditorStyle.vstack([label, set], spacing: 4))
     }
 
     /// Width or Height of a one-rectangle shape: the rectangle's own parameter, a link kept (`#Width#` →
@@ -1118,7 +1128,7 @@ extension InspectorWindowController {
         line.widthAnchor.constraint(equalTo: cell.widthAnchor).isActive = true
         let label = EditorStyle.rowLabel(names[key] ?? key, key: showsDetails ? key : nil,
                                          tooltip: key == "W" || key == "H" ? "\(names[key] ?? key) in px" : "Position in px")
-        return InspectorRow(label: label, control: cell)
+        return inPlaceGeometry(InspectorRow(label: label, control: cell), meter: m, key: key, run: run)
     }
 
     /// The grey pull-down tag after a linked number (§7.3), with its menu.

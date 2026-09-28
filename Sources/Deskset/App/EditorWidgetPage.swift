@@ -41,12 +41,18 @@ extension InspectorWindowController {
 
     /// What the widget page is built from beyond the widget's own sections (for `inspectorInputs`): the desktop
     /// settings, who uses each shared value, the fonts, the page's own choices.
-    func widgetPageInputs() -> [String] {
+    /// The current value of a shared value a row follows in place (`claims`: `InspectorInPlace`) goes to `values`.
+    func widgetPageInputs(values: inout [String: String], claims: Set<String> = []) -> [String] {
         guard let skin else { return [] }
         var lines: [String] = []
         if let c = controller { lines.append("desktop \(isWidgetRunning) \(Self.desktopSettings(c.state))") }
         lines.append("page \(appliesToAllWidgets) \(inspectorState.separateColors.sorted()) \(showsWidgetTip)")
         for v in valueUsages(skin).values {
+            if let name = v.variableName, case let id = InspectorInPlace.rowID("Variables", name), claims.contains(id) {
+                lines.append("value \(v.source) \(v.sections.joined(separator: ",")) \(v.roles.map(\.name))")
+                values[id, default: ""] += "\u{1E}\(v.current)"
+                continue
+            }
             lines.append("value \(v.source) \(v.current) \(v.sections.joined(separator: ",")) \(v.roles.map(\.name))")
         }
         for f in fontSources(skin) {
@@ -142,7 +148,7 @@ extension InspectorWindowController {
         // The picture is shorter than the words beside it.
         EditorStyle.holdVerticalInsets(row)
         row.identifier = NSUserInterfaceItemIdentifier("widget-header")
-        return row
+        return inPlaceWidgetHeader(row)
     }
 
     @objc func showUpdateSpeedCard() { scrollInspector(toCard: "UPDATE SPEED") }
@@ -537,7 +543,7 @@ extension InspectorWindowController {
         row.onHover = { [weak self] inside in self?.canvas.relatedNames = inside ? meters : [] }
         row.setAccessibilityElement(true)
         row.setAccessibilityLabel("\(group.name), used by \(otherWidgets ? "other widgets" : usersPhrase(group.sections))")
-        return row
+        return inPlaceColorRow(row, group: group, index: index, otherWidgets: otherWidgets)
     }
 
     /// A color row's menu: Custom Color…, Copy Color Code, Select them, Show Separately / Show Together.

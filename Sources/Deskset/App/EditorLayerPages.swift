@@ -13,7 +13,7 @@ extension InspectorWindowController {
     func meterPage(_ m: Meter, skin: Skin) {
         noteSelectionShown(m.name)
         let groups = EditorSchema.meterGroups(m.type)
-        add(layerStrip(m, skin: skin))
+        add(inPlaceStrip(layerStrip(m, skin: skin), meter: m))
         let type = m.type.lowercased()
         let own = groups.filter { !["Box Behind It", "When Clicked", "Layer"].contains($0.title) }
         switch type {
@@ -258,7 +258,7 @@ extension InspectorWindowController {
             let field = textField(ctx, value: ctx.raw, placeholder: "Type the words to show")
             field.font = .systemFont(ofSize: 12.5)
             field.identifier = NSUserInterfaceItemIdentifier("\(ctx.section)/Text")
-            return InspectorRow(label: label, control: field)
+            return inPlaceText(InspectorRow(label: label, control: field), context: ctx, meter: m, data: false)
         }
         let names: [Int: String] = Dictionary(uniqueKeysWithValues: m.measureSlots.enumerated().compactMap { i, slot in
             guard let slot, let skin = self.skin else { return nil }
@@ -279,7 +279,7 @@ extension InspectorWindowController {
         let caption = cardNote("The blue tag shows the live data.")
         let stack = EditorStyle.vstack([field, caption], spacing: 4)
         field.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return InspectorRow(label: label, control: stack)
+        return inPlaceText(InspectorRow(label: label, control: stack), context: ctx, meter: m, data: true)
     }
 
     /// The token field being edited when the inspector is rebuilt: its typed text goes on in the rebuilt field.
@@ -432,9 +432,9 @@ extension InspectorWindowController {
         let seg = wordedSegments(["Left", "Center", "Right"], symbols: ["text.alignleft", "text.aligncenter", "text.alignright"],
                                  selected: h, id: "StringAlign") { i in write(Self.alignValue(h: i, v: v)) }
         seg.setAccessibilityLabel("Align")
-        return InspectorRow(label: EditorStyle.rowLabel("Align", key: showsDetails ? ctx.key : nil,
-                                                        tooltip: "Where X and Y are on the text: left, center or right"),
-                            control: seg)
+        return inPlaceAlign(InspectorRow(label: EditorStyle.rowLabel("Align", key: showsDetails ? ctx.key : nil,
+                                                                     tooltip: "Where X and Y are on the text: left, center or right"),
+                                         control: seg), context: ctx, vertical: false)
     }
 
     /// Up and down (More Text Options): Top | Middle | Bottom, the vertical part of StringAlign.
@@ -448,7 +448,7 @@ extension InspectorWindowController {
         let seg = wordedSegments(["Top", "Middle", "Bottom"], symbols: ["arrow.up.to.line", "arrow.up.and.down", "arrow.down.to.line"],
                                  selected: v, id: "StringAlign.vertical") { i in write(Self.alignValue(h: h, v: i)) }
         let label = EditorStyle.rowLabel("Up and down", key: nil, tooltip: "Where Y is on the text: top, middle or bottom")
-        return (InspectorRow(label: v != 0 ? dotted(label) : label, control: seg), v != 0)
+        return (inPlaceAlign(InspectorRow(label: v != 0 ? dotted(label) : label, control: seg), context: ctx, vertical: true), v != 0)
     }
 
     /// Capitals, each choice written in its own case.
@@ -1163,7 +1163,7 @@ extension InspectorWindowController {
         for v in views { v.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true }
         popup.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         let rowLabel = EditorStyle.rowLabel(label, key: showsDetails ? key : nil, tooltip: ctx.property.help)
-        return InspectorRow(label: rowLabel, control: stack)
+        return inPlaceClickRow(InspectorRow(label: rowLabel, control: stack), context: ctx, meter: m, label: label, pointing: pointing)
     }
 
     /// The line under a click choice: the address field, the app, the layer menu, or the sentence of a custom action.

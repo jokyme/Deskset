@@ -37,11 +37,14 @@ enum StudioLatencySelfTests {
             _ = getloadavg(&load, 3)
             print(String(format: "    load average %.2f %.2f %.2f; %d samples of each kind%@", load[0], load[1], load[2],
                          samples, budget.map { String(format: "; budget %.0f ms (p95)", $0) } ?? ""))
-            for reference in references {
+            // `DESKSET_STUDIO_LATENCY_ONLY` (part of a config, e.g. "Calendar"): only the widgets it names.
+            let only = environment["DESKSET_STUDIO_LATENCY_ONLY"]?.lowercased()
+            for reference in references where only.map({ reference.config.lowercased().contains($0) }) ?? true {
                 try measure(t, config: reference.config, samples: samples, budget: budget) {
                     try FriendlyFixtures.openEditor(t, config: reference.config, from: reference.folder)
                 }
             }
+            if let only, !"studio\\heavy".contains(only) { return }
             try measure(t, config: "Studio\\Heavy", samples: samples, budget: nil, runs: [.fontSize]) {
                 try openHeavy(t)
             }
@@ -221,6 +224,9 @@ enum StudioLatencySelfTests {
 
         var edits: [Double] = [], undos: [Double] = []
         var phases: [String: [Double]] = [:]
+        // How the inspector followed the steps: in place, or built again (and why, the last time).
+        let inPlaceBefore = editor.inPlace.updates, rebuildsBefore = editor.inspectorRebuildCount
+        var fallbacks: [String: Int] = [:]
         var last = written
         for i in 0..<samples {
             let value = run.value(written, i)
@@ -234,6 +240,7 @@ enum StudioLatencySelfTests {
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { phases[phase, default: []].append(time) }
+            if let why = editor.inPlace.lastFallback { fallbacks[why, default: 0] += 1 }
             last = value
         }
         t.equal(editor.skin?.meter(named: target)?.rawOption(run.key), last, "\(name): the edits reached the Studio's instance")
@@ -248,7 +255,9 @@ enum StudioLatencySelfTests {
             EditorWindowSelfTests.settle()
             session.flushDesktopRefresh()
             for (phase, time) in session.lastTimings { undoPhases[phase, default: []].append(time) }
+            if let why = editor.inPlace.lastFallback { fallbacks[why, default: 0] += 1 }
         }
+        let inPlaceSteps = editor.inPlace.updates - inPlaceBefore, rebuilt = editor.inspectorRebuildCount - rebuildsBefore
         t.equal(files.map { (try? Data(contentsOf: $0)) ?? Data() }, original, "\(name): every edit undone, byte for byte")
         t.check(app.controller(for: config) != nil, "\(config) still runs")
 
@@ -281,6 +290,8 @@ enum StudioLatencySelfTests {
         print("    LATENCY \(name) | edit phases, p50/p95 ms | \(breakdown(phases))")
         print("    LATENCY \(name) | undo → canvas | \(undo.text)")
         print("    LATENCY \(name) | undo phases, p50/p95 ms | \(breakdown(undoPhases))")
+        print("    LATENCY \(name) | inspector | in place \(inPlaceSteps), built again \(rebuilt)"
+              + (fallbacks.isEmpty ? "" : " (\(fallbacks.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: "; ")))"))
         if !gestureFrames.isEmpty {
             print("    LATENCY \(name) | gesture frame | \(Stat(samples: gestureFrames).text) | previews on the desktop: "
                   + "\(sent) of \(gestureFrames.count)")

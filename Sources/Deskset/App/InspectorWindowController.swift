@@ -257,6 +257,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
     var revealedGroups: Set<String> = []
     var advancedOpen = false
     let inspectorState = InspectorState()
+    /// The rows of the page on show that follow a step in place (`InspectorInPlace`).
+    let inPlace = InspectorInPlace()
     var addKeyField: NSTextField?
     var addValueField: NSTextField?
 
@@ -1658,6 +1660,8 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
             canvas.setSelection(selectedMeterName, reveal: true)
         }
         rows = currentRows()
+        // Only values changed: the rows showing them follow in place (InspectorInPlace.swift).
+        if steps == nil, updateInspectorInPlace() { return }
         // Nothing the inspector shows changed (a refresh after typing code elsewhere, a write it does not show): the
         // controls stay — no rebuild of the whole column (hundreds of milliseconds), focus, scroll and open menus
         // kept — and only the live values follow.
