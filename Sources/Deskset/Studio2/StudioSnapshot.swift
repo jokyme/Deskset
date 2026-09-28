@@ -61,6 +61,9 @@ enum StudioSnapshot {
             }
             size = NSSize(width: parts[0], height: parts[1])
         }
+        // The weather widgets show a sample forecast: nothing is fetched and no place is asked for.
+        setenv("DESKSET_WEATHER_DEMO", "1", 1)
+        WeatherWiring.installPreview()
         guard let opened = open(screen, size: size) else { return .success(nil) }
         defer { opened.close() }
         return .success(render(opened.controller)?.representation(using: .png, properties: [:]))
@@ -69,8 +72,6 @@ enum StudioSnapshot {
     /// Opens the new Studio on `screen`'s widget, headless, in the screen's state. nil when the fixture is not found
     /// or its widget does not load (the reason is printed).
     static func open(_ screen: StudioScreen, size: NSSize = defaultSize) -> Opened? {
-        // The weather widgets show a sample forecast: nothing is fetched and no place is asked for.
-        setenv("DESKSET_WEATHER_DEMO", "1", 1)
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DesksetStudio2-\(screen.name)-\(UUID().uuidString)", isDirectory: true)
         let skins = root.appendingPathComponent("Skins", isDirectory: true)
@@ -190,7 +191,8 @@ enum StudioSnapshot {
         if !controller.sidebarItem.isCollapsed {
             let pane = controller.sidebarController.view
             let r = pane.convert(pane.bounds, to: content)
-            (dark ? NSColor(white: 0.18, alpha: 1) : NSColor(srgbRed: 0.955, green: 0.95, blue: 0.955, alpha: 1)).setFill()
+            (dark ? NSColor(white: 0.18, alpha: 1)
+                  : NSColor(srgbRed: 0.955, green: 0.95, blue: 0.955, alpha: 1)).setFill()
             r.fill()
             NSColor.separatorColor.setFill()
             NSRect(x: r.maxX - 1, y: r.minY, width: 1, height: r.height).fill()
@@ -300,7 +302,7 @@ enum StudioSnapshot {
         if !sidebarOpen {
             drawGlass(NSRect(x: sidebarCentre - 20, y: y(toolbarMidY) - 20, width: 40, height: 40), dark: dark)
         }
-        if let image = symbol("sidebar.left", size: 15, color: NSColor.labelColor.withAlphaComponent(0.85)) {
+        if let image = symbol("sidebar.left", size: 17, color: NSColor.labelColor.withAlphaComponent(0.85)) {
             image.draw(in: NSRect(x: sidebarCentre - image.size.width / 2, y: y(toolbarMidY) - image.size.height / 2,
                                   width: image.size.width, height: image.size.height))
         }
@@ -335,17 +337,18 @@ enum StudioSnapshot {
         let inspectorCentre = width - 28
         drawGlass(NSRect(x: inspectorCentre - circle / 2, y: y(toolbarMidY) - circle / 2, width: circle, height: circle),
                   dark: dark)
-        if let image = symbol("sidebar.right", size: 15, color: NSColor.labelColor.withAlphaComponent(0.85)) {
+        if let image = symbol("sidebar.right", size: 17, color: NSColor.labelColor.withAlphaComponent(0.85)) {
             image.draw(in: NSRect(x: inspectorCentre - image.size.width / 2, y: y(toolbarMidY) - image.size.height / 2,
                                   width: image.size.width, height: image.size.height))
         }
         let done = NSAttributedString(string: state.primary, attributes: [
-            .font: NSFont.systemFont(ofSize: 14, weight: .medium),
+            .font: NSFont.systemFont(ofSize: 15),
             .foregroundColor: NSColor.white.withAlphaComponent(state.primaryEnabled ? 1 : 0.6)])
         let doneWidth = done.size().width + 34
         let doneRect = NSRect(x: inspectorCentre - circle / 2 - 12 - doneWidth, y: y(toolbarMidY) - groupHeight / 2,
                               width: doneWidth, height: groupHeight)
-        drawGlass(doneRect, dark: dark, fill: NSColor.controlAccentColor.withAlphaComponent(state.primaryEnabled ? 1 : 0.5))
+        drawGlass(doneRect, dark: dark,
+                  fill: NSColor.controlAccentColor.withAlphaComponent(state.primaryEnabled ? 1 : 0.5))
         done.draw(at: NSPoint(x: doneRect.midX - done.size().width / 2, y: doneRect.midY - done.size().height / 2))
         let shareCentre = doneRect.minX - 8 - circle / 2
         drawGlass(NSRect(x: shareCentre - circle / 2, y: y(toolbarMidY) - circle / 2, width: circle, height: circle),

@@ -25,8 +25,8 @@ enum StudioSwitch {
     /// The hidden item: an Option-alternate of the menu's "About Deskset" (the same key equivalent, Option added), with
     /// a check mark while the new Studio is on.
     static func menuItem(for app: AppController) -> NSMenuItem {
-        let item = NSMenuItem(title: StudioText[.useNewStudio], action: #selector(AppController.toggleNewStudioAction(_:)),
-                              keyEquivalent: "")
+        let item = NSMenuItem(title: StudioText[.useNewStudio],
+                              action: #selector(AppController.toggleNewStudioAction(_:)), keyEquivalent: "")
         item.target = app
         item.keyEquivalentModifierMask = [.command, .option]
         item.isAlternate = true

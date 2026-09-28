@@ -21,8 +21,8 @@ enum StudioLanguage: String, CaseIterable {
 /// Chinese and Latin letters or digits).
 ///
 /// The language is the Mac's (Simplified Chinese when the first preferred language is Chinese written in simplified
-/// characters, else English); headless — self-tests, `--snapshot-ui` — it is English unless `languageOverride` says otherwise,
-/// so checks read the same on every Mac.
+/// characters, else English); headless — self-tests, `--snapshot-ui` — it is English unless `languageOverride` says
+/// otherwise, so checks read the same on every Mac.
 enum StudioText {
     /// Set by `--language` and by the self-tests; nil: the Mac's language (English headless).
     static var languageOverride: StudioLanguage?

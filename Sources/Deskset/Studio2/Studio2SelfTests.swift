@@ -98,7 +98,7 @@ enum Studio2SelfTests {
             t.equal(item.title, "Use New Studio")
             t.check(item.isAlternate, "hidden until Option is held")
             t.check(item.keyEquivalentModifierMask.contains(.option), "the Option alternate")
-            t.equal(item.keyEquivalent, menu.items[about].keyEquivalent, "the same key equivalent as the item it stands for")
+            t.equal(item.keyEquivalent, menu.items[about].keyEquivalent, "the key equivalent of the item it stands for")
             t.equal(item.state, .on, "checked while on")
             // Turning it off closes the new window; on again closes an old one.
             app.toggleNewStudioAction(item)
@@ -388,7 +388,8 @@ enum Studio2SelfTests {
             let backdropSample = rep.colorAt(x: 40 * 2, y: Int((860 - 700) * 2))
             let cardSample = rep.colorAt(x: Int(centre.x * 2), y: Int((860 - centre.y) * 2))
             t.check(backdropSample != nil && cardSample != nil && backdropSample != cardSample,
-                    "the widget over the backdrop: \(String(describing: cardSample)) vs \(String(describing: backdropSample))")
+                    "the widget over the backdrop: \(String(describing: cardSample)) vs "
+                        + "\(String(describing: backdropSample))")
             // The inspector column is its own colour, right of the canvas.
             let inspector = rep.colorAt(x: (1400 - 150) * 2, y: 500 * 2)
             t.check(inspector != backdropSample, "the inspector pane")

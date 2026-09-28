@@ -273,7 +273,8 @@ final class StudioToolbar: NSObject, NSToolbarDelegate {
                 item.target = target
                 item.action = #selector(StudioWindowController.doneAction(_:))
             } else {
-                let b = NSButton(title: state.primary, target: target, action: #selector(StudioWindowController.doneAction(_:)))
+                let b = NSButton(title: state.primary, target: target,
+                                 action: #selector(StudioWindowController.doneAction(_:)))
                 b.bezelStyle = .texturedRounded
                 b.bezelColor = .controlAccentColor
                 b.keyEquivalent = "\r"
