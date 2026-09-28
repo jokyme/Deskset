@@ -2611,13 +2611,14 @@ extension CatalogData {
         ),
         DiagnosticSpec(
             id: .swiftInterpolation, severity: .error,
-            trigger: #"`"\(cpu.usage)%"`"#,
+            trigger: #"`"\(cpu.usage)%"`, or JSX's `Text({cpu.usage})`"#,
             template: LocalizedText(
                 #"Put data in text with braces: `"{fixed}"`."#,
                 #"文字里放数据用花括号：`"{fixed}"`。"#),
             placeholders: ["fixed": .code],
             fixIts: [
                 FixItSpec("rewrite"),
+                FixItSpec("changeTo", offeredWhen: LocalizedText(#"For a value in JSX's braces: the value alone"#, #"JSX 花括号里的值：只写这个值"#)),
             ]
         ),
         DiagnosticSpec(

@@ -335,7 +335,8 @@ public final class DeskSnapshot: Sendable {
     let memo: DeskBlockMemo
     let isPlaceholder: Bool
     /// False for the first snapshot of an update checked in the background (`DeskLanguageService.beginUpdate`):
-    /// it has only the syntax results (the tree's diagnostics, and no names, types or elements from the checker).
+    /// it has the syntax results and, where the edit did not reach, what the last check found (its diagnostics, the
+    /// file's options, styles and named elements), which stand until this text's check is published.
     public let isChecked: Bool
 
     init(version: Int, generation: Int, file: DeskFileID, tree: SyntaxTree, checked: CheckedFile, index: DeskTextIndex,
