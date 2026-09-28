@@ -283,3 +283,12 @@ public enum StudioAddCatalog {
         s.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
     }
 }
+
+extension StudioAddCatalog {
+    /// A copy of a section under a new name (⌘D): its own options as written, the first of each key.
+    public static func copy(of section: IniSection, named name: String) -> EditorComponents.Section {
+        var seen: Set<String> = []
+        let options = section.entries.filter { seen.insert($0.key.lowercased()).inserted }.map { (key: $0.key, value: $0.value) }
+        return EditorComponents.Section(name: name, options: options)
+    }
+}

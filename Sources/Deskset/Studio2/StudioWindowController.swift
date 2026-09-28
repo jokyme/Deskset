@@ -342,13 +342,23 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
         }
     }
 
+    /// Undo: the typing in the code while it has the keyboard, else the widget's last step (typed code is committed
+    /// first, so it is that step).
     @objc func undoAction(_ sender: Any?) {
+        if focusArea == .code, let text = codeView.textView.undoManager, text.canUndo {
+            text.undo()
+            return
+        }
         flushCode()
         session?.undoStack.undo()
         updateToolbar()
     }
 
     @objc func redoAction(_ sender: Any?) {
+        if focusArea == .code, let text = codeView.textView.undoManager, text.canRedo {
+            text.redo()
+            return
+        }
         session?.undoStack.redo()
         updateToolbar()
     }
@@ -391,7 +401,7 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     /// Check marks and titles of the menu items the window answers.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if let answer = validateStudioMenuItem(item) { return answer }
+        if let answer = validateMenusItem(item) ?? validateStudioMenuItem(item) { return answer }
         return responds(to: item.action)
     }
 
@@ -514,9 +524,14 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
 
     /// Back in the window: the desktop picture and the other widgets may have changed meanwhile.
     func windowDidBecomeKey(_ notification: Notification) {
+        StudioMenus.install(for: self)
         guard session != nil else { return }
         preview.refreshBackdrop()
         preview.refreshNeighbours()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        StudioMenus.restore(for: self)
     }
 
     func windowDidResize(_ notification: Notification) {
@@ -524,6 +539,8 @@ final class StudioWindowController: NSWindowController, NSWindowDelegate, Editin
     }
 
     func windowWillClose(_ notification: Notification) {
+        StudioMenus.restore(for: self)
+        codeState.logWindow?.close()
         if codeController.isViewLoaded { codeView.commitNow(explicit: true) }
         thumbnailTimer?.invalidate()
         sidebarState.liveTimer?.invalidate()

@@ -489,7 +489,7 @@ extension StudioWindowController {
         let state: StudioCodeStatusLine.State
         if let error = codeState.saveError {
             state = .notSaved(error)
-        } else if codeView.hasUncommittedChanges {
+        } else if codeView.hasUncommittedChanges, !codeState.committing {
             state = .editing
         } else if session?.isHoldingDesktop == true {
             state = .held

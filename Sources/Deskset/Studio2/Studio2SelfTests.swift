@@ -16,6 +16,7 @@ enum Studio2SelfTests {
         Studio2PageSelfTests.run(t)
         Studio2PartSelfTests.run(t)
         Studio2SidebarSelfTests.run(t)
+        Studio2CodeSelfTests.run(t)
     }
 
     static let ini = """
@@ -127,7 +128,8 @@ enum Studio2SelfTests {
             }
             t.equal(window.contentView?.bounds.size, StudioWindowController.defaultSize, "1400 × 860")
             t.check(window.contentViewController === studio.splitController, "a split view controller")
-            t.equal(studio.splitController.splitViewItems.count, 3)
+            t.equal(studio.splitController.splitViewItems.count, 4, "sidebar, canvas, code, inspector")
+            t.check(studio.codeItem.isCollapsed, "the code is closed")
             t.equal(studio.sidebarItem.behavior, .sidebar, "the sidebar is a sidebar item")
             t.equal(studio.sidebarItem.minimumThickness, 256)
             t.equal(studio.sidebarItem.maximumThickness, 256)
