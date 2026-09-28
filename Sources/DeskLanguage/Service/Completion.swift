@@ -933,6 +933,8 @@ struct DeskCompletionBuilder {
     private mutating func addModifiers() {
         let context = scan.context
         let site = context.modifierSite ?? .element
+        // A chain may hold hundreds of modifiers: looked up in a set, not in the list.
+        let presentNames = Set(scan.presentModifiers)
         for (spec, t) in templates.modifiers {
             switch site {
             case .option:
@@ -950,7 +952,7 @@ struct DeskCompletionBuilder {
             if spec.name == "rainmeter", !isConvertedFile { continue }
             if spec.name == "style", !hasUsableStyle { continue }
             if spec.name == "position", site == .element, let parent = ownerParentKind, parent != .freeform { continue }
-            let present = spec.repeatable == .no && scan.presentModifiers.contains(spec.name)
+            let present = spec.repeatable == .no && presentNames.contains(spec.name)
             let rank = t.rank + (specific ? 25 : 0)
             if scan.dotTyped {
                 add(t, tier: 1, alreadyPresent: present, rank: rank)
