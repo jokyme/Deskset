@@ -16,7 +16,7 @@ ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --arch) ARCH="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
