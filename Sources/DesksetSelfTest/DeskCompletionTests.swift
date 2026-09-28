@@ -476,6 +476,12 @@ func deskCompletionCases() -> [DeskCompletionCase] {
         C(deskW("        Text(\"{|}\")"), .value, top: ["page", "month"], absent: ["Text", "open"]),
         C(deskW("        Text(\"{cp|}\")"), .value, top: ["cpu"]),
         C(deskW("        Text(\"{cpu.usage, |}\")"), .formatOption, top: ["decimals:"], absent: ["unit:", "format:", "bits:"]),
+        // An interpolation whose `}` is not typed yet.
+        C("widget {\n    Text(\"{cpu.|\")\n}\n", .member, top: ["usage", "core", "coreCount"]),
+        C("widget {\n    Text(\"{cpu.us|\")\n}\n", .member, top: ["usage"]),
+        C("widget {\n    Text(\"{cpu.usage} {mem|\")\n}\n", .value, top: ["memory"]),
+        C("widget {\n    Text(\"{cp|", .value, top: ["cpu"]),
+        C("widget {\n    Text(\"{cpu.usage, |\")\n}\n", .formatOption, top: ["decimals:"]),
         C(deskW("        Text(\"{memory.used, |}\")"), .formatOption, top: ["unit:", "decimals:"], absent: ["format:"]),
         C(deskW("        Text(\"{time.now, |}\")"), .formatOption, top: ["format:"], absent: ["unit:", "decimals:"]),
         C(deskW("        Text(\"{memory.used, decimals: 1, |}\")"), .formatOption, top: ["unit:"], absent: ["decimals:"]),

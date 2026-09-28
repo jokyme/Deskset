@@ -127,6 +127,17 @@ extension DeskSnapshot {
     /// The completion items at a position, best first, at most `limit` of them.
     public func completions(at position: DeskPosition, limit: Int = 200) -> DeskCompletionList {
         guard hasStackRoom else { return onLargeStack { completions(at: position, limit: limit) } }
+        if let closed = closingInterpolation(at: position) {
+            var list = closed.snapshot.completions(at: position, limit: limit)
+            list.context.range = closed.back(list.context.range)
+            for k in list.items.indices {
+                list.items[k].range = closed.back(list.items[k].range)
+                for e in list.items[k].additionalEdits.indices {
+                    list.items[k].additionalEdits[e].range = closed.back(list.items[k].additionalEdits[e].range)
+                }
+            }
+            return list
+        }
         let scan = scanCompletion(at: position)
         var builder = DeskCompletionBuilder(snapshot: self, scan: scan)
         builder.collect()

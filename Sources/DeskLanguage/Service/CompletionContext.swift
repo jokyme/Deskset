@@ -268,7 +268,62 @@ extension DeskSnapshot {
     /// The completion context at a position: what may be written there, what is typed, and what an item replaces.
     public func completionContext(at position: DeskPosition) -> DeskCompletionContext {
         guard hasStackRoom else { return onLargeStack { completionContext(at: position) } }
+        if let closed = closingInterpolation(at: position) {
+            var context = closed.snapshot.scanCompletion(at: position).context
+            context.range = closed.back(context.range)
+            return context
+        }
         return scanCompletion(at: position).context
+    }
+
+    /// A copy of the snapshot with `}` written at the cursor, and how to bring its ranges back to this text.
+    struct ClosedInterpolation {
+        let snapshot: DeskSnapshot
+        let index: DeskTextIndex
+        /// The cursor, in UTF-16 units: the copy has one more unit after it.
+        let cursor: Int
+
+        func back(_ range: DeskRange) -> DeskRange {
+            func map(_ p: DeskPosition) -> DeskPosition { index.position(utf16: p.offset > cursor ? p.offset - 1 : p.offset) }
+            return DeskRange(start: map(range.start), end: map(range.end))
+        }
+    }
+
+    /// The cursor is in an interpolation whose `}` is not typed yet (`Text("{cpu.|")`): the lexer made the rest of the
+    /// string text, so completion asks a copy of the snapshot with the `}` written at the cursor, as the editor's
+    /// text will have it once it is typed.
+    func closingInterpolation(at position: DeskPosition) -> ClosedInterpolation? {
+        let utf16 = index.clampedUTF16(position.offset)
+        let offset = index.utf8Offset(ofUTF16: utf16)
+        let tokens = tokenTable
+        guard var i = tokens.lastStarting(before: offset) else { return nil }
+        while i > 0, !tokens.entries[i].isPresent, tokens.entries[i].kind != .eof { i -= 1 }
+        let e = tokens.entries[i]
+        guard e.kind == .stringText, e.isPresent, e.textStart < offset,
+              offset <= e.textEnd || e.token.flags.contains(.unterminated) else { return nil }
+        let bytes = index.bytes
+        let open = tree.diagnostics.last {
+            $0.id == .unterminatedInterpolation && $0.range.lowerBound >= e.textStart && $0.range.lowerBound < offset
+        }
+        guard let open, open.range.lowerBound + 1 <= offset, offset <= bytes.count,
+              !bytes[(open.range.lowerBound + 1)..<offset].contains(where: { $0 == 0x7D || $0 == 0x22 || $0 == 0x0A || $0 == 0x0D })
+        else { return nil }
+        var closedBytes = bytes
+        closedBytes.insert(0x7D, at: offset)
+        let text = String(decoding: closedBytes, as: UTF8.self)
+        let closedTree = Desk.parse(text, file: file)
+        let packageContext = isPackage ? nil : package.map { CheckedPackage(file: $0) }
+        let closedChecked = isChecked
+            ? Desk.check(closedTree, context: options.checkContext(package: packageContext, resources: resources))
+            : CheckedFile(syntaxOf: closedTree, context: options.checkContext(package: packageContext, resources: resources))
+        let closedIndex = DeskTextIndex(tree: closedTree)
+        var closedFolder = folder
+        closedFolder[file] = text
+        let copy = DeskSnapshot(version: version, generation: generation, file: file, tree: closedTree, checked: closedChecked,
+                                index: closedIndex, options: options, packageFile: packageFile,
+                                package: isPackage ? closedChecked : package, packageIndex: isPackage ? closedIndex : packageIndex,
+                                folder: closedFolder, resources: resources, model: model, isChecked: isChecked)
+        return ClosedInterpolation(snapshot: copy, index: index, cursor: utf16)
     }
 
     // MARK: Scanning
