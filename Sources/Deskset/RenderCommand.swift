@@ -459,7 +459,7 @@ enum RenderCommand {
         // where writing a cover deletes the cover the running app's skins show, and renders side by side (each with a
         // settings folder of its own) never share one.
         let savedCacheRoot = MediaUICache.root
-        MediaUICache.root = URL(fileURLWithPath: SkinController.settingsPath, isDirectory: true)
+        MediaUICache.root = URL(fileURLWithPath: EnvironmentStore.shared.settingsPath, isDirectory: true)
             .appendingPathComponent("Caches", isDirectory: true)
         defer { MediaUICache.root = savedCacheRoot }
         // The locale, languages, accent color and screens the skin sees (fixed with --clock). Legacy ANSI skin files
@@ -532,7 +532,7 @@ enum RenderCommand {
             skin.runInVirtualTime(virtual)
             // Fixtures read the skin's own tree, and the files the render brings along: its settings folder and the
             // data's (anything else a skin lists or reads — a Downloads folder — is the user's, and is reported).
-            virtual.background.allowFixtureReads(under: URL(fileURLWithPath: SkinController.settingsPath))
+            virtual.background.allowFixtureReads(under: URL(fileURLWithPath: EnvironmentStore.shared.settingsPath))
             for folder in inputs?.folders ?? [] { virtual.background.allowFixtureReads(under: folder) }
             // --wallpaper: a given picture, read as a fixture like the data's.
             if let picture = standIn?.picture, !picture.isEmpty {
@@ -836,7 +836,7 @@ final class RenderHost: SkinHost {
     }
     func imageSize(atPath path: String) -> (width: Double, height: Double)? { Images.size(atPath: path) }
     func environment(for skin: Skin) -> SkinEnvironment {
-        var env = SkinController.environment(windowFrame: nil)
+        var env = EnvironmentStore.shared.environment(windowFrame: nil)
         env.windowFrame = SkinRect(x: Double(windowOrigin.x), y: Double(windowOrigin.y), width: skin.width,
                                    height: skin.height)
         if let screens = fixed.screens {

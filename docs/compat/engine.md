@@ -27,6 +27,21 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   low-resolution images look as soft as on a 100 % Windows display.
 - Status: emulated
 
+### A skin whose size is not a whole number of pixels
+- Windows (Rainmeter): X, Y, W and H are pixels (/manual/meters/general-options/) and a skin window is a whole number
+  of pixels; what the skin draws is shown pixel for pixel.
+- Mac (Deskset): meter sizes and positions can be fractions of a point (`W=(100/3)`, a meter at a half-pixel
+  position), and so can the skin's size. The skin is drawn into whole pixels from the window's top-left corner and
+  shown pixel for pixel; the window itself is a whole number of points (macOS rounds window frames), so the last
+  fraction of a point to the right and below stays transparent. Until 2026-09-28 the picture was stretched over the
+  skin's exact size instead, by less than a pixel across its whole width or height, which resampled it: the
+  pixel-exact lines of `TestSkins/Graphs/Aliased` (a half point wide at 1×) came out soft.
+- Why: the skin's frames are shown in a layer of their own that always has the frame's size (docs/skin-threading.md
+  §7.3); the stretching came from the view's layer having the skin's exact, fractional size.
+- Skin impact: skins whose size is not a whole number of pixels (a half point at 1×, a quarter point at 2×, or any
+  size a formula makes fractional) look sharper at their edges and in one-pixel lines; nothing moves.
+- Status: identical (a difference from earlier Deskset builds, not from Windows)
+
 ### Relative positions (`r` / `R`) after aligned String and Bitmap meters
 - Windows (Rainmeter): "If the value is appended with r, the position is relative to the top/left edge of the
   previous meter … R … relative to the bottom/right edge" (/manual/meters/general-options/). StringAlign "is
@@ -882,6 +897,42 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
 - Why: see §3.
 - Skin impact: none.
 - Status: partial (see the app's notes for the individual bangs)
+
+### App, menu and system bangs (`!SetWallpaper`, `!SetClip`, `!Play…`, `!SkinMenu`, `!Manage`, `!EditSkin`…)
+- Windows (Rainmeter): an action is a list of bangs (`[!Bang1][!Bang2]…`, /manual/bangs/), carried out in the order
+  they are written, each before the next.
+- Mac (Deskset): the desktop skins run on a thread of their own (the engine thread, the default). The bangs only the
+  app can carry out — `!SetClip`, `!SetWallpaper`, `!Play`, `!PlayLoop`, `!PlayStop`, `!SkinMenu`, `!SkinCustomMenu`,
+  `!TrayMenu`, `!Manage`, `!About`, `!EditSkin` — are handed to the app's main thread, which carries them out once the
+  skin's thread has finished the action (and the work it had queued with it): the action's other bangs have run by
+  then. After `!SetWallpaper` the new desktop picture is published at once, for the next update of a Chameleon
+  measure. Loading, unloading and refreshing configs (`!ActivateConfig`, `!Refresh`…) always happened after the
+  action, in both modes. With `SkinThreading=main` (for debugging) the bangs above run in place.
+- Why: menus, the pasteboard, the wallpaper and sounds belong to the app's main thread, and a skin's thread never
+  waits for it (docs/skin-threading.md §5.2).
+- Skin impact: a bang written after one of these in the same action does not see its effect yet:
+  `[!SetWallpaper "#@#Next.jpg"][!UpdateMeasure MeasureChameleon]` recolours from the old wallpaper, and the bangs
+  after `[!SkinMenu]` run while the menu is open instead of after it closed. Workaround: put what depends on them
+  after a short `!Delay` (`[!SetWallpaper "#@#Next.jpg"][!Delay 100][!UpdateMeasure MeasureChameleon][!Redraw]`).
+- Status: emulated
+
+### Mouse decisions while the engine thread is busy
+- Windows (Rainmeter): the manual does not describe it; a skin takes a click with its meters as they are when the
+  click comes (a meter a `MouseOverAction` has just shown takes it).
+- Mac (Deskset): with the desktop skins on the engine thread (the default), the skin window decides at once, from the
+  skin's last finished state (published after every update, action or mouse event the skin has handled), whether a
+  press may drag the window, whether a right click opens the skin menu, whether a Button is under the pointer and
+  which cursor to show; the skin runs the click's actions on its thread. All desktop skins share that thread, so while
+  one skin keeps it busy (a Lua script or a drawing that takes seconds) the others' hover actions wait, and a click in
+  that time is decided on what the skin looked like before the hover. Example: `MouseOverAction=[!ShowMeter Close]`,
+  and Close has a `RightMouseUpAction` and a `LeftMouseDownAction`. A right click on Close before the hover ran opens
+  the skin menu (and the RightMouseUpAction still runs when the thread gets to it); a left press there may drag the
+  window. With `SkinThreading=main` these decisions are made on the live skin, after the hover.
+- Why: the window has to answer macOS at once; waiting for a busy skin thread would freeze the app (the snapshot, §5.5
+  of docs/skin-threading.md).
+- Skin impact: only while another skin holds the thread for longer than it takes to move the pointer and click; none
+  otherwise.
+- Status: emulated
 
 ### Runaway actions
 - Windows (Rainmeter): no documented limit.

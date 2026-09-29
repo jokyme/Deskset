@@ -80,7 +80,7 @@ final class EditingSession {
     private(set) var fileURL: URL?
     /// The widget on the desktop, as the Studio window last linked it (`bind`). A refresh while no window follows the
     /// widget makes a new one: `currentDesktop` finds it.
-    weak var desktop: SkinController? {
+    weak var desktop: SkinWindowController? {
         didSet { host.desktop = desktop }
     }
     /// The Studio window showing the widget.
@@ -88,12 +88,21 @@ final class EditingSession {
     private let watcher = SourceWatcher()
     private var updates: SkinScheduledWork?
     private var updatesPaused = false
-    /// A reload of the widget on the desktop the session asked for (`refreshDesktop`) that has not arrived yet: the
-    /// desktop copy that comes of it is the session's own (`takeOwnReload`) — what it writes while it loads is its own
-    /// write, not a change made elsewhere, and no second reload follows it. The copy arrives inside the reload on the
-    /// main thread, later from a thread of its own; a reload that fails never arrives, so the wait has an end.
-    private var awaitedReload: (key: String, deadline: Date)?
+    /// A reload of the widget on the desktop the session asked for (`refreshDesktop`) that has not ended yet (see
+    /// `OwnReload`). What the widget writes to its files meanwhile is its own write, taken when it ends
+    /// (`absorbDesktopWrites`); FSEvents' reports wait for it (`touchedDuringReload`).
+    private var ownReload: OwnReload?
+    /// The session's latest reload: a copy that carries it and starts after that reload ended at its deadline is still
+    /// the session's own (`isOwnReload`).
+    private var lastTicket: SkinReloadTicket?
+    /// Files FSEvents reported while a reload of the session's was open: looked at once it ended, against what it took.
+    private var touchedDuringReload: [URL] = []
+    /// `refreshDesktop` is asking the app for the reload: it does not end before the app has said what it did.
+    private var isAskingForReload = false
+    /// How long a reload of the session's is waited for at most.
     static let ownReloadTimeout: TimeInterval = 5
+    /// How long the Studio's first instance waits for the desktop copy to let go of its counter and graphs.
+    static let seedTimeout: TimeInterval = SkinRuntime.defaultExclusiveTimeout
     /// How long the phases of the last step, undo or redo took (milliseconds): `plan`, `apply`, `write`, `studio`
     /// (loading the Studio's instance and the Studio following it) with its parts (`reloadPhases`: `studio.load`,
     /// `studio.update`, `window`, `window.<part>`), `total` — and, once it ran, `desktop` (the reload of the desktop
@@ -121,6 +130,7 @@ final class EditingSession {
     deinit {
         updates?.cancel()
         scheduledRefresh?.invalidate()
+        ownReload?.deadline?.invalidate()
         watcher.stop()
     }
 
@@ -129,10 +139,10 @@ final class EditingSession {
     /// Links the widget on the desktop (each refresh makes a new one). Returns true when it runs another file than
     /// before (another variant, or the first link).
     @discardableResult
-    func bind(desktop c: SkinController) -> Bool {
+    func bind(desktop c: SkinWindowController) -> Bool {
         desktop = c
         config = c.config
-        let url = c.skin.fileURL
+        let url = c.fileURL
         let other = fileURL.map { SourceFileID($0) != SourceFileID(url) } ?? true
         fileURL = url
         followInput(of: c)
@@ -142,22 +152,22 @@ final class EditingSession {
     /// The input the widget on the desktop takes reaches the Studio's instance too (`Skin.inputMirror`): what a click,
     /// a hover or another widget's bang shows there — a page turned, a theme picked — the canvas shows, as it did when
     /// it drew the desktop copy.
-    private func followInput(of c: SkinController) {
-        let skin: Skin = c.skin
-        let mirror: (SkinInput) -> Void = { [weak self, weak skin] input in
+    private func followInput(of c: SkinWindowController) {
+        let runtime = c.runtime
+        let mirror: (SkinInput) -> Void = { [weak self, weak runtime] input in
             let replay = {
-                guard let self, let skin, self.desktop?.skin === skin, let studio = self.studioSkin else { return }
+                guard let self, let runtime, self.desktop?.runtime === runtime, let studio = self.studioSkin else { return }
                 studio.replay(input)
             }
             if Thread.isMainThread { replay() } else { DispatchQueue.main.async(execute: replay) }
         }
-        if skin.executor.isCurrent { skin.inputMirror = mirror } else { skin.async { skin.inputMirror = mirror } }
+        runtime.send(.mirrorInput(mirror))
     }
 
     /// The widget on the desktop now: the linked one, or — after it was loaded again while no Studio window followed it
     /// (the session outlives the window) — the one the app runs for the widget now, which is linked from then on. nil
     /// when the widget is not loaded (then the linked one, stopped, can still be loaded again: `refreshDesktop`).
-    var currentDesktop: SkinController? {
+    var currentDesktop: SkinWindowController? {
         if let linked = desktop, app.controller(for: linked.config) === linked { return linked }
         guard let now = app.controller(for: desktop?.config ?? config) else { return nil }
         desktop = now
@@ -165,7 +175,7 @@ final class EditingSession {
     }
 
     /// The widget on the desktop when it runs there now (for steps outside the files: its window's settings).
-    var runningDesktop: SkinController? {
+    var runningDesktop: SkinWindowController? {
         guard let c = currentDesktop, !c.isStopped else { return nil }
         return c
     }
@@ -173,8 +183,8 @@ final class EditingSession {
     /// Loads the Studio's own instance again from the text in memory — after buffers without edits of their own took
     /// what changed on disk — and tells the Studio window. The Calc `Counter` goes on from the old instance, which is
     /// closed once the new one had its first update (nothing in between shows nothing); the first instance takes the
-    /// counter, the graphs and what else the widget on the desktop has shown (`runtimeSeed`). Keeps the old one when the
-    /// widget's file cannot be read.
+    /// counter, the graphs and what else the widget on the desktop has shown (`runtimeSeed`), taken with exclusive
+    /// access to it (`seedTimeout`). Keeps the old one when the widget's file cannot be read.
     @discardableResult
     func reloadStudioSkin(notify: Bool = true) -> Skin? {
         guard let fileURL else { return studioSkin }
@@ -203,11 +213,13 @@ final class EditingSession {
         if Fonts.registerFonts(for: skin) { app.fontsChanged() }
         let old = studioSkin
         // Opened: the canvas shows what the widget on the desktop shows — its Calc Counter and its graphs — as it did
-        // when it drew that one (a widget on a thread of its own is not read from here).
-        var mirrored: Skin?
-        if old == nil, let running = runningDesktop?.skin, running.executor.isCurrent,
-           SourceFileID(running.fileURL) == SourceFileID(fileURL) {
-            mirrored = running
+        // when it drew that one. What the desktop copy has shown is taken as a value (`Skin.runtimeState`) with exclusive
+        // access (at once on the main executor; a copy on another thread lets go between two pieces of its work), so the
+        // counter and the graphs are of one moment. A copy busy past `seedTimeout` is not read: the Studio's instance
+        // starts from its own first update.
+        var mirrored: SkinRuntimeState?
+        if old == nil, let running = runningDesktop?.runtime, SourceFileID(running.fileURL) == SourceFileID(fileURL) {
+            mirrored = running.exclusive(timeout: Self.seedTimeout) { desktop in desktop.runtimeState(as: .mirror) }
         }
         let seed = runtimeSeed(old: old, mirrored: mirrored)
         if let seed { skin.seed(from: seed) }
@@ -229,9 +241,7 @@ final class EditingSession {
         updates?.cancel()
         updates = nil
         watcher.stop()
-        if let skin = desktop?.skin {
-            if skin.executor.isCurrent { skin.inputMirror = nil } else { skin.async { skin.inputMirror = nil } }
-        }
+        desktop?.runtime.send(.mirrorInput(nil))
         let old = studioSkin
         studioSkin = nil
         old?.close()
@@ -246,7 +256,7 @@ final class EditingSession {
             updates?.cancel()
             updates = nil
         } else if let skin = studioSkin {
-            if SkinController.updateInterval(skin.settings.update) != nil { skin.update() }
+            if SkinRuntime.updateInterval(skin.settings.update) != nil { skin.update() }
             startUpdates(skin)
         }
     }
@@ -255,8 +265,8 @@ final class EditingSession {
     private func startUpdates(_ skin: Skin) {
         updates?.cancel()
         updates = nil
-        guard !updatesPaused, let interval = SkinController.updateInterval(skin.settings.update) else { return }
-        updates = skin.executor.timer(interval: interval, leeway: SkinController.timerTolerance(interval), repeats: true) {
+        guard !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
+        updates = skin.executor.timer(interval: interval, leeway: SkinRuntime.timerTolerance(interval), repeats: true) {
             [weak self, weak skin] in
             guard let self, let skin, self.studioSkin === skin else { return }
             skin.update()
@@ -474,7 +484,7 @@ final class EditingSession {
         desktopPreviewTimer = nil
         pendingSections = []
         pendingVariables = [:]
-        desktopSkin { $0.endPreview() }
+        runningDesktop?.runtime.send(.endPreview)
     }
 
     /// Sends the waiting previews now when the last ones went at least `desktopPreviewInterval` ago, else once that
@@ -505,26 +515,19 @@ final class EditingSession {
         pendingVariables = [:]
         lastDesktopPreview = DispatchTime.now().uptimeNanoseconds
         desktopPreviewsSent += 1
-        desktopSkin { skin in
-            if !variables.isEmpty { skin.previewVariables(variables) }
-            for (section, values) in sections { skin.preview(section: section, values) }
-        }
-    }
-
-    /// Runs `work` on the desktop copy of the widget, where it is owned.
-    private func desktopSkin(_ work: @escaping (Skin) -> Void) {
-        guard let c = runningDesktop else { return }
-        let skin: Skin = c.skin
-        if skin.executor.isCurrent { work(skin) } else { skin.async { work(skin) } }
+        c.runtime.send(.preview(sections: sections, variables: variables))
     }
 
     // MARK: The desktop and the disk
 
     /// Reloads the widget on the desktop from the files (after a step is written), or loads it again when an earlier
-    /// reload could not (the files may be fixed since). The copy that comes of it is the session's own
-    /// (`takeOwnReload`), and what the widget writes to its files meanwhile — the old copy's OnCloseAction, the new
-    /// one's OnRefreshAction or first update — is its own write (`absorbDesktopWrites`), not a change made elsewhere
-    /// that would reload it again (and again, when it writes something new each time it loads).
+    /// reload could not (the files may be fixed since), then moves its window to where a step put it once the new copy
+    /// started. The reload carries a ticket (docs/skin-threading.md §8.5): the copy that comes of it is the session's
+    /// own (`isOwnReload`), and what the widget writes to its files until every copy it touched has reported — the old
+    /// copy's OnCloseAction, the new one's OnRefreshAction or first update, a script — is its own write
+    /// (`absorbDesktopWrites`, when the reload ends), not a change made elsewhere that would reload it again (and again,
+    /// when it writes something new each time it loads). With the main executor all of it happens before this returns;
+    /// a copy on another thread reports later, in whatever order its work gets there.
     func refreshDesktop() {
         scheduledRefresh?.invalidate()
         scheduledRefresh = nil
@@ -537,19 +540,93 @@ final class EditingSession {
             Self.signposter.endInterval("desktop.refresh", state)
             lastTimings["desktop"] = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
         }
-        let key = SkinLibrary.normalizedConfigName(c.config).lowercased()
-        awaitedReload = (key, Date().addingTimeInterval(Self.ownReloadTimeout))
-        if app.controller(for: c.config) === c {
-            app.refresh(c)
-        } else if app.controller(for: c.config) == nil, c.isStopped {
-            app.activate(config: c.config, file: c.file)
+        let ticket = SkinReloadTicket.next()
+        lastTicket = ticket
+        // A reload asked for while one is still open joins it: it ends when every copy either touched has reported.
+        let reload = ownReload ?? OwnReload()
+        ownReload = reload
+        reload.tickets.insert(ticket)
+        reload.deadline?.invalidate()
+        let deadline = Timer(timeInterval: Self.ownReloadTimeout, repeats: false) { [weak self, weak reload] _ in
+            guard let self, let reload, self.ownReload === reload else { return }
+            Log.write("Studio: the widget's reload did not end within \(Int(Self.ownReloadTimeout)) s",
+                      level: .debug, source: self.config)
+            self.endOwnReload()
         }
-        // Nothing loaded (the file is broken), or a copy on the main thread, which arrived inside the call when a
-        // Studio window follows it (none follows: nobody waits for it): nothing more will arrive.
-        let loaded = app.controller(for: c.config)
-        if loaded == nil || loaded === c || loaded?.skin.executor.isCurrent == true { awaitedReload = nil }
+        RunLoop.main.add(deadline, forMode: .common)
+        reload.deadline = deadline
+        isAskingForReload = true
+        if app.controller(for: c.config) === c {
+            app.refresh(c, ticket: ticket, thenMoveTo: place)
+        } else if app.controller(for: c.config) == nil, c.isStopped {
+            app.activate(config: c.config, file: c.file, ticket: ticket, thenMoveTo: place)
+        }
+        isAskingForReload = false
+        // No new copy was made (the app could not load the widget again): the window moves as it is.
+        if let place, !reload.made.contains(ticket) { runningDesktop?.moveTo(x: place.x, y: place.y) }
+        endOwnReloadIfSettled()
+    }
+
+    /// A reload of the widget on the desktop the session asked for (`refreshDesktop`), until every copy it touched has
+    /// reported (`SkinReloadEvent`): the old copy its close (`.closing`, then `.closed` once OnCloseAction ran), the
+    /// new one its start (`.loading`, then `.started`, `.failed` or `.abandoned`). A reload asked for meanwhile joins
+    /// it (`tickets`). It ends then, or at the deadline (`ownReloadTimeout`).
+    private final class OwnReload {
+        var tickets: Set<SkinReloadTicket> = []
+        /// The reports still to come: each copy's close or start.
+        var awaited: Set<Awaited> = []
+        /// The tickets for which the app made a new copy.
+        var made: Set<SkinReloadTicket> = []
+        var deadline: Timer?
+    }
+
+    private struct Awaited: Hashable {
+        /// The copy's window controller (kept until it reported: the app keeps a new copy, a stopped one keeps itself
+        /// until its skin closed).
+        let copy: ObjectIdentifier
+        /// Its close (else its start).
+        let closing: Bool
+    }
+
+    /// A copy of the widget went through a step of a reload the session asked for (`AppController.studioReload`).
+    func reload(_ ticket: SkinReloadTicket, _ event: SkinReloadEvent, from c: SkinWindowController) {
+        guard let reload = ownReload, reload.tickets.contains(ticket) else {
+            // The copy of the session's latest reload started after that reload ended at its deadline: what it wrote so
+            // far is its own too.
+            if event == .started, ticket == lastTicket { absorbDesktopWrites() }
+            return
+        }
+        let copy = ObjectIdentifier(c)
+        switch event {
+        case .closing:
+            reload.awaited.insert(Awaited(copy: copy, closing: true))
+        case .loading:
+            reload.awaited.insert(Awaited(copy: copy, closing: false))
+            reload.made.insert(ticket)
+        case .closed:
+            reload.awaited.remove(Awaited(copy: copy, closing: true))
+        case .started, .failed, .abandoned:
+            reload.awaited.remove(Awaited(copy: copy, closing: false))
+        }
+        endOwnReloadIfSettled()
+    }
+
+    /// Ends the open reload when every copy it touched has reported (not while the app is still being asked for it).
+    private func endOwnReloadIfSettled() {
+        guard !isAskingForReload, let reload = ownReload, reload.awaited.isEmpty else { return }
+        endOwnReload()
+    }
+
+    /// The reload ends: what the widget wrote meanwhile is taken as its own (the Studio's instance follows it), and
+    /// the changes FSEvents reported meanwhile are looked at against what was taken.
+    private func endOwnReload() {
+        guard let reload = ownReload else { return }
+        reload.deadline?.invalidate()
+        ownReload = nil
         absorbDesktopWrites()
-        if let place { runningDesktop?.moveTo(x: place.x, y: place.y) }
+        let touched = touchedDuringReload
+        touchedDuringReload = []
+        if !touched.isEmpty { filesTouched(touched) }
     }
 
     /// Reloads the desktop copy on the next turn of the run loop (`refreshDesktop`), once for a burst of steps, then
@@ -606,24 +683,15 @@ final class EditingSession {
         refreshDesktop()
     }
 
-    /// Whether a reload of the desktop copy the session asked for is still on its way — waiting for its turn, or not
-    /// arrived yet (changes on disk wait for it: they may be what it writes as it loads).
-    var isAwaitingOwnReload: Bool {
-        if scheduledRefresh != nil { return true }
-        guard let awaited = awaitedReload else { return false }
-        guard Date() < awaited.deadline else {
-            awaitedReload = nil
-            return false
-        }
-        return true
-    }
+    /// Whether a reload of the desktop copy the session asked for is still on its way — waiting for its turn, or open:
+    /// not every copy it touched has reported yet (changes on disk wait for it: they may be what it writes as it loads).
+    var isAwaitingOwnReload: Bool { scheduledRefresh != nil || ownReload != nil }
 
-    /// The desktop copy `c` arrived: true when it is the reload the session asked for (which then ends).
-    func takeOwnReload(_ c: SkinController) -> Bool {
-        guard isAwaitingOwnReload, awaitedReload.map({ Date() < $0.deadline }) == true, let awaited = awaitedReload,
-              awaited.key == SkinLibrary.normalizedConfigName(c.config).lowercased() else { return false }
-        awaitedReload = nil
-        return true
+    /// Whether the desktop copy `c` came of a reload the session asked for: its window controller carries the ticket of
+    /// the open reload, or of the session's latest one.
+    func isOwnReload(_ c: SkinWindowController) -> Bool {
+        guard let ticket = c.reloadTicket else { return false }
+        return ownReload?.tickets.contains(ticket) == true || ticket == lastTicket
     }
 
     /// What the widget on the desktop wrote to its files while it was reloaded is its own write, as when it writes them
@@ -640,8 +708,13 @@ final class EditingSession {
 
     /// FSEvents saw files of the widget touched: those that really changed (not the session's own writes) — or were
     /// saved again with the same bytes (an image or a font the widget uses may have changed) — are for the Studio window
-    /// to decide about.
+    /// to decide about. While a reload the session asked for is open they wait for it to end: what the widget writes as
+    /// it reloads is taken then, and only what is left is a change.
     private func filesTouched(_ files: [URL]) {
+        if ownReload != nil {
+            touchedDuringReload.append(contentsOf: files)
+            return
+        }
         let changed = diskSync.changedOnDisk(files)
         guard !changed.isEmpty || !diskSync.touchedOnDisk(files, marking: false).isEmpty else { return }
         client?.session(self, didChange: .filesChangedOnDisk(changed))
@@ -689,9 +762,6 @@ final class GrowingStep {
 // MARK: - What DesktopFollowing.swift uses of the session
 
 extension EditingSession {
-    /// Runs `work` on the desktop copy where it is owned (`desktopSkin`).
-    func runOnDesktopSkin(_ work: @escaping (Skin) -> Void) { desktopSkin(work) }
-
     /// How long the desktop copy took to follow the last step (milliseconds; `lastTimings["desktop"]`).
     func noteDesktopTiming(_ milliseconds: Double) { lastTimings["desktop"] = milliseconds }
 }

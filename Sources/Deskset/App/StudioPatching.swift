@@ -72,11 +72,11 @@ extension EditingSession {
 extension EditingSession {
     /// What a new Studio instance of the widget goes on from (`reloadStudioSkin`): the old instance's counter — and,
     /// when it replaces one that could not take a step as a patch (`carriesState`), everything the old one showed —
-    /// or, for the first instance, what the widget on the desktop shows (`mirrored`: a copy on this thread running the
-    /// same file). nil when there is neither.
-    func runtimeSeed(old: Skin?, mirrored: Skin?) -> SkinRuntimeState? {
+    /// or, for the first instance, what the widget on the desktop shows (`mirrored`: taken from the desktop copy of the
+    /// same file, on whatever executor it runs, with exclusive access). nil when there is neither.
+    func runtimeSeed(old: Skin?, mirrored: SkinRuntimeState?) -> SkinRuntimeState? {
         if let old { return old.runtimeState(as: .successor, including: follow.carriesState ? .all : .counter) }
-        return mirrored?.runtimeState(as: .mirror)
+        return mirrored
     }
 }
 

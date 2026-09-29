@@ -2,15 +2,20 @@ import AppKit
 import DesksetCore
 
 /// A skin window's picture: drawn into a bitmap of its own (`SkinBitmapDrawing`), with pictures kept of the meters that
-/// did not change while the skin redraws often.
+/// did not change while the skin redraws often, by the skin's frame producer on its executor (`SkinFrameProducer`), and
+/// shown as the contents of a layer of its own in the skin's view (`LayerContentProvider`).
 enum SkinDrawingSelfTests {
     static func run(_ t: AppTestRunner) {
         keptPictureTests(t)
         invalidationTests(t)
-        viewTests(t)
+        frameTests(t)
+        threadFrameTests(t)
+        windowFrameTests(t)
+        releaseTests(t)
         memoryTests(t)
         systemWidgetTests(t)
         repositorySkinTests(t)
+        contentLayerCheckTests(t)
         benchmarkTests(t)
     }
 
@@ -507,42 +512,524 @@ enum SkinDrawingSelfTests {
         }
     }
 
-    static func viewTests(_ t: AppTestRunner) {
-        t.suite("App: skin drawing: a skin window's layer shows a picture of its own") {
+    // MARK: Frames
+
+    /// Ends a turn of the main run loop: the frame producers of the skins on the main thread draw what their skins asked
+    /// for in it.
+    static func endTurn() {
+        _ = CFRunLoopRunInMode(.defaultMode, 0, true)
+    }
+
+    static let sRGB = SkinFrameProducer.sRGB
+    static let aqua = NSAppearance.Name.aqua.rawValue
+
+    /// Updated only by the tests (`Update=-1`); `W` sets its width; one meter never updates (kept pictures).
+    static let frameSkin = """
+    [Rainmeter]
+    Update=-1
+    DynamicWindowSize=1
+    AccurateText=1
+    [Variables]
+    W=120
+    [MeasureCount]
+    Measure=Calc
+    Formula=MeasureCount + 1
+    [MeterBack]
+    Meter=Image
+    W=#W#
+    H=60
+    SolidColor=30,120,200
+    DynamicVariables=1
+    [MeterCount]
+    Meter=String
+    MeasureName=MeasureCount
+    X=8
+    Y=8
+    FontSize=14
+    FontColor=255,255,255
+    AntiAlias=1
+    [MeterStatic]
+    Meter=Shape
+    Shape=Ellipse 90,30,12 | Fill Color 255,200,0,255 | StrokeWidth 0
+    UpdateDivider=-1
+    """
+
+    /// A runtime of `ini` whose frames go to `window`'s content layer (or `content`).
+    static func frameRuntime(_ t: AppTestRunner, _ ini: String, executor: SkinExecutor = MainSkinExecutor.shared,
+                             window: FrameTestWindow, content: ContentProvider? = nil) throws -> SkinRuntime {
+        let root = t.temporaryDirectory("frames")
+        let folder = root.appendingPathComponent("Frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try ini.write(to: folder.appendingPathComponent("Skin.ini"), atomically: true, encoding: .utf8)
+        let runtime = SkinRuntime(config: "Frames", file: "Skin.ini", skinsDirectory: root, executor: executor,
+                                  content: content ?? window.content)
+        runtime.window = window
+        window.runtime = runtime
+        return runtime
+    }
+
+    /// How much `image` differs from a full drawing of `skin` at `scale` in `space` (nil: not comparable).
+    static func differenceFromFullDrawing(_ image: CGImage, _ skin: Skin, scale: CGFloat,
+                                          space: CGColorSpace) -> SkinBitmapDrawing.Difference? {
+        guard let full = SkinBitmapDrawing.fullDrawing(of: skin, image.width, image.height, scale: scale, space: space)
+        else { return nil }
+        return SkinBitmapDrawing.difference(image, full)
+    }
+
+    /// The content layer's picture against a full drawing of the skin, and where the layer is and how large.
+    static func checkShown(_ t: AppTestRunner, _ content: LayerContentProvider, host: CALayer?, _ skin: Skin,
+                           scale: CGFloat, space: CGColorSpace, _ label: String, line: UInt = #line) {
+        let shown = content.shown
+        guard let image = shown.image else { return t.check(false, "\(label): a picture", line: line) }
+        let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
+        let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
+        t.equal(image.width, w, "\(label): its width in pixels", line: line)
+        t.equal(image.height, h, "\(label): its height in pixels", line: line)
+        t.check(image.colorSpace == space, "\(label): in the window's colour space", line: line)
+        t.equal(shown.bounds, CGRect(x: 0, y: 0, width: CGFloat(w) / scale, height: CGFloat(h) / scale),
+                "\(label): the layer is the frame's size, one pixel per pixel", line: line)
+        t.equal(shown.scale, scale, "\(label): its scale", line: line)
+        t.equal(shown.position, .zero, "\(label): at the view's top-left corner", line: line)
+        t.equal(shown.anchorPoint, .zero, line: line)
+        t.check(shown.superlayer === host, "\(label): in the view's layer", line: line)
+        guard let found = differenceFromFullDrawing(image, skin, scale: scale, space: space) else {
+            return t.check(false, "\(label): compared with a full drawing", line: line)
+        }
+        t.check(found.worst <= SkinBitmapDrawing.tolerance,
+                "\(label): differs from a full drawing by \(found.worst) in \(found.pixels) pixels", line: line)
+    }
+
+    static func frameTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: frames go to the content layer at the end of the turn, while the window can be seen") {
+            let w = FrameTestWindow()
+            let runtime = try frameRuntime(t, frameSkin, window: w)
+            let frames = runtime.frames
+            let host = w.view.layer
+            // The window as it is before the skin loads: never shown.
+            w.publish()
+            _ = try runtime.load()
+            runtime.send(.start)
+            let skin: Skin = runtime.skin
+            endTurn()
+            t.equal(frames.framesDrawn, 0, "never shown: nothing drawn (AppKit never displayed such a view either)")
+            t.check(frames.framesSkipped > 0, "the frame asked for was skipped")
+            t.equal(w.content.state.presented, 0)
+            t.equal(host?.sublayers?.count, 1, "the view's layer holds one layer")
+            t.check(host?.sublayers?.first.map(w.content.isContentLayer) == true, "the content layer")
+
+            // The first frame, before the window is shown; only once.
+            runtime.send(.firstFrame)
+            t.equal(frames.framesDrawn, 1, "the first frame, whether the window can be seen yet or not")
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "the first frame")
+            runtime.send(.firstFrame)
+            t.equal(frames.framesDrawn, 1, "only the first time")
+            endTurn()
+
+            // Ordered in on a later turn, as a skin thread hears of it: the first frame is what it shows, drawn again
+            // only if the skin redrew since.
+            w.show(true)
+            endTurn()
+            t.equal(frames.framesDrawn, 1, "ordered in after its first frame, nothing changed: that frame, not another")
+            // Ordered out and in again: one frame (the view was displayed when its window was ordered in).
+            w.show(false)
+            endTurn()
+            w.show(true)
+            endTurn()
+            t.equal(frames.framesDrawn, 2, "ordered in again: one frame")
+            endTurn()
+            t.equal(frames.framesDrawn, 2, "then nothing, while nothing changes")
+            runtime.send(.update(hops: 0))
+            t.equal(frames.framesDrawn, 2, "not in the middle of the turn")
+            endTurn()
+            t.equal(frames.framesDrawn, 3, "at its end")
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "an update")
+            t.check(host?.contents == nil, "the view's own layer shows nothing")
+
+            // Many redraws in one turn: one frame.
+            for _ in 0..<5 { runtime.send(.execute("[!Redraw]", section: nil)) }
+            for _ in 0..<3 { runtime.send(.update(hops: 0)) }
+            t.equal(frames.framesDrawn, 3)
+            endTurn()
+            t.equal(frames.framesDrawn, 4, "eight redraws in one turn: one frame")
+            endTurn()
+            t.equal(frames.framesDrawn, 4, "and nothing more")
+
+            // At rest the pictures are copied.
+            for _ in 0..<2 {
+                runtime.send(.execute("[!Redraw]", section: nil))
+                endTurn()
+            }
+            t.equal(frames.drawing.lastStats.copied, 1, "a resting skin's picture is copied: \(frames.drawing.lastStats)")
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "at rest")
+
+            // Another scale, colour space or appearance: drawn again, from nothing kept.
+            var drawn = frames.framesDrawn
+            w.publish { $0.scale = 1 }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "another backing scale draws again")
+            t.equal(frames.drawing.lastStats.copied, 0, "from nothing kept")
+            t.equal(w.content.state.scale, 1, "the provider heard of the scale")
+            checkShown(t, w.content, host: host, skin, scale: 1, space: sRGB, "at 1x")
+            guard let p3 = CGColorSpace(name: CGColorSpace.displayP3) else { return t.check(false, "Display P3") }
+            drawn = frames.framesDrawn
+            w.publish { $0.colorSpace = p3 }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "another colour space draws again")
+            t.equal(frames.drawing.lastStats.copied, 0)
+            checkShown(t, w.content, host: host, skin, scale: 1, space: p3, "in Display P3")
+            drawn = frames.framesDrawn
+            w.publish { $0.appearance = NSAppearance.Name.darkAqua.rawValue }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "another appearance draws again")
+            t.equal(frames.drawing.lastStats.copied, 0)
+            w.publish {
+                $0.scale = 2
+                $0.colorSpace = sRGB
+                $0.appearance = aqua
+            }
+            endTurn()
+            drawn = frames.framesDrawn
+
+            // Covered: nothing drawn; uncovered: one frame.
+            w.publish { $0.isVisible = false }
+            t.equal(w.content.state.visible, false, "the provider hears that the window cannot be seen")
+            for _ in 0..<3 {
+                runtime.send(.update(hops: 0))
+                endTurn()
+            }
+            t.equal(frames.framesDrawn, drawn, "a covered window draws nothing")
+            w.publish { $0.isVisible = true }
+            t.equal(w.content.state.visible, true)
+            endTurn()
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "one frame once it can be seen again")
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "uncovered")
+            w.publish { $0.isVisible = false }
+            w.publish { $0.isVisible = true }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "uncovered without a redraw meanwhile: nothing to draw")
+
+            // Ordered out (!Hide): nothing; ordered in again: one frame, before its occlusion state catches up.
+            drawn = frames.framesDrawn
+            w.show(false)
+            for _ in 0..<3 {
+                runtime.send(.update(hops: 0))
+                endTurn()
+            }
+            t.equal(frames.framesDrawn, drawn, "an ordered-out window draws nothing")
+            w.publish { $0.isOrderedIn = true }
+            endTurn()
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "ordered in again: one frame, although not uncovered yet")
+            runtime.send(.update(hops: 0))
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "then it counts as covered until the occlusion state says otherwise")
+            w.publish { $0.isVisible = true }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 2)
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "shown again")
+
+            // A new size: the window follows with its top-left corner fixed; the frame is never stretched.
+            let top = w.panel.frame.maxY
+            runtime.send(.execute("[!SetVariable W 200]", section: nil))
+            runtime.send(.update(hops: 0))
+            t.equal(w.resizes.last, CGSize(width: 200, height: 60), "the window is asked to follow")
+            t.equal(w.panel.frame.maxY, top, "with its top-left corner fixed")
+            endTurn()
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "grown")
+            runtime.send(.execute("[!SetVariable W 130.3]", section: nil))
+            runtime.send(.update(hops: 0))
+            endTurn()
+            t.close(skin.width, 130.3, accuracy: 1e-6, "a width that is not whole")
+            t.equal(w.content.shown.bounds.width, 130.5, "261 pixels at 2x cover 130.5 points: nothing is stretched")
+            checkShown(t, w.content, host: host, skin, scale: 2, space: sRGB, "a width that is not whole")
+            let resizes = w.resizes.count
+            runtime.send(.update(hops: 0))
+            endTurn()
+            t.equal(w.resizes.count, resizes, "the same size asks nothing of the window")
+
+            // Closed: no more frames, the last one stays for the fade-out; the window tears the layer down.
+            drawn = frames.framesDrawn
+            let last = w.content.shown.image
+            runtime.send(.close(fadeOut: false))
+            runtime.send(.frameWanted)
+            endTurn()
+            t.equal(frames.framesDrawn, drawn, "a closed skin draws nothing")
+            t.check(w.content.shown.image != nil && w.content.shown.image === last, "the last frame stays")
+            w.content.teardown()
+            t.equal(w.content.state.tornDown, true)
+            t.check(host?.sublayers?.isEmpty ?? true, "the content layer is gone from the view's layer")
+            if let last { w.content.present(SkinFrame(image: last, scale: 2)) }
+            t.equal(w.content.shown.image == nil, true, "a frame after the teardown shows nothing")
+        }
+
+        t.suite("App: skin drawing: a turn longer than a frame draws before the next one ends") {
+            let w = FrameTestWindow()
+            let runtime = try frameRuntime(t, frameSkin, window: w)
+            let frames = runtime.frames
+            w.show(true)
+            _ = try runtime.load()
+            runtime.send(.start)
+            endTurn()
+            let drawn = frames.framesDrawn
+            t.check(drawn >= 1, "shown")
+            // What a thread that never waits sees: turns that start one after the other.
+            runtime.send(.update(hops: 0))
+            frames.runLoopTurn(.beforeTimers)
+            t.equal(frames.framesDrawn, drawn, "asked for just now: the frame waits for the end of the turn")
+            let asked = ProcessInfo.processInfo.systemUptime
+            while ProcessInfo.processInfo.systemUptime - asked < 2 * SkinFrameProducer.frameInterval {}
+            frames.runLoopTurn(.beforeTimers)
+            t.equal(frames.framesDrawn, drawn + 1, "asked for longer than a frame ago: drawn as the next turn starts")
+            frames.runLoopTurn(.beforeWaiting)
+            t.equal(frames.framesDrawn, drawn + 1, "once")
+            runtime.send(.close(fadeOut: false))
+            w.content.teardown()
+        }
+    }
+
+    static func threadFrameTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: a skin on a thread of its own draws at the end of its turns and presents from there") {
+            let executor = SkinThreadExecutor(name: "Skin frames test")
+            let w = FrameTestWindow()
+            let recorder = PresentRecorder(w.content)
+            var held: SkinRuntime? = try frameRuntime(t, frameSkin, executor: executor, window: w, content: recorder)
+            defer { SkinRuntimeSelfTests.finish(t, &held, executor) }
+            guard let r = held else { return }
+            w.publish()
+            guard SkinRuntimeSelfTests.load(t, r, on: executor) else { return }
+            w.show(true)
+            t.check(AppSelfTest.spin(timeout: 30) { recorder.count >= 1 }, "a frame arrives once the window is shown")
+            t.check(recorder.threads.current.allSatisfy { !$0 }, "presented from the skin's thread")
+            t.equal(w.offMain, 0, "the window's requests arrive on the main thread")
+
+            // Ten redraws in one piece of the thread's work: one frame, at the end of that turn.
+            _ = r.exclusive(timeout: 30) { _ in true }
+            let before = recorder.count
+            executor.async {
+                for _ in 0..<5 {
+                    r.send(.execute("[!Redraw]", section: nil))
+                    r.send(.update(hops: 0))
+                }
+            }
+            t.check(AppSelfTest.spin(timeout: 30) { recorder.count > before }, "the frame arrives")
+            // Two more pieces of work, each at a turn of its own, ask for nothing.
+            for _ in 0..<2 { _ = r.exclusive(timeout: 30) { _ in true } }
+            t.equal(recorder.count, before + 1, "ten redraws in one piece of work: one frame")
+            let worst = r.exclusive(timeout: 30) { skin -> Int in
+                guard let image = w.content.shown.image,
+                      let found = differenceFromFullDrawing(image, skin, scale: 2, space: sRGB) else { return .max }
+                return found.worst
+            }
+            t.check((worst ?? .max) <= SkinBitmapDrawing.tolerance, "the frame is the skin's: \(String(describing: worst))")
+
+            // Covered: nothing; uncovered: one frame.
+            w.publish { $0.isVisible = false }
+            _ = r.exclusive(timeout: 30) { _ in true }
+            let covered = recorder.count
+            for _ in 0..<3 { r.send(.update(hops: 0)) }
+            for _ in 0..<2 { _ = r.exclusive(timeout: 30) { _ in true } }
+            t.equal(recorder.count, covered, "a covered window draws nothing")
+            w.publish { $0.isVisible = true }
+            t.check(AppSelfTest.spin(timeout: 30) { recorder.count > covered }, "uncovered: a frame")
+            for _ in 0..<2 { _ = r.exclusive(timeout: 30) { _ in true } }
+            t.equal(recorder.count, covered + 1, "one")
+            t.check(recorder.threads.current.allSatisfy { !$0 }, "every frame presented from the skin's thread")
+
+            r.send(.close(fadeOut: false))
+            _ = r.exclusive(timeout: 30) { _ in true }
+            // The window's teardown may meet a frame under way: the provider takes care of that.
+            w.content.teardown()
+            t.equal(w.content.state.tornDown, true)
+        }
+    }
+
+    static func windowFrameTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: a skin window shows its frames in a layer of its own") {
             guard let app = try AppSelfTest.makeApp(t),
                   let c = app.activate(config: "App\\Focus", file: "Focus.ini") else { return t.check(false, "loads") }
-            let view = c.view
-            // Core Animation's accelerated drawing (CA::CG) kept 110–150 MB per process for skins that redraw.
-            t.check(view.wantsUpdateLayer, "the view gives its layer a picture instead of drawing into a backing store")
-            view.wantsLayer = true
+            // Its clock stops, so that only the test redraws it (the frames are counted).
+            c.pauseUpdates()
+            let view = c.view, frames = c.runtime.frames
+            t.check(view.wantsUpdateLayer, "the view asks AppKit for no drawing of its own")
             view.updateLayer()
-            let contents = view.layer?.contents
-            t.check(contents != nil && CFGetTypeID(contents as CFTypeRef) == CGImage.typeID, "a CGImage")
-            if let contents, CFGetTypeID(contents as CFTypeRef) == CGImage.typeID {
-                let image = contents as! CGImage
-                // The window's color space (a display's profile), as AppKit drew the view before: sRGB colors come out
-                // the same, and colors beyond sRGB (Display P3 pictures) are not clipped as in an sRGB bitmap.
-                if let space = view.window?.colorSpace?.cgColorSpace {
-                    t.check(image.colorSpace == space, "in the window's color space: \(String(describing: image.colorSpace))")
-                }
-                let scale = view.layer?.contentsScale ?? 1
-                t.equal(image.width, Int((view.bounds.width * scale).rounded(.up)))
-                t.equal(image.height, Int((view.bounds.height * scale).rounded(.up)))
+            t.check(view.layer?.contents == nil, "its layer has no contents")
+            t.equal(view.layer?.sublayers?.count, 1)
+            t.check(view.layer?.sublayers?.first.map(c.content.isContentLayer) == true, "only the content layer")
+            // Snapshots of the view (`cacheDisplay`) draw the skin with draw(_:) and leave the layer without contents.
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let middle = rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)
+                t.check((middle?.alphaComponent ?? 0) > 0, "a snapshot shows the skin")
+                t.check(view.layer?.contents == nil, "and leaves the view's layer without contents")
+            } else {
+                t.check(false, "a snapshot")
             }
-            // Frames of a skin that rests copy its picture: nothing the view hands the drawing (its window's color
-            // space, scale, appearance) looks new each time.
-            view.updateLayer()
-            view.updateLayer()
-            t.equal(view.drawing.lastStats.copied, 1, "the resting skin is copied: \(view.drawing.lastStats)")
-            // The picture is the view's own: another display (scale, color space) or appearance draws it again.
-            view.needsDisplay = false
+            endTurn()
+            t.equal(frames.framesDrawn, 0, "headless: never shown, never drawn")
+
+            // Ordered in (when the app presents windows): the first frame is there by then.
+            var presentedAtOrderIn: Int?
+            c.willOrderIn = { presentedAtOrderIn = c.content.state.presented }
+            c.orderIn(alpha: 1)
+            c.willOrderIn = nil
+            t.equal(presentedAtOrderIn, 1, "the first frame exists before the window is ordered in")
+            t.check(!c.window.isVisible, "(headless: the window stays out)")
+            // Shown in the same turn (as `start` shows it): the first frame is the one it shows.
+            c.visibilityForTesting = true
+            endTurn()
+            t.equal(frames.framesDrawn, 1, "ordered in right after its first frame: nothing drawn again")
+            c.visibilityForTesting = false
+            endTurn()
+
+            // Shown and uncovered as far as the frames go.
+            c.visibilityForTesting = true
+            endTurn()
+            t.equal(frames.framesDrawn, 2, "ordered in: one frame")
+            let scale = c.window.backingScaleFactor
+            let space = c.window.colorSpace?.cgColorSpace ?? sRGB
+            // The window's colour space (a display's profile), as AppKit drew the view: sRGB colours come out the same,
+            // and colours beyond sRGB (Display P3 pictures) are not clipped as in an sRGB bitmap.
+            checkShown(t, c.content, host: view.layer, c.skin, scale: scale, space: space, "a skin window's frame")
+            for _ in 0..<2 {
+                c.skin.execute("[!Redraw]", from: nil)
+                endTurn()
+            }
+            t.equal(frames.drawing.lastStats.copied, 1, "the resting skin is copied: \(frames.drawing.lastStats)")
+
+            // The view's hooks publish the window's facts: the same scale and colour space change nothing; another
+            // appearance draws the frame again.
+            var drawn = frames.framesDrawn
             view.viewDidChangeBackingProperties()
-            t.check(view.needsDisplay, "a backing change draws the picture again")
-            view.needsDisplay = false
-            view.viewDidChangeEffectiveAppearance()
-            t.check(view.needsDisplay, "an appearance change draws the picture again")
+            endTurn()
+            t.equal(frames.framesDrawn, drawn, "the same backing: nothing drawn again")
+            view.appearance = NSAppearance(named: .darkAqua)
+            t.check(AppSelfTest.spin(timeout: 10) { frames.framesDrawn > drawn }, "another appearance draws the frame again")
+            t.equal(frames.appearance, NSAppearance.Name.darkAqua.rawValue)
+            t.equal(frames.drawing.lastStats.copied, 0, "from nothing kept")
+            view.appearance = nil
+            AppSelfTest.spin(timeout: 10) { frames.appearance != NSAppearance.Name.darkAqua.rawValue }
+
+            // Not shown: its redraws are skipped; shown again: one frame.
+            endTurn()
+            drawn = frames.framesDrawn
+            c.visibilityForTesting = false
+            for _ in 0..<3 {
+                c.skin.execute("[!Redraw]", from: nil)
+                endTurn()
+            }
+            t.equal(frames.framesDrawn, drawn, "a window that cannot be seen draws nothing")
+            c.visibilityForTesting = true
+            endTurn()
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "one frame when it can be seen again")
+
+            // A new panel (ClickThrough turned off again) keeps the content layer and draws it again.
+            let firstPanel = c.window
+            drawn = frames.framesDrawn
+            c.skin.execute("[!ClickThrough 1][!ClickThrough 0]", from: nil)
+            t.check(c.window !== firstPanel, "a new panel")
+            t.check(c.content.shown.superlayer === view.layer, "the content layer went with the view")
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1, "and is drawn again, as the view was")
+
+            // Closed: the window tears the content layer down.
+            c.stop()
+            t.equal(c.content.state.tornDown, true, "the window closed: the content layer is torn down")
+            t.check(view.layer?.sublayers?.isEmpty ?? true)
             app.stopAllForTermination()
         }
+
+        t.suite("App: skin drawing: FrostedGlass's rounded corners clip the content layer as they clipped the view") {
+            guard let app = try AppSelfTest.makeApp(t),
+                  let c = app.activate(config: "App\\Focus", file: "Focus.ini") else { return t.check(false, "loads") }
+            defer { app.stopAllForTermination() }
+            c.pauseUpdates()
+            c.visibilityForTesting = true
+            c.skin.execute("[!Redraw]", from: nil)
+            endTurn()
+            let scale = c.window.backingScaleFactor, size = c.view.bounds.size
+            let space = c.window.colorSpace?.cgColorSpace ?? sRGB
+            guard let image = c.content.shown.image, let square = composite(c.contentView.layer, size: size,
+                                                                            scale: scale, space: space) else {
+                return t.check(false, "a frame")
+            }
+            let corner = (x: 1, y: 1), middle = (x: image.width / 2, y: image.height / 2)
+            t.check(pixel(square, corner.x, corner.y).a > 0, "square corners: the corner shows the skin")
+            let measure = FrostedGlassMeasure(name: "FrostedGlass", section: MediaUITests.section("FrostedGlass", [
+                ("Measure", "Plugin"), ("Plugin", "FrostedGlass"), ("Type", "Acrylic"), ("Corner", "Round"),
+            ]), skin: c.skin, type: "frostedglass")
+            measure.readOptions()
+            _ = measure.computeValue()
+            t.equal(c.contentView.layer?.cornerRadius, 8, "the skin's content view is rounded")
+            guard let rounded = composite(c.contentView.layer, size: size, scale: scale, space: space) else {
+                return t.check(false, "composited")
+            }
+            t.equal(pixel(rounded, corner.x, corner.y).a, 0, "rounded: the content layer is clipped at the corner")
+            t.check(pixel(rounded, middle.x, middle.y) == pixel(square, middle.x, middle.y), "and not inside")
+
+            // What the view's own contents looked like with the same rounding.
+            let legacy = LegacyWindow()
+            legacy.contentView.wantsLayer = true
+            legacy.contentView.layer?.cornerRadius = 8
+            legacy.contentView.layer?.masksToBounds = true
+            legacy.resize(to: size)
+            legacy.view.skin = c.skin
+            legacy.view.scale = scale
+            legacy.view.space = space
+            legacy.view.drawingAppearance = c.view.effectiveAppearance.name.rawValue
+            // AppKit settles the new panel's layer tree (which layers are flipped) on the next turn.
+            endTurn()
+            legacy.view.updateLayer()
+            let old = composite(legacy.contentView.layer, size: size, scale: scale, space: space)
+            let worst = differenceOfContexts(rounded, old)
+            t.check(worst <= SkinBitmapDrawing.tolerance, "the same pixels as the view clipped: differs by \(worst)")
+
+            measure.execute(command: "DisableCorner")
+            t.equal(c.contentView.layer?.cornerRadius, 0, "no corners: no rounding")
+            if let again = composite(c.contentView.layer, size: size, scale: scale, space: space) {
+                t.check(pixel(again, corner.x, corner.y).a > 0, "the corner shows again")
+            }
+            withExtendedLifetime(measure) {}
+        }
+    }
+
+    // MARK: Composites
+
+    /// What a skin window's layer tree shows: `layer` (its content view's) and everything in it, rendered as Core
+    /// Animation composites it, with the top-left corner first, `size` points at `scale`. Nothing is read from the
+    /// screen: the layers are rendered in this process.
+    static func composite(_ layer: CALayer?, size: CGSize, scale: CGFloat, space: CGColorSpace) -> CGContext? {
+        guard let layer else { return nil }
+        let w = Int((size.width * scale).rounded(.up)), h = Int((size.height * scale).rounded(.up))
+        guard w > 0, h > 0, let ctx = SkinBitmapDrawing.makeContext(w, h, space) else { return nil }
+        ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+        if layer.contentsAreFlipped() {
+            ctx.translateBy(x: 0, y: CGFloat(h))
+            ctx.scaleBy(x: scale, y: -scale)
+        } else {
+            ctx.scaleBy(x: scale, y: scale)
+        }
+        layer.render(in: ctx)
+        return ctx
+    }
+
+    struct Pixel: Equatable {
+        var b: UInt8, g: UInt8, r: UInt8, a: UInt8
+    }
+
+    /// The pixel at (x, y), counted from the top-left corner.
+    static func pixel(_ ctx: CGContext, _ x: Int, _ y: Int) -> Pixel {
+        guard x >= 0, y >= 0, x < ctx.width, y < ctx.height,
+              let data = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return Pixel(b: 0, g: 0, r: 0, a: 0) }
+        let p = data + y * ctx.bytesPerRow + x * 4
+        return Pixel(b: p[0], g: p[1], r: p[2], a: p[3])
+    }
+
+    /// The largest difference of one channel between two bitmaps of one size (Int.max: not comparable).
+    static func differenceOfContexts(_ a: CGContext?, _ b: CGContext?) -> Int {
+        guard let a, let b, let image = a.makeImage() else { return .max }
+        return SkinBitmapDrawing.difference(image, b)?.worst ?? .max
     }
 
     /// Every default skin and test skin (and, when `DESKSET_DRAWING_CHECK_SKINS` names more Skins folders, separated
@@ -604,6 +1091,58 @@ enum SkinDrawingSelfTests {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
         }
         return result == 0 ? Int(info.ri_phys_footprint) : 0
+    }
+
+    static func releaseTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: a covered window lets go of its kept pictures after a while, an ordered-out one of its frame too") {
+            let w = FrameTestWindow()
+            let runtime = try frameRuntime(t, keep, window: w)
+            let frames = runtime.frames
+            w.publish()
+            _ = try runtime.load()
+            runtime.send(.start)
+            runtime.send(.firstFrame)
+            w.show(true)
+            for _ in 0..<3 {
+                runtime.send(.update(hops: 0))
+                endTurn()
+            }
+            t.check(frames.drawing.keepsPictures && frames.drawing.lastStats.copied > 0, "shown: pictures kept")
+            frames.releaseUnseen()
+            t.equal(frames.releases.pictures, 0, "nothing goes while the window can be seen")
+
+            // Covered: the pictures go, the frame stays on the layer (it shows as soon as the window is uncovered).
+            w.publish { $0.isVisible = false }
+            endTurn()
+            frames.releaseUnseen()
+            t.check(!frames.drawing.keepsPictures, "covered: the kept pictures and bitmaps go")
+            t.check(w.content.shown.image != nil, "the frame stays")
+            t.equal(frames.releases.contents, 0)
+            let drawn = frames.framesDrawn
+            w.publish { $0.isVisible = true }
+            endTurn()
+            t.equal(frames.framesDrawn, drawn, "uncovered without a redraw meanwhile: nothing drawn")
+            runtime.send(.update(hops: 0))
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 1)
+            t.equal(frames.drawing.lastStats.copied, 0, "the next frame is drawn in full")
+            checkShown(t, w.content, host: w.view.layer, runtime.skin, scale: 2, space: sRGB, "after the release")
+
+            // Ordered out: the frame goes too; shown again, the frame for the showing comes first.
+            w.show(false)
+            endTurn()
+            frames.releaseUnseen()
+            t.check(w.content.shown.image == nil, "ordered out: the layer lets go of its frame")
+            t.equal(frames.releases.contents, 1)
+            runtime.send(.firstFrame)
+            t.check(w.content.shown.image != nil, "the frame for the showing")
+            t.equal(frames.framesDrawn, drawn + 2)
+            w.show(true)
+            endTurn()
+            t.equal(frames.framesDrawn, drawn + 2, "and no second one when the window is ordered in")
+            checkShown(t, w.content, host: w.view.layer, runtime.skin, scale: 2, space: sRGB, "shown again")
+            runtime.send(.close(fadeOut: false, ticket: nil))
+        }
     }
 
     /// Stationery's System widget (design system §14): everything that changes is drawn at every update over one kept
@@ -693,10 +1232,14 @@ enum SkinDrawingSelfTests {
 
     static func memoryTests(_ t: AppTestRunner) {
         t.suite("App: skin drawing: the first-run widgets redrawn 30 times keep memory flat") {
-            guard let root = Paths.repositoryFolder("DefaultSkins") else {
+            guard let repository = Paths.repositoryFolder("DefaultSkins") else {
                 print("    (skipped: DefaultSkins not found; run from the repository)")
                 return
             }
+            // A copy: skins may write their own files.
+            let root = t.temporaryDirectory("drawing-memory")
+            try FileManager.default.copyItem(at: repository.appendingPathComponent("Stationery"),
+                                             to: root.appendingPathComponent("Stationery"))
             guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return }
             var skins: [Skin] = []
             for (config, file) in [("Clock", "Small.ini"), ("Calendar", "Small.ini"), ("Weather", "Medium.ini"),
@@ -725,5 +1268,451 @@ enum SkinDrawingSelfTests {
             t.check(grown < 24 << 20, "grew \(grown >> 20) MB")
             skins.forEach { $0.close() }
         }
+    }
+}
+
+/// The main-thread side of a runtime in the frame tests: a skin panel with the view and content layer of a skin window
+/// (never shown), size requests applied as the window controller applies them, and window facts the test makes.
+final class FrameTestWindow: SkinRuntimeWindow {
+    let panel = SkinWindowController.makePanel()
+    let contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+    let view = SkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+    let content: LayerContentProvider
+    weak var runtime: SkinRuntime?
+    private(set) var facts: SkinWindowFacts
+    /// The sizes the runtime asked the window to follow.
+    private(set) var resizes: [CGSize] = []
+    /// Requests that arrived off the main thread (none should).
+    private(set) var offMain = 0
+
+    init() {
+        contentView.addSubview(view)
+        content = LayerContentProvider(in: view)
+        panel.contentView = contentView
+        panel.setFrame(NSRect(x: 100, y: 500, width: 1, height: 1), display: false)
+        facts = SkinWindowFacts(frame: panel.frame, isVisible: false, isOrderedIn: false, scale: 2,
+                                colorSpace: SkinFrameProducer.sRGB, appearance: NSAppearance.Name.aqua.rawValue,
+                                takesPointer: false, sequence: 0)
+    }
+
+    /// Changes the facts and tells the runtime (its frames follow them). Main thread.
+    func publish(_ change: (inout SkinWindowFacts) -> Void = { _ in }) {
+        change(&facts)
+        facts.frame = panel.frame
+        facts.sequence += 1
+        runtime?.send(.windowFacts(facts))
+    }
+
+    /// Shown and uncovered, or ordered out.
+    func show(_ shown: Bool) {
+        publish {
+            $0.isOrderedIn = shown
+            $0.isVisible = shown
+        }
+    }
+
+    func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
+        if !Thread.isMainThread { offMain += 1 }
+        guard case .resize(let size) = request else { return }
+        resizes.append(size)
+        let top = panel.frame.maxY
+        panel.setFrame(NSRect(x: panel.frame.minX, y: top - size.height, width: size.width, height: size.height),
+                       display: false)
+        view.frame = NSRect(origin: .zero, size: size)
+        publish()
+    }
+
+    func batchingWindowChanges(_ body: () -> Void) { body() }
+    func liveEnvironment(for skin: Skin) -> SkinEnvironment? { nil }
+    var liveTakesPointer: Bool? { nil }
+    var screen: NSScreen? { nil }
+}
+
+/// A content provider that notes where each frame was presented from (main thread or not) before passing it on.
+final class PresentRecorder: ContentProvider {
+    let inner: ContentProvider
+    /// For each frame: presented on the main thread.
+    let threads = Guarded<[Bool]>([])
+
+    init(_ inner: ContentProvider) {
+        self.inner = inner
+    }
+
+    var count: Int { threads.current.count }
+
+    func present(_ frame: SkinFrame) {
+        threads.access { $0.append(Thread.isMainThread) }
+        inner.present(frame)
+    }
+
+    func setVisible(_ visible: Bool) { inner.setVisible(visible) }
+    func setScale(_ scale: CGFloat) { inner.setScale(scale) }
+    func teardown() { inner.teardown() }
+}
+
+/// The skin window's view as it drew until phase 2 of the threading design: `SkinView.updateLayer`, which set the
+/// picture as the view's own layer contents, drawn at the scale, in the colour space and with the appearance it read
+/// from its window (here: set by the check, the values the window would have had). The content-layer check shows it
+/// beside the new frames.
+final class LegacySkinView: NSView {
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
+    override var wantsUpdateLayer: Bool { true }
+    let drawing = SkinBitmapDrawing()
+    var skin: Skin?
+    var scale: CGFloat = 2
+    var space = SkinFrameProducer.sRGB
+    var drawingAppearance = NSAppearance.Name.aqua.rawValue
+    /// Times the view was drawn.
+    private(set) var draws = 0
+
+    override func updateLayer() {
+        guard let layer else { return }
+        guard let skin else {
+            layer.contents = nil
+            return
+        }
+        layer.contentsScale = scale
+        let size = bounds.size
+        guard let picture = drawing.picture(of: skin, size: size, scale: scale, space: space,
+                                            appearance: drawingAppearance) else { return }
+        layer.contents = picture
+        draws += 1
+    }
+
+    /// What the layer shows.
+    var shownImage: CGImage? {
+        guard let contents = layer?.contents, CFGetTypeID(contents as CFTypeRef) == CGImage.typeID else { return nil }
+        return (contents as! CGImage)
+    }
+}
+
+/// A never-shown skin panel with a `LegacySkinView` in its content view, sized as a skin window.
+final class LegacyWindow {
+    let panel = SkinWindowController.makePanel()
+    let contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+    let view = LegacySkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+
+    init() {
+        contentView.addSubview(view)
+        view.wantsLayer = true
+        panel.contentView = contentView
+        panel.setFrame(NSRect(x: 100, y: 500, width: 1, height: 1), display: false)
+    }
+
+    /// The window follows the skin's size with its top-left corner fixed, as the window controller does.
+    func resize(to size: CGSize) {
+        guard panel.frame.size != size else { return }
+        let top = panel.frame.maxY
+        panel.setFrame(NSRect(x: panel.frame.minX, y: top - size.height, width: size.width, height: size.height),
+                       display: false)
+        view.frame = NSRect(origin: .zero, size: size)
+    }
+}
+
+extension SkinDrawingSelfTests {
+    /// Every default skin and test skin (and the Skins folders `DESKSET_DRAWING_CHECK_SKINS` names, as for the drawing
+    /// check) through `ContentLayerCheck`: the content layer against what the skin's view showed until phase 2.
+    static func contentLayerCheckTests(_ t: AppTestRunner) {
+        t.suite("App: skin drawing: every repository skin's content layer shows what its view showed") {
+            var folders = ["DefaultSkins", "TestSkins"].compactMap { Paths.repositoryFolder($0) }
+            guard folders.count == 2 else {
+                print("    (skipped: DefaultSkins or TestSkins not found; run from the repository)")
+                return
+            }
+            let extra = ProcessInfo.processInfo.environment["DESKSET_DRAWING_CHECK_SKINS"] ?? ""
+            folders += extra.split(separator: ":").map { URL(fileURLWithPath: String($0)) }
+            let temporary = t.temporaryDirectory("content-layer-check")
+            var results: [ContentLayerCheck.Result] = []
+            DrawingCacheCheck.withCheckEnvironment(temporary, weatherPreview: false) {
+                for (i, folder) in folders.enumerated() {
+                    let copy = temporary.appendingPathComponent("Skins\(i)")
+                    guard (try? FileManager.default.copyItem(at: folder, to: copy)) != nil else {
+                        return t.check(false, "copies \(folder.lastPathComponent)")
+                    }
+                    for file in DrawingCacheCheck.skinFiles(in: copy) {
+                        let r = ContentLayerCheck.check(file, skinsRoot: copy, budget: 2)
+                        guard r.skipped == nil else { continue }
+                        results.append(r)
+                        t.check(r.mismatches.isEmpty, ContentLayerCheck.line(for: r))
+                    }
+                }
+            }
+            let steps = results.reduce(0) { $0 + $1.steps }
+            let worst = results.map(\.worstComposite).max() ?? 0
+            let fractional = results.filter(\.fractional).count
+            let stretched = results.filter { !$0.stretchedBefore.isEmpty }
+            print("    \(results.count) skins, \(steps) steps compared, worst composite difference \(worst); "
+                  + "\(fractional) skins with a size that is not whole points")
+            // The one difference that remains (docs/compat/engine.md): the old view stretched a picture over a size that
+            // is not a whole number of pixels; the content layer shows it pixel for pixel.
+            for r in stretched {
+                print("    stretched before, pixel for pixel now: \(r.config) \(r.file): "
+                      + r.stretchedBefore.joined(separator: ", "))
+            }
+            if let path = ProcessInfo.processInfo.environment["DESKSET_CONTENT_LAYER_REPORT"] {
+                let text = results.map(ContentLayerCheck.line(for:)).joined(separator: "\n") + "\n"
+                try? text.write(toFile: path, atomically: true, encoding: .utf8)
+            }
+            t.check(results.count >= 140, "the repository's skins were checked: \(results.count)")
+            t.check(steps >= results.count * 6, "most steps ran: \(steps)")
+        }
+    }
+}
+
+/// Phase 2, step 4 of docs/skin-threading.md: whether the content layer shows what the skin's view showed until then.
+/// A skin runs without a window, as for the drawing check (no permissions asked for, nothing done outside the skin), and
+/// is shown twice side by side, in never-shown skin panels:
+/// - the new way: its frame producer draws at the end of each turn and presents to a `LayerContentProvider` in a
+///   `SkinView`, following window facts the check makes;
+/// - the old way: a `LegacySkinView` drawn when AppKit would have drawn the old view (a redraw while the window could be
+///   seen; ordered in; uncovered after a redraw was skipped; another scale, colour space or appearance).
+/// After every step in which the window can be seen, the two pictures are compared with each other and with a full
+/// drawing, and the two panels' layer trees as Core Animation composites them (where the picture sits, its size and
+/// scale, what clips it). Steps: shown, updates, redraws at rest, 1× and back, Display P3 and back, Dark and back,
+/// covered and uncovered, ordered out (!Hide) and in again (!Show), and a fade (the window's alpha).
+enum ContentLayerCheck {
+    struct Result {
+        var config: String
+        var file: String
+        /// Steps compared while the window could be seen.
+        var steps = 0
+        /// The largest differences of one channel: the content layer's picture against the old view's, against a full
+        /// drawing, and the composited layer trees.
+        var worstPicture = 0
+        var worstFull = 0
+        var worstComposite = 0
+        var mismatches: [String] = []
+        var skipped: String?
+        /// A window size that is not a whole number of points showed up.
+        var fractional = false
+        /// Steps whose composites differ only because the old view stretched its picture over a size that is not a
+        /// whole number of pixels (docs/compat/engine.md, "A skin whose size is not a whole number of pixels"), and by
+        /// how much.
+        var stretchedBefore: [String] = []
+        var outOfTime = false
+    }
+
+    static func line(for r: Result) -> String {
+        if let skipped = r.skipped { return "skip      \(r.config) \(r.file): \(skipped)" }
+        let stretched = r.stretchedBefore.isEmpty ? "" : "; stretched before: " + r.stretchedBefore.joined(separator: ", ")
+        let head = "\(r.config) \(r.file): \(r.steps) steps, worst picture \(r.worstPicture), full \(r.worstFull), "
+            + "composite \(r.worstComposite)\(r.fractional ? ", fractional size" : "")\(r.outOfTime ? ", out of time" : "")"
+            + stretched
+        return r.mismatches.isEmpty ? "ok        \(head)" : "MISMATCH  \(head)\n    " + r.mismatches.joined(separator: "\n    ")
+    }
+
+    /// `--render`'s host, whose redraws reach the check.
+    final class Host: SkinHost {
+        let render = RenderHost()
+        var redrew: () -> Void = {}
+
+        func skinNeedsDisplay(_ skin: Skin) { redrew() }
+        func skin(_ skin: Skin, handle bang: Bang) -> Bool { true }
+        func skin(_ skin: Skin, forward bang: Bang, toConfig config: String) {}
+        func skin(_ skin: Skin, execute target: String, arguments: [String]) {}
+        func skin(_ skin: Skin, log message: String, level: SkinLogLevel) {}
+        func textSize(_ text: String, style: TextStyle, wrapWidth: Double?,
+                      for skin: Skin) -> (width: Double, height: Double) {
+            render.textSize(text, style: style, wrapWidth: wrapWidth, for: skin)
+        }
+        func imageSize(atPath path: String) -> (width: Double, height: Double)? { render.imageSize(atPath: path) }
+        func environment(for skin: Skin) -> SkinEnvironment { render.environment(for: skin) }
+    }
+
+    static func check(_ file: URL, skinsRoot: URL, budget: TimeInterval) -> Result {
+        let parent = file.deletingLastPathComponent().standardizedFileURL.pathComponents
+        let config = parent.dropFirst(skinsRoot.standardizedFileURL.pathComponents.count).joined(separator: "\\")
+        var result = Result(config: config, file: file.lastPathComponent)
+        let started = ProcessInfo.processInfo.systemUptime
+        let host = Host()
+        let skin = Skin(config: config, fileURL: file, skinsDirectory: skinsRoot, system: SystemMonitor.shared, host: host)
+        let policy = StudioActionPolicy()
+        skin.actionPolicy = policy
+        do {
+            try skin.load()
+        } catch {
+            result.skipped = "does not load (\(error))"
+            return result
+        }
+        defer { skin.close() }
+        Fonts.registerFonts(for: skin)
+
+        let new = FrameTestWindow()
+        let producer = SkinFrameProducer(provider: new.content, skin: { skin })
+        producer.start(on: MainSkinExecutor.shared)
+        defer {
+            producer.stop()
+            new.content.teardown()
+        }
+        let old = LegacyWindow()
+        old.view.skin = skin
+        var facts = SkinWindowFacts(frame: .zero, isVisible: false, isOrderedIn: false, scale: 2,
+                                    colorSpace: SkinFrameProducer.sRGB, appearance: NSAppearance.Name.aqua.rawValue,
+                                    takesPointer: true, sequence: 0)
+        // The old view: drawn at the end of the turn when it needs it and its window is ordered in; a redraw while the
+        // window could not be seen waited for it to be uncovered.
+        var oldNeedsDisplay = false
+        var oldPending = false
+        var seen: Bool { facts.isOrderedIn && facts.isVisible }
+        /// Ordered in since the last step: on screen before its occlusion state says so.
+        var orderedInNow = false
+
+        func size() -> CGSize { SkinRuntime.windowSize(width: skin.width, height: skin.height) }
+        func followSize() {
+            let s = size()
+            if s.width != s.width.rounded() || s.height != s.height.rounded() { result.fractional = true }
+            if new.panel.frame.size != s {
+                let top = new.panel.frame.maxY
+                new.panel.setFrame(NSRect(x: new.panel.frame.minX, y: top - s.height, width: s.width, height: s.height),
+                                   display: false)
+                new.view.frame = NSRect(origin: .zero, size: s)
+            }
+            old.resize(to: s)
+        }
+        host.redrew = {
+            followSize()
+            producer.setNeedsFrame()
+            if seen { oldNeedsDisplay = true } else { oldPending = true }
+        }
+        func publish(_ change: (inout SkinWindowFacts) -> Void) {
+            let before = facts
+            change(&facts)
+            facts.sequence += 1
+            if facts.scale != before.scale || facts.colorSpace != before.colorSpace
+                || facts.appearance != before.appearance { oldNeedsDisplay = true }
+            if facts.isOrderedIn && !before.isOrderedIn {
+                oldNeedsDisplay = true
+                orderedInNow = true
+            }
+            if seen && oldPending {
+                oldPending = false
+                oldNeedsDisplay = true
+            }
+            old.view.scale = facts.scale
+            old.view.space = facts.colorSpace ?? SkinFrameProducer.sRGB
+            old.view.drawingAppearance = facts.appearance
+            producer.take(facts)
+        }
+        func endTurn() {
+            SkinDrawingSelfTests.endTurn()
+            if oldNeedsDisplay && facts.isOrderedIn {
+                oldNeedsDisplay = false
+                old.view.updateLayer()
+            }
+        }
+        func step(_ label: String, _ action: String? = nil, update: Bool = false) {
+            // A skin whose drawings are slow has had its time: the steps left are not taken.
+            guard result.skipped == nil, ProcessInfo.processInfo.systemUptime - started < budget else {
+                if result.skipped == nil { result.outOfTime = true }
+                return
+            }
+            if let action { skin.execute(action, from: nil) }
+            if update { skin.update() }
+            endTurn()
+            defer { orderedInNow = false }
+            guard seen || (facts.isOrderedIn && orderedInNow) else { return }
+            let s = size(), scale = facts.scale, space = facts.colorSpace ?? SkinFrameProducer.sRGB
+            let w = Int((s.width * scale).rounded(.up)), h = Int((s.height * scale).rounded(.up))
+            guard w * h <= DrawingCacheCheck.maxPixels else {
+                result.skipped = "too large (\(w)×\(h) pixels)"
+                return
+            }
+            guard let picture = new.content.shown.image else {
+                result.mismatches.append("\(label): no frame on the content layer")
+                return
+            }
+            guard let before = old.view.shownImage else {
+                result.mismatches.append("\(label): the old view shows nothing")
+                return
+            }
+            result.steps += 1
+            func note(_ what: String, _ worst: Int) -> Int {
+                if worst > SkinBitmapDrawing.tolerance { result.mismatches.append("\(label): \(what) differs by \(worst)") }
+                return worst
+            }
+            var oldContext: CGContext?
+            if let ctx = SkinBitmapDrawing.makeContext(before.width, before.height, before.colorSpace ?? space) {
+                ctx.setBlendMode(.copy)
+                ctx.draw(before, in: CGRect(x: 0, y: 0, width: before.width, height: before.height))
+                oldContext = ctx
+            }
+            let pictures = oldContext.flatMap { SkinBitmapDrawing.difference(picture, $0)?.worst } ?? .max
+            result.worstPicture = max(result.worstPicture, note("the picture from the old view's", pictures))
+            let full = SkinDrawingSelfTests.differenceFromFullDrawing(picture, skin, scale: scale, space: space)?.worst
+            result.worstFull = max(result.worstFull, note("the picture from a full drawing", full ?? .max))
+            let a = SkinDrawingSelfTests.composite(new.contentView.layer, size: s, scale: scale, space: space)
+            let b = SkinDrawingSelfTests.composite(old.contentView.layer, size: s, scale: scale, space: space)
+            var composites = SkinDrawingSelfTests.differenceOfContexts(a, b)
+            if composites > SkinBitmapDrawing.tolerance, CGFloat(w) != s.width * scale || CGFloat(h) != s.height * scale {
+                // A size that is not a whole number of pixels: the old view stretched its picture (w × h pixels) over
+                // it. Shown at the picture's own size, is the old view's composite the same?
+                let fitted = CGSize(width: CGFloat(w) / scale, height: CGFloat(h) / scale)
+                old.view.frame = NSRect(origin: .zero, size: fitted)
+                old.view.updateLayer()
+                let unstretched = SkinDrawingSelfTests.composite(old.contentView.layer, size: s, scale: scale,
+                                                                 space: space)
+                old.view.frame = NSRect(origin: .zero, size: s)
+                old.view.updateLayer()
+                let rest = SkinDrawingSelfTests.differenceOfContexts(a, unstretched)
+                if rest <= SkinBitmapDrawing.tolerance {
+                    result.stretchedBefore.append("\(label) (\(Int(scale))x): \(composites)")
+                    composites = rest
+                }
+            }
+            result.worstComposite = max(result.worstComposite, note("the composite from the old window's", composites))
+        }
+
+        followSize()
+        publish { $0.frame = new.panel.frame }
+        skin.update()
+        endTurn()
+        // `start`: the first frame, then the window is ordered in.
+        producer.drawFirstFrame()
+        oldNeedsDisplay = true
+        publish {
+            $0.isOrderedIn = true
+            $0.isVisible = true
+        }
+        step("shown")
+        for i in 0..<2 {
+            RenderCommand.wait(milliseconds: DrawingCacheCheck.updateInterval)
+            step("update \(i + 1)", update: true)
+        }
+        step("redraw at rest", "[!Redraw]")
+        step("again", "[!Redraw]")
+        publish { $0.scale = 1 }
+        step("at 1x")
+        step("an update at 1x", update: true)
+        publish { $0.scale = 2 }
+        step("back at 2x")
+        if let p3 = CGColorSpace(name: CGColorSpace.displayP3) {
+            publish { $0.colorSpace = p3 }
+            step("in Display P3")
+            publish { $0.colorSpace = SkinFrameProducer.sRGB }
+            step("back in sRGB")
+        }
+        publish { $0.appearance = NSAppearance.Name.darkAqua.rawValue }
+        step("dark")
+        publish { $0.appearance = NSAppearance.Name.aqua.rawValue }
+        step("light again")
+        publish { $0.isVisible = false }
+        step("covered", update: true)
+        publish { $0.isVisible = true }
+        step("uncovered")
+        publish {
+            $0.isOrderedIn = false
+            $0.isVisible = false
+        }
+        step("hidden", "[!Redraw]", update: true)
+        publish { $0.isOrderedIn = true }
+        step("shown again, before the occlusion state catches up")
+        publish { $0.isVisible = true }
+        step("shown again")
+        publish { $0.settings.alphaValue = 100 }
+        step("fading", update: true)
+        publish { $0.settings.alphaValue = 255 }
+        step("faded in", "[!Redraw]")
+        return result
     }
 }

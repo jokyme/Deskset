@@ -990,7 +990,7 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
 
     /// For the skin menu: whether the skin shows MET Norway data, and when it was last updated ("12:05").
     public static func attributionInfo(for skin: Skin) -> (uses: Bool, updated: String?) {
-        let roots = skin.measures.compactMap { $0 as? MacWeatherMeasure }.filter { $0.parentName.isEmpty }
+        let roots = weatherRoots(of: skin)
         guard !roots.isEmpty else { return (false, nil) }
         let env = WeatherService.shared.environment
         let dates = roots.compactMap { $0.binding.status.showsData ? $0.binding.snapshot?.validatedAt : nil }
@@ -1000,6 +1000,15 @@ public final class MacWeatherMeasure: Measure, PluginLifecycle, SectionVariableF
                                   systemLocale: skin.locale)
         }
         return (true, updated)
+    }
+
+    /// Whether the skin shows MET Norway data (a MacWeather measure of its own), without asking when it was updated.
+    public static func showsWeather(in skin: Skin) -> Bool {
+        !weatherRoots(of: skin).isEmpty
+    }
+
+    private static func weatherRoots(of skin: Skin) -> [MacWeatherMeasure] {
+        skin.measures.compactMap { $0 as? MacWeatherMeasure }.filter { $0.parentName.isEmpty }
     }
 }
 

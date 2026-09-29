@@ -208,6 +208,15 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
   略显模糊。
 - **状态：** 模拟实现
 
+#### 尺寸不是整数像素的皮肤
+- **Windows：** X、Y、W、H 都是像素，皮肤窗口的大小是整数像素；皮肤画出的内容逐像素显示。
+- **Mac：** meter 的尺寸和位置可以是点的小数，皮肤的尺寸因此也可以是小数。皮肤从窗口左上角开始画进整数个像素，逐像素显示；
+  右侧和下方不足一个点的部分保持透明。2026-09-28 之前，画面会被拉伸到精确的小数尺寸（不到一个像素），因而一像素宽的线条会
+  变得发虚。
+- **原因：** 皮肤的每一帧显示在它自己的图层里，这个图层的大小始终与帧相同。
+- **对皮肤的影响：** 这类皮肤（1× 下差半个点、2× 下差四分之一个点）的边缘更清晰；位置不变。
+- **状态：** 完全一致（这是与 Deskset 早先版本的差别，不是与 Windows 的差别）
+
 #### 对齐的 String 和 Bitmap meter 之后的相对位置（`r` / `R`）
 - **Windows：** `r` 相对于上一个 meter 的上 / 左边缘，`R` 相对于其下 / 右边缘；StringAlign “始终以 X 或 Y 的值为准”。
   正常运行的皮肤（eClock 的长阴影、EasyInfo 的 LED 数字、FluentDash11 的设置行）表明，下一个 meter 是从对齐 meter 的
@@ -761,6 +770,28 @@ WebParser、RecycleManager、MediaKey、NowPlaying、WiFiStatus）两种写法�
 - **对皮肤的影响：** 无。
 - **状态：** 模拟实现
 
+#### 由 App 执行的菜单与系统 bang（`!SetWallpaper`、`!SetClip`、`!Play…`、`!SkinMenu`、`!Manage`、`!EditSkin`……）
+- **Windows：** 一个动作里的 bang 按书写顺序依次执行，前一个执行完才执行下一个。
+- **Mac：** 桌面上的皮肤运行在自己的线程上（默认如此）。`!SetClip`、`!SetWallpaper`、`!Play`、`!PlayLoop`、`!PlayStop`、
+  `!SkinMenu`、`!SkinCustomMenu`、`!TrayMenu`、`!Manage`、`!About` 和 `!EditSkin` 由 App 的主线程在皮肤线程执行完整个动作之后
+  执行，也就是在该动作的其他 bang 之后。`!SetWallpaper` 之后新的桌面图片会立即发布出去。配置类 bang（`!ActivateConfig`、
+  `!Refresh`……）一直都是在动作之后执行。设置 `SkinThreading=main` 时它们在原处执行。
+- **原因：** 菜单、剪贴板、桌面图片和声音归主线程管，而皮肤线程从不等待主线程。
+- **对皮肤的影响：** 同一动作里写在它们后面的 bang 还看不到它们的效果（`[!SetWallpaper …][!UpdateMeasure MeasureChameleon]`
+  取到的仍是旧壁纸的颜色；`[!SkinMenu]` 之后的 bang 会在菜单还开着时执行）。可以把依赖它们的部分放到一个短暂的 `!Delay`
+  之后（`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`）。
+- **状态：** 模拟实现
+
+#### 引擎线程繁忙时的鼠标判断
+- **Windows：** 手册没有描述；皮肤按点击到来那一刻各 meter 的样子来响应点击。
+- **Mac：** 皮肤窗口根据皮肤最近一次完成的状态立即判断：按下时能否拖动窗口、右键是否打开皮肤菜单、指针下是否是 Button、
+  显示哪个光标；点击对应的动作在皮肤线程上执行。所有桌面皮肤共用这个线程：某个皮肤长时间占用它时，其他皮肤的悬停动作要
+  排队，这期间的点击按悬停之前的皮肤来判断（`MouseOverAction` 正要显示的按钮还不存在：右键会打开皮肤菜单，按下可能会拖动
+  窗口）。设置 `SkinThreading=main` 时由实时的皮肤来判断。
+- **原因：** 窗口必须立即回应 macOS；等待繁忙的皮肤线程会让 App 卡住。
+- **对皮肤的影响：** 只在另一个皮肤占用线程的时间超过一次移动指针加点击的时间时才会出现。
+- **状态：** 模拟实现
+
 #### 失控的动作
 - **Windows：** 没有写明限制。
 - **Mac：** 互相触发的动作在每次更新 20 000 步或嵌套 16 层后停止（记录日志）；更新过程中的 `!Update` 会被忽略。
@@ -886,9 +917,10 @@ Deskset 自己的插件写在所属领域的插件里：MacSensors 与硬件传�
 - **Windows：** Draggable（默认 1）；设置了 LeftMouseDownAction 就不能拖动；DragMargins 限制可以开始拖动的区域；按住 Ctrl
   可以覆盖鼠标动作和 Draggable。
 - **Mac：** 规则相同；移动 3 个点后开始拖动。覆盖键是 **⌘（Command）**：按住 ⌘ 拖动可以移动任何皮肤，且不执行点按动作；拖动时
-  按 ⌘ 会反转 SnapEdges。拖动结束时保存位置。
-- **原因：** 在 Mac 上 Control-点按是辅助（右键）点按。
-- **对皮肤的影响：** 说明文件中写的“按住 CTRL”在 Mac 上指 ⌘。
+  按 ⌘ 会反转 SnapEdges。拖动结束时保存位置。在可能拖动窗口的按下期间，皮肤执行的 `!Move` 或 `!SetWindowPosition`
+  要等到松开：这次按下变成了拖动，就以拖动为准、丢弃这次移动；没有拖动，就在松开时移动。
+- **原因：** 在 Mac 上 Control-点按是辅助（右键）点按。手册没有说拖动期间 `!Move` 会怎样（自行判断）。
+- **对皮肤的影响：** 说明文件中写的“按住 CTRL”在 Mac 上指 ⌘。皮肤在被拖动时移动自己，最后停在指针松开的位置。
 - **状态：** 模拟实现
 
 #### `DragGroup`（一起移动多个皮肤）

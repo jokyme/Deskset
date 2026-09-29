@@ -90,6 +90,11 @@ enum CommandLineTools {
 
         Every mode gives skins a temporary #SETTINGSPATH# (removed at exit) unless --settings-dir DIR names one, so
         skins that keep settings or caches there never read or write the app's real settings folder.
+
+        The menu bar app reads the SkinThreading default once at launch: engine (the default) runs the desktop skins
+        on one engine thread of their own; main runs every skin on the main thread, for debugging (defaults write
+        app.deskset.Deskset SkinThreading main, or -SkinThreading main for one launch). The modes above always run
+        skins on the main thread.
         """
 
     enum Validation: Equatable {
@@ -169,7 +174,7 @@ enum CommandLineTools {
         }
     }
 
-    /// Points `SkinController.settingsPath` at `folder` (created if missing), or at a new temporary folder that the
+    /// Points `#SETTINGSPATH#` (`EnvironmentStore.settingsPath`) at `folder` (created if missing), or at a new temporary folder that the
     /// caller removes: returned so it can. Either way it holds a `Stationery.inc` as the app's does (made only when
     /// missing), so the Stationery widgets save as they do in the app.
     static func useHeadlessSettingsFolder(_ folder: String?) -> URL? {
@@ -185,7 +190,7 @@ enum CommandLineTools {
         if !fm.fileExists(atPath: suiteFile.path) {
             fm.createFile(atPath: suiteFile.path, contents: Data(DefaultSkins.stationeryFileHeader.utf8))
         }
-        SkinController.settingsPath = url.path + "/"
+        EnvironmentStore.shared.settingsPath = url.path + "/"
         return temporary ? url : nil
     }
 

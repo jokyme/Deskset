@@ -549,7 +549,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         }
     }
 
-    private var selectedController: SkinController? {
+    private var selectedController: SkinWindowController? {
         guard let selection else { return nil }
         return app.controller(for: selection.config)
     }
@@ -573,7 +573,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         // Header
         let metadata: [String: String]
         if loaded, let running {
-            metadata = running.skin.metadata
+            metadata = running.runtime.snapshot.metadata
         } else if let file {
             metadata = ManageModel.readMetadata(config.directory.appendingPathComponent(file))
         } else {
@@ -658,7 +658,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         issuesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let issues: [String]
         if loaded, let running {
-            issues = running.skin.issues
+            issues = running.runtime.snapshot.issues
         } else if let file {
             issues = cachedIssues(config: config, file: file)
         } else {
@@ -829,7 +829,7 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         ManageWindowController.apply(control: control, of: self, to: c, app: app)
     }
 
-    private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinController,
+    private static func apply(control: NSControl, of w: ManageWindowController, to c: SkinWindowController,
                               app: AppController) {
         if control === w.transparencySlider {
             let percent = w.transparencySlider.integerValue
@@ -873,9 +873,13 @@ final class ManageWindowController: NSWindowController, NSWindowDelegate, NSOutl
         show(c)
     }
 
+    /// Shows a skin that hid itself, as its own `!ShowFade` would: the bang goes to the skin's runtime, whose window
+    /// model changes first and which draws a first frame for a skin that never drew (StartHidden) before the window is
+    /// ordered in — at once with the main executor, a moment later from the engine thread (the watch of hidden skins
+    /// then redraws the details).
     private func show(_ c: SkinController) {
         guard !c.isStopped, c.isHiddenByBang else { return }
-        c.setHidden(false, fade: true)
+        c.runtime.send(.bang(Bang(name: "showfade", args: []), from: c.config, hops: 0))
         movedWhileHidden = nil
         updateHiddenState()
     }

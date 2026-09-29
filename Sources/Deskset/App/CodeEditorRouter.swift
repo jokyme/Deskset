@@ -145,7 +145,16 @@ enum CodeEditorRouter {
     /// when no skin owns it (not a skin file, or an included file of a skin that is not loaded).
     @discardableResult
     static func openBuiltIn(file: URL, line: Int?, app: AppController, notice: String? = nil) -> Bool {
-        func show(_ c: SkinController) {
+        // A skin that has just been loaded on the engine thread is edited once it started (at once with the main
+        // executor).
+        func show(_ c: SkinWindowController) {
+            guard c.isStarting else { return showStarted(c) }
+            c.whenStarted { [weak c] in
+                guard let c, app.controller(for: c.config) === c else { return }
+                showStarted(c)
+            }
+        }
+        func showStarted(_ c: SkinWindowController) {
             // The new Studio (its switch on): it opens on the widget at once, the code beside the canvas at the line.
             if StudioSwitch.isOn(for: app) {
                 app.showInspector(for: c)
@@ -184,16 +193,17 @@ enum CodeEditorRouter {
     }
 
     /// The running skin that reads `file`: the one being edited when it does (an include shared by several skins
-    /// stays in the open editor), else one whose main file it is, else the first (in load order) including it.
-    static func owningController(of file: URL, in app: AppController) -> SkinController? {
+    /// stays in the open editor), else one whose main file it is, else the first (in load order) including it. The
+    /// files a skin reads come from its snapshot.
+    static func owningController(of file: URL, in app: AppController) -> SkinWindowController? {
         let key = comparablePath(file)
-        func owns(_ c: SkinController) -> Bool {
-            !c.isStopped && c.skin.sourceFiles.contains { comparablePath($0) == key }
+        func owns(_ c: SkinWindowController) -> Bool {
+            !c.isStopped && c.runtime.snapshot.sourceFiles.contains { comparablePath($0) == key }
         }
         if let edited = app.inspector?.controller ?? StudioWindowController.window(for: app)?.link?.controller,
            owns(edited) { return edited }
         let running = app.sortedControllers
-        if let main = running.first(where: { !$0.isStopped && comparablePath($0.skin.fileURL) == key }) { return main }
+        if let main = running.first(where: { !$0.isStopped && comparablePath($0.fileURL) == key }) { return main }
         return running.first(where: owns)
     }
 

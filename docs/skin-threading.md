@@ -1,8 +1,9 @@
 # Skin threading: running every skin off the main thread
 
 > Status: design accepted on 2026-09-25 (decisions in §14). Phase 0, the seam and its guard rails, and phase 1,
-> thread-safe shared services and the stress suite, are done (2026-09-26, §15). Every skin still runs on the main
-> thread.
+> thread-safe shared services and the stress suite, are done (2026-09-26, §15). Phase 2 is done (2026-09-28, §15): the
+> desktop skins run on one engine thread by default (`SkinThreading=engine`; `SkinThreading=main` keeps every skin on
+> the main thread, for debugging). §8.5 was revised for the Studio's own instance of the widget it edits.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
@@ -42,8 +43,9 @@ A hop to the main thread would be cheap, but it freezes the skins whenever the m
 very problem we are trying to remove.
 
 **Migration.** Six phases. The first user-visible win, "the UI no longer stalls skins", comes after phase 2. It
-uses one shared engine thread, and while the Studio has a skin open, that skin runs on the main thread. Phase 3
-moves to one thread per skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–48 with it
+uses one shared engine thread. The Studio edits an instance of the widget of its own on the main thread, so the
+widget on the desktop stays on the engine thread while the Studio is open (§8.5). Phase 3 moves to one thread per
+skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–48 with it
 (§12).
 
 ---
@@ -60,6 +62,8 @@ moves to one thread per skin. The estimate is 26–38 engineer-days without the 
    re-registers tooltip rectangles.
 5. On the next display cycle AppKit calls `SkinView.updateLayer()`, which draws the skin with
    `SkinRenderer` into a bitmap of the view's own (`SkinBitmapDrawing`) and sets it as the layer's `contents`.
+   (Since phase 2 the skin's frame producer does this on the skin's executor, at the end of the run loop's turn, and
+   presents the bitmap in a layer of the skin's own: §7.3, §15.)
 6. Until 2026-09-27 AppKit called `SkinView.draw(_:)` instead. On macOS 26 the context handed to `draw(_:)` is a
    *recording* context (a `CGContext` with width 0 and no pixel buffer; the layer's contents are
    `NSViewBackingLayerContents`): the drawing was recorded in Deskset and rasterized through Core Animation's
@@ -374,7 +378,7 @@ It has three implementations:
 
 | Executor | Used for |
 |---|---|
-| `MainSkinExecutor` | the main queue and main run loop: exactly today's behaviour. Phase 0; also `--render`, `--snapshot-ui`, the self-tests, throwaway skins, and a skin open in the Studio (§8.5). |
+| `MainSkinExecutor` | the main queue and main run loop: exactly today's behaviour. Phase 0; also `--render`, `--snapshot-ui`, the self-tests, throwaway skins, and the Studio's own instance of the widget it edits (§8.5). |
 | `SkinThreadExecutor` | a dedicated `Thread` with its own run loop. **Recommended for desktop skins.** |
 | `SkinQueueExecutor` | a serial `DispatchQueue` (the spike's default executor); kept for comparison and for tests |
 
@@ -506,7 +510,7 @@ nothing.
 | Mouse, cursor, tooltips, focus | Decisions from the **snapshot**, events as **messages** | 2 |
 | FrostedGlass backdrop, InputText prompt | **Window companions** on main, driven by messages | 2 |
 | Context-menu items, Manage details | **Exclusive access** with a timeout; snapshot fallback | 2 |
-| Studio | Phase 2: its skin **moves to the main executor** while it is open. Phase 4: **exclusive access** at the Studio's entry points | 2 / 4 |
+| Studio | It edits its own instance of the widget on the main executor; the desktop copy **stays on its executor** and gets previews and reloads as **messages**, a reload recognized by a **ticket** (§8.5). Phase 4 (optional): the Studio's own instance off the main thread | 2 / 4 |
 
 ---
 
@@ -593,6 +597,13 @@ How to read these:
 - D (IOSurface) is the fallback for anything the recording path mishandles.
 - B (hop to main) is *not* a fallback for the goal: it keeps skins apart from each other but not from the UI.
 
+*Since 2026-09-27* skin windows no longer let the window server rasterize a recording: the view draws into a bitmap
+of its own and keeps pictures of the meters that did not change (§2.1). E now builds on that. The skin's executor
+produces that bitmap (`SkinBitmapDrawing`) and commits it as the contents of the skin's own `contentLayer`, whichever
+executor runs the skin, the main one included. Nothing records and nothing calls `draw(in:)`. The commit rules below
+are unchanged. The layer sits behind a `ContentProvider` seam, so that a later, layer-based runtime can replace it
+(§15, phase 2 plan).
+
 Rules for committing off the main thread:
 1. Draw only into a **sublayer the skin owns** (`contentLayer`). The layer AppKit creates for the view stays
    AppKit's and is touched only on main.
@@ -602,13 +613,15 @@ Rules for committing off the main thread:
    - `commit()`, then `flush()`.
 
    Without `setDisableActions(true)`, a contents change fades over 0.25 s. The flush is needed on threads without a
-   run loop, and it is harmless on the dedicated threads.
+   run loop, and it is harmless on the dedicated threads. The frames of the skins that draw in one turn of a run loop
+   share one such transaction (§15, review), so skins that update together cost one commit, not one each.
 3. **Size changes.**
    - The skin sets the content layer's bounds in the same transaction as the new frame, anchored top-left under the
      flipped view layer.
    - It also asks the main thread to resize the window. The main thread keeps the top-left corner fixed, as
      `skinNeedsDisplay` does today.
-   - For one frame the window can be larger (transparent) or smaller (clipped) than the content, never stretched.
+   - Until the main thread has followed (one frame while it is free, longer while it is busy) the window can be larger
+     (transparent) or smaller (clipped) than the content, never stretched.
 4. **Occlusion and visibility.**
    - The main thread publishes "visible / occluded / hidden" into the runtime.
    - A skin that cannot be seen keeps updating but skips drawing, as today's `displayPending` does.
@@ -665,14 +678,16 @@ occlusion, backing scale).
   - They change the model **synchronously**. Everything the skin reads afterwards (`#CURRENTCONFIGX#` in the next
     action or update, the `SavePosition` rules) sees the result, even before the main thread has moved the window.
     Today the same holds because `!Move` moves the window at once.
-  - They then post a `SkinRequest.window(model, sequence)` to the main thread. The main thread applies it in order,
-    saves it to `AppState` and echoes back what it really did, clamped by KeepOnScreen and screens.
+  - They then post a `SkinRequest.window(model, sequence)` to the main thread, with the change they made (phase 2 step
+    3: `SkinWindowChange`). The main thread applies the change in order, saves it to `AppState` and echoes back what
+    it really did, clamped by KeepOnScreen and screens.
 - **Changes that start on main** (a drag, the skin menu, the Manage window, a screen change) are sent to the skin as
   `windowFacts` with the next sequence number.
 - **Conflicts:**
   - Last writer wins, by sequence number.
-  - While the user is dragging, the main thread ignores the skin's move requests until mouse-up. Rainmeter's manual
-    says nothing about a `!Move` during a drag; this is a judgment call.
+  - While a press may drag the window, the skin's moves wait for the release: a press that became a drag wins and the
+    move is dropped; otherwise the move is made at the release. Rainmeter's manual says nothing about a `!Move`
+    during a drag; this is a judgment call.
 - **Bangs aimed at other configs' windows** (`!Move … Config`, the group forms) go to the target skin as messages
   (§8.2). The target applies them to its own model, as above.
 - **App-level bangs:**
@@ -751,38 +766,54 @@ for the drag decision.
 
 ### 8.5 Skin Studio
 
-The Studio edits the same object the desktop shows, and hundreds of its lines read and write the live skin (§4.11).
-It moves in two steps.
+*Revised on 2026-09-28.* When this design was written, the Studio edited the very skin the desktop showed, and the
+plan was to move that skin to the main executor while the Studio had it open. Since the Studio got its editing
+session (2026-09-27) it no longer does:
+- the Studio edits **an instance of the widget of its own** (`EditingSession.studioSkin`), loaded from the editing
+  session's text in memory and hosted by `StudioHost`. It runs on the main thread (`MainSkinExecutor`), draws on the
+  canvas, and of its actions runs only what stays inside the widget (`StudioActionPolicy`);
+- the widget on the desktop is **a separate skin**. It shows a gesture's previews and reloads when a step is written.
 
-**Step 1 (phase 2): a skin open in the Studio runs on the main thread.**
-- `attach` moves the runtime to `MainSkinExecutor`.
-- The switch happens at a safe point:
-  1. the skin thread parks;
-  2. its timers are cancelled and re-created on the new executor;
-  3. work still queued on the old executor is re-posted to the new one;
-  4. `detach` moves the skin back.
-- While the skin is on main, every Studio path works unchanged: previews, `m.frame` read-backs, the canvas's
-  `SkinRenderer.draw`, write-then-refresh-then-read.
-- That one skin can again stall while the Studio is busy, which is acceptable for the skin being edited. Every
-  other skin stays isolated.
+So **the desktop copy stays on its executor while the Studio is open.** Nothing moves between executors, and the
+executor switch planned here before (park, move the timers, re-post queued work, move back on `detach`) is dropped.
+Every other Studio path already reads the Studio's own instance, on the main thread, where it is owned.
 
-**Step 2 (phase 4, optional): the edited skin stays on its own thread.**
-- The Studio's entry points take exclusive access: `attach`, `tick`, `rebuildSidebar` / `rebuildInspector`,
-  `refreshLiveValues`, the canvas `draw(_:)`, gestures, menu builders, previews, `perform`.
-- Previews and their read-back run inside one exclusive block:
-  ```swift
-  runtime.withExclusiveAccess(timeout: 0.05) { skin in
-      skin.preview(section: …)
-      let frame = skin.meter(named: …)?.frame
-      …
-  }
-  ```
-  `skinNeedsDisplay` only schedules a frame on the skin thread, so the desktop shows the preview right after the
-  block.
-- The canvas draws with exclusive access and a short timeout (8 ms). When the skin is busy, it draws the previous
-  canvas image.
-- Write, then refresh: `activate` stays synchronous for the Studio. The main thread waits, with a generous timeout,
-  for the new runtime to load and run its first update, then reads it with exclusive access.
+What the Studio still asks of the desktop copy, and how it gets it from phase 2 on:
+
+| Need | Today | Phase 2 |
+|---|---|---|
+| A gesture's previews, at most about 20 a second, and their end | `EditingSession.desktopSkin`: at once on the owner, `skin.async` elsewhere | messages to the runtime (`.preview`, `.previewVariables`, `.endPreview`) |
+| A reload after a step, an undo or a live reload, then a move of the window with the files | `app.refresh`; the session knows the new copy is its own because `activate` attaches it *inside* `refreshDesktop` | a **reload ticket** (below); the move goes with the reload and is made once the new copy started |
+| The input the desktop copy takes, replayed in the Studio's instance (`Skin.inputMirror`) | set on the skin's executor, replayed on main | unchanged |
+| How many `!WriteKeyValue` writes the desktop copy made (`keyValueWrites`) | read from the live skin | the snapshot (§5.5); the live-reload check reads it once the desktop copy's work in progress has run (FSEvents may report a write before the work that made it ends) |
+| The Calc counter and the graphs when the Studio opens | copied only when the desktop copy runs on the main thread | copied with **exclusive access** and a short timeout, around the Studio's first update, so both are of one moment; without it the Studio starts from its own first update |
+| The window's place and screens for the Studio's instance (`#CURRENTCONFIGX#`…, Chameleon's screen) | `SkinController.environment(for:)`, `window.screen` | the window controller's copy of the window model (the facts it last published), with `EnvironmentStore` (§8.1); while a reload's new copy has not started, the old copy's |
+| The window's settings (Always on Top, Draggable…) and their undo steps | `app.changeSettings` on main | unchanged: window settings are the window half's |
+
+**Own reloads.** A reload the session asked for must be recognized as its own: what the widget writes to its files
+while it reloads (the old copy's OnCloseAction, the new copy's OnRefreshAction or first update, a script) is its own
+write, not a change made elsewhere that would reload it again, and again. Today the session knows it because
+`app.refresh` loads the new copy and attaches it to the Studio while `refreshDesktop` is still running. Once loading
+is asynchronous that no longer holds, so the reload carries a ticket:
+1. `refreshDesktop` asks `app.refresh(c, ticket:, thenMoveTo:)`. The ticket rides on the activation.
+2. The old runtime reports `.closed(ticket)` after its OnCloseAction; the new runtime reports `.started(ticket)` after
+   its OnRefreshAction and first update (or `.failed(ticket)`).
+3. The Studio decides "own reload" by the ticket the new window controller carries, not by when it arrived. The reload
+   ends when both reports are in (a failed load counts as the new copy's), or at the old 5-second deadline. A reload
+   asked for while one is still open joins it; a new copy stopped before it started (a later reload replaced it)
+   reports nothing more.
+4. Only then are the widget's writes taken as its own (`absorbDesktopWrites`). A change FSEvents reports while a ticket
+   is open waits for it, and is then compared with what was taken.
+
+The two reports can come in either order: on one engine thread they come in the order of the work, on threads of
+their own (phase 3) they need not. With the main executor both still arrive inside `app.refresh`, as today.
+
+**Phase 4 (optional)** is now only about the Studio's own instance. It runs on the main thread, so its updates
+(a visualizer's, every 16 ms) and its first update after a step share the main thread with the Studio's UI. If that
+shows, the instance can move to a thread of its own, with exclusive access at the Studio's entry points: `attach`,
+`tick`, `rebuildSidebar` / `rebuildInspector`, `refreshLiveValues`, the canvas `draw(_:)` (with a short timeout and
+the previous canvas image as the fallback), gestures, menu builders, previews and `perform`. The widgets on the desktop
+are isolated from the Studio either way.
 
 ### 8.6 Manage window, status menu, lifecycle
 
@@ -791,10 +822,12 @@ It moves in two steps.
 - **`activate`:**
   1. creates the runtime and the window;
   2. the skin thread loads the skin, registers its fonts on the fonts queue, runs the first update and draws;
-  3. the main thread waits for "started", with a timeout, and places and shows the window.
+  3. the main thread does not wait: the runtime reports `.started` (or `.failed`), and the main thread then places
+     and shows the window. (Planned first as a wait with a timeout; a skin whose Lua main chunk takes a second would
+     then stall the UI for that second.) With the main executor all of it still happens inside `activate`.
 
-  `continueCounter(from:)` reads the old skin's counter before the old runtime is released. The old skin is closed
-  on its own thread.
+  The new skin takes the Calc counter from the snapshot the old runtime published when it closed
+  (`continueCounter`). The old skin is closed on its own thread.
 - **Pause and resume, wake, screen changes, `fontsChanged`:** broadcast as messages.
 - **Refresh All:** purges the now thread-safe caches, then refreshes the skins in load order.
 - **Quit:** `applicationWillTerminate` sends `.close` to every runtime in reverse load order. It waits with a total
@@ -803,10 +836,12 @@ It moves in two steps.
 
 ### 8.7 Command-line modes and self-tests
 
-- `--render`, `--snapshot-ui`, `--system-report`, the Manage window's dry runs and component thumbnails keep using
-  `MainSkinExecutor`. `RenderCommand.wait` pumping `RunLoop.main` keeps working.
-- The existing self-tests keep their synchronous behaviour.
-- New suites cover the threaded runtime (§10).
+- `--render`, `--snapshot-ui`, `--verify-drawing-cache`, `--system-report`, the Manage window's dry runs, component
+  thumbnails and the Studio's own instance of a widget keep using `MainSkinExecutor`, whatever `SkinThreading` says:
+  only the menu bar app reads that key, and only for its desktop skins. `RenderCommand.wait` pumping `RunLoop.main`
+  keeps working.
+- The existing self-tests keep their synchronous behaviour: their apps are made with `SkinThreading.main`.
+- New suites cover the threaded runtime (§10): "App: engine thread: …" builds its apps with `.engine`.
 
 ---
 
@@ -874,7 +909,8 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
   `SkinDirectory`, frame delivery E.
 - Mouse, cursor, tooltips and focus from the snapshot. Context menu through exclusive access.
 - FrostedGlass and InputText companions. Lifecycle, pause/wake/screens/fonts messages.
-- The Studio moves its skin to the main executor (§8.5).
+- The Studio keeps editing its own instance on the main thread; the desktop copy stays on the engine thread and
+  gets previews and ticketed reloads as messages (§8.5).
 - **All runtimes share one engine thread.** This isolates the UI from every skin while the skins can still only
   race against main.
 - Measure real skins on a quiet screen:
@@ -887,9 +923,9 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 - Stress with 30 skins, including the 15 real skin packs used for compatibility testing (local only).
 - Check thread count and memory.
 
-**Phase 4 (optional): the Studio on exclusive access (6–10 days)**
-- The Studio's entry points (§8.5), so the edited skin also stays isolated.
-- Update the Studio self-tests that assume the main executor.
+**Phase 4 (optional): the Studio's own instance off the main thread (6–10 days)**
+- Only if its updates are seen to slow the Studio down (§8.5): the Studio's entry points take exclusive access.
+- The widgets on the desktop are already isolated from the Studio after phase 2.
 
 **Phase 5: cleanup (3–5 days)**
 - Make `perSkin` the default; keep `main` for debugging.
@@ -909,7 +945,7 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 | Behaviour change for skins that rely on synchronous bangs to other skins | low / low–medium | Documented judgment call; hop limit; test with the real skin packs |
 | Stale snapshot gives a surprising click or cursor for one frame | low / low | The snapshot matches what is on screen; the event still runs on the live skin |
 | CPU or energy: many skins committing at 60 Hz, each on its own clock; per-skin caches and threads | medium / medium | No drawing while hidden or occluded; E costs Deskset what A costs in the spike, the window server perhaps a few percent more; measure real skins in phase 2; display-link pacing if the gap holds; the 8 MB stacks are only reserved |
-| The Studio's hidden assumptions (synchronous refresh, read-back after preview) | medium / medium | Phase 2 keeps the edited skin on main; phase 4 is optional and bounded |
+| The Studio's hidden assumptions (synchronous refresh, read-back after preview) | medium / medium | The Studio edits its own instance on main (§8.5); the desktop copy's reloads carry a ticket instead of arriving inside the call; phase 4 is optional and bounded |
 | Tests that assume main-thread timing (`RunLoop.main` pumping in 48 places, `MediaUIMainHop.runsInline`) | high / low | `MainSkinExecutor` for existing tests; new tests for threads |
 | Libraries that are not thread-safe in skin code (`rand()`, `getutxent`, locale functions) | low / low | Found in the audit and listed in §4; fix as listed |
 | Priority inversion: the main thread waits for exclusive access on a skin thread with a low QoS | low / low | Exclusive access is rare and bounded; raise the skin thread's QoS while the main thread waits (`pthread_override_qos_class_start_np`) |
@@ -928,7 +964,7 @@ For one developer who knows the codebase:
 | 2. Runtime split on one engine thread (UI no longer stalls skins) | 10–14 | 19–27 |
 | 3. One thread per skin (skins no longer stall each other) | 4–6 | 23–33 |
 | 5. Cleanup, compatibility notes, soak | 3–5 | 26–38 |
-| 4. (optional) Studio on exclusive access | 6–10 | 32–48 |
+| 4. (optional) The Studio's own instance off the main thread | 6–10 | 32–48 |
 
 That is about six to eight weeks without phase 4, and seven to ten weeks with it. The largest uncertainties:
 - phase 2's window and mouse details;
@@ -986,6 +1022,8 @@ Decided on 2026-09-25, all as recommended:
 3. **Bangs to other skins become asynchronous and ordered** (§8.2, §9). Phase 5 records this in
    `docs/compat/engine.md` as a judgment call.
 4. **Studio:** phase 2 only for now. A skin open in the Studio runs on the main thread (§8.5); phase 4 is deferred.
+   Revised on 2026-09-28: the Studio now edits an instance of the widget of its own, on the main thread, and the
+   desktop copy stays on its executor (§8.5).
 5. **The `main` executor stays** after phase 5, as a hidden setting (a `defaults` key, not in the Settings window)
    for debugging and comparisons.
 
@@ -1063,7 +1101,7 @@ Delayed work and timers do not hold the skin either:
 | `AppController.later`: lifecycle host bangs, bangs for a config that is loading, `AppState` saves, the installer | The app's lifecycle and state live on main and must stay in order with `later(loading:)` |
 | UI events that call the skin synchronously: mouse, hover, focus, context menu, sleep / wake / screens, outside-pointer delivery, the InputText completion | They start on main and use the answer, or must run in the same turn as a panel swap or the Slider's event order. An `async` would add a turn. They become messages in phase 2 (§8.3) |
 | The NowPlaying, WiFi and focused-window centres (`MediaUIMainHop`), `SystemMonitor`'s caches | Shared services that never call a skin; skins read them at their next update. Phase 1 gives them locks (§4.5, §4.6) |
-| The Studio's timers and deferred edits | The Studio's skin stays on the main executor (§8.5, decision 4) |
+| The Studio's timers and deferred edits | The Studio's own instance of the widget stays on the main executor (§8.5, decision 4) |
 | Audio capture, `ProcessSampler`, `WebParserNetwork`, `PluginIO` | Already off the main thread, and they never call a skin |
 
 **Main Thread Checker:** `scripts/check-main-thread.sh` runs both self-test programs with it loaded. First run, all
@@ -1076,7 +1114,8 @@ hold a posting thread up inside `post` to show that the executor, not that threa
 "App: skin threading: …" do the same for the update clock and Chameleon.
 
 **Left for later phases:** the assertion against `DispatchQueue.main.sync` on a skin thread and the busy-skin watchdog
-(§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5).
+(§5.2), `SkinThreadExecutor` and `SkinQueueExecutor`, moving a skin between executors when the Studio opens it (§8.5;
+no longer needed since the Studio edits its own instance).
 
 ### Phase 1: done (2026-09-26)
 
@@ -1279,3 +1318,718 @@ and one older than its `maxAge` asks the main thread for a fresh one, one reques
 - the FrostedGlass and InputText companions, and AudioLevel capture and live NowPlaying for skins outside
   `SkinController` (idle in the suite); a NowPlaying measure read on demand still asks its `SkinController` whether
   updates are paused (`currentSnapshot`), a main-thread object (§4.6).
+
+### Phase 2: done (2026-09-28)
+
+The goal is §10's: every desktop skin runs on one shared engine thread, the UI (menus, the Manage window, the Studio,
+the installer) no longer stalls skins, and `SkinThreading=main` switches back. The plan is for the code as it is on
+2026-09-28. Later work fixed four things that §5–§8 do not say:
+
+1. **A content seam.** `protocol ContentProvider { present(_ frame: SkinFrame); setVisible(_: Bool);
+   setScale(_: CGFloat); teardown() }`. The `contentLayer` of §7.3 is its first implementation
+   (`LayerContentProvider`). A later, layer-based runtime will replace it, so nothing outside the provider touches
+   `contentLayer`.
+2. **Frames are bitmaps** (§2.1, §7.3). The skin's executor produces the bitmap with `SkinBitmapDrawing`, which keeps
+   pictures of the meters whose drawing generation did not change, and presents it through the provider. This holds
+   whichever executor runs the skin, the main one included.
+3. **The Studio edits an instance of its own** (§8.5). The desktop copy stays on the engine thread while the Studio is
+   open, and its reloads carry a ticket.
+4. **A `SkinThreading` defaults key**, `main` or `engine` (`perSkin` comes in phase 3). The app's default stays
+   `main` through these steps. It becomes `engine` only after the stress suite and a soak have run with it, and `main`
+   stays selectable for debugging. The headless modes, the Manage window's dry runs, thumbnails, the Studio's own
+   instance and the existing self-tests keep `MainSkinExecutor` (§8.7).
+
+**How the pieces fit**
+
+| Piece | Where | What it does |
+|---|---|---|
+| `SkinRuntime` | the skin's executor; `SkinRuntime.swift` | Owns the `Skin` and is its `SkinHost`, `LiveSkinHost` and `SkinImageQueries`. Runs the update clock, pause and wake, the window model and the frame producer; publishes the snapshot; handles messages; sends requests. Closes the skin and lets go of it on the executor. |
+| `SkinWindowController` | main; today's `SkinController`, renamed (a `typealias SkinController` stays until phase 5, so the Studio and the tests keep compiling) | The panel, `SkinView`, the glass views, fades, hover polling, drag, snap and keep-on-screen, `AppState`. Applies requests, publishes window facts. |
+| `SkinMessage`, `SkinRequest` | `SkinMessages.swift` | §5.4's lists, plus what the steps below add. |
+| `SkinSnapshot`, `SkinHitMap` | the hit map in DesksetCore (`Engine/SkinHitMap.swift`), the snapshot in the app | §5.5. |
+| `SkinWindowModel`, `EnvironmentStore`, `SkinDirectory` | the app | §8.1, §4.2, §5.4. |
+| `ContentProvider`, `LayerContentProvider` | `ContentProvider.swift` | Above. |
+| `SkinThreadExecutor` | DesksetCore, `Engine/SkinThreadExecutor.swift` | The stress suite's `TestThreadExecutor`, promoted. One shared engine thread in this phase. |
+
+**Delivery rules.** These keep `SkinThreading=main` exactly as it is today, while the same code queues its work
+when a skin runs on the engine thread.
+- A message to a runtime runs **inline when the sender is on the runtime's executor**, once the runtime's `.load` has
+  run; otherwise it is queued there, first in, first out (hover and window facts are coalesced to the latest). With
+  the main executor every UI event still reaches the skin synchronously and in the same order.
+- A request to the main thread runs inline on the main thread. From anywhere else it is queued with
+  `DispatchQueue.main.async`, the queue of `AppController.later`, so lifecycle bangs keep their order.
+- Inline delivery hands back what the live skin answered (whether a mouse event was handled). The view uses that
+  answer when it has one and the snapshot's prediction otherwise. In debug builds with the main executor, every answer
+  the snapshot or the window facts give is also asked of the live skin or window, and a difference fails the
+  self-tests. So the existing suites check the snapshot wherever they click, hover or ask for a tooltip.
+- Bangs between skins go through the `SkinDirectory` to the target's runtime under the same rule: inline when the
+  target runs on the sender's thread. On this phase's one engine thread every skin does, so **bangs between skins stay
+  synchronous in phase 2**. §8.2's asynchronous delivery, and its compatibility note (§9), take effect with threads of
+  their own in phase 3. A hop count carried with the bang replaces the static `forwardDepth` (the limit stays 16).
+- **Exclusive access belongs to the executor**: `executor.exclusive(timeout:) { … }`.
+  - On the owner it runs at once (the main executor on the main thread).
+  - From the main thread to a skin on another thread, it queues a block that parks that thread between two pieces of
+    work, and waits for the park with the timeout. A park that comes after the timeout finds itself cancelled and
+    returns at once.
+  - While the main thread holds it, `isCurrent` is true on the main thread and false on the parked one, so
+    `assertOwned`, the inline rule and requests all treat the main thread as the owner.
+  - On the shared engine thread it parks every skin at once, for the few milliseconds a context menu needs.
+
+**Frames** (E, on bitmaps):
+- The runtime's frame producer takes over the `SkinBitmapDrawing` that `SkinView` owns today. `skinNeedsDisplay` marks
+  the skin dirty. The producer draws at most once per turn of its executor's run loop: in a before-waiting observer
+  ordered before Core Animation's commit, which is where AppKit's display pass drew. A skin thread that never waits
+  also draws once a turn has run for longer than a frame.
+- It draws at the backing scale, in the color space and with the appearance that the main thread publishes in the
+  window facts; today the view reads the same three from its window.
+- It does not draw while the window cannot be seen: not shown yet, ordered out, occluded, hidden by a bang, or never
+  shown at all, as in the headless self-tests, where AppKit never displayed the view either. When the window can be
+  seen again it draws one frame. The first frame is drawn before the window is first shown.
+- `LayerContentProvider`: `contentLayer` is a sublayer of `SkinView`'s layer, anchored top-left under the flipped
+  view, with no implicit actions. Its bounds are always the size of the frame it shows, so nothing is stretched.
+  `present` sets bounds and contents in an explicit transaction (§7.3, rule 2; `flush` only off the main thread). Since
+  the review below, the frames of one turn of a run loop share one transaction.
+- A size change: the content layer's bounds change in the same transaction as the frame, and the window is resized
+  by a `.resize` request (top-left corner fixed, as now). Until the main thread gets to it (the next turn while it is
+  free, later while it is busy) the window clips the frame or leaves a transparent margin; it never stretches it.
+- `SkinView` keeps `draw(_:)`, for `cacheDisplay` snapshots, and gives its own layer no contents.
+
+**The snapshot** (§5.5) is built when a piece of top-level work ends. The engine gets one new host callback,
+`skinDidFinishWork`, at the end of an update, an action or bang from outside, a mouse entry, a hop's work or a preview
+(`actionDepth == 0 && updateDepth == 0`).
+- It is built again only when `Skin.snapshotGeneration` moved. The engine bumps it for layout, visibility, the state of
+  mouse actions, options, tooltips that show measure values, issues and groups.
+- A reader on the skin's own thread publishes a pending snapshot before it reads.
+- The hit map holds value-type mouse shapes (`MouseShape`: a rectangle; a Shape's items with its transform and
+  background; a Button's image, frames and flips). `Meter.isHit`, `ShapeMeter.hitTest` and `ButtonMeter.hitTest` use
+  the same values, so there is one hit test, not two that could drift apart.
+
+**Not in these steps** (the later pass at the end of this section does them): stress runs on the engine thread, §10's
+measurements (Deskset and WindowServer CPU for ten skins, a visualizer's frame pacing while the Studio is open,
+energy), the soak, and making `engine` the default.
+
+**Steps.** Every step ends with all of these passing:
+- `swift build` and `swift run DesksetSelfTest`;
+- `.build/debug/Deskset --self-test` in one process, once for each scroller style: the default, then
+  `-AppleShowScrollBars WhenScrolling`, then `-AppleShowScrollBars Always` (placed before `--self-test`);
+- `scripts/check-main-thread.sh` with the step's suites.
+
+Steps 1–6 change nothing with `SkinThreading=main`, the only mode until step 7; the one exception is a visible
+difference that step 4 might find, which it records. Timing checks wait for a condition, never for a fixed time (CI's
+Intel runner is about three times slower). Tests that need a skin on another thread before step 7 use the stress
+suite's `TestThreadExecutor`.
+
+1. **Split `SkinController` into `SkinRuntime` and `SkinWindowController`**, still on the main executor.
+   - Everything that touches the `Skin` moves into the runtime: `SkinHost`, `LiveSkinHost`, `SkinImageQueries`, the
+     update clock, pause, resume and wake, fonts and appearance changes, close.
+   - `SkinMessage` and `SkinRequest` as in §5.4, with the delivery rules above. The host bangs are split into a pure
+     classification, which answers `skin(_:handle:)` on the runtime, and their effects, which stay on the main thread
+     as requests and are applied by the code that applies them today.
+   - `executor.exclusive(timeout:)`, including the park on `TestThreadExecutor`.
+   - `SkinView`, `AppController`, the menus, the Studio and the plugins reach the skin only through the runtime. In
+     this step they still read the live skin, through inline exclusive access.
+   - New suites "App: skin runtime: …": messages inline on the owner and in order on a test thread; requests likewise;
+     exclusive access at once, parking a busy test thread between two pieces of work, timing out while it is stuck
+     and the late park returning at once, re-entrant; after close the skin is released on its executor.
+   - **Done (2026-09-28):** `SkinRuntime.swift`, `SkinWindowController.swift` (with `SkinView.swift`),
+     `SkinMessages.swift` (also a `.group` request for the skin group bangs, `.forward` for bangs to other configs,
+     and `.start`, `.update(hops:)`, the Studio's previews and input mirror as messages), `HostBangs` in
+     `SkinBangs.swift`, `SkinExecutorPark` in DesksetCore; the skin is let go of on its executor when the runtime goes.
+2. **The snapshot and the hit map; the UI decides from them.**
+   - `SkinHitMap` and `MouseShape` in DesksetCore, shared with `Meter.isHit`; `skinDidFinishWork` and
+     `snapshotGeneration`; the runtime publishes the snapshot under a lock and posts `.snapshotChanged` only when
+     something the main thread uses changed.
+   - `SkinView` takes the drag decision, the Button test, the skin-menu decision, the cursor, the tooltip rectangles
+     and texts and `needsPanelToBecomeKey` from the snapshot. Presses, releases, drags, the wheel, hover, leaving and
+     focus become messages.
+   - The Manage window, the status menu, `CodeEditorRouter`, `OutsidePointerMonitor`'s needs and the app's group
+     lookups read snapshots.
+   - The debug comparison with the live skin is on for the whole app suite. A new Core suite compares the hit map with
+     the live skin on a grid of points for every test and default skin. The cost of building snapshots is measured
+     on the busiest default skins and written down here.
+   - **Done (2026-09-28):** `Engine/SkinHitMap.swift` (`MouseShape`, `SkinHitMap`, `Skin.makeHitMap`; `Meter.isHit`
+     and the Shape and Button `mouseShape`s are the one hit test), `Skin.snapshotGeneration` and
+     `SkinHost.skinDidFinishWork`, `SkinSnapshot.swift` (`SkinSnapshot`, `SkinSnapshotChanges`, `SnapshotAudit`);
+     `SkinView`, the skin and status menus, the Manage window, `CodeEditorRouter`, `OutsidePointerMonitor` and the
+     group lookups read snapshots. Differences from the plan:
+     - The generation moves when a value the hit map reads changes (a frame, Hidden, an action or its state, a
+       tooltip, a cursor, a Shape's shapes, a Button's image or state, the glass, the size, the notes, the needs
+       outside the window, what loading read), not at every option read: a skin with `DynamicVariables=1` meters would
+       otherwise build its snapshot at every update. Tooltips that show `%1` move it after every piece of work.
+     - The hit map keeps only the meters the mouse can find something on (an action, a tooltip,
+       `MouseActionCursor=0`, a Button); the others never change an answer.
+     - The context menu items are read again when the skin's variables or its `ContextTitle` options change
+       (`Skin.variablesGeneration`), not after every update: reading them took four times as long as a visualizer's
+       whole update. They are only the menu's fallback (step 5).
+     - `.outsidePointerNeedsChanged` became part of `.snapshotChanged`, which carries what changed (tooltip areas,
+       notes, metadata, groups, the needs outside the window, size, glass, focus). The "skins changed" notification
+       for new notes comes on the next turn, once, not in the middle of the skin's work.
+     - Cost (suite `App: skin snapshot: what building snapshots costs…`; release build on an M4 Pro,
+       `DESKSET_AUDIO_DEMO=1` so the visualizers move; 240 updates; an update here is the engine's alone, without
+       drawing, so the share of a whole frame is smaller still). "After it" is everything `SkinRuntime` does once the
+       update ends: building again when the generation moved, the counters, and the context menu items when a
+       variable changed (System L sets some at every update).
+
+       | Skin | Update | Snapshot work after it | Built again after | One full build |
+       |---|---|---|---|---|
+       | Spectrum (Medium) | 0.049 ms | 0.0010 ms (2.1 %) | 0 of 240 updates | 0.0028 ms (5.8 %) |
+       | Spectrum (Strip) | 0.063 ms | 0.0011 ms (1.8 %) | 0 of 240 | 0.0031 ms (4.9 %) |
+       | Studio VU | 0.074 ms | 0.0016 ms (2.2 %) | 10 of 240 | 0.0057 ms (7.8 %) |
+       | System L | 0.71 ms | 0.025 ms (3.5 %) | 240 of 240 (its tooltips show live values) | 0.013 ms (1.8 %) |
+
+       Under 5 % of an update in every case (debug build: 0.6–2.3 %). The skins post nothing to the main thread while
+       their layout stays: `App: skin snapshot: a skin redrawing 60 times a second…` counts the posts.
+     - Checks: the debug comparison made 3,354 comparisons in the app suite, with no difference. The Core suite
+       `Skin threading: hit map…` covers 131 test and default skins (60 with meters the mouse finds) after updates,
+       state bangs and hidden meters, in about 11 s of the debug run.
+3. **The window model, `EnvironmentStore` and `SkinDirectory`.**
+   - A skin's own window bangs change its model at once: KeepOnScreen clamps with the store's screens and
+     `!SetWindowPosition` is resolved with them. They then post `.window(model, sequence)`.
+   - The main thread applies requests in order to `AppState` and the panel, and makes a restack and one "settings
+     changed" notification per batch, as the loops of `handleHostBang` do. It echoes what it really did in the window
+     facts (frame, screen, occlusion, scale, color space, appearance, whether the window takes the pointer, sequence).
+     The last writer wins, and during a drag the skin's moves wait for the mouse-up.
+   - `environment(for:)` comes from the store and the model. `SkinController.settingsPath` becomes the store's.
+   - `SkinDirectory` holds configs, load order, pending loads, and groups through the snapshots. It carries bangs for
+     other configs, `*` and groups: `!UpdateGroup`, `!RedrawGroup`, `!SetVariableGroup`, the skin-group mouse bangs and
+     window bangs aimed at other configs. A bang for a config that is loading goes to the main thread, which queues it
+     behind the load.
+   - Tests: on a test thread, a skin reads the new `#CURRENTCONFIGX#` right after `!Move`, before the main thread
+     has moved its window; both sides end at the same frame and state; a drag in progress wins; bangs between skins
+     arrive in order and the 17th hop is dropped and logged once.
+   - **Done (2026-09-28):** `SkinWindowModel.swift` (the settings, the facts, the operations and `SkinWindowBangs`,
+     which names a window bang's targets), `EnvironmentStore.swift`, `SkinDirectory.swift`. The window controller
+     publishes its facts after every change it makes or applies and from `windowDidMove` / `windowDidResize` /
+     occlusion / backing changes, so a frame set from anywhere reaches the model; `AppController` republishes the
+     directory whenever its controllers, its pending loads or a load order change. `SkinRuntime` carries window
+     bangs, group bangs, `*` and bangs for configs by name itself. Differences from the plan:
+     - `.window` carries the operation with the values the runtime worked out (a clamped frame, a resolved flag) as
+       well as the model, and the main thread applies the operation with the code the window bangs always ran. Applying
+       the whole model would undo a setting the menu or the Manage window changed meanwhile.
+     - The facts also carry the window settings (`AppState`'s values, !Hide, a Lua FadeWindow) and the last of the
+       skin's changes they include (`modelSequence`). The model takes the frame and the settings only once that is
+       its latest change: that is "the last writer wins".
+     - On the main thread the store works the screens, `#CONFIGEDITOR#` and the appearance out at every read
+       (`MainPublished`), exactly as the old code did, and publishes them for other threads; the app also publishes
+       them at launch and on screen and editor changes. So the debug comparison checks what the model adds: the
+       frame, the Z position, AutoSelectScreen's monitor and whether the window takes the pointer.
+     - A skin's move during a press that may drag the window is held until the release: dropped when the press became
+       a drag, made when it did not (a judgment call, now in `docs/compat/app.md` and both summaries). While it is
+       held the comparison skips the frame.
+     - Bangs for a config the skin asked to load from another thread go through the main thread until the main thread
+       has scheduled that load (`loadsInFlight`): the directory cannot know of the load before then.
+     - Group bangs to other skins now count a hop and stop at the limit, as forwards always did. A window bang for a
+       config that does not run is still ignored without a log line.
+     - Until step 5's lifecycle messages, the self-tests put app skins on a test thread with
+       `AppController.skinExecutor`; such a skin loads on its thread under exclusive access.
+     - New suites "App: window model: …" and "App: skin directory: …" (73 checks). The app suite (9,944 checks in
+       each scroller style) made 4,442–4,483 debug comparisons with no difference; Main Thread Checker reported
+       nothing for the new suites.
+4. **`ContentProvider` and frame delivery E, still on the main executor.**
+   - The provider and `LayerContentProvider`. The frame producer, with `SkinBitmapDrawing` moved out of `SkinView`,
+     presents at the end of the turn and skips while the window cannot be seen.
+   - Window facts carry scale, color space and appearance (`viewDidChangeBackingProperties` and
+     `viewDidChangeEffectiveAppearance` publish them). FrostedGlass's rounding of the content view clips the sublayer
+     as it clipped the view's own contents.
+   - The stress suite draws each update through `SkinBitmapDrawing`, as the producer will, so Main Thread Checker
+     sees the frame path off the main thread.
+   - **Visible differences from the old view drawing**, checked in-process for every default and test skin: the
+     content layer's image against the old `updateLayer` result and a full drawing, through size, backing scale,
+     color space and appearance changes, occlusion, `!Hide` and `!Show`, fades, MacGlass and FrostedGlass. A
+     difference that remains goes into `docs/compat/engine.md` and both summaries (format:
+     `docs/compat/README.md`); if none remains, this section says so.
+   - What only a person at the Mac can see (§7.3: clicks through fully transparent pixels, Mission Control and Spaces,
+     live resizing) is listed for them. Nothing here reads the screen back, so nothing asks for screen recording.
+   - **Done (2026-09-28):** `ContentProvider.swift` (`SkinFrame`, `ContentProvider`, `LayerContentProvider`),
+     `SkinFrameProducer` in `SkinDrawing.swift` (with `SkinRunLoopExecutor`: the run loop an executor's work runs on;
+     the main executor's and `TestThreadExecutor`'s), owned by `SkinRuntime` as `frames`. The `.display(size:)` request
+     became `.resize(size)`; new messages `.firstFrame` and `.frameWanted`; `SkinWindowController.orderIn(alpha:)`
+     draws the first frame before it orders the window in (`start` and `!Show` use it). The window publishes its facts
+     from `SkinView`'s backing and appearance hooks and from `windowDidChangeScreen` / `…ScreenProfile`;
+     `displayPending` is gone. Differences from the plan:
+     - When a frame is drawn again after the window could not be seen: uncovered, only if the skin redrew meanwhile
+       (today's `displayPending`); ordered in (`!Show`, a new panel), always, as AppKit displayed the view then, and
+       before the occlusion state catches up (a window just ordered in counts as seen for that turn). No second frame
+       when the window is ordered in right after its first one.
+     - `LayerContentProvider.setScale` and `setVisible` only take note: the layer's `contentsScale` changes with the
+       next frame, drawn at the new scale (changed earlier, it would show the old frame at another size), and skipping
+       frames is the producer's. The seam is there for the layer runtime. (The review below adds an optional fifth
+       call, `releaseContents`, for a window ordered out for a while.)
+     - `.resize` is sent only when the skin's size changes (the runtime remembers the size it asked for: AppKit rounds a
+       window's frame to whole points, so the window model's size is not the skin's). A skin that redraws without
+       changing size posts nothing to the main thread (`App: skin snapshot: a skin redrawing 60 times a second…`).
+     - The producer draws with the facts' appearance as the thread's drawing appearance, as AppKit set it while the
+       view drew. Its run-loop observer (before waiting and on exit, order 1,999,000, common modes) also watches the
+       start of each turn, where it draws a frame asked for more than 1/60 s ago.
+     - `draw(_:)` serves snapshots only if AppKit calls it: with `wantsUpdateLayer` it calls `updateLayer` for
+       `cacheDisplay` too, so the view answers false while a snapshot is taken and clears what AppKit kept after it.
+     - Checks: the suites "App: skin drawing: frames go to the content layer…", "…a turn longer than a frame…", "…a skin
+       on a thread of its own…" (presented off the main thread), "…a skin window shows its frames in a layer of its
+       own…" and "…FrostedGlass's rounded corners clip the content layer…" (rendered in-process with
+       `CALayer.render(in:)`, never read from the screen: a pixel in the rounded corner is transparent, the same pixels
+       as the old view's contents under the same rounding). The threads stress suite draws every update through
+       `SkinBitmapDrawing.picture`; Main Thread Checker reports nothing for "App: threads" and "App: skin drawing".
+     - **Visible differences** (suite "App: skin drawing: every repository skin's content layer shows what its view
+       showed", `ContentLayerCheck`; about 46 s of the debug run): each of the 143 default and test skins runs without a
+       window and is shown twice in never-shown panels, through its frame producer and content layer, and through a
+       `LegacySkinView` that does what `updateLayer` did, drawn when AppKit drew the old view. 2,411 steps: shown, two
+       updates, redraws at rest, 1× and back, Display P3 and back, Dark and back, covered and uncovered, `!Hide` (ordered
+       out) and `!Show` (before and after the occlusion state catches up), a fade. The pictures agree within 3 levels
+       (kept pictures rounding), with a full drawing too, and so do the two layer trees as Core Animation composites
+       them — except one: a skin whose size is not a whole number of pixels (`Graphs\Aliased` at 1×, a half point),
+       which the old view stretched over its fractional size and the content layer shows pixel for pixel (147 levels
+       at its edges). That difference remains, on purpose (frames are never stretched), and is recorded in
+       `docs/compat/engine.md` and both summaries. MacGlass views are untouched (they stay behind `SkinView`; the
+       base under them is drawn as before); FrostedGlass clips the content layer as it clipped the view. No other
+       visible difference remains.
+     - Counts: Core 61,088 checks; the app suite 10,261 in each scroller style (default, `WhenScrolling`, `Always`),
+       with 3,509–3,587 debug comparisons of snapshot answers and no difference.
+     - Unchanged outputs: `--render` of the default skins is byte-identical except for the skins that show live values
+       (clocks, network, system, temperature), which also differ between two runs of the old build; `--snapshot-ui`
+       is identical except `inspector`, which differs from run to run by as much; `--verify-drawing-cache DefaultSkins
+       TestSkins`: 143 skins, none differs from a full drawing.
+     - **For a person at the Mac** (nothing here reads the screen): clicks pass through fully transparent pixels of a
+       skin (the content layer is a sublayer; the window server decides from the composited window); Mission Control,
+       Spaces and "Show Desktop" treat skin windows as before (levels and collection behaviour are unchanged); live
+       resizing while a skin changes size every frame (a `DynamicWindowSize` skin with an animated width) never shows
+       a stretched frame, only a transparent margin or a clipped edge for at most a frame; a skin dragged to a display
+       with another scale or colour profile redraws sharp and in the right colours; FrostedGlass's rounded corners on
+       screen.
+5. **Lifecycle messages, window companions, the context menu through exclusive access.**
+   - `activate` makes the window controller and the runtime and registers them. The runtime loads the skin,
+     registers its fonts, seeds the window defaults, runs the first update, draws the first frame and reports
+     `.started(facts)` or `.failed`. The main thread then places and shows the window and attaches the Studio. With
+     the main executor all of this happens inside `activate`, which still returns nil when the load fails.
+   - Closing: `.close(fadeOut:)`, then `.closed`. Quitting sends `.close` in reverse load order and waits at most 2 s
+     in all. The installer waits for `.closed` before it replaces files.
+   - Pause, resume, wake, screens, fonts and appearance are messages: `AppController` no longer checks
+     `executor.isCurrent`.
+   - FrostedGlass's backdrop and InputText's prompt become window companions on the main thread. `.companion`
+     requests carry values (the style; the prompt's settings and the skin's size); the prompt's result comes back as
+     a message. No plugin reaches `SkinController` any more.
+   - The skin menu, `!SkinMenu` and `!SkinCustomMenu` read the custom items, the name and the weather credit with
+     exclusive access and a 50 ms timeout, else from the snapshot. A chosen item is an `.execute` message.
+   - NowPlaying asks the runtime whether updates are paused; Chameleon gets the window's screen from the window facts
+     (`DesktopInputs` published per display).
+   - **Done (2026-09-28):** `SkinMessage.load(SkinLoadOrder)` and `.inputTextAnswered`; `SkinRequest.loaded`,
+     `.started`, `.failed`, `.closed` and the `.companion` cases; `SkinCompanions.swift` (`SkinCompanionChannel`,
+     the runtime's side for plugins; `SkinCompanionHost` and `SkinWindowCompanions`, the window's side); the runtime's
+     `whenClosed` / `waitUntilClosed`; `AppController.skinStarted` / `skinFailed` / `whenClosed(_:timeout:_:)`;
+     `LiveSkinHost.windowDisplay` and `DesktopInputs.displayDesktops`; `AppController.menuFacts`. Differences from the
+     plan:
+     - The start is reported in two parts, with values rather than window facts: `.loaded` (the first load's
+       `Default…` options, the fonts and notes loading found), after which the main thread saves the seeded settings
+       and applies StartHidden and the window settings, as it did before the first update; then `.started` (the size
+       after the first update, the metadata), after which it places and shows the window. The runtime seeds its window
+       model itself before the first update (`#CURRENTCONFIGZPOS#`), over what the skin's own window bangs did while it
+       loaded, as the main thread seeds `AppState`; until `.loaded` arrives the window's facts wait (the first ones
+       excepted), so facts without the seeded settings never reach the model. With the main executor both reports
+       arrive where the old code did these things, and the debug comparisons run as before.
+     - A pause at the time of loading travels in the load order (the first update happens, the clock waits), instead of
+       a `.pause` after the start. `AppController` had no `executor.isCurrent` branch left (step 1 took them out);
+       screens need no message: the store publishes them and the window's facts follow the new placement.
+     - Quitting sends `.close` to every skin in reverse load order before it waits: a skin on the main executor closes
+       inside that loop, one on a thread when the thread gets to it, so the order holds among the skins of one thread
+       (in this phase every desktop skin shares one).
+     - The window controller made on its own (`init(config:file:app:)`) still loads at once, for the self-tests that
+       build one; `activate` never uses it. `stopAllForTermination(budget:)` returns the skins that did not close in
+       time. The installer goes on after 10 s even if a skin never closes, and says so in the log.
+     - FrostedGlass asks only when its style changes; the backdrop follows the window from every change the window
+       makes (`publishFacts`) and from its alpha animations, and fades out with the window when it unloads (it used to
+       stay until the fade ended). An InputText box still open when its skin unloads closes without an answer (the
+       skin has closed; before, the closing window dismissed it). A busy skin's menu credits the weather without the
+       time of the data (the snapshot keeps only whether the skin shows it, `usesWeather`).
+     - Checks: new suites "App: skin lifecycle: …" (100 checks) with the skin on a test thread: placed and shown only
+       after `.started`; the seeded settings before the first update; `.failed` and an inactive config (on the main
+       executor `activate` still returns nil); the Calc counter across a refresh; OnCloseActions in reverse load order
+       within the 2 s budget, and a skin that does not close letting quitting go on after its budget; the installer
+       waiting for `.closed` (a mutation that skips the wait fails it); FrostedGlass and InputText through the
+       companions; the menu with the snapshot's items during a 2 s Lua call and the live ones after, a chosen item
+       running on the skin's thread; the snapshot's weather credit. A `Gate` holds a skin's thread where a test needs
+       it busy; nothing waits for a fixed time. Main Thread Checker reports nothing for them, nor for the MediaUI,
+       runtime, window model, directory, menu and installer suites. Core: 61,089 checks. The app suite: 10,368 checks in
+       each scroller style, 3,526–3,551 debug comparisons of snapshot answers, no difference.
+     - For step 7: callers that use the window right after `activate` (the first-run layout moves it,
+       `CodeEditorRouter` opens the Studio on it) get a window whose skin has not started yet when it runs on a thread.
+       A move before the start is kept as the session's position, which the placement takes; the Studio must wait for
+       `.started`.
+6. **The Studio beside a desktop copy on another executor** (§8.5).
+   - Previews are messages. `keyValueWrites` comes from the snapshot. `StudioHost` gets its environment and screen
+     from the window controller. The counter and the graphs are copied with exclusive access.
+   - Reloads carry a ticket (§8.5): `desktopReloaded` decides "own reload" by the ticket, the writes are taken when
+     the ticket ends, FSEvents changes wait for it, and the move after a step goes with the reload.
+   - The "App: studio session: …" suites about reloads and following the desktop copy run again with the desktop
+     copy on a test thread, also with the old copy's OnCloseAction forced to arrive after the new copy started.
+   - **Done (2026-09-28):** `SkinReloadTicket` and `SkinReloadEvent` (`SkinMessages.swift`): the ticket rides in the
+     load order (`SkinLoadOrder.ticket`) and in `.close(fadeOut:ticket:)`, and comes back in `.started`, `.failed` and
+     `.closed`; `AppController.refresh(_:ticket:thenMoveTo:)`, `activate(…ticket:thenMoveTo:)` and `studioReload`,
+     which hands each copy's report to the widget's editing session; `EditingSession.OwnReload`, `isOwnReload` and
+     `reload(_:_:from:)`; `SkinWindowController.reloadTicket`, `moveWhenStarted` and `publishedFacts`;
+     `SkinRuntime.whenCaughtUp`; `EditorWidgetPage.desktopCopy`. Previews, their end and the input mirror were messages
+     already (step 1), and the previews' occlusion check reads the window controller. Differences from the plan:
+     - The session learns what to wait for as it happens, on the main thread: the old copy tells it when it is sent
+       `.close` with the ticket (`.closing`), the app when it made the new copy (`.loading`). A new copy stopped before
+       it started (a later reload replaced it, or it was unloaded) says so (`.abandoned`): its `.started` never comes.
+       A reload asked for while one is open joins it and ends when every copy either touched has reported.
+     - A failed load ends the reload once the old copy's close is in too (its OnCloseAction may still write); the
+       5-second deadline bounds it either way. A copy of the session's latest reload that starts after the deadline is
+       still its own, and what it wrote is taken then.
+     - A window half stopped with a ticket keeps itself until its skin has closed (`runtime.whenClosed`), so the
+       `.closed(ticket)` of a skin on another thread still finds it. (Since the review below, every stopped window half
+       does.)
+     - The move after a step is made right after the new copy's window is placed, before it is shown, so the window
+       does not jump. With the main executor it is still made inside `app.refresh`, now just before the writes are
+       taken rather than after.
+     - The live-reload check reads the snapshot's `keyValueWrites` once the desktop copy's work in progress has run
+       (`whenCaughtUp`, at once on the main executor): FSEvents can report a `!WriteKeyValue` before the piece of work
+       that made it ends and publishes the snapshot.
+     - The Studio's first instance is seeded in one exclusive section (the counter, its first update, the graphs), so
+       both are of one moment. A copy busy past 0.25 s is not read: the instance starts from its own first update.
+     - `StudioHost` keeps the window facts of the last copy that had started: a new copy linked before it started has
+       not placed its window yet. Debug builds compare the environment it gives with the live window ("the Studio's
+       environment").
+     - While the new copy of the session's own reload has not started, the widget page counts the widget as on the
+       desktop and sends desktop settings to that copy (`desktopCopy`), instead of saying it is not on the desktop.
+     - Checks: new suites "App: studio session: on a thread, …" and "…on threads, …" (9 suites, 115 checks) with the
+       desktop copy on test threads: what the widget writes as it reloads is its own (no reload within 1.5 s, the toast
+       unchanged), after a step and after Refresh; the old copy's OnCloseAction held on one thread until the new copy
+       started on another (the reload stays open for it; a mutation that ignores the close fails it with a live
+       reload); one load counted per step; a script that rewrites an include; the canvas following the desktop copy's
+       hover and click, and the input mirror cleared when the Studio closes; the desktop copy following a moment later
+       (previews as messages, at most 20 a second, the latest values); the Studio's instance paused, and the widget's
+       place and display, kept through a reload whose new copy has not started; a step's move made once the new copy
+       started; the counter and graphs when the Studio opens, and its own first update when the desktop copy is busy.
+       Every wait is for a condition. The existing Studio session, review, opening and latency suites are unchanged in
+       what they assert. Core: 61,089 checks; the app suite passes in each scroller style with 10,476–10,483 checks (the
+       new suites always count 115; the total of the others varies by a few checks from run to run), with 6,489–6,561
+       debug comparisons (now also `keyValueWrites` and the Studio's environment) and no difference. Main Thread Checker
+       reports nothing for the Studio suites (session, review, latency), the opening suites and the lifecycle suite.
+7. **The engine thread, the `SkinThreading` key, and suites that run skins on it.**
+   - `SkinThreadExecutor` in DesksetCore (`TestThreadExecutor` promoted: a dedicated thread with an 8 MB stack and a
+     run loop of its own, plus the park). One shared engine thread for every desktop runtime, at `.userInitiated`.
+   - `SkinThreading` is read once at launch in `main.swift` and handed to `AppController` (an unknown value means
+     `main` and is logged). The default stays `main`. The self-tests build their `AppController` with `.main`.
+   - Debug builds assert that a skin thread never waits for the main thread (`MainPublished` and `MediaUIMainHop`
+     check that the caller is not a skin thread).
+   - New suites "App: engine thread: …" with the engine thread: load, refresh, unload and quit; frames presented to
+     the provider while the main thread is blocked for 500 ms; the mouse, hover, the wheel, focus, tooltips and the
+     cursor; window bangs and the environment; bangs between skins; FrostedGlass and InputText; the context menu's
+     fallback; the Studio's ticketed reload; pause, wake, fonts and appearance. They also run under Main Thread
+     Checker, under `taskpolicy -b` and as the x86_64 build under Rosetta.
+   - A copy of the app started with `SkinThreading=engine` and a user folder of its own (`CFFIXED_USER_HOME`) loads
+     the default suite with no ownership assertion.
+   - **Done (2026-09-28):** `SkinThreadExecutor` (DesksetCore, `Engine/SkinThreadExecutor.swift`; the stress suite and
+     every "on a thread" suite use it now, and `TestThreadExecutor` is gone), `SkinThreading` and
+     `AppController(threading:)`, whose `skinExecutor` hands every desktop skin the one engine thread ("Deskset skin
+     engine", `.userInitiated`, made with the first skin), `SkinWindowController.whenStarted`, and the suites "App:
+     engine thread: …" (`EngineThreadSelfTests.swift`) and "Executor: skin thread: …" (Core). Differences from the
+     plan:
+     - The skin thread is marked (`SkinThreadExecutor.isSkinThread`, a thread-specific key), and
+       `SkinThreadExecutor.assertNotWaiting(on:)` stops a debug build when a marked thread would wait: in
+       `MainPublished.refresh` (a skin thread reads what was published; working the value out itself is the main
+       thread's job), in `MediaUIMainHop` when the tests make its hops run inline, and in `exclusive` when a skin
+       thread asks another skin thread's executor (a sideways wait). Nothing in the app calls `DispatchQueue.main.sync`,
+       so there was no call to guard.
+     - An executor nobody holds any more ends its thread (`deinit`); `AppController.endEngineThread()` ends the
+       engine thread for the self-tests, once their skins closed.
+     - What uses a skin window right after `activate` waits for `.started` when the skin loads on the engine thread:
+       `showInspector` and `CodeEditorRouter` open the Studio once it started. The first-run layout's move before the
+       start is kept as the session's position and placed then (step 5), as the new suite checks.
+     - Skins that start after the batch that loaded them (`loadActiveSkins`, the first-run layout) are stacked once
+       more on the next turn (`restackSoon`): on the main thread they started inside the batch, before its restack.
+     - Bangs between skins stay synchronous on the one thread, as planned. A pair of skins updating each other is
+       stopped by the engine's two nested updates before the hop limit, exactly as on the main thread; a ring of
+       nine skins reaches the 17th hop, which is dropped and logged once, within one piece of the thread's work.
+     - Checks: the Core suites "Executor: skin thread: …" (FIFO from one and several senders, never inline, an 8 MB
+       stack at `.userInitiated`, delays and timers on the thread and cancelled from the main thread, a background
+       thread and the thread itself, a park between two pieces of work and re-entrant, a timeout and the late park
+       returning at once, the wait checks, `stop`, a skin's whole life with `!Delay` on the thread). The app suites
+       "App: engine thread: …" (13 suites) build their app with `.engine`, present no windows and force visibility
+       through the window facts: the key and its note in the log; the wait checks; load, refresh (from the menu and
+       a skin's own `!Refresh`), unload and quit in reverse load order; the first-run layout; frames presented while
+       the main thread was blocked for at least 500 ms and until three more frames of each of two skins arrived;
+       clicks, hover, the wheel and focus as messages run on the thread, tooltips and the cursor from the snapshot,
+       also while a gate holds the thread; window bangs and the environment; bangs between skins; FrostedGlass and
+       InputText; the menu's fallback while another skin's Lua call holds the thread; the Studio opened on a skin that
+       had not started, its own instance on main and a ticketed reload; pause, wake, fonts and Dark Mode; every
+       default widget and all 42 of its files loading, updating and drawing on the thread. Every wait is for a
+       condition. They pass repeatedly, under `taskpolicy -b`, under Main Thread Checker (nothing reported) and
+       as the x86_64 build under Rosetta (202 checks; the Core suites too).
+     - Counts: Core 61,162 checks (73 of them the new suites); the app suite 10,678 checks in each scroller style
+       (default, `WhenScrolling`, `Always`; 202 of them the new suites), with 6,520–6,605 debug comparisons and no
+       difference, the existing suites unchanged. Main Thread Checker reports nothing for the full runs of both
+       programs.
+     - A debug copy started from the build folder with `-SkinThreading engine`, a user folder of its own
+       (`CFFIXED_USER_HOME`) and the demo audio and NowPlaying sources loaded all 23 default widgets in about
+       1.5 s with no ownership assertion; a sample showed their updates and frames on "Deskset skin engine" and the
+       main thread idle. It was stopped by its process id.
+     - The default stays `main`. Stress runs on the engine thread, §10's measurements, the soak and making `engine`
+       the default are the later pass's.
+
+**The later pass: stress, real skins, a soak, §10's measurements and the default (2026-09-28)**
+
+1. **The stress suite on the engine thread** ("App: threads: on the engine thread, every test and default skin loads,
+   refreshes, updates and draws in the app while the main thread is busy", `EngineStressSelfTests.swift`).
+   - An app made with `SkinThreading=engine`, so the app's own runtime is every skin's host and every skin shares the
+     one engine thread, as on a desktop. The root configs of TestSkins and the Stationery suite go into its one Skins
+     folder, each root once, so fixtures whose root config sits deeper (`TestSkins/Lua/LuaShowcase`) keep their
+     `@Resources`. MediaUI\WiFi is left out: in a skin window it asks Location Services, and the self-tests never ask.
+   - Every config (104; 142 files, the Lua skins among them) loads each of its files in turn, twice (the second load a
+     refresh). Each load is made visible in the window facts, is asked for 6 updates one after the other (`.update`,
+     as `!UpdateGroup` asks) and must present a frame. The work is bounded, so a slow machine only takes longer.
+   - Meanwhile the main thread replaces photos under the slideshows (16), purges the images (8), removes and restores
+     a skin font (6; every skin hears of it), publishes the AppKit inputs (8), moves windows (48), hovers skins (96),
+     opens their menus (24: exclusive access with the menu's 50 ms timeout, else the snapshot), reads their tooltips
+     (24), pauses and resumes every skin (4) and tells skins the appearance changed (8). The skins meanwhile refresh,
+     activate, update and unload each other (App\PingA, App\PongA, App\Closer). What skins open is noted, not opened;
+     NowPlaying uses the demo player; weather never reaches the network.
+   - It checks: nothing hangs; every load started on the engine thread, updated at least 6 times and drew (or was
+     hidden by its own bang); no load failed; at least 80 % of the loads ran to the end (the others were refreshed or
+     unloaded by another skin first: 4–8 of 284); the default skins load without a note, a file warning or a warning
+     or error in the log, at their card's size; the deep nesting fixture reaches the engine's limit on the engine
+     thread's 8 MB stack; the slideshows show a version of their photo; the font-heavy skin measures with its own
+     font; the writers' keys reach their file; no weather request.
+   - Debug builds also fail every suite, not only this one, in which the engine called a runtime from another thread
+     than its skin's executor (`HostCallAudit`: the runtime's `SkinHost` and its companion channel; exclusive access
+     counts as the owner's; the image queries, which read only `Images`, since the review below). No suite made such a
+     call.
+   - Cost: about 42 s on an M4 Pro (debug build), 54 s under Main Thread Checker (nothing reported), 115 s as the
+     x86_64 build under Rosetta, 210 s under `taskpolicy -b`. `DESKSET_THREADS_SOAK=N` multiplies the loads and the
+     main thread's work.
+   - String\Review is drawn once per load. Its Border around simulated-bold Chalkduster takes CoreGraphics about 4 s
+     to draw, and every update redraws all of it: an updated meter counts as changed, so no picture of it is kept
+     (`SkinBitmapDrawing`). Drawn at every update, it held the engine thread, and so every other skin, for minutes. On
+     the main thread such a skin holds the whole app the same way; a thread for each skin (phase 3) confines it.
+2. **What the stress runs found, and the fixes.**
+   - The app self-tests wrote the playing track's covers into the user's real cache folder whenever Music was
+     playing, and each copy of the app deletes the older covers it finds there: a running Deskset and the self-tests
+     removed each other's covers ("Unable to open image" in the log). The self-tests keep `MediaUICache.root` in a
+     temporary folder from their start.
+   - The Studio latency suite allowed the desktop copy half the drag's steps plus one as previews, and failed on a busy
+     machine (20 of 36). It now allows one preview per `desktopPreviewInterval` (50 ms) of the drag's actual duration,
+     plus the first.
+   - `FrameTimingLog` (`defaults write app.deskset.Deskset FrameTimingLog -int 10`): every 10 s each skin that
+     presented frames logs how many, the time between two frames (median, 95th percentile, longest) and its longest
+     drawing. Off by default; for the measurements below.
+3. **The real skin packs** (local only, never committed: the 15 packs of the compatibility corpus).
+   - 379 of their 390 .ini files; the 11 that read the Wi-Fi network's name are left out, since a skin window asks
+     Location Services for it. 16 batches of at most 30 skins (a config at most once in a batch), each in a copy of
+     the debug build with a home of its own (`CFFIXED_USER_HOME`, a copy of the packs' Skins folder, a `state.json`
+     listing the batch, the demo audio and player, weather off, the main-thread stall log at 250 ms), for 2 minutes;
+     then a probe skin quits the app with `!Quit`. The same batch ran with `SkinThreading=main` alongside.
+   - Both modes: no crash, no ownership assertion, no hang; every batch's app quit by itself on the probe's `!Quit`,
+     closing every skin, with exit status 0; the same 95 errors and 188 warnings in the logs (the packs' own: styles
+     they never define, Windows programs, missing images), apart from one more "Unable to open image" of a player
+     skin's button on main, which depends on when the demo player changes state.
+   - The main thread: with `main`, each batch's launch kept it busy for 640–1,120 ms (13 steps over 250 ms in all);
+     with `engine`, one step of 263 ms, the app's own launch before any skin loaded.
+   - **Found and fixed: the order of the loads at launch.** With `engine`, `loadActiveSkins` asked for every load at
+     once, so a skin's OnRefreshAction found the skins further down the list already registered: Enigma's Dock unloads
+     its Menu when it loads, and the Menu, next in the load order, never showed (394 skins loaded instead of 395). On
+     the main thread each load is over before the next begins: the Menu was not loaded yet when the Dock asked, and
+     loads after it. `AppController.activateInOrder` now loads the session's skins, and the first-run layout's, one
+     after another on any executor: each once the one before started, failed or was unloaded
+     (`SkinWindowController.whenSettled`). The first-run Manage window is placed once they are. The new suite "App:
+     engine thread: the session's skins load one after another, as on the main thread" (also a failed load and a skin
+     that unloads itself) fails with the loads asked for at once. Four batches ran again with the fix (the Dock's
+     among them): the same skins loaded in both modes.
+4. **The soak** (local): 60 minutes on the engine thread, in a copy of the debug build with a home of its own, of the
+   Stationery first-run layout (Clock, Calendar, Weather, System) and ten typical skins: five Stationery widgets
+   (Analog Clock, Spectrum with the demo audio, Now Playing with the demo player, Network, Temperature) and five from
+   the corpus (CoreLoads, EasyInfo, Elegant Watch, Simple Clean's visualizer, HDD_Usage_Bars' Mnml C), weather on.
+   - Memory footprint: 140 MB at minute 1 (the launch's), 107 MB from minute 5 to 40, 99 MB from minute 45 to the
+     end. Threads: 11–13 throughout. No crash.
+   - The log: no error, no warning and no main-thread step over 250 ms in the hour.
+   - CPU: 45 % of a core on average (the debug build; two of the skins are visualizers: Simple Clean's at `Update=0`,
+     the 16 ms minimum, about 60 frames a second, and Spectrum at 33 ms, 30 frames a second).
+5. **§10's measurements** (release build, M4 Pro, macOS 26.5, nobody at the Mac; measured again against the right
+   baseline in the review below, item 9). The machine did not get quiet: other work kept the 1-minute load average at
+   3.5–6.4 for the whole hour, so the numbers were taken under that load (noted). Each copy of the app had a home of its own and the demo audio and player.
+   - **CPU and energy, ten typical skins** (the soak's ten: five Stationery widgets, Spectrum among them, and five from
+     the corpus, one a visualizer), above other windows (`AlwaysOnTop=1`), averaged over 120 s after 30 s, main and
+     engine alternately, twice: Deskset 14.2 % and 13.9 % of a core with `main`, 14.3 % and 13.2 % with `engine`;
+     top's energy impact 14.0 and 15.7 against 14.1 and 13.3. WindowServer: 53.4 % without the test copy, 43.5 % and
+     48.2 % with `main`, 46.2 % and 47.3 % with `engine`: other apps moved it by more than the skins did, so no
+     difference shows. Footprint: 105 and 75 MB with `main`, 115 and 109 MB with `engine` (mostly malloc; flat over
+     the soak's hour). Threads: 10–11 against 11–12.
+   - The same skins on the desktop, behind other windows (their default, `AlwaysOnTop=-2`, while the Mac's windows
+     covered them), draw no frames: 4.0 % and 3.9 % with `main`, 3.6 % and 3.6 % with `engine`, their updates alone.
+   - **Frame pacing of an AudioLevel visualizer while the Studio is open on another skin**: Stationery Spectrum (a
+     frame every 33 ms), System, Clock and Calendar, and a probe skin that opens the Studio (`!EditSkin`) on System,
+     then switches it to Clock, System and Calendar, 20 s apart; `FrameTimingLog` every 5 s. The Studio's work on the
+     main thread is the same in both modes (steps of 270–350 ms each time it opens or switches).
+     - `main`: the visualizer stops for as long: its longest gap between frames was 392, 562, 582 and 362 ms at the
+       four moments, with 133–145 frames in those 5 s instead of 152.
+     - `engine`: 152 frames in every 5 s, the longest gap 35.6–38.6 ms throughout, the 95th percentile 34.6–35.5 ms.
+6. **The default is `engine`.** `SkinThreading.chosen` answers `engine` without the key and for a value that is
+   neither mode (logged); `defaults write app.deskset.Deskset SkinThreading main` (or `-SkinThreading main` for one
+   launch) keeps every skin on the main thread, for debugging, and says so in the log at launch. The headless modes,
+   the Manage window's dry runs, thumbnails, the Studio's own instance and the self-tests' apps keep the main executor
+   (§8.7); only the menu bar app reads the key. `--help` says which is the default.
+   - Checks after the change: Core 61,166 checks; the app suite 10,728 checks in each scroller style (default,
+     `WhenScrolling`, `Always`), with 6,465–6,600 debug comparisons and no difference (50 more than at step 7: the
+     stress suite, the load order suite, the key suite's and the first-run suites' new checks). Main Thread Checker
+     reports nothing for the full runs of both programs.
+   - Three checks of other suites failed once each on a machine with a load average of 20 or more from other work,
+     and passed on their own; they were made sturdier: the Studio latency suite's bound on previews (above); the stall
+     monitor suite's busy step, now timed on the monitor's own clock; and the Rmskin checks that nothing is left in
+     the temporary folder, which counted other processes' `Deskset-Sandbox-…` and `Deskset-settings-…` folders there
+     (Foundation's temporary folder is the user's, whatever `TMPDIR` says) and now count only the installer's own
+     work folders.
+
+**The review of phase 2 (2026-09-29)**
+
+A review of the phase found the problems below on the engine thread. Each fix has a suite that fails when the fix is
+undone (checked by undoing it). "Both modes" means the suite runs with `SkinThreading=main` and `engine` and requires
+the same outcome.
+
+1. **Bangs behind a skin's load.** A message runs inline when its sender is on the runtime's thread. A skin that
+   `activate` had registered but whose `.load` was still queued could be reached that way: another skin's `[!Update B]`
+   in its OnRefreshAction during Refresh All, a timer, a queued click. It then ran on the empty skin: its first update
+   came before the load's, so OnRefreshAction never ran, and a skin without DynamicWindowSize kept a size of 0 (a
+   1-point window). A runtime now takes messages inline only once its `.load` has run (`SkinRuntime.isLoadQueued`);
+   until then they queue behind the load. `activate` lists a skin that loads on another thread in the directory once
+   its load is queued, in one change with the copy it replaces, so the config is never missing in between. Suite "…a
+   bang from another skin waits for a skin's load, which stays its first update".
+2. **OnCloseAction's bangs for the app.** `stop` marked the window stopped at once, and on the engine thread
+   OnCloseAction runs later: its config, menu and system bangs were dropped. Once nothing held the window half (an
+   unload without a fade, any refresh, the installer), so were what it opened and its bangs for configs that were
+   loading. A stopped window now applies what its skin asked for until the skin has closed (`whileClosing` still keeps
+   a closing skin from reloading or unloading itself), and every stopped window half stays until `.closed`. Suite
+   "…OnCloseAction's config bangs and what it opens are carried out, on unload and on refresh" (both modes). It drains
+   the autorelease pool around the unload, as the run loop does after a turn, because AppKit keeps the window's
+   delegate there while it closes the window.
+3. **Reloads asked for together, one after another.** Only the launch loaded one after another (`activateInOrder`).
+   Refresh All, `!Refresh *`, `!RefreshApp`, `!RefreshGroup`, the `[!Refresh]` of every skin that follows the
+   appearance, and the installer loading a suite again registered every new copy before any of them had loaded.
+   Enigma's Dock, refreshed before its Menu, then unloaded the Menu's new copy and saved it as inactive.
+   `AppController.inTurn` now runs each such load once the one before it has settled (`whenSettled`); with the main
+   executor at once, as before. `activateInOrder` uses it. What skins' bangs ask of the app meanwhile (`later`) waits
+   until the last of those loads has settled. That is how it ran on the main thread, where a batch of loads ran in
+   one turn and those bangs after it. Suites "…Refresh All, !Refresh * and an appearance change reload the skins one
+   after another…" and "…an installer reloads a suite's skins one after another…" (both modes).
+4. **The installer's fallback.** The installer decided whether the package's skin had loaded from `activate`'s
+   return, which on the engine thread comes before the load. It now decides once that load has settled, and brings
+   back the variant that was running when the load failed. Suite "…an installer whose package skin cannot be loaded
+   brings back what was running" (both modes).
+5. **A Button's pixels from the main thread.** The snapshot's hit map asks a Button's image for its pixels from the
+   main thread, through the runtime. The audit counted that as a stray call, although it reads only `Images`, which is
+   thread-safe. The image queries are no longer audited. Suite "…hovering and clicking a Button image…".
+6. **No blink on a reload.** A reload on the engine thread closed the old window at once and showed the new one when
+   it started, tens of milliseconds later (longer for a Lua skin or a busy thread). Every refresh, Refresh All, each
+   Studio step and each Dark Mode switch made widgets vanish for that long. The old window now stays, showing its last
+   frame, until the new copy has started, failed or been unloaded (`replacedWindow`, `closeReplacedWindow`); the new
+   window takes its place in the stacking. A copy replaced before it started hands the old window on. Suites "…a reload
+   keeps the old window…" and "…a replaced window goes at once on the main thread, and when the new copy fails".
+7. **Frames.**
+   - The first frame was drawn twice on the engine thread: the facts saying the window is ordered in come a turn after
+     the first frame, and the redraw for a window just ordered in did not know that the frame it had was drawn for this
+     showing. It now keeps that frame unless the skin redrew since (`drawnForShowing`). Suite "…a window ordered in a
+     turn after its first frame shows that frame…"; the frame suite's own case now expects the same on a later turn.
+   - `!Show` of a skin that never drew (StartHidden) draws its first frame on the skin's executor before it asks the
+     main thread to show the window, as the start does. On the engine thread the window's `.firstFrame` came a turn
+     later, and the window showed an empty layer meanwhile. Suite "…!Show draws a hidden skin's first frame…".
+   - A window that cannot be seen for 10 s (`SkinFrameProducer.releaseDelay`) lets go of its kept pictures and both
+     bitmaps: a 1000×800-point panel at 2× held about 77 MB for as long as it stayed hidden. Ordered out, it also lets go
+     of its frame, through an optional fifth call of the seam, `ContentProvider.releaseContents`. The next frame is
+     drawn in full, and a window shown again gets its frame before it is ordered in. Suites "…a covered window lets go
+     of its kept pictures after a while…" (the producer) and "…a window hidden for a while lets go…" (the engine thread).
+   - The frames of one turn of a run loop go to the render server in one Core Animation transaction. One run-loop
+     observer per run loop (`SkinFrameTurn`) lets every producer on it draw, and the turn commits once
+     (`SkinFrameBatch`, flushed off the main thread). Before, every frame was a transaction of its own. Suite "…the
+     frames of one turn go to the render server in one transaction" (two skins, one commit).
+8. **Smaller things.**
+   - `skinNeedsDisplay` read the screens at every redraw (on the main executor it enumerated `NSScreen.screens`). The
+     window model reads them only when a resized window must be kept on screen. The screens and the appearance, which
+     are published on every change, have an age limit of a minute instead of 5 s and 1 s, so skins on the engine
+     thread no longer wake the main thread for them.
+   - `!SetWallpaper` publishes the new desktop pictures at once, for Chameleon on the engine thread.
+   - Two compatibility notes, in `docs/compat/engine.md` and both summaries. App, menu and system bangs run after the
+     sending action. Mouse decisions use the skin's last finished state while the engine thread is busy (§8.3
+     accepted this, but nothing told skin authors). Not done: waiting for a busy thread before deciding a right click
+     or a drag. The snapshot lags only while the thread is busy, and then for as long as it stays busy (seconds), so a
+     short wait would not help.
+   - The window's size and MacGlass follow a change of the skin's size when the main thread gets to the request: on
+     its next turn while it is free, later while it is busy (the Studio opens in steps of 270–350 ms). Meanwhile the
+     frame is presented from the engine thread, clipped or with a transparent margin, never stretched.
+   - A test run had committed the Turntable's own `Tempo` lines at `Live`, so a new install ran 30 updates a second
+     until the deck noticed. They are back at `Rest`, and the app suite now fails when any suite changes the
+     repository's `DefaultSkins`.
+9. **§10's measurements again, with the right baseline.** The later pass's table compared `SkinThreading=main` with
+   `engine` of the same new build, so a cost of this phase that both modes share (frames presented from an observer in
+   transactions of their own, a snapshot after every piece of work, window facts as messages) could not show. Its
+   runs were also too few and too noisy to say "no difference", and they measured neither idle wake-ups nor commits.
+   Measured again (release builds, M4 Pro, macOS 26.5, nobody at the Mac): the pre-phase-2 build (main at 847138a,
+   where AppKit's display pass set the view's layer) and both modes of this branch, the same ten skins as before (the
+   soak's ten, above other windows, the demo audio and player), five rounds alternating the three, each 30 s of
+   warm-up and then 120 s. The machine was not quiet: other work kept the 1-minute load at 2.4–4.5, and the owner's own
+   copy of Deskset kept running. Median [range] of the five runs:
+
+   | | 847138a | this branch, `main` | this branch, `engine` |
+   |---|---|---|---|
+   | Deskset CPU, % of a core | 21.8 [20.8–25.5] | 22.7 [17.1–23.3] | 23.1 [17.7–23.6] |
+   | top's energy impact | 22.2 [21.0–26.0] | 23.3 [17.4–23.9] | 23.6 [17.9–24.1] |
+   | WindowServer CPU, % | 47.3 [47.2–47.8] | 46.7 [45.5–47.2] | 46.7 [44.6–47.2] |
+   | idle wake-ups a second (top's IDLEW) | 8.9 [7.3–11.7] | 12.9 [7.0–15.0] | 13.2 [6.1–14.6] |
+   | context switches a second | 1,093 [1,083–1,177] | 1,077 [982–1,082] | 1,124 [1,054–1,142] |
+   | frames a second, the ten skins together | not logged | 117.6 | 117.7 |
+   | Core Animation commits a second, skin frames | not logged | 100.7 [96.8–104.2] | 101.8 [99.6–102.7] |
+
+   - WindowServer with no test copy running: 44.4 [42.6–49.6] %. Its spread is larger than any difference between the
+     columns, so §10's WindowServer item stays open until a quiet run exists (load under 1, the owner's copy quit).
+   - CPU, energy and context switches: the three columns lie within each other's ranges; the branch is not measurably
+     dearer than the build before it. The idle wake-ups' medians are higher for the branch, but the ranges overlap
+     (the baseline's up to 11.7, the branch's down to 6.1), and on a machine this busy most of a process's wake-ups
+     are not from idle; they go into the quiet run too.
+   - Commits: 117.7 frames a second took 101.8 commits on the engine thread, where each frame used to be a commit of
+     its own (117.7). The saving is what skins that draw in the same turn share; ten skins with their own update
+     intervals rarely do.
+   - The absolute CPU numbers are higher than in the later pass's table (about 14 %) for all three builds alike, the
+     baseline too: the difference is the machine's state that night, not the branch.
+   - Memory (the three side by side, three times, footprint at 2, 10 and 30 minutes): 98–112 MB at 2 minutes in every
+     column; 79–81, 79–82 and 78–81 MB at 10 minutes; 79–87, 78–83 and 78–81 MB at 30 minutes (847138a, `main`,
+     `engine`). `heap` at 10 minutes counted the same live objects in all three (125,800–126,500 blocks, 23.0 MB). The
+     difference the later pass recorded (+10 and +34 MB for `engine`) came from samples taken 2.5 minutes after launch,
+     where freed malloc pages not yet given back (footprint's "reclaimable" in `MALLOC_SMALL`) and two transient
+     `MALLOC_LARGE` regions vary by 25 MB within one mode. Settled, the modes use the same memory.
+   - The default stays `engine`: with the right baseline it costs no measurable CPU, energy or memory, and it keeps
+     the visualizer's frames even while the Studio opens (the later pass's pacing measurement, unchanged by the
+     review). The WindowServer and idle wake-up items stay open for a quiet run.
+10. **Counts after the review.** Core 61,167 checks. The app suite 10,911 checks in each scroller style (default,
+    `WhenScrolling`, `Always`), in one process, with 6,568–6,580 debug comparisons of snapshot answers and no
+    difference; it now ends by checking that no suite changed the repository's `DefaultSkins`. The new suites
+    ("App: engine thread: …" in `EngineReloadSelfTests.swift` and "App: skin drawing: a covered window lets go…") pass
+    in both modes where they compare them. Main Thread Checker reports nothing for the full runs of both programs. The
+    threads stress suites ("App: threads") pass on their own too (82 checks).
+
+**The merge of main (2026-09-29).** Main had moved on by 423 commits (Stationery P1, the ANSI code page, Windows
+programs not opened, the runtime's M0a seams, the Desk language service, Studio S1 and S2a); everything it added that
+talks to a desktop skin now goes through this phase's architecture. The old `SkinController.swift` is gone: the
+Windows-program rule of `executePlan` lives in `SkinRuntime.executePlan`, and `settingsPath` and `environment` come
+from `EnvironmentStore`. S1's desktop following is a message: a step's patch goes to the desktop copy's runtime as
+`SkinMessage.patch` with the text it needs (`SourceSnapshot`), runs on the copy's executor and answers on the main
+thread, and the session counts a patch in flight until that answer (a refused one reloads the copy then, with a
+ticket). `Skin.patch` is a piece of the skin's work (`beginWork` / `endWork`) and notes a snapshot change, so the
+snapshot's metadata, source files and hit map follow a patch as they follow a load. The Studio's first instance is
+seeded from a `SkinRuntimeState` taken with exclusive access (`seedTimeout`), not from a skin that must be on the main
+thread. S2a's `DesktopLink` reads the desktop copy's snapshot (`keyValueWrites`, the file), follows a new copy once it
+has started, decides "own reload" by its ticket (the writes are taken when the reload ends), and runs Interact's held
+actions as a `.run` message (an action that is not mirrored back to the Studio). Chameleon's `CropDesktop=Skin`
+follows its window through a window companion (`followWindow`; the settled moves come back as `.windowSettled`);
+the Studio's instance still watches the desktop copy's window on the main thread. The Manage window's Show sends
+`!ShowFade` to the runtime, so the model changes first and a skin that never drew draws its first frame on its
+executor before the window is ordered in. Window facts now let the next read outside a piece of work (exclusive
+access) see the window's new place (`Skin.hostFactsChanged`): main's locale reads fill the environment cache during
+updates. The desktop-picture inputs publish every screen's desktop too (`allScreenDesktops`), with the per-display
+ones. The seam check holds with the phase's files in its allow list, each with a note (the runtime, window
+controller, frame producer and engine thread). Suites that stepped the Studio with a value edit to make the desktop
+copy reload now change a `[Rainmeter]` option as main's do, and new checks cover a patch on the engine thread (the
+same copy; the snapshot's metadata follows), a patch on a test thread, and Chameleon on the engine thread. A window
+half that outlives its app (a self-test's) no longer publishes facts: the new Studio's audit switches the app's
+appearance, which reached such a window and read its gone app. Counts after the merge: Core 194,168 checks; the app
+suite 17,800 checks in one process with the default scrollers and again with `WhenScrolling` (12,914 and 12,885
+debug comparisons of snapshot answers, no difference), and in each 22 failures, all in four suites of the new Studio window that fail on main too (S1's patch path
+bypasses S2a's hold of the desktop on a red problem: "Studio2: window: editing through the session", "Studio2: code:
+the desktop keeps the last working version", "…the diagnostics of 12b", "…a problem the desktop already has does
+not hold it"); Main Thread Checker reports nothing for "App: threads", the skin runtime suites and every Studio
+suite; `--verify-drawing-cache` of a fresh copy of DefaultSkins and TestSkins: 149 skins, none differs.

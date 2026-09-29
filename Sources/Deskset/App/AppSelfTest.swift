@@ -18,7 +18,12 @@ enum AppSelfTest {
         let settings = t.temporaryDirectory("settings")
         FileManager.default.createFile(atPath: settings.appendingPathComponent(DefaultSkins.stationeryFileName).path,
                                        contents: Data(DefaultSkins.stationeryFileHeader.utf8))
-        SkinController.settingsPath = settings.path + "/"
+        EnvironmentStore.shared.settingsPath = settings.path + "/"
+        // Covers of the playing track, weather and other caches go to a temporary folder, never the user's: the user's
+        // own copy of the app keeps its covers there, and each copy deletes the older covers it finds.
+        MediaUICache.root = t.temporaryDirectory("caches")
+        // Suites copy the repository's skins before running them in an app: skins write their own files.
+        let shipped = DefaultSkinsSelfTests.fingerprint()
         geometryTests(t)
         visibilityTests(t)
         windowPositionTests(t)
@@ -50,6 +55,12 @@ enum AppSelfTest {
         MediaUITests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
+        SkinRuntimeSelfTests.run(t)
+        SkinSnapshotSelfTests.run(t)
+        SkinWindowModelSelfTests.run(t)
+        SkinLifecycleSelfTests.run(t)
+        EngineThreadSelfTests.run(t)
+        EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
         SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)
@@ -57,6 +68,7 @@ enum AppSelfTest {
         SharedServiceThreadingSelfTests.run(t)
         ServiceThreadingSelfTests.run(t)
         ThreadStressSelfTests.run(t)
+        EngineStressSelfTests.run(t)
         CodeEditorSelfTests.run(t)
         StudioReviewSelfTests.run(t)
         InspectorInPlaceSelfTests.run(t)
@@ -87,6 +99,11 @@ enum AppSelfTest {
         StudioMemorySelfTests.run(t)
         StudioLatencySelfTests.run(t)
         Studio2LatencySelfTests.run(t)
+        t.suite("App: default skins: no suite changed the repository's default skins") {
+            let now = DefaultSkinsSelfTests.fingerprint()
+            let changed = Set(shipped.keys).union(now.keys).filter { shipped[$0] != now[$0] }.sorted()
+            t.equal(changed, [], "changed, added or removed while the suites ran")
+        }
         return t.finish()
     }
 
@@ -436,10 +453,11 @@ enum AppSelfTest {
             check(["--foo", "--bar"], .invalid("unknown options --foo, --bar"))
             check(["--"], .invalid("unknown option --"))
             // Every mode gives skins a #SETTINGSPATH# of its own, never the app's real settings folder.
-            let savedSettings = SkinController.settingsPath
+            let store = EnvironmentStore.shared
+            let savedSettings = store.settingsPath
             let real = Paths.appSupport.path + "/"
             if let temporary = CommandLineTools.useHeadlessSettingsFolder(nil) {
-                t.check(SkinController.settingsPath == temporary.path + "/" && SkinController.settingsPath != real,
+                t.check(store.settingsPath == temporary.path + "/" && store.settingsPath != real,
                         "a mode without --settings-dir uses a temporary settings folder")
                 t.check(FileManager.default.fileExists(atPath: temporary.appendingPathComponent(DefaultSkins.stationeryFileName).path),
                         "the temporary settings folder holds a Stationery.inc as the app's does")
@@ -449,10 +467,10 @@ enum AppSelfTest {
             }
             let named = FileManager.default.temporaryDirectory.appendingPathComponent("Deskset-named-\(UUID().uuidString)")
             t.check(CommandLineTools.useHeadlessSettingsFolder(named.path) == nil
-                    && SkinController.settingsPath == named.standardizedFileURL.path + "/",
+                    && store.settingsPath == named.standardizedFileURL.path + "/",
                     "--settings-dir DIR is used as it is and kept")
             try? FileManager.default.removeItem(at: named)
-            SkinController.settingsPath = savedSettings
+            store.settingsPath = savedSettings
             check(["--dark"], .invalid("--dark needs one of --render, --snapshot-ui, --weather-report, --benchmark"),
                   "an option without a mode")
             check(["--weather-report", "--location", "Oslo", "--units", "metric"], .mode)
@@ -777,12 +795,17 @@ enum AppSelfTest {
     /// Stops the skins of the apps made so far, whose suites are over: they would go on updating on the main thread
     /// through the suites that follow (the editor-opening suites time its steps).
     static func stopEarlierSkins() {
-        for app in retainedApps { app.stopAllForTermination() }
+        for app in retainedApps {
+            app.stopAllForTermination()
+            // Ends after the closes queued on it.
+            app.endEngineThread()
+        }
     }
 
     /// A headless app over a temporary Skins folder holding TestSkins/App and TestSkins/Deskset (the example skins of
-    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins).
-    static func makeApp(_ t: AppTestRunner) throws -> AppController? {
+    /// Deskset 0.1, which the Stationery suite replaced in DefaultSkins). Its desktop skins run on the main thread, as
+    /// every existing suite expects, unless `threading` says otherwise (the engine thread's suites).
+    static func makeApp(_ t: AppTestRunner, threading: SkinThreading = .main) throws -> AppController? {
         guard let testSkins = Paths.repositoryFolder("TestSkins") else {
             print("    (skipped: TestSkins not found; run from the repository)")
             return nil
@@ -796,9 +819,16 @@ enum AppSelfTest {
         }
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: skins, layoutsDirectory: root.appendingPathComponent("Layouts"),
-                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false)
+                                backupsDirectory: root.appendingPathComponent("Backups"), presentsWindows: false,
+                                threading: threading)
         retainedApps.append(app)
         return app
+    }
+
+    /// A skin window of `app` whose skin loads at once on the main executor and is not started (`start(fadeIn:)`
+    /// starts it): the plugins' suites build one without reaching the window controller's type.
+    static func loadedWindow(_ app: AppController, config: String, file: String) throws -> SkinWindowController {
+        try SkinWindowController(config: config, file: file, app: app)
     }
 
     /// Runs the main run loop until `condition` holds (deferred bangs, background installs).
@@ -1470,6 +1500,11 @@ final class AppTestRunner {
         self.filter = filter?.lowercased()
         IconServiceGuard.install()
         IconServiceGuard.onUse = { [weak self] stack in self?.iconServiceUsed(stack) }
+        // Debug builds compare the window's answers from a skin's snapshot with the live skin (skins on the main
+        // executor): a difference fails the suite that ran into it.
+        SnapshotAudit.onDifference = { [weak self] message in
+            self?.record("a snapshot answer differs from the live skin: \(message)", line: #line)
+        }
         // Line by line, so a run that is stopped (CI's time limit, the watchdog) still shows how far it got.
         setvbuf(stdout, nil, _IOLBF, 0)
     }
@@ -1493,6 +1528,10 @@ final class AppTestRunner {
             }
             AppSelfTest.closeEditors()
             while let cleanup = suiteCleanups.popLast() { cleanup() }
+        }
+        // Debug builds: a call to a skin's runtime from another thread than the skin's (`HostCallAudit`).
+        for call in HostCallAudit.drain() {
+            record("the engine called a skin's runtime off the skin's executor: \(call)", line: #line)
         }
         let seconds = ProcessInfo.processInfo.systemUptime - start
         durations.append((name, seconds))
@@ -1555,6 +1594,8 @@ final class AppTestRunner {
         printSlowest(durations)
         if let suite = SuiteWatchdog.overran { failures.append("[\(suite)] ran over the watchdog's limit (see HANG)") }
         print("")
+        print("Snapshot answers compared with the live skins: \(SnapshotAudit.comparisons), "
+              + "differences: \(SnapshotAudit.differences).")
         if failures.isEmpty {
             print("All \(passed) checks passed.")
             return 0

@@ -37,7 +37,7 @@ enum ThreadStressSelfTests {
 
     static func executorTests(_ t: AppTestRunner) {
         t.suite("App: threads: a skin thread runs its work in order, never inline, and its timers there") {
-            let executor = TestThreadExecutor(name: "Deskset self-test skin thread")
+            let executor = SkinThreadExecutor(name: "Deskset self-test skin thread")
             t.check(!executor.isCurrent, "the main thread is not the skin's thread")
             // Work handed over from the main thread: on the skin's thread, first in, first out.
             let order = SharedServiceThreadingSelfTests.Collected<Int>()
@@ -191,8 +191,8 @@ enum ThreadStressSelfTests {
             WeatherService.install(weather)
             defer { WeatherService.install(previousWeather) }
             let plan = Plan.fromEnvironment()
-            // What SkinController would compute on the main thread; the skins get it by value.
-            let environment = SkinController.environment(windowFrame: nil)
+            // What the environment store publishes; the skins get it by value.
+            let environment = EnvironmentStore.shared.environment(windowFrame: nil)
             DesktopInputs.publishAll()
             let skins = files.enumerated().map { i, file in
                 StressSkin(file: file, number: i, plan: plan, environment: environment)
@@ -288,8 +288,6 @@ enum ThreadStressSelfTests {
     /// (`#@#Variables.inc`) and the self-tests' own settings folder (`Stationery.inc`).
     private static func checkDefaultSkins(_ t: AppTestRunner, _ skins: [StressSkin]) {
         t.check(skins.count >= 40, "the default skins: \(skins.count)")
-        let freeForm = ["Almanac.ini": (411.0, 148.0), "Daybreak.ini": (450.0, 262.0), "Strip.ini": (740.0, 110.0)]
-        let sizes = ["Small.ini": (170.0, 170.0), "Medium.ini": (360.0, 170.0), "Large.ini": (360.0, 360.0)]
         var problems: [String] = []
         for skin in skins {
             let r = skin.report.current
@@ -299,7 +297,7 @@ enum ThreadStressSelfTests {
             if !r.loadWarnings.isEmpty { problems.append("\(name): \(r.loadWarnings)") }
             let loud = skin.host.logs.filter { $0.hasPrefix("[Warning]") || $0.hasPrefix("[Error]") }
             if !loud.isEmpty { problems.append("\(name): \(loud.prefix(3))") }
-            if let size = sizes[file] ?? freeForm[file] {
+            if let size = defaultSkinSize(file) {
                 if r.width != size.0 || r.height != size.1 { problems.append("\(name): \(r.width) × \(r.height)") }
             } else {
                 problems.append("\(name): not a card size's name")
@@ -307,6 +305,14 @@ enum ThreadStressSelfTests {
         }
         t.equal(problems, [], "every default skin loads cleanly, at its size")
         print("    \(skins.count) default skins checked for notes, warnings and their size")
+    }
+
+    /// The size of a bundled skin, by its file's name: its card's (Small 170 × 170, Medium 360 × 170, Large 360 × 360)
+    /// or a frameless piece's own; nil for any other name.
+    static func defaultSkinSize(_ file: String) -> (Double, Double)? {
+        let freeForm = ["Almanac.ini": (411.0, 148.0), "Daybreak.ini": (450.0, 262.0), "Strip.ini": (740.0, 110.0)]
+        let sizes = ["Small.ini": (170.0, 170.0), "Medium.ini": (360.0, 170.0), "Large.ini": (360.0, 360.0)]
+        return sizes[file] ?? freeForm[file]
     }
 
     /// What the fixtures in TestSkins/Threads computed on their threads.
@@ -406,7 +412,7 @@ enum ThreadStressSelfTests {
         }
     }
 
-    /// One skin on a thread of its own (`TestThreadExecutor`): loads it `plan.loads` times, updates and draws it
+    /// One skin on a thread of its own (`SkinThreadExecutor`): loads it `plan.loads` times, updates and draws it
     /// `plan.updatesPerLoad` times after each load, then closes it and reports. Everything but `start`,
     /// `fontsChanged` and `report` runs on the skin's thread, the skin's owner.
     final class StressSkin {
@@ -427,7 +433,7 @@ enum ThreadStressSelfTests {
         }
 
         let file: SkinFile
-        let executor: TestThreadExecutor
+        let executor: SkinThreadExecutor
         let host: StressHost
         let report = Guarded(Report())
         private let plan: Plan
@@ -435,13 +441,14 @@ enum ThreadStressSelfTests {
         // The skin's thread only.
         private var skin: Skin?
         private var clock: SkinScheduledWork?
-        private var canvas: CGContext?
+        /// The skin's pictures, as its frame producer keeps them (`SkinFrameProducer`).
+        private var drawing: SkinBitmapDrawing?
         private var updatesThisLoad = 0
 
         init(file: SkinFile, number: Int, plan: Plan, environment: SkinEnvironment) {
             self.file = file
             self.plan = plan
-            executor = TestThreadExecutor(name: "Deskset self-test skin \(number) \(file.config)")
+            executor = SkinThreadExecutor(name: "Deskset self-test skin \(number) \(file.config)")
             host = StressHost(environment: environment, executor: executor)
         }
 
@@ -522,7 +529,7 @@ enum ThreadStressSelfTests {
             let (issues, loadWarnings) = (skin.issues, skin.loadWarnings)
             skin.close()
             self.skin = nil
-            canvas = nil
+            drawing = nil
             report.access {
                 $0.values = values
                 $0.width = width
@@ -533,20 +540,19 @@ enum ThreadStressSelfTests {
             }
         }
 
-        /// Draws the skin into a bitmap of its size, top-left origin, as its window would show it. No AppKit graphics
-        /// context is set up: a skin thread draws a `CALayer` with a plain `CGContext` (§7.3).
+        /// Draws the skin as its frame producer does on the skin's executor (§7.3, phase 2): through `SkinBitmapDrawing`,
+        /// with its AppKit graphics context and the drawing appearance set on the skin's thread, keeping pictures of the
+        /// meters that did not change; at 1x in sRGB, as large as its window up to 1024 points.
         private func draw(_ skin: Skin) {
             if plan.drawnOnce.contains(file.config), report.current.draws > 0 { return }
-            let w = Int(min(max(skin.width.rounded(.up), 1), 1024))
-            let h = Int(min(max(skin.height.rounded(.up), 1), 1024))
-            if canvas?.width != w || canvas?.height != h { canvas = Images.bitmapContext(width: w, height: h) }
-            guard let ctx = canvas else { return }
-            ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.saveGState()
-            ctx.translateBy(x: 0, y: CGFloat(h))
-            ctx.scaleBy(x: 1, y: -1)
-            SkinRenderer.draw(skin, in: ctx)
-            ctx.restoreGState()
+            let size = CGSize(width: min(max(skin.width.rounded(.up), 1), 1024),
+                              height: min(max(skin.height.rounded(.up), 1), 1024))
+            let drawing = self.drawing ?? SkinBitmapDrawing()
+            self.drawing = drawing
+            let appearance = NSAppearance.Name.aqua.rawValue
+            SkinFrameProducer.withAppearance(appearance) {
+                _ = drawing.picture(of: skin, size: size, scale: 1, space: SkinFrameProducer.sRGB, appearance: appearance)
+            }
             report.access { $0.draws += 1 }
         }
     }
@@ -691,113 +697,5 @@ enum ThreadStressSelfTests {
         private static func size(_ index: Int, version: Int) -> (Int, Int) {
             (320 + 24 * index + 8 * version, 240 + 16 * index + 6 * version)
         }
-    }
-}
-
-// MARK: - A skin thread
-
-/// A skin executor on a dedicated thread with its own run loop and an 8 MB stack, as docs/skin-threading.md §5.3
-/// recommends for desktop skins. A test executor for now: the stress suite runs skins on it; phase 3 turns it into the
-/// app's `SkinThreadExecutor`.
-///
-/// - `async` queues a block on the thread's run loop (`CFRunLoopPerformBlock`): first in, first out, never inline.
-/// - Delayed work and timers are Foundation timers on that run loop, installed and invalidated on the thread (a timer
-///   belongs to the thread whose run loop it was added to); cancelling from another thread invalidates it there.
-/// - `stop()` ends the thread once the work queued before it has run. Work queued later never runs: a skin's own
-///   work cannot come later (the skin is closed and let go of first), and what background work hands over holds the
-///   skin weakly (`SkinHop`), so nothing queued late keeps a skin.
-final class TestThreadExecutor: SkinExecutor {
-    /// Set up on the thread before `init` returns and read-only afterwards, except `stopped` (the thread's own).
-    private final class Loop {
-        var runLoop: CFRunLoop?
-        var thread: pthread_t?
-        var stopped = false
-    }
-
-    private let loop = Loop()
-    private let exited = Guarded(false)
-
-    init(name: String, stackSize: Int = 8 << 20) {
-        let loop = self.loop, exited = self.exited
-        let ready = DispatchSemaphore(value: 0)
-        let thread = Thread {
-            loop.runLoop = CFRunLoopGetCurrent()
-            loop.thread = pthread_self()
-            // A port keeps the run loop waiting when it has no timer, rather than returning at once.
-            RunLoop.current.add(NSMachPort(), forMode: .default)
-            ready.signal()
-            while !loop.stopped {
-                autoreleasepool { _ = RunLoop.current.run(mode: .default, before: .distantFuture) }
-            }
-            exited.access { $0 = true }
-        }
-        thread.name = name
-        thread.stackSize = stackSize
-        thread.qualityOfService = .userInitiated
-        thread.start()
-        // Waits for a new thread to start, never for skin work.
-        ready.wait()
-    }
-
-    var isCurrent: Bool {
-        guard let thread = loop.thread else { return false }
-        return pthread_equal(thread, pthread_self()) != 0
-    }
-
-    /// The thread has ended (after `stop()`).
-    var hasExited: Bool { exited.current }
-
-    func async(_ work: @escaping () -> Void) {
-        guard let runLoop = loop.runLoop else { return }
-        let loop = self.loop
-        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.defaultMode.rawValue) {
-            // The run loop runs every block queued before it looked, also those queued after the one that stopped it.
-            guard !loop.stopped else { return }
-            autoreleasepool { work() }
-        }
-        CFRunLoopWakeUp(runLoop)
-    }
-
-    @discardableResult
-    func async(after delay: TimeInterval, _ work: @escaping () -> Void) -> SkinScheduledWork {
-        schedule(SkinScheduledWork(work), interval: delay, leeway: 0, repeats: false)
-    }
-
-    func timer(interval: TimeInterval, leeway: TimeInterval, repeats: Bool,
-               _ fire: @escaping () -> Void) -> SkinScheduledWork {
-        schedule(SkinScheduledWork(repeats: repeats, fire), interval: interval, leeway: leeway, repeats: repeats)
-    }
-
-    /// Ends the thread once the work queued before this has run. Any thread.
-    func stop() {
-        let loop = self.loop
-        async {
-            loop.stopped = true
-            CFRunLoopStop(CFRunLoopGetCurrent())
-        }
-    }
-
-    /// Installs a timer for `scheduled` on the thread: at once when called there (it still fires on a later turn,
-    /// never inline), else on the thread's next turn.
-    private func schedule(_ scheduled: SkinScheduledWork, interval: TimeInterval, leeway: TimeInterval,
-                          repeats: Bool) -> SkinScheduledWork {
-        let install = {
-            // Cancelled before it was installed.
-            guard scheduled.isPending else { return }
-            let timer = Timer(timeInterval: max(interval, 0), repeats: repeats) { _ in scheduled.fire() }
-            timer.tolerance = leeway
-            RunLoop.current.add(timer, forMode: .common)
-            // Weak: the run loop owns the timer until it is invalidated (a one-shot invalidates itself once it fired).
-            scheduled.setCancelHandler { [weak timer] in
-                if self.isCurrent {
-                    timer?.invalidate()
-                } else {
-                    // Until then, `fire()` does nothing.
-                    self.async { timer?.invalidate() }
-                }
-            }
-        }
-        if isCurrent { install() } else { async(install) }
-        return scheduled
     }
 }

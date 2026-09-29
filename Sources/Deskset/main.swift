@@ -23,7 +23,10 @@ if let status = CommandLineTools.run(CommandLine.arguments) {
 }
 
 let app = NSApplication.shared
-let controller = AppController()
+// Where the desktop skins run (`SkinThreading`: main or engine), read once: the modes above always use the main thread.
+let threading = SkinThreading.chosen(in: .standard)
+let controller = AppController(threading: threading.mode)
+controller.threadingNote = threading.note
 app.delegate = controller
 // Menu bar app (the bundle also sets LSUIElement; this covers `swift run`).
 app.setActivationPolicy(.accessory)

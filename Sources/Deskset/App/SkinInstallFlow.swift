@@ -103,6 +103,9 @@ final class SkinInstallFlow {
 
     /// Nothing queued or in progress.
     var isIdle: Bool { !busy && queue.isEmpty }
+    /// The skins of the package's root configs were stopped, and the installer waits for them to close before it
+    /// replaces their files.
+    private(set) var waitsForSkinsToClose = false
 
     /// Open panel for "Install Skin…": .rmskin packages, ZIP archives and skin folders.
     func chooseAndInstall() {
@@ -230,14 +233,29 @@ final class SkinInstallFlow {
         }
     }
 
+    /// Self-tests: runs right before the package's skin is loaded (a test makes that load fail).
+    static var beforeLoadingPackageSkin: ((AppController) -> Void)?
+
+    /// How long the installer waits for the skins it stopped to close before it replaces their files anyway.
+    static let closeTimeout: TimeInterval = 10
+
     private func install(_ inspection: RmskinInspection, packageURL: URL) {
-        // Skins running from a root config that is about to be replaced are stopped first and reloaded afterwards.
+        // Skins running from a root config that is about to be replaced are stopped first and reloaded afterwards. Their
+        // files are replaced once they have closed: an OnCloseAction may still write to them (!WriteKeyValue), on the
+        // skin's thread.
         let roots = Set(inspection.rootConfigs.map { $0.lowercased() })
         let affected = app.sortedControllers
             .filter { roots.contains(String($0.config.split(separator: "\\").first ?? "").lowercased()) }
             .map { ($0.config, $0.file) }
-        for (config, _) in affected { app.suspend(config: config) }
+        let stopped = affected.compactMap { app.suspend(config: $0.0) }
+        waitsForSkinsToClose = true
+        app.whenClosed(stopped, timeout: SkinInstallFlow.closeTimeout) { [self] in
+            waitsForSkinsToClose = false
+            replaceFiles(inspection, packageURL: packageURL, affected: affected)
+        }
+    }
 
+    private func replaceFiles(_ inspection: RmskinInspection, packageURL: URL, affected: [(String, String)]) {
         let skins = app.skinsDirectory, layouts = app.layoutsDirectory, backups = app.backupsDirectory
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result {
@@ -269,10 +287,12 @@ final class SkinInstallFlow {
             guard case .success(let r) = result, let config = r.skinToLoadConfig else { return nil }
             return SkinLibrary.normalizedConfigName(config).lowercased()
         }()
+        // The skins that were running load again one after another (`AppController.inTurn`), as on the main thread: a
+        // suite's skin whose OnRefreshAction unloads another one finds that one's old copy, not its new one.
         for (config, file) in affected {
             if config.lowercased() == packageSkin { continue }
             if app.config(named: config)?.files.contains(where: { $0.caseInsensitiveCompare(file) == .orderedSame }) == true {
-                app.activate(config: config, file: file)
+                app.inTurn { $0.activate(config: config, file: file) }
             } else {
                 app.state.update(config) { $0.active = false }
             }
@@ -280,34 +300,49 @@ final class SkinInstallFlow {
         switch result {
         case .failure(let error):
             showError(packageURL, error)
+            finish()
         case .success(let r):
             Log.write("Installed \(packageURL.lastPathComponent): \(r.installedRootConfigs.joined(separator: ", "))")
             if !r.installedFonts.isEmpty {
                 Log.write("Installed fonts into @Resources/Fonts: \(r.installedFonts.joined(separator: ", "))")
             }
-            var loaded: String?
-            if let config = r.skinToLoadConfig, app.activate(config: config, file: r.skinToLoadFile, fade: true) != nil {
-                loaded = config
-            } else if let key = packageSkin, let previous = affected.first(where: { $0.0.lowercased() == key }),
-                      app.config(named: previous.0)?.files.contains(where: {
-                          $0.caseInsensitiveCompare(previous.1) == .orderedSame }) == true {
-                // The package's skin could not be loaded: bring back what was running.
-                app.activate(config: previous.0, file: previous.1)
+            // Whether the package's skin loaded is known once its load has settled: on another thread `activate`
+            // returns before the skin loaded.
+            var packageWindow: SkinWindowController?
+            if let config = r.skinToLoadConfig {
+                app.inTurn { app in
+                    SkinInstallFlow.beforeLoadingPackageSkin?(app)
+                    packageWindow = app.activate(config: config, file: r.skinToLoadFile, fade: true)
+                    return packageWindow
+                }
             }
-            let newWarnings = r.warnings.filter { !inspection.warnings.contains($0) }
-            var notes = newWarnings
-            if let layout = r.layoutToLoad {
-                notes.append("The package asks to apply the layout “\(layout)”. Deskset can’t apply layouts yet; "
-                             + "load its skins from the Manage window.")
-            }
-            let select = loaded ?? r.installedRootConfigs.first
-            app.showManageWindow(selecting: select, file: loaded == nil ? nil : r.skinToLoadFile)
-            if !notes.isEmpty {
-                let name = r.manifest.name.isEmpty ? packageURL.lastPathComponent : r.manifest.name
-                app.alert("“\(name)” was installed", notes.joined(separator: "\n\n"), style: .informational)
+            app.inTurn { [self] app in
+                var loaded: String?
+                var restored: SkinWindowController?
+                if let config = r.skinToLoadConfig, let c = packageWindow, !c.loadFailed {
+                    loaded = config
+                } else if let key = packageSkin, let previous = affected.first(where: { $0.0.lowercased() == key }),
+                          app.config(named: previous.0)?.files.contains(where: {
+                              $0.caseInsensitiveCompare(previous.1) == .orderedSame }) == true {
+                    // The package's skin could not be loaded: bring back what was running.
+                    restored = app.activate(config: previous.0, file: previous.1)
+                }
+                let newWarnings = r.warnings.filter { !inspection.warnings.contains($0) }
+                var notes = newWarnings
+                if let layout = r.layoutToLoad {
+                    notes.append("The package asks to apply the layout “\(layout)”. Deskset can’t apply layouts yet; "
+                                 + "load its skins from the Manage window.")
+                }
+                let select = loaded ?? r.installedRootConfigs.first
+                app.showManageWindow(selecting: select, file: loaded == nil ? nil : r.skinToLoadFile)
+                if !notes.isEmpty {
+                    let name = r.manifest.name.isEmpty ? packageURL.lastPathComponent : r.manifest.name
+                    app.alert("“\(name)” was installed", notes.joined(separator: "\n\n"), style: .informational)
+                }
+                finish()
+                return restored
             }
         }
-        finish()
     }
 
     private func showError(_ url: URL, _ error: Error) {

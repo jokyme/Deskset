@@ -3,74 +3,110 @@ import DesksetCore
 
 // Window, config and application bangs the engine hands to the host.
 // Manual: https://docs.rainmeter.net/manual/bangs/ (skin, skin group and application bangs).
+//
+// The runtime answers the engine on the skin's executor (`HostBangs.kind`: supported or not, and which kind). Window
+// bangs change the skin's window model there and go to other skins' runtimes (`SkinWindowModel`, `SkinDirectory`), as
+// the group bangs do; what the config, menu and system bangs do happens on the main thread, where the runtime's
+// request is applied (`SkinWindowController.applyHostBang`).
 
-extension SkinController {
-    /// Handles a bang the engine does not handle itself. Returns false when it is not supported on macOS (the
-    /// engine then records a compatibility note).
-    func handleHostBang(_ bang: Bang) -> Bool {
-        guard !isStopped else { return true }
+/// Which bangs the host handles, and of what kind: the request the runtime makes for them.
+enum HostBangs {
+    enum Kind: Equatable {
+        case window, lifecycle, group, ui, system
+    }
+
+    /// The kind of a bang the engine left to the host (`Bang.name`); nil when it is not supported on macOS
+    /// (!LoadLayout, !ResetStats, blur bangs, !SetAnchor…).
+    static func kind(of name: String) -> Kind? {
+        switch name {
+        case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
+             "toggleconfig", "quit":
+            return .lifecycle
+        case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
+             "togglemouseactionskingroup", "updategroup", "redrawgroup", "setvariablegroup":
+            return .group
+        case "move", "setwindowposition", "zpos", "zposgroup", "settransparency", "settransparencygroup", "draggable",
+             "draggablegroup", "clickthrough", "clickthroughgroup", "keeponscreen", "keeponscreengroup", "snapedges",
+             "snapedgesgroup", "autoselectscreen", "autoselectscreengroup", "show", "hide", "toggle", "showfade",
+             "hidefade", "togglefade", "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup",
+             "togglefadegroup", "fadeduration", "fadedurationgroup":
+            return .window
+        case "skinmenu", "skincustommenu", "traymenu", "manage", "about", "editskin":
+            return .ui
+        case "setclip", "setwallpaper", "play", "playloop", "playstop":
+            return .system
+        default:
+            return nil
+        }
+    }
+
+    /// The bang as the main thread needs it: the file of !SetWallpaper, !Play and !PlayLoop as an absolute path (the
+    /// skin resolves it, on its executor).
+    static func preparedForMain(_ bang: Bang, of skin: Skin) -> Bang {
+        switch bang.name {
+        case "setwallpaper", "play", "playloop":
+            var prepared = bang
+            let file = bang.args.first?.trimmingCharacters(in: .whitespaces) ?? ""
+            if prepared.args.isEmpty { prepared.args = [""] }
+            prepared.args[0] = skin.absolutePath(file)
+            return prepared
+        default:
+            return bang
+        }
+    }
+}
+
+extension SkinWindowController {
+    /// Does what a config, menu or system bang the runtime handed over does (`HostBangs`), on the main thread.
+    func applyHostBang(_ host: HostBang) {
+        // A stopped window still does what its skin asked for until the skin has closed: OnCloseAction's bangs
+        // (`whileClosing`: the skin cannot reload or unload itself any more, `others`), and, for a skin on another
+        // thread, what its work queued before the close asked. With the main executor both happen before `stop` returns.
+        guard !isStopped || !hasClosed else { return }
+        let bang = host.bang
         let a = bang.args
         // `[!ActivateConfig X][!Show X]`: X is loaded on the next run loop turn, so a bang for X that follows in the
         // same action runs after that load (it would find no such skin now). Loads keep their own order.
         if bang.name != "activateconfig" && bang.name != "toggleconfig",
            let target = BangCatalog.definition(for: bang.name)?.configArgument(in: a), target != "*",
            app.isLoadPending(target) {
-            app.later { [weak self] _ in _ = self?.handleHostBang(bang) }
-            return true
+            app.later { [weak self] _ in self?.applyHostBang(host) }
+            return
         }
         func arg(_ i: Int) -> String { i < a.count ? a[i].trimmingCharacters(in: .whitespaces) : "" }
         /// Skins named by an optional trailing Config argument: empty → this skin, `*` → every active skin.
-        func targets(_ index: Int) -> [SkinController] { app.controllers(forConfigArgument: arg(index), current: self) }
-        func group(_ index: Int) -> [SkinController] { app.controllers(inGroup: arg(index)) }
-        func update(_ list: [SkinController], _ change: (inout SkinState) -> Void) {
-            for t in list {
-                app.state.update(t.config, change)
-                t.applyWindowSettings()
-            }
-            app.skinSettingsChanged()
+        func targets(_ index: Int) -> [SkinWindowController] {
+            app.controllers(forConfigArgument: arg(index), current: self)
         }
-        func setFlag(_ list: [SkinController], _ key: WritableKeyPath<SkinState, Bool>) {
-            for t in list {
-                app.state.update(t.config) { $0[keyPath: key] = SkinVisibility.flag(arg(0), current: $0[keyPath: key]) }
-                t.applyWindowSettings()
-            }
-            app.skinSettingsChanged()
-        }
-        func zPosition() -> Int { min(max(OptionValue.int(arg(0)) ?? 0, -2), 2) }
-        func alpha() -> Int { min(max(OptionValue.int(arg(0)) ?? 255, 0), 255) }
-        func milliseconds() -> Int {
-            let v = OptionValue.number(arg(0)) ?? 250
-            return v.isFinite ? Int(min(max(v, 0), Double(SkinState.maxFadeDuration))) : 250
-        }
-        func setZPos(_ list: [SkinController], _ value: Int) {
-            update(list) { $0.alwaysOnTop = value }
-            list.forEach { if $0.isShown && app.presentsWindows { $0.window.orderFrontRegardless() } }
-            // Skins sharing the new Position are stacked by load order again (like the menu / Manage window do).
-            app.restack()
-        }
+        func group(_ index: Int) -> [SkinWindowController] { app.controllers(inGroup: arg(index)) }
 
         /// While OnCloseAction runs, the closing skin cannot reload or unload itself.
-        func others(_ list: [SkinController]) -> [SkinController] { isClosing ? list.filter { $0 !== self } : list }
+        func others(_ list: [SkinWindowController]) -> [SkinWindowController] {
+            host.whileClosing ? list.filter { $0 !== self } : list
+        }
         let isSelf = SkinLibrary.normalizedConfigName(arg(0)).caseInsensitiveCompare(config) == .orderedSame
 
         switch bang.name {
         // Config level. Loading, unloading and refreshing always happen on a later run loop turn, after the action
         // that asked for them has finished: a skin whose OnRefreshAction refreshes it (or another skin that
         // refreshes it back) must not recurse, and a skin must not be replaced while its own action runs.
+        // Refreshes go in turn with the other loads asked for together (`AppController.inTurn`): every skin that follows
+        // the appearance refreshes itself at once, and on another thread they would otherwise all be registered before
+        // any of them loaded.
         case "refresh":
             if arg(0) == "*" {
                 app.later { $0.refreshAll(rescan: false) }
             } else {
-                for t in others(targets(0)) { app.later { $0.refresh(t) } }
+                for t in others(targets(0)) { app.later { $0.refreshInTurn(t) } }
             }
         case "refreshapp":
             app.later { $0.refreshAll(rescan: true) }
         case "refreshgroup":
             let list = others(group(0))
-            app.later { app in list.forEach(app.refresh) }
+            app.later { app in list.forEach(app.refreshInTurn) }
         case "activateconfig":
             let config = arg(0)
-            guard !config.isEmpty, !(isClosing && isSelf) else { return true }
+            guard !config.isEmpty, !(host.whileClosing && isSelf) else { return }
             let file = arg(1).isEmpty ? nil : arg(1)
             let sender = self.config
             app.later(loading: config) { app in app.activateFromBang(config: config, file: file, sender: sender) }
@@ -82,7 +118,7 @@ extension SkinController {
             app.later { app in list.forEach { app.deactivate($0, fade: true) } }
         case "toggleconfig":
             let config = arg(0)
-            guard !config.isEmpty, !(isClosing && isSelf) else { return true }
+            guard !config.isEmpty, !(host.whileClosing && isSelf) else { return }
             let file = arg(1).isEmpty ? nil : arg(1)
             // Decided when it runs: an earlier bang of the same action may have loaded or unloaded the config.
             app.later(loading: config) { app in
@@ -92,90 +128,6 @@ extension SkinController {
                     app.activate(config: config, file: file, fade: true)
                 }
             }
-        case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
-             "togglemouseactionskingroup":
-            // "operate on the [Rainmeter] section of a named Group of skins": !XMouseAction Rainmeter MouseActions
-            // in each skin of the group.
-            let verb = String(bang.name.dropLast("skingroup".count))
-            for t in group(1) where !t.isStopped {
-                t.skin.performSent(Bang(name: verb, args: ["Rainmeter", a.first ?? ""]))
-            }
-        case "updategroup":
-            group(0).forEach { $0.skin.update() }
-        case "redrawgroup":
-            group(0).forEach { $0.skin.redraw() }
-        case "setvariablegroup":
-            // !SetVariableGroup Variable Value Group
-            for t in group(2) where !t.isStopped {
-                t.skin.performSent(Bang(name: "setvariable", args: [arg(0), a.count > 1 ? a[1] : ""]))
-            }
-
-        // Window position and behaviour
-        case "move":
-            guard let x = OptionValue.number(arg(0)), let y = OptionValue.number(arg(1)) else { return true }
-            targets(2).forEach { $0.moveTo(x: x, y: y) }
-        case "setwindowposition":
-            // !SetWindowPosition WindowX WindowY [AnchorX AnchorY] [Config]
-            let configIndex = a.count >= 5 ? 4 : (a.count == 3 ? 2 : -1)
-            let list = configIndex >= 0 ? targets(configIndex) : [self]
-            for t in list {
-                let size = t.window.frame.size
-                let anchor = a.count >= 4 ? (arg(2), arg(3)) : ("0", "0")
-                if let p = WindowPosition.resolve(x: arg(0), y: arg(1), anchorX: anchor.0, anchorY: anchor.1,
-                                                  skinSize: size, screens: WindowGeometry.currentScreens()) {
-                    t.moveTo(x: p.x, y: p.y)
-                }
-            }
-        case "zpos":
-            setZPos(targets(1), zPosition())
-        case "zposgroup":
-            setZPos(group(1), zPosition())
-        case "settransparency":
-            let list = targets(1)
-            list.forEach { $0.clearFadedAlpha() }
-            update(list) { $0.alphaValue = alpha() }
-        case "settransparencygroup":
-            let list = group(1)
-            list.forEach { $0.clearFadedAlpha() }
-            update(list) { $0.alphaValue = alpha() }
-        case "draggable": setFlag(targets(1), \.draggable)
-        case "draggablegroup": setFlag(group(1), \.draggable)
-        case "clickthrough": setFlag(targets(1), \.clickThrough)
-        case "clickthroughgroup": setFlag(group(1), \.clickThrough)
-        case "keeponscreen":
-            setFlag(targets(1), \.keepOnScreen)
-            targets(1).forEach { $0.windowMoved() }
-        case "keeponscreengroup":
-            setFlag(group(1), \.keepOnScreen)
-            group(1).forEach { $0.windowMoved() }
-        case "snapedges": setFlag(targets(1), \.snapEdges)
-        case "snapedgesgroup": setFlag(group(1), \.snapEdges)
-        case "autoselectscreen":
-            // Positions are kept in desktop coordinates whatever the setting; it decides which monitor the
-            // monitor variables without @N refer to (see `SkinController.environment(for:)`).
-            setFlag(targets(1), \.autoSelectScreen)
-        case "autoselectscreengroup":
-            setFlag(group(1), \.autoSelectScreen)
-
-        // Visibility
-        case "show": targets(0).forEach { $0.setHidden(false, fade: false) }
-        case "hide": targets(0).forEach { $0.setHidden(true, fade: false) }
-        case "toggle": targets(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: false) }
-        case "showfade": targets(0).forEach { $0.setHidden(false, fade: true) }
-        case "hidefade": targets(0).forEach { $0.setHidden(true, fade: true) }
-        case "togglefade": targets(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: true) }
-        case "showgroup": group(0).forEach { $0.setHidden(false, fade: false) }
-        case "hidegroup": group(0).forEach { $0.setHidden(true, fade: false) }
-        case "togglegroup": group(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: false) }
-        case "showfadegroup": group(0).forEach { $0.setHidden(false, fade: true) }
-        case "hidefadegroup": group(0).forEach { $0.setHidden(true, fade: true) }
-        case "togglefadegroup": group(0).forEach { $0.setHidden(!$0.isHiddenByBang, fade: true) }
-        case "fadeduration":
-            let ms = milliseconds()
-            update(targets(1)) { $0.fadeDuration = ms }
-        case "fadedurationgroup":
-            let ms = milliseconds()
-            update(group(1)) { $0.fadeDuration = ms }
 
         // Menus and windows
         case "skinmenu":
@@ -194,7 +146,7 @@ extension SkinController {
             // !EditSkin [Config] [File]
             if let t = targets(0).first {
                 let file = arg(1).isEmpty ? t.file : arg(1)
-                CodeEditorRouter.open(file: t.skin.directory.appendingPathComponent(file), app: app)
+                CodeEditorRouter.open(file: t.fileURL.deletingLastPathComponent().appendingPathComponent(file), app: app)
             } else if !arg(0).isEmpty {
                 let dir = SkinLibrary.directory(for: SkinLibrary.normalizedConfigName(arg(0)), root: app.skinsDirectory)
                 if !arg(1).isEmpty { CodeEditorRouter.open(file: dir.appendingPathComponent(arg(1)), app: app) }
@@ -205,19 +157,19 @@ extension SkinController {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(a.first ?? "", forType: .string)
         case "setwallpaper":
-            setWallpaper(path: skin.absolutePath(arg(0)), position: arg(1))
+            // The path is absolute already (`HostBangs.preparedForMain`).
+            setWallpaper(path: arg(0), position: arg(1))
         case "play", "playloop":
-            SoundPlayer.play(path: skin.absolutePath(arg(0)), loop: bang.name == "playloop")
+            SoundPlayer.play(path: arg(0), loop: bang.name == "playloop")
         case "playstop":
             SoundPlayer.stop()
         case "quit":
             app.later { _ in NSApp.terminate(nil) }
 
         default:
-            // !LoadLayout, !ResetStats, blur bangs, !SetAnchor…: not supported.
-            return false
+            // Window and group bangs never come here (the runtime carries them out), nor unsupported ones.
+            break
         }
-        return true
     }
 
     /// !SetWallpaper File [Position] on every screen. Position: Center, Tile, Stretch, Fit, Fill (default), Span.
@@ -248,6 +200,11 @@ extension SkinController {
                 Log.write("!SetWallpaper failed: \(error.localizedDescription)", level: .error, source: config)
             }
         }
+        // Skins on other threads read the desktop pictures as published (Chameleon): the new one at once.
+        DesktopInputs.mainScreenDesktop.refresh()
+        DesktopInputs.displayDesktops.refresh()
+        DesktopInputs.allScreenDesktops.refresh()
+        DesktopInputs.desktopFillColor.refresh()
     }
 }
 

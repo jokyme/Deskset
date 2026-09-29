@@ -63,8 +63,8 @@ public struct GlassOptions: Equatable, Sendable {
     }
 }
 
-/// Where one piece of glass goes: a plain value, so it can travel to the host (and, later, in a skin's snapshot to
-/// the main thread; docs/skin-threading.md §5.5).
+/// Where one piece of glass goes: a plain value, so it can travel to the host, and in a skin's snapshot and hit map to
+/// the main thread (docs/skin-threading.md §5.5).
 public struct GlassRegion: Equatable {
     /// `id` of the glass behind the whole skin (`[Rainmeter]`, which is never a meter's name).
     public static let skinID = "Rainmeter"
@@ -146,8 +146,9 @@ extension Meter {
 
     /// Whether the point (skin coordinates) is on the glass shown behind this meter (`Skin.glassRegions`, as of the
     /// last redraw: what the skin window shows). The window catches the mouse on glass, so the glass is part of the
-    /// meter for its mouse actions, hover, tooltip and cursor (`Meter.isHit`), even where the meter draws nothing (a
-    /// Shape with a transparent fill, the corners around an Ellipse, a meter moved by a TransformationMatrix).
+    /// meter for its mouse actions, hover, tooltip and cursor (`Meter.isHit`, which tests the same region, and a skin's
+    /// hit map, which keeps it: `SkinHitMap.Entry.glass`), even where the meter draws nothing (a Shape with a
+    /// transparent fill, the corners around an Ellipse, a meter moved by a TransformationMatrix).
     public func isOnGlass(x: Double, y: Double) -> Bool {
         skin.shownGlassRegion(of: self)?.contains(x: x, y: y) ?? false
     }

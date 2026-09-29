@@ -477,7 +477,7 @@ enum MacLookSelfTests {
             t.equal(MacAppearance.values(for: nil), fallback)
             t.equal(dark.regional, MacRegional.current, "the clock, week and temperature settings come with it")
             // What skins get from the host is what is published.
-            t.equal(SkinController.environment(windowFrame: nil).appearance, MacAppearance.current.value())
+            t.equal(EnvironmentStore.shared.environment(windowFrame: nil).appearance, MacAppearance.current.value())
 
             // --render: Light unless asked otherwise.
             t.equal(RenderOptions.parse(["P", "--render", "a.ini"])?.appearance, .light)

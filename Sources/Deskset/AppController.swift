@@ -21,8 +21,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// times a second. Headless it follows at once, unless a self-test asks.
     var defersDesktopUpdates: Bool
 
-    /// Running skins keyed by lowercased config name.
-    private(set) var controllers: [String: SkinController] = [:]
+    /// Running skins keyed by lowercased config name. The skins' directory follows every change.
+    private(set) var controllers: [String: SkinWindowController] = [:] {
+        didSet { if directoryHeld == 0 { publishDirectory() } }
+    }
+    /// While positive, a change of `controllers` is not published yet (`activate` publishes once, when it is done).
+    private var directoryHeld = 0
+    /// What the skins know of each other: the running ones and the configs a bang is loading (`SkinDirectory`).
+    let skinDirectory = SkinDirectoryStore()
+    /// Where the desktop skins run (the `SkinThreading` default, read once at launch; `.main` for the self-tests and
+    /// every headless mode).
+    let threading: SkinThreading
+    /// The engine thread every desktop skin shares with `SkinThreading=engine` (docs/skin-threading.md §15, phase 2):
+    /// made with the first skin it runs. nil with `.main`, and before then.
+    private(set) var engineThread: SkinThreadExecutor?
+    /// Where a config's skin runs: the engine thread with `SkinThreading=engine`, else the main executor. Self-tests put
+    /// some skins on threads of their own. The Studio's own instance of a widget, the Manage window's dry runs and
+    /// thumbnails are not desktop skins: they always run on the main executor (§8.5, §8.7).
+    lazy var skinExecutor: (String) -> SkinExecutor = { [unowned self] _ in
+        switch self.threading {
+        case .main: return MainSkinExecutor.shared
+        case .engine: return self.sharedEngineThread()
+        }
+    }
     /// Last position of each config in this session (used on refresh when SavePosition is off).
     var sessionPositions: [String: (Double, Double)] = [:]
     private var statusItem: NSStatusItem?
@@ -65,7 +86,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
-         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true) {
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main) {
+        self.threading = threading
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
@@ -78,6 +100,24 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         super.init()
     }
 
+    /// The engine thread, made the first time a skin needs it. Main thread.
+    private func sharedEngineThread() -> SkinThreadExecutor {
+        if let engineThread { return engineThread }
+        let thread = SkinThreadExecutor(name: "Deskset skin engine", qualityOfService: .userInitiated)
+        engineThread = thread
+        return thread
+    }
+
+    /// Ends the engine thread once the work queued on it has run (the skins on it must have closed: self-tests, after
+    /// `stopAllForTermination`). A later skin gets a new one.
+    func endEngineThread() {
+        engineThread?.stop()
+        engineThread = nil
+    }
+
+    /// Said in the log at launch about the `SkinThreading` default (an unknown value; the main thread).
+    var threadingNote: String?
+
     // MARK: Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -87,8 +127,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Log.write("Deskset \(DesksetCore.version) starting on macOS "
                   + ProcessInfo.processInfo.operatingSystemVersionString
                   + "; legacy ANSI skins use code page \(TextDecoding.ansiCodePage)")
+        if let threadingNote {
+            Log.write(threadingNote, level: .warning)
+        } else if threading == .engine {
+            Log.write("Desktop skins run on the engine thread")
+        }
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
+        // `defaults write app.deskset.Deskset FrameTimingLog -int 10`: how evenly each skin's frames come, in the log.
+        FrameTimingLog.configure(from: .standard)
         if !Paths.isAppBundle { NSApp.applicationIconImage = AppIcon.image(size: 512) }
         NSApp.mainMenu = MainMenu.make(app: self)
         CodeEditorRouter.install(app: self)
@@ -101,21 +148,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpStatusItem()
         observeSystem()
         observeFonts()
-        // What SysColor and Chameleon ask AppKit, published for skins that update on threads of their own.
+        // What SysColor and Chameleon ask AppKit, and the screens, paths and appearance every skin reads, published for
+        // skins that update on threads of their own.
         DesktopInputs.publishAll()
+        EnvironmentStore.shared.publish()
         observeAppearance()
-        loadActiveSkins()
+        let opensFiles = !pendingOpenURLs.isEmpty
+        loadActiveSkins { [weak self] in
+            // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
+            // rather than over them, once they are placed.
+            guard let self, firstRun, !opensFiles else { return }
+            let manage = self.manageWindow ?? ManageWindowController(app: self)
+            self.manageWindow = manage
+            manage.placeBeside(self.controllers.values.map { $0.window.frame })
+            self.showManageWindow(selecting: self.firstRunSelection, file: nil)
+        }
         launched = true
-        if !pendingOpenURLs.isEmpty {
+        if opensFiles {
             installer.open(CodeEditorRouter.routeOpenedFiles(pendingOpenURLs, app: self))
             pendingOpenURLs = []
-        } else if firstRun {
-            // First launch: show where things are (the menu bar icon can be hidden by macOS), beside the first widgets
-            // rather than over them.
-            let manage = manageWindow ?? ManageWindowController(app: self)
-            manageWindow = manage
-            manage.placeBeside(controllers.values.map { $0.window.frame })
-            showManageWindow(selecting: firstRunSelection, file: nil)
         }
     }
 
@@ -176,19 +227,32 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// True once the app is quitting: skins are being closed ("OnCloseAction: … when Rainmeter is closed").
     private(set) var isTerminating = false
 
-    /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch. Bangs sent from an
-    /// OnCloseAction while quitting cannot load, unload or refresh skins (they would load a skin nobody closes, or
-    /// mark a skin unloaded for the next launch just because it was running when the app quit).
-    func stopAllForTermination() {
+    /// How long quitting waits in all for the skins' OnCloseActions (on their threads).
+    static let terminationBudget: TimeInterval = 2
+
+    /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch: `.close` goes to each
+    /// skin in reverse load order, then quitting waits for them to close, at most `terminationBudget` in all (a skin on
+    /// the main executor has closed by then already). Bangs sent from an OnCloseAction while quitting cannot load,
+    /// unload or refresh skins (they would load a skin nobody closes, or mark a skin unloaded for the next launch just
+    /// because it was running when the app quit). Returns the skins that had not closed in time.
+    @discardableResult
+    func stopAllForTermination(budget: TimeInterval = AppController.terminationBudget) -> [String] {
         isTerminating = true
+        let deadline = Date().addingTimeInterval(budget)
         for session in studioSessions.values {
             // Every step is written as it is made; anything still waiting is written now.
             _ = try? session.diskSync.flush()
             session.closeStudioSkin()
         }
-        for c in sortedControllers.reversed() { c.stop() }
+        let closing = Array(sortedControllers.reversed())
+        for c in closing { c.stop() }
+        let late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
+        if !late.isEmpty {
+            Log.write("Quitting without waiting longer for \(late.joined(separator: ", ")) to close", level: .warning)
+        }
         // Every skin stopped: nothing is watched any more.
         outsidePointer.needsChanged()
+        return late
     }
 
     /// Opening the app again (Finder, Spotlight, Launchpad, its Dock icon while the editor or Settings is open) while
@@ -229,22 +293,106 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if launched { installer.open(CodeEditorRouter.routeOpenedFiles(urls, app: self)) } else { pendingOpenURLs += urls }
     }
 
-    /// Loads the skins of the last session. On the very first launch (no skin has any state yet) the first-run
-    /// layout's skins at their places (`loadFirstRunLayout`); without one, the Clock alone.
-    func loadActiveSkins() {
+    /// Loads the skins of the last session, one after another (`activateInOrder`). On the very first launch (no skin
+    /// has any state yet) the first-run layout's skins at their places (`loadFirstRunLayout`); without one, the Clock
+    /// alone. `then`: once the last one has started (at once with the main executor).
+    func loadActiveSkins(then: (() -> Void)? = nil) {
         var active = state.activeConfigs
         if active.isEmpty && state.data.skins.isEmpty {
-            let loaded = loadFirstRunLayout()
-            if let first = loaded.first {
-                firstRunSelection = first
+            let layout = firstRunLayout()
+            if let first = layout.first {
+                // Known before the first one loads: `then` shows the Manage window on it.
+                firstRunSelection = first.config
+                loadFirstRunLayout(layout, then: then)
                 restack()
                 return
             }
             state.update(DefaultSkins.firstClock.config) { $0.file = DefaultSkins.firstClock.file; $0.active = true }
             active = state.activeConfigs
         }
-        for (config, s) in active { activate(config: config, file: s.file, fade: true, restack: false) }
+        activateInOrder(active.map { ($0.config, $0.state.file) }) { [weak self] in
+            self?.restack()
+            then?()
+        }
         restack()
+    }
+
+    /// Loads the skins of `items` (config, file) one after another, each once the one before has started (or its load
+    /// failed, or it was unloaded meanwhile), as the main thread always has: with the main executor each load is over
+    /// when `activate` returns, and a skin's OnRefreshAction sees only the skins loaded before it. On the engine thread
+    /// the loads would otherwise all be asked for at once, and a skin's `!DeactivateConfig` for a config further down
+    /// the list (Enigma's Dock unloads its Menu when it loads) would unload a skin that had not loaded yet, which then
+    /// never showed. `each`: every window made, with the index of its item (the first-run layout places it). `done`:
+    /// after the last one settled (at once with the main executor). Main thread.
+    func activateInOrder(_ items: [(config: String, file: String?)],
+                         each: ((SkinWindowController, Int) -> Void)? = nil, done: @escaping () -> Void) {
+        for (index, item) in items.enumerated() {
+            inTurn { app in
+                guard let c = app.activate(config: item.config, file: item.file, fade: true, restack: false) else {
+                    return nil
+                }
+                each?(c, index)
+                return c
+            }
+        }
+        inTurn { _ in
+            done()
+            return nil
+        }
+    }
+
+    // MARK: Loads one after another
+
+    /// Loads (and reloads) waiting for their turn (`inTurn`), and whether one is under way.
+    private var turns: [(AppController) -> SkinWindowController?] = []
+    private var isTakingTurns = false
+    /// What `later` was asked for while loads were taken in turn: run once the last of them settled, in order.
+    private var afterTurns: [(AppController) -> Void] = []
+
+    /// Runs `load` — an `activate` or a `refresh`, which returns the window it made — once every load asked for this
+    /// way before it has settled: its skin started, its load failed, or it was unloaded (`whenSettled`). Main thread.
+    ///
+    /// On the main thread each load is over before the next begins, and a skin's OnRefreshAction sees only the skins
+    /// loaded before it. A skin on the engine thread starts after `activate` returned, so loads asked for together
+    /// (the session's skins at launch, Refresh All, `!RefreshGroup`, the `[!Refresh]` of every skin that follows the
+    /// appearance, an installer loading a suite again) would otherwise all be registered before any of them loaded:
+    /// Enigma's Dock unloads its Menu when it loads, and would then unload the Menu's new copy. With the main executor
+    /// `load` runs at once, as before, unless an earlier load is still settling.
+    func inTurn(_ load: @escaping (AppController) -> SkinWindowController?) {
+        turns.append(load)
+        takeTurns()
+    }
+
+    private func takeTurns() {
+        guard !isTakingTurns else { return }
+        isTakingTurns = true
+        while !turns.isEmpty {
+            let load = turns.removeFirst()
+            if let c = load(self), c.isStarting {
+                c.whenSettled { [weak self] in
+                    guard let self else { return }
+                    self.isTakingTurns = false
+                    self.takeTurns()
+                }
+                return
+            }
+        }
+        isTakingTurns = false
+        let waiting = afterTurns
+        afterTurns = []
+        for body in waiting { later(body) }
+    }
+
+    /// `refresh`, in turn with the other loads asked for together (`inTurn`): the bangs' `!Refresh` and
+    /// `!RefreshGroup`, and the appearance's `[!Refresh]`.
+    func refreshInTurn(_ c: SkinWindowController) {
+        inTurn { $0.refresh(c) }
+    }
+
+    /// Whether `activate` would make a window for `config` and `file`: the config exists and has an .ini file to load.
+    func canActivate(config: String, file: String?) -> Bool {
+        guard let entry = self.config(named: config) else { return false }
+        return self.file(toLoad: file, of: entry) != nil
     }
 
     // MARK: System events
@@ -277,6 +425,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         observe(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { app in
             app.screensChanged()
+        }
+        // `#CONFIGEDITOR#` follows Settings ▸ Editor.
+        observe(NotificationCenter.default, .desksetEditorPreferencesChanged) { _ in
+            EnvironmentStore.shared.publishConfigEditor()
         }
     }
 
@@ -336,14 +488,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let now = MacAppearance.current.refresh()
         guard now != appearanceSeen else { return }
         appearanceSeen = now
-        for c in sortedControllers where !c.isStopped {
-            let skin: Skin = c.skin
-            if skin.executor.isCurrent {
-                skin.appearanceDidChange()
-            } else {
-                skin.async { skin.appearanceDidChange() }
-            }
-        }
+        for c in sortedControllers where !c.isStopped { c.runtime.send(.appearanceChanged) }
         // The Studio's own instances follow the appearance as the desktop copies do.
         for session in studioSessions.values { session.studioSkin?.appearanceDidChange() }
     }
@@ -390,6 +535,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Displays were connected, disconnected or rearranged.
     func screensChanged() {
+        EnvironmentStore.shared.publishScreens()
+        DesktopInputs.mainScreenDesktop.refresh()
+        DesktopInputs.displayDesktops.refresh()
+        DesktopInputs.allScreenDesktops.refresh()
         for c in controllers.values { c.screensChanged() }
     }
 
@@ -421,12 +570,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return library.first { $0.name.caseInsensitiveCompare(key) == .orderedSame }
     }
 
-    func controller(for config: String) -> SkinController? {
+    func controller(for config: String) -> SkinWindowController? {
         controllers[SkinLibrary.normalizedConfigName(config).lowercased()]
     }
 
     /// Active skins sorted by load order, then name.
-    var sortedControllers: [SkinController] {
+    var sortedControllers: [SkinWindowController] {
         controllers.values.sorted {
             let a = $0.state, b = $1.state
             return (a.loadOrder, $0.config.lowercased()) < (b.loadOrder, $1.config.lowercased())
@@ -434,31 +583,53 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Skins a bang's optional Config argument names: empty → `current`, `*` → every active skin.
-    func controllers(forConfigArgument raw: String, current: SkinController?) -> [SkinController] {
+    func controllers(forConfigArgument raw: String, current: SkinWindowController?) -> [SkinWindowController] {
         let name = SkinLibrary.normalizedConfigName(raw)
         if name.isEmpty { return current.map { [$0] } ?? [] }
         if name == "*" { return sortedControllers }
         return controller(for: name).map { [$0] } ?? []
     }
 
-    /// Active skins in the skin group `group` (`Group=` in `[Rainmeter]`, case-insensitive), in load order.
-    func controllers(inGroup group: String) -> [SkinController] {
+    /// Active skins in the skin group `group` (`Group=` in `[Rainmeter]`, case-insensitive), in load order: their
+    /// snapshots say.
+    func controllers(inGroup group: String) -> [SkinWindowController] {
         guard !group.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        return sortedControllers.filter { !$0.isStopped && $0.skin.isInSkinGroup(group) }
+        return sortedControllers.filter { c in
+            !c.isStopped && SnapshotAudit.check("isInSkinGroup(\(group))", c.runtime,
+                                                snapshot: c.runtime.snapshot.isInSkinGroup(group),
+                                                live: { $0.isInSkinGroup(group) })
+        }
     }
 
     /// Runs `body` on the next run loop turn. Bangs load, unload and refresh skins this way: loading a skin runs its
     /// OnRefreshAction, which may refresh the skin itself or another skin whose OnRefreshAction refreshes it back —
     /// done synchronously, that recursed until the stack overflowed.
+    ///
+    /// While loads are taken in turn (`inTurn`), what is asked meanwhile waits until the last of them has settled, as
+    /// on the main thread, where a batch of loads (Refresh All, the session's skins) ran in one turn and what their
+    /// OnRefreshActions asked for ran after all of them: Enigma's Dock, refreshed before its Menu, unloads the Menu it
+    /// found, which is gone by then, not the Menu's new copy.
     func later(_ body: @escaping (AppController) -> Void) {
+        if isTakingTurns {
+            afterTurns.append(body)
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             if let self { body(self) }
         }
     }
 
     /// Configs a bang asked to load (or reload as another variant) that have not been loaded yet (lowercased name →
-    /// number of scheduled loads).
-    private var pendingLoads: [String: Int] = [:]
+    /// number of scheduled loads). The skins' directory follows every change.
+    private var pendingLoads: [String: Int] = [:] {
+        didSet { publishDirectory() }
+    }
+
+    /// Publishes the skins' directory: the running skins in load order, the configs a bang is loading.
+    func publishDirectory() {
+        skinDirectory.publish(entries: sortedControllers.map { SkinDirectory.Entry(config: $0.config, runtime: $0.runtime) },
+                              pendingLoads: Set(pendingLoads.keys))
+    }
 
     /// `later` for a change that may load `config` (`!ActivateConfig`, `!ToggleConfig`). Until it has run, bangs
     /// addressed to that config wait for it (see `isLoadPending`), so `[!ActivateConfig X][!Move 10 10 X]` moves the
@@ -485,10 +656,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Loads `file` of `config` (the last used .ini, else the first one when nil), replacing a running variant.
     /// `continuing`: the skin a refresh replaces; the Calc `Counter` "only resets when the skin is unloaded and then
     /// loaded again - not when the skin is refreshed".
+    ///
+    /// The window controller and its runtime are made and registered at once (bangs for the config queue behind the
+    /// load on the skin's executor); the runtime loads and starts the skin and reports `.loaded` (the window's settings
+    /// apply) and `.started` (`skinStarted`: the window is placed and shown, the Studio attached, the app told), or
+    /// `.failed` (`skinFailed`: the config is marked inactive). With the main executor all of it happens before this
+    /// returns, and a skin that cannot be loaded returns nil.
+    ///
+    /// `ticket`: a reload the Studio asked for (`SkinReloadTicket`). It rides on the close of the running copy and the
+    /// load of the new one, and the widget's editing session hears of each (`studioReload`). `place`: where the new
+    /// copy's window goes once it started (a step that moves the widget with its files).
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
-                  continuing previous: Skin? = nil) -> SkinController? {
+                  continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
+                  thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
         guard !isTerminating else { return nil }
+        activating += 1
+        defer { activating -= 1 }
         guard let entry = config(named: rawConfig) else {
             Log.write("Config not found: \(SkinLibrary.normalizedConfigName(rawConfig))", level: .error)
             return nil
@@ -496,34 +680,71 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let chosen = self.file(toLoad: file, of: entry) else { return nil }
         let key = entry.name.lowercased()
         let replacing = controllers[key] != nil
-        // First load of this config: the skin's Default… window settings apply (see `seedWindowSettings`).
+        // First load of this config: the skin's Default… window settings apply (its runtime reads them).
         let firstLoad = state.skin(entry.name) == nil
+        let executor = skinExecutor(entry.name)
+        // A skin on another thread is listed in the skins' directory once its load is queued, in one change with the
+        // copy it replaces: a skin on that thread that finds it there sends behind the load (`SkinRuntime.send`), and
+        // never finds the config missing in between. On the main executor the skin loads inside `load`, listed as
+        // before, so that its own bangs for its group or `*` find it.
+        let inline = executor.isCurrent
+        if !inline { directoryHeld += 1 }
+        // The copy it replaces: on another thread its window stays, showing its last frame, until the new copy has
+        // started (or failed), so the widget does not vanish for the time the load takes. On the main executor both
+        // happen in this turn, as before.
+        var replaced: SkinWindowController?
         if let running = controllers[key] {
             controllers[key] = nil
-            running.stop()
+            // A copy that has not started shows nothing yet: the window it was to replace waits for this one instead.
+            let handedOver = running.isStarting ? running.takeReplacedWindow() : nil
+            let keepsWindow = !inline && !running.isStarting
+            running.stop(ticket: ticket, keepsWindow: keepsWindow)
+            replaced = handedOver ?? (keepsWindow ? running : nil)
         }
         state.update(entry.name) {
             $0.file = chosen
             $0.active = true
         }
-        do {
-            let c = try SkinController(config: entry.name, file: chosen, app: self)
-            controllers[key] = c
-            if firstLoad { c.seedWindowSettings() }
-            if let previous { c.skin.continueCounter(from: previous) }
-            c.start(fadeIn: fade && !replacing)
-            if let inspector, inspector.config.lowercased() == key { inspector.attach(c) }
-            if updatesPaused { c.pauseUpdates() }
-            if restack { self.restack() }
-            Log.write("Loaded \(entry.name)\\\(chosen)")
-            notifyChanged()
-            return c
-        } catch {
-            Log.write("Could not load \(entry.name)\\\(chosen): \(error)", level: .error)
-            state.update(entry.name) { $0.active = false }
-            notifyChanged()
-            return nil
+        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: executor)
+        controllers[key] = c
+        c.restacksWhenStarted = restack
+        c.moveWhenStarted = place
+        c.replacedWindow = replaced
+        let order = SkinLoadOrder(state: c.state, firstLoad: firstLoad, continuing: previous,
+                                  presentsWindows: presentsWindows, paused: updatesPaused, ticket: ticket)
+        if let ticket { studioReload(ticket, .loading, c) }
+        c.load(order, fadeIn: fade && !replacing)
+        if !inline {
+            directoryHeld -= 1
+            if directoryHeld == 0 { publishDirectory() }
         }
+        return c.loadFailed ? nil : c
+    }
+
+    /// A skin loaded and made its first update (`.started`), and its window is placed and shown: the Studio attaches
+    /// to it when it edits the config, the windows are stacked again and the app hears of it.
+    func skinStarted(_ c: SkinWindowController) {
+        if let inspector, inspector.config.lowercased() == c.config.lowercased() { inspector.attach(c) }
+        if c.restacksWhenStarted {
+            restack()
+        } else if activating == 0 {
+            // Started after the batch that loaded it stacked the windows (a skin on the engine thread): stacked again
+            // once for all the skins that start in this turn.
+            restackSoon()
+        }
+        Log.write("Loaded \(c.config)\\\(c.file)")
+        notifyChanged()
+    }
+
+    /// A skin could not be loaded (`.failed`): its config is unloaded and marked inactive (unless another load of it
+    /// came meanwhile).
+    func skinFailed(_ c: SkinWindowController, error: String) {
+        Log.write("Could not load \(c.config)\\\(c.file): \(error)", level: .error)
+        if controller(for: c.config) === c {
+            controllers[c.config.lowercased()] = nil
+            state.update(c.config) { $0.active = false }
+        }
+        notifyChanged()
     }
 
     /// The .ini file `activate` loads for `file`: that file of the config (in any case), else the last used one, else
@@ -570,16 +791,46 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Unloads this particular controller (a no-op when its config has been reloaded or unloaded meanwhile).
-    func deactivate(_ c: SkinController, fade: Bool = false) {
+    func deactivate(_ c: SkinWindowController, fade: Bool = false) {
         guard controller(for: c.config) === c else { return }
         deactivate(config: c.config, fade: fade)
     }
 
-    /// Stops a skin without marking it inactive (its files are about to be replaced by an installer).
-    func suspend(config: String) {
-        guard let c = controller(for: config) else { return }
+    /// Stops a skin without marking it inactive (its files are about to be replaced by an installer, which waits for
+    /// it to close: `whenClosed`).
+    @discardableResult
+    func suspend(config: String) -> SkinWindowController? {
+        guard let c = controller(for: config) else { return nil }
         controllers[c.config.lowercased()] = nil
         c.stop()
+        return c
+    }
+
+    /// Runs `body` on the main thread once every skin of `stopped` has closed (their OnCloseActions have run), or once
+    /// `timeout` has passed (a skin that does not close in time is logged): at once when they have (the main executor).
+    func whenClosed(_ stopped: [SkinWindowController], timeout: TimeInterval, _ body: @escaping () -> Void) {
+        var waiting = Set(stopped.map { ObjectIdentifier($0.runtime) })
+        var done = false
+        func finish() {
+            guard !done else { return }
+            done = true
+            body()
+        }
+        guard !waiting.isEmpty else { return finish() }
+        for c in stopped {
+            let id = ObjectIdentifier(c.runtime)
+            c.runtime.whenClosed {
+                waiting.remove(id)
+                if waiting.isEmpty { finish() }
+            }
+        }
+        guard !done else { return }
+        let names = stopped.map(\.config)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            guard !done else { return }
+            Log.write("Going on without waiting longer for \(names.joined(separator: ", ")) to close", level: .warning)
+            finish()
+        }
     }
 
     /// The .ini file after the running one of `config` in its folder (after the last one: the first), nil when the
@@ -591,9 +842,26 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return entry.files[(index + 1) % entry.files.count]
     }
 
-    func refresh(_ c: SkinController) {
-        guard controller(for: c.config) === c else { return }
-        activate(config: c.config, file: c.file, continuing: c.skin)
+    /// Loads `c`'s skin again (a new window controller and runtime), when it is the one running for its config: the
+    /// new window (nil when `c` is not running any more or the load failed on the main executor).
+    @discardableResult
+    func refresh(_ c: SkinWindowController) -> SkinWindowController? {
+        refresh(c, ticket: nil, thenMoveTo: nil)
+    }
+
+    /// `refresh` for a reload the Studio asked for (`ticket`), and where the window goes once the new copy started
+    /// (`place`; see `activate`).
+    @discardableResult
+    func refresh(_ c: SkinWindowController, ticket: SkinReloadTicket?, thenMoveTo place: WidgetPosition?)
+        -> SkinWindowController? {
+        guard controller(for: c.config) === c else { return nil }
+        return activate(config: c.config, file: c.file, continuing: c.runtime, ticket: ticket, thenMoveTo: place)
+    }
+
+    /// A copy of a widget went through a step of a reload the Studio asked for (`SkinReloadEvent`): the widget's
+    /// editing session hears of it, whenever and in whatever order the copies get there. Main thread.
+    func studioReload(_ ticket: SkinReloadTicket, _ event: SkinReloadEvent, _ c: SkinWindowController) {
+        studioSessions[SkinLibrary.normalizedConfigName(c.config).lowercased()]?.reload(ticket, event, from: c)
     }
 
     /// "Refresh all": image files are decoded again (a skin author may have edited them), font folders are read
@@ -604,18 +872,36 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Fonts.rescanAllFolders()
         let fonts = Fonts.generation
         if rescan { cachedLibrary = nil }
-        for c in sortedControllers { refresh(c) }
-        // Every skin was just loaded again with these fonts.
+        // One after another (`inTurn`): each skin's OnRefreshAction sees the others as the main thread showed them.
+        for c in sortedControllers { refreshInTurn(c) }
+        // Every skin is loaded again with these fonts.
         fontsGenerationSeen = max(fontsGenerationSeen, fonts)
-        restack()
-        notifyChanged()
+        inTurn { app in
+            app.restack()
+            app.notifyChanged()
+            return nil
+        }
+    }
+
+    /// `activate` calls under way (a skin of the main executor starts inside them).
+    private var activating = 0
+    private var restackPending = false
+
+    /// `restack` on the next turn, once for everything asking before then.
+    private func restackSoon() {
+        guard !restackPending else { return }
+        restackPending = true
+        later { app in
+            app.restackPending = false
+            app.restack()
+        }
     }
 
     /// Orders skins that share a Position by load order (higher in front), without moving them relative to
     /// other applications' windows.
     func restack() {
         guard presentsWindows else { return }
-        let items = controllers.values.filter(\.isShown).map { c -> (item: SkinController, alwaysOnTop: Int, loadOrder: Int, name: String) in
+        let items = controllers.values.filter(\.isShown).map { c -> (item: SkinWindowController, alwaysOnTop: Int, loadOrder: Int, name: String) in
             let s = c.state
             return (c, s.alwaysOnTop, s.loadOrder, c.config)
         }
@@ -631,25 +917,69 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notifyChanged()
     }
 
+    // MARK: Window changes from skins
+
+    private var windowBatchDepth = 0
+    private var windowBatchNeeds = (restack: false, settingsChanged: false)
+    private var windowBatchFlushQueued = false
+
+    /// Runs `body`, in which skins' window bangs are applied (`SkinWindowController.applyWindowChange`), as one batch:
+    /// the windows are stacked again and the app hears of changed settings once, at the end, as for one bang for a
+    /// group of skins. Re-entrant.
+    func batchingWindowChanges(_ body: () -> Void) {
+        windowBatchDepth += 1
+        body()
+        windowBatchDepth -= 1
+        if windowBatchDepth == 0 { flushWindowChanges() }
+    }
+
+    /// A skin's window change needs the windows stacked again, or the app told of changed settings: at the end of the
+    /// batch it came in; one that came on its own (queued from a skin's thread) after the others queued with it.
+    func windowChangesNeed(restack: Bool = false, settingsChanged: Bool = false) {
+        if restack { windowBatchNeeds.restack = true }
+        if settingsChanged { windowBatchNeeds.settingsChanged = true }
+        guard windowBatchDepth == 0, !windowBatchFlushQueued else { return }
+        windowBatchFlushQueued = true
+        later { app in
+            app.windowBatchFlushQueued = false
+            app.flushWindowChanges()
+        }
+    }
+
+    private func flushWindowChanges() {
+        let needs = windowBatchNeeds
+        windowBatchNeeds = (false, false)
+        if needs.settingsChanged { skinSettingsChanged() }
+        if needs.restack { restack() }
+    }
+
     /// A skin registered fonts: skins laid out before may have measured their text with a fallback font, so their
-    /// meters are laid out (and drawn) again with the fonts now available.
-    func fontsChanged() {
+    /// meters are laid out (and drawn) again with the fonts now available. `except`: the skin that registered them,
+    /// which was laid out with them.
+    func fontsChanged(except registering: SkinWindowController? = nil) {
         fontsGenerationSeen = max(fontsGenerationSeen, Fonts.generation)
         // Measure text again and recompute fixed window sizes (skins laid out with a fallback font), each skin where it
         // is owned: at once when that is here.
-        for c in controllers.values where !c.isStopped {
-            let skin: Skin = c.skin
-            if skin.executor.isCurrent {
-                skin.fontsDidChange()
-            } else {
-                skin.async { skin.fontsDidChange() }
-            }
-        }
+        for c in controllers.values where !c.isStopped && c !== registering { c.runtime.send(.fontsChanged) }
         for session in studioSessions.values { session.studioSkin?.fontsDidChange() }
     }
 
     private func notifyChanged() {
         NotificationCenter.default.post(name: .desksetSkinsChanged, object: self)
+    }
+
+    /// Told on the next turn, once however many there were.
+    private var detailsChangePending = false
+
+    /// A running skin's compatibility notes or metadata changed (its snapshot says): the Manage window and the menus
+    /// hear of it on the next turn, not in the middle of the skin's work.
+    func skinDetailsChanged() {
+        guard !detailsChangePending else { return }
+        detailsChangePending = true
+        later { app in
+            app.detailsChangePending = false
+            app.notifyChanged()
+        }
     }
 
     // MARK: Windows
@@ -668,7 +998,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Opens the inspector on a loaded skin (moving it from another skin if it was open). A new editor window comes
     /// to the front once it is ready to be shown (its panes, toolbar and the widget on the canvas: `whenReadyToShow`);
     /// the rest of it is built while it shows.
-    func showInspector(for c: SkinController) {
+    func showInspector(for c: SkinWindowController) {
+        // A skin loading on the engine thread has no place and no first update yet: the Studio opens once it started
+        // (at once with the main executor, where `activate` returns a started skin).
+        guard !c.isStarting else {
+            return c.whenStarted { [weak self, weak c] in
+                guard let self, let c, self.controller(for: c.config) === c else { return }
+                self.showInspector(for: c)
+            }
+        }
         // The new Studio window, while the StudioV2 switch is on (`StudioSwitch`).
         if StudioSwitch.isOn(for: self) { return StudioWindowController.show(for: c, app: self) }
         if let inspector {
@@ -891,7 +1229,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Custom skin actions (https://docs.rainmeter.net/manual/skins/rainmeter-section/#ContextTitle), as the
     /// engine reads them when the menu opens (titles "are always dynamic"; separators, 30-character titles and the
     /// rules for invalid items are the engine's). Each item runs its action from `[Rainmeter]`.
-    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinController, to menu: NSMenu) {
+    private func addCustomItems(_ items: [ContextMenuItem], for c: SkinWindowController, to menu: NSMenu) {
         for entry in items {
             if entry.isSeparator {
                 menu.addItem(.separator())
@@ -903,9 +1241,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// What a skin's menu shows of the skin itself: its custom items, its name and the weather credit.
+    struct SkinMenuFacts {
+        var items: [ContextMenuItem]
+        var name: String?
+        var weather: (uses: Bool, updated: String?)
+        /// Read from the live skin; false: from its snapshot, because the skin was busy.
+        var isLive: Bool
+    }
+
+    /// How long a menu waits for a busy skin (a skin on another thread in the middle of its work) before it shows what
+    /// the skin's snapshot has.
+    static let menuReadTimeout: TimeInterval = 0.05
+
+    /// The skin's custom items, name and weather credit for its menu: read from the live skin with exclusive access
+    /// (the titles "are always dynamic"), or, when the skin does not let go within `menuReadTimeout`, from its
+    /// snapshot (the items as of the last change of its variables, the credit without the time of the data).
+    func menuFacts(for c: SkinWindowController) -> SkinMenuFacts {
+        if let live = c.runtime.exclusive(timeout: AppController.menuReadTimeout, { skin in
+            SkinMenuFacts(items: skin.contextMenuItems(), name: ManageModel.metadataValue(skin.metadata, "Name"),
+                          weather: MacWeatherMeasure.attributionInfo(for: skin), isLive: true)
+        }) {
+            return live
+        }
+        let snapshot = c.runtime.snapshot
+        return SkinMenuFacts(items: snapshot.contextItems, name: ManageModel.metadataValue(snapshot.metadata, "Name"),
+                             weather: (snapshot.usesWeather, nil), isLive: false)
+    }
+
     /// Menu with only the skin's custom items (`!SkinCustomMenu`), nil when it has none.
-    func customSkinMenu(for c: SkinController) -> NSMenu? {
-        let items = c.skin.contextMenuItems()
+    func customSkinMenu(for c: SkinWindowController) -> NSMenu? {
+        let items = menuFacts(for: c).items
         guard !items.isEmpty else { return nil }
         let menu = NSMenu()
         addCustomItems(items, for: c, to: menu)
@@ -913,13 +1279,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Per-skin menu (context menu on the skin and submenu in the status menu).
-    func skinMenu(for c: SkinController, includeCustomItems: Bool) -> NSMenu {
+    func skinMenu(for c: SkinWindowController, includeCustomItems: Bool) -> NSMenu {
         let menu = NSMenu()
         let s = c.state
+        // The compatibility notes from the skin's snapshot; the custom items, the name and the weather credit read when
+        // the menu opens (`menuFacts`).
+        let snapshot = c.runtime.snapshot
         if includeCustomItems {
-            let title = ManageModel.metadataValue(c.skin.metadata, "Name") ?? c.config
+            let facts = menuFacts(for: c)
+            let title = facts.name ?? c.config
             menu.addItem(withTitle: title, action: nil, keyEquivalent: "").isEnabled = false
-            let custom = c.skin.contextMenuItems()
+            let custom = facts.items
             // "If more than 3 ContextTitleN options are given, 'Custom skin actions' becomes a submenu."
             if custom.count > 3 {
                 let submenu = NSMenu()
@@ -931,7 +1301,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 addCustomItems(custom, for: c, to: menu)
             }
             // CC BY 4.0: every skin that shows MET Norway's forecasts credits them, whoever wrote it.
-            for weather in WeatherWiring.menuItems(for: c.skin, target: self, action: #selector(openWeatherSourceAction(_:))) {
+            for weather in WeatherWiring.menuItems(for: facts.weather, target: self,
+                                                   action: #selector(openWeatherSourceAction(_:))) {
                 menu.addItem(weather)
             }
             menu.addItem(.separator())
@@ -993,13 +1364,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(i)
         }
 
-        if !c.skin.issues.isEmpty {
+        let skinIssues = snapshot.issues
+        if !skinIssues.isEmpty {
             menu.addItem(.separator())
             let issues = NSMenu()
-            for issue in c.skin.issues.prefix(50) {
+            for issue in skinIssues.prefix(50) {
                 issues.addItem(withTitle: issue, action: nil, keyEquivalent: "").isEnabled = false
             }
-            let issuesItem = NSMenuItem(title: "Compatibility Notes (\(c.skin.issues.count))", action: nil, keyEquivalent: "")
+            let issuesItem = NSMenuItem(title: "Compatibility Notes (\(skinIssues.count))", action: nil, keyEquivalent: "")
             issuesItem.submenu = issues
             menu.addItem(issuesItem)
         }
@@ -1009,7 +1381,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Settings ▸ Editor gets an item of its own.
         var entries: [(String, Selector)] = [("Manage Skin…", #selector(manageSkinAction(_:))),
                                              ("Edit Skin…", #selector(inspectSkinAction(_:)))]
-        if case .external(let editor, _) = CodeEditorRouter.route(file: c.skin.fileURL, line: nil,
+        if case .external(let editor, _) = CodeEditorRouter.route(file: c.fileURL, line: nil,
                                                                   preferences: state.editor,
                                                                   locator: CodeEditorRouter.locator) {
             entries.append(("Edit in \(editor.name)", #selector(editSkinAction(_:))))
@@ -1036,7 +1408,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Settings (shared by menus and the Manage window)
 
     /// Changes a skin's window settings and applies them.
-    func changeSettings(of c: SkinController, animated: Bool = false, _ change: (inout SkinState) -> Void) {
+    func changeSettings(of c: SkinWindowController, animated: Bool = false, _ change: (inout SkinState) -> Void) {
         let before = c.state
         state.update(c.config, change)
         let after = c.state
@@ -1045,6 +1417,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if presentsWindows && c.isShown { c.window.orderFrontRegardless() }
             restack()
         }
+        // Bangs for `*` and skin groups go in load order.
+        if before.loadOrder != after.loadOrder { publishDirectory() }
         if !before.keepOnScreen && after.keepOnScreen { c.windowMoved() }
         if !before.savePosition && after.savePosition { c.windowMoved() }
         skinSettingsChanged()
@@ -1068,10 +1442,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activate(config: a[0], file: a[1])
     }
 
-    @objc private func customContextAction(_ sender: NSMenuItem) {
+    /// A chosen custom item: its action runs on the skin's executor, from `[Rainmeter]`.
+    @objc func customContextAction(_ sender: NSMenuItem) {
         guard let entry = sender.representedObject as? CustomMenuAction, let c = entry.controller, !c.isStopped,
               !entry.action.isEmpty else { return }
-        c.skin.executeInput(entry.action, from: c.skin.rainmeterSection)
+        c.runtime.send(.execute(entry.action, section: "Rainmeter"))
     }
 
     @objc private func zPositionAction(_ sender: NSMenuItem) {
@@ -1121,11 +1496,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func editSkinAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { CodeEditorRouter.open(file: c.skin.fileURL, app: self) }
+        if let c = args(sender).first.flatMap(controller(for:)) { CodeEditorRouter.open(file: c.fileURL, app: self) }
     }
 
     @objc private func openSkinFolderAction(_ sender: NSMenuItem) {
-        if let c = args(sender).first.flatMap(controller(for:)) { Workspace.reveal(c.skin.directory) }
+        if let c = args(sender).first.flatMap(controller(for:)) { Workspace.reveal(c.fileURL.deletingLastPathComponent()) }
     }
 
     @objc private func unloadSkinAction(_ sender: NSMenuItem) {
@@ -1163,11 +1538,39 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 /// A custom context menu item: the skin it belongs to (a refreshed or unloaded skin runs nothing) and its action.
 final class CustomMenuAction: NSObject {
-    weak var controller: SkinController?
+    weak var controller: SkinWindowController?
     let action: String
 
-    init(controller: SkinController, action: String) {
+    init(controller: SkinWindowController, action: String) {
         self.controller = controller
         self.action = action
+    }
+}
+
+/// Where the app runs its desktop skins (docs/skin-threading.md §15, phase 2): the `SkinThreading` default, read once
+/// at launch (`main.swift`). The engine thread unless it says `main`. `perSkin` (a thread for each skin) comes in
+/// phase 3.
+///
+///     defaults write app.deskset.Deskset SkinThreading main     (or -SkinThreading main for one launch)
+enum SkinThreading: String {
+    /// Every skin on the main thread, as the app ran them before phase 2: for debugging.
+    case main
+    /// The desktop skins on one engine thread (the default); the Studio's own instances, dry runs and thumbnails stay
+    /// on main.
+    case engine
+
+    static let defaultsKey = "SkinThreading"
+    /// Without the key, or with a value that is neither mode.
+    static let appDefault = SkinThreading.engine
+
+    /// The mode `defaults` asks for, and what to say about it in the log: an unknown value means the default.
+    static func chosen(in defaults: UserDefaults) -> (mode: SkinThreading, note: String?) {
+        guard let raw = defaults.object(forKey: defaultsKey) else { return (appDefault, nil) }
+        let text = (raw as? String ?? "\(raw)").trimmingCharacters(in: .whitespaces)
+        if let mode = SkinThreading(rawValue: text.lowercased()) {
+            return (mode, mode == .main ? "Desktop skins run on the main thread (\(defaultsKey)=main)" : nil)
+        }
+        return (appDefault, "Unknown \(defaultsKey) value \"\(text)\" (main or engine): desktop skins run on the "
+                + "engine thread")
     }
 }

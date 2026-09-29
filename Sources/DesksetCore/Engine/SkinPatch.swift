@@ -85,9 +85,15 @@ extension Skin {
     /// `sourceGeneration` moves on even when only comments changed (where things are written moved).
     ///
     /// Otherwise nothing changes and the result says why the skin must load again.
+    ///
+    /// A patch is a piece of work (`beginWork`): its host hears when it ends (`SkinHost.skinDidFinishWork`), and what
+    /// the window reads of the skin (the snapshot: its metadata, what loading read, the meters' places and actions) is
+    /// built again, as after a load.
     public func patch(sources: SourceProvider) -> SkinPatchResult {
         assertOwned()
         guard !isClosed else { return .needsReload(.closed) }
+        beginWork()
+        defer { endWork() }
         let builtins = builtInVariables()
         var includesAppearance = false
         let loaded: LoadedIniFile
@@ -330,6 +336,8 @@ extension Skin {
     private func apply(_ plan: PatchPlan, _ loaded: LoadedIniFile, mentionsAppearance: Bool) -> SkinPatchSummary {
         sourceGeneration &+= 1
         installPatchedSource(loaded, mentionsAppearance: mentionsAppearance)
+        // The source map, the metadata and what loading read are the snapshot's too.
+        noteSnapshotChange()
         if !plan.variables.isEmpty { redefineVariables(plan.variables) }
         let ordered: [SkinSection] = (measures as [SkinSection]) + (meters as [SkinSection])
         if let root = rainmeterSection {

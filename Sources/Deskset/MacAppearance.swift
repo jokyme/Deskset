@@ -7,7 +7,9 @@ import DesksetCore
 /// (`MainPublished`, docs/skin-threading.md §4.6); the app publishes it at launch and again whenever the appearance, the
 /// accent color or one of those settings changes (`AppController.appearanceChanged`).
 enum MacAppearance {
-    static let current = MainPublished<SkinAppearance>(maxAge: 1, initial: .light) {
+    /// Published on every change (`AppController.appearanceChanged`); the age limit is only a safety net, long enough
+    /// that skins on other threads rebuilding their environment at every update do not wake the main thread for it.
+    static let current = MainPublished<SkinAppearance>(maxAge: 60, initial: .light) {
         values(for: NSApp?.effectiveAppearance ?? NSAppearance(named: .aqua))
     }
 

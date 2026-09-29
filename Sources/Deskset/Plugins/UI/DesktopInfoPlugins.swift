@@ -270,9 +270,13 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     private var recheck = false
     /// Why the last check did not read the desktop picture (it is kept where macOS would ask), for the log.
     private(set) var skippedProtected = false
-    /// The skin window's moves, while `CropDesktop=Skin` samples under it. The box is the measure's; what it holds is
-    /// the main thread's.
+    /// The skin window's moves, while `CropDesktop=Skin` samples under it: a watch the widget's runtime keeps with its
+    /// window on the main thread (`SkinCompanionChannel.followWindowMoves`; its id), or for the Studio's instance, which
+    /// has no window, a watch of the desktop copy's window (the box is the measure's; what it holds is the main
+    /// thread's).
     private let windowWatch = WindowWatchBox()
+    private weak var channel: SkinCompanionChannel?
+    private var followID: Int?
     private var watchRequested = false
     private var closed = false
 
@@ -337,6 +341,10 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
 
     func skinWillClose() {
         closed = true
+        if let id = followID {
+            followID = nil
+            channel?.stopFollowingWindow(id)
+        }
         let box = windowWatch
         let stop = { box.watch?.stop(); box.watch = nil }
         if Thread.isMainThread { stop() } else { DispatchQueue.main.async(execute: stop) }
@@ -499,20 +507,26 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
     }
 
     /// Asks the main thread to follow the skin window's moves (once), when the skin runs in the app with a window: the
-    /// widget on the desktop, or the Studio's instance, which follows the desktop copy's window.
+    /// widget on the desktop (its runtime's window companion: no plugin reaches the window itself), or the Studio's
+    /// instance, which follows the desktop copy's window.
     private func watchWindowIfNeeded() {
         guard !watchRequested, !closed, runsInApp else { return }
         watchRequested = true
+        // The widget on the desktop, on whatever executor it runs: the settled moves come back as a message.
+        if let channel = skin.host as? SkinCompanionChannel {
+            self.channel = channel
+            followID = channel.followWindowMoves { [weak self] in self?.windowSettled() }
+            return
+        }
+        // The Studio's instance runs on the main thread, with the desktop copy's window controller (never its skin).
+        guard let studio = skin.host as? StudioHost else { return }
         // The window's moves come back like a service's news, and lead to a new sample of the desktop picture (a skin
         // window only: never in a render, so never in virtual time).
         let hop = skin.backgroundHop(.desktopImage)
-        // The widget's window controller, or the Studio's host (whose desktop copy has the window).
-        let controller = self.controller
-        let studio = skin.host as? StudioHost
         let box = windowWatch
         let start = { [weak self] in
             guard box.watch == nil else { return }
-            guard let window: NSWindow = controller?.window ?? studio?.desktop?.window else {
+            guard let window: NSWindow = studio.desktop?.window else {
                 // No window yet (the Studio's instance before its desktop copy is known): asked again at the next update.
                 hop.post { [weak self] in self?.watchRequested = false }
                 return
@@ -534,19 +548,16 @@ final class ChameleonMeasure: MediaUIMeasure, PluginLifecycle {
         refreshImage(force: true)
     }
 
-    /// Whether the skin window's moves are followed (tests; main thread).
-    var followsWindow: Bool { windowWatch.watch != nil }
+    /// Whether the skin window's moves are followed (tests; main thread, with the skin on the main executor).
+    var followsWindow: Bool { windowWatch.watch != nil || followID != nil }
 
-    /// The desktop picture setting and the frame of the screen the skin's window is on (the Studio's instance: the
-    /// desktop copy's window), else the main screen; nil without a screen or a desktop picture. AppKit is asked on the
-    /// main thread only: a skin on another thread gets the main screen's, as the main thread last saw it
-    /// (`DesktopInputs.mainScreenDesktop`). The window's own screen reaches a skin thread with the window's facts, in
-    /// phase 2 (docs/skin-threading.md §8.1).
+    /// The desktop picture setting and the frame of the display the skin's window is on (the Studio's instance: the
+    /// desktop copy's window; the display comes with the window's facts), else the main screen; nil without a screen or
+    /// a desktop picture. AppKit is asked on the main thread only: a skin on another thread reads what the main thread
+    /// last published for each display (`DesktopInputs.displayDesktops`).
     static func desktop(of host: LiveSkinHost?) -> DesktopInputs.ScreenDesktop? {
         if let fake = DesktopInputs.fake.current { return fake.first }
-        guard Thread.isMainThread else { return DesktopInputs.mainScreenDesktop.value() }
-        guard let screen = host?.windowScreen ?? NSScreen.main else { return nil }
-        return DesktopInputs.desktop(of: screen)
+        return DesktopInputs.desktop(onDisplay: host?.windowDisplay)
     }
 
     /// The desktop picture of a screen: the file itself, or for a folder of rotating wallpapers its first picture by
@@ -615,6 +626,8 @@ final class WindowWatchBox {
 /// Follows a window's moves, changes of screen and the displays' arrangement, and calls `settled` (main thread) once
 /// they have stopped for `delay` seconds: a drag re-samples once, when it ends.
 final class WindowMoveWatch {
+    /// The window followed.
+    private(set) weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
     private var pending: DispatchWorkItem?
     private let delay: TimeInterval
@@ -624,6 +637,7 @@ final class WindowMoveWatch {
     init(window: NSWindow, delay: TimeInterval = 0.3, settled: @escaping () -> Void) {
         self.delay = delay
         self.settled = settled
+        self.window = window
         let center = NotificationCenter.default
         for name in [NSWindow.didMoveNotification, NSWindow.didChangeScreenNotification, NSWindow.didResizeNotification] {
             observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -686,8 +700,9 @@ enum DesktopInputs {
         var solid: ChameleonColor?
     }
 
-    /// The app's appearance (light or dark) that system colors resolve for.
-    static let appearance = MainPublished<NSAppearance?>(maxAge: 1, initial: nil) {
+    /// The app's appearance (light or dark) that system colors resolve for. Published on every change
+    /// (`AppController.appearanceChanged`), so a long age limit.
+    static let appearance = MainPublished<NSAppearance?>(maxAge: 60, initial: nil) {
         NSApp?.effectiveAppearance ?? NSAppearance(named: .aqua)
     }
 
@@ -723,6 +738,15 @@ enum DesktopInputs {
         return allScreenDesktops.value()
     }
 
+    /// Every display's desktop picture and frame, by display (`NSScreenNumber`).
+    static let displayDesktops = MainPublished<[CGDirectDisplayID: ScreenDesktop]>(maxAge: 2, initial: [:]) {
+        var desktops: [CGDirectDisplayID: ScreenDesktop] = [:]
+        for screen in NSScreen.screens {
+            if let id = displayID(of: screen), let desktop = desktop(of: screen) { desktops[id] = desktop }
+        }
+        return desktops
+    }
+
     /// Main thread.
     static func desktop(of screen: NSScreen) -> ScreenDesktop? {
         guard let url = NSWorkspace.shared.desktopImageURL(for: screen) else { return nil }
@@ -735,12 +759,29 @@ enum DesktopInputs {
                              fillColor: (options?[.fillColor] as? NSColor).flatMap(ChameleonColor.init(color:)))
     }
 
+    /// The display of a screen (`NSScreenNumber`). Main thread.
+    static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// The desktop of `display` (nil or a display that is gone: the main screen's). Any thread: on the main thread
+    /// AppKit is asked now, elsewhere the latest published answer is read (`displayDesktops`, `mainScreenDesktop`).
+    static func desktop(onDisplay display: CGDirectDisplayID?) -> ScreenDesktop? {
+        guard Thread.isMainThread else {
+            if let display, let desktop = displayDesktops.value()[display] { return desktop }
+            return mainScreenDesktop.value()
+        }
+        let screen = display.flatMap { id in NSScreen.screens.first { displayID(of: $0) == id } } ?? NSScreen.main
+        return screen.flatMap(desktop(of:))
+    }
+
     /// Main thread: publishes every input now (at launch, before skins run elsewhere).
     static func publishAll() {
         appearance.refresh()
         reduceTransparency.refresh()
         desktopFillColor.refresh()
         mainScreenDesktop.refresh()
+        displayDesktops.refresh()
         allScreenDesktops.refresh()
     }
 }

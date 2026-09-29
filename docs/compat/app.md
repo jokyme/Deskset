@@ -71,9 +71,13 @@ Sources: the manual pages [Skin sections of Rainmeter.ini](https://docs.rainmete
   drag may start from; holding CTRL overrides mouse actions and Draggable.
 - Mac (Deskset): same rules; a drag starts after 3 points of movement. The override key is **⌘ (Command)**: ⌘-drag moves
   any skin (even with Draggable=0, a LeftMouseDownAction or a Button under the pointer) and runs no click action; ⌘
-  while dragging inverts SnapEdges. The position is saved when the drag ends (if SavePosition).
-- Why: on the Mac, Control-click is the secondary (right) click, so Control cannot be the override.
-- Skin impact: tooltips or read-me files that say "hold CTRL" mean ⌘ on the Mac.
+  while dragging inverts SnapEdges. The position is saved when the drag ends (if SavePosition). A `!Move` or
+  `!SetWindowPosition` the skin runs while a press on it may drag the window waits for the release: a press that
+  became a drag wins and the move is dropped; otherwise the move is made at the release.
+- Why: on the Mac, Control-click is the secondary (right) click, so Control cannot be the override. The manual does
+  not say what a `!Move` during a drag does (judgment call).
+- Skin impact: tooltips or read-me files that say "hold CTRL" mean ⌘ on the Mac. A skin that moves itself while it is
+  being dragged ends where the pointer let go of it.
 - Status: emulated
 
 ### DragGroup (moving several skins together)

@@ -60,13 +60,11 @@ class MediaUIMeasure: Measure {
 
     /// True when the skin runs in the menu bar app on live data (`LiveSkinHost`: a skin window, or the Studio's own
     /// instance of the widget it edits). Plugins that need a macOS permission (Automation, Location) only act for such
-    /// skins — never for `--render` or self-tests; those that add windows need the skin window (`controller`).
+    /// skins — never for `--render` or self-tests. Those that add windows ask the skin's window for them through the
+    /// skin's runtime (`SkinCompanionChannel`): no plugin touches the window itself.
     var runsInApp: Bool { skin.host is LiveSkinHost }
 
-    /// The window controller of the skin, when it runs in the app.
-    var controller: SkinController? { skin.host as? SkinController }
-
-    /// The app host of the skin: its window controller, or the Studio's host of its own instance of the widget.
+    /// The app host of the skin: its runtime, or the Studio's host of its own instance of the widget.
     var liveHost: LiveSkinHost? { skin.host as? LiveSkinHost }
 
     func publishString(_ s: String?) {
@@ -180,12 +178,15 @@ final class MediaUIWorker {
     }
 }
 
-/// Main-thread hop that tests can make synchronous.
+/// Main-thread hop that tests can make synchronous. A skin thread only ever queues: debug builds stop one that would run
+/// the main thread's work inline (tests that make hops synchronous put their skins on the main thread), which in the
+/// app would mean waiting for the main thread (docs/skin-threading.md §5.2).
 enum MediaUIMainHop {
     static var runsInline = false
 
     static func async(_ block: @escaping () -> Void) {
         if runsInline {
+            SkinThreadExecutor.assertNotWaiting(on: "the main thread (MediaUIMainHop runs inline)")
             block()
         } else {
             DispatchQueue.main.async(execute: block)
@@ -197,7 +198,10 @@ enum MediaUIMainHop {
     /// (today every skin) sees the command carried out before its next line, as before; a skin on a thread of its own
     /// never waits for the main thread (docs/skin-threading.md §5.2).
     static func run(_ block: @escaping () -> Void) {
-        if runsInline || Thread.isMainThread {
+        if Thread.isMainThread {
+            block()
+        } else if runsInline {
+            SkinThreadExecutor.assertNotWaiting(on: "the main thread (MediaUIMainHop runs inline)")
             block()
         } else {
             DispatchQueue.main.async(execute: block)

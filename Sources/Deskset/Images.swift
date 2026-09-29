@@ -809,13 +809,6 @@ private func limit(_ v: Double, _ lo: Double, _ hi: Double) -> Double {
 
 // The app's skin hosts answer the optional image queries of the engine (EXIF orientation, pixel alpha).
 
-extension SkinController: SkinImageQueries {
-    func imageExifOrientation(atPath path: String) -> Int { Images.exifOrientation(atPath: path) }
-    func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
-        Images.pixelAlpha(atPath: path, x: x, y: y, oriented: exifOriented)
-    }
-}
-
 extension RenderHost: SkinImageQueries {
     func imageExifOrientation(atPath path: String) -> Int { Images.exifOrientation(atPath: path) }
     func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {

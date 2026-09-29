@@ -536,6 +536,66 @@ enum ChameleonDesktopSelfTests {
             }
         }
 
+        t.suite("App: Chameleon desktop: on the engine thread, the window's moves reach the widget as a message") {
+            // The widget on the engine thread follows its window through its runtime (a window companion on the main
+            // thread): the settled moves come back as a message, and it samples under the window's new place.
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            let folder = t.temporaryDirectory("chameleon-engine")
+            let file = folder.appendingPathComponent("halves.png")
+            try halves(file, width: 400, height: 200)
+            let primary = NSScreen.screens.first?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+            let area = CGRect(origin: .zero, size: primary.size)
+            let skinFolder = app.skinsDirectory.appendingPathComponent("EngineProbe", isDirectory: true)
+            try FileManager.default.createDirectory(at: skinFolder, withIntermediateDirectories: true)
+            try """
+                [Rainmeter]
+                Update=600000
+                SkinWidth=40
+                SkinHeight=40
+
+                [MeasureWall]
+                Measure=Plugin
+                Plugin=Chameleon
+                CropDesktop=Skin
+
+                [MeasureLum]
+                Measure=Plugin
+                Plugin=Chameleon
+                Parent=MeasureWall
+                Color=Luminance
+
+                [MeterBox]
+                Meter=Image
+                W=40
+                H=40
+                """.write(to: skinFolder.appendingPathComponent("Probe.ini"), atomically: true, encoding: .utf8)
+            app.rescanLibrary()
+            var tracked: [() -> Skin?] = []
+            withDesktops([ScreenDesktop(picture: file.path, frame: primary, area: area)]) {
+                autoreleasepool {
+                    guard let c = app.activate(config: "EngineProbe", file: "Probe.ini"),
+                          AppSelfTest.spin(timeout: 60, until: { c.isStarted }) else {
+                        return t.check(false, "the skin starts on the engine thread")
+                    }
+                    tracked.append(EngineThreadSelfTests.track(c))
+                    t.check(c.runtime.executor === app.engineThread, "on the engine thread")
+                    func luminance() -> Double? {
+                        c.runtime.exclusive(timeout: 30) { $0.measure(named: "MeasureLum")?.value } ?? nil
+                    }
+                    c.window.setFrameOrigin(NSPoint(x: primary.minX + 20, y: primary.maxY - 80))
+                    t.check(AppSelfTest.spin(timeout: 10) { c.companions.followedWindows == 1 },
+                            "the window follows the widget's moves for it")
+                    t.check(AppSelfTest.spin(timeout: 10) { (luminance() ?? 1) < 0.01 }, "over black: \(luminance() ?? -1)")
+                    let updates = c.runtime.snapshot.updateCount
+                    c.window.setFrameOrigin(NSPoint(x: primary.maxX - 80, y: primary.maxY - 80))
+                    t.check(AppSelfTest.spin(timeout: 10) { (luminance() ?? 0) > 0.99 }, "over white: \(luminance() ?? -1)")
+                    t.equal(c.runtime.snapshot.updateCount, updates, "no skin update needed")
+                    app.deactivate(config: "EngineProbe")
+                }
+            }
+            EngineThreadSelfTests.finish(t, app, tracked)
+        }
+
         t.suite("App: Chameleon desktop: moves are followed until the moves stop") {
             let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 50, height: 50), styleMask: .borderless,
                                   backing: .buffered, defer: true)
