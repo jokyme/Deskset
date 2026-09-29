@@ -18,8 +18,10 @@ final class StudioCodeState {
     var changingPanes = false
     /// The diagnostics shown: of the text typed when it is newer than the widget, else of the widget.
     var diagnostics: [IniDiagnostic] = []
-    /// The diagnostics of the widget's instance they were worked out for (the hold asks for them too).
+    /// The diagnostics of the widget's instance they were worked out for (the hold asks for them too), as of its text
+    /// then: a patch gives the same instance new text (`Skin.sourceGeneration`).
     var checked: [IniDiagnostic] = []
+    var checkedGeneration = -1
     /// The red problems of the version the desktop runs (nil: not known yet): only a new one holds the desktop.
     var desktopProblems: Set<String>?
     /// Files other widgets share, written while the desktop was held: those widgets load again once it is not.
@@ -368,12 +370,14 @@ extension StudioWindowController {
 
     // MARK: Diagnostics
 
-    /// The diagnostics of the widget's instance (worked out once per instance).
+    /// The diagnostics of the widget's instance (worked out once per instance and text: a step taken as a patch gives
+    /// the same instance new text).
     func diagnostics(of skin: Skin) -> [IniDiagnostic] {
-        if codeState.checkedSkin === skin { return codeState.checked }
+        if codeState.checkedSkin === skin, codeState.checkedGeneration == skin.sourceGeneration { return codeState.checked }
         let found = IniDiagnostics.check(skin)
         codeState.checked = found
         codeState.checkedSkin = skin
+        codeState.checkedGeneration = skin.sourceGeneration
         return found
     }
 
