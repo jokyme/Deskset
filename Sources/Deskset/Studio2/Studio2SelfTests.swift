@@ -312,17 +312,26 @@ enum Studio2SelfTests {
             t.check(studio.link?.isOnDesktop == true, "on the desktop")
             t.check(session.studioSkin?.host is StudioHost, "the Studio's own instance")
 
-            // A step: on disk, in the Studio's instance, on the desktop (which reloads: the link follows it).
+            // A step: on disk, in the Studio's instance, on the desktop. A value step is a patch of both (they keep
+            // what they have shown); the link stays on the same desktop copy.
             let instance = session.studioSkin
+            let patches = session.desktopPatchCounts.applied
             try session.apply("Change Font Size", [.setValue(file: url, section: "MeterTitle", key: "FontSize",
                                                              value: "20", afterIncludes: false)])
             t.check(read(url).contains("FontSize=20"), "written")
-            t.check(session.studioSkin !== instance, "the Studio's instance loaded again")
+            t.check(session.studioSkin === instance, "the Studio's instance took it as a patch")
             t.equal(studio.skin?.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
-            t.check(AppSelfTest.spin { app.controller(for: "Studio2\\Session") !== c }, "the desktop copy reloaded")
+            func desktopSize() -> String? {
+                app.controller(for: "Studio2\\Session")?.skin.meter(named: "MeterTitle")?.rawOption("FontSize")
+            }
+            t.check(AppSelfTest.spin {
+                !session.hasPendingDesktopPatch && !session.isDesktopPatchInFlight && desktopSize() == "20"
+            }, "the desktop copy took the step")
+            t.equal(session.desktopPatchCounts.applied - patches, 1, "as a patch")
             guard let reloaded = app.controller(for: "Studio2\\Session") else { return t.check(false, "still loaded") }
-            t.check(session.desktop === reloaded, "the session follows the new desktop copy")
-            t.check(!session.isAwaitingOwnReload, "its own reload arrived")
+            t.check(reloaded === c, "the same desktop copy")
+            t.check(session.desktop === reloaded, "the session follows the desktop copy")
+            t.check(!session.isAwaitingOwnReload, "no reload on its way")
             t.equal(reloaded.skin.meter(named: "MeterTitle")?.rawOption("FontSize"), "20")
 
             // Another refresh (the widget's menu): the Studio's instance loads again too.
