@@ -21,7 +21,7 @@
 //                   groups' pixels are copies of g2-single's, so this checks only that CA composites copied pixels
 //                   exactly (like a partition drawn through a window-sized scratch bitmap)
 //        g2-e       the same with group layers that copy those crops in draw(in:) (CA's own backing stores)
-//        g2-groups  the partition as the plan draws it (DESK-RUNTIME §6.2): each group's bitmap is the base bitmap's
+//        g2-groups  the partition as the plan draws it (the runtime design, section 6.2): each group's bitmap is the base bitmap's
 //                   crop copied in, then the group's elements drawn into the group's own bitmap, moved by whole
 //                   pixels; bitmaps as contents
 //        g2-e-drawn the same drawing done in each group layer's draw(in:) (approach E)
