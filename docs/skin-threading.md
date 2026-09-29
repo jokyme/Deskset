@@ -2027,8 +2027,9 @@ copy reload now change a `[Rainmeter]` option as main's do, and new checks cover
 same copy; the snapshot's metadata follows), a patch on a test thread, and Chameleon on the engine thread. A window
 half that outlives its app (a self-test's) no longer publishes facts: the new Studio's audit switches the app's
 appearance, which reached such a window and read its gone app. Counts after the merge: Core 194,168 checks; the app
-suite 17,800 checks in one process (default scrollers) with 12,914 debug comparisons of snapshot answers and no
-difference, and 22 failures, all in four suites of the new Studio window that fail on main too (S1's patch path
+suite 17,800 checks in one process with the default scrollers and again with `WhenScrolling` (12,914 and 12,885
+debug comparisons of snapshot answers, no difference), and in each 22 failures, all in four suites of the new Studio window that fail on main too (S1's patch path
 bypasses S2a's hold of the desktop on a red problem: "Studio2: window: editing through the session", "Studio2: code:
 the desktop keeps the last working version", "…the diagnostics of 12b", "…a problem the desktop already has does
-not hold it"); `--verify-drawing-cache` of a fresh copy of DefaultSkins and TestSkins: 149 skins, none differs.
+not hold it"); Main Thread Checker reports nothing for "App: threads", the skin runtime suites and every Studio
+suite; `--verify-drawing-cache` of a fresh copy of DefaultSkins and TestSkins: 149 skins, none differs.
