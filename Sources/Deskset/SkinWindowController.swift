@@ -35,6 +35,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     private(set) var companions: SkinWindowCompanions!
     private var hoverTimer: Timer?
     unowned let app: AppController
+    /// The same app, held weakly: a window half that outlives its app (a self-test's, kept until its skin closed) must
+    /// not reach it when AppKit calls its view afterwards (an appearance change reaches every window).
+    private weak var owningApp: AppController?
 
     /// Hidden with !Hide / !HideFade (the skin keeps updating).
     private(set) var isHiddenByBang = false
@@ -118,6 +121,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         self.config = config
         self.file = file
         self.app = app
+        owningApp = app
         view = SkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView.addSubview(view)
@@ -979,6 +983,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// change the main thread makes or applies. With the main executor the model follows at once. The window's
     /// companions follow the window too. Until the skin started, only the first facts go (`holdsFacts`).
     func publishFacts() {
+        guard owningApp != nil else { return }
         companions?.windowChanged()
         if holdsFacts && sentFacts != nil { return }
         var now = facts
