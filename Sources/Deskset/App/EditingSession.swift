@@ -632,13 +632,16 @@ final class EditingSession {
     /// Reloads the desktop copy on the next turn of the run loop (`refreshDesktop`), once for a burst of steps, then
     /// moves its window to `place` when given. On that turn AppKit draws the canvas first — it shows the Studio's
     /// instance, loaded from memory — so a step reaches the canvas without waiting for the second load.
+    /// While the Studio holds the desktop copy on its last working version (`passDesktopHold`) the reload waits, and is
+    /// made once the hold ends.
     func scheduleDesktopRefresh(thenMoveTo place: WidgetPosition? = nil) {
-        if let place { placeAfterRefresh = place }
-        if let holds = holdsDesktop, let skin = studioSkin, holds(skin) {
-            isHoldingDesktop = true
-            return
+        var place = place
+        switch passDesktopHold([], place: place, reload: true) {
+        case .held: return
+        case .released(let waited): place = place ?? waited.place
+        case .open: break
         }
-        isHoldingDesktop = false
+        if let place { placeAfterRefresh = place }
         guard app.defersDesktopUpdates else { return refreshDesktop() }
         guard scheduledRefresh == nil else { return }
         // A timer, not the main queue: the run loop draws the windows before it waits for the timer, while it runs
@@ -656,26 +659,22 @@ final class EditingSession {
     var willApply: (() -> Void)?
     /// While it says so for the Studio's instance, the desktop copy keeps the version it runs — the last working one:
     /// the files have a problem that stops a part from drawing (the code pane's red diagnostics). Steps are still
-    /// written; the reload waits, and happens once, at the first step or undo after which it no longer holds. nil (the
-    /// default): never held.
+    /// written; what would reach the desktop copy — a step's patch, a reload — waits, and goes once, at the first step,
+    /// undo or reload after which it no longer holds (`passDesktopHold`). nil (the default): never held.
     var holdsDesktop: ((Skin) -> Bool)?
-    /// A reload of the desktop copy waits because `holdsDesktop` held it.
-    private(set) var isHoldingDesktop = false
-
-    /// The window that held the desktop copy lets go (it closes, or shows another widget): the desktop keeps the last
-    /// working version it runs (the files still have the problem), nothing waits for a reload any more, and a move
-    /// that waited for it is made now.
-    func endHold() {
-        guard isHoldingDesktop || placeAfterRefresh != nil else { return }
-        isHoldingDesktop = false
-        if scheduledRefresh == nil, let place = placeAfterRefresh {
-            placeAfterRefresh = nil
-            runningDesktop?.moveTo(x: place.x, y: place.y)
-        }
-    }
 
     /// Whether a reload of the desktop copy waits for its turn.
     var hasScheduledDesktopRefresh: Bool { scheduledRefresh != nil }
+
+    /// Takes back the reload of the desktop copy waiting for its turn (the Studio holds the copy now: it would read the
+    /// files as they are), as a change that waits: a load, and where its window was to go. nil when no reload waited.
+    func takeScheduledDesktopRefresh() -> HeldDesktopChange? {
+        guard let timer = scheduledRefresh else { return nil }
+        timer.invalidate()
+        scheduledRefresh = nil
+        defer { placeAfterRefresh = nil }
+        return HeldDesktopChange(files: [], place: placeAfterRefresh, reload: true)
+    }
 
     /// Runs a reload of the desktop copy that waits for its turn now.
     func flushDesktopRefresh() {

@@ -22,8 +22,25 @@ final class SessionFollowing {
     /// Patches the desktop copy took, and the ones it had to load again for instead (for the self-tests).
     fileprivate(set) var desktopPatches = 0
     fileprivate(set) var desktopPatchesRefused = 0
+    /// What waits while the Studio holds the desktop copy on its last working version (`EditingSession.holdsDesktop`):
+    /// the files the steps changed since the copy last followed, where its window goes, and whether the copy must load
+    /// again (a step the Studio's instance could not take as a patch, a reload asked for). Sent once, when the hold ends.
+    fileprivate(set) var held: HeldDesktopChange?
 
     deinit { timer?.invalidate() }
+
+    fileprivate func hold(_ files: [SourceFileID], place: WidgetPosition?, reload: Bool) {
+        var now = held ?? HeldDesktopChange()
+        for file in files where !now.files.contains(file) { now.files.append(file) }
+        if let place { now.place = place }
+        if reload { now.reload = true }
+        held = now
+    }
+
+    fileprivate func release() -> HeldDesktopChange? {
+        defer { held = nil }
+        return held
+    }
 
     fileprivate func add(_ files: [SourceFileID], place: WidgetPosition?) {
         for file in files where !pendingFiles.contains(file) { pendingFiles.append(file) }
@@ -42,6 +59,13 @@ final class SessionFollowing {
         }
         return (pendingFiles, pendingPlace)
     }
+}
+
+/// The change the desktop copy did not take while the Studio held it (`SessionFollowing.held`).
+struct HeldDesktopChange {
+    var files: [SourceFileID] = []
+    var place: WidgetPosition?
+    var reload = false
 }
 
 /// The text of a few files as a step left them, for a widget that reads them on another thread (the desktop copy's
@@ -64,20 +88,37 @@ final class SourceSnapshot: SourceProvider {
 /// (`SkinMessage.patch`), whose answer comes back to the main thread; a copy that must load again for it (another
 /// variant, or a change it cannot take) is loaded again. A reload waiting for its turn wins: it reads every
 /// file. A step that moves the widget's window moves it once the copy took the patch.
+///
+/// Before either goes, the Studio's rule decides (`passDesktopHold`): while the widget has a new red problem the
+/// desktop copy keeps its last working version, and what would reach it waits, to go once the problem is fixed.
 extension EditingSession {
     /// After a step, an undo or a redo made `changes` (the Studio's instance took them already): the desktop copy
     /// follows — by a patch when the Studio's instance took them as one, else by a reload — and its window moves to
     /// `place` after.
     func followStep(_ changes: [SourceChange], thenMoveTo place: WidgetPosition?) {
-        let patched = studioSkin != nil && follow.studioPatched == changes
+        var patched = studioSkin != nil && follow.studioPatched == changes
         follow.studioPatched = nil
+        var files = changes.map(\.file)
+        var place = place
+        switch passDesktopHold(files, place: place, reload: !patched) {
+        case .held:
+            return
+        case .released(let waited):
+            // The hold ended with this step: what waited goes with it, once — as a patch unless something that waited
+            // needs a load (the copy plans the patch against its own text, which is still the last working version).
+            files = waited.files + files
+            place = place ?? waited.place
+            if waited.reload { patched = false }
+        case .open:
+            break
+        }
         guard patched, !hasScheduledDesktopRefresh else {
             // The reload reads every file: a patch still waiting goes with it, and so does its move unless this step
             // moves the window itself.
             let waiting = follow.take()
             return scheduleDesktopRefresh(thenMoveTo: place ?? waiting?.place)
         }
-        follow.add(changes.map(\.file), place: place)
+        follow.add(files, place: place)
         guard app.defersDesktopUpdates else { return flushDesktopPatch() }
         guard follow.timer == nil else { return }
         // A timer, as for the reload: the run loop draws the windows (the canvas shows the step) before it fires.
@@ -88,6 +129,48 @@ extension EditingSession {
 
     /// Whether a patch of the desktop copy waits for its turn.
     var hasPendingDesktopPatch: Bool { follow.isPending }
+
+    // MARK: The hold (the desktop keeps the last working version)
+
+    /// What the Studio's rule (`holdsDesktop`) decided for a change on its way to the desktop copy.
+    enum DesktopHoldDecision {
+        /// Nothing is held: the change goes.
+        case open
+        /// The change waits with what waited before it (`SessionFollowing.held`).
+        case held
+        /// The hold ended: the change goes, with what waited (once).
+        case released(HeldDesktopChange)
+    }
+
+    /// Asked before a step's patch or a reload goes to the desktop copy (`followStep`, `scheduleDesktopRefresh`): while
+    /// the Studio's instance has a red problem the desktop's version does not have (`holdsDesktop`, the code pane's
+    /// rule), the change waits — the files it changed (`files`), where the window goes (`place`), whether the copy must
+    /// load again for it (`reload`) — and so does what was waiting for its turn (a patch or a reload that would read the
+    /// files as they are now). Half-typed code never reaches the desktop. Once the rule lets it pass, what waited goes
+    /// with the change that passed.
+    func passDesktopHold(_ files: [SourceFileID], place: WidgetPosition?, reload: Bool) -> DesktopHoldDecision {
+        guard let holds = holdsDesktop, let skin = studioSkin, holds(skin) else {
+            return follow.release().map { .released($0) } ?? .open
+        }
+        if let pending = follow.take() { follow.hold(pending.files, place: pending.place, reload: false) }
+        if let scheduled = takeScheduledDesktopRefresh() {
+            follow.hold(scheduled.files, place: scheduled.place, reload: true)
+        }
+        follow.hold(files, place: place, reload: reload)
+        return .held
+    }
+
+    /// A change waits for the desktop copy because the Studio holds it on its last working version.
+    var isHoldingDesktop: Bool { follow.held != nil }
+
+    /// The window that held the desktop copy lets go (it closes, or shows another widget): the desktop keeps the last
+    /// working version it runs (the files still have the problem), nothing waits for it any more, and a move that
+    /// waited is made now. The next change that reaches the copy reads every file (a patch reads the files it was not
+    /// given from the disk; a reload reads them all).
+    func endHold() {
+        guard let waited = follow.release(), let place = waited.place else { return }
+        runningDesktop?.moveTo(x: place.x, y: place.y)
+    }
 
     /// Whether a patch was sent to the desktop copy and its answer has not come back yet (it may still say the copy must
     /// load again).

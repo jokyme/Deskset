@@ -79,6 +79,8 @@ enum Studio2CodeSelfTests {
             t.check(!session.isHoldingDesktop, "the hold ends with the window")
             AppSelfTest.spin(timeout: 0.3) { false }
             t.check(app.controller(for: "Studio2\\HoldKnown") === held, "and the desktop keeps its last working version")
+            t.equal(app.controller(for: "Studio2\\HoldKnown")?.skin.meter(named: "MeterBar")?.rawOption("W"),
+                    "(#BarWidth# * 2)", "the fixed bar, not the broken one")
         }
     }
 
@@ -309,19 +311,30 @@ enum Studio2CodeSelfTests {
         t.suite("Studio2: code: the desktop keeps the last working version") {
             guard let (app, studio, _, styles) = open(t, "CodeHold"), let session = studio.session,
                   let link = studio.link else { return }
+            // The desktop copy follows a step as a patch (else it loads again): both count as the desktop taking it.
             var reloads = 0
             let previous = link.onChange
             link.onChange = { change in
                 if case .reloaded = change { reloads += 1 }
                 previous?(change)
             }
+            let patchesBefore = session.desktopPatchCounts.applied
+            func updates() -> Int { reloads + session.desktopPatchCounts.applied - patchesBefore }
+            func settled() -> Bool { !session.hasPendingDesktopPatch && !session.isDesktopPatchInFlight }
             let desktop = app.controller(for: "Studio2\\CodeHold")
+            func desktopBar() -> String? {
+                app.controller(for: "Studio2\\CodeHold")?.skin.meter(named: "MeterBar")?.rawOption("W")
+            }
+            let working = desktopBar()
+            t.equal(working, "(#BarWidth#)", "the desktop copy's bar as it works")
             studio.codeView.show(file: styles)
             t.check(type(studio, replacing: "W=(#BarWidth#)", with: "W=(#BarWidth# *)"))
             studio.codeView.commitNow()
             t.check(session.isHoldingDesktop, "a red problem: the desktop is held")
-            t.equal(reloads, 0, "no desktop refresh while red")
+            AppSelfTest.spin(timeout: 0.3) { false }
+            t.equal(updates(), 0, "no desktop refresh while red")
             t.check(app.controller(for: "Studio2\\CodeHold") === desktop, "the desktop copy is the one it was")
+            t.equal(desktopBar(), working, "and it runs the last working version")
             t.equal(studio.codeController.statusLine.state, .held)
             t.equal(studio.codeController.statusLine.text,
                     "Saved · your desktop keeps the last working version until the red problem is fixed")
@@ -336,17 +349,57 @@ enum Studio2CodeSelfTests {
             t.check(type(studio, replacing: "H=6", with: "H=7"))
             studio.codeView.commitNow()
             AppSelfTest.spin(timeout: 0.05) { false }
-            t.equal(reloads, 0, "still red: still held")
+            t.equal(updates(), 0, "still red: still held")
+            t.equal(desktopBar(), working)
             t.check(type(studio, replacing: "(#BarWidth# *)", with: "(#BarWidth# * 1)"))
             studio.codeView.commitNow()
-            t.check(AppSelfTest.spin(timeout: 5) { reloads >= 1 }, "fixed: the desktop refreshes")
+            t.check(AppSelfTest.spin(timeout: 5) { updates() >= 1 && settled() }, "fixed: the desktop refreshes")
             t.check(!session.isHoldingDesktop)
             AppSelfTest.spin(timeout: 0.3) { false }
-            t.equal(reloads, 1, "exactly once")
+            t.equal(updates(), 1, "exactly once")
+            t.equal(desktopBar(), "(#BarWidth# * 1)", "with the fixed bar")
+            t.equal(app.controller(for: "Studio2\\CodeHold")?.skin.meter(named: "MeterBar")?.rawOption("H"), "7",
+                    "and the step made while it was held")
             t.check(studio.canvasController.problemCapsule.isHidden, "the capsule goes")
             t.equal(studio.codeController.statusLine.state, .saved)
             session.undoStack.undo()
             t.check(session.isHoldingDesktop, "undoing the fix holds it again")
+        }
+
+        t.suite("Studio2: code: a step waiting for the desktop waits with the hold") {
+            guard let (app, studio, _, styles) = open(t, "CodeHoldLater"), let session = studio.session else { return }
+            // As in the app (headless, the desktop copy follows at once): the desktop copy follows on the next turn.
+            app.defersDesktopUpdates = true
+            defer { app.defersDesktopUpdates = false }
+            func desktopBar(_ key: String) -> String? {
+                app.controller(for: "Studio2\\CodeHoldLater")?.skin.meter(named: "MeterBar")?.rawOption(key)
+            }
+            func settled() -> Bool {
+                !session.hasPendingDesktopPatch && !session.isDesktopPatchInFlight && !session.isAwaitingOwnReload
+            }
+            let patches = session.desktopPatchCounts.applied
+            studio.codeView.show(file: styles)
+            // A step that works, then — before the desktop copy took it — one that breaks the bar.
+            t.check(type(studio, replacing: "H=6", with: "H=8"))
+            studio.codeView.commitNow()
+            t.check(session.hasPendingDesktopPatch, "the desktop copy takes it on the next turn")
+            t.check(type(studio, replacing: "W=(#BarWidth#)", with: "W=(#BarWidth# *)"))
+            studio.codeView.commitNow()
+            t.check(session.isHoldingDesktop, "held")
+            t.check(!session.hasPendingDesktopPatch, "the waiting step waits with it (it would read the broken file)")
+            AppSelfTest.spin(timeout: 0.3) { false }
+            t.equal(desktopBar("W"), "(#BarWidth#)", "the desktop runs the last working version")
+            t.equal(desktopBar("H"), "6")
+            t.equal(session.desktopPatchCounts.applied, patches, "nothing reached it")
+            // Fixed: both steps reach the desktop, as one patch.
+            t.check(type(studio, replacing: "(#BarWidth# *)", with: "(#BarWidth# * 2)"))
+            studio.codeView.commitNow()
+            t.check(!session.isHoldingDesktop)
+            t.check(AppSelfTest.spin(timeout: 5) { settled() && desktopBar("W") == "(#BarWidth# * 2)" },
+                    "fixed on the desktop")
+            t.equal(desktopBar("H"), "8", "with the step that waited")
+            t.equal(session.desktopPatchCounts.applied - patches, 1, "one patch")
+            t.equal(studio.codeController.statusLine.state, .saved)
         }
     }
 
