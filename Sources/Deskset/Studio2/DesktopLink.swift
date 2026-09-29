@@ -130,8 +130,13 @@ final class DesktopLink {
     // MARK: The desktop around the widget (the canvas's backdrop, Show on Desktop)
 
     /// The widget's window on the desktop (nil: not on the desktop). Its level and order are the window's; its skin is
-    /// never read through it.
-    var desktopWindow: NSWindow? { session.runningDesktop?.window }
+    /// never read through it. While a new copy has not started (a reload on the engine thread) its window is not placed
+    /// yet: the copy it replaces keeps its window where the widget is until then.
+    var desktopWindow: NSWindow? {
+        guard let now = session.runningDesktop else { return nil }
+        if now.isStarting, let old = linked, old !== now { return old.window }
+        return now.window
+    }
 
     /// Where the widget is on the desktop (its window's frame, global coordinates).
     var desktopFrame: CGRect? { desktopWindow?.frame }
