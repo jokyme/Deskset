@@ -88,6 +88,9 @@ final class SourceSnapshot: SourceProvider {
 /// (`SkinMessage.patch`), whose answer comes back to the main thread; a copy that must load again for it (another
 /// variant, or a change it cannot take) is loaded again. A reload waiting for its turn wins: it reads every
 /// file. A step that moves the widget's window moves it once the copy took the patch.
+///
+/// Before either goes, the Studio's rule decides (`passDesktopHold`): while the widget has a new red problem the
+/// desktop copy keeps its last working version, and what would reach it waits, to go once the problem is fixed.
 extension EditingSession {
     /// After a step, an undo or a redo made `changes` (the Studio's instance took them already): the desktop copy
     /// follows — by a patch when the Studio's instance took them as one, else by a reload — and its window moves to
