@@ -1,4 +1,5 @@
 import AppKit
+import DeskLanguage
 import DesksetCore
 
 /// What the code pane draws around the text of `CodeEditorView` without changing it: each diagnostic's card under its
@@ -236,4 +237,257 @@ final class StudioCodeOverlay: NSView {
     override func draw(_ dirtyRect: NSRect) {
         decorations?.draw(in: self)
     }
+}
+
+
+// MARK: - Read-only Desk diagnostics
+
+/// A standalone Desk document's own TextKit decoration owner. It never changes the text or opens note locations.
+/// The INI decoration owner above keeps its original input, drawing, one-card-per-line rule and fix callback.
+final class DeskCodeDecorations: NSObject, NSLayoutManagerDelegate {
+    private(set) weak var codeView: CodeEditorView?
+    let overlay = DeskCodeOverlay()
+    private(set) var items: [DeskServiceDiagnostic] = []
+    private(set) var cards: [DeskDiagnosticCard] = []
+    private var cardLines: [Int] = []
+    private var spacing: [Int: CGFloat] = [:]
+    private var observers: [NSObjectProtocol] = []
+    private weak var previousLayoutDelegate: NSLayoutManagerDelegate?
+    private var originalMinSize = NSSize.zero
+    private var originalFrameNotifications = false
+    private var originalBoundsNotifications = false
+    private var shownRevision: Int?
+    private var shownText: String?
+    private var index = DeskTextIndex("")
+    private var layingOut = false
+    private var laidOutWidth: CGFloat = 0
+
+    deinit { detach() }
+
+    func attach(to codeView: CodeEditorView) {
+        detach()
+        self.codeView = codeView
+        let tv = codeView.textView
+        previousLayoutDelegate = tv.layoutManager?.delegate
+        originalMinSize = tv.minSize
+        originalFrameNotifications = tv.postsFrameChangedNotifications
+        originalBoundsNotifications = codeView.scrollView.contentView.postsBoundsChangedNotifications
+        tv.layoutManager?.delegate = self
+        overlay.decorations = self
+        overlay.frame = codeView.scrollView.bounds
+        overlay.autoresizingMask = [.width, .height]
+        codeView.scrollView.addSubview(overlay)
+        tv.postsFrameChangedNotifications = true
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: NSView.frameDidChangeNotification, object: tv, queue: .main) {
+            [weak self] _ in self?.layoutChanged()
+        })
+        let clip = codeView.scrollView.contentView
+        clip.postsBoundsChangedNotifications = true
+        observers.append(center.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) {
+            [weak self] _ in self?.overlay.needsDisplay = true
+        })
+        observers.append(center.addObserver(forName: NSText.didChangeNotification, object: tv, queue: .main) {
+            [weak self] _ in
+            guard let self, let editor = self.codeView else { return }
+            if self.shownRevision != editor.textRevision
+                || !(self.shownText?.utf8.elementsEqual(editor.text.utf8) ?? false) { self.clear() }
+            else { self.layoutChanged() }
+        })
+    }
+
+    /// The caller supplies the current check. A stale text or malformed range is refused as a whole, never clamped.
+    @discardableResult
+    func show(_ diagnostics: [DeskServiceDiagnostic], file: DeskFileID, text: String,
+              language: DiagnosticLanguage) -> Bool {
+        guard let codeView, text.utf8.elementsEqual(codeView.text.utf8) else { clear(); return false }
+        let nextIndex = DeskTextIndex(text)
+        let own = diagnostics.filter { $0.file == file }
+        guard own.allSatisfy({ Self.valid($0.range, in: nextIndex) }) else { clear(); return false }
+        cards.forEach { $0.removeFromSuperview() }
+        items = own
+        index = nextIndex
+        shownRevision = codeView.textRevision
+        shownText = text
+        cards = own.map { DeskDiagnosticCard($0, language: language) }
+        cardLines = own.map { nextIndex.position(utf16: $0.range.start.offset).line + 1 }
+        cards.forEach { codeView.textView.addSubview($0) }
+        layoutChanged()
+        return true
+    }
+
+    private static func valid(_ range: DeskRange, in index: DeskTextIndex) -> Bool {
+        let start = range.start.offset, end = range.end.offset
+        return start >= 0 && end >= start && end <= index.utf16Count
+            && index.clampedUTF16(start) == start && index.clampedUTF16(end) == end
+    }
+
+    func clear() {
+        cards.forEach { $0.removeFromSuperview() }
+        items = []
+        cards = []
+        cardLines = []
+        shownRevision = nil
+        shownText = nil
+        layoutChanged()
+    }
+
+    func detach() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        clear()
+        if let editor = codeView {
+            let tv = editor.textView
+            if tv.layoutManager?.delegate === self { tv.layoutManager?.delegate = previousLayoutDelegate }
+            tv.minSize = originalMinSize
+            tv.postsFrameChangedNotifications = originalFrameNotifications
+            editor.scrollView.contentView.postsBoundsChangedNotifications = originalBoundsNotifications
+            tv.layoutManager?.invalidateLayout(forCharacterRange: NSRange(location: 0, length: tv.string.utf16.count),
+                                                actualCharacterRange: nil)
+            tv.sizeToFit()
+        }
+        overlay.removeFromSuperview()
+        overlay.decorations = nil
+        previousLayoutDelegate = nil
+        codeView = nil
+    }
+
+    /// TextKit reserves the whole stack on newline-terminated lines. The final visual line gets scrollable room
+    /// below its actual last fragment; no character, paragraph attribute or undo record is inserted into the document.
+    func layoutChanged() {
+        guard !layingOut, let editor = codeView, let lm = editor.textView.layoutManager,
+              let container = editor.textView.textContainer else { return }
+        layingOut = true
+        defer { layingOut = false }
+        editor.layoutSubtreeIfNeeded()
+        overlay.frame = editor.scrollView.bounds
+        let tv = editor.textView
+        var next: [Int: CGFloat] = [:]
+        for (line, card) in zip(cardLines, cards) {
+            next[line, default: 0] += DeskDiagnosticCard.height(for: card, width: tv.bounds.width)
+        }
+        let changedSpacing = next != spacing
+        let changedWidth = tv.bounds.width != laidOutWidth
+        laidOutWidth = tv.bounds.width
+        if changedSpacing || changedWidth {
+            spacing = next
+            lm.invalidateLayout(forCharacterRange: NSRange(location: 0, length: tv.string.utf16.count),
+                                actualCharacterRange: nil)
+        }
+        lm.ensureLayout(for: container)
+        var minimum = originalMinSize.height
+        if let room = spacing[editor.lineStarts.count],
+           let anchor = lineFragment(editor.lineStarts.count, last: true) {
+            minimum = max(minimum, tv.textContainerOrigin.y + anchor.maxY + room + tv.textContainerInset.height)
+        }
+        let nextMinimum = NSSize(width: originalMinSize.width, height: minimum)
+        let changedMinimum = tv.minSize != nextMinimum
+        tv.minSize = nextMinimum
+        if changedSpacing || changedWidth || changedMinimum { tv.sizeToFit() }
+        var placed: [Int: CGFloat] = [:]
+        for (line, card) in zip(cardLines, cards) {
+            guard let fragment = lineFragment(line, last: true) else { card.isHidden = true; continue }
+            let room = line < editor.lineStarts.count ? (spacing[line] ?? 0) : 0
+            let y = tv.textContainerOrigin.y + fragment.maxY - room + (placed[line] ?? 0)
+            let height = DeskDiagnosticCard.height(for: card, width: tv.bounds.width)
+            card.isHidden = false
+            card.frame = NSRect(x: 0, y: y, width: tv.bounds.width, height: height)
+            card.needsLayout = true
+            placed[line, default: 0] += height
+        }
+        overlay.needsDisplay = true
+    }
+
+    private func lineFragment(_ line: Int, last: Bool) -> NSRect? {
+        guard let editor = codeView, let lm = editor.textView.layoutManager,
+              let storage = editor.textView.textStorage, line >= 1, line <= editor.lineStarts.count else { return nil }
+        let start = editor.lineStarts[line - 1]
+        if start == storage.length {
+            guard let container = editor.textView.textContainer else { return nil }
+            lm.ensureLayout(for: container)
+            let extra = lm.extraLineFragmentRect
+            return extra.isEmpty ? nil : extra
+        }
+        let end = line < editor.lineStarts.count ? editor.lineStarts[line] : storage.length
+        let character = last ? max(start, end - 1) : start
+        lm.ensureLayout(forCharacterRange: NSRange(location: character, length: 1))
+        return lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: character), effectiveRange: nil)
+    }
+
+    func layoutManager(_ layoutManager: NSLayoutManager, paragraphSpacingAfterGlyphAt glyphIndex: Int,
+                       withProposedLineFragmentRect rect: NSRect) -> CGFloat {
+        guard !spacing.isEmpty, let storage = layoutManager.textStorage, glyphIndex < layoutManager.numberOfGlyphs else { return 0 }
+        let offset = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        guard offset < storage.length else { return 0 }
+        let text = storage.string as NSString
+        let characters = layoutManager.characterRange(forGlyphRange: NSRange(location: glyphIndex, length: 1),
+                                                      actualGlyphRange: nil)
+        let end = NSMaxRange(characters)
+        guard end > 0, end <= storage.length else { return 0 }
+        let last = text.character(at: end - 1)
+        let ends = last == 0x0A || last == 0x0D
+        return ends ? (spacing[index.position(utf16: offset).line + 1] ?? 0) : 0
+    }
+
+    func draw(in view: NSView) {
+        guard let editor = codeView, let lm = editor.textView.layoutManager else { return }
+        let tv = editor.textView
+        let origin = tv.textContainerOrigin
+        func converted(_ rect: NSRect) -> NSRect { view.convert(rect.offsetBy(dx: origin.x, dy: origin.y), from: tv) }
+        for diagnostic in items {
+            let color = DeskDiagnosticCard.color(diagnostic.severity)
+            let range = diagnostic.range.nsRange
+            let line = index.position(utf16: range.location).line + 1
+            if let fragment = lineFragment(line, last: false) {
+                let dot = converted(fragment)
+                color.setFill()
+                let start = editor.lineStarts[line - 1]
+                let used = start < tv.string.utf16.count
+                    ? lm.lineFragmentUsedRect(forGlyphAt: lm.glyphIndexForCharacter(at: start), effectiveRange: nil).height
+                    : lm.extraLineFragmentUsedRect.height
+                NSBezierPath(ovalIn: NSRect(x: 5, y: dot.minY + min(used, fragment.height) / 2 - 3.5,
+                                          width: 7, height: 7)).fill()
+            }
+            if range.length == 0 {
+                guard let anchor = emptyAnchor(at: range.location) else { continue }
+                StudioCodeDecorations.squiggle(in: converted(anchor), color: color)
+                continue
+            }
+            let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            lm.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, container, fragmentGlyphs, _ in
+                let part = NSIntersectionRange(glyphs, fragmentGlyphs)
+                guard part.length > 0 else { return }
+                let bounds = lm.boundingRect(forGlyphRange: part, in: container)
+                let baseline = fragment.minY + lm.location(forGlyphAt: part.location).y
+                StudioCodeDecorations.squiggle(in: converted(NSRect(x: bounds.minX, y: baseline + 2,
+                                                                    width: max(6, bounds.width), height: 3)), color: color)
+            }
+        }
+    }
+
+    private func emptyAnchor(at offset: Int) -> NSRect? {
+        guard let editor = codeView, let lm = editor.textView.layoutManager,
+              let container = editor.textView.textContainer, let storage = editor.textView.textStorage else { return nil }
+        lm.ensureLayout(for: container)
+        if offset < storage.length {
+            let glyph = lm.glyphIndexForCharacter(at: offset)
+            let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let position = lm.location(forGlyphAt: glyph)
+            return NSRect(x: fragment.minX + position.x, y: fragment.minY + position.y + 2, width: 6, height: 3)
+        }
+        let extra = lm.extraLineFragmentRect
+        if !extra.isEmpty { return NSRect(x: extra.minX, y: extra.maxY - 3, width: 6, height: 3) }
+        guard lm.numberOfGlyphs > 0 else { return nil }
+        let glyph = lm.numberOfGlyphs - 1
+        let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let bounds = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        return NSRect(x: bounds.maxX, y: fragment.minY + lm.location(forGlyphAt: glyph).y + 2, width: 6, height: 3)
+    }
+}
+
+final class DeskCodeOverlay: NSView {
+    weak var decorations: DeskCodeDecorations?
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) { decorations?.draw(in: self) }
 }

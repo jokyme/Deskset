@@ -19,6 +19,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     /// Editing/checking only; a Desk document has no Skin or desktop copy.
     private(set) var deskChecking: DeskCodeDocumentChecking?
     private(set) var readError: String?
+    private(set) var deskDecorations: DeskCodeDecorations?
 
     init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil) throws {
         self.file = file.standardizedFileURL
@@ -48,9 +49,13 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
             let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue)
             deskChecking = checking
+            let decorations = DeskCodeDecorations()
+            decorations.attach(to: codeView)
+            deskDecorations = decorations
             checking.onSnapshot = { [weak self] snapshot in self?.showDeskCheck(snapshot) }
             codeView.onReadError = { [weak self] _, error in
                 self?.readError = error.localizedDescription
+                self?.deskDecorations?.clear()
                 self?.window?.subtitle = error.localizedDescription
                 Log.write("Code editor: \(error.localizedDescription)", level: .error)
             }
@@ -124,12 +129,19 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         deskChecking?.close()
+        deskDecorations?.detach()
         app.codeFileWindowDidClose(self)
     }
 
-    /// The existing window subtitle exposes a checked message until the full diagnostic pane is connected.
-    /// Pending syntax is not reported as a finished check. Cards, ranges, notes and fix actions belong to that pane.
+    /// Only the current finished check supplies read-only cards and ranges. Pending checks and failed reads clear
+    /// the previous display; the existing subtitle and document save/conflict behavior remain the same.
     private func showDeskCheck(_ snapshot: DeskSnapshot) {
+        if readError == nil, snapshot.isChecked {
+            deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
+                                  language: snapshot.options.messageLanguage)
+        } else {
+            deskDecorations?.clear()
+        }
         if let readError { window?.subtitle = readError }
         else if snapshot.isChecked, let diagnostic = snapshot.diagnostics.first(where: \.isProblem) {
             window?.subtitle = diagnostic.message

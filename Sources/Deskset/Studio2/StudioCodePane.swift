@@ -1,4 +1,5 @@
 import AppKit
+import DeskLanguage
 import DesksetCore
 
 /// The code pane of the new Studio: a header (the file as a menu of the widget's files, the section the caret is in,
@@ -434,5 +435,114 @@ final class StudioFixButton: NSView {
     override func accessibilityPerformPress() -> Bool {
         action?()
         return true
+    }
+}
+
+
+// MARK: - Read-only Desk cards
+
+/// Uses the same code-pane font, wrapping measurement and card margins. Notes are plain metadata, never links.
+final class DeskDiagnosticCard: NSView {
+    let diagnostic: DeskServiceDiagnostic
+    let titleLabel: NSTextField
+    let messageLabel: NSTextField
+    let noteLabels: [NSTextField]
+    private static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let noteFont = NSFont.systemFont(ofSize: 11)
+
+    init(_ diagnostic: DeskServiceDiagnostic, language: DiagnosticLanguage) {
+        self.diagnostic = diagnostic
+        let chinese = language == .simplifiedChinese
+        let severity: String
+        switch diagnostic.severity {
+        case .error: severity = chinese ? "错误" : "Error"
+        case .warning: severity = chinese ? "提醒" : "Warning"
+        case .info: severity = chinese ? "提示" : "Tip"
+        }
+        titleLabel = NSTextField(wrappingLabelWithString: diagnostic.id.rawValue + " · " + severity)
+        titleLabel.font = Self.titleFont
+        titleLabel.textColor = Self.color(diagnostic.severity)
+        messageLabel = NSTextField(wrappingLabelWithString: diagnostic.message)
+        messageLabel.font = StudioDiagnosticCard.font
+        messageLabel.textColor = .labelColor
+        noteLabels = diagnostic.notes.map { note in
+            let text = note.location.map { $0.description + "\n" + note.message } ?? note.message
+            let label = NSTextField(wrappingLabelWithString: text)
+            label.font = Self.noteFont
+            label.textColor = .secondaryLabelColor
+            return label
+        }
+        super.init(frame: .zero)
+        [titleLabel, messageLabel].forEach { addSubview($0) }
+        noteLabels.forEach { addSubview($0) }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(([titleLabel.stringValue, diagnostic.message] + noteLabels.map(\.stringValue)).joined(separator: "\n"))
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+    override var isFlipped: Bool { true }
+
+    static func color(_ severity: Severity) -> NSColor {
+        switch severity {
+        case .error: return StudioCodeColors.problem
+        case .warning: return StudioCodeColors.warning
+        case .info: return .secondaryLabelColor
+        }
+    }
+
+    private static func textWidth(_ width: CGFloat) -> CGFloat {
+        max(1, width - StudioDiagnosticCard.leading - StudioDiagnosticCard.trailing - 39)
+    }
+
+    static func height(for card: DeskDiagnosticCard, width: CGFloat) -> CGFloat {
+        let textWidth = textWidth(width)
+        let title = ceil(StudioPageStyle.height(of: card.titleLabel.stringValue, font: titleFont, width: textWidth))
+        let message = ceil(StudioPageStyle.height(of: card.messageLabel.stringValue, font: StudioDiagnosticCard.font, width: textWidth))
+        let notes = card.noteLabels.reduce(CGFloat.zero) {
+            $0 + 6 + ceil(StudioPageStyle.height(of: $1.stringValue, font: noteFont, width: textWidth))
+        }
+        return max(28, title + 4 + message + notes + 12) + 8
+    }
+
+    var cardRect: NSRect {
+        NSRect(x: StudioDiagnosticCard.leading, y: 4,
+               width: max(0, bounds.width - StudioDiagnosticCard.leading - StudioDiagnosticCard.trailing),
+               height: max(0, bounds.height - 8))
+    }
+
+    override func layout() {
+        super.layout()
+        let width = Self.textWidth(bounds.width)
+        var y = cardRect.minY + 6
+        for (label, gap) in [(titleLabel, CGFloat.zero), (messageLabel, CGFloat(4))]
+            + noteLabels.map({ ($0, CGFloat(6)) }) {
+            y += gap
+            let height = ceil(StudioPageStyle.height(of: label.stringValue, font: label.font ?? StudioDiagnosticCard.font, width: width))
+            label.frame = NSRect(x: cardRect.minX + 29, y: y, width: width, height: height)
+            y += height
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        bounds.fill()
+        let tint = Self.color(diagnostic.severity)
+        let path = NSBezierPath(roundedRect: cardRect, xRadius: 8, yRadius: 8)
+        tint.withAlphaComponent(diagnostic.severity == .info ? 0.07 : 0.14).setFill()
+        path.fill()
+        tint.withAlphaComponent(0.35).setStroke()
+        path.lineWidth = 0.5
+        path.stroke()
+        let symbol: String
+        switch diagnostic.severity {
+        case .error: symbol = "xmark.octagon.fill"
+        case .warning: symbol = "exclamationmark.triangle.fill"
+        case .info: symbol = "info.circle.fill"
+        }
+        if let image = StudioCodeColors.badge(symbol, size: 11, color: tint) {
+            image.draw(in: NSRect(x: cardRect.minX + 10 + (13 - image.size.width) / 2,
+                                 y: cardRect.minY + 12, width: image.size.width, height: image.size.height))
+        }
     }
 }

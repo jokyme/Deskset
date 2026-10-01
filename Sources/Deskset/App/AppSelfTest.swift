@@ -67,6 +67,7 @@ enum AppSelfTest {
         DrawFontSelfTests.run(t)
         DeskFontCatalogSelfTests.run(t)
         DeskCodeDocumentSelfTests.run(t)
+        DeskCodePresentationSelfTests.run(t)
         TextDrawSelfTests.run(t)
         DrawImageSelfTests.run(t)
         ImageDrawValueSelfTests.run(t)
