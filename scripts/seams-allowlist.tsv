@@ -605,7 +605,7 @@ timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin threa
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 wait.runLoop	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its thread runs its run loop
 
-timer.executorTimer	Sources/DesksetCore/Engine/TickScheduler.swift	1	the update timer, on the injected executor (VirtualTimeExecutor)
+timer.executorTimer	Sources/DesksetCore/Engine/TickScheduler.swift	2	the update timer and opt-in one-shot date boundary share one cancellation lease on the injected executor (VirtualTimeExecutor)
 
 zone.implicitFormatter	Sources/DesksetCore/Format/TimeLocaleSupport.swift	2	locale names for FormatLocale; locale and zone are set explicitly
 
@@ -672,3 +672,7 @@ mono.DispatchTime.now	Sources/DesksetRuntime/OffscreenRenderer.swift	2	real GPU 
 wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for the caller's Metal queue tail; submission timeout invalidates the renderer without reading its texture
 background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel replacement is deferred until an applying ScenePatch releases its contentRoot writer; no executor wait inside a claim
 wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt
+
+event.notification	Sources/Deskset/App/CodeFileWindowController.swift	2	App-owned document preview wake and date/zone/locale notifications; weak owner, main publication, removed on close; no skin action or data read
+zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
+zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale

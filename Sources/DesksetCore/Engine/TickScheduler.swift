@@ -44,6 +44,17 @@ package final class TickScheduler {
         }
     }
 
+    /// A reactive clock's next wall-clock boundary, computed from its immutable date input by the owner. It
+    /// shares the cancellation lease with the legacy clock; a late callback samples once and rearms explicitly.
+    package func startClockBoundary(after delay: TimeInterval, for target: any TickTarget) {
+        cancel()
+        guard !target.isClosed, !isPaused, delay.isFinite, delay > 0 else { return }
+        timer = target.executor.timer(interval: delay, leeway: 0, repeats: false) { [weak target] in
+            guard let target, !target.isClosed else { return }
+            target.updateForTick()
+        }
+    }
+
     package func pause() {
         guard !isPaused else { return }
         isPaused = true

@@ -12,6 +12,7 @@ func runVirtualTimeTests(_ t: TestRunner) {
     runExecutorContractTests(t)
     runVirtualQueueTests(t)
     runVirtualClockTests(t)
+    runClockBoundaryTests(t)
     runVirtualEngineTests(t)
     runBackgroundWorkTests(t)
 }
@@ -1163,5 +1164,73 @@ private func runBackgroundWorkTests(_ t: TestRunner) {
         t.check(spin { result != nil })
         t.equal(result, "live", "live mode never uses a fixture")
         skin.close()
+    }
+}
+
+
+// The same scheduler lease serves reactive boundary deadlines; no automatic clock runs in these fixtures.
+private final class BoundaryTarget: TickTarget {
+    let executor: SkinExecutor
+    var isClosed = false
+    var updateMilliseconds = 1000
+    var updates = 0
+    var onUpdate: (() -> Void)?
+    init(_ executor: SkinExecutor) { self.executor = executor }
+    func updateForTick() { updates += 1; onUpdate?() }
+    func notifySystemWake() {}
+}
+
+private func runClockBoundaryTests(_ t: TestRunner) {
+    t.suite("Executor: clock boundaries: wall phases are precise one-shot deadlines") {
+        for precision in [ProgramClockPrecision.second, .minute] {
+            let executor = VirtualTimeExecutor(start: start.addingTimeInterval(0.25), timeZone: utc)
+            let target = BoundaryTarget(executor), scheduler = TickScheduler()
+            let delay = try precision.delayToNextBoundary(after: executor.wallClock)
+            t.close(delay, precision == .second ? 0.75 : 59.75)
+            scheduler.startClockBoundary(after: delay, for: target)
+            t.equal(executor.pendingCount, 1)
+            executor.advance(by: delay - 0.0001); t.equal(target.updates, 0)
+            executor.advance(by: 0.0001); t.equal(target.updates, 1)
+            t.equal(executor.pendingCount, 0)
+            executor.advance(by: 3600); t.equal(target.updates, 1, "late work never creates a catch-up burst")
+            t.close(try precision.delayToNextBoundary(after: Date(timeIntervalSince1970: -0.25)), 0.25)
+        }
+    }
+    t.suite("Executor: clock boundaries: replacement cancel weak targets and callback reentry share one lease") {
+        let executor = virtualExecutor(), scheduler = TickScheduler()
+        var target: BoundaryTarget? = BoundaryTarget(executor)
+        scheduler.startTimer(for: target!)
+        scheduler.startClockBoundary(after: 0.5, for: target!)
+        t.equal(executor.pendingCount, 1, "replaces the legacy timer rather than adding another")
+        target?.onUpdate = { [weak target] in
+            if let target, target.updates == 1 { scheduler.startClockBoundary(after: 0.25, for: target) }
+            else { scheduler.cancel() }
+        }
+        executor.advance(by: 0.5); t.equal(target?.updates, 1); t.equal(executor.pendingCount, 1)
+        executor.advance(by: 0.25); t.equal(target?.updates, 2); t.equal(executor.pendingCount, 0)
+        scheduler.startClockBoundary(after: 10, for: target!)
+        weak var released = target
+        target = nil
+        t.check(released == nil, "the queued callback holds its target weakly")
+        executor.advance(by: 10); t.equal(executor.pendingCount, 0)
+        let closed = BoundaryTarget(executor)
+        scheduler.startClockBoundary(after: 0.5, for: closed)
+        closed.isClosed = true
+        executor.advance(by: 0.5); t.equal(closed.updates, 0)
+    }
+    t.suite("Executor: clock boundaries: invalid delays paused targets and cancellation never schedule") {
+        let executor = virtualExecutor(), target = BoundaryTarget(executor), scheduler = TickScheduler()
+        for delay in [0.0, -1, .nan, .infinity] {
+            scheduler.startTimer(for: target)
+            scheduler.startClockBoundary(after: delay, for: target)
+            t.equal(executor.pendingCount, 0)
+        }
+        scheduler.pause()
+        scheduler.startClockBoundary(after: 1, for: target)
+        t.equal(executor.pendingCount, 0)
+        scheduler.resume(updateNow: false, target: target)
+        t.equal(executor.pendingCount, 1, "the unchanged legacy resume still starts its periodic clock")
+        scheduler.cancel(); t.equal(executor.pendingCount, 0)
+        executor.advance(by: 20); t.equal(target.updates, 0)
     }
 }

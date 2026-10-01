@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 /// "Deskset (built-in)" chosen in Settings ▸ Editor such files never go to the Launch Services default (on many Macs an
 /// IDE the user never chose for skins): they get this window, the same code editor as the skin editor's code pane —
 /// highlighting, find, encoding and line endings kept byte for byte, commits after a pause, on ⌘S, when the window
-/// stops being key and when it closes. Desk documents also show their checked static program as a local preview.
+/// stops being key and when it closes. Desk documents also show their checked program as a local preview.
 /// A change made on disk meanwhile is picked up when the window
 /// becomes key (a clean buffer) or asked about before it is written over (see `CodeEditorView.onDiskConflict`).
 final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
@@ -22,6 +22,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     private(set) var readError: String?
     private(set) var deskDecorations: DeskCodeDecorations?
     private(set) var deskPreview: DeskProgramPreviewController?
+    private var previewObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
     /// A native list is bound to both the check and its original caret. Previewing entries never edits a buffer.
     private struct DeskCompletionSession {
@@ -33,7 +34,9 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
     private var deskCompletion: DeskCompletionSession?
 
-    init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil) throws {
+    init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil,
+         previewClock: SkinClock = .live, previewExecutor: SkinExecutor = MainSkinExecutor.shared,
+         previewLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale) throws {
         self.file = file.standardizedFileURL
         self.app = app
         codeView = CodeEditorView(frame: NSRect(x: 0, y: 0, width: 760, height: 580))
@@ -63,7 +66,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             deskChecking = checking
             let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
                 checking?.imageResources(for: snapshot) ?? .pending
-            }) { [weak self] snapshot in
+            }, clock: previewClock, executor: previewExecutor, dateLocale: previewLocale) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true
             }
@@ -103,6 +106,19 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
                 Log.write("Code editor: \(error.localizedDescription)", level: .error)
             }
             showDeskCheck(checking.snapshot)
+            let workspace = NSWorkspace.shared.notificationCenter
+            let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak preview] _ in
+                preview?.notifySystemWake()
+            }
+            previewObservers.append((workspace, wake))
+            let center = NotificationCenter.default
+            for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
+                         NSNotification.Name.NSSystemClockDidChange] {
+                let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak preview] _ in
+                    preview?.refreshDateInput()
+                }
+                previewObservers.append((center, token))
+            }
         }
         codeView.onFontSizeChange = { [weak app] size in
             let range = EditorPreferences.fontSizes
@@ -117,6 +133,12 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    deinit { for (center, token) in previewObservers { center.removeObserver(token) } }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        deskPreview?.setVisible(window?.occlusionState.contains(.visible) == true)
+    }
 
     /// Shows `line` (1-based), caret at its start.
     func reveal(line: Int?) {
@@ -171,6 +193,8 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        for (center, token) in previewObservers { center.removeObserver(token) }
+        previewObservers.removeAll()
         deskCompletion = nil
         codeView.onCompletionRange = nil
         codeView.onCompletions = nil

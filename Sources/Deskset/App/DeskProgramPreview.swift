@@ -5,7 +5,7 @@ import DesksetDraw
 
 /// A shared program's editor preview. The document checker owns source/version truth; this main-thread owner
 /// only compiles its current finished snapshot and borrows the view's drawing destination. It activates no widget.
-final class DeskProgramPreviewController: NSViewController {
+final class DeskProgramPreviewController: NSViewController, TickTarget {
     enum State: Equatable {
         case checking, ready, empty, unavailable(String), closed
     }
@@ -22,11 +22,23 @@ final class DeskProgramPreviewController: NSViewController {
     private var resources: ((DeskSnapshot) -> DeskProgramResources.Input)?
     private var accepts: ((DeskSnapshot) -> Bool)?
     private var projecting = false
+    private let clock: SkinClock
+    let executor: SkinExecutor
+    private let dateLocale: () -> Locale
+    private let tickScheduler = TickScheduler()
+    private var visible = false
+    var isClosed: Bool { state == .closed }
+    var updateMilliseconds: Int { runtime?.clockPrecision == .second ? 1000 : 60_000 }
     private(set) var state: State = .checking
     private(set) var scene: WidgetScene?
 
     init(resources: @escaping (DeskSnapshot) -> DeskProgramResources.Input = { _ in .ready([:]) },
+         clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
+         dateLocale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale,
          accepts: @escaping (DeskSnapshot) -> Bool) {
+        self.clock = clock
+        self.executor = executor
+        self.dateLocale = dateLocale
         self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
@@ -36,6 +48,38 @@ final class DeskProgramPreviewController: NSViewController {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    static func currentDateLocale() -> Locale {
+        // Preserve the Mac's region/calendar preferences while using the Studio's selected display language.
+        var components = Locale.components(fromIdentifier: Locale.current.identifier)
+        components[NSLocale.Key.languageCode.rawValue] = StudioText.language == .chinese ? "zh" : "en"
+        if StudioText.language == .chinese { components[NSLocale.Key.scriptCode.rawValue] = "Hans" }
+        else { components.removeValue(forKey: NSLocale.Key.scriptCode.rawValue) }
+        return Locale(identifier: Locale.identifier(fromComponents: components))
+    }
+
+    func setVisible(_ value: Bool) {
+        precondition(executor.isCurrent && Thread.isMainThread)
+        guard state != .closed, visible != value else { return }
+        visible = value
+        if value { updateForTick() } else { tickScheduler.cancel() }
+    }
+
+    func updateForTick() {
+        precondition(executor.isCurrent && Thread.isMainThread)
+        tickScheduler.cancel()
+        guard visible, state != .closed, let snapshot else { return }
+        guard accepts?(snapshot) == true else { clear(.checking); return }
+        project()
+    }
+
+    func notifySystemWake() { updateForTick() }
+
+    /// Date/zone/locale notifications change input, not the checked program or its session variables.
+    func refreshDateInput() {
+        guard state != .closed else { return }
+        if visible { updateForTick() }
+    }
 
     override func loadView() {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 580))
@@ -133,6 +177,7 @@ final class DeskProgramPreviewController: NSViewController {
         let context = canvas.context ?? DrawContext(fonts: AppFontResolver())
         canvas.context = context
         let stamp = environment()
+        let dateInput = ProgramDateInput(instant: clock.now(), timeZone: clock.timeZone(), locale: dateLocale())
         do {
             let images: [String: ProgramImageResource]
             switch resources?(snapshot) ?? .pending {
@@ -140,7 +185,7 @@ final class DeskProgramPreviewController: NSViewController {
             case .failed(let message): clear(.unavailable(message)); return
             case .ready(let values): images = values
             }
-            let next = try runtime.project(environment: stamp, images: images) { text, style, width in
+            let next = try runtime.project(environment: stamp, images: images, dateInput: dateInput) { text, style, width in
                 // Reject an impossible native font before constructing it; never clamp the program's point size.
                 let pixels = style.fontSize * (96.0 / 72.0) * stamp.scale
                 guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else {
@@ -184,6 +229,10 @@ final class DeskProgramPreviewController: NSViewController {
             scrollView.contentView.scroll(to: scrollView.contentView.bounds.origin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
             updateStatus()
+            tickScheduler.cancel()
+            if visible, let precision = runtime.clockPrecision {
+                tickScheduler.startClockBoundary(after: try precision.delayToNextBoundary(after: dateInput.instant), for: self)
+            }
         } catch PreviewFailure.extent { clear(.unavailable(StudioText[.deskPreviewTooLarge]), keepingProgram: true) }
         catch { clear(.unavailable(String(describing: error)), keepingProgram: true) }
     }
@@ -232,6 +281,7 @@ final class DeskProgramPreviewController: NSViewController {
     }
 
     private func clear(_ next: State, keepingProgram: Bool = false) {
+        tickScheduler.cancel()
         state = next
         // A current program can recover when a display/font changes; errors retain no previous scene or cache.
         // Pending/failed source checks and closing release that program too.
