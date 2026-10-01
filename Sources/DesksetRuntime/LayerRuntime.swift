@@ -54,20 +54,22 @@ package final class LayerRuntime {
     /// physical worker performs one native display. The caller detaches it after owner-side release.
     package final class NativeStage {
         package let root: CALayer
+        package let fallbackRoot: CALayer
         package let sourceSequence: UInt64
         package let scale: CGFloat
         package let colorSpace: CGColorSpace
         package let callbackReport: ELayerContent.CallbackReport
 
-        fileprivate init(_ content: ELayerContent, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace) {
+        fileprivate init(_ content: ELayerContent, fallbackRoot: CALayer, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace) {
             root = content.root
+            self.fallbackRoot = fallbackRoot
             sourceSequence = sequence
             self.scale = scale
             self.colorSpace = colorSpace
             callbackReport = content.callbackReport
         }
     }
-    package enum NativeStageFailure: Error, Equatable { case notReady, busy, staleSource, notAttached }
+    package enum NativeStageFailure: Error, Equatable { case notReady, busy, staleSource, notAttached, awaitingRollback }
 
     private final class NoActionsLayer: CALayer {
         override func action(forKey event: String) -> CAAction? { nil }
@@ -117,17 +119,19 @@ package final class LayerRuntime {
     }
 
     private final class NativeCandidate {
+        enum Publication: Equatable { case scoped, publishing, published }
         let attachment: NativeStage
         let content: ELayerContent
         // Share the existing captured immutable recipe; never project or deep-copy another scene for staging.
         let source: Key
         var attached = false
         var displayed = false
+        var publication = Publication.scoped
 
-        init(_ content: ELayerContent, source: Key, sequence: UInt64) {
+        init(_ content: ELayerContent, fallbackRoot: CALayer, source: Key, sequence: UInt64) {
             self.content = content
             self.source = source
-            attachment = NativeStage(content, sequence: sequence, scale: source.scale, colorSpace: source.colorSpace)
+            attachment = NativeStage(content, fallbackRoot: fallbackRoot, sequence: sequence, scale: source.scale, colorSpace: source.colorSpace)
         }
     }
 
@@ -191,6 +195,7 @@ package final class LayerRuntime {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
         guard transferred == nil else { throw Failure.transferredWriter }
+        guard !nativePublicationHoldsWriter else { throw Failure.transferredWriter }
         switch state {
         case .hidden: return .suppressed
         case .closing, .closed: throw Failure.invalidLifecycle(state)
@@ -291,6 +296,7 @@ package final class LayerRuntime {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
         guard transferred == nil else { throw Failure.transferredWriter }
+        guard !nativePublicationHoldsWriter else { throw Failure.transferredWriter }
         switch state {
         case .hidden, .closing, .closed: throw Failure.invalidLifecycle(state)
         case .loading, .live, .refreshing: break
@@ -357,7 +363,7 @@ package final class LayerRuntime {
         let content = try ELayerContent(plan: SinglePartition.plan(in: key.window), scale: key.scale,
             colorSpace: key.colorSpace, maximumBaseBitmapBytes: maximumOwnedBitmapBytes,
             maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, executor: executor)
-        let candidate = NativeCandidate(content, source: key, sequence: frame.sequence)
+        let candidate = NativeCandidate(content, fallbackRoot: root, source: key, sequence: frame.sequence)
         nativeCandidate = candidate
         return candidate.attachment
     }
@@ -397,11 +403,37 @@ package final class LayerRuntime {
         return candidate.content.callbackReport.observation
     }
 
+    /// Freeze the accepted C root before main changes its host. This is actual owner access, not a PreparedFrame
+    /// lease. New C preparation/commit stays blocked until main has acknowledged the matching rollback.
+    package func beginNativePublication(_ stage: NativeStage) throws {
+        try checkMutable()
+        let candidate = try currentNativeCandidate(stage)
+        guard candidate.attached, candidate.displayed else { throw NativeStageFailure.notAttached }
+        if let failure = stage.callbackReport.observation.failure { throw failure }
+        candidate.publication = .publishing
+    }
+
+    package func acknowledgeNativePublication(_ stage: NativeStage) throws {
+        try checkOwner()
+        guard let candidate = nativeCandidate, candidate.attachment === stage,
+              candidate.publication == .publishing else { throw NativeStageFailure.staleSource }
+        candidate.publication = .published
+    }
+
+    package var nativePublicationHoldsWriter: Bool {
+        precondition(executor.isCurrent)
+        return nativeCandidate.map { $0.publication != .scoped } ?? false
+    }
+
     /// Owner cleanup precedes main detachment. A late/foreign release cannot clear a newer candidate.
     @discardableResult
-    package func releaseNativeStage(_ stage: NativeStage) throws -> Bool {
+    package func releaseNativeStage(_ stage: NativeStage, rollbackAcknowledged: Bool = false,
+                                    permanentStop: Bool = false) throws -> Bool {
         try checkOwner()
-        guard nativeCandidate?.attachment === stage else { return false }
+        guard let candidate = nativeCandidate, candidate.attachment === stage else { return false }
+        guard candidate.publication == .scoped || rollbackAcknowledged || permanentStop else {
+            throw NativeStageFailure.awaitingRollback
+        }
         nativeCandidate = nil
         return true
     }
@@ -525,6 +557,7 @@ package final class LayerRuntime {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
         guard transferred == nil else { throw Failure.transferredWriter }
+        guard !nativePublicationHoldsWriter else { throw Failure.transferredWriter }
         guard state != .closing, state != .closed else { throw Failure.invalidLifecycle(state) }
     }
 

@@ -398,6 +398,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if let own = reloadTicket, !isStarted, !loadFailed { app.studioReload(own, .abandoned, self) }
         if let ticket { app.studioReload(ticket, .closing, self) }
         // OnCloseAction runs while the skin can still handle bangs (it cannot reload or unload itself any more).
+        runtime.rollbackVisibleNativePublication(provider: content, failure: .cancelled)
         isClosing = true
         layerStartPending = nil
         deferredLayerOrderIn = nil
@@ -583,6 +584,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     private func replacePanelNow() {
+        runtime.rollbackVisibleNativePublication(provider: content, failure: .staleDestination)
         let (generation, overflow) = panelGeneration.addingReportingOverflow(1)
         guard !overflow else { return }
         panelGeneration = generation
@@ -885,6 +887,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             runtime.completeNativeStage(stage, result: result, facts: facts, size: view.bounds.size)
         case .nativeStageReleased, .nativeStageRejected:
             break // SkinRuntime handles cleanup/rejection before window delivery, including a released window.
+        case .nativeStagePublicationFinished(let stage, let result):
+            guard runtime === self.runtime, !isStopped, stage.provider === content else {
+                runtime.rollbackNativePublication(stage, failure: .cancelled)
+                return
+            }
+            runtime.finishNativePublication(stage, result: result, facts: facts, size: view.bounds.size)
+        case .nativeStageRollback(let stage, let failure), .nativeStageCallbackFailed(let stage, let failure):
+            runtime.rollbackNativePublication(stage, failure: failure)
         case .scenePatch(let patch):
             guard runtime === self.runtime else { _ = patch.content.reclaim(.invalidated); return }
             applyScenePatch(patch)
@@ -932,6 +942,18 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         precondition(Thread.isMainThread)
         guard !isStopped else { return completion(.failure(.cancelled)) }
         runtime.requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, completion: completion)
+    }
+
+    /// An explicit same-generation Single publication. Default/ordinary C frames never call this method.
+    func publishNativeSingle(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        precondition(Thread.isMainThread)
+        guard !isStopped, !isHiddenByBang else { return completion(.failure(.cancelled)) }
+        runtime.publishNativeSingle(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, completion: completion)
+    }
+
+    func rollbackNativeSingle() {
+        precondition(Thread.isMainThread)
+        runtime.rollbackVisibleNativePublication(provider: content, failure: .cancelled)
     }
 
     private func attachNativeStage(_ stage: SkinNativeStage) {
@@ -1214,6 +1236,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         companions?.windowChanged()
         if holdsFacts && sentFacts != nil { return }
         var now = facts
+        runtime.rollbackVisibleNativePublication(provider: content, failure: .staleDestination,
+                                                   facts: now, size: view.bounds.size)
         if !force, let sent = sentFacts, sent.hasSameValues(as: now) { return }
         factsSequence += 1
         now.sequence = factsSequence

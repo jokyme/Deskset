@@ -46,6 +46,8 @@ package final class ELayerContent {
         private var callbacks: [Int]
         private var destinations: [Destination?]
         private var failure: Failure?
+        private var firstFailure: ((Failure) -> Void)?
+        private var notifiedFailure = false
 
         fileprivate init(count: Int) {
             callbacks = [Int](repeating: 0, count: count)
@@ -60,15 +62,15 @@ package final class ELayerContent {
 
         fileprivate func entered(_ index: Int) {
             lock.lock()
-            defer { lock.unlock() }
             guard callbacks.indices.contains(index) else {
-                if failure == nil { failure = .unexpectedCallback("Callback has no original layer index") }
+                lock.unlock()
+                fail(.unexpectedCallback("Callback has no original layer index"))
                 return
             }
             let (count, overflow) = callbacks[index].addingReportingOverflow(1)
-            if overflow {
-                if failure == nil { failure = .resourceLimit("Callback count overflows Int") }
-            } else { callbacks[index] = count }
+            if !overflow { callbacks[index] = count }
+            lock.unlock()
+            if overflow { fail(.resourceLimit("Callback count overflows Int")) }
         }
 
         fileprivate func record(_ destination: Destination, at index: Int) {
@@ -79,8 +81,27 @@ package final class ELayerContent {
 
         fileprivate func fail(_ value: Failure) {
             lock.lock()
-            defer { lock.unlock() }
             if failure == nil { failure = value }
+            let notification = takeNotification()
+            lock.unlock()
+            if let notification { notification.0(notification.1) }
+        }
+
+        /// A publication installs one weak consumer before attachment. Notify outside this lock, including when
+        /// the consumer arrives after a failure. The callback may schedule rollback, never access drawing caches.
+        package func observeFirstFailure(_ observer: @escaping (Failure) -> Void) {
+            lock.lock()
+            precondition(firstFailure == nil)
+            firstFailure = observer
+            let notification = takeNotification()
+            lock.unlock()
+            if let notification { notification.0(notification.1) }
+        }
+
+        private func takeNotification() -> (((Failure) -> Void), Failure)? {
+            guard !notifiedFailure, let firstFailure, let failure else { return nil }
+            notifiedFailure = true
+            return (firstFailure, failure)
         }
     }
 

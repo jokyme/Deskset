@@ -108,6 +108,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
                 self?.request(.nativeStageCompleted(stage, result))
             }
             frames.requestNativeStopRelease = { [weak self] stage in self?.request(.nativeStageReleased(stage)) }
+            frames.requestNativePublicationFinished = { [weak self] stage, result in
+                self?.request(.nativeStagePublicationFinished(stage, result))
+            }
+            frames.requestNativeRollback = { [weak self] stage, failure in self?.request(.nativeStageRollback(stage, failure)) }
         }
         frames.start(on: executor)
     }
@@ -258,7 +262,16 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
                 self.request(.nativeStageRejected(request, .cancelled))
                 return false
             }
-            do { self.request(.attachNativeStage(try frames.prepareNativeStage(request))) }
+            do {
+                let stage = try frames.prepareNativeStage(request)
+                if request.publishesSingle {
+                    stage.attachment.callbackReport.observeFirstFailure { [weak self, weak stage] failure in
+                        guard let self, let stage else { return }
+                        self.request(.nativeStageCallbackFailed(stage, .rendering(String(describing: failure))))
+                    }
+                }
+                self.request(.attachNativeStage(stage))
+            }
             catch let failure as SkinNativeStageFailure { self.request(.nativeStageRejected(request, failure)) }
             catch { self.request(.nativeStageRejected(request, .rendering(String(describing: error)))) }
             return true
@@ -271,6 +284,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
             return true
         case .nativeStageDetached(let stage):
             frames.detachedNativeStage(stage)
+            return true
+        case .nativeStagePublicationCommitted(let stage, let observation):
+            frames.acknowledgeNativePublication(stage, observation: observation)
+            return true
+        case .nativeStageRolledBack(let stage):
+            guard frames.rolledBackNativePublication(stage) else { return false }
+            request(.nativeStageReleased(stage))
             return true
         case .scenePatchFinished(let patch):
             frames.finishScenePatch(patch)
@@ -365,7 +385,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         case .frameWanted:
             frames.setNeedsFrame()
         case .mirrorInput, .windowFacts, .patch, .scenePatchFinished,
-             .nativeStageRequested, .nativeStageAttached, .nativeStageRelease, .nativeStageDetached:
+             .nativeStageRequested, .nativeStageAttached, .nativeStageRelease, .nativeStageDetached,
+             .nativeStagePublicationCommitted, .nativeStageRolledBack:
             break
         }
         return true
@@ -443,13 +464,23 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     /// Internal, explicit, one-shot qualification. No automatic frame path calls it. Unsupported bitmap or Main
     /// modes answer before allocating an E owner, capturing a scene or scheduling any worker work.
     func requestNativeStage(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, publishesSingle: false, completion: completion)
+    }
+
+    /// Explicit same-generation Single E publication only. The ordinary C/default frame path never invokes it.
+    func publishNativeSingle(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, publishesSingle: true, completion: completion)
+    }
+
+    private func requestNativeStage(maximumCallbackBitmapBytes: Int, publishesSingle: Bool,
+                                    completion: @escaping (SkinNativeStageResult) -> Void) {
         precondition(Thread.isMainThread)
         guard frames.contentMode.usesLayers else { return completion(.failure(.unsupportedMode)) }
         guard let worker = executor as? SkinThreadExecutor else { return completion(.failure(.unsupportedExecutor)) }
         guard !didClose, !worker.hasExited else { return completion(.failure(.cancelled)) }
         // Even inside a main exclusive callback, display/creation must run later on the physical worker.
         enqueue(.nativeStageRequested(SkinNativeStageRequest(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes,
-                                                            completion: completion)))
+                                                            publishesSingle: publishesSingle, completion: completion)))
     }
 
     func nativeStageAttached(_ stage: SkinNativeStage) {
@@ -474,7 +505,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         // A queued success/attach cannot turn it back into readiness or require another stopped-owner work item.
         if stage.hasStoppedOwnerRelease {
             stage.request.complete(.failure(.cancelled))
+            if stage.request.publishesSingle { rollbackNativePublication(stage, failure: .cancelled) }
             stage.provider.detachNativeStage(stage.attachment)
+            return
+        }
+        if stage.request.publishesSingle {
+            completeNativePublication(stage, result: result, facts: facts, size: size)
             return
         }
         let completed: Bool
@@ -500,6 +536,94 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
             completed = stage.request.complete(result)
         }
         if completed { enqueue(.nativeStageRelease(stage)) }
+    }
+
+    /// Main retains only the attachment envelope. Drawing ownership remains strong on the physical owner until
+    /// rollback/release; a backend switch keeps the already presented scene generation and its host values.
+    private var publishedNativePublication: SkinNativeStage?
+
+    private func completeNativePublication(_ stage: SkinNativeStage, result: SkinNativeStageResult,
+                                           facts: SkinWindowFacts?, size: CGSize?) {
+        guard !stage.hasPublicationRollback, !stage.wasPublished else { return }
+        do {
+            let ready = try result.get()
+            guard let facts, let size, stage.epoch.matches(facts, size: size) else {
+                throw SkinNativeStageFailure.staleDestination
+            }
+            let publication: Result<Void, Error>? = executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+                Result {
+                    guard frames.nativeStageIsCurrent(stage) else { throw SkinNativeStageFailure.cancelled }
+                    let current = stage.attachment.callbackReport.observation
+                    if let failure = current.failure { throw failure }
+                    guard current.callbacks == ready.native.callbacks else {
+                        throw SkinNativeStageFailure.rendering("Native callback count changed before publication")
+                    }
+                    try frames.beginNativePublication(stage)
+                    guard stage.provider.publishNativeStage(stage.attachment, executor: executor) else {
+                        throw SkinNativeStageFailure.cancelled
+                    }
+                    stage.recordPublicationCommit()
+                    publishedNativePublication = stage
+                    if let failure = stage.attachment.callbackReport.observation.failure { throw failure }
+                }
+            }
+            guard let publication else { throw SkinNativeStageFailure.attachmentTimedOut }
+            try publication.get()
+            enqueue(.nativeStagePublicationCommitted(stage, ready))
+        } catch let failure as SkinNativeStageFailure { rollbackNativePublication(stage, failure: failure) }
+        catch { rollbackNativePublication(stage, failure: .rendering(String(describing: error))) }
+    }
+
+    /// Called only after the actual owner consumed Main's commit acknowledgment. An older queued success cannot
+    /// override a newer callback failure, cancellation, destination or rollback. The result carries no ready token.
+    func finishNativePublication(_ stage: SkinNativeStage, result: SkinNativeStageResult,
+                                 facts: SkinWindowFacts, size: CGSize) {
+        precondition(Thread.isMainThread)
+        guard publishedNativePublication === stage, !stage.hasPublicationRollback, !stage.hasOwnerRelease,
+              stage.epoch.matches(facts, size: size) else {
+            rollbackNativePublication(stage, failure: .staleDestination)
+            return
+        }
+        do {
+            let ready = try result.get()
+            let checked: Result<SkinNativeStageObservation, Error>? = executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+                Result {
+                    guard frames.nativeStageIsCurrent(stage) else { throw SkinNativeStageFailure.cancelled }
+                    let current = stage.attachment.callbackReport.observation
+                    if let failure = current.failure { throw failure }
+                    guard ready.published, current.callbacks == ready.native.callbacks else {
+                        throw SkinNativeStageFailure.rendering("Native callback count changed after publication acknowledgment")
+                    }
+                    return SkinNativeStageObservation(sourceSequence: ready.sourceSequence, native: current,
+                        drewOnPhysicalOwner: ready.drewOnPhysicalOwner, published: true)
+                }
+            }
+            guard let checked else { throw SkinNativeStageFailure.attachmentTimedOut }
+            stage.request.complete(.success(try checked.get()))
+        } catch let failure as SkinNativeStageFailure { rollbackNativePublication(stage, failure: failure) }
+        catch { rollbackNativePublication(stage, failure: .rendering(String(describing: error))) }
+    }
+
+    /// Main-only host rollback needs no stopped/busy executor lease. A stale envelope can release its own owner,
+    /// but cannot hide a newer provider attachment or advance any newer panel/scene acknowledgment.
+    func rollbackNativePublication(_ stage: SkinNativeStage, failure: SkinNativeStageFailure) {
+        precondition(Thread.isMainThread)
+        guard stage.request.publishesSingle else { return }
+        let hadAck = stage.hasPublicationRollback
+        let hidden = stage.provider.rollbackNativeStage(stage.attachment)
+        guard hidden || !stage.wasPublished || stage.hasOwnerRelease else { return }
+        stage.recordPublicationRollback()
+        if publishedNativePublication === stage { publishedNativePublication = nil }
+        stage.request.complete(.failure(failure))
+        if !hadAck, !stage.hasStoppedOwnerRelease { enqueue(.nativeStageRolledBack(stage)) }
+    }
+
+    func rollbackVisibleNativePublication(provider: LayerContentProvider, failure: SkinNativeStageFailure,
+                                           facts: SkinWindowFacts? = nil, size: CGSize? = nil) {
+        precondition(Thread.isMainThread)
+        guard let stage = publishedNativePublication, stage.provider === provider else { return }
+        if let facts, let size, stage.epoch.matches(facts, size: size) { return }
+        rollbackNativePublication(stage, failure: failure)
     }
 
     /// Main calls this after the window/fade no longer needs its last frame. Cleanup goes behind close on the
@@ -543,8 +667,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
     /// Asks the main thread: at once when on it, else queued there in order.
     func request(_ request: SkinRequest) {
         if Thread.isMainThread {
-            applyRequestOnMain(request)
-            return
+            // A CA callback can arrive while a provider transaction holds its leaf lock. Failure notification must
+            // leave that callback before attempting Main rollback; reuse the existing one Main delivery site.
+            if case .nativeStageCallbackFailed = request {} else {
+                applyRequestOnMain(request)
+                return
+            }
         }
         // A load the main thread has not scheduled yet: bangs for that config wait for it (`isLoadPending`).
         let load = SkinRuntime.configLoaded(by: request)
@@ -553,7 +681,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         // these bounded requests retain the runtime across main delivery; ordinary requests keep their weak life.
         let nativeOwner: SkinRuntime?
         switch request {
-        case .attachNativeStage, .nativeStageCompleted, .nativeStageReleased, .nativeStageRejected: nativeOwner = self
+        case .attachNativeStage, .nativeStageCompleted, .nativeStageReleased, .nativeStageRejected,
+             .nativeStagePublicationFinished, .nativeStageRollback, .nativeStageCallbackFailed: nativeOwner = self
         default: nativeOwner = nil
         }
         DispatchQueue.main.async { [weak self, nativeOwner] in
@@ -576,11 +705,17 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
         switch request {
         case .nativeStageReleased(let stage):
             guard stage.hasOwnerRelease else { return }
+            if stage.request.publishesSingle { rollbackNativePublication(stage, failure: .cancelled) }
             if stage.hasStoppedOwnerRelease { stage.request.complete(.failure(.cancelled)) }
             stage.provider.detachNativeStage(stage.attachment)
             if !stage.hasStoppedOwnerRelease { enqueue(.nativeStageDetached(stage)) }
         case .nativeStageRejected(let request, let failure):
             request.complete(.failure(failure))
+        case .nativeStageRollback(let stage, let failure), .nativeStageCallbackFailed(let stage, let failure):
+            rollbackNativePublication(stage, failure: failure)
+        case .nativeStagePublicationFinished(let stage, _):
+            if let window { window.apply(request, from: self) }
+            else { rollbackNativePublication(stage, failure: .cancelled) }
         case .attachNativeStage(let stage), .nativeStageCompleted(let stage, _):
             if let window { window.apply(request, from: self) }
             else { completeNativeStage(stage, result: .failure(.cancelled)) }

@@ -55,6 +55,7 @@ enum SkinLayerContentSelfTests {
         nativeStagingControlTests(t)
         nativeStagingStopTests(t)
         nativeStagingUnexpectedCallbackTests(t)
+        nativePublicationTests(t)
     }
 
     private static func app(_ t: AppTestRunner, threading: SkinThreading, source: String = text) throws -> AppController {
@@ -1415,5 +1416,392 @@ enum SkinLayerContentSelfTests {
         image.magnificationFilter = .nearest
         tree.addSublayer(image)
         return tree
+    }
+
+    /// These fixtures publish the real Single backing, then select the same accepted C generation on rollback.
+    /// They remain never-ordered native window observations, not WindowServer/profile-change G2' certification.
+    private final class NativePublicationGate: SkinRuntimeWindow {
+        let window: SkinWindowController
+        var stage: SkinNativeStage?
+        var holdsFinished = false
+        var finished: (SkinNativeStage, SkinNativeStageResult)?
+        init(_ window: SkinWindowController) { self.window = window }
+        func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
+            if case .attachNativeStage(let stage) = request { self.stage = stage }
+            if case .nativeStagePublicationFinished(let stage, let result) = request, holdsFinished {
+                finished = (stage, result)
+            } else { window.apply(request, from: runtime) }
+        }
+        func releaseFinished() {
+            guard let finished else { return }
+            self.finished = nil
+            window.apply(.nativeStagePublicationFinished(finished.0, finished.1), from: window.runtime)
+        }
+        func batchingWindowChanges(_ body: () -> Void) { window.batchingWindowChanges(body) }
+        func liveEnvironment(for skin: Skin) -> SkinEnvironment? { window.liveEnvironment(for: skin) }
+        var liveTakesPointer: Bool? { window.liveTakesPointer }
+    }
+
+    private static let publicationCard = """
+
+    [GlassCard]
+    Meter=Image
+    X=#Left#
+    Y=18
+    W=10
+    H=10
+    DynamicVariables=1
+    MacGlass=Regular
+    MacGlassCornerRadius=2
+    ToolTipTitle=Frame
+    ToolTipText=Card #Left#
+    LeftMouseUpAction=[!SetVariable Selected 1]
+    """
+
+    private static func publicationWindow(_ app: AppController, _ t: AppTestRunner) throws -> SkinWindowController {
+        guard let window = app.activate(config: "App\\LayerContent", file: "Test.ini", contentMode: mode) else {
+            throw CocoaError(.coderReadCorrupt)
+        }
+        t.check(AppSelfTest.spin(timeout: 30) { window.isStarted }, "actual worker startup completes before publication")
+        window.pauseUpdates()
+        window.visibilityForTesting = true
+        window.publishFacts(force: true)
+        window.runtime.send(.firstFrame)
+        settleCForNativeStage(window, t)
+        t.check(window.facts.colorSpace?.model == .rgb, "actual optional window RGB profile must be present")
+        t.equal(window.view.bounds.size, CGSize(width: 48, height: 32))
+        return window
+    }
+
+    @discardableResult
+    private static func publishSingle(_ window: SkinWindowController, _ t: AppTestRunner) -> SkinNativeStageObservation? {
+        var result: SkinNativeStageResult?, completions = 0
+        window.publishNativeSingle(maximumCallbackBitmapBytes: 1_000_000) { result = $0; completions += 1 }
+        t.check(AppSelfTest.spin(timeout: 30) { result != nil }, "physical draw, Main commit and owner publication ack complete")
+        t.equal(completions, 1)
+        guard case .success(let observation)? = result else {
+            t.check(false, "actual publication succeeds: \(String(describing: result))")
+            return nil
+        }
+        t.check(observation.published && observation.drewOnPhysicalOwner)
+        t.equal(observation.native.callbacks, [1])
+        t.equal(observation.native.failure, nil)
+        guard let attachment = window.content.visibleNativeStage, let host = window.content.stagedNativeHost else {
+            t.check(false, "a real visible native attachment is required")
+            return nil
+        }
+        t.equal(attachment.sourceSequence, observation.sourceSequence)
+        t.equal(host.opacity, Float(1), "production publishes E, not a test-only opacity override")
+        t.equal(window.content.contentOpacity, Float(0), "the saved C wrapper is hidden without losing images")
+        t.check(host.superlayer === window.view.layer && !host.isGeometryFlipped)
+        t.equal(window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.nativePublicationHoldsWriter }, true)
+        return observation
+    }
+
+    private static func waitForNativeRetirement(_ window: SkinWindowController, _ t: AppTestRunner) {
+        t.check(AppSelfTest.spin(timeout: 30) {
+            window.content.stagedNativeHost == nil &&
+                window.runtime.exclusive { _ in !window.runtime.frames.hasNativeStage } == true
+        }, "real owner release, Main detach and owner detach acknowledgment drain the bounded slot")
+        t.check(window.content.visibleNativeStage == nil)
+        t.equal(window.content.contentOpacity, Float(1))
+    }
+
+    private static func publicationReference(_ window: SkinWindowController, _ executor: SkinThreadExecutor,
+                                              _ t: AppTestRunner) throws -> (LayerRuntime.Frame, LayerContentBuilder.Content) {
+        let answer = Guarded<Result<(LayerRuntime.Frame, LayerContentBuilder.Content), Error>?>(nil)
+        ownerWork(executor, t) {
+            answer.access { value in value = Result {
+                let skin = window.runtime.skin!, frames = window.runtime.frames
+                guard let frame = frames.layerRuntime?.currentFrame else { throw CocoaError(.coderReadCorrupt) }
+                let context = SkinRenderContext.of(skin)
+                let scene = context.sceneProjector.project(skin, environment: AppSceneEnvironment(scale: Double(frame.scale),
+                    appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: frames.appearance),
+                    glassSource: .published)
+                let builder = try LayerContentBuilder(plan: SinglePartition.plan(in: frame.plan.window), scale: frame.scale,
+                    colorSpace: frame.colorSpace, maximumOwnedBitmapBytes: 1_000_000)
+                guard let image = try builder.build(scene, context: context.drawing, cycle: skin.updateCount,
+                    glass: .hitArea).first else { throw CocoaError(.coderReadCorrupt) }
+                return (frame, image)
+            } }
+        }
+        guard let answer = answer.current else { throw CocoaError(.coderReadCorrupt) }
+        return try answer.get()
+    }
+
+    private static func readPublishedNative(_ window: SkinWindowController, _ expected: LayerContentBuilder.Content,
+                                           _ renderer: OffscreenRenderer, _ t: AppTestRunner) throws -> [UInt8] {
+        let readback = window.runtime.exclusive(timeout: 30) { _ -> Result<[UInt8], Error> in
+            Result {
+                guard let host = window.content.stagedNativeHost, let root = host.sublayers?.first,
+                      let leaf = root.sublayers?.first, let parent = host.superlayer,
+                      let index = parent.sublayers?.firstIndex(where: { $0 === host }), let slot = UInt32(exactly: index),
+                      let attachment = window.content.visibleNativeStage else { throw CocoaError(.coderReadCorrupt) }
+                let flips = [host, root, leaf].map { $0.contentsAreFlipped() }
+                t.equal(host.opacity, Float(1))
+                t.equal(window.content.contentOpacity, Float(0))
+                defer {
+                    CATransaction.begin(); CATransaction.setDisableActions(true)
+                    host.removeFromSuperlayer()
+                    parent.insertSublayer(host, at: slot)
+                    CATransaction.commit()
+                    t.equal([host, root, leaf].map { $0.contentsAreFlipped() }, flips)
+                    t.equal(parent.sublayers?.firstIndex(where: { $0 === host }), Optional(index))
+                    t.equal(host.opacity, Float(1))
+                }
+                let actual = try renderer.render(host, at: 0, deadline: .now() + .seconds(30))
+                let reference = try renderer.render(singleTree(expected, scale: attachment.scale, size: window.view.bounds.size),
+                    at: 0, deadline: .now() + .seconds(30))
+                let difference = try PixelComparison.compare(reference: reference.rgba, candidate: actual.rgba, width: 48, height: 32)
+                t.check(difference.isExact, "visible real E backing / independent Single exact bytes: \(difference)")
+                t.check(stride(from: 3, to: actual.rgba.count, by: 4).contains { actual.rgba[$0] > 0 && actual.rgba[$0] < 255 },
+                        "published E contains actual nonempty translucent ink")
+                t.equal(attachment.callbackReport.observation.callbacks, [1])
+                t.equal(attachment.callbackReport.observation.failure, nil)
+                return actual.rgba
+            }
+        }
+        guard let readback else { throw CocoaError(.coderReadCorrupt) }
+        return try readback.get()
+    }
+
+    private static func nativePublicationTests(_ t: AppTestRunner) {
+        t.suite("App: layer window E publication: real visible Single preserves its C frame through A/B/A") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try publicationWindow(app, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor, let space = window.facts.colorSpace,
+                  let device = MTLCreateSystemDefaultDevice(), let cRoot = window.content.installedLayerRoot else {
+                return t.check(false, "actual window, worker, profile and Metal controls")
+            }
+            let renderer = try OffscreenRenderer(width: 48, height: 32, device: device,
+                maximumReadbackBytes: 48 * 32 * 4, colorSpace: space)
+            var saved: [[UInt8]] = []
+            for left in [4, 12, 4] {
+                ownerWork(executor, t) {
+                    window.runtime.skin.execute("[!SetVariable Left \(left)][!UpdateMeter *][!Redraw]", from: nil)
+                    window.runtime.frames.runLoopTurn(.beforeWaiting)
+                }
+                settleCForNativeStage(window, t)
+                let (before, reference) = try publicationReference(window, executor, t)
+                let presented = window.content.state.presented
+                let drawn = window.runtime.exclusive { _ in window.runtime.frames.framesDrawn }
+                guard let observation = publishSingle(window, t) else { return }
+                t.equal(observation.sourceSequence, before.sequence)
+                t.check(window.content.installedLayerRoot === cRoot)
+                saved.append(try readPublishedNative(window, reference, renderer, t))
+                ownerWork(executor, t) {
+                    let frame = window.runtime.frames.layerRuntime?.currentFrame
+                    t.equal(frame?.sequence, before.sequence)
+                    t.check(sameImages(frame?.contents.map(\.image), before.contents.map(\.image)))
+                    t.equal(window.runtime.frames.framesDrawn, drawn)
+                }
+                t.equal(window.content.state.presented, presented, "same-generation backend switch is not a second C frame")
+                window.rollbackNativeSingle()
+                t.equal(window.content.contentOpacity, Float(1), "Main selects the saved C frame before owner release")
+                waitForNativeRetirement(window, t)
+                ownerWork(executor, t) {
+                    t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, before.sequence)
+                    t.check(sameImages(window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image), before.contents.map(\.image)))
+                }
+            }
+            t.check(saved[0] != saved[1], "B changes actual published native bytes")
+            t.equal(saved[0], saved[2], "published A returns byte for byte")
+            t.check(renderer.hasVerifiedCanary, "unchanged native canary/fence qualifies these finite observations")
+            try checkCurrentTree(window, 48, t)
+        }
+        t.suite("App: layer window E publication: actual Main native failure rolls back once without drawing caches") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try publicationWindow(app, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return }
+            let (before, _) = try publicationReference(window, executor, t)
+            let rollbacks = Guarded(0)
+            window.runtime.messageObserver = { message in
+                if case .nativeStageRolledBack = message { rollbacks.access { $0 += 1 } }
+            }
+            defer { window.runtime.messageObserver = nil }
+            guard publishSingle(window, t) != nil, let attachment = window.content.visibleNativeStage,
+                  let leaf = attachment.root.sublayers?.first else { return }
+            let drawn = window.runtime.exclusive { _ in window.runtime.frames.framesDrawn }
+            t.check(Thread.isMainThread && !executor.isCurrent && !executor.isOnThread)
+            for _ in 0..<2 { leaf.setNeedsDisplay(); leaf.displayIfNeeded() }
+            t.equal(attachment.callbackReport.observation.failure, .wrongOwner, "actual unexpected CA entries retain the strict guard")
+            t.equal(attachment.callbackReport.observation.callbacks, [3])
+            waitForNativeRetirement(window, t)
+            t.equal(rollbacks.current, 1, "first failure notification produces exactly one owner rollback acknowledgment")
+            ownerWork(executor, t) {
+                t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, before.sequence)
+                t.check(sameImages(window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image), before.contents.map(\.image)))
+                t.equal(window.runtime.frames.framesDrawn, drawn)
+            }
+            try checkCurrentTree(window, 48, t)
+        }
+        #if DEBUG
+        t.suite("App: layer window E publication: dirty coalesces glass size and hit map before the C writer resumes") {
+            let app = try app(t, threading: .engine, source: text + publicationCard)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try publicationWindow(app, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return }
+            let before = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            let oldGlass = window.glass.regions, oldTips = window.view.toolTipRects
+            t.check(!oldGlass.isEmpty && !oldTips.isEmpty)
+            guard publishSingle(window, t) != nil else { return }
+            var patches: [SkinScenePatch] = []
+            window.willApplyScenePatch = { patches.append($0) }
+            defer { window.willApplyScenePatch = nil }
+            ownerWork(executor, t) {
+                // Main is synchronously fenced here; its rollback notification cannot run until this returns.
+                for (width, left, style) in [(54, 8, "Regular"), (60, 12, "Clear")] {
+                    window.runtime.skin.execute("[!SetOption GlassCard MacGlass \(style)]", from: nil)
+                    resizeRecipe(window, width, left)
+                    t.check(window.runtime.frames.needsFrame, "dirty remains pending while the E/C writer is frozen")
+                    t.check(!window.runtime.frames.hasLayerWriter, "no second C ScenePatch can be exported before rollback ack")
+                    t.equal(window.runtime.frames.layerRuntime?.currentFrame?.sequence, before?.sequence)
+                    t.check(sameImages(window.runtime.frames.layerRuntime?.currentFrame?.contents.map(\.image), before?.contents.map(\.image)))
+                    t.check(window.runtime.frames.layerRuntime?.nativePublicationHoldsWriter == true)
+                }
+            }
+            t.equal(window.glass.regions, oldGlass, "host debt does not pretend a queued dirty frame has been presented")
+            t.equal(window.view.toolTipRects, oldTips)
+            t.equal(window.view.bounds.size, CGSize(width: 48, height: 32))
+            t.check(AppSelfTest.spin(timeout: 30) {
+                window.view.bounds.size == CGSize(width: 60, height: 32) && window.content.stagedNativeHost == nil &&
+                    window.runtime.exclusive { _ in !window.runtime.frames.needsFrame && !window.runtime.frames.hasLayerWriter } == true
+            }, "Main rollback ack permits one complete latest C host patch")
+            t.equal(patches.count, 1, "intermediate dirty scene is coalesced, without losing host values")
+            let rect = SkinRect(x: 12, y: 18, width: 10, height: 10)
+            let expectedGlass = [GlassRegion(id: "GlassCard", rect: rect, cornerRadius: 2, style: .clear)]
+            t.equal(patches.first?.content.state, .appliedByMain)
+            t.equal(patches.first?.hostAcknowledgment, .complete)
+            t.equal(patches.first?.size, CGSize(width: 60, height: 32))
+            t.equal(patches.first?.glass, expectedGlass)
+            t.equal(patches.first?.hitMap.toolTipAreas, [rect])
+            t.equal(window.window.frame.size, CGSize(width: 60, height: 32))
+            t.equal(window.glass.regions, expectedGlass)
+            t.equal(window.view.toolTipRects, [rect.cgRect])
+            t.equal(window.view.toolTipText(x: 17, y: 23), "Frame\nCard 12")
+            t.equal(window.view.toolTipText(x: 5, y: 23), nil)
+            t.check(SkinView.hasAction(window, .leftUp, x: 17, y: 23))
+            t.check(!SkinView.hasAction(window, .leftUp, x: 5, y: 23))
+            t.equal(window.content.contentOpacity, Float(1))
+            try checkCurrentTree(window, 60, t)
+        }
+        #endif
+        t.suite("App: layer window E publication: actual profile and panel epochs reject old rollback and success") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try publicationWindow(app, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return }
+            let gate = NativePublicationGate(window)
+            window.runtime.window = gate
+            defer { gate.releaseFinished(); window.runtime.window = window }
+            guard publishSingle(window, t) != nil, let old = gate.stage else { return }
+            window.window.colorSpace = .displayP3
+            window.publishFacts(force: true)
+            t.check(window.content.visibleNativeStage == nil)
+            t.equal(window.content.contentOpacity, Float(1), "real profile invalidation selects the last-good C image immediately")
+            waitForNativeRetirement(window, t)
+            t.check(AppSelfTest.spin(timeout: 30) {
+                window.runtime.exclusive { _ in
+                    guard let frame = window.runtime.frames.layerRuntime?.currentFrame, let space = window.facts.colorSpace else { return false }
+                    return CFEqual(frame.colorSpace, space) && !window.runtime.frames.needsFrame
+                } == true
+            }, "C redraw acknowledges the current actual profile, not a relabeled old image")
+            guard publishSingle(window, t) != nil, let p3 = gate.stage else { return }
+            t.check(p3 !== old && p3.epoch.colorSpace.model == .rgb)
+            let panel = window.window
+            window.runtime.send(.run("[!ClickThrough 1][!ClickThrough 0]"))
+            t.check(AppSelfTest.spin(timeout: 30) { window.window !== panel && window.content.visibleNativeStage == nil })
+            waitForNativeRetirement(window, t)
+            settleCForNativeStage(window, t)
+            guard publishSingle(window, t) != nil, let current = gate.stage else { return }
+            t.check(current !== old && current !== p3)
+            t.check(current.epoch.panelGeneration > old.epoch.panelGeneration)
+            window.runtime.rollbackNativePublication(old, failure: .staleDestination)
+            window.apply(.nativeStageCompleted(old, .success(SkinNativeStageObservation(sourceSequence: old.attachment.sourceSequence,
+                native: old.attachment.callbackReport.observation, drewOnPhysicalOwner: true))), from: window.runtime)
+            window.runtime.send(.nativeStageRolledBack(old))
+            var fenced = false
+            window.runtime.whenCaughtUp { fenced = true }
+            t.check(AppSelfTest.spin(timeout: 30) { fenced }, "actual owner/Main fences drain the stale messages")
+            t.check(window.content.visibleNativeStage === current.attachment, "old rollback cannot hide the new panel/generation")
+            t.equal(window.content.stagedNativeHost?.opacity, Float(1))
+            t.equal(current.attachment.callbackReport.observation.failure, nil)
+            ownerWork(executor, t) { t.check(window.runtime.frames.hasNativeStage) }
+            window.rollbackNativeSingle()
+            waitForNativeRetirement(window, t)
+        }
+        t.suite("App: layer window E publication: physical stop releases before held Main success without losing the C fallback") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try publicationWindow(app, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return }
+            let gate = NativePublicationGate(window)
+            gate.holdsFinished = true
+            window.runtime.window = gate
+            defer { gate.releaseFinished(); window.runtime.window = window }
+            var result: SkinNativeStageResult?, completions = 0
+            window.publishNativeSingle(maximumCallbackBitmapBytes: 1_000_000) { result = $0; completions += 1 }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.finished != nil }, "actual Main publish and owner ack precede the held completion")
+            guard let stage = gate.stage, let root = window.content.installedLayerRoot,
+                  let leaf = stage.attachment.root.sublayers?.first else { return }
+            t.check(stage.wasPublished && window.content.visibleNativeStage === stage.attachment)
+            t.equal(window.content.stagedNativeHost?.opacity, Float(1))
+            t.check(result == nil)
+            let frame = window.runtime.exclusive { _ in window.runtime.frames.layerRuntime?.currentFrame } ?? nil
+            t.check(frame != nil && root.sublayers?.isEmpty == false)
+            window.stop(fadeOut: true, keepsWindow: true)
+            t.equal(window.content.contentOpacity, Float(1), "Main selects the exact saved C frame before close/fade or worker release")
+            t.check(window.content.visibleNativeStage == nil)
+            t.check(root.sublayers?.isEmpty == false, "kept replacement window retains its actual C last frame")
+            ownerWork(executor, t) {
+                let frames = window.runtime.frames
+                t.check(!frames.hasNativeStage, "permanent owner stop clears the slot before Main processes release")
+                t.equal(frames.layerRuntime?.currentFrame?.sequence, frame?.sequence)
+                t.check(sameImages(frames.layerRuntime?.currentFrame?.contents.map(\.image), frame?.contents.map(\.image)))
+            }
+            // The actual Main host no longer needs the kept frame. Queue real C retirement before stopping its
+            // executor; the native release fact remains usable after physical exit and held success stays queued.
+            leaf.setNeedsDisplay(); leaf.displayIfNeeded()
+            t.equal(stage.attachment.callbackReport.observation.failure, .ownerReleased)
+            t.check(window.content.installedLayerRoot === root && root.sublayers?.isEmpty == false)
+            window.window.orderOut(nil)
+            window.window.close()
+            window.runtime.teardownContent()
+            ownerWork(executor, t) {}
+            app.endEngineThread()
+            t.check(AppSelfTest.spin(timeout: 30) { executor.hasExited }, "physical worker actually exits")
+            t.check(stage.hasStoppedOwnerRelease && stage.hasOwnerRelease)
+            gate.releaseFinished()
+            window.apply(.attachNativeStage(stage), from: window.runtime)
+            t.equal(completions, 1)
+            if case .failure(.cancelled)? = result {} else { t.check(false, "late success cannot revive a stopped publication") }
+            t.check(window.content.stagedNativeHost == nil)
+            leaf.setNeedsDisplay(); leaf.displayIfNeeded()
+            t.equal(stage.attachment.callbackReport.observation.failure, .ownerReleased, "attachment/report retain no stopped E owner or caches")
+            t.check(window.content.installedLayerRoot == nil && root.sublayers?.isEmpty != false,
+                    "actual Main teardown and owner cleanup release the C tree after its last frame was kept")
+            var denied: SkinNativeStageResult?
+            window.publishNativeSingle(maximumCallbackBitmapBytes: 1_000_000) { denied = $0 }
+            if case .failure(.cancelled)? = denied {} else { t.check(false, "closed publication entry never schedules a stopped worker") }
+        }
+        t.suite("App: layer window E publication: bitmap and Main refuse without native owners or scheduling") {
+            for (threading, selection, expected) in [(SkinThreading.engine, SkinFrameContentMode.bitmap, SkinNativeStageFailure.unsupportedMode),
+                                                    (.main, mode, .unsupportedExecutor)] {
+                let app = try app(t, threading: threading)
+                defer { app.stopAllForTermination(); app.endEngineThread() }
+                let window = try activate(app, t, selection: selection)
+                var result: SkinNativeStageResult?, completions = 0
+                window.publishNativeSingle(maximumCallbackBitmapBytes: 1_000_000) { result = $0; completions += 1 }
+                if case .failure(let failure)? = result { t.equal(failure, expected) } else { t.check(false, "unsupported mode fails synchronously") }
+                t.equal(completions, 1)
+                t.check(window.content.stagedNativeHost == nil && window.content.visibleNativeStage == nil)
+                t.equal(window.runtime.exclusive { _ in !window.runtime.frames.hasNativeStage }, true)
+                t.equal(window.runtime.exclusive { _ in window.runtime.frames.requestNativeCompletion == nil &&
+                    window.runtime.frames.requestNativeStopRelease == nil && window.runtime.frames.requestNativePublicationFinished == nil &&
+                    window.runtime.frames.requestNativeRollback == nil }, true, "default bitmap/Main allocate no native scheduling closures")
+            }
+        }
     }
 }
