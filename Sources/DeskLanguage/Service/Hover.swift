@@ -307,8 +307,8 @@ extension DeskSnapshot {
         return "Event"
     }
 
-    /// The type the checker recorded for a node of the open file, when the record is the node's own: nested nodes of
-    /// one kind that start at one place share a key, and the record is the outermost one's.
+    /// The type the checker recorded for a node of the open file. Identical recovery spans and non-expression
+    /// start-only keys can still name several nodes; only use such a record for the outermost one.
     func recordedType(_ i: Int) -> SemType? {
         let id = nodeTable.id(i)
         guard nodeTable.indexes(of: id).first == i else { return nil }

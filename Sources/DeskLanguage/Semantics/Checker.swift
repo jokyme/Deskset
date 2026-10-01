@@ -540,7 +540,11 @@ final class Checker {
     // MARK: - Positions and text
 
     func id(_ node: PositionedNode) -> NodeID {
-        NodeID(kind: node.kind, utf8Start: textStart(node), treeVersion: tree.version)
+        if node.kind.isExpression {
+            let range = node.quickTextRange
+            return NodeID(kind: node.kind, utf8Start: range.lowerBound, treeVersion: tree.version, utf8End: range.upperBound)
+        }
+        return NodeID(kind: node.kind, utf8Start: textStart(node), treeVersion: tree.version)
     }
 
     /// Start of the first present token's text (fast: stops at that token).
