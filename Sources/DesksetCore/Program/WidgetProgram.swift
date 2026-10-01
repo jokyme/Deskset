@@ -1,12 +1,14 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// constant text and rigid stacks; data, bindings, actions and other content must be added with real consumers.
+/// rigid stacks and scalar text bindings. Actions and other content must be added with real shared consumers.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
+    public let declarations: [ProgramDeclaration]
 
-    public init(name: String, root: ProgramElement) {
+    public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = []) {
         self.name = name
         self.root = root
+        self.declarations = declarations
     }
 }
 
@@ -60,7 +62,7 @@ public enum ProgramColor: Equatable, Sendable {
 }
 
 public struct ProgramText: Equatable, Sendable {
-    public let text: String
+    public let value: ProgramExpression
     public let fontFamily: String
     /// Desk/program points, not the String meter's 96-DPI font units.
     public let fontSize: Double
@@ -71,7 +73,13 @@ public struct ProgramText: Equatable, Sendable {
 
     public init(_ text: String, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
                 italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center) {
-        self.text = text
+        self.init(value: .string(text), fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
+                  italic: italic, color: color, align: align)
+    }
+
+    public init(value: ProgramExpression, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
+                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center) {
+        self.value = value
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.fontWeight = fontWeight
@@ -104,4 +112,6 @@ public enum ProgramLimits {
     public static let maximumElements = 5_000
     public static let maximumDepth = 64
     public static let maximumTextLength = 32_768
+    public static let maximumExpressions = 5_000
+    public static let maximumExpressionDepth = 128
 }

@@ -718,7 +718,7 @@ enum StudioText {
         .backToLive: ("Back to Live", "回到实时"),
         .previewOnly: ("Preview only", "只是预览"),
         .deskPreviewChecking: ("Checking the current document…", "正在检查当前文档…"),
-        .deskPreviewStatic: ("Static preview · this document is not running on the desktop", "静态预览 · 此文档未在桌面运行"),
+        .deskPreviewStatic: ("Preview · this document is not running on the desktop", "预览 · 此文档未在桌面运行"),
         .deskPreviewEmpty: ("No visible content", "没有可见内容"),
         .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
         .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",

@@ -5,10 +5,12 @@ struct StaticProgramCompiler {
     let checked: CheckedFile
     let catalog: DeskCatalog
     private var nextIndex = 0
+    private var expressions: ProgramExpressionCompiler
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
         self.checked = checked
         self.catalog = catalog
+        expressions = ProgramExpressionCompiler(checked: checked, catalog: catalog)
     }
 
     private enum Value {
@@ -56,8 +58,9 @@ struct StaticProgramCompiler {
             }
         }
         guard let widget else { throw issue(.invalidCheckedModel, checked.tree.rootNode, "No checked widget") }
-        let statements = widget.items
-        guard !statements.isEmpty else { throw issue(.unsupported, widget.node, "Empty widget has no static content") }
+        let declarations = try expressions.declarations(widget.items.compactMap(DeclarationSyntax.init))
+        let statements = widget.items.filter { $0.kind != .declaration }
+        guard !statements.isEmpty else { throw issue(.unsupported, widget.node, "Widget has no supported element content") }
         let appearance = try defaultAppearance(at: widget.node)
         let root: ProgramElement
         if statements.count == 1 {
@@ -70,8 +73,10 @@ struct StaticProgramCompiler {
             root = ProgramElement(id: ElementID(name: "widget", index: index),
                                   content: .column(spacing: spacing, align: try horizontal(align, at: widget.node), children: children))
         }
-        let program = WidgetProgram(name: name, root: root)
-        _ = try ProgramRuntime(program: program) // Validate the same contract as every other Core producer.
+        let program = WidgetProgram(name: name, root: root, declarations: declarations)
+        do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
+        catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
+        catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
         return program
     }
 
@@ -91,7 +96,7 @@ struct StaticProgramCompiler {
         guard let call = CallStmtSyntax(node), call.callee.path.count == 1,
               let facts = checked.elements[checked.tree.id(of: node)], facts.component == call.callee.path[0],
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
-            throw issue(.unsupported, node, "Expected a checked, built-in static element")
+            throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
         guard ["Text", "Column", "Row"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
@@ -129,10 +134,10 @@ struct StaticProgramCompiler {
         let content: ProgramElement.Content
         switch facts.component {
         case "Text":
-            guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1,
-                  case .string(let text) = try constant(arguments[0].value.node) else {
-                throw issue(.unsupported, node, "Text requires one literal string; data and interpolation are not implemented")
+            guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
+                throw issue(.unsupported, node, "Text requires one String expression")
             }
+            let text = try expressions.text(arguments[0].value.node)
             let family: String
             switch appearance.design {
             case "standard": family = appearance.family
@@ -141,7 +146,7 @@ struct StaticProgramCompiler {
             case "serif" where appearance.family == "System": family = "System Serif"
             default: throw issue(.unsupported, node, "Unsupported font design/family combination")
             }
-            content = .text(ProgramText(text, fontFamily: family, fontSize: appearance.size,
+            content = .text(ProgramText(value: text, fontFamily: family, fontSize: appearance.size,
                                         fontWeight: appearance.weight, italic: appearance.italic,
                                         color: appearance.color, align: appearance.align))
         default:

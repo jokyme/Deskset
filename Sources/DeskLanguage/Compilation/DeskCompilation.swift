@@ -26,8 +26,8 @@ public struct DeskCompilationResult: Sendable {
 }
 
 public extension Desk {
-    /// Checked source → the shared Core program. The static slice supports literal Text, rigid Column/Row,
-    /// fit/fixed boxes, nonnegative padding/spacing and constant appearance. Other semantics fail explicitly.
+    /// Checked source → the shared Core program. It supports String/Bool declarations and text expressions,
+    /// system.dark, rigid Column/Row and constant box/style properties. Other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
         guard !checked.diagnostics.contains(where: { $0.severity == .error }) else {
