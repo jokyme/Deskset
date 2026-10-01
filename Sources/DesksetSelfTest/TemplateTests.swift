@@ -119,6 +119,41 @@ func runTemplateTests(_ t: TestRunner) {
 }
 
 func runCompiledTemplateTests(_ t: TestRunner) {
+    t.suite("Template: input routes: candidate consumption and event modes preserve literal output and callbacks") {
+        let input = "#Missing#Made#|#Held$P$#|$Missing$P$|#*A*#|$unfinished"
+        let template = Template(input)
+        for compiled in [false, true] {
+            var calls: [String] = []
+            var resolver = VariableResolver(variableLookup: { name in
+                calls.append("variable:\(name)")
+                switch name {
+                case "Made": return "[M]"
+                case "Held$P$": return "kept"
+                case "A": return "one"
+                default: return nil
+                }
+            }, sectionLookup: { name, _ in
+                calls.append("section:\(name)")
+                return name == "M" ? "section" : nil
+            }, eventLookup: { name in
+                calls.append("event:\(name)")
+                return name == "P" ? "7" : nil
+            })
+            let full = compiled ? resolver.resolve(template) : resolver.resolve(input)
+            t.equal(full, "#Missingsection|kept|$Missing7|#A#|$unfinished")
+            t.equal(calls, ["variable:Missing", "variable:Made", "variable:Held$P$", "event:Missing", "event:P", "section:M"])
+            calls = []
+            let standard = compiled ? resolver.resolveStandardVariables(template) : resolver.resolveStandardVariables(input)
+            t.equal(standard, "#Missing[M]|kept|$Missing$P$|#*A*#|$unfinished")
+            t.equal(calls, ["variable:Missing", "variable:Made", "variable:Held$P$"])
+            calls = []
+            resolver.eventLookup = nil
+            let noEvents = compiled ? resolver.resolve(template) : resolver.resolve(input)
+            t.equal(noEvents, "#Missingsection|kept|$Missing$P$|#A#|$unfinished")
+            t.equal(calls, ["variable:Missing", "variable:Made", "variable:Held$P$", "section:M"])
+        }
+    }
+
     t.suite("Template: compiled input: one source is reusable across current lookups and modes") {
         let template = Template("#A#|[M]|$Pointer$")
         var value = "old"
