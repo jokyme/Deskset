@@ -29,11 +29,11 @@ public struct DeskCompilationResult: Sendable {
 }
 
 public extension Desk {
-    /// Checked source → the shared Core program. It supports String/Bool declarations and text expressions,
+    /// Checked source → the shared Core program. It supports String/Bool/Date declarations, scalar text templates and checked time.now/Date.in/date formats,
     /// system.dark, root onLoad variable assignments, proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
     /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, and constant box/style properties.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
-    /// Other semantics fail explicitly.
+    /// Numeric data, relative/subsecond Date formats and other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
         let errors = checked.diagnostics.filter { $0.severity == .error }

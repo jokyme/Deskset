@@ -21,7 +21,9 @@ enum DeskProgramPreviewSelfTests {
 
     private static func fixture(_ t: AppTestRunner, _ text: String,
                                 queue: DispatchQueue = DispatchQueue(label: "desk.preview.test.check"),
-                                ext: String = "desk") throws -> Fixture {
+                                ext: String = "desk", clock: SkinClock = .live,
+                                executor: SkinExecutor = MainSkinExecutor.shared,
+                                locale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale) throws -> Fixture {
         let root = t.temporaryDirectory("desk-program-preview")
         let app = AppController(state: AppState(fileURL: root.appendingPathComponent("state.json")),
                                 skinsDirectory: root.appendingPathComponent("Skins"),
@@ -30,7 +32,8 @@ enum DeskProgramPreviewSelfTests {
                                 settingsDirectory: root.appendingPathComponent("Settings"), presentsWindows: false)
         let file = root.appendingPathComponent("Preview." + ext)
         try Data(text.utf8).write(to: file)
-        let controller = try CodeFileWindowController(file: file, app: app, deskCheckQueue: queue)
+        let controller = try CodeFileWindowController(file: file, app: app, deskCheckQueue: queue,
+                                                       previewClock: clock, previewExecutor: executor, previewLocale: locale)
         controller.window?.appearance = NSAppearance(named: .aqua)
         controller.codeView.idleCommitDelay = 600
         controller.codeView.typedTextDelay = 600
@@ -996,8 +999,174 @@ enum DeskProgramPreviewSelfTests {
             t.equal(f.app.sortedControllers.count, 0)
         }
 
+        runClockPreviewTests(t)
     }
 
+    private static func runClockPreviewTests(_ t: AppTestRunner) {
+        let start = Date(timeIntervalSince1970: 1_790_586_059.25)
+        let utc = TimeZone(identifier: "UTC")!
+        let locale = Locale(identifier: "en_US_POSIX")
+        let second = #"widget { Text("{time.now, format: "HH:mm:ss"}😀").font(20).color(.accent).size(280, 60).padding(8) }"#
+        t.suite("Desk: clock preview: actual document timers paint independent second and minute text") {
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            var reads = 0
+            let clock = SkinClock(now: { reads += 1; return executor.wallClock }, uptime: { executor.uptime }, timeZone: { executor.timeZone })
+            let f = try fixture(t, second, clock: clock, executor: executor, locale: { locale }), p = f.preview
+            t.equal(p.state, .ready); t.equal(executor.pendingCount, 0, "an unshown document samples no display clock")
+            p.setVisible(true)
+            t.equal(executor.pendingCount, 1); t.close(executor.nextDue ?? -1, 0.75)
+            try clockPixels(t, "09:00:59😀", in: f)
+            let generation = p.scene?.generation, priorReads = reads
+            executor.advance(until: 0.749)
+            t.equal(p.scene?.generation, generation); t.equal(reads, priorReads)
+            executor.advance(until: 0.75)
+            t.equal(reads, priorReads + 1, "one immutable wall date supplies the successful projection")
+            t.equal(executor.pendingCount, 1)
+            try clockPixels(t, "09:01:00😀", in: f)
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                p.canvas.appearance = NSAppearance(named: name)
+                p.refreshEnvironment()
+                try clockPixels(t, "09:01:00😀", in: f)
+            }
+            replace(#"widget { Text("{time.now, format: "HH:mm"}😀").font(20).color(.accent).size(280, 60).padding(8) }"#, in: f)
+            t.check(settled(f)); t.equal(executor.pendingCount, 1)
+            t.close(executor.nextDue ?? -1, 60.75)
+            executor.advance(until: 60.749)
+            t.equal(clockTexts(p), ["09:01😀"])
+            executor.advance(until: 60.75)
+            try clockPixels(t, "09:02😀", in: f)
+            t.check(f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(second.utf8), "a clock never writes its source")
+        }
+
+        t.suite("Desk: clock preview: checked replacements visibility and wake cancel old temporal generations") {
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            var selectedLocale = locale
+            let f = try fixture(t, second, clock: executor.clock, executor: executor, locale: { selectedLocale }), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            p.setVisible(true)
+            let old = checking.snapshot, generation = p.scene?.generation
+            p.setVisible(false); t.equal(executor.pendingCount, 0)
+            executor.advance(by: 120)
+            t.equal(p.scene?.generation, generation, "occluded display does not advance its retained session")
+            p.setVisible(true); t.equal(clockTexts(p), ["09:02:59😀"]); t.equal(executor.pendingCount, 1)
+            executor.setWallClock(Date(timeIntervalSince1970: 1_790_586_310.5)) // Independently 09:05:10.5 UTC.
+            p.notifySystemWake()
+            t.equal(clockTexts(p), ["09:05:10😀"]); t.close((executor.nextDue ?? -1) - executor.now, 0.5)
+            executor.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+            p.refreshDateInput(); t.equal(clockTexts(p), ["18:05:10😀"])
+            replace(#"widget { variable opened = time.now; Text("{opened, format: .weekday}").font(20).color(.accent).size(280, 60).padding(8) }"#, in: f)
+            t.check(settled(f)); t.equal(executor.pendingCount, 0); t.equal(clockTexts(p), ["Monday"])
+            selectedLocale = Locale(identifier: "zh_Hans_CN")
+            executor.setWallClock(Date(timeIntervalSince1970: 1_790_672_710.5))
+            p.refreshDateInput()
+            t.equal(clockTexts(p), ["星期一"], "frozen date survives a wall-day change while its locale can change")
+            t.check(!checking.publish(old))
+            replace(second, in: f); t.check(settled(f)); t.equal(executor.pendingCount, 1)
+            f.editor.discardUncommittedChanges()
+            f.controller.window?.close()
+            t.equal(p.state, .closed); t.equal(executor.pendingCount, 0)
+            executor.advance(by: 3)
+            p.show(old, readError: nil); p.setVisible(true); p.notifySystemWake()
+            t.check(p.state == .closed && p.scene == nil && p.canvas.isHidden)
+            t.equal(executor.pendingCount, 0)
+        }
+
+        t.suite("Desk: clock preview: frozen startup dates hidden text and active branches retain shared state") {
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            let source = #"widget { variable opened = time.now; computed current = time.now; Text("{opened, format: "HH:mm:ss"}/{current, format: "HH:mm:ss"}😀").font(20).color(.accent).size(280, 60).padding(8).onLoad { opened = time.now } }"#
+            let f = try fixture(t, source, clock: executor.clock, executor: executor, locale: { locale }), p = f.preview
+            p.setVisible(true)
+            try clockPixels(t, "09:00:59/09:00:59😀", in: f)
+            executor.advance(until: 0.75)
+            try clockPixels(t, "09:00:59/09:01:00😀", in: f)
+            t.equal(executor.pendingCount, 1, "onLoad is not rerun on a clock boundary")
+            replace(#"widget { Text("{time.now, format: "ss"}").size(280, 60).hidden() }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .empty); t.equal(p.scene?.size, SkinSize(width: 280, height: 60))
+            t.check(p.scene?.drawingItems.isEmpty == true); t.equal(executor.pendingCount, 0)
+            replace(#"widget { computed live = system.dark and time.now == time.now; Text("{live}").font(20).color(.accent).size(280, 60).padding(8) }"#, in: f)
+            t.check(settled(f))
+            p.canvas.appearance = NSAppearance(named: .aqua); p.refreshEnvironment()
+            try clockPixels(t, "No", in: f); t.equal(executor.pendingCount, 0)
+            p.canvas.appearance = NSAppearance(named: .darkAqua); p.refreshEnvironment()
+            try clockPixels(t, "Yes", in: f); t.equal(executor.pendingCount, 1, "short-circuit demand follows the branch actually read")
+        }
+
+        t.suite("Desk: clock preview: resource pending invalid input read errors and close cannot revive pixels") {
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            var invalidDate = false
+            let clock = SkinClock(now: { invalidDate ? Date(timeIntervalSince1970: .nan) : executor.wallClock },
+                                  uptime: { executor.uptime }, timeZone: { executor.timeZone })
+            let queue = DispatchQueue(label: "desk.preview.test.clock.images")
+            var suspended = false
+            defer { if suspended { queue.resume() } }
+            let source = #"widget { Row(spacing: 4) { Image("A.png").size(48, 40); Text("{time.now, format: "HH:mm:ss"}").font(20).size(180, 40) } }"#
+            let data = try imageData(), nextData = try imageData(alternate: true)
+            let f = try imageFixture(t, source, images: ["A.png": data, "B.png": nextData], queue: queue,
+                                     clock: clock, executor: executor, locale: { locale }), p = f.preview
+            p.setVisible(true)
+            t.check(imageSettled(f)); t.equal(p.state, .ready); t.equal(executor.pendingCount, 1)
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            func path() throws -> String {
+                guard let image = p.scene?.drawingItems.compactMap({ if case .image(let draw) = $0 { return draw.path }; return nil }).first else { throw Failure.fixture }
+                return image
+            }
+            let firstPath = try path(), old = checking.snapshot
+            t.equal(try Data(contentsOf: URL(fileURLWithPath: firstPath)), data)
+            let before = try paint(p.canvas); try canaries(t, before); t.check(try ink(before) > 0)
+            executor.advance(until: 0.75)
+            t.equal(clockTexts(p), ["09:01:00"]); t.equal(try path(), firstPath)
+            let after = try paint(p.canvas); try canaries(t, after)
+            t.check(try bytes(before) != bytes(after), "the clock redraws while retaining the actual prepared image generation")
+            queue.suspend(); suspended = true
+            replace(source.replacingOccurrences(of: "A.png", with: "B.png"), in: f)
+            t.check(p.scene == nil && p.state == .checking); t.equal(executor.pendingCount, 0)
+            t.check(!FileManager.default.fileExists(atPath: firstPath)); t.check(!checking.publish(old))
+            queue.resume(); suspended = false
+            t.check(imageSettled(f)); t.equal(p.state, .ready); t.equal(executor.pendingCount, 1)
+            let nextPath = try path(); t.equal(try Data(contentsOf: URL(fileURLWithPath: nextPath)), nextData)
+            invalidDate = true; p.refreshDateInput()
+            t.check(p.scene == nil && p.canvas.isHidden); t.equal(executor.pendingCount, 0)
+            p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+            let clear = try paint(p.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
+            invalidDate = false; p.refreshDateInput()
+            t.equal(p.state, .ready); t.equal(try path(), nextPath); t.equal(executor.pendingCount, 1)
+            try Data([0xFF, 0xFE, 0x00, 0x00]).write(to: f.file)
+            f.editor.discardUncommittedChanges()
+            f.controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification))
+            t.check(f.controller.readError != nil && p.scene == nil && p.canvas.isHidden)
+            t.equal(executor.pendingCount, 0)
+            f.controller.window?.close(); executor.advance(by: 2)
+            t.equal(p.state, .closed); t.equal(executor.pendingCount, 0)
+            t.check(!FileManager.default.fileExists(atPath: nextPath))
+        }
+    }
+
+    private static func clockTexts(_ preview: DeskProgramPreviewController) -> [String] {
+        preview.scene?.drawingItems.compactMap { if case .text(let value) = $0 { return value.text }; return nil } ?? []
+    }
+
+    /// Independent literal TextDraw, with fixed point font, frame and padding rather than copied runtime values.
+    private static func clockPixels(_ t: AppTestRunner, _ text: String, in f: Fixture) throws {
+        let p = f.preview, appearance = MacAppearance.values(for: p.canvas.effectiveAppearance)
+        var style = TextStyle()
+        style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400
+        style.color = appearance.accentColor; style.horizontalAlign = .center; style.verticalAlign = .center
+        style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+        let item = DrawItem.text(TextDraw(text: text, style: style, frame: SkinRect(width: 280, height: 60),
+                                         contentFrame: SkinRect(x: 8, y: 8, width: 264, height: 44), anchor: SkinPoint()))
+        t.equal(p.state, .ready); t.equal(p.scene?.drawingItems, [item])
+        let reference = ReferenceView(items: [item], size: NSSize(width: 280, height: 60))
+        reference.appearance = p.canvas.effectiveAppearance
+        let blank = ReferenceView(items: [], size: reference.frame.size)
+        for scale in [1, 2] {
+            let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+            try canaries(t, actual); try canaries(t, expected)
+            t.check(try ink(actual) > 0)
+            t.equal(try ink(paint(blank, scale: scale)), 0)
+            t.equal(try bytes(actual), try bytes(expected), "literal native date text at \(scale)x")
+        }
+    }
 
     /// Independent native geometry API, not the shared Program lowering or ShapeGeometryBuilder.
     private static func imageSettled(_ f: Fixture) -> Bool {
@@ -1009,10 +1178,12 @@ enum DeskProgramPreviewSelfTests {
     }
 
     private static func imageFixture(_ t: AppTestRunner, _ text: String, images: [String: Data],
-                                     queue: DispatchQueue = DispatchQueue(label: "desk.preview.test.image.files")) throws -> Fixture {
+                                     queue: DispatchQueue = DispatchQueue(label: "desk.preview.test.image.files"),
+                                     clock: SkinClock = .live, executor: SkinExecutor = MainSkinExecutor.shared,
+                                     locale: @escaping () -> Locale = DeskProgramPreviewController.currentDateLocale) throws -> Fixture {
         queue.suspend()
         defer { queue.resume() }
-        let f = try fixture(t, text, queue: queue)
+        let f = try fixture(t, text, queue: queue, clock: clock, executor: executor, locale: locale)
         for (path, data) in images {
             let file = f.file.deletingLastPathComponent().appendingPathComponent(path)
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

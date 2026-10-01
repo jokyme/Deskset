@@ -193,7 +193,7 @@ func runProgramBindingTests(_ t: TestRunner) {
                      #"widget { variable x = false; Text("A").onClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
                      #"widget { Text(true) }"#, #"widget { Text(1) }"#,
-                     #"widget { variable x = "A"; Text("{x}") }"#,
+                     #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
                      #"widget { Text(system.name) }"#,
                      #"widget { variable x = true; Text("A").color(.dim, if: x) }"#]
         for source in cases {
@@ -403,5 +403,144 @@ func runProgramBindingTests(_ t: TestRunner) {
         let result = Desk.compile(altered, catalog: catalog)
         t.check(result.program == nil)
         t.equal(result.issues.first?.kind, .invalidCheckedModel)
+    }
+
+
+    t.suite("Program: clock: typed dates templates and zones use one immutable projection input") {
+        let start = Date(timeIntervalSince1970: 1_790_586_059.25)
+        let input = ProgramDateInput(instant: start, timeZone: TimeZone(identifier: "UTC")!, locale: Locale(identifier: "en_US_POSIX"))
+        let value = ProgramExpression.concatenate([.string("甲😀 "), .formatDate(.timeNow, .pattern("HH:mm:ss")), .string(" / "),
+                                                  .formatDate(.dateIn(.timeNow, timeZone: "Asia/Tokyo"), .pattern("yyyy-MM-dd HH:mm:ss"))])
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Clock", root: bindingText(value)))
+        let scene = try runtime.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)
+        t.equal(bindingStrings(scene), ["甲😀 09:00:59 / 2026-09-28 18:00:59"])
+        t.equal(runtime.clockPrecision, .second)
+        t.equal(runtime.generation, 1)
+        let minute = ProgramExpression.formatDate(.timeNow, .pattern("HH:mm 's'"))
+        var minuteRuntime = try ProgramRuntime(program: WidgetProgram(name: "Minute", root: bindingText(minute)))
+        t.equal(bindingStrings(try minuteRuntime.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["09:00 s"])
+        t.equal(minuteRuntime.clockPrecision, .minute, "quoted s is literal text")
+        var escaped = try ProgramRuntime(program: WidgetProgram(name: "Quoted", root: bindingText(.formatDate(.timeNow, .pattern("HH:mm '' 's'")))))
+        t.equal(bindingStrings(try escaped.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["09:00 ' s"])
+        t.equal(escaped.clockPrecision, .minute, "a doubled quote is literal, not an unclosed quoting region")
+        var weekday = try ProgramRuntime(program: WidgetProgram(name: "Date", root: bindingText(.formatDate(.timeNow, .preset(.weekday)))))
+        t.equal(bindingStrings(try weekday.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["Monday"])
+        let chinese = ProgramDateInput(instant: start, timeZone: input.timeZone, locale: Locale(identifier: "zh_Hans_CN"))
+        t.equal(bindingStrings(try weekday.project(environment: bindingEnvironment(false), dateInput: chinese, measure: bindingMeasure)), ["星期一"])
+        let equal = ProgramExpression.equal(.timeNow, .dateIn(.timeNow, timeZone: "Asia/Tokyo"))
+        var equality = try ProgramRuntime(program: WidgetProgram(name: "Equality", root: bindingText(.concatenate([equal]))))
+        t.equal(bindingStrings(try equality.project(environment: bindingEnvironment(false), dateInput: chinese, measure: bindingMeasure)), ["是"], "a zone view is the same instant")
+        t.equal(equality.clockPrecision, .second)
+        t.close(try ProgramClockPrecision.second.delayToNextBoundary(after: start), 0.75)
+        t.close(try ProgramClockPrecision.minute.delayToNextBoundary(after: start), 0.75)
+        t.close(try ProgramClockPrecision.minute.delayToNextBoundary(after: start.addingTimeInterval(0.75)), 60)
+    }
+
+    t.suite("Program: clock: frozen variables computed dates and startup retain transactional demand") {
+        let start = Date(timeIntervalSince1970: 1_790_586_059)
+        func input(_ offset: Double) -> ProgramDateInput {
+            ProgramDateInput(instant: start.addingTimeInterval(offset), timeZone: TimeZone(identifier: "UTC")!, locale: Locale(identifier: "en_US_POSIX"))
+        }
+        let declarations = [ProgramDeclaration(name: "opened", kind: .variable, initial: .timeNow),
+                            ProgramDeclaration(name: "current", kind: .computed, initial: .timeNow)]
+        let value = ProgramExpression.concatenate([.formatDate(.declaration(0), .pattern("HH:mm:ss")), .string("/"),
+                                                  .formatDate(.declaration(1), .pattern("HH:mm:ss"))])
+        let program = WidgetProgram(name: "Clock", root: bindingText(value), declarations: declarations,
+                                    onLoad: [ProgramAssignment(declaration: 0, value: .timeNow)])
+        var runtime = try ProgramRuntime(program: program)
+        bindingFailure(t, .invalidMeasurement(ElementID(name: "text", index: 0))) {
+            _ = try runtime.project(environment: bindingEnvironment(false), dateInput: input(0)) { _, _, _ in SkinSize(width: .nan, height: 1) }
+        }
+        t.equal(runtime.generation, 0); t.equal(runtime.clockPrecision, nil)
+        let first = try runtime.project(environment: bindingEnvironment(false), dateInput: input(1), measure: bindingMeasure)
+        t.equal(bindingStrings(first), ["09:01:00/09:01:00"], "failed startup did not freeze the earlier date")
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(true), dateInput: input(2), measure: bindingMeasure)), ["09:01:00/09:01:01"])
+        t.equal(runtime.clockPrecision, .second)
+        let generation = runtime.generation
+        bindingFailure(t, .invalidDateInput) { _ = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure) }
+        t.equal(runtime.generation, generation); t.equal(runtime.clockPrecision, .second)
+        var frozen = try ProgramRuntime(program: WidgetProgram(name: "Frozen", root: bindingText(.formatDate(.declaration(0), .pattern("HH:mm:ss"))), declarations: [declarations[0]]))
+        _ = try frozen.project(environment: bindingEnvironment(false), dateInput: input(0), measure: bindingMeasure)
+        t.equal(bindingStrings(try frozen.project(environment: bindingEnvironment(false), dateInput: input(61), measure: bindingMeasure)), ["09:00:59"])
+        t.equal(frozen.clockPrecision, nil)
+        let conditional = ProgramExpression.conditional(.appearanceDark, then: .formatDate(.timeNow, .pattern("ss")), otherwise: .string("fixed"))
+        var lazy = try ProgramRuntime(program: WidgetProgram(name: "Lazy", root: bindingText(conditional)))
+        _ = try lazy.project(environment: bindingEnvironment(false), dateInput: input(0), measure: bindingMeasure); t.equal(lazy.clockPrecision, nil)
+        _ = try lazy.project(environment: bindingEnvironment(true), dateInput: input(0), measure: bindingMeasure); t.equal(lazy.clockPrecision, .second)
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden", root: bindingText(value, hidden: true), declarations: declarations))
+        let hiddenScene = try hidden.project(environment: bindingEnvironment(false), dateInput: input(0), measure: bindingMeasure)
+        t.equal(hidden.clockPrecision, nil); t.equal(hiddenScene.size, first.size)
+        t.check(hiddenScene.drawingItems.isEmpty)
+    }
+
+    t.suite("Program: clock: invalid inputs formats zones and expansion fail before publication") {
+        for expression: ProgramExpression in [.formatDate(.timeNow, .pattern("HH:mm:ss.SSS")),
+                                               .formatDate(.timeNow, .pattern("HH:mm 'unclosed")),
+                                               .formatDate(.timeNow, .pattern("not-a-format")),
+                                               .dateIn(.timeNow, timeZone: "Not/AZone"),
+                                               .formatDate(.boolean(true), .preset(.time)), .concatenate([.timeNow])] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid", root: bindingText(expression))) }
+        }
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Clock", root: bindingText(.formatDate(.timeNow, .pattern("HH:mm:ss")))))
+        for value in [Double.nan, .infinity, -.infinity] {
+            let input = ProgramDateInput(instant: Date(timeIntervalSince1970: value), timeZone: TimeZone(identifier: "UTC")!, locale: Locale(identifier: "en_US_POSIX"))
+            bindingFailure(t, .invalidDateInput) { _ = try runtime.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure) }
+            t.equal(runtime.generation, 0); t.equal(runtime.clockPrecision, nil)
+        }
+        var long = try ProgramRuntime(program: WidgetProgram(name: "Expansion", root: bindingText(.concatenate([.string(String(repeating: "a", count: ProgramLimits.maximumTextLength)), .string("😀")]))))
+        bindingFailure(t, .invalidExpression) { _ = try long.project(environment: bindingEnvironment(false), measure: bindingMeasure) }
+        t.equal(long.generation, 0)
+        let declarations = [ProgramDeclaration(name: "d", kind: .variable, initial: .timeNow)]
+        bindingFailure(t, .invalidAssignment(0)) {
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Wrong", root: bindingText(.string("x")), declarations: declarations,
+                                                         onLoad: [ProgramAssignment(declaration: 0, value: .boolean(true))]))
+        }
+    }
+
+    t.suite("Desk: clock: checked templates dates and real catalog defaults reach shared scenes") {
+        let source = #"widget { variable opened = time.now; computed current = time.now; Text("{opened, format: "HH:mm:ss"}/{current.in("Asia/Tokyo"), format: "HH:mm:ss"}").onLoad { opened = time.now } }"#
+        let program = try checkedBindingProgram(t, source)
+        let input = ProgramDateInput(instant: Date(timeIntervalSince1970: 1_790_586_059), timeZone: TimeZone(identifier: "UTC")!, locale: Locale(identifier: "en_US_POSIX"))
+        var runtime = try ProgramRuntime(program: program)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["09:00:59/18:00:59"])
+        let next = ProgramDateInput(instant: input.instant.addingTimeInterval(1), timeZone: input.timeZone, locale: input.locale)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), dateInput: next, measure: bindingMeasure)), ["09:00:59/18:01:00"])
+        t.equal(runtime.clockPrecision, .second)
+        let originalInterpolation = #"widget { variable x = "A"; Text("{x}") }"#
+        var old = try ProgramRuntime(program: checkedBindingProgram(t, originalInterpolation))
+        t.equal(bindingStrings(try old.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["A"], "the original unsupported literal now has real matching semantics")
+        var catalog = DeskCatalog.current
+        let ns = catalog.namespaces.firstIndex { $0.name == "time" }!
+        catalog.namespaces[ns].members[0].defaultFormat = .pattern("yyyy-MM-dd")
+        var defaults = try ProgramRuntime(program: checkedBindingProgram(t, "widget { Text(time.now) }", catalog: catalog))
+        t.equal(bindingStrings(try defaults.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["2026-09-28"])
+        t.equal(defaults.clockPrecision, .minute)
+        let escaped = #"widget { Text("{{甲😀}} {true} {time.now, format: "HH:mm 's'"}") }"#
+        var text = try ProgramRuntime(program: checkedBindingProgram(t, escaped))
+        t.equal(bindingStrings(try text.project(environment: bindingEnvironment(false), dateInput: input, measure: bindingMeasure)), ["{甲😀} Yes 09:00 s"])
+    }
+
+    t.suite("Desk: clock: unsupported fields reactions and format semantics reject the complete program") {
+        let sources = [#"widget { Text("{time.now, format: .relative}") }"#,
+                       #"widget { Text("{time.now, format: "ss.SSS"}") }"#,
+                       #"widget { Text("{time.now.hour}") }"#,
+                       #"widget { variable zone = "UTC"; Text(time.now.in(zone)) }"#,
+                       #"widget { Text("{time.now, missing: "–"}") }"#,
+                       #"widget { Text("{time.now}").onWake { } }"#,
+                       #"widget { Column { Text("{time.now}"); Text("{cpu.usage}%") } }"#]
+        for source in sources {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && !result.issues.isEmpty, source)
+            t.equal(result.issues.first?.kind, .unsupported)
+            t.equal(result.diagnostics, checked.diagnostics)
+            t.equal(result.imageSources, [])
+        }
+        var catalog = DeskCatalog.current
+        let ns = catalog.namespaces.firstIndex { $0.name == "time" }!
+        catalog.namespaces[ns].members[0].cadence = .event
+        let checked = deskCheck("widget { Text(time.now) }", context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
     }
 }

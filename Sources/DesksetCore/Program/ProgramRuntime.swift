@@ -8,6 +8,7 @@ public enum ProgramRuntimeError: Error, Equatable {
     case expressionLimit, expressionDepth, invalidExpression
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
     case invalidAssignment(Int)
+    case invalidDateInput
 }
 
 /// The executable part of the shared runtime. It owns a program value, session variables and scene generations,
@@ -15,6 +16,7 @@ public enum ProgramRuntimeError: Error, Equatable {
 public struct ProgramRuntime: Sendable {
     public let program: WidgetProgram
     public private(set) var generation: UInt64 = 0
+    public private(set) var clockPrecision: ProgramClockPrecision?
     private var variables: [ProgramScalar?]?
 
     public init(program: WidgetProgram) throws {
@@ -95,6 +97,7 @@ public struct ProgramRuntime: Sendable {
     /// The closure must measure the supplied style exactly as it draws it, under the optional wrapping width.
     /// It is used synchronously and is not retained. Graphics/font resources stay outside Core.
     public mutating func project(environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
+                                 dateInput: ProgramDateInput? = nil,
                                  measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene {
         let appearance = environment.appearance.value
         guard environment.scale.isFinite, environment.scale > 0,
@@ -102,9 +105,10 @@ public struct ProgramRuntime: Sendable {
                appearance.accentColor, appearance.separatorColor].allSatisfy(Self.valid) else {
             throw ProgramRuntimeError.invalidEnvironment
         }
+        if let dateInput, !dateInput.instant.timeIntervalSince1970.isFinite { throw ProgramRuntimeError.invalidDateInput }
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
-        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables)
+        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables, dateInput: dateInput)
         if variables == nil {
             try evaluation.initialize()
             // Root startup is part of the first successful scene transaction. These local-only assignments
@@ -113,8 +117,17 @@ public struct ProgramRuntime: Sendable {
         }
         var layoutState = LayoutState(images: images)
         _ = flexibility(program.root, into: &layoutState)
+        var visibleText: Set<ElementID> = [], pending = [(program.root, false)]
+        while let (node, parentHidden) = pending.popLast() {
+            let hidden = parentHidden || node.hidden
+            switch node.content {
+            case .text: if !hidden { visibleText.insert(node.id) }
+            case .column(_, _, let children), .row(_, _, let children): pending += children.map { ($0, hidden) }
+            default: break
+            }
+        }
         let box = try layout(program.root, proposedWidth: nil, proposedHeight: nil, appearance: appearance,
-                             resolve: { try evaluation.text($0) }, measure: measure, state: &layoutState)
+                             resolve: { try evaluation.text($1, displayed: visibleText.contains($0)) }, measure: measure, state: &layoutState)
         var elements: [SceneElement] = []
         try append(box, at: SkinPoint(), inheritedHidden: false, into: &elements)
         var hitMap = SkinHitMap()
@@ -125,6 +138,7 @@ public struct ProgramRuntime: Sendable {
                                 hitMap: hitMap, environment: environment)
         generation = next.partialValue
         variables = evaluation.variables
+        clockPrecision = evaluation.clockPrecision
         return scene
     }
 
@@ -173,7 +187,7 @@ public struct ProgramRuntime: Sendable {
     }
 
     private func layout(_ node: ProgramElement, proposedWidth: Double?, proposedHeight: Double?, appearance: SkinAppearance,
-                        resolve: (ProgramExpression) throws -> String,
+                        resolve: (ElementID, ProgramExpression) throws -> String,
                         measure: (String, TextStyle, Double?) throws -> SkinSize, state: inout LayoutState) throws -> Box {
         let key = ProposalKey(id: node.id, width: proposedWidth, height: proposedHeight)
         if let old = state.boxes[key] { return old }
@@ -207,7 +221,7 @@ public struct ProgramRuntime: Sendable {
             let input: TextInput
             if let old = state.text[node.id] { input = old }
             else {
-                input = TextInput(value: try resolve(text.value), style: text.drawingStyle(in: appearance, wrap: false))
+                input = TextInput(value: try resolve(node.id, text.value), style: text.drawingStyle(in: appearance, wrap: false))
                 state.text[node.id] = input
             }
             resolvedText = input.value
