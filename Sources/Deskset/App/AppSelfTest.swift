@@ -118,6 +118,7 @@ enum AppSelfTest {
         PluginSideEffectsSelfTests.run(t)
         #if DEBUG
         LegacyRenderSelfTests.run(t)
+        StationeryLayerContentSelfTests.run(t)
         #endif
         // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
         // busier, and the renders' checks of what services deliver within one interval are timed in real time.
