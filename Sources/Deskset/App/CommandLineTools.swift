@@ -92,9 +92,9 @@ enum CommandLineTools {
         skins that keep settings or caches there never read or write the app's real settings folder.
 
         The menu bar app reads the SkinThreading default once at launch: engine (the default) runs the desktop skins
-        on one engine thread of their own; main runs every skin on the main thread, for debugging (defaults write
-        app.deskset.Deskset SkinThreading main, or -SkinThreading main for one launch). The modes above always run
-        skins on the main thread.
+        on one engine thread of their own; pool uses two shared worker threads (experimental); main runs every skin
+        on the main thread, for debugging (defaults write app.deskset.Deskset SkinThreading main, or -SkinThreading
+        main for one launch). The modes above always run skins on the main thread.
         """
 
     enum Validation: Equatable {

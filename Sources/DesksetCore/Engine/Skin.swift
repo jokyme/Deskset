@@ -309,7 +309,10 @@ public final class Skin {
 
     /// Called when an entry point starts; pair it with `endWork` (in a `defer`).
     @inline(__always)
-    func beginWork() { workDepth += 1 }
+    func beginWork() {
+        workDepth += 1
+        if workDepth == 1 { host?.skinWillBeginWork(self) }
+    }
 
     /// Called when an entry point ends: when it was the outermost one, the piece of work is over and the host hears of
     /// it (`SkinHost.skinDidFinishWork`), whatever it did.

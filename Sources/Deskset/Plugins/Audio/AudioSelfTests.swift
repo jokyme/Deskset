@@ -1361,6 +1361,7 @@ enum AudioSelfTests {
             let engine = AudioCaptureEngine()
             engine.isCaptureAllowed = true
             engine.stopDelay = 0
+            engine.makeBackend = { _ in FakeBackend() }
             let key = AudioSourceKey(kind: .output, deviceID: nil)
             let backend = PermissionBackendHolder()
             let center = NowPlayingCenter(backend: backend.backend)
@@ -1399,19 +1400,22 @@ enum AudioSelfTests {
             t.equal(plain.comeUp, 1, "comes up hidden")
 
             // The verdict kept by the capture across the refresh: the Notice, in view.
+            // The first skin is released on return from firstUpdate(), after its drains. Wait for its capture to
+            // stop too: otherwise the next subscription can keep the previous backend alive instead of making this one.
+            t.check(wait { engine.activeSourceKeys().isEmpty }, "the previous capture stopped")
             engine.makeBackend = { _ in RefusedBackend() }
             let kept = AudioAnalyzer(settings: AudioAnalysisSettings())
             engine.subscribe(kept, to: key)
-            engine.drain()
+            t.check(wait { engine.status(for: key).macPermission.number == 1 }, "the capture has a refusal to keep")
             let notice = try firstUpdate()
             t.equal(notice.mode, 2, "the Notice")
             t.equal(notice.hide, 0)
             t.equal(notice.comeUp, 0, "a Notice comes up in view")
             engine.unsubscribe(kept)
-            engine.drain()
-            engine.drain()
+            t.check(wait { engine.activeSourceKeys().isEmpty }, "the refused capture stopped")
 
             // Music refused Automation (at rest): in view, so its tooltip can say where to allow it.
+            engine.makeBackend = { _ in FakeBackend() }
             backend.backend.running = [.music]
             MediaUITests.inline([center.worker]) {
                 let subscription = center.subscribe(live: true)

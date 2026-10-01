@@ -15,6 +15,51 @@ func runSkinThreadExecutorTests(_ t: TestRunner) {
     runSkinThreadParkTests(t)
     runSkinThreadStopTests(t)
     runSkinThreadSkinTests(t)
+    runSkinThreadPoolTests(t)
+}
+
+private func runSkinThreadPoolTests(_ t: TestRunner) {
+    t.suite("Executor: skin pool: bounded workers keep stable placement under concurrent loads") {
+        let pool = SkinThreadPool()
+        defer { pool.stop() }
+        t.equal(pool.workerCount, 2)
+        t.check(pool.activeWorkers.isEmpty, "workers start on demand")
+        let placements = Collected<(String, SkinThreadExecutor)>()
+        DispatchQueue.concurrentPerform(iterations: 512) { i in
+            let key = "suite/skin\(i % 128)"
+            placements.add((key, pool.executor(for: key)))
+        }
+        t.equal(pool.activeWorkers.count, 2, "many skins use only two threads")
+        t.check(placements.all.allSatisfy { pool.executor(for: $0.0) === $0.1 }, "a config never migrates")
+        t.equal(Set(placements.all.map { ObjectIdentifier($0.1) }).count, 2)
+        for worker in pool.activeWorkers {
+            t.equal(onThread(worker) { worker.isOnThread && SkinThreadExecutor.isSkinThread }, true)
+        }
+    }
+
+    t.suite("Executor: skin pool: a busy worker leaves the other running, and stop drains queued work") {
+        let pool = SkinThreadPool()
+        let first = pool.executor(for: "a")
+        let second = pool.executor(for: "b")
+        defer { pool.stop() }
+        guard first !== second else { return t.check(false, "two different workers") }
+        let gate = ThreadGate()
+        gate.hold(first)
+        let order = Collected<Int>()
+        for i in 0..<100 { first.async { order.add(i) } }
+        let otherRan = onThread(second) { second.isCurrent }
+        t.equal(otherRan, true, "the other worker runs while this one is held")
+        t.check(order.all.isEmpty, "the held worker has not run its queue")
+        gate.open()
+        let workers = pool.activeWorkers
+        pool.stop()
+        t.check(waitFor { workers.allSatisfy(\.hasExited) }, "every worker exits")
+        t.equal(order.all, Array(0..<100), "queued work finishes in order before stop")
+        t.check(pool.activeWorkers.isEmpty)
+        let restarted = pool.executor(for: "a")
+        t.check(restarted !== first, "a stopped pool can start a fresh worker")
+        t.equal(onThread(restarted) { restarted.isOnThread }, true)
+    }
 }
 
 // MARK: - Helpers

@@ -520,6 +520,15 @@ enum Studio2AuditSelfTests {
                                  "Daybreak", "Network", "Launcher"]
 
     static func controlCountTests(_ t: AppTestRunner) {
+        func visit(_ open: () -> StudioSnapshot.Opened?, _ body: (StudioSnapshot.Opened) -> Void) {
+            // Closed windows and their AppKit controls must go between fixtures, not at the end of the full audit.
+            autoreleasepool {
+                guard let opened = open() else { return }
+                defer { opened.close() }
+                body(opened)
+            }
+        }
+
         t.suite("Studio2: audit: twelve controls on every generated page") {
             Studio2SelfTests.prepare(t)
             t.check(countExceptions.values.allSatisfy { !$0.isEmpty }, "every exception has a reason")
@@ -535,16 +544,21 @@ enum Studio2AuditSelfTests {
                 count(studio.widgetPage.page, "\(widget): the widget page")
                 guard parts, let skin = studio.skin else { return }
                 for m in skin.meters {
-                    studio.select(part: m.name)
-                    count(studio.partPage.page, "\(widget): \(m.name)'s page")
-                    // Every Setting is the named exception.
-                    studio.partPage.toggleEverySetting()
-                    t.check(studio.partPage.page?.id.isEmpty == false, "\(widget): \(m.name)'s Every Setting")
-                    studio.partPage.toggleEverySetting()
+                    // Each switch replaces controls whose autoreleased AppKit/SwiftUI graphs can be large.
+                    autoreleasepool {
+                        studio.select(part: m.name)
+                        count(studio.partPage.page, "\(widget): \(m.name)'s page")
+                        // Every Setting is the named exception.
+                        studio.partPage.toggleEverySetting()
+                        t.check(studio.partPage.page?.id.isEmpty == false, "\(widget): \(m.name)'s Every Setting")
+                        studio.partPage.toggleEverySetting()
+                    }
                 }
                 for measure in skin.measures {
-                    studio.partPage.show(data: measure.name)
-                    count(studio.partPage.page, "\(widget): \(measure.name)'s data page")
+                    autoreleasepool {
+                        studio.partPage.show(data: measure.name)
+                        count(studio.partPage.page, "\(widget): \(measure.name)'s data page")
+                    }
                 }
                 studio.select(part: nil)
             }
@@ -560,19 +574,38 @@ enum Studio2AuditSelfTests {
                                                                             config: "Stationery\\\(w)", file: file),
                                           zoom: 1)
                 screen.updates = 2
-                guard let opened = StudioSnapshot.open(screen) else {
-                    t.check(false, "\(w) opens")
-                    continue
+                visit({
+                    guard let opened = StudioSnapshot.open(screen) else {
+                        t.check(false, "\(w) opens")
+                        return nil
+                    }
+                    return opened
+                }) { opened in
+                    audit(opened, w, parts: w == "System" || w == "Clock" || w == "Battery")
                 }
-                audit(opened, w, parts: w == "System" || w == "Clock" || w == "Battery")
-                opened.close()
             }
             for name in ["03b-weather", "13b-compat", "09-every-setting"] {
-                guard let opened = open(t, name) else { continue }
-                audit(opened, name, parts: true)
-                opened.close()
+                visit({ open(t, name) }) { opened in audit(opened, name, parts: true) }
             }
             print("    \(pages) pages counted")
+        }
+
+        t.suite("Studio2: audit: retired page views release before the next window") {
+            Studio2SelfTests.prepare(t)
+            weak var controller: StudioWindowController?
+            weak var row: NSView?
+            visit({ open(t, "04-part") }) { opened in
+                let studio = opened.controller
+                controller = studio
+                studio.select(part: "MeterCPUValue")
+                row = studio.inspectorController.pageView.itemView("text.weight")
+                t.check(row != nil, "the selected part has a real control row")
+                studio.select(part: nil)
+                t.check(studio.inspectorController.pageView.itemView("text.weight") == nil,
+                        "returning to the widget removes the old row")
+            }
+            t.check(row == nil, "a removed row does not stay in the suite's outer autorelease pool")
+            t.check(controller == nil, "the closed window controller goes before the next audited window")
         }
     }
 

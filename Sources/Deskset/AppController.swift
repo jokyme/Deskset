@@ -32,16 +32,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Where the desktop skins run (the `SkinThreading` default, read once at launch; `.main` for the self-tests and
     /// every headless mode).
     let threading: SkinThreading
+    /// Production uses the shared live monitor; bounded stress fixtures can supply their own diagnostic clock.
+    let workWatchdog: SkinWorkWatchdog
     /// The engine thread every desktop skin shares with `SkinThreading=engine` (docs/skin-threading.md §15, phase 2):
     /// made with the first skin it runs. nil with `.main`, and before then.
     private(set) var engineThread: SkinThreadExecutor?
-    /// Where a config's skin runs: the engine thread with `SkinThreading=engine`, else the main executor. Self-tests put
+    /// The bounded workers used by the pool mode, created with its first skin.
+    private(set) var skinThreadPool: SkinThreadPool?
+    /// Where a config's skin runs: the engine thread, a stable pool worker or the main executor. Self-tests put
     /// some skins on threads of their own. The Studio's own instance of a widget, the Manage window's dry runs and
     /// thumbnails are not desktop skins: they always run on the main executor (§8.5, §8.7).
-    lazy var skinExecutor: (String) -> SkinExecutor = { [unowned self] _ in
+    lazy var skinExecutor: (String) -> SkinExecutor = { [unowned self] config in
         switch self.threading {
         case .main: return MainSkinExecutor.shared
         case .engine: return self.sharedEngineThread()
+        case .pool:
+            if self.skinThreadPool == nil { self.skinThreadPool = SkinThreadPool() }
+            return self.skinThreadPool!.executor(for: SkinLibrary.normalizedConfigName(config).lowercased())
         }
     }
     /// Last position of each config in this session (used on refresh when SavePosition is off).
@@ -86,8 +93,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
-         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main) {
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
+         workWatchdog: SkinWorkWatchdog = .shared) {
         self.threading = threading
+        self.workWatchdog = workWatchdog
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
@@ -108,11 +117,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return thread
     }
 
-    /// Ends the engine thread once the work queued on it has run (the skins on it must have closed: self-tests, after
-    /// `stopAllForTermination`). A later skin gets a new one.
+    /// Ends the skin threads once the work queued on them has run (the skins must have closed: self-tests, after
+    /// `stopAllForTermination`). A later skin gets new workers.
     func endEngineThread() {
         engineThread?.stop()
         engineThread = nil
+        skinThreadPool?.stop()
+        skinThreadPool = nil
     }
 
     /// Said in the log at launch about the `SkinThreading` default (an unknown value; the main thread).
@@ -131,6 +142,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.write(threadingNote, level: .warning)
         } else if threading == .engine {
             Log.write("Desktop skins run on the engine thread")
+        } else if threading == .pool {
+            Log.write("Desktop skins share \(SkinThreadPool.defaultWorkerCount) skin worker threads")
         }
         // `defaults write app.deskset.Deskset MainThreadStallLog -int 50`: main-thread stalls go to the log.
         MainThreadStallMonitor.shared.configure(from: .standard)
@@ -229,6 +242,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// How long quitting waits in all for the skins' OnCloseActions (on their threads).
     static let terminationBudget: TimeInterval = 2
+    /// Once a pool worker cannot close in order, leave the other worker time to run its own close actions.
+    static let terminationWorkerReserve: TimeInterval = 0.25
 
     /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch: `.close` goes to each
     /// skin in reverse load order, then quitting waits for them to close, at most `terminationBudget` in all (a skin on
@@ -245,7 +260,28 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.closeStudioSkin()
         }
         let closing = Array(sortedControllers.reversed())
-        for c in closing { c.stop() }
+        let orderedDeadline = deadline.addingTimeInterval(-min(Self.terminationWorkerReserve, max(0, budget) / 4))
+        var stalledWorkers: Set<ObjectIdentifier> = []
+        for (index, c) in closing.enumerated() {
+            c.stop()
+            if threading == .pool {
+                // A closing skin may send another skin a bang. Let it enqueue those messages before the next
+                // skin's close is queued. Only reserve time when another, independent worker still needs to close.
+                // This is one global cutoff, not a short per-skin timeout: ordinary close actions keep their order.
+                let worker = ObjectIdentifier(c.runtime.executor)
+                guard !stalledWorkers.contains(worker) else { continue }
+                let hasOtherWorker = closing.dropFirst(index + 1).contains {
+                    let other = ObjectIdentifier($0.runtime.executor)
+                    return other != worker && !stalledWorkers.contains(other)
+                }
+                let limit = hasOtherWorker ? orderedDeadline : deadline
+                if !c.runtime.waitUntilClosed(before: limit) {
+                    stalledWorkers.insert(worker)
+                    Log.write("Closing remaining skins without waiting longer for this worker's close action",
+                              level: .warning, source: c.config)
+                }
+            }
+        }
         let late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
         if !late.isEmpty {
             Log.write("Quitting without waiting longer for \(late.joined(separator: ", ")) to close", level: .warning)
@@ -1547,9 +1583,8 @@ final class CustomMenuAction: NSObject {
     }
 }
 
-/// Where the app runs its desktop skins (docs/skin-threading.md §15, phase 2): the `SkinThreading` default, read once
-/// at launch (`main.swift`). The engine thread unless it says `main`. `perSkin` (a thread for each skin) comes in
-/// phase 3.
+/// Where the app runs its desktop skins: the `SkinThreading` default, read once at launch (`main.swift`). The shared
+/// engine thread remains the default while the bounded worker pool is validated.
 ///
 ///     defaults write app.deskset.Deskset SkinThreading main     (or -SkinThreading main for one launch)
 enum SkinThreading: String {
@@ -1558,9 +1593,11 @@ enum SkinThreading: String {
     /// The desktop skins on one engine thread (the default); the Studio's own instances, dry runs and thumbnails stay
     /// on main.
     case engine
+    /// A bounded worker pool, with periodic updates coalesced per worker and asynchronous bangs between skins.
+    case pool
 
     static let defaultsKey = "SkinThreading"
-    /// Without the key, or with a value that is neither mode.
+    /// Without the key, or with an unknown value.
     static let appDefault = SkinThreading.engine
 
     /// The mode `defaults` asks for, and what to say about it in the log: an unknown value means the default.
@@ -1570,7 +1607,7 @@ enum SkinThreading: String {
         if let mode = SkinThreading(rawValue: text.lowercased()) {
             return (mode, mode == .main ? "Desktop skins run on the main thread (\(defaultsKey)=main)" : nil)
         }
-        return (appDefault, "Unknown \(defaultsKey) value \"\(text)\" (main or engine): desktop skins run on the "
+        return (appDefault, "Unknown \(defaultsKey) value \"\(text)\" (main, engine or pool): desktop skins run on the "
                 + "engine thread")
     }
 }

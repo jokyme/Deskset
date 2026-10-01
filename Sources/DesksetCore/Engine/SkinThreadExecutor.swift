@@ -1,8 +1,8 @@
 import Foundation
 
 // A skin executor on a thread of its own (docs/skin-threading.md §5.3): what desktop skins run on with
-// `SkinThreading=engine`. In phase 2 every desktop skin shares one of them, the engine thread; phase 3 gives each skin
-// one. The stress suite and the self-tests that need a skin off the main thread use it too.
+// `SkinThreading=engine`. Every desktop skin shares that engine thread, or one of the bounded workers in pool mode.
+// The stress suite and the self-tests that need a skin off the main thread use it too.
 
 /// A skin executor on a dedicated `Thread` with a run loop of its own and an 8 MB stack, like the main thread's
 /// (§5.3, §7.4): the engine was written and tested against that much, and a skin thread behaves like a small main
@@ -32,6 +32,9 @@ public final class SkinThreadExecutor: SkinExecutor, @unchecked Sendable {
 
     /// The thread's name (in crash reports, `sample` and Instruments).
     public let name: String
+    /// The periodic update clocks of all skins on this thread. Access on the executor (or with exclusive access).
+    /// Plugin timers and delays still use `timer` / `async(after:)` directly.
+    public lazy var updateScheduler = SkinUpdateScheduler(executor: self)
     private let loop = Loop()
     private let park = SkinExecutorPark()
     private let lock = NSLock()

@@ -4,6 +4,11 @@
 > thread-safe shared services and the stress suite, are done (2026-09-26, §15). Phase 2 is done (2026-09-28, §15): the
 > desktop skins run on one engine thread by default (`SkinThreading=engine`; `SkinThreading=main` keeps every skin on
 > the main thread, for debugging). §8.5 was revised for the Studio's own instance of the widget it edits.
+> Phase 3 is being validated (2026-10-01): `SkinThreading=pool` is an experimental two-worker mode with stable config
+> placement and shared update clocks. A slow skin holds other skins on its worker, while the other worker can run.
+> A shared watchdog logs skin work and bitmap drawing that take more than two seconds, even when a worker is stuck.
+> It does not cover the shared Core Animation commit/flush after a batch of skins has finished drawing.
+> The original per-skin proposal below is retained as design history; §14 and §15 record the later decisions.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
 > behaviour comes from its code, and the measurements come from the spike. No Rainmeter source was read.
@@ -44,8 +49,9 @@ very problem we are trying to remove.
 
 **Migration.** Six phases. The first user-visible win, "the UI no longer stalls skins", comes after phase 2. It
 uses one shared engine thread. The Studio edits an instance of the widget of its own on the main thread, so the
-widget on the desktop stays on the engine thread while the Studio is open (§8.5). Phase 3 moves to one thread per
-skin. The estimate is 26–38 engineer-days without the Studio rework, and 32–48 with it
+widget on the desktop stays on the engine thread while the Studio is open (§8.5). Phase 3 now tests a bounded pool
+with stable skin placement and combined periodic updates, following the later scheduling measurements (§15).
+The original estimate was 26–38 engineer-days without the Studio rework, and 32–48 with it
 (§12).
 
 ---
@@ -121,7 +127,7 @@ The spike reproduces the two shapes of the problem (§7.2):
 3. Rainmeter's ordering rules still hold (§9). Wherever behaviour changes, the change goes into
    `docs/compat/engine.md`.
 4. No CPU or energy regression: skins that cannot be seen do not draw, and a frame costs what it costs today.
-5. Incremental: every phase ships, and a setting (`SkinThreading = main | engine | perSkin`) switches back.
+5. Incremental: every phase ships, and a setting (`SkinThreading = main | engine | pool`) switches back.
 
 **Non-goals**
 - Parallelism inside one skin. Measures and meters keep their file order on one thread.
@@ -881,7 +887,7 @@ The single behaviour change, which goes in `docs/compat/engine.md`:
 ## 10. Migration plan
 
 Every phase ends with both self-test suites passing. Phases 0 and 1 change no behaviour. From phase 2 on, the
-`SkinThreading` setting (`main | engine | perSkin`) can switch back.
+`SkinThreading` setting (`main | engine | pool`) can switch back.
 
 **Phase 0: the seam and guard rails (3–4 days)**
 - `SkinExecutor` with `MainSkinExecutor`.
@@ -918,8 +924,10 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
   - frame pacing of an `AudioLevel` visualizer while the Studio is open;
   - energy impact.
 
-**Phase 3: one thread per skin (4–6 days)**
-- `SkinThreadExecutor` per runtime, the QoS policy, the watchdog.
+**Phase 3: bounded workers and combined updates (original estimate: 4–6 days)**
+- A bounded pool of `SkinThreadExecutor`s, stable config placement, the QoS policy and the watchdog.
+- One shared periodic-update scheduler per worker; plugin timers and `!Delay` keep their ordering.
+- Compare ten default widgets against the shared engine thread before changing the default.
 - Stress with 30 skins, including the 15 real skin packs used for compatibility testing (local only).
 - Check thread count and memory.
 
@@ -928,7 +936,7 @@ Every phase ends with both self-test suites passing. Phases 0 and 1 change no be
 - The widgets on the desktop are already isolated from the Studio after phase 2.
 
 **Phase 5: cleanup (3–5 days)**
-- Make `perSkin` the default; keep `main` for debugging.
+- Once the phase 3 gates pass, make the pool the default; keep `main` and `engine` for debugging.
 - Compatibility notes (§9) in `docs/compat/engine.md` and both summaries.
 - A one-week soak with real skins. Release notes.
 
@@ -1017,6 +1025,9 @@ Decided on 2026-09-25, all as recommended:
 
 1. **Executor:** a dedicated thread per skin, with its own run loop and an 8 MB stack (§5.3). GCD serial queues
    (`SkinQueueExecutor`) stay for tests and comparisons.
+   Revised after the scheduling measurements: a bounded pool retains those run loops and stacks, pins each config to
+   one worker and combines nearby update deadlines. The experimental pool starts with two workers; the default stays
+   `engine` until stress, memory, wake-up and CPU measurements justify switching it.
 2. **Frames:** the skin redraws its own layer off the main thread and commits it (E, §7.3). IOSurface (D) is the
    fallback.
 3. **Bangs to other skins become asynchronous and ordered** (§8.2, §9). Phase 5 records this in

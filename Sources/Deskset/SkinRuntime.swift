@@ -23,6 +23,10 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     let config: String
     let file: String
     let fileURL: URL
+    /// Peer messages are always queued in pool mode, also when both skins happen to share a worker.
+    let defersPeerBangs: Bool
+    /// The same activity spans Core work, runtime messages and drawing. Main-thread skins do not need a worker log.
+    private let workActivity: SkinWorkWatchdog.Activity?
     /// The skin. Touch it only on its executor (`executor.isCurrent`, or inside `exclusive`).
     private(set) var skin: Skin!
     /// The main-thread side: the skin's window, or a test's stand-in. Not retained: it owns the runtime.
@@ -72,12 +76,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`, whose frames go to `content` (nil: none
     /// are drawn). Load it with `load()`, on the executor.
     init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
-         content: ContentProvider? = nil) {
+         content: ContentProvider? = nil, defersPeerBangs: Bool = false,
+         watchdog: SkinWorkWatchdog = .shared) {
         self.config = config
         self.file = file
+        self.defersPeerBangs = defersPeerBangs
+        workActivity = executor is SkinThreadExecutor ? SkinWorkWatchdog.Activity(watchdog: watchdog, config: config) : nil
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
         var owner: (() -> Skin?)?
-        frames = SkinFrameProducer(provider: content, skin: { owner?() })
+        frames = SkinFrameProducer(provider: content, skin: { owner?() }, workActivity: workActivity)
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: self)
         skin.executor = executor
@@ -223,6 +230,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     @discardableResult
     private func handle(_ message: SkinMessage) -> Bool {
+        workActivity?.begin()
+        defer { workActivity?.end() }
         messageObserver?(message)
         switch message {
         case .mirrorInput(let mirror):
@@ -426,9 +435,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         return loadsInFlight.access { $0[key] != nil }
     }
 
-    /// Hands `message` (made with the hops it carries) to another skin's runtime: at once when it runs on this thread,
-    /// queued there otherwise. A chain of skins triggering each other stops at `maxHops`: the bang is dropped and
-    /// logged, once per skin.
+    /// Hands `message` (made with the hops it carries) to another skin's runtime. Pool mode always queues peer bangs,
+    /// so their ordering does not depend on worker placement. Other modes deliver inline on the same executor. A
+    /// chain of skins triggering each other stops at `maxHops`: the bang is dropped and logged, once per skin.
     private func deliver(_ bang: String, to target: SkinRuntime, _ message: (_ hops: Int) -> SkinMessage) {
         guard currentHops < SkinRuntime.maxHops else {
             droppedHops += 1
@@ -439,7 +448,12 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             }
             return
         }
-        target.send(message(currentHops + 1))
+        let value = message(currentHops + 1)
+        if target !== self && (defersPeerBangs || target.defersPeerBangs) {
+            target.enqueue(value)
+        } else {
+            target.send(value)
+        }
     }
 
     /// Sends a bang the engine performed to the config `name` (not this one): straight to its runtime when it runs; to
@@ -576,10 +590,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         timer?.cancel()
         timer = nil
         guard !isClosed, !updatesPaused, let interval = SkinRuntime.updateInterval(skin.settings.update) else { return }
-        timer = skin.executor.timer(interval: interval, leeway: SkinRuntime.timerTolerance(interval),
-                                    repeats: true) { [weak self] in
+        let update = { [weak self] in
             guard let self, !self.isClosed else { return }
             self.skin.update()
+        }
+        let leeway = SkinRuntime.timerTolerance(interval)
+        if let executor = skin.executor as? SkinThreadExecutor {
+            timer = executor.updateScheduler.schedule(interval: interval, leeway: leeway, update)
+        } else {
+            timer = skin.executor.timer(interval: interval, leeway: leeway, repeats: true, update)
         }
     }
 
@@ -708,9 +727,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         HostCallAudit.note(self, "skinNeedsDisplay")
         guard !isClosed else { return }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
-        model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
         if size != requestedSize {
             requestedSize = size
+            model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
             request(.resize(size))
         }
         frames.setNeedsFrame()
@@ -779,7 +798,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// The needs travel in the snapshot, published when the work ends (`.snapshotChanged(.outsidePointerNeeds)`).
     func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
 
+    func skinWillBeginWork(_ skin: Skin) {
+        HostCallAudit.note(self, "skinWillBeginWork")
+        workActivity?.begin()
+    }
+
     func skinDidFinishWork(_ skin: Skin) {
+        defer { workActivity?.end() }
         HostCallAudit.note(self, "skinDidFinishWork")
         publishSnapshot()
     }

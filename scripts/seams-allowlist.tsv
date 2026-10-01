@@ -351,6 +351,9 @@ timer.Timer	Sources/Deskset/SkinWindowController.swift	1	hover polling (0.1 s Fo
 timer.animation	Sources/Deskset/SkinWindowController.swift	2	FadeDuration window fades
 timer.runLoopAdd	Sources/Deskset/SkinWindowController.swift	1	hover polling (0.1 s Foundation timer): move to MainSkinExecutor.shared.timer
 
+background.queue	Sources/Deskset/SkinWorkWatchdog.swift	1	one diagnostic queue independent of stalled workers; injected clock and manual checks in tests; not a skin input
+timer.dispatchSource	Sources/Deskset/SkinWorkWatchdog.swift	1	one shared busy-skin diagnostic timer, stopped when idle; injected clock and manual checks in tests; not a skin input
+
 effect.workspace	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 event.notification	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 
@@ -517,7 +520,7 @@ random.hashOrder	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	3	ca
 timer.executorTimer	Sources/DesksetCore/Engine/Plugins/ActionTimerPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
 background.dispatch	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	FolderInfo's scan on the plugins' queue, started through Skin.startBackground (folderInfo; a fixture in virtual time)
-background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	1	plugin file I/O queue; results come back through Skin.hop (fake completions)
+background.queue	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	concurrent file I/O and serial icon queues; results come back through Skin.hop (fake completions)
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/FilePlugins.swift	2	FolderInfo measures what a scan cost, in real time on the worker; the next scan is due on SkinClock.uptime
 
 zone.implicitFormatter	Sources/DesksetCore/Engine/Plugins/FileViewPlugin.swift	1	file dates and sort order in the user locale: SkinEnvironment.locale
@@ -589,6 +592,8 @@ random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live()
 random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
 
 background.dispatch	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	2	the skin thread executor itself: work and cancellations go to its own thread
+background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
+timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 background.thread	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: the engine thread (8 MB stack, a run loop of its own)
 timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
