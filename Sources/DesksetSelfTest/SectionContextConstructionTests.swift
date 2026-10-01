@@ -52,7 +52,8 @@ private final class IndependentSectionContext: SectionContext {
     let skinClock: SkinClock
     let clock: () -> TimeInterval
     let executor: SkinExecutor
-    let locale = Locale(identifier: "en_US_POSIX")
+    var locale: Locale
+    var environment: SkinEnvironment?
     let directory: URL
     let sideEffects: SideEffects
     var styles: [String: IniSection] = [:]
@@ -62,17 +63,19 @@ private final class IndependentSectionContext: SectionContext {
     private(set) var actions: [Bang] = []
     private(set) var logs: [String] = []
     private var logged: Set<String> = []
-    private var issues: Set<String> = []
+    private(set) var issues: Set<String> = []
     private var snapshotChanges = 0
 
     init(directory: URL, system: SystemDataSource = SectionConstructionSystem(),
-         clock: @escaping () -> TimeInterval = { 86_400 }) throws {
+         clock: @escaping () -> TimeInterval = { 86_400 }, skinClock: SkinClock? = nil,
+         locale: Locale = Locale(identifier: "en_US_POSIX")) throws {
         guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
         let date = Date(timeIntervalSince1970: 1_798_761_598)
         self.directory = directory
         self.system = system
         self.clock = clock
-        skinClock = .fixed(date, timeZone: utc)
+        self.skinClock = skinClock ?? .fixed(date, timeZone: utc)
+        self.locale = locale
         executor = VirtualTimeExecutor(start: date, timeZone: utc)
         sideEffects = RecordingSideEffects(directory: directory.appendingPathComponent("effects"))
     }
@@ -120,7 +123,7 @@ private final class IndependentSectionContext: SectionContext {
     }
     func addIssue(_ issue: String) { issues.insert(issue) }
     func removeIssue(_ issue: String) { issues.remove(issue) }
-    func currentEnvironment() -> SkinEnvironment { SkinEnvironment(locale: locale) }
+    func currentEnvironment() -> SkinEnvironment { environment ?? SkinEnvironment(locale: locale) }
     func readablePath(_ path: String) -> String { path }
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double? {
         measures[identifier.lowercased()]?.value
@@ -371,6 +374,7 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
         withExtendedLifetime(kernel) {} // No access through the borrowed reference after its owner was released.
     }
     runContextBuiltinFactoryTests(t)
+    runContextBuiltinExtendedTests(t)
 }
 
 private class ContextFactoryOverride: Measure {
@@ -541,8 +545,8 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
                 section: constructionSection("Custom", []), context: context, type: type) == nil,
                     "a built-in name never replaces a selected custom subclass")
         }
-        t.check(makeContextBuiltinMeasure(TimeMeasure.self, name: "Time", section: constructionSection("Time", []),
-                                         context: context, type: "time") == nil, "unqualified kernels retain legacy construction")
+        t.check(makeContextBuiltinMeasure(RegistryMeasure.self, name: "Registry", section: constructionSection("Registry", []),
+                                         context: context, type: "registry") == nil, "unqualified kernels retain legacy construction")
         // Unique names only: there is no unregister API, so canonical global registrations stay untouched.
         MeasureRegistry.registerMeasure("ContextFactoryOverrideProbe", ContextFactoryChild.self)
         MeasureRegistry.registerMeasure("ContextFactoryMemoryAlias", MemoryMeasure.self)
@@ -601,5 +605,547 @@ private func runContextBuiltinFactoryTests(_ t: TestRunner) {
         directNet.readOptionsIfNeeded(); directNet.performUpdate()
         t.check(directNet.skin === skin)
         t.equal(directNet.value, 500)
+    }
+}
+
+/// Direct protocol witnesses avoid the real-volume defaults and the global hardware-sensor fallback.
+/// The existing deterministic engine source supplies values; this wrapper observes their actual read order.
+private final class ContextBuiltinSystem: SystemDataSource, HardwareSensorSource {
+    let values = EngineTestSystem()
+    private(set) var calls: [String] = []
+    var sensors: [String: Double] = [SensorKeys.frequencyCPU: 2100]
+
+    func resetCalls() { calls.removeAll() }
+    var processorCount: Int { calls.append("processorCount"); return values.processorCount }
+    func cpuUsage(processor: Int) -> Double { calls.append("cpu:\(processor)"); return values.cpuUsage(processor: processor) }
+    func memoryStatus() -> MemoryStatus { calls.append("memory"); return values.memoryStatus() }
+    func networkInterfaces() -> [String] { calls.append("interfaces"); return values.networkInterfaces() }
+    func networkCounters(interface: String?) -> NetworkCounters {
+        calls.append("network:\(interface ?? "all")"); return values.networkCounters(interface: interface)
+    }
+    func diskSpace(path: String) -> (total: Double, free: Double)? {
+        calls.append("disk:\(path)"); return values.diskSpace(path: path)
+    }
+    func availableDiskSpace(path: String) -> Double? {
+        calls.append("available:\(path)"); return values.availableDiskSpace(path: path)
+    }
+    func uptime() -> TimeInterval { calls.append("uptime"); return values.uptime() }
+    func battery() -> BatteryStatus? { calls.append("battery"); return values.battery() }
+    func isProcessRunning(_ name: String) -> Bool { calls.append("process:\(name)"); return values.isProcessRunning(name) }
+    func sysInfo(type: String, data: String) -> (number: Double, string: String?)? {
+        calls.append("sysInfo:\(type):\(data)"); return values.sysInfo(type: type, data: data)
+    }
+    func bestNetworkInterface() -> String? { calls.append("bestInterface"); return values.bestNetworkInterface() }
+    func volumeInfo(path: String) -> VolumeInfo? { calls.append("volume:\(path)"); return values.volumeInfo(path: path) }
+    func cpuFrequency() -> Double? { calls.append("frequency"); return values.cpuFrequency() }
+    func desktopPicturePath() -> String? { calls.append("desktopPicture"); return nil }
+    func graphicsAdapterName() -> String? { calls.append("graphics"); return values.graphicsAdapterName() }
+    func sensorValue(_ key: String) -> Double? { calls.append("sensor:\(key)"); return sensors[key] }
+}
+
+private func extendedNode<T: Measure>(_ cls: T.Type, _ name: String, _ type: String,
+                                     _ options: [(String, String)], in context: IndependentSectionContext) throws -> T {
+    guard let node = makeContextBuiltinMeasure(cls, name: name, section: constructionSection(name, options),
+                                              context: context, type: type) as? T else {
+        throw SectionConstructionError.unexpectedKernel
+    }
+    context.measures[name.lowercased()] = node
+    return node
+}
+
+/// The normal Skin loader, with private synthetic input and the real protocol source. The caller keeps the weak
+/// host alive until close; unlike the independent suites below this control deliberately owns a real Skin.
+private func extendedConsumerSkin(_ t: TestRunner, _ ini: String, system: SystemDataSource,
+                                  host: EnvironmentHost, clock: SkinClock) throws -> Skin {
+    let skins = t.temporaryDirectory("context-extended-consumer").appendingPathComponent("Skins")
+    let dir = skins.appendingPathComponent("Root/Sub")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: skins.appendingPathComponent("Root/@Resources"), withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("Skin.ini")
+    try ini.write(to: file, atomically: true, encoding: .utf8)
+    let skin = Skin(config: "Root\\Sub", fileURL: file, skinsDirectory: skins, system: system, host: host)
+    skin.skinClock = clock
+    skin.random = SkinRandom(seed: 1)
+    try skin.load()
+    return skin
+}
+
+private func runContextBuiltinExtendedTests(_ t: TestRunner) {
+    t.suite("Engine: context builtin extended: Calc reads live state and preserves random and error history") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-calc"), system: system)
+        context.optionsLoaded = true
+        context.counter = 2
+        let state = StringMeasure(name: "State", section: constructionSection("State", [("String", "1")]), context: context, type: "string")
+        context.measures["state"] = state
+        state.readOptionsIfNeeded(); state.performUpdate()
+        let calc = try extendedNode(CalcMeasure.self, "Calc", "calc", [("Formula", "State+Counter"),
+                                    ("OnUpdateAction", "[!Canary 7]")], in: context)
+        calc.readOptionsIfNeeded(); calc.performUpdate()
+        t.equal(calc.value, 3)
+        t.equal(state.value, 7)
+        t.equal(context.actions, [Bang(name: "canary", args: ["7"])])
+        context.counter = 3
+        calc.performUpdate()
+        t.equal(calc.value, 10, "the next call reads the adjacent measure changed by the preceding synchronous action")
+        calc.overrides["formula"] = "Missing+1"
+        calc.needsOptionRead = true
+        calc.readOptionsIfNeeded(); calc.performUpdate(); calc.performUpdate()
+        t.equal(calc.value, 10)
+        t.equal(context.logs.filter { $0.contains("cannot evaluate Formula") }.count, 1)
+        for bad in ["(", "?"] {
+            calc.overrides["formula"] = bad
+            calc.needsOptionRead = true
+            calc.readOptionsIfNeeded(); calc.performUpdate()
+        }
+        t.equal(context.logs.filter { $0.contains("invalid Formula") }.count, 1)
+
+        let randomOptions = [("Formula", "Random"), ("LowBound", "1"), ("HighBound", "3"),
+                             ("UpdateRandom", "1"), ("UniqueRandom", "1")]
+        let random = try extendedNode(CalcMeasure.self, "Random", "calc", randomOptions, in: context)
+        random.readOptionsIfNeeded()
+        var first: [Double] = []
+        for _ in 0..<3 { random.performUpdate(); first.append(random.value) }
+        t.equal(Set(first), Set([1.0, 2.0, 3.0]))
+        let other = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-calc-seed"), system: system)
+        let repeated = try extendedNode(CalcMeasure.self, "Random", "calc", randomOptions, in: other)
+        repeated.readOptionsIfNeeded()
+        var second: [Double] = []
+        for _ in 0..<3 { repeated.performUpdate(); second.append(repeated.value) }
+        t.equal(second, first, "the existing per-owner seed advances at the same kernel call sites")
+        let once = try extendedNode(CalcMeasure.self, "Once", "calc", [("Formula", "Random"), ("LowBound", "10"), ("HighBound", "20")], in: context)
+        once.readOptionsIfNeeded(); once.performUpdate()
+        let held = once.value
+        t.check((10...20).contains(held))
+        once.performUpdate()
+        t.equal(once.value, held)
+        once.overrides["lowbound"] = "30"; once.overrides["highbound"] = "30"
+        once.needsOptionRead = true
+        once.readOptionsIfNeeded(); once.performUpdate()
+        t.equal(once.value, 30)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Loop cadence reset and borrowed ownership remain local") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-loop"), system: system)
+        let forward = try extendedNode(LoopMeasure.self, "Forward", "loop", [("StartValue", "0"), ("EndValue", "10"),
+            ("Increment", "3"), ("AverageSize", "3"), ("MinValue", "-100"), ("MaxValue", "200")], in: context)
+        let reverse = try extendedNode(LoopMeasure.self, "Reverse", "loop", [("StartValue", "10"), ("EndValue", "0"),
+            ("Increment", "-5"), ("LoopCount", "1")], in: context)
+        forward.readOptionsIfNeeded(); reverse.readOptionsIfNeeded()
+        var a: [Double] = [], b: [Double] = []
+        for index in 0..<7 {
+            forward.performUpdate(); a.append(forward.value)
+            if index % 2 == 0 { reverse.performUpdate(); b.append(reverse.value) }
+        }
+        t.equal(a, [0, 3, 6, 9, 10, 0, 3])
+        t.equal(b, [10, 5, 0, 0])
+        t.equal(forward.minValue, 0)
+        t.equal(forward.maxValue, 10)
+        t.equal(forward.averageSize, 1)
+        t.equal(forward.runtimeSnapshot.average, nil)
+        forward.execute(command: " Reset "); forward.performUpdate()
+        t.equal(forward.value, 0)
+        forward.overrides["endvalue"] = "20"; forward.needsOptionRead = true
+        forward.readOptionsIfNeeded(); forward.performUpdate()
+        t.equal(forward.value, 0)
+        forward.overrides["invertmeasure"] = "1"; forward.needsOptionRead = true
+        forward.readOptionsIfNeeded(); forward.performUpdate()
+        t.equal(forward.value, 20)
+        t.equal(reverse.value, 0, "resetting one kernel does not advance another")
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+
+        var owner: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-loop-lifetime"), system: system)
+        weak var weakOwner = owner
+        let retained = try extendedNode(LoopMeasure.self, "Retained", "loop", [], in: owner!)
+        retained.readOptionsIfNeeded(); retained.performUpdate()
+        t.equal(retained.value, 1)
+        owner = nil
+        t.check(weakOwner == nil)
+        withExtendedLifetime(retained) {} // Never dereference the unowned context after release.
+    }
+
+    t.suite("Engine: context builtin extended: ordinary Time uses the injected clock zone and locale") {
+        guard let shanghai = TimeZone(identifier: "Asia/Shanghai") else { throw SectionConstructionError.utcUnavailable }
+        let date = Date(timeIntervalSince1970: 1_798_761_598)
+        var nowReads = 0, zoneReads = 0
+        let clock = SkinClock(now: { nowReads += 1; return date }, uptime: { 1 }, timeZone: { zoneReads += 1; return shanghai })
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-time"), system: system, skinClock: clock)
+        let local = try extendedNode(TimeMeasure.self, "Local", "time", [], in: context)
+        t.equal([nowReads, zoneReads], [0, 0], "construction does not force lazy time zone or sampling")
+        local.readOptionsIfNeeded()
+        t.equal([nowReads, zoneReads], [1, 1])
+        local.performUpdate()
+        t.equal([nowReads, zoneReads], [2, 1])
+        t.equal(local.value, 13_443_263_998)
+        t.equal(local.timestamp, 13_443_263_998)
+        t.equal(local.rawString, "07:59:58")
+        let cases: [(String, [(String, String)], Double, String)] = [
+            ("Formatted", [("Format", "%Y-%m-%d %H:%M:%S")], 2027, "2027-01-01 07:59:58"),
+            ("Offset", [("Format", "%H:%M"), ("TimeZone", "-5"), ("DaylightSavingTime", "0")], 18, "18:59"),
+            ("Locale", [("Format", "%A %#d %B"), ("FormatLocale", "Local")], 0, "Friday 1 January"),
+            ("Numeric", [("TimeStamp", "13000000000")], 13_000_000_000, "23:06:40"),
+            ("Parsed", [("TimeStamp", "2026-12-31 23:59:58"), ("TimeStampFormat", "%Y-%m-%d %H:%M:%S")], 13_443_235_198, "23:59:58"),
+        ]
+        for (name, options, value, text) in cases {
+            let node = try extendedNode(TimeMeasure.self, name, "time", options, in: context)
+            node.readOptionsIfNeeded(); node.performUpdate()
+            t.equal(node.value, value)
+            t.equal(node.rawString, text)
+            if name == "Numeric" || name == "Parsed" { t.equal(node.timestamp, value) }
+        }
+        let invalid = try extendedNode(TimeMeasure.self, "Invalid", "time", [("TimeStamp", "not-a-timestamp")], in: context)
+        invalid.readOptionsIfNeeded(); invalid.performUpdate(); invalid.performUpdate()
+        t.equal(invalid.value, 0)
+        t.equal(invalid.timestamp, 0)
+        t.equal(context.logs.filter { $0.contains("does not match TimeStampFormat") }.count, 1)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Time override keeps original live-read and stored timestamp semantics") {
+        guard let newYork = TimeZone(identifier: "America/New_York"), let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
+        var date = Date(timeIntervalSince1970: 1_798_761_598), zone = newYork
+        var nowReads = 0, zoneReads = 0
+        let clock = SkinClock(now: { nowReads += 1; return date }, uptime: { 1 }, timeZone: { zoneReads += 1; return zone })
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-time-override"), system: system, skinClock: clock)
+        context.optionsLoaded = true
+        context.variables["mask"] = "%H:%M"
+        let time = try extendedNode(TimeMeasure.self, "Time", "time", [("Format", "#Mask#"), ("FormatLocale", "Local")], in: context)
+        let plain = try extendedNode(TimeMeasure.self, "Plain", "time", [], in: context)
+        let fixed = try extendedNode(TimeMeasure.self, "Fixed", "time", [("TimeStamp", "13000000000")], in: context)
+        for node in [time, plain, fixed] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal(time.value, 18)
+        t.equal(time.rawString, "18:59")
+        t.equal(time.timestamp, 13_443_217_198)
+        let stored = time.timestamp
+        let sample = MeasureValueOverride()
+        sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_600)
+        sample.pinned["time"] = (77, "pinned")
+        context.measureValues = sample
+        let beforePin = [nowReads, zoneReads]
+        time.performUpdate()
+        t.equal(time.value, 77)
+        t.equal(time.rawString, "pinned")
+        t.equal(time.timestamp, stored)
+        t.equal([nowReads, zoneReads], beforePin)
+        sample.pinned.removeAll()
+        zone = utc
+        let beforeFrozen = [nowReads, zoneReads]
+        time.performUpdate(); plain.performUpdate()
+        t.equal(time.value, 0)
+        t.equal(time.rawString, "00:00")
+        t.equal(time.timestamp, stored, "frozen show never rewrites normal compute's stored timestamp")
+        t.equal(plain.value, 13_443_235_200)
+        t.equal(plain.timestamp, 13_443_217_198)
+        t.equal(nowReads, beforeFrozen[0])
+        t.equal(zoneReads, beforeFrozen[1] + 2)
+        context.variables["mask"] = "%B"
+        context.locale = Locale(identifier: "fr_FR")
+        time.performUpdate()
+        t.equal(time.rawString, "janvier", "frozen show re-reads the resolver and Local locale without another options read")
+        t.equal(time.value, 0)
+        t.equal(time.timestamp, stored)
+        let beforeFixed = [nowReads, zoneReads]
+        fixed.performUpdate()
+        t.equal(fixed.value, 13_000_000_000, "an explicit TimeStamp refuses frozen show")
+        t.equal([nowReads, zoneReads], [beforeFixed[0] + 1, beforeFixed[1] + 1])
+
+        zone = newYork
+        let dst = try extendedNode(TimeMeasure.self, "DST", "time", [("Format", "%H"), ("TimeZone", "-5"), ("DaylightSavingTime", "1")], in: context)
+        dst.readOptionsIfNeeded()
+        context.measureValues = nil
+        dst.performUpdate()
+        t.equal(dst.value, 18)
+        let winterStamp = dst.timestamp
+        context.measureValues = sample
+        sample.frozenTime = Date(timeIntervalSince1970: 1_784_116_800)
+        let beforeDST = nowReads
+        dst.performUpdate()
+        t.equal(dst.value, 8, "numeric zone DST uses the frozen summer instant, not the cached winter zone")
+        t.equal(dst.timestamp, winterStamp)
+        t.equal(nowReads, beforeDST)
+        let beforePaused = time.updateCount
+        time.setPaused(true); time.performUpdate()
+        t.equal(time.updateCount, beforePaused)
+        time.setPaused(false); time.setDisabled(true); time.performUpdate()
+        t.equal(time.value, 0)
+        t.equal(time.updateCount, beforePaused)
+        time.setDisabled(false)
+        context.measureValues = nil
+        context.variables["mask"] = "%H"
+        zone = utc
+        date = Date(timeIntervalSince1970: 1_798_761_598)
+        time.readOptionsIfNeeded(); time.performUpdate()
+        t.equal(time.value, 23)
+        t.equal(time.rawString, "23")
+        t.equal(time.timestamp, 13_443_235_198)
+        t.equal(context.services, [])
+        t.equal(system.calls, [])
+    }
+
+    t.suite("Engine: context builtin extended: Uptime and Process keep service notes separate from reads") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-uptime-process"), system: system)
+        let fixed = try extendedNode(UptimeMeasure.self, "Fixed", "uptime", [("SecondsValue", "3725"), ("Format", "%3!i!h %2!02i!m %1!02i!s")], in: context)
+        fixed.readOptionsIfNeeded(); fixed.performUpdate()
+        t.equal(fixed.value, 3725)
+        t.equal(fixed.rawString, "1h 02m 05s")
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        let uptime = try extendedNode(UptimeMeasure.self, "Uptime", "uptime", [("Format", "%3!i!:%2!02i!")], in: context)
+        uptime.readOptionsIfNeeded(); uptime.performUpdate()
+        t.equal(uptime.value, 90061)
+        t.equal(uptime.rawString, "25:01")
+        t.equal(system.calls, ["uptime"], "uptime still reads SystemDataSource, not the context's monotonic clock")
+        let process = try extendedNode(ProcessMeasure.self, "Process", "process", [("ProcessName", " Finder.exe ")], in: context)
+        let gone = try extendedNode(ProcessMeasure.self, "Gone", "process", [("ProcessName", "Nothing.exe")], in: context)
+        let empty = try extendedNode(ProcessMeasure.self, "Empty", "process", [], in: context)
+        for node in [process, gone, empty] { node.readOptionsIfNeeded(); node.performUpdate() }
+        t.equal([process.value, gone.value, empty.value], [1, -1, -1])
+        t.equal(process.minValue, -1)
+        t.equal(system.calls, ["uptime", "process:Finder", "process:Nothing"])
+        t.equal(context.services, Array(repeating: .system, count: 4), "the empty process still notes its existing live-input class")
+        let before = system.calls
+        process.setPaused(true); process.performUpdate()
+        process.setPaused(false); process.setDisabled(true); process.performUpdate()
+        t.equal(system.calls, before)
+        t.equal(process.value, 0)
+        process.setDisabled(false)
+        let sample = MeasureValueOverride(); sample.data = .noData; context.measureValues = sample
+        process.performUpdate()
+        t.equal(process.value, 0)
+        t.equal(system.calls, before)
+    }
+
+    t.suite("Engine: context builtin extended: FreeDisk witnesses preserve loading and volume branches") {
+        let system = ContextBuiltinSystem()
+        system.values.available = nil
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-disk"), system: system)
+        let available = try extendedNode(FreeDiskSpaceMeasure.self, "Available", "freediskspace", [("Drive", "/fixture"), ("MacAvailable", "1"), ("AverageSize", "3")], in: context)
+        let used = try extendedNode(FreeDiskSpaceMeasure.self, "Used", "freediskspace", [("Drive", "/fixture"), ("MacAvailable", "1"), ("InvertMeasure", "1")], in: context)
+        t.equal(system.calls, [], "even FreeDisk construction does not read a volume")
+        available.readOptionsIfNeeded(); used.readOptionsIfNeeded()
+        t.equal(system.calls, ["disk:/fixture", "disk:/fixture"], "the original automatic max is read in option order")
+        system.resetCalls()
+        available.performUpdate(); used.performUpdate()
+        t.equal([available.value, used.value], [-1, -1])
+        t.equal(available.rawString, "")
+        t.check(available.valueUnavailable && used.valueUnavailable)
+        t.equal(available.runtimeSnapshot.average, nil)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture", "available:/fixture", "volume:/fixture", "disk:/fixture", "available:/fixture"])
+        system.values.available = 600
+        available.performUpdate(); used.performUpdate()
+        t.equal([available.value, used.value], [600, 400])
+        t.check(!available.valueUnavailable && !used.valueUnavailable)
+        t.equal(available.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [600], next: 1))
+        system.values.available = 5000
+        available.performUpdate()
+        t.equal(available.value, 800, "available bytes clamp before entering the existing numeric average")
+        t.equal(available.runtimeSnapshot.average, SkinRuntimeState.Average(samples: [600, 1000], next: 2))
+
+        system.values.disk = nil; system.values.volume = nil
+        let missing = try extendedNode(FreeDiskSpaceMeasure.self, "Missing", "freediskspace", [("Drive", "/fixture")], in: context)
+        missing.readOptionsIfNeeded(); system.resetCalls(); missing.performUpdate()
+        t.equal(missing.value, 0)
+        t.check(!missing.valueUnavailable)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"])
+        system.values.disk = (1000, 250)
+        system.values.volume = VolumeInfo(label: "USB", kind: .removable)
+        let ignored = try extendedNode(FreeDiskSpaceMeasure.self, "Ignored", "freediskspace", [("Drive", "/fixture")], in: context)
+        ignored.readOptionsIfNeeded(); system.resetCalls(); ignored.performUpdate()
+        t.equal(ignored.value, 0)
+        t.equal(system.calls, ["volume:/fixture"])
+        let type = try extendedNode(FreeDiskSpaceMeasure.self, "Type", "freediskspace", [("Drive", "/fixture"), ("Type", "1")], in: context)
+        type.readOptionsIfNeeded(); system.resetCalls(); type.performUpdate()
+        t.equal(type.value, 3)
+        t.equal(type.rawString, "Removable")
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"], "Type's value bypasses disk data, while the old numeric range still reads its automatic max")
+        let label = try extendedNode(FreeDiskSpaceMeasure.self, "Label", "freediskspace", [("Drive", "/fixture"), ("Label", "1"), ("IgnoreRemovable", "0")], in: context)
+        label.readOptionsIfNeeded(); system.resetCalls(); label.performUpdate()
+        t.equal(label.value, 250)
+        t.equal(label.rawString, "USB")
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"])
+        let total = try extendedNode(FreeDiskSpaceMeasure.self, "Total", "freediskspace", [("Drive", "/fixture"), ("Total", "1"), ("MacAvailable", "1"), ("IgnoreRemovable", "0")], in: context)
+        total.readOptionsIfNeeded(); system.resetCalls(); total.performUpdate()
+        t.equal(total.value, 1000)
+        t.equal(system.calls, ["volume:/fixture", "disk:/fixture"], "Total bypasses available-space reading")
+    }
+
+    t.suite("Engine: context builtin extended: SysInfo uses current environment and explicit source answers") {
+        guard let newYork = TimeZone(identifier: "America/New_York") else { throw SectionConstructionError.utcUnavailable }
+        var date = Date(timeIntervalSince1970: 1_798_761_598)
+        let clock = SkinClock(now: { date }, uptime: { 1 }, timeZone: { newYork })
+        let system = ContextBuiltinSystem()
+        system.values.sysInfoAnswers["SCREEN_WIDTH"] = (999, nil)
+        system.values.sysInfoAnswers["NONFINITE"] = (.nan, nil)
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-sysinfo"), system: system, skinClock: clock)
+        let environmentHost = EnvironmentHost()
+        context.environment = environmentHost.env
+        let cases: [(String, String, String, Double, String?)] = [
+            ("Monitors", "NUM_MONITORS", "", 2, nil), ("Width", "SCREEN_WIDTH", "2", 1280, nil),
+            ("Work", "WORK_AREA", "", 0, "1920 x 1055"), ("Bits", "OS_BITS", "", 64, nil),
+            ("User", "USER_NAME", "", 0, "tester"), ("Finite", "NONFINITE", "", 0, nil),
+        ]
+        for (name, type, data, value, text) in cases {
+            let node = try extendedNode(SysInfoMeasure.self, name, "sysinfo", [("SysInfoType", type), ("SysInfoData", data)], in: context)
+            node.readOptionsIfNeeded(); node.performUpdate()
+            t.equal(node.value, value)
+            t.equal(node.rawString, text)
+            t.check(!node.valueUnavailable)
+        }
+        t.equal(system.calls, ["sysInfo:USER_NAME:", "sysInfo:NONFINITE:"], "engine environment answers take precedence over the source")
+        let sid = try extendedNode(SysInfoMeasure.self, "SID", "sysinfo", [("SysInfoType", "USER_SID")], in: context)
+        sid.readOptionsIfNeeded(); sid.performUpdate(); sid.performUpdate()
+        t.equal(sid.value, 0)
+        t.equal(sid.rawString, "")
+        t.check(sid.valueUnavailable)
+        t.equal(context.issues, Set(["SysInfoType=USER_SID is not supported on macOS"]))
+        let unknown = try extendedNode(SysInfoMeasure.self, "Unknown", "sysinfo", [("SysInfoType", "USER_NAMES")], in: context)
+        unknown.readOptionsIfNeeded(); unknown.performUpdate(); unknown.performUpdate()
+        t.equal(unknown.value, 0)
+        t.equal(unknown.rawString, "")
+        t.check(!unknown.valueUnavailable)
+        t.equal(context.logs.filter { $0.contains("USER_NAMES is not a SysInfo type") }.count, 1)
+        let dst = try extendedNode(SysInfoMeasure.self, "DST", "sysinfo", [("SysInfoType", "TIMEZONE_ISDST")], in: context)
+        let bias = try extendedNode(SysInfoMeasure.self, "Bias", "sysinfo", [("SysInfoType", "TIMEZONE_BIAS")], in: context)
+        dst.readOptionsIfNeeded(); bias.readOptionsIfNeeded(); dst.performUpdate(); bias.performUpdate()
+        t.equal(dst.value, 0)
+        t.equal(bias.value, 300)
+        date = Date(timeIntervalSince1970: 1_784_116_800)
+        let sample = MeasureValueOverride(); sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_598)
+        context.measureValues = sample
+        dst.performUpdate()
+        t.equal(dst.value, 1, "Time's frozen-date override does not replace SysInfo's own context clock read")
+        context.environment?.screens = []
+        let beforeEmpty = system.calls
+        context.measures["monitors"]?.performUpdate(); context.measures["width"]?.performUpdate()
+        t.equal(context.measures["monitors"]?.value, 0)
+        t.equal(context.measures["width"]?.value, 0)
+        t.equal(system.calls, beforeEmpty, "an empty supplied screen list is an engine answer, not a source fallback")
+    }
+
+    t.suite("Engine: context builtin extended: Power keeps battery rated and sensor witness order") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-power"), system: system)
+        let states = ["ACLine", "Status", "Status2", "Lifetime", "Percent", "Hz", "MHz"]
+        let nodes = try states.map { try extendedNode(PowerPluginMeasure.self, $0, "powerplugin", [("PowerState", $0)], in: context) }
+        for node in nodes { node.readOptionsIfNeeded() }
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        for node in nodes { node.performUpdate() }
+        t.equal(nodes.map(\.value), [0, 4, 1, 5400, 80, 3_200_000_000, 3200])
+        t.equal(nodes[3].rawString, "01:30")
+        t.equal(system.calls, ["battery", "battery", "battery", "battery", "battery", "battery", "frequency", "battery", "frequency"])
+        t.equal(context.services, Array(repeating: [.battery, .system], count: 7).flatMap { $0 })
+        system.values.batteryStatus = BatteryStatus(percent: 3, isCharging: true, isPluggedIn: true)
+        for node in nodes.prefix(5) { node.performUpdate() }
+        t.equal(Array(nodes.prefix(5)).map(\.value), [1, 1, 14, -1, 3])
+        t.equal(nodes[3].rawString, "Unknown")
+        system.values.batteryStatus = nil
+        for node in nodes.prefix(5) { node.performUpdate() }
+        t.equal(Array(nodes.prefix(5)).map(\.value), [1, 0, 128, -1, 100])
+        system.values.frequency = nil
+        system.resetCalls()
+        nodes[5].performUpdate(); nodes[6].performUpdate()
+        t.equal([nodes[5].value, nodes[6].value], [2_100_000_000, 2100])
+        t.equal(system.calls, ["battery", "frequency", "sensor:frequency.cpu", "battery", "frequency", "sensor:frequency.cpu"])
+        system.sensors.removeAll()
+        system.resetCalls(); nodes[5].performUpdate()
+        t.equal(nodes[5].value, 0)
+        t.equal(system.calls, ["battery", "frequency", "sensor:frequency.cpu"], "a nil reading remains on the injected source, never the global source")
+        nodes[3].overrides["powerstate"] = "Percent"; nodes[3].needsOptionRead = true
+        nodes[3].readOptionsIfNeeded(); nodes[3].performUpdate()
+        t.equal(nodes[3].value, 100)
+        t.equal(nodes[3].rawString, nil, "changing away from Lifetime drops the former text")
+    }
+
+    t.suite("Engine: context builtin extended: real Skin consumer and old required constructors agree") {
+        let system = ContextBuiltinSystem()
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-extended-constructor"), system: system)
+        let classes: [(Measure.Type, String)] = [(CalcMeasure.self, "calc"), (LoopMeasure.self, "loop"),
+            (TimeMeasure.self, "time"), (UptimeMeasure.self, "uptime"), (FreeDiskSpaceMeasure.self, "freediskspace"),
+            (ProcessMeasure.self, "process"), (SysInfoMeasure.self, "sysinfo"), (PowerPluginMeasure.self, "powerplugin")]
+        for (cls, type) in classes {
+            let node = makeContextBuiltinMeasure(cls, name: type, section: constructionSection(type, []), context: context, type: type)
+            t.check(node != nil)
+            if let node { t.check(ObjectIdentifier(Swift.type(of: node)) == ObjectIdentifier(cls)) }
+            t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: type, section: constructionSection(type, []), context: context, type: type) == nil,
+                    "exact dispatch never substitutes a selected registered subclass")
+        }
+        t.equal(system.calls, [])
+        t.equal(context.services, [])
+        guard let shanghai = TimeZone(identifier: "Asia/Shanghai") else { throw SectionConstructionError.utcUnavailable }
+        let host = EnvironmentHost()
+        host.env.locale = Locale(identifier: "en_US_POSIX")
+        let skin = try extendedConsumerSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [Calc]
+        Measure=Calc
+        Formula=2+3
+        [Loop]
+        Measure=Loop
+        StartValue=0
+        EndValue=10
+        Increment=3
+        [Time]
+        Measure=Time
+        [Uptime]
+        Measure=Uptime
+        SecondsValue=3725
+        [Disk]
+        Measure=FreeDiskSpace
+        Drive=/fixture
+        Label=1
+        [Process]
+        Measure=Process
+        ProcessName=Finder.exe
+        [SysInfo]
+        Measure=SysInfo
+        SysInfoType=SCREEN_WIDTH
+        SysInfoData=2
+        [Power]
+        Measure=Plugin
+        Plugin=PowerPlugin
+        PowerState=MHz
+        [ProcessAlias]
+        Measure=Plugin
+        Plugin=Plugins\\Process.dll
+        ProcessName=Finder.exe
+        [SysInfoAlias]
+        Measure=Plugin
+        Plugin=SysInfo
+        SysInfoType=USER_NAME
+        """, system: system, host: host, clock: .fixed(Date(timeIntervalSince1970: 1_798_761_598), timeZone: shanghai))
+        defer { skin.close(); withExtendedLifetime(host) {} }
+        t.equal(skin.measures.map(\.name), ["Calc", "Loop", "Time", "Uptime", "Disk", "Process", "SysInfo", "Power", "ProcessAlias", "SysInfoAlias"])
+        skin.update()
+        t.equal(skin.measures.map(\.value), [5, 0, 13_443_263_998, 3725, 250, 1, 1280, 3200, 1, 0])
+        t.equal(skin.measure(named: "Disk")?.rawString, "Macintosh HD")
+        t.equal(skin.measure(named: "SysInfoAlias")?.rawString, "tester")
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        for ((cls, type), measure) in zip(classes, skin.measures.prefix(8)) {
+            t.check(ObjectIdentifier(Swift.type(of: measure)) == ObjectIdentifier(cls))
+            let legacy = cls.init(name: "Direct\(measure.name)", section: measure.own, skin: skin, type: type)
+            legacy.readOptionsIfNeeded(); legacy.performUpdate()
+            t.check(legacy.skin === skin)
+            t.equal(legacy.value, measure.value)
+            t.equal(legacy.rawString, measure.rawString)
+        }
+        t.equal(skin.measure(named: "ProcessAlias")?.type, "process")
+        t.equal(skin.measure(named: "SysInfoAlias")?.type, "sysinfo")
+        let ordinaryStamp = (skin.measure(named: "Time") as? TimeMeasure)?.timestamp
+        t.equal(ordinaryStamp, 13_443_263_998)
+        let sample = MeasureValueOverride(); sample.frozenTime = Date(timeIntervalSince1970: 1_798_761_600)
+        skin.measureValues = sample
+        skin.measure(named: "Time")?.performUpdate()
+        t.equal(skin.measure(named: "Time")?.value, 13_443_264_000)
+        t.equal(skin.resolve("[Time:TimeStamp]", in: nil, sectionVariables: true), "13443263998", "the real resolver still reads the old stored timestamp after frozen show")
     }
 }
