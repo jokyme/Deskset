@@ -150,7 +150,8 @@ enum LegacyRenderSelfTests {
     /// Pixel equality alone cannot verify an empty skin or a skin whose inputs were unavailable.
     private static func complete(hasPixels: Bool, missing: [String]) -> Bool { hasPixels && missing.isEmpty }
 
-    /// The same render host and skin serve both paths. Only their inputs are replaced, before loading the skin.
+    /// The same render host and skin serve both paths. Shared inputs are replaced before loading the skin;
+    /// per-measure backends are replaced after loading and before the first update.
     private static func withInputs<Value>(_ file: URL, skinsDir: String? = nil, data dataURL: URL,
                                           closeTimeout: TimeInterval = 5,
                                           _ body: (Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Value)
@@ -184,6 +185,8 @@ enum LegacyRenderSelfTests {
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("LegacyRender-\(UUID().uuidString)")
         let settings = scratch.appendingPathComponent("Settings")
         try FileManager.default.createDirectory(at: settings, withIntermediateDirectories: true)
+        let stationery = settings.appendingPathComponent(DefaultSkins.stationeryFileName)
+        try DefaultSkins.stationeryFileHeader.write(to: stationery, atomically: true, encoding: .utf8)
         MediaUICache.root = scratch.appendingPathComponent("Caches")
         EnvironmentStore.shared.settingsPath = settings.path + "/"
         virtual.background.allowFixtureReads(under: settings)
@@ -211,6 +214,24 @@ enum LegacyRenderSelfTests {
                           userInfo: [NSLocalizedDescriptionKey: "the render data must supply recorded programs"])
         }
         var missing: [String] = []
+        // The app creates this file before skins load. Its existing-file check then does nothing, but it still
+        // runs through the recording. Only this exact command against the existing private file is covered.
+        let stationeryProgram = SkinInputData.Program(
+            match: "test -e \"\(stationery.path)\" || : > \"\(stationery.path)\"", output: "")
+        var programData = data
+        programData.programs?.append(stationeryProgram)
+        recording.programOutput = { Data(programData.programOutput(for: $0).utf8) }
+        let missingPrograms = Guarded<[String]>([])
+        recording.onRecord = { [weak recording] effect in
+            guard case let .launch(executable, arguments, _) = effect, executable == "/bin/sh",
+                  arguments.first == "-c", let command = arguments.dropFirst().first else { return }
+            if command == stationeryProgram.match, arguments.count == 2,
+               let path = recording?.files.path(for: stationery.path, access: .read),
+               FileManager.default.fileExists(atPath: path) { return }
+            if !(data.programs ?? []).contains(where: { command.contains($0.match) }) {
+                missingPrograms.access { $0.append("RunCommand: no fixture for \(command)") }
+            }
+        }
         let recordingRoot = recording.files.directory.standardizedFileURL.resolvingSymlinksInPath().path
         let roots = [skin.rootConfigDirectory, dataURL.deletingLastPathComponent(), scratch]
             .map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
@@ -246,6 +267,15 @@ enum LegacyRenderSelfTests {
         virtual.background.setFake(web, for: .webParserPage)
         virtual.background.setFake(web, for: .webParserDownload)
         try skin.load()
+        let volumes = skin.measures.compactMap { $0 as? Win7AudioMeasure }
+        if !volumes.isEmpty {
+            let output = AudioSelfTests.FakeOutput()
+            for volume in volumes { volume.system = output }
+            // AppVolume uses the same service kind but has a different backend, which is not replaced here.
+            if skin.measures.allSatisfy({ !$0.liveInputs.contains(.volume) || $0 is Win7AudioMeasure }) {
+                virtual.background.setFake(.service, for: .volume)
+            }
+        }
         Fonts.registerFonts(for: skin)
         skin.update()
         RenderCommand.step(virtual, until: 1, deadline: Date().addingTimeInterval(5))
@@ -254,13 +284,7 @@ enum LegacyRenderSelfTests {
         RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
         let value = try body(skin, recording, virtual)
         close()
-        for effect in recording.records {
-            if case let .launch(executable, arguments, _) = effect, executable == "/bin/sh",
-               arguments.first == "-c", let command = arguments.dropFirst().first,
-               !(data.programs ?? []).contains(where: { command.contains($0.match) }) {
-                missing.append("RunCommand: no fixture for \(command)")
-            }
-        }
+        missing += missingPrograms.current
         for run in skin.measures.compactMap({ $0 as? RunCommandMeasure }) where run.value >= 100 {
             missing.append("RunCommand [\(run.name)] failed (\(run.value)): \(run.string("Program")) \(run.string("Parameter"))")
         }
@@ -311,7 +335,7 @@ enum LegacyRenderSelfTests {
             try """
             [Rainmeter]
             Update=1000
-            OnRefreshAction=[!CommandMeasure Run "Run"][!WriteKeyValue Variables Marker changed "#CURRENTPATH#state.inc"][!Delay 500][!SetOption Late SolidColor 255,0,0,255][!UpdateMeter Late]
+            OnRefreshAction=[!SetVariable VolumeAtRefresh [Volume:0]][!CommandMeasure Run "Run"][!WriteKeyValue Variables Marker changed "#CURRENTPATH#state.inc"][!Delay 500][!SetOption Late SolidColor 255,0,0,255][!UpdateMeter Late]
             OnCloseAction=[!WriteKeyValue Variables Marker closed "#CURRENTPATH#state.inc"]
             [Run]
             Measure=Plugin
@@ -351,6 +375,9 @@ enum LegacyRenderSelfTests {
             Measure=NowPlaying
             PlayerName=Music
             PlayerType=Cover
+            [Volume]
+            Measure=Plugin
+            Plugin=Win7AudioPlugin
             [Late]
             Meter=Image
             W=20
@@ -396,6 +423,14 @@ enum LegacyRenderSelfTests {
                     t.equal(skin.measure(named: "Overlay")?.stringValue, "6 4\n", "WebParser reads the overlay of an outside path")
                     t.check(recording.sourceText(for: state)?.contains("Marker=changed") == true)
                     t.equal(skin.measure(named: "Ping")?.value, 12, "the fixed ping result")
+                    let volume = skin.measure(named: "Volume") as? Win7AudioMeasure
+                    t.check(volume?.system is AudioSelfTests.FakeOutput, "volume reads the installed fake controller")
+                    t.equal(volume?.value, 50, "the offline volume is nonzero")
+                    t.equal(volume?.stringValue, "MacBook Pro Speakers", "the offline output device has a name")
+                    t.equal(Double(skin.variable("VolumeAtRefresh") ?? ""), 50,
+                            "the first OnRefreshAction already sees the fake volume")
+                    t.check(virtual.background.reports.contains { $0.kind == .volume && $0.faked },
+                            "volume is covered after its fake controller is installed")
                     let queries = skin.host as? SkinImageQueries
                     t.equal(queries?.imagePixelAlpha(atPath: image.path, x: 0, y: 8, exifOriented: false), 0)
                     t.equal(queries?.imagePixelAlpha(atPath: image.path, x: 12, y: 8, exifOriented: false), 255)
@@ -426,6 +461,101 @@ enum LegacyRenderSelfTests {
             t.check(releasedExecutor == nil, "the render's virtual executor is released")
             t.check(releasedRecording == nil, "the recording and its scratch files are released")
             t.check(releasedWorker == nil, "the demo player's worker is released")
+        }
+
+        t.suite("Runtime: legacy renderer: a volume fake does not cover another volume backend") {
+            guard let source = Paths.repositoryFolder("TestSkins") else { return }
+            let skins = t.temporaryDirectory("legacy-volume-inputs").appendingPathComponent("TestSkins")
+            try FileManager.default.copyItem(at: source, to: skins)
+            let file = skins.appendingPathComponent("Runtime/VolumeInputs.ini")
+            try """
+            [Volume]
+            Measure=Plugin
+            Plugin=Win7AudioPlugin
+            [AppVolume]
+            Measure=Plugin
+            Plugin=AppVolume
+            Disabled=1
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let checked = try withInputs(file, skinsDir: skins.path,
+                                         data: skins.appendingPathComponent("Runtime/Data/mac.json")) { skin, _, virtual in
+                t.equal(skin.measure(named: "Volume")?.value, 50)
+                t.check(skin.measure(named: "AppVolume") is AppVolumeMeasure)
+                t.check(virtual.background.unverifiable.contains { $0.kind == .volume },
+                        "the shared service kind is not marked covered for a backend that was not replaced")
+            }
+            t.check(checked.missing.contains { $0.contains("volume") })
+        }
+
+        t.suite("Runtime: legacy renderer: Stationery initialization covers only an existing-file no-op") {
+            guard let source = Paths.repositoryFolder("TestSkins"),
+                  let defaults = Paths.repositoryFolder("DefaultSkins") else { return }
+            let skins = t.temporaryDirectory("legacy-stationery-inputs").appendingPathComponent("TestSkins")
+            try FileManager.default.copyItem(at: source, to: skins)
+            try FileManager.default.copyItem(at: defaults.appendingPathComponent("Stationery"),
+                                             to: skins.appendingPathComponent("Stationery"))
+            let data = skins.appendingPathComponent("Runtime/Data/mac.json")
+            for name in ["ToDo/Medium.ini", "Launcher/Medium.ini"] {
+                let checked = try withInputs(skins.appendingPathComponent("Stationery/" + name),
+                                             skinsDir: skins.path, data: data) { skin, recording, _ in
+                    let file = URL(fileURLWithPath: skin.variable("StationeryFile") ?? "")
+                    t.equal(file.lastPathComponent, DefaultSkins.stationeryFileName)
+                    t.equal(try String(contentsOf: file, encoding: .utf8), DefaultSkins.stationeryFileHeader,
+                            "the app's initial settings file exists before the skin loads")
+                    t.check(skin.includedFiles.contains { $0.path == file.path }, "the skin loaded its settings file")
+                    let command = "test -e \"\(file.path)\" || : > \"\(file.path)\""
+                    t.check(recording.records.contains(.launch(executable: "/bin/sh", arguments: ["-c", command],
+                                                              directory: skin.directory.path)))
+                    t.equal(skin.measure(named: "MeasureStationeryFile")?.value, 1, "initialization completed")
+                    t.equal(skin.measure(named: "MeasureStationeryFile")?.stringValue, "", "the no-op has no output")
+                }
+                if name.hasPrefix("Launcher/") {
+                    t.check(!checked.missing.contains { $0.contains("RunCommand") }, "initialization is covered")
+                    t.check(checked.missing.contains { $0.contains("FileView") && $0.contains("blocked") },
+                            "the launcher's real folder remains an uncovered input")
+                } else {
+                    t.equal(checked.missing, [], "\(name): the installed inputs cover initialization")
+                }
+            }
+
+            let file = skins.appendingPathComponent("Runtime/StationeryPrograms.ini")
+            try """
+            [Rainmeter]
+            Update=-1
+            OnRefreshAction=[!CommandMeasure Initial "Run"]
+            [Variables]
+            StationeryFile=#SETTINGSPATH#Stationery.inc
+            [Initial]
+            Measure=Plugin
+            Plugin=RunCommand
+            Parameter=test -e "#StationeryFile#" || : > "#StationeryFile#"
+            [Appended]
+            Measure=Plugin
+            Plugin=RunCommand
+            Parameter=test -e "#StationeryFile#" || : > "#StationeryFile#"; echo legacy-uncovered-suffix
+            [OtherFile]
+            Measure=Plugin
+            Plugin=RunCommand
+            Parameter=test -e "#SETTINGSPATH#Other.inc" || : > "#SETTINGSPATH#Other.inc"
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let checked = try withInputs(file, skinsDir: skins.path, data: data) { skin, recording, virtual in
+                let stationery = URL(fileURLWithPath: skin.variable("StationeryFile") ?? "")
+                t.equal(skin.measure(named: "Initial")?.value, 1)
+                skin.execute("[!CommandMeasure Appended Run][!CommandMeasure OtherFile Run]", from: nil)
+                t.check(recording.files.remove(stationery.path), "remove only the recording's copy")
+                skin.execute("[!CommandMeasure Initial Run]", from: nil)
+                RenderCommand.step(virtual, until: virtual.now, deadline: Date().addingTimeInterval(5))
+                // Restoring it later must not cover the command that observed it missing.
+                try DefaultSkins.stationeryFileHeader.write(to: recording.destination(forWriting: stationery),
+                                                            atomically: true, encoding: .utf8)
+                t.equal(try String(contentsOf: stationery, encoding: .utf8), DefaultSkins.stationeryFileHeader)
+                return ["Initial", "Appended", "OtherFile"].compactMap { skin.measure(named: $0)?.string("Parameter") }
+            }
+            t.equal(checked.missing.count, 3)
+            for command in checked.value {
+                t.check(checked.missing.contains("RunCommand: no fixture for \(command)"),
+                        "a missing file, extra shell content or another target remains uncovered")
+            }
         }
 
         t.suite("Runtime: legacy renderer: empty or missing extra inputs cannot complete verification") {
