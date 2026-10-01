@@ -121,6 +121,20 @@ extension SkinRenderer {
 
     static func drawImage(_ draw: ImageDraw, _ ctx: CGContext) {
         let area = draw.contentFrame.cgRect
+        if draw.placement != .meter {
+            guard let path = draw.path,
+                  let prepared = PreparedImage(path: path, options: draw.options, drawn: nil, in: ctx) else { return }
+            if draw.placement == .backgroundNatural {
+                prepared.draw(in: CGRect(origin: .zero, size: prepared.size), ctx)
+            } else {
+                guard let image = prepared.flattened(), prepared.alpha > 0 else { return }
+                ctx.saveGState()
+                ctx.setAlpha(prepared.alpha)
+                tile(image, in: area, ctx, density: prepared.density)
+                ctx.restoreGState()
+            }
+            return
+        }
         // An SF Symbol is rendered for the area it covers (tiled: at its own size).
         let fit = draw.maskPath == nil && draw.preserveAspectRatio == 1
         guard var path = draw.path else { return }

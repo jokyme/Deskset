@@ -21,6 +21,9 @@ final class SkinRenderContext {
         return context
     }
 
+    /// The owner-side projection sequence; it holds no engine objects.
+    let sceneProjector = SceneProjector()
+
     /// The skin's text layouts.
     let text = TextLayoutCache(fonts: AppFontResolver())
     /// The skin's Rotator images with the general image options applied.

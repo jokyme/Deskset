@@ -227,6 +227,18 @@ enum Images {
 
     // MARK: Files a drawing used
 
+    /// The same file version used by decoded images, exposed as a scene value without decoding or retaining an entry.
+    /// Looking up a drawn-size alias records its original file; symbols never query the filesystem.
+    static func imageStamp(atPath path: String) -> ImageStamp? {
+        guard !MacSymbol.isSymbolPath(path) else { return nil }
+        let file = decodeRequest(path)?.file ?? path
+        guard let stamp = lookupStamp(file) else { return nil }
+        return ImageStamp(seconds: stamp.seconds, nanoseconds: stamp.nanoseconds, size: stamp.size, inode: stamp.inode)
+    }
+
+    /// A purge invalidates retained drawings even when their source files have not changed. Any thread.
+    static var purgeGeneration: UInt64 { locked { UInt64(purges) } }
+
     /// The files looked up while a drawing ran (`recordingFiles`), each as it was then (missing ones too). A picture of
     /// that drawing stays right while they stay as they were (`filesUnchanged`): a file replaced on disk shows in the
     /// next drawing that looks it up, and a kept picture that does not look anything up must not miss that.

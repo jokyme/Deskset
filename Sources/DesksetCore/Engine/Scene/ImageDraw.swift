@@ -1,6 +1,14 @@
-/// An Image meter's resolved source, processing and placement for one frame. Image loading and drawing caches
+/// An image's resolved source, processing and placement for one frame. Image loading and drawing caches
 /// remain with the renderer; the value does not retain the skin, meter or its image queries.
 public struct ImageDraw: Equatable, Sendable {
+    public enum Placement: Equatable, Sendable {
+        case meter
+        /// BackgroundMode=0: the processed image's natural size at the skin's origin, without a frame clip.
+        case backgroundNatural
+        /// BackgroundMode=4: whole-pixel tiles anchored to the skin's origin, using the background's sampling.
+        case backgroundTiled
+    }
+
     public var contentFrame: SkinRect
     public var path: String?
     public var options: ImageOptions
@@ -10,10 +18,11 @@ public struct ImageDraw: Equatable, Sendable {
     public var tile: Bool
     public var scaleMargins: SkinInsets?
     public var decodesAtDrawnSize: Bool
+    public var placement: Placement
 
     public init(contentFrame: SkinRect, path: String?, options: ImageOptions, maskPath: String?,
                 maskOptions: ImageOptions, preserveAspectRatio: Int, tile: Bool, scaleMargins: SkinInsets?,
-                decodesAtDrawnSize: Bool) {
+                decodesAtDrawnSize: Bool, placement: Placement = .meter) {
         self.contentFrame = contentFrame
         self.path = path
         self.options = options
@@ -23,6 +32,7 @@ public struct ImageDraw: Equatable, Sendable {
         self.tile = tile
         self.scaleMargins = scaleMargins
         self.decodesAtDrawnSize = decodesAtDrawnSize
+        self.placement = placement
     }
 }
 
