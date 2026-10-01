@@ -6,6 +6,7 @@ protocol SectionContext: AnyObject {
     var optionsLoaded: Bool { get }
     var runsInVirtualTime: Bool { get }
     var measureValues: MeasureValueOverride? { get }
+    var host: SkinHost? { get }
 
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
@@ -21,3 +22,8 @@ protocol SectionContext: AnyObject {
 }
 
 extension Skin: SectionContext {}
+
+extension Skin {
+    /// The current host for app services whose existing hook takes a skin instead of a section.
+    package var serviceHost: SkinHost? { (self as any SectionContext).host }
+}

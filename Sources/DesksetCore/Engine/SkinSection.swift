@@ -18,6 +18,8 @@ open class SkinSection {
     public let name: String
     public unowned let skin: Skin
     unowned let sectionContext: any SectionContext
+    /// The current host, read on this section's owner when an app plugin asks for a service.
+    package var serviceHost: SkinHost? { sectionContext.host }
     /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
     /// in its place; the lookup below follows.
     var own: IniSection {
