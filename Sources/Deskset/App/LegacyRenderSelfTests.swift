@@ -208,6 +208,7 @@ enum LegacyRenderSelfTests {
     /// per-measure backends are replaced after loading and before the first update.
     static func withInputs<Value>(_ file: URL, skinsDir: String? = nil, data dataURL: URL,
                                   webFixtures: LegacyRenderWebFixtures? = nil, closeTimeout: TimeInterval = 5,
+                                  prepare: ((Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Void)? = nil,
                                   _ body: (Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Value)
         throws -> (value: Value, missing: [String]) {
         let data = try SkinInputData.load(dataURL.path, directory: dataURL.deletingLastPathComponent())
@@ -327,6 +328,8 @@ enum LegacyRenderSelfTests {
         }
         virtual.background.setFake(web, for: .webParserPage)
         virtual.background.setFake(web, for: .webParserDownload)
+        // Configure the recording's source copies before options and OnRefreshAction can read their inputs.
+        try prepare?(skin, recording, virtual)
         try skin.load()
         let volumes = skin.measures.compactMap { $0 as? Win7AudioMeasure }
         if !volumes.isEmpty {
@@ -370,6 +373,95 @@ enum LegacyRenderSelfTests {
     }
 
     private static func inputTests(_ t: AppTestRunner) {
+        t.suite("Runtime: legacy renderer: preparation configures recorded sources before load") {
+            guard let source = Paths.repositoryFolder("TestSkins") else { return }
+            let skins = t.temporaryDirectory("legacy-prepared-inputs")
+            let folder = skins.appendingPathComponent("Prepared")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = folder.appendingPathComponent("Prepared.ini")
+            let options = folder.appendingPathComponent("options.inc")
+            let page = folder.appendingPathComponent("page.txt")
+            let original = "[Variables]\nFeed=YourFeedHere\nUnrelated=retained\n"
+            try original.write(to: options, atomically: true, encoding: .utf8)
+            try "marker=prepared".write(to: page, atomically: true, encoding: .utf8)
+            try """
+            [Rainmeter]
+            OnRefreshAction=[!SetVariable SeenAtRefresh "#Feed#"][!UpdateMeasure Page]
+            [Variables]
+            @Include=#CURRENTPATH#options.inc
+            [Page]
+            Measure=WebParser
+            URL=#Feed#
+            RegExp=marker=(.*)
+            StringIndex=1
+            [Text]
+            Meter=String
+            MeasureName=Page
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let data = source.appendingPathComponent("Runtime/Data/mac.json")
+            let unprepared = try withInputs(file, skinsDir: skins.path, data: data) { skin, _, _ in
+                t.equal(skin.variable("SeenAtRefresh"), "YourFeedHere")
+            }
+            t.check(unprepared.missing.contains { $0.contains("<not a URL: YourFeedHere>") },
+                    "omitting preparation retains the missing-input result")
+            var preparations = 0
+            let prepared = try withInputs(file, skinsDir: skins.path, data: data, prepare: { skin, recording, virtual in
+                preparations += 1
+                t.check(skin.measures.isEmpty, "preparation precedes measure creation")
+                t.check(skin.sourceProvider === recording, "the installed recording supplies source copies")
+                t.check(!virtual.background.allowsUnfakedWork, "preparation retains the strict input gate")
+                let copy = URL(fileURLWithPath: recording.files.path(for: options.path, access: .update))
+                t.equal(try String(contentsOf: copy, encoding: .utf8), original, "the overlay starts as a real copy")
+                try IniWriter.writeValue("file://" + page.path, key: "Feed", section: "Variables", fileURL: copy)
+            }) { skin, recording, virtual in
+                t.equal(skin.variable("SeenAtRefresh"), "file://" + page.path,
+                        "the first refresh action already sees the prepared option")
+                t.equal(skin.variable("Unrelated"), "retained")
+                t.equal(skin.measure(named: "Page")?.stringValue, "prepared")
+                t.equal((skin.meter(named: "Text") as? StringMeter)?.text, "prepared")
+                t.equal(virtual.background.outstanding, 0)
+                return recording
+            }
+            t.equal(preparations, 1)
+            t.equal(prepared.missing, [], "the configured local page is fully covered")
+            t.check(prepared.value.sourceText(for: options)?.contains("Feed=file://" + page.path) == true)
+            t.equal(try String(contentsOf: options, encoding: .utf8), original, "the original source is unchanged")
+        }
+
+        t.suite("Runtime: legacy renderer: preparation failures restore installed inputs") {
+            guard let source = Paths.repositoryFolder("TestSkins") else { return }
+            enum PreparationFailure: Error { case expected }
+            let skins = t.temporaryDirectory("legacy-failed-preparation")
+            let file = skins.appendingPathComponent("Unused.ini")
+            try "[Text]\nMeter=String\nText=unused\n".write(to: file, atomically: true, encoding: .utf8)
+            let savedSettings = EnvironmentStore.shared.settingsPath, savedCache = MediaUICache.root
+            weak var releasedSkin: Skin?
+            weak var releasedRecording: RecordingSideEffects?
+            weak var releasedExecutor: VirtualTimeExecutor?
+            var reachedBody = false
+            do {
+                try autoreleasepool {
+                    _ = try withInputs(file, skinsDir: skins.path,
+                                       data: source.appendingPathComponent("Runtime/Data/mac.json"),
+                                       prepare: { skin, recording, virtual in
+                        releasedSkin = skin
+                        releasedRecording = recording
+                        releasedExecutor = virtual
+                        throw PreparationFailure.expected
+                    }) { _, _, _ in reachedBody = true }
+                }
+                t.check(false, "preparation failure propagates")
+            } catch PreparationFailure.expected {
+                t.check(true, "preparation failure propagates")
+            }
+            t.check(!reachedBody, "a failed preparation never runs the body")
+            t.equal(EnvironmentStore.shared.settingsPath, savedSettings)
+            t.equal(MediaUICache.root, savedCache)
+            t.check(releasedSkin == nil, "the unloaded skin is released")
+            t.check(releasedRecording == nil, "the recording and its private files are released")
+            t.check(releasedExecutor == nil, "the virtual executor is released")
+        }
+
         t.suite("Runtime: legacy renderer: isolated inputs preserve files and draw completed work") {
             guard let source = Paths.repositoryFolder("TestSkins") else { return }
             let skins = t.temporaryDirectory("legacy-inputs").appendingPathComponent("TestSkins")
