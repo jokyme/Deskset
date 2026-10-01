@@ -676,3 +676,4 @@ wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-f
 event.notification	Sources/Deskset/App/CodeFileWindowController.swift	2	App-owned document preview wake and date/zone/locale notifications; weak owner, main publication, removed on close; no skin action or data read
 zone.Locale.current	Sources/Deskset/App/DeskProgramPreview.swift	1	defaulted host adapter preserves system region/calendar and Studio display language; tests inject one immutable locale per projection
 zone.implicitFormatter	Sources/DesksetCore/Program/ProgramDateFormatting.swift	1	owner-local formatter always receives explicit immutable projection locale and date-view time zone; Core reads no current clock/zone/locale
+zone.implicitFormatter	Sources/DesksetCore/Program/ProgramNumberFormatting.swift	1	owner-local formatter receives explicit immutable projection locale; Core reads no current locale

@@ -131,6 +131,7 @@ public enum ProgramColor: Equatable, Sendable {
 }
 
 public struct ProgramText: Equatable, Sendable {
+    public enum Digits: Equatable, Sendable { case automatic, normal, equalWidth }
     public let value: ProgramExpression
     public let fontFamily: String
     /// Desk/program points, not the String meter's 96-DPI font units.
@@ -139,15 +140,17 @@ public struct ProgramText: Equatable, Sendable {
     public let italic: Bool
     public let color: ProgramColor
     public let align: HorizontalTextAlign
+    /// Automatic affects numeric interpolation ranges only; explicit policies apply to the whole text.
+    public let digits: Digits
 
     public init(_ text: String, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
-                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center) {
+                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic) {
         self.init(value: .string(text), fontFamily: fontFamily, fontSize: fontSize, fontWeight: fontWeight,
-                  italic: italic, color: color, align: align)
+                  italic: italic, color: color, align: align, digits: digits)
     }
 
     public init(value: ProgramExpression, fontFamily: String = "System", fontSize: Double = 13, fontWeight: Int? = 400,
-                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center) {
+                italic: Bool = false, color: ProgramColor = .text, align: HorizontalTextAlign = .center, digits: Digits = .automatic) {
         self.value = value
         self.fontFamily = fontFamily
         self.fontSize = fontSize
@@ -155,10 +158,11 @@ public struct ProgramText: Equatable, Sendable {
         self.italic = italic
         self.color = color
         self.align = align
+        self.digits = digits
     }
 
     /// Adapt once at the existing renderer boundary. Measuring and TextDraw receive this same value.
-    func drawingStyle(in appearance: SkinAppearance, wrap: Bool) -> TextStyle {
+    func drawingStyle(in appearance: SkinAppearance, wrap: Bool, text: ProgramTextValue? = nil) -> TextStyle {
         var style = TextStyle()
         style.fontFace = fontFamily
         style.fontSize = fontSize * (72.0 / 96.0)
@@ -171,6 +175,16 @@ public struct ProgramText: Equatable, Sendable {
         style.antiAlias = true
         style.trailingSpaces = true
         style.wrap = wrap
+        if let text {
+            switch digits {
+            case .automatic:
+                style.inlineSpans = text.numberRanges.map { InlineSpan(location: $0.lowerBound, length: $0.count, setting: .typography(feature: "tnum", value: 1)) }
+            case .normal:
+                break // Preserve the font's normal figures and cancel automatic interpolation ranges.
+            case .equalWidth:
+                if !text.text.isEmpty { style.inlineSpans = [InlineSpan(location: 0, length: text.text.utf16.count, setting: .typography(feature: "tnum", value: 1))] }
+            }
+        }
         return style
     }
 }

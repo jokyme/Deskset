@@ -999,6 +999,7 @@ enum DeskProgramPreviewSelfTests {
             t.equal(f.app.sortedControllers.count, 0)
         }
 
+        runNumericPreviewTests(t)
         runClockPreviewTests(t)
         runClickPreviewTests(t)
     }
@@ -1016,6 +1017,99 @@ enum DeskProgramPreviewSelfTests {
     private static func click(at point: NSPoint, in f: Fixture) throws {
         try mouse(.leftMouseDown, at: point, in: f)
         try mouse(.leftMouseUp, at: point, in: f)
+    }
+
+
+    private static func runNumericPreviewTests(_ t: AppTestRunner) {
+        let source = "\u{FEFF}" + #"widget { variable n = 0; computed twice = n * 2; Text("😀7|{n}|{twice}").font(20).color(.accent).size(520, 60).padding(8).onClick { n = n + 1 } }"# + "\r\n"
+        t.suite("Desk: numeric preview: real primary clicks draw counters and precise emoji numeric ranges") {
+            let f = try fixture(t, source, locale: { Locale(identifier: "en_US") }), p = f.preview
+            p.setVisible(true)
+            let ranges = [NSRange(location: 4, length: 1), NSRange(location: 6, length: 1)]
+            try numericPixels(t, "😀7|0|0", ranges: ranges, in: f)
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                f.controller.window?.appearance = NSAppearance(named: name); p.refreshEnvironment()
+                try click(at: NSPoint(x: 20, y: 20), in: f)
+                try numericPixels(t, name == .aqua ? "😀7|1|2" : "😀7|2|4", ranges: ranges, in: f)
+            }
+            let generation = p.scene?.generation
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.scene?.generation, generation)
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            t.check(f.app.sortedControllers.isEmpty && p.scene != nil)
+        }
+
+        t.suite("Desk: numeric preview: frozen String formatting locale refresh and digits policies consume native styles") {
+            var locale = Locale(identifier: "en_US")
+            let text = #"widget { variable n = 12345.678; variable frozen = "{n}"; computed live = "{n, decimals: 1}"; Text("😀7|{frozen}|{live}").font(20).color(.accent).size(520, 60).padding(8).onClick { n = n + 1; frozen = "{n}" } }"#
+            let f = try fixture(t, text, locale: { locale }), p = f.preview
+            p.setVisible(true)
+            let ranges = [NSRange(location: 4, length: 9), NSRange(location: 14, length: 8)]
+            try numericPixels(t, "😀7|12,345.68|12,345.7", ranges: ranges, in: f)
+            locale = Locale(identifier: "de_DE"); p.refreshDateInput()
+            try numericPixels(t, "😀7|12,345.68|12.345,7", ranges: ranges, in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀7|12.346,68|12.346,7", ranges: ranges, in: f)
+            for policy in ["normal", "equalWidth"] {
+                let modified = text.replacingOccurrences(of: ".font(20)", with: ".digits(." + policy + ").font(20)")
+                replace(modified, in: f); t.check(settled(f)); t.equal(p.state, .ready)
+                let expected = "😀7|12.345,68|12.345,7"
+                try numericPixels(t, expected, ranges: policy == "normal" ? [] : [NSRange(location: 0, length: 22)], in: f)
+            }
+        }
+
+        t.suite("Desk: numeric preview: typed missing recovery and unsupported units clear real previous pixels") {
+            let text = #"widget { variable n = 1; Text("😀{n, decimals: 1, missing: "空😀"}|{n.isMissing}|{(n < 0).ifMissing(true)}").font(20).color(.accent).size(520, 60).padding(8).onClick { n = n.isMissing ? 2 : 1 / 0 } }"#
+            let f = try fixture(t, text, locale: { Locale(identifier: "en_US") }), p = f.preview
+            p.setVisible(true)
+            try numericPixels(t, "😀1.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀空😀|Yes|Yes", ranges: [], in: f)
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            try numericPixels(t, "😀2.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            let old = checking.snapshot
+            for invalid in [#"widget { Text(1%) }"#, #"widget { Text(cpu.usage) }"#] {
+                replace(invalid, in: f); t.check(settled(f))
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "dimensioned or service numeric data must report unsupported") }
+                t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                t.check(!checking.publish(old))
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+                let clear = try paint(p.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
+            }
+            replace(text, in: f); t.check(settled(f)); p.setVisible(true)
+            try numericPixels(t, "😀1.0|No|No", ranges: [NSRange(location: 2, length: 3)], in: f)
+            f.controller.window?.close()
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.scene == nil && p.state == .closed)
+        }
+    }
+
+    private static func numericPixels(_ t: AppTestRunner, _ text: String, ranges: [NSRange], in f: Fixture) throws {
+        // Independent literal recipe: no ProgramText/formatter/runtime helper supplies this expected style or text.
+        var style = TextStyle()
+        style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400
+        style.color = MacAppearance.values(for: f.preview.canvas.effectiveAppearance).accentColor
+        style.horizontalAlign = .center; style.verticalAlign = .center
+        style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+        style.inlineSpans = ranges.map { InlineSpan(location: $0.location, length: $0.length, setting: .typography(feature: "tnum", value: 1)) }
+        let item = DrawItem.text(TextDraw(text: text, style: style, frame: SkinRect(width: 520, height: 60),
+                                         contentFrame: SkinRect(x: 8, y: 8, width: 504, height: 44), anchor: SkinPoint()))
+        t.equal(clockTexts(f.preview), [text]); t.equal(f.preview.scene?.drawingItems, [item])
+        t.close(CTFontGetSize(AppFontResolver().resolve(FontRequest(style: style)).font), 20)
+        let reference = ReferenceView(items: [item], size: NSSize(width: 520, height: 60))
+        reference.appearance = f.preview.canvas.effectiveAppearance
+        let blank = ReferenceView(items: [], size: reference.frame.size)
+        let wrong = ReferenceView(items: [.text(TextDraw(text: text + "0", style: style, frame: SkinRect(width: 520, height: 60),
+                                  contentFrame: SkinRect(x: 8, y: 8, width: 504, height: 44), anchor: SkinPoint()))], size: reference.frame.size)
+        wrong.appearance = reference.appearance
+        for scale in [1, 2] {
+            let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+            try canaries(t, actual); try canaries(t, expected)
+            t.check(try ink(actual) > 0); t.equal(try ink(paint(blank, scale: scale)), 0)
+            t.equal(try bytes(actual), try bytes(expected), "native plain-number / independent TextDraw complete bytes at \(scale)x")
+            t.check(try bytes(actual) != bytes(paint(wrong, scale: scale)), "an incorrect literal numeric text fails the strict native comparison")
+        }
     }
 
     private static func runClickPreviewTests(_ t: AppTestRunner) {
