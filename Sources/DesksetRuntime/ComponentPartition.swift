@@ -14,8 +14,8 @@ package enum ComponentPartition {
 
     private typealias Rect = InkBounds.DeviceRect
 
-    /// Pass nil only when choosing the base prefix for a new window/scale. A runtime can pass that frozen
-    /// prefix on later frames; an invalid prefix fails explicitly instead of silently changing drawing order.
+    /// Pass nil only when choosing the base prefix for a new window/scale. Later frames retain those identities,
+    /// including temporarily hidden or empty members; their active subset must still lead the drawn scene.
     /// The caller still owns target provenance, coverage admission and the separate oversized-ink guard.
     package static func candidatePlan(_ prepared: SceneInkCandidates, in window: InkBounds.DeviceRect,
                                       baseMembers frozenBase: [ElementID]? = nil) throws -> PartitionPlan {
@@ -44,12 +44,17 @@ package enum ComponentPartition {
         let drawn = top.indices.filter { rectangles[$0] != nil }
         let baseMembers: [ElementID]
         if let frozenBase {
-            guard Set(frozenBase).count == frozenBase.count,
-                  drawn.prefix(frozenBase.count).map({ top[$0].id }) == frozenBase,
-                  frozenBase.allSatisfy({ id in top.first(where: { $0.id == id })?.backing == .content }) else {
+            let selected = Set(frozenBase)
+            let members = scene.elements.filter { selected.contains($0.id) }
+            let active = drawn.map { top[$0].id }.filter { selected.contains($0) }
+            guard selected.count == frozenBase.count,
+                  members.map(\.id) == frozenBase,
+                  members.allSatisfy({ $0.container == nil && $0.backing == .content }),
+                  drawn.prefix(active.count).map({ top[$0].id }) == active else {
                 throw Failure.invalidPlan("Frozen base members must be the drawn scene's leading content prefix")
             }
-            baseMembers = frozenBase
+            // Selection stays frozen; this frame draws only its visible, positive clipped members.
+            baseMembers = active
         } else {
             var prefix: [ElementID] = []
             for index in drawn {

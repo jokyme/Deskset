@@ -500,7 +500,8 @@ package final class LayerRuntime {
         state = .live
         forcedReason = nil
         if pending.key.partition == .candidateComponents {
-            if frame.fallback == nil { frozenBase = frame.plan.baseMembers }
+            // A hidden/empty member leaves the active plan, but remains selected when it returns.
+            if frame.fallback == nil { frozenBase = pending.retainedBase ?? frame.plan.baseMembers }
             else { frozenBase = pending.retainedBase }
             baseWindow = pending.key.window
             baseScale = pending.key.scale
