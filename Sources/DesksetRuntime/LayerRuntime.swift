@@ -48,6 +48,26 @@ package final class LayerRuntime {
     }
     package enum Preparation { case ready(PreparedFrame), unchanged(Frame), suppressed }
 
+    /// An attachment identity, not a prepared presentation, reusable ready token or executor lease. It retains
+    /// no owner or drawing context. Main may attach it only inside the real owner's exclusive scope, then the
+    /// physical worker performs one native display. The caller detaches it after owner-side release.
+    package final class NativeStage {
+        package let root: CALayer
+        package let sourceSequence: UInt64
+        package let scale: CGFloat
+        package let colorSpace: CGColorSpace
+        package let callbackReport: ELayerContent.CallbackReport
+
+        fileprivate init(_ content: ELayerContent, sequence: UInt64, scale: CGFloat, colorSpace: CGColorSpace) {
+            root = content.root
+            sourceSequence = sequence
+            self.scale = scale
+            self.colorSpace = colorSpace
+            callbackReport = content.callbackReport
+        }
+    }
+    package enum NativeStageFailure: Error, Equatable { case notReady, busy, staleSource, notAttached }
+
     private final class NoActionsLayer: CALayer {
         override func action(forKey event: String) -> CAAction? { nil }
     }
@@ -95,6 +115,21 @@ package final class LayerRuntime {
         let retainedBase: [ElementID]?
     }
 
+    private final class NativeCandidate {
+        let attachment: NativeStage
+        let content: ELayerContent
+        // Share the existing captured immutable recipe; never project or deep-copy another scene for staging.
+        let source: Key
+        var attached = false
+        var displayed = false
+
+        init(_ content: ELayerContent, source: Key, sequence: UInt64) {
+            self.content = content
+            self.source = source
+            attachment = NativeStage(content, sequence: sequence, scale: source.scale, colorSpace: source.colorSpace)
+        }
+    }
+
     package let root: CALayer
     /// These mutable observations are read only on the executor. Finished images do not retain this owner.
     package private(set) var state = State.loading
@@ -105,6 +140,7 @@ package final class LayerRuntime {
     private var configuration: Configuration?
     private var pending: Pending?
     private var transferred: ScenePatch?
+    private var nativeCandidate: NativeCandidate?
     private var key: Key?
     private var sequence: UInt64 = 0
     private var updating = false
@@ -296,6 +332,73 @@ package final class LayerRuntime {
     package var hasTransferredWriter: Bool {
         precondition(executor.isCurrent)
         return transferred != nil
+    }
+
+    /// Explicit, one-shot Single staging from an already accepted C frame. There is no automatic call from update,
+    /// no ready cache and no C tree/sequence mutation. App must additionally require a physical worker and validate
+    /// its current actual-window epoch; this package operation cannot establish those AppKit facts by itself.
+    package func prepareNativeStage(maximumCallbackBitmapBytes: Int, cycle: Int) throws -> NativeStage {
+        try checkMutable()
+        guard nativeCandidate == nil else { throw NativeStageFailure.busy }
+        guard state == .live, pending == nil, let key, key.context != nil, key.cycle == cycle,
+              let frame = currentFrame else { throw NativeStageFailure.notReady }
+        let content = try ELayerContent(plan: SinglePartition.plan(in: key.window), scale: key.scale,
+            colorSpace: key.colorSpace, maximumBaseBitmapBytes: maximumOwnedBitmapBytes,
+            maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, executor: executor)
+        let candidate = NativeCandidate(content, source: key, sequence: frame.sequence)
+        nativeCandidate = candidate
+        return candidate.attachment
+    }
+
+    /// Called after the main attachment transaction, while main holds actual exclusive owner access.
+    package func attachedNativeStage(_ stage: NativeStage) throws {
+        try checkMutable()
+        let candidate = try currentNativeCandidate(stage)
+        guard !candidate.attached, stage.root.superlayer != nil else { throw NativeStageFailure.notAttached }
+        candidate.attached = true
+    }
+
+    package func nativeStageIsCurrent(_ stage: NativeStage, cycle: Int) -> Bool {
+        precondition(executor.isCurrent)
+        guard let candidate = try? currentNativeCandidate(stage) else { return false }
+        return candidate.source.cycle == cycle
+    }
+
+    /// Exactly one synchronous native display. Borrowed callback state is captured by ELayerContent's original
+    /// guards; it is never configured as an owned bitmap. The caches are leased only within this call.
+    package func displayNativeStage(_ stage: NativeStage, cycle: Int) throws -> ELayerContent.Observation {
+        try checkMutable()
+        let candidate = try currentNativeCandidate(stage)
+        guard candidate.attached, !candidate.displayed else { throw NativeStageFailure.notAttached }
+        guard candidate.source.cycle == cycle, let context = candidate.source.context else {
+            throw NativeStageFailure.staleSource
+        }
+        candidate.displayed = true
+        var failure: Error?
+        transaction {
+            do {
+                try candidate.content.display(candidate.source.prepared.scene, context: context,
+                    cycle: candidate.source.cycle, glass: candidate.source.glass)
+            } catch { failure = error }
+        }
+        if let failure { throw failure }
+        return candidate.content.callbackReport.observation
+    }
+
+    /// Owner cleanup precedes main detachment. A late/foreign release cannot clear a newer candidate.
+    @discardableResult
+    package func releaseNativeStage(_ stage: NativeStage) throws -> Bool {
+        try checkOwner()
+        guard nativeCandidate?.attachment === stage else { return false }
+        nativeCandidate = nil
+        return true
+    }
+
+    private func currentNativeCandidate(_ stage: NativeStage) throws -> NativeCandidate {
+        guard state == .live, pending == nil, transferred == nil, let candidate = nativeCandidate,
+              candidate.attachment === stage, key === candidate.source, candidate.source.context != nil,
+              currentFrame?.sequence == stage.sourceSequence else { throw NativeStageFailure.staleSource }
+        return candidate
     }
 
     private func makeLayers(_ frame: Frame, frames: [CGRect]) -> [CALayer] {

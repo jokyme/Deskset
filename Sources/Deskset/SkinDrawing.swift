@@ -337,6 +337,11 @@ final class SkinFrameProducer {
     var requestLayerInstallation: (() -> Void)?
     var requestScenePatch: ((SkinScenePatch) -> Void)?
     var publishLayerHitMap: ((SkinHitMap, UInt64, UInt64) -> Void)?
+    var requestNativeCompletion: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
+    var requestNativeStopRelease: ((SkinNativeStage) -> Void)?
+    private var pendingNativeStage: SkinNativeStage?
+    /// The slot remains occupied until owner release AND main detach have been acknowledged.
+    var hasNativeStage: Bool { pendingNativeStage != nil }
     private var pendingScenePatch: SkinScenePatch?
     private var panelGeneration: UInt64 = 0
     private var presentationGeneration: UInt64 = 0
@@ -465,6 +470,7 @@ final class SkinFrameProducer {
     /// The skin closed: no more frames.
     func stop() {
         isStopped = true
+        let endedNativeStage = stopNativeStage()
         needsFrame = false
         turn.access { current in
             current?.remove(self)
@@ -479,6 +485,7 @@ final class SkinFrameProducer {
             do { try layerRuntime.beginClose() }
             catch { layerFailure = .rendering(String(describing: error)) }
         }
+        if endedNativeStage { writerReleased?() }
     }
 
     /// Whether the window can be seen, as far as its facts tell.
@@ -487,6 +494,7 @@ final class SkinFrameProducer {
     /// The skin redrew: a frame at the end of the turn, if the window can be seen then.
     func setNeedsFrame() {
         guard !isStopped else { return }
+        cancelNativeStage()
         if !needsFrame { askedAt = ProcessInfo.processInfo.systemUptime }
         needsFrame = true
     }
@@ -495,6 +503,7 @@ final class SkinFrameProducer {
     func take(_ facts: SkinWindowFacts?) {
         guard let facts, !isStopped else { return }
         explicitlyHidden = facts.settings.hidden
+        if explicitlyHidden { cancelNativeStage() }
         var redraw = false
         if panelGeneration != facts.panelGeneration {
             panelGeneration = facts.panelGeneration
@@ -551,6 +560,7 @@ final class SkinFrameProducer {
     /// Lets go of what a window that cannot be seen does not need (tests call it at once).
     func releaseUnseen() {
         guard !isStopped, !canBeSeen else { return }
+        cancelNativeStage()
         if drawing.keepsPictures {
             drawing.releaseKept()
             releases.pictures += 1
@@ -610,6 +620,7 @@ final class SkinFrameProducer {
     private func draw() {
         // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
         guard pendingScenePatch == nil else { return }
+        cancelNativeStage()
         needsFrame = false
         guard let provider, let skin = skin() else { return }
         workActivity?.begin(.drawing)
@@ -819,12 +830,136 @@ final class SkinFrameProducer {
         return .installed
     }
 
+    /// Called only for an explicit request, on the physical worker after C acceptance. Reuses the accepted scene
+    /// provenance; bitmap/Main paths cannot allocate an E owner, and ordinary C frames never call this method.
+    func prepareNativeStage(_ request: SkinNativeStageRequest) throws -> SkinNativeStage {
+        guard contentMode.usesLayers else { throw SkinNativeStageFailure.unsupportedMode }
+        guard let executor = executor as? SkinThreadExecutor, executor.isCurrent, executor.isOnThread,
+              !Thread.isMainThread else { throw SkinNativeStageFailure.unsupportedExecutor }
+        guard pendingNativeStage == nil else { throw SkinNativeStageFailure.busy }
+        guard !isStopped, !explicitlyHidden, !needsFrame, layerInstalled, pendingScenePatch == nil,
+              let provider = provider as? LayerContentProvider, provider.hasLayerFrame,
+              let layerRuntime, let destination = layerDestination, let actualSpace, let skin = skin(),
+              destination.scale == scale, destination.appearance == appearance,
+              CFEqual(destination.space, actualSpace) else { throw SkinNativeStageFailure.notReady }
+        let attachment: LayerRuntime.NativeStage
+        do {
+            attachment = try layerRuntime.prepareNativeStage(maximumCallbackBitmapBytes: request.maximumCallbackBitmapBytes,
+                                                             cycle: skin.updateCount)
+        } catch LayerRuntime.NativeStageFailure.busy { throw SkinNativeStageFailure.busy }
+        catch LayerRuntime.NativeStageFailure.notReady { throw SkinNativeStageFailure.notReady }
+        let stage = SkinNativeStage(attachment: attachment, provider: provider,
+            epoch: SkinNativeStage.Epoch(panelGeneration: panelGeneration, size: destination.size,
+                scale: destination.scale, colorSpace: actualSpace, appearance: destination.appearance,
+                presentationGeneration: presentationGeneration), request: request)
+        pendingNativeStage = stage
+        return stage
+    }
+
+    /// Main only inside an actual exclusive lease; both the captured scene and CURRENT host facts must still match.
+    func attachNativeStage(_ stage: SkinNativeStage, facts: SkinWindowFacts, size: CGSize) -> Bool {
+        precondition(Thread.isMainThread && executor?.isCurrent == true)
+        guard nativeStageIsCurrent(stage), stage.epoch.matches(facts, size: size), let executor, let layerRuntime,
+              stage.provider.attachNativeStage(stage.attachment, executor: executor) else { return false }
+        do { try layerRuntime.attachedNativeStage(stage.attachment); return true }
+        catch { return false }
+    }
+
+    func nativeStageIsCurrent(_ stage: SkinNativeStage) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, !stage.request.isCancelled, !isStopped, !explicitlyHidden, !needsFrame,
+              pendingScenePatch == nil, layerInstalled, stage.provider.hasLayerFrame,
+              stage.epoch.panelGeneration == panelGeneration,
+              stage.epoch.presentationGeneration == presentationGeneration,
+              let destination = layerDestination, let actualSpace, let skin = skin(),
+              destination.size == stage.epoch.size, destination.scale == stage.epoch.scale,
+              destination.appearance == stage.epoch.appearance, CFEqual(actualSpace, stage.epoch.colorSpace),
+              layerRuntime?.nativeStageIsCurrent(stage.attachment, cycle: skin.updateCount) == true else { return false }
+        return true
+    }
+
+    /// The attachment ack queues this next physical worker transaction. Unexpected native callbacks remain strict
+    /// failures, distinct from C presentation failures; no image is installed or C statistic incremented here.
+    func displayNativeStage(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, !stage.completionQueued else { return }
+        let result: SkinNativeStageResult
+        do {
+            guard let executor = executor as? SkinThreadExecutor, executor.isOnThread, !Thread.isMainThread else {
+                throw SkinNativeStageFailure.unsupportedExecutor
+            }
+            guard nativeStageIsCurrent(stage), let layerRuntime, let skin = skin() else {
+                throw SkinNativeStageFailure.cancelled
+            }
+            var observation: ELayerContent.Observation?
+            try Self.withAppearanceThrowing(stage.epoch.appearance) {
+                observation = try layerRuntime.displayNativeStage(stage.attachment, cycle: skin.updateCount)
+            }
+            guard let observation else { throw SkinNativeStageFailure.notReady }
+            result = .success(SkinNativeStageObservation(sourceSequence: stage.attachment.sourceSequence,
+                native: observation, drewOnPhysicalOwner: executor.isOnThread && SkinThreadExecutor.isSkinThread))
+        } catch let failure as SkinNativeStageFailure { result = .failure(failure) }
+        catch { result = .failure(.rendering(String(describing: error))) }
+        queueNativeCompletion(stage, result)
+    }
+
+    private func cancelNativeStage() {
+        guard let stage = pendingNativeStage else { return }
+        stage.request.cancel()
+        queueNativeCompletion(stage, .failure(.cancelled))
+    }
+
+    private func queueNativeCompletion(_ stage: SkinNativeStage, _ result: SkinNativeStageResult) {
+        guard pendingNativeStage === stage, !stage.completionQueued else { return }
+        stage.completionQueued = true
+        requestNativeCompletion?(stage, result)
+    }
+
+    /// Release the E owner/captured recipe first; retain only the bounded attachment envelope until main detach.
+    @discardableResult
+    func releaseNativeStage(_ stage: SkinNativeStage) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage else { return stage.hasOwnerRelease }
+        if stage.hasOwnerRelease { return true }
+        do {
+            guard let layerRuntime, try layerRuntime.releaseNativeStage(stage.attachment) else {
+                throw LayerRuntime.NativeStageFailure.staleSource
+            }
+            stage.recordOwnerRelease(permanentStop: false)
+            return true
+        } catch {
+            // Never fabricate an owner-release ack or detach a still-owned native root after cleanup failure.
+            Log.write("Native staging owner release failed: \(error)", level: .error, source: skin()?.config ?? "")
+            return false
+        }
+    }
+
+    /// Exception for permanent stop only: no successful backing can be consumed afterwards. Release on the real
+    /// owner now, before a synchronous app termination can stop that worker ahead of a queued main completion.
+    /// C retains its own normal fade/teardown contract. Non-stop cancellation keeps completion-before-release.
+    private func stopNativeStage() -> Bool {
+        guard let stage = pendingNativeStage else { return false }
+        stage.request.cancel()
+        guard releaseNativeStage(stage) else { return false }
+        stage.recordOwnerRelease(permanentStop: true)
+        pendingNativeStage = nil
+        requestNativeStopRelease?(stage)
+        return true
+    }
+
+    func detachedNativeStage(_ stage: SkinNativeStage) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.hasOwnerRelease else { return }
+        pendingNativeStage = nil
+        writerReleased?()
+    }
+
     /// Owner cleanup is queued only when main has finished displaying/fading the old frame. Its acknowledgment
     /// permits main to remove the root even if the executor stops immediately after this work item.
     func retireLayerContent() -> Bool {
         precondition(executor?.isCurrent == true)
         stop()
-        guard pendingScenePatch == nil else { return false }
+        guard pendingScenePatch == nil, pendingNativeStage == nil else { return false }
         if let layerRuntime {
             do { try layerRuntime.close() }
             catch { layerFailure = .rendering(String(describing: error)); return false }
