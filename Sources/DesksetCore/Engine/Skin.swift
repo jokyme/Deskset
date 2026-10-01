@@ -748,7 +748,8 @@ public final class Skin {
                 log("[\(section.name)] Measure=\(rawType) is not a valid measure type", level: .warning)
             }
         }
-        let measure = cls.init(name: section.name, section: section, skin: self, type: effectiveType)
+        let measure = makeContextBuiltinMeasure(cls, name: section.name, section: section, context: self, type: effectiveType)
+            ?? cls.init(name: section.name, section: section, skin: self, type: effectiveType)
         if invalidType { (measure as? UnsupportedMeasure)?.isMacDifference = false }
         return measure
     }

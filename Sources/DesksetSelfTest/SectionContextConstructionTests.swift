@@ -1,19 +1,44 @@
 import Foundation
 @testable import DesksetCore
 
-private enum SectionConstructionError: Error { case utcUnavailable }
+private enum SectionConstructionError: Error { case utcUnavailable, unexpectedKernel }
 
 private final class SectionConstructionSystem: FakeSystem {
     private(set) var processors: [Int] = []
+    private(set) var memoryReads = 0
+    private(set) var requestedInterfaces: [String?] = []
+    var interfaces = ["en0", "en1"]
+    var counters: [String: NetworkCounters] = [
+        "en0": NetworkCounters(received: 1000, sent: 500),
+        "en1": NetworkCounters(received: 100, sent: 50),
+    ]
 
     override func cpuUsage(processor: Int) -> Double {
         processors.append(processor)
         return cpu
     }
+
+    override func memoryStatus() -> MemoryStatus {
+        memoryReads += 1
+        return memory
+    }
+
+    override func networkInterfaces() -> [String] { interfaces }
+
+    override func networkCounters(interface: String?) -> NetworkCounters {
+        requestedInterfaces.append(interface)
+        if let interface { return counters[interface] ?? NetworkCounters() }
+        return counters.values.reduce(NetworkCounters()) {
+            let received = $0.received.addingReportingOverflow($1.received)
+            let sent = $0.sent.addingReportingOverflow($1.sent)
+            precondition(!received.overflow && !sent.overflow, "Synthetic counters must fit UInt64")
+            return NetworkCounters(received: received.partialValue, sent: sent.partialValue)
+        }
+    }
 }
 
 /// A test owner of real measure kernels, with no Skin or closures that capture one. Unsupported service paths
-/// fail if called: this fixture qualifies String and CPU, rather than pretending to implement another runtime.
+/// fail if called: this fixture qualifies selected built-ins, rather than pretending to implement another runtime.
 private final class IndependentSectionContext: SectionContext {
     var settings = SkinSettings()
     var sources = IniSourceMap()
@@ -25,7 +50,7 @@ private final class IndependentSectionContext: SectionContext {
     var counter = 0
     let random = SkinRandom(seed: 1)
     let skinClock: SkinClock
-    let clock: () -> TimeInterval = { 86_400 }
+    let clock: () -> TimeInterval
     let executor: SkinExecutor
     let locale = Locale(identifier: "en_US_POSIX")
     let directory: URL
@@ -40,11 +65,13 @@ private final class IndependentSectionContext: SectionContext {
     private var issues: Set<String> = []
     private var snapshotChanges = 0
 
-    init(directory: URL, system: SystemDataSource = SectionConstructionSystem()) throws {
+    init(directory: URL, system: SystemDataSource = SectionConstructionSystem(),
+         clock: @escaping () -> TimeInterval = { 86_400 }) throws {
         guard let utc = TimeZone(secondsFromGMT: 0) else { throw SectionConstructionError.utcUnavailable }
         let date = Date(timeIntervalSince1970: 1_798_761_598)
         self.directory = directory
         self.system = system
+        self.clock = clock
         skinClock = .fixed(date, timeZone: utc)
         executor = VirtualTimeExecutor(start: date, timeZone: utc)
         sideEffects = RecordingSideEffects(directory: directory.appendingPathComponent("effects"))
@@ -342,5 +369,237 @@ func runSectionContextConstructionTests(_ t: TestRunner) {
         context = nil
         t.check(borrowedContext == nil, "a retained kernel never retains its independent context")
         withExtendedLifetime(kernel) {} // No access through the borrowed reference after its owner was released.
+    }
+    runContextBuiltinFactoryTests(t)
+}
+
+private class ContextFactoryOverride: Measure {
+    var constructorTrace: [String] = []
+
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        super.init(name: name, section: section, skin: skin, type: type)
+        constructorTrace.append("base:\(type)")
+    }
+
+    public override func computeValue() -> Double { 123 }
+}
+
+private final class ContextFactoryChild: ContextFactoryOverride {
+    public required init(name: String, section: IniSection, skin: Skin, type: String) {
+        super.init(name: name, section: section, skin: skin, type: type)
+        constructorTrace.append("child:\(type)")
+    }
+
+    public override func computeValue() -> Double { 456 }
+}
+
+private func runContextBuiltinFactoryTests(_ t: TestRunner) {
+    t.suite("Engine: context builtin factory: independent memory kinds preserve option and sample order") {
+        let system = SectionConstructionSystem()
+        system.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40, swapTotal: 20, swapUsed: 5)
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-memory"), system: system)
+        context.optionsLoaded = true
+        let cases: [(type: String, options: [(String, String)], value: Double, maximum: Double)] = [
+            ("physicalmemory", [], 40, 100), ("swapmemory", [], 45, 120), ("memory", [], 85, 220),
+            ("physicalmemory", [("Total", "1")], 100, 100), ("swapmemory", [("Total", "1")], 120, 120),
+            ("memory", [("Total", "1")], 220, 220), ("physicalmemory", [("Free", "1")], 60, 100),
+            ("memory", [("InvertMeasure", "1")], 135, 220),
+        ]
+        for (index, item) in cases.enumerated() {
+            let name = "Memory\(index)"
+            let before = system.memoryReads
+            guard let measure = makeContextBuiltinMeasure(MemoryMeasure.self, name: name,
+                section: constructionSection(name, item.options + [("MaxValue", "5")]),
+                context: context, type: item.type) as? MemoryMeasure else { throw SectionConstructionError.unexpectedKernel }
+            context.measures[name.lowercased()] = measure
+            t.equal(system.memoryReads, before, "constructing a kind never samples memory")
+            t.equal(measure.type, item.type)
+            measure.readOptionsIfNeeded()
+            t.equal(system.memoryReads, before + 1, "the original automatic maximum samples at option read")
+            t.equal(measure.maxValue, item.maximum, "MaxValue is ignored for every memory kind")
+            measure.performUpdate()
+            t.equal(system.memoryReads, before + 2)
+            t.equal(measure.value, item.value)
+            t.equal(measure.automaticMaxValue, item.maximum)
+            t.equal(system.memoryReads, before + 2, "the sampled total is cached before numeric range refresh")
+        }
+        t.equal(context.services, Array(repeating: .system, count: cases.count))
+        t.equal(context.logs, [])
+
+        var owner: IndependentSectionContext? = try IndependentSectionContext(directory: t.temporaryDirectory("context-memory-lifetime"))
+        weak var borrowed = owner
+        guard let kernel = makeContextBuiltinMeasure(MemoryMeasure.self, name: "BorrowedMemory",
+            section: constructionSection("BorrowedMemory", []), context: owner!, type: "memory") else {
+            throw SectionConstructionError.unexpectedKernel
+        }
+        owner?.measures["borrowedmemory"] = kernel
+        owner = nil
+        t.check(borrowed == nil, "the context factory does not retain a memory kernel's owner")
+        withExtendedLifetime(kernel) {}
+    }
+
+    t.suite("Engine: context builtin factory: independent network directions retain rates and per-node history") {
+        let system = SectionConstructionSystem()
+        var now = 100.0
+        var clockReads = 0
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-network"), system: system,
+                                                   clock: { clockReads += 1; return now })
+        context.optionsLoaded = true
+        func node(_ name: String, _ type: String, _ options: [(String, String)] = []) throws -> NetMeasure {
+            guard let measure = makeContextBuiltinMeasure(NetMeasure.self, name: name,
+                section: constructionSection(name, options), context: context, type: type) as? NetMeasure else {
+                throw SectionConstructionError.unexpectedKernel
+            }
+            context.measures[name.lowercased()] = measure
+            measure.readOptionsIfNeeded()
+            return measure
+        }
+        let incoming = try node("Incoming", "netin", [("Interface", "en0")])
+        let outgoing = try node("Outgoing", "netout", [("Interface", "en0")])
+        let total = try node("Total", "nettotal", [("Interface", "en0")])
+        let bits = try node("Bits", "nettotal", [("Interface", "en0"), ("UseBits", "1")])
+        let all = try node("All", "netin", [("Interface", "0")])
+        let indexed = try node("Indexed", "netin", [("Interface", "2")])
+        let cumulative = try node("Cumulative", "netin", [("Interface", "en0"), ("Cumulative", "1")])
+        let fallback = try node("Fallback", "netin", [("Interface", "missing"), ("MaxValue", "8000")])
+        let speed = try node("Speed", "netout", [("Interface", "en0"), ("NetOutSpeed", "500")])
+        let nodes = [incoming, outgoing, total, bits, all, indexed, cumulative, fallback, speed]
+        t.equal(system.requestedInterfaces, [], "constructors and options do not read network counters")
+        t.equal(clockReads, 0)
+        for measure in nodes { measure.performUpdate() }
+        t.equal(nodes.map(\.value), [0, 0, 0, 0, 0, 0, 1000, 0, 0])
+        t.equal(clockReads, 8, "cumulative data does not ask for a time")
+        t.equal(system.requestedInterfaces, ["en0", "en0", "en0", "en0", nil, "en1", "en0", "en0", "en0"])
+        system.counters = ["en0": NetworkCounters(received: 1400, sent: 700),
+                           "en1": NetworkCounters(received: 300, sent: 150)]
+        now = 102
+        for measure in nodes { measure.performUpdate() }
+        t.equal(nodes.map(\.value), [200, 100, 300, 2400, 300, 100, 1400, 200, 100])
+        t.equal(clockReads, 16)
+        t.equal(incoming.maxValue, 200)
+        t.equal(fallback.maxValue, 1000, "MaxValue remains in bits for a byte-valued measure")
+        t.equal(speed.maxValue, 500, "NetOutSpeed remains in bytes")
+        fallback.needsOptionRead = true
+        fallback.readOptionsIfNeeded()
+        t.equal(context.logs, ["Notice: [Fallback] Interface=missing does not exist on this Mac; using the active interface"])
+        system.counters["en0"] = NetworkCounters(received: 1600, sent: 900)
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "an equal-time sample gives zero and still replaces the previous sample")
+        now = 103
+        system.counters["en0"] = NetworkCounters(received: 1700, sent: 1000)
+        incoming.performUpdate()
+        t.equal(incoming.value, 100)
+        now = 104
+        system.counters["en0"] = NetworkCounters(received: 5, sent: 1000)
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "counter reversal gives zero")
+        incoming.overrides["interface"] = "en1"
+        incoming.needsOptionRead = true
+        incoming.readOptionsIfNeeded()
+        now = 105
+        incoming.performUpdate()
+        t.equal(incoming.value, 0, "an interface change forgets only this node's previous sample")
+
+        let reads = system.requestedInterfaces.count
+        incoming.setPaused(true)
+        incoming.performUpdate()
+        incoming.setPaused(false)
+        incoming.setDisabled(true)
+        incoming.performUpdate()
+        t.equal(system.requestedInterfaces.count, reads)
+        t.equal(incoming.value, 0)
+        t.equal(context.services, Array(repeating: .system, count: nodes.count))
+
+        let fast = try node("Fast", "netin", [("Interface", "en0")])
+        let slow = try node("Slow", "netin", [("Interface", "en0")])
+        now = 200
+        system.counters["en0"] = NetworkCounters(received: 1000, sent: 0)
+        fast.performUpdate(); slow.performUpdate()
+        now = 201
+        system.counters["en0"] = NetworkCounters(received: 1300, sent: 0)
+        fast.performUpdate()
+        t.equal(fast.value, 300)
+        let pin = MeasureValueOverride()
+        pin.pinned["fast"] = (value: 77, text: nil)
+        context.measureValues = pin
+        let beforePin = system.requestedInterfaces.count
+        fast.performUpdate()
+        t.equal(fast.value, 77)
+        t.equal(system.requestedInterfaces.count, beforePin)
+        pin.pinned.removeAll()
+        now = 202
+        system.counters["en0"] = NetworkCounters(received: 1400, sent: 0)
+        fast.performUpdate(); slow.performUpdate()
+        t.equal(fast.value, 100, "the pinned update leaves this node's rate history untouched")
+        t.equal(slow.value, 200, "a slower node computes its own two-second delta")
+    }
+
+    t.suite("Engine: context builtin factory: exact classes preserve real registry and legacy construction") {
+        let context = try IndependentSectionContext(directory: t.temporaryDirectory("context-factory-negative"))
+        for type in ["cpu", "string", "memory", "netin"] {
+            t.check(makeContextBuiltinMeasure(ContextFactoryChild.self, name: "Custom",
+                section: constructionSection("Custom", []), context: context, type: type) == nil,
+                    "a built-in name never replaces a selected custom subclass")
+        }
+        t.check(makeContextBuiltinMeasure(TimeMeasure.self, name: "Time", section: constructionSection("Time", []),
+                                         context: context, type: "time") == nil, "unqualified kernels retain legacy construction")
+        // Unique names only: there is no unregister API, so canonical global registrations stay untouched.
+        MeasureRegistry.registerMeasure("ContextFactoryOverrideProbe", ContextFactoryChild.self)
+        MeasureRegistry.registerMeasure("ContextFactoryMemoryAlias", MemoryMeasure.self)
+        let system = SectionConstructionSystem()
+        system.cpu = 20
+        system.memory = MemoryStatus(physicalTotal: 100, physicalUsed: 40, swapTotal: 20, swapUsed: 5)
+        let (skin, _) = try makeSkin(t, """
+        [Rainmeter]
+        Update=-1
+        [CPU]
+        Measure=CPU
+        Processor=2
+        [Text]
+        Measure=String
+        String=factory
+        [Physical]
+        Measure=PhysicalMemory
+        [Swap]
+        Measure=SwapMemory
+        [Memory]
+        Measure=Memory
+        [Incoming]
+        Measure=NetIn
+        Cumulative=1
+        [Outgoing]
+        Measure=NetOut
+        Cumulative=1
+        [Total]
+        Measure=NetTotal
+        Cumulative=1
+        [Custom]
+        Measure=ContextFactoryOverrideProbe
+        [Alias]
+        Measure=ContextFactoryMemoryAlias
+        """, system: system)
+        defer { skin.close() }
+        skin.update()
+        t.equal(skin.measures.map(\.value), [20, 0, 40, 45, 85, 1000, 500, 1500, 456, 85])
+        for measure in skin.measures { t.check(measure.skin === skin) }
+        t.check(skin.measure(named: "CPU") is CPUMeasure)
+        t.check(skin.measure(named: "Text") is StringMeasure)
+        t.equal(skin.measure(named: "Text")?.stringValue, "factory")
+        guard let custom = skin.measure(named: "Custom") as? ContextFactoryChild else { throw SectionConstructionError.unexpectedKernel }
+        t.equal(custom.constructorTrace, ["base:contextfactoryoverrideprobe", "child:contextfactoryoverrideprobe"])
+        t.equal(custom.type, "contextfactoryoverrideprobe")
+        t.check(skin.measure(named: "Alias") is MemoryMeasure)
+        t.equal(skin.measure(named: "Alias")?.type, "contextfactorymemoryalias", "effectiveType is never canonicalized by the context helper")
+
+        let directMemory = MemoryMeasure(name: "DirectMemory", section: constructionSection("DirectMemory", []),
+                                         skin: skin, type: "swapmemory")
+        directMemory.readOptionsIfNeeded(); directMemory.performUpdate()
+        t.check(directMemory.skin === skin)
+        t.equal(directMemory.value, 45)
+        let directNet = NetMeasure(name: "DirectNet", section: constructionSection("DirectNet", [("Cumulative", "1")]),
+                                   skin: skin, type: "netout")
+        directNet.readOptionsIfNeeded(); directNet.performUpdate()
+        t.check(directNet.skin === skin)
+        t.equal(directNet.value, 500)
     }
 }
