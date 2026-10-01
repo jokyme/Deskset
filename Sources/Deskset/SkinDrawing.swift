@@ -339,6 +339,8 @@ final class SkinFrameProducer {
     var publishLayerHitMap: ((SkinHitMap, UInt64, UInt64) -> Void)?
     var requestNativeCompletion: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
     var requestNativeStopRelease: ((SkinNativeStage) -> Void)?
+    var requestNativePublicationFinished: ((SkinNativeStage, SkinNativeStageResult) -> Void)?
+    var requestNativeRollback: ((SkinNativeStage, SkinNativeStageFailure) -> Void)?
     private var pendingNativeStage: SkinNativeStage?
     /// The slot remains occupied until owner release AND main detach have been acknowledged.
     var hasNativeStage: Bool { pendingNativeStage != nil }
@@ -566,7 +568,10 @@ final class SkinFrameProducer {
             releases.pictures += 1
         }
         if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
-            guard pendingScenePatch == nil else { releaseAfterWriter = true; return }
+            guard pendingScenePatch == nil, layerRuntime?.nativePublicationHoldsWriter != true else {
+                releaseAfterWriter = true
+                return
+            }
             if let layerRuntime {
                 do { try layerRuntime.setVisible(false) }
                 catch { layerFailure = .rendering(String(describing: error)); return }
@@ -620,6 +625,10 @@ final class SkinFrameProducer {
     private func draw() {
         // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
         guard pendingScenePatch == nil else { return }
+        if layerRuntime?.nativePublicationHoldsWriter == true {
+            cancelNativeStage()
+            return // Keep needsFrame and host debt. Only the matching Main rollback ack permits new C writes.
+        }
         cancelNativeStage()
         needsFrame = false
         guard let provider, let skin = skin() else { return }
@@ -868,6 +877,7 @@ final class SkinFrameProducer {
     func nativeStageIsCurrent(_ stage: SkinNativeStage) -> Bool {
         precondition(executor?.isCurrent == true)
         guard pendingNativeStage === stage, !stage.request.isCancelled, !isStopped, !explicitlyHidden, !needsFrame,
+              !stage.hasOwnerRelease, !stage.hasPublicationRollback,
               pendingScenePatch == nil, layerInstalled, stage.provider.hasLayerFrame,
               stage.epoch.panelGeneration == panelGeneration,
               stage.epoch.presentationGeneration == presentationGeneration,
@@ -906,7 +916,53 @@ final class SkinFrameProducer {
     private func cancelNativeStage() {
         guard let stage = pendingNativeStage else { return }
         stage.request.cancel()
+        if stage.request.publishesSingle, layerRuntime?.nativePublicationHoldsWriter == true {
+            guard !stage.rollbackQueued else { return }
+            stage.rollbackQueued = true
+            requestNativeRollback?(stage, .cancelled)
+            return
+        }
         queueNativeCompletion(stage, .failure(.cancelled))
+    }
+
+    /// Main calls through authentic owner access before its host switch. This freezes only C tree mutation;
+    /// subsequent logic turns still coalesce needsFrame, without preparing/exporting another C ScenePatch.
+    func beginNativePublication(_ stage: SkinNativeStage) throws {
+        precondition(Thread.isMainThread && executor?.isCurrent == true)
+        guard nativeStageIsCurrent(stage), stage.request.publishesSingle, !stage.hasPublicationRollback,
+              let layerRuntime else { throw SkinNativeStageFailure.cancelled }
+        try layerRuntime.beginNativePublication(stage.attachment)
+    }
+
+    /// The physical owner acknowledges a committed Main publication, never a hidden ready snapshot.
+    func acknowledgeNativePublication(_ stage: SkinNativeStage, observation: SkinNativeStageObservation) {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.wasPublished, !stage.hasOwnerRelease else { return }
+        do {
+            guard !isStopped, !stage.hasPublicationRollback, !stage.request.isCancelled, !needsFrame,
+                  let layerRuntime else { throw SkinNativeStageFailure.cancelled }
+            try layerRuntime.acknowledgeNativePublication(stage.attachment)
+            let current = stage.attachment.callbackReport.observation
+            if let failure = current.failure { throw failure }
+            guard current.callbacks == observation.native.callbacks else {
+                throw SkinNativeStageFailure.rendering("Native callback count changed before publication acknowledgment")
+            }
+            requestNativePublicationFinished?(stage, .success(SkinNativeStageObservation(
+                sourceSequence: observation.sourceSequence, native: current,
+                drewOnPhysicalOwner: observation.drewOnPhysicalOwner, published: true)))
+        } catch let failure as SkinNativeStageFailure { requestNativeRollback?(stage, failure) }
+        catch { requestNativeRollback?(stage, .rendering(String(describing: error))) }
+    }
+
+    /// Acknowledgment is cleanup authority for this identity, even if its old panel/profile is no longer current.
+    /// Main has already selected the frozen C frame. Release E before resuming preparation of the latest scene.
+    func rolledBackNativePublication(_ stage: SkinNativeStage) -> Bool {
+        precondition(executor?.isCurrent == true)
+        guard pendingNativeStage === stage, stage.hasPublicationRollback else { return stage.hasOwnerRelease }
+        guard releaseNativeStage(stage) else { return false }
+        if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
+        if !isStopped, needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
+        return true
     }
 
     private func queueNativeCompletion(_ stage: SkinNativeStage, _ result: SkinNativeStageResult) {
@@ -917,12 +973,13 @@ final class SkinFrameProducer {
 
     /// Release the E owner/captured recipe first; retain only the bounded attachment envelope until main detach.
     @discardableResult
-    func releaseNativeStage(_ stage: SkinNativeStage) -> Bool {
+    func releaseNativeStage(_ stage: SkinNativeStage, permanentStop: Bool = false) -> Bool {
         precondition(executor?.isCurrent == true)
         guard pendingNativeStage === stage else { return stage.hasOwnerRelease }
         if stage.hasOwnerRelease { return true }
         do {
-            guard let layerRuntime, try layerRuntime.releaseNativeStage(stage.attachment) else {
+            guard let layerRuntime, try layerRuntime.releaseNativeStage(stage.attachment,
+                rollbackAcknowledged: stage.hasPublicationRollback, permanentStop: permanentStop) else {
                 throw LayerRuntime.NativeStageFailure.staleSource
             }
             stage.recordOwnerRelease(permanentStop: false)
@@ -940,7 +997,7 @@ final class SkinFrameProducer {
     private func stopNativeStage() -> Bool {
         guard let stage = pendingNativeStage else { return false }
         stage.request.cancel()
-        guard releaseNativeStage(stage) else { return false }
+        guard releaseNativeStage(stage, permanentStop: true) else { return false }
         stage.recordOwnerRelease(permanentStop: true)
         pendingNativeStage = nil
         requestNativeStopRelease?(stage)

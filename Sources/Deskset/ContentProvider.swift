@@ -79,9 +79,12 @@ final class LayerContentProvider: ContentProvider {
     private var retirementRequested = false
     private var retirementScheduled = false
     private var layerFrameReady = false
-    /// Allocated only by an explicit experimental staging request. It never replaces the visible C wrapper.
+    private var layerFrameSequence: UInt64?
+    /// Allocated only by an explicit scoped observation or Single publication request. The C wrapper stays
+    /// attached as the fallback; a qualified publication changes only the provider-owned host opacities.
     private var nativeStage: LayerRuntime.NativeStage?
     private var nativeStageHost: CALayer?
+    private var publishedNativeStage: LayerRuntime.NativeStage?
 
     /// Main thread: the content layer goes into `view`'s layer, which the view makes (and keeps: AppKit keeps a layer the
     /// view asked for when the view moves to another window, as when a skin's panel is replaced).
@@ -173,6 +176,7 @@ final class LayerContentProvider: ContentProvider {
         }
         ownerRoot = root
         layerFrameReady = true
+        layerFrameSequence = frame.sequence
         presented += 1
         return true
     }
@@ -192,6 +196,7 @@ final class LayerContentProvider: ContentProvider {
         if ownerRoot == nil { contentLayer.addSublayer(patch.root) }
         ownerRoot = patch.root
         layerFrameReady = true
+        layerFrameSequence = patch.frame.sequence
         presented += 1
         return true
     }
@@ -207,6 +212,7 @@ final class LayerContentProvider: ContentProvider {
         }
         presented += 1
         layerFrameReady = true
+        layerFrameSequence = frame.sequence
         return true
     }
 
@@ -291,13 +297,62 @@ final class LayerContentProvider: ContentProvider {
         precondition(Thread.isMainThread)
         lock.lock()
         defer { lock.unlock() }
-        guard nativeStage === stage else { return }
+        guard nativeStage === stage, publishedNativeStage !== stage else { return }
         transaction {
             stage.root.removeFromSuperlayer()
             nativeStageHost?.removeFromSuperlayer()
         }
         nativeStage = nil
         nativeStageHost = nil
+    }
+
+    /// Main has parked the actual owner and frozen C before taking this lock. The source scene is already the
+    /// presented C generation, so only the provider-owned hosts change; no new glass, hit map or C frame is invented.
+    func publishNativeStage(_ stage: LayerRuntime.NativeStage, executor: SkinExecutor) -> Bool {
+        precondition(Thread.isMainThread && executor.isCurrent)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, nativeStage === stage, publishedNativeStage == nil,
+              ownerRoot === stage.fallbackRoot, layerFrameReady, layerFrameSequence == stage.sourceSequence,
+              let host = nativeStageHost else { return false }
+        transaction {
+            contentLayer.opacity = 0
+            host.opacity = 1
+        }
+        publishedNativeStage = stage
+        return true
+    }
+
+    /// A standing Main-only host permission. C is frozen while E is published; rollback reads no owner/cache and
+    /// cannot touch a newer attachment. Its ack, rather than a queued request, allows the owner to write C again.
+    @discardableResult
+    func rollbackNativeStage(_ stage: LayerRuntime.NativeStage) -> Bool {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard nativeStage === stage else { return false }
+        if publishedNativeStage === stage {
+            transaction {
+                contentLayer.opacity = 1
+                nativeStageHost?.opacity = 0
+            }
+            publishedNativeStage = nil
+        }
+        return true
+    }
+
+    var visibleNativeStage: LayerRuntime.NativeStage? {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        return publishedNativeStage
+    }
+
+    var contentOpacity: Float {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        return contentLayer.opacity
     }
 
     /// Self-tests observe the hidden attachment only while holding the same actual executor lease as main.

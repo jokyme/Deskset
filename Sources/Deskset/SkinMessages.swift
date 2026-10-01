@@ -111,6 +111,8 @@ enum SkinMessage {
     case nativeStageAttached(SkinNativeStage)
     case nativeStageRelease(SkinNativeStage)
     case nativeStageDetached(SkinNativeStage)
+    case nativeStagePublicationCommitted(SkinNativeStage, SkinNativeStageObservation)
+    case nativeStageRolledBack(SkinNativeStage)
 }
 
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
@@ -206,6 +208,9 @@ enum SkinRequest {
     case nativeStageCompleted(SkinNativeStage, SkinNativeStageResult)
     case nativeStageReleased(SkinNativeStage)
     case nativeStageRejected(SkinNativeStageRequest, SkinNativeStageFailure)
+    case nativeStagePublicationFinished(SkinNativeStage, SkinNativeStageResult)
+    case nativeStageRollback(SkinNativeStage, SkinNativeStageFailure)
+    case nativeStageCallbackFailed(SkinNativeStage, SkinNativeStageFailure)
     /// A finished owner C root awaits main attachment. No live owner or stale panel is carried by this request.
     case installLayerContent
     /// Completed C values with an authentic tree-only writer capability, never a live drawing owner.
@@ -328,23 +333,35 @@ enum SkinNativeStageFailure: Error, Equatable {
     case rendering(String)
 }
 
-/// A finite observation of one hidden backing. It grants no access to a layer, owner, cache, or reusable ready frame.
+/// Finite metadata from a scoped observation or an acknowledged explicit Single publication. It grants no access
+/// to a layer, owner, cache or reusable ready frame, and never enables automatic every-frame E rendering.
 struct SkinNativeStageObservation {
     let sourceSequence: UInt64
     let native: ELayerContent.Observation
     let drewOnPhysicalOwner: Bool
+    let published: Bool
+
+    init(sourceSequence: UInt64, native: ELayerContent.Observation, drewOnPhysicalOwner: Bool, published: Bool = false) {
+        self.sourceSequence = sourceSequence
+        self.native = native
+        self.drewOnPhysicalOwner = drewOnPhysicalOwner
+        self.published = published
+    }
 }
 typealias SkinNativeStageResult = Result<SkinNativeStageObservation, SkinNativeStageFailure>
 
 final class SkinNativeStageRequest {
     let maximumCallbackBitmapBytes: Int
+    let publishesSingle: Bool
     private let completion: (SkinNativeStageResult) -> Void
     private let lock = NSLock()
     private var cancelled = false
     private var completed = false
 
-    init(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+    init(maximumCallbackBitmapBytes: Int, publishesSingle: Bool = false,
+         completion: @escaping (SkinNativeStageResult) -> Void) {
         self.maximumCallbackBitmapBytes = maximumCallbackBitmapBytes
+        self.publishesSingle = publishesSingle
         self.completion = completion
     }
 
@@ -398,8 +415,11 @@ final class SkinNativeStage {
     private let releaseLock = NSLock()
     private var ownerReleased = false
     private var stoppedOwnerReleased = false
+    private var publicationCommitted = false
+    private var publicationRollback = false
     /// The real executor alone changes this flag. Main completes through the request's locked once gate.
     var completionQueued = false
+    var rollbackQueued = false
 
     init(attachment: LayerRuntime.NativeStage, provider: LayerContentProvider, epoch: Epoch,
          request: SkinNativeStageRequest) {
@@ -428,5 +448,32 @@ final class SkinNativeStage {
         releaseLock.lock()
         defer { releaseLock.unlock() }
         return stoppedOwnerReleased
+    }
+
+    func recordPublicationCommit() {
+        precondition(Thread.isMainThread)
+        releaseLock.lock()
+        publicationCommitted = true
+        releaseLock.unlock()
+    }
+
+    /// Main may acknowledge only after the provider has actually hidden this attachment (or never installed it).
+    func recordPublicationRollback() {
+        precondition(Thread.isMainThread)
+        releaseLock.lock()
+        publicationRollback = true
+        releaseLock.unlock()
+    }
+
+    var wasPublished: Bool {
+        releaseLock.lock()
+        defer { releaseLock.unlock() }
+        return publicationCommitted
+    }
+
+    var hasPublicationRollback: Bool {
+        releaseLock.lock()
+        defer { releaseLock.unlock() }
+        return publicationRollback
     }
 }
