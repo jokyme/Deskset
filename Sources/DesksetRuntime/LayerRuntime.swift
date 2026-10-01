@@ -21,6 +21,7 @@ package final class LayerRuntime {
     }
     package enum Fallback: Equatable {
         case unresolvedInk(ElementID, InkBounds.Unknown)
+        case localizedAntialiasedLine(group: LayerPlan.Identity)
     }
     package enum Reason: Equatable {
         case initial, refresh, released, previousFailure, destination, partition, cycle, scene, preparation
@@ -176,8 +177,8 @@ package final class LayerRuntime {
             }
             // Base membership is reconsidered for a new strategy, device window or scale, and on refresh/reveal.
             let retainedBase = baseWindow == window && baseScale == scale && basePartition == partition ? frozenBase : nil
-            let plan: PartitionPlan
-            let fallback: Fallback?
+            var plan: PartitionPlan
+            var fallback: Fallback?
             switch partition {
             case .single:
                 plan = SinglePartition.plan(in: window)
@@ -192,7 +193,18 @@ package final class LayerRuntime {
                 }
             }
             let mode = try LayerContentBuilder.validateGeometry(plan)
-            _ = try LayerContentBuilder.resolve(scene, plan: plan, scale: scale, mode: mode)
+            let recipes = try LayerContentBuilder.resolve(scene, plan: plan, scale: scale, mode: mode)
+            // A localized AA butt-cap segment can differ from the full-window raster before composition.
+            // Validate the complete candidate first: choosing Single must not hide malformed geometry/recipes.
+            for (layer, items) in zip(plan.layers, recipes.layers) {
+                guard case .group = layer.content, layer.rect != window,
+                      Self.containsAntialiasedLine(items) else { continue }
+                fallback = .localizedAntialiasedLine(group: layer.id)
+                plan = SinglePartition.plan(in: window)
+                let singleMode = try LayerContentBuilder.validateGeometry(plan)
+                _ = try LayerContentBuilder.resolve(scene, plan: plan, scale: scale, mode: singleMode)
+                break
+            }
             let rootBounds = CGRect(x: 0, y: 0, width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale)
             let frames = plan.layers.map { layer in
                 CGRect(x: CGFloat(layer.rect.minX) / scale, y: CGFloat(layer.rect.minY) / scale,
@@ -447,6 +459,33 @@ package final class LayerRuntime {
         // stamps/context identity are not enough for those recipes. Gradients also remain full redraw in this slice.
         if !next.prepared.scene.drawingItems.allSatisfy(Self.contextIndependent) { return .unversionedRecipe }
         return nil
+    }
+
+    /// Inspect the resolved atomic recipe without adding recursive call depth. Roundline sets its own AA flag,
+    /// so an enclosing antialias wrapper cannot exempt the line. Both executed container branches matter.
+    private static func containsAntialiasedLine(_ items: [DrawItem]) -> Bool {
+        var pending = [items.makeIterator()]
+        while !pending.isEmpty {
+            guard let item = pending[pending.count - 1].next() else {
+                pending.removeLast()
+                continue
+            }
+            switch item {
+            case let .roundline(draw):
+                if draw.antiAlias, draw.color.a > 0, case .line = draw.shape { return true }
+            case let .transformed(_, children), let .antialias(_, children):
+                pending.append(children.makeIterator())
+            case let .container(clip, mask, content):
+                let rect = CGRect(x: clip.x, y: clip.y, width: clip.width, height: clip.height)
+                guard !content.isEmpty, rect.width > 0, rect.height > 0,
+                      rect.minX.isFinite, rect.minY.isFinite else { continue }
+                pending.append(mask.makeIterator())
+                pending.append(content.makeIterator())
+            case .fill, .bevel, .text, .image, .shape, .bar, .graph, .rotator, .sprite, .glass:
+                break
+            }
+        }
+        return false
     }
 
     private static func contextIndependent(_ item: DrawItem) -> Bool {
