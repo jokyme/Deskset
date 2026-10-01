@@ -240,7 +240,7 @@ final class StudioCodeOverlay: NSView {
 }
 
 
-// MARK: - Read-only Desk diagnostics
+// MARK: - Desk diagnostics
 
 /// A standalone Desk document's own TextKit decoration owner. It never changes the text or opens note locations.
 /// The INI decoration owner above keeps its original input, drawing, one-card-per-line rule and fix callback.
@@ -299,7 +299,8 @@ final class DeskCodeDecorations: NSObject, NSLayoutManagerDelegate {
     /// The caller supplies the current check. A stale text or malformed range is refused as a whole, never clamped.
     @discardableResult
     func show(_ diagnostics: [DeskServiceDiagnostic], file: DeskFileID, text: String,
-              language: DiagnosticLanguage) -> Bool {
+              language: DiagnosticLanguage, actions: ((DeskServiceDiagnostic) -> [DeskCodeAction])? = nil,
+              onAction: ((DeskCodeAction) -> Void)? = nil) -> Bool {
         guard let codeView, text.utf8.elementsEqual(codeView.text.utf8) else { clear(); return false }
         let nextIndex = DeskTextIndex(text)
         let own = diagnostics.filter { $0.file == file }
@@ -309,7 +310,7 @@ final class DeskCodeDecorations: NSObject, NSLayoutManagerDelegate {
         index = nextIndex
         shownRevision = codeView.textRevision
         shownText = text
-        cards = own.map { DeskDiagnosticCard($0, language: language) }
+        cards = own.map { DeskDiagnosticCard($0, language: language, actions: actions?($0) ?? [], onAction: onAction) }
         cardLines = own.map { nextIndex.position(utf16: $0.range.start.offset).line + 1 }
         cards.forEach { codeView.textView.addSubview($0) }
         layoutChanged()
@@ -375,6 +376,8 @@ final class DeskCodeDecorations: NSObject, NSLayoutManagerDelegate {
                                 actualCharacterRange: nil)
         }
         lm.ensureLayout(for: container)
+        // Empty text gets its final fragment during sizing, before its diagnostic room can be measured.
+        if changedSpacing || changedWidth { tv.sizeToFit() }
         var minimum = originalMinSize.height
         if let room = spacing[editor.lineStarts.count],
            let anchor = lineFragment(editor.lineStarts.count, last: true) {

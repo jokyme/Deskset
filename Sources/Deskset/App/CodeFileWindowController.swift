@@ -133,12 +133,17 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         app.codeFileWindowDidClose(self)
     }
 
-    /// Only the current finished check supplies read-only cards and ranges. Pending checks and failed reads clear
+    /// Only the current finished check supplies cards, ranges and actions. Pending checks and failed reads clear
     /// the previous display; the existing subtitle and document save/conflict behavior remain the same.
     private func showDeskCheck(_ snapshot: DeskSnapshot) {
-        if readError == nil, snapshot.isChecked {
+        if readError == nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true {
             deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
-                                  language: snapshot.options.messageLanguage)
+                                  language: snapshot.options.messageLanguage,
+                                  actions: { diagnostic in
+                                      snapshot.codeActions(for: diagnostic).filter { $0.edit.changedFiles == [snapshot.file] }
+                                  }, onAction: { [weak self] action in
+                                      _ = self?.applyDeskAction(action, from: snapshot)
+                                  })
         } else {
             deskDecorations?.clear()
         }
@@ -148,6 +153,13 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         } else {
             window?.subtitle = file.deletingLastPathComponent().path
         }
+    }
+
+    /// A menu from an older check cannot modify the current buffer or read a sibling file.
+    @discardableResult
+    func applyDeskAction(_ action: DeskCodeAction, from snapshot: DeskSnapshot) -> Bool {
+        guard readError == nil, window != nil, let checking = deskChecking else { return false }
+        return checking.apply(action.edit, from: snapshot, actionName: action.title)
     }
 
     // MARK: Which files

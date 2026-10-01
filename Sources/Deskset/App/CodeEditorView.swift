@@ -1122,6 +1122,27 @@ final class CodeEditorView: NSView {
         onTextRevision?(current.url, textRevision, textView.string)
     }
 
+    /// One validated user edit, through NSTextView so dirty state, revisions and the normal save path still run.
+    /// Hosts perform document/range checks before calling; the replacement is one independent undo step.
+    @discardableResult
+    func replaceAsUser(with text: String, selection: NSRange, actionName: String) -> Bool {
+        precondition(Thread.isMainThread)
+        let (end, overflow) = selection.location.addingReportingOverflow(selection.length)
+        guard current != nil, textView.isEditable, let undo = textView.undoManager,
+              selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
+              !overflow, end <= text.utf16.count, !text.utf8.elementsEqual(textView.string.utf8) else { return false }
+        let origin = scrollView.contentView.bounds.origin
+        textView.breakUndoCoalescing()
+        undo.beginUndoGrouping()
+        textView.insertText(text, replacementRange: NSRange(location: 0, length: textView.string.utf16.count))
+        undo.setActionName(actionName)
+        undo.endUndoGrouping()
+        guard text.utf8.elementsEqual(textView.string.utf8) else { return false }
+        textView.setSelectedRange(selection)
+        restoreScroll(origin)
+        return true
+    }
+
     // MARK: - Highlighting
 
     private var baseAttributes: [NSAttributedString.Key: Any] {

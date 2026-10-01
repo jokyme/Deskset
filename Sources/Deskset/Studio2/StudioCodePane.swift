@@ -439,7 +439,7 @@ final class StudioFixButton: NSView {
 }
 
 
-// MARK: - Read-only Desk cards
+// MARK: - Desk cards
 
 /// Uses the same code-pane font, wrapping measurement and card margins. Notes are plain metadata, never links.
 final class DeskDiagnosticCard: NSView {
@@ -447,11 +447,18 @@ final class DeskDiagnosticCard: NSView {
     let titleLabel: NSTextField
     let messageLabel: NSTextField
     let noteLabels: [NSTextField]
+    let actions: [DeskCodeAction]
+    let actionMenu: NSPopUpButton?
+    private let onAction: ((DeskCodeAction) -> Void)?
     private static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
     private static let noteFont = NSFont.systemFont(ofSize: 11)
 
-    init(_ diagnostic: DeskServiceDiagnostic, language: DiagnosticLanguage) {
+    init(_ diagnostic: DeskServiceDiagnostic, language: DiagnosticLanguage, actions: [DeskCodeAction] = [],
+         onAction: ((DeskCodeAction) -> Void)? = nil) {
         self.diagnostic = diagnostic
+        self.actions = onAction == nil ? [] : actions
+        self.onAction = onAction
+        actionMenu = !actions.isEmpty && onAction != nil ? NSPopUpButton(frame: .zero, pullsDown: true) : nil
         let chinese = language == .simplifiedChinese
         let severity: String
         switch diagnostic.severity {
@@ -475,6 +482,22 @@ final class DeskDiagnosticCard: NSView {
         super.init(frame: .zero)
         [titleLabel, messageLabel].forEach { addSubview($0) }
         noteLabels.forEach { addSubview($0) }
+        if let actionMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            menu.addItem(withTitle: StudioText[.fix], action: nil, keyEquivalent: "")
+            for (index, action) in actions.enumerated() {
+                let item = NSMenuItem(title: action.title, action: #selector(takeAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                menu.addItem(item)
+            }
+            actionMenu.menu = menu
+            actionMenu.controlSize = .small
+            actionMenu.font = Self.noteFont
+            actionMenu.setAccessibilityLabel(StudioText[.fix])
+            addSubview(actionMenu)
+        }
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         setAccessibilityLabel(([titleLabel.stringValue, diagnostic.message] + noteLabels.map(\.stringValue)).joined(separator: "\n"))
@@ -502,7 +525,7 @@ final class DeskDiagnosticCard: NSView {
         let notes = card.noteLabels.reduce(CGFloat.zero) {
             $0 + 6 + ceil(StudioPageStyle.height(of: $1.stringValue, font: noteFont, width: textWidth))
         }
-        return max(28, title + 4 + message + notes + 12) + 8
+        return max(28, title + 4 + message + notes + 12) + 8 + (card.actionMenu == nil ? 0 : 30)
     }
 
     var cardRect: NSRect {
@@ -522,6 +545,15 @@ final class DeskDiagnosticCard: NSView {
             label.frame = NSRect(x: cardRect.minX + 29, y: y, width: width, height: height)
             y += height
         }
+        if let actionMenu {
+            actionMenu.frame = NSRect(x: cardRect.minX + 29, y: y + 8,
+                                      width: min(width, actionMenu.fittingSize.width), height: 22)
+        }
+    }
+
+    @objc private func takeAction(_ sender: NSMenuItem) {
+        guard actions.indices.contains(sender.tag) else { return }
+        onAction?(actions[sender.tag])
     }
 
     override func draw(_ dirtyRect: NSRect) {

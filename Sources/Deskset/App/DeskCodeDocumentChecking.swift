@@ -86,12 +86,86 @@ final class DeskCodeDocumentChecking {
     @discardableResult
     func publish(_ candidate: DeskSnapshot) -> Bool {
         precondition(Thread.isMainThread)
-        guard !closed, let editor, editor.currentFile == file, candidate.file == fileID,
-              candidate.version == editor.textRevision, candidate.text.utf8.elementsEqual(editor.text.utf8),
-              candidate.generation == service.snapshot.generation else { return false }
+        guard isCurrent(candidate) else { return false }
         snapshot = candidate
         onSnapshot?(candidate)
         return true
+    }
+
+    /// Publication and user actions must agree on the exact current document, even after a same-text recheck.
+    func isCurrent(_ candidate: DeskSnapshot) -> Bool {
+        precondition(Thread.isMainThread)
+        guard !closed, let editor, editor.currentFile == file, candidate.file == fileID,
+              candidate.version == editor.textRevision, candidate.text.utf8.elementsEqual(editor.text.utf8),
+              candidate.generation == service.snapshot.generation else { return false }
+        return true
+    }
+
+    /// A standalone document accepts only a complete edit of the file it already opened.
+    @discardableResult
+    func apply(_ edit: DeskWorkspaceEdit, from candidate: DeskSnapshot, actionName: String) -> Bool {
+        precondition(Thread.isMainThread)
+        guard edit.changedFiles == [fileID] else { return false }
+        return apply(edit.edits(for: fileID), from: candidate, actionName: actionName)
+    }
+
+    /// Validate the original list before any WorkspaceEdit normalization can discard overlaps. Completion will
+    /// use this same entry for its primary and additional edits; all ranges address the same original text.
+    @discardableResult
+    func apply(_ edits: [DeskTextEditU16], from candidate: DeskSnapshot, actionName: String) -> Bool {
+        precondition(Thread.isMainThread)
+        guard isCurrent(candidate), candidate.isChecked, let editor, !edits.isEmpty else { return false }
+        let index = candidate.index
+        let selection = editor.textView.selectedRange()
+        let (selectionEnd, selectionOverflow) = selection.location.addingReportingOverflow(selection.length)
+        guard selection.location != NSNotFound, selection.location >= 0, selection.length >= 0,
+              !selectionOverflow, selectionEnd <= index.utf16Count,
+              index.clampedUTF16(selection.location) == selection.location,
+              index.clampedUTF16(selectionEnd) == selectionEnd else { return false }
+        // Stable ordering includes repeated insertions at one position, as specified by the service.
+        let ordered = edits.enumerated().sorted { a, b in
+            let left = (a.element.range.start.offset, a.element.range.end.offset)
+            let right = (b.element.range.start.offset, b.element.range.end.offset)
+            return left != right ? left < right : a.offset < b.offset
+        }.map(\.element)
+        var reached = 0
+        for edit in ordered {
+            let start = edit.range.start.offset, end = edit.range.end.offset
+            guard start >= 0, end >= start, end <= index.utf16Count, start >= reached,
+                  index.clampedUTF16(start) == start, index.clampedUTF16(end) == end else { return false }
+            reached = end
+        }
+        let replacement = NSMutableString(string: candidate.text)
+        for edit in ordered.reversed() {
+            replacement.replaceCharacters(in: NSRange(location: edit.range.start.offset,
+                                                      length: edit.range.end.offset - edit.range.start.offset),
+                                          with: edit.newText)
+        }
+        let nextText = replacement as String
+        guard !nextText.utf8.elementsEqual(candidate.text.utf8) else { return false }
+        // Map the original caret/selection once, rather than leaving it at the end of a whole-buffer insertion.
+        func mapped(_ offset: Int) -> Int? {
+            var delta = 0
+            for edit in ordered {
+                let start = edit.range.start.offset, end = edit.range.end.offset
+                if offset < start { break }
+                let inserted = edit.newText.utf16.count
+                if offset < end {
+                    let (atStart, overflow1) = start.addingReportingOverflow(delta)
+                    let (after, overflow2) = atStart.addingReportingOverflow(inserted)
+                    return overflow1 || overflow2 ? nil : after
+                }
+                let difference = inserted - (end - start)
+                let (sum, overflow) = delta.addingReportingOverflow(difference)
+                guard !overflow else { return nil }
+                delta = sum
+            }
+            let (mapped, overflow) = offset.addingReportingOverflow(delta)
+            return overflow ? nil : mapped
+        }
+        guard let start = mapped(selection.location), let end = mapped(selectionEnd), end >= start else { return false }
+        return editor.replaceAsUser(with: nextText, selection: NSRange(location: start, length: end - start),
+                                    actionName: actionName)
     }
 
     func close() {
