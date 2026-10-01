@@ -96,8 +96,8 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"style label { .font(13) }"# + "\n" + #"widget { Text("A").style(label) }"#,
                      #"widget { Grid(columns: 2) { Text("A") } }"#,
                      #"widget { Freeform { Text("A") } }"#,
-                     #"widget { Text("A").width(.fill) }"#,
-                     #"widget { Text("A").width(20, min: 10) }"#,
+                     #"widget { Text("A").width(.fill).margin(1) }"#,
+                     #"widget { Text("A").width(20, min: 10).margin(1) }"#,
                      #"widget { Text("A").offset(x: 2) }"#,
                      #"widget { Text("A").color(.red) }"#,
                      #"widget { Text("A").color(.dim, if: true) }"#,
@@ -201,9 +201,9 @@ func runDeskCompilationTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: rectangles: unsupported paint sizing and facets reject the complete checked program") {
-        let sources = [#"Rectangle()"#, #"Rectangle().width(12)"#, #"Rectangle().height(8)"#,
-                       #"Rectangle().width(.fit).height(8)"#, #"Rectangle().width(.fill).height(8)"#,
-                       #"Rectangle().width(12, min: 8).height(8)"#, #"Rectangle().size(12).rounded(2)"#,
+        let sources = [#"Rectangle().margin(1)"#, #"Rectangle().width(12).offset(x: 1)"#, #"Rectangle().height(8).margin(1)"#,
+                       #"Rectangle().width(.fit).height(8).margin(1)"#, #"Rectangle().width(.fill).height(8).offset(x: 1)"#,
+                       #"Rectangle().width(12, min: 8).height(8).margin(1)"#, #"Rectangle().size(12).rounded(2)"#,
                        #"Rectangle().size(12).stroke(.accent)"#, #"Rectangle().size(12).fill(.accent).stroke(.white)"#,
                        #"Rectangle().size(12).fill(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
@@ -227,5 +227,117 @@ func runDeskCompilationTests(_ t: TestRunner) {
         let invalid = Desk.compile(checked)
         t.check(invalid.program == nil && invalid.issues.isEmpty)
         t.equal(invalid.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+    }
+
+    t.suite("Desk: flex layout: original unsupported sizing literals now use checked catalog ideals") {
+        let cases: [(String, SkinSize)] = [(#"Rectangle()"#, SkinSize(width: 10, height: 10)),
+                                          (#"Rectangle().width(12)"#, SkinSize(width: 12, height: 10)),
+                                          (#"Rectangle().height(8)"#, SkinSize(width: 10, height: 8)),
+                                          (#"Rectangle().width(.fit).height(8)"#, SkinSize(width: 10, height: 8)),
+                                          (#"Rectangle().width(.fill).height(8)"#, SkinSize(width: 10, height: 8)),
+                                          (#"Rectangle().width(12, min: 8).height(8)"#, SkinSize(width: 12, height: 8)),
+                                          (#"Rectangle().width(.fit, min: 20, max: 30).height(8)"#, SkinSize(width: 20, height: 8)),
+                                          (#"Rectangle().width(.fill, max: 6).height(8)"#, SkinSize(width: 6, height: 8))]
+        for (element, size) in cases {
+            let program = try compileFixture(t, "widget { " + element + " }")
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.size, size)
+            t.equal(scene.drawingItems, [.fill(SkinRect(width: size.width, height: size.height), Paint(color: SkinAppearance.light.labelColor))])
+            // Preserve the whole original negative buffer as a positive now, including the preceding Text.
+            let original = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
+            var mixed = try ProgramRuntime(program: compileFixture(t, original))
+            let full = try mixed.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 2, height: 4) }
+            t.equal(full.size, SkinSize(width: max(size.width, 2), height: size.height + 12))
+            t.equal(full.drawingItems.count, 2)
+        }
+        for source in [#"widget { Text("A").width(.fill) }"#, #"widget { Text("A").width(20, min: 10) }"#] {
+            var runtime = try ProgramRuntime(program: compileFixture(t, source))
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 10, height: 8) }
+            t.equal(scene.size.height, 8)
+            t.equal(scene.size.width, source.contains("20") ? 20 : 10)
+            t.equal(compiledDraws(scene).map(\.text), ["A"])
+        }
+        var catalog = DeskCatalog.current
+        guard let index = catalog.components.firstIndex(where: { $0.name == "Rectangle" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[index].sizing = SizingDefaults(width: ".fit", height: ".fill", idealWhenUnspecified: IdealSize(width: 13, height: 7))
+        let source = #"widget { Rectangle() }"#
+        let result = Desk.compile(deskCheck(source, context: CheckContext(catalog: catalog)), catalog: catalog)
+        guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        t.equal(scene.size, SkinSize(width: 13, height: 7), "no built-in 10 replaces the actual checking catalog")
+        t.equal(scene.drawingItems, [.fill(SkinRect(width: 13, height: 7), Paint(color: SkinAppearance.light.labelColor))])
+    }
+
+    t.suite("Desk: flex layout: checked min max and nested flexibility reach the shared allocation") {
+        let source = #"widget { Column(spacing: 4, align: .left) { Rectangle().height(.fill, min: 10, max: 15); Rectangle().height(.fill, min: 20, max: 30); Rectangle().height(.fill, min: 5) }.width(20).height(100) }"#
+        var runtime = try ProgramRuntime(program: compileFixture(t, source))
+        let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        t.equal(scene.size, SkinSize(width: 20, height: 100))
+        t.equal(scene.elements.dropFirst().map(\.frame), [SkinRect(width: 20, height: 15), SkinRect(y: 19, width: 20, height: 30),
+                                                         SkinRect(y: 53, width: 20, height: 47)])
+        let nested = #"widget { Column(spacing: 2) { Text("A"); Column(spacing: 3) { Text("B"); Rectangle() }; Rectangle().hidden() }.width(40).height(60) }"#
+        var nestedRuntime = try ProgramRuntime(program: compileFixture(t, nested))
+        let output = try nestedRuntime.project(environment: compileEnvironment()) { text, _, _ in
+            text == "A" ? SkinSize(width: 10, height: 8) : SkinSize(width: 6, height: 5)
+        }
+        t.equal(output.elements.map(\.frame), [SkinRect(width: 40, height: 60), SkinRect(x: 15, width: 10, height: 8),
+                                               SkinRect(y: 10, width: 40, height: 28), SkinRect(x: 17, y: 10, width: 6, height: 5),
+                                               SkinRect(y: 18, width: 40, height: 20), SkinRect(y: 40, width: 40, height: 20)])
+        t.equal(output.elements.last?.visibility, .hiddenKeepsSpace)
+        t.equal(output.drawingItems.count, 3)
+        let moved = try compileFixture(t, "// changed source version😀\n" + nested)
+        t.equal(moved, nestedRuntime.program)
+    }
+
+    t.suite("Desk: flex layout: conditional geometry margin presets and invalid bounds remain explicit failures") {
+        for source in [#"widget { Rectangle().width(.fill, if: true) }"#, #"widget { Rectangle().height(.fill, min: 5).margin(1) }"#,
+                       #"info { size: .small }; widget { Rectangle() }"#, #"widget { Rectangle().height(.fill).rounded(2) }"#] {
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let result = Desk.compile(checked)
+            t.check(result.program == nil && result.issues.first?.kind == .unsupported, source)
+            t.equal(result.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+        }
+        let source = #"widget { Rectangle().width(.fill, min: 20, max: 10) }"#
+        let checked = deskCheck(source)
+        let rejected = Desk.compile(checked)
+        t.check(rejected.program == nil)
+        t.check(!rejected.issues.isEmpty || rejected.diagnostics.contains { $0.severity == .error })
+        t.equal(rejected.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+        let overflow = try compileFixture(t, #"widget { Column { Rectangle().height(.fill, min: 20) }.height(10) }"#)
+        var runtime = try ProgramRuntime(program: overflow)
+        t.throwsError { _ = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram } }
+        t.equal(runtime.generation, 0, "minimum overflow is not squeezed or partially published; preset scaling is pending")
+    }
+
+    t.suite("Desk: flex precision: fractional checked rows reach exact shared budget guards") {
+        let cases: [(source: String, width: Double, sizes: [Double], origins: [Double])] = [
+            (#"widget { Row(spacing: 0) { Rectangle(); Rectangle(); Rectangle() }.width(0.9).height(1) }"#, 0.9, [0.3, 0.3, 0.3], [0, 0.3, 0.6]),
+            (#"widget { Row(spacing: 0) { Rectangle(); Rectangle(); Rectangle() }.width(30.9).height(1) }"#, 30.9, [10.3, 10.3, 10.3], [0, 10.3, 20.6]),
+            (#"widget { Row(spacing: 0.1) { Rectangle(); Rectangle(); Rectangle(); Rectangle(); Rectangle() }.width(1.4).height(1) }"#, 1.4, [0.2, 0.2, 0.2, 0.2, 0.2], [0, 0.3, 0.6, 0.9, 1.2]),
+            (#"widget { Row(spacing: 0) { Rectangle().width(.fill, max: 0.1); Rectangle(); Rectangle() }.width(0.9).height(1) }"#, 0.9, [0.1, 0.4, 0.4], [0, 0.1, 0.5]),
+            (#"widget { Row(spacing: 0) { Rectangle().width(.fill, min: 0.1, max: 0.1); Rectangle(); Rectangle() }.width(0.9).height(1) }"#, 0.9, [0.1, 0.4, 0.4], [0, 0.1, 0.5]),
+            (#"widget { Row(spacing: 0) { Rectangle(); Rectangle().width(0.1); Rectangle(); Rectangle() }.width(0.4).height(1) }"#, 0.4, [0.1, 0.1, 0.1, 0.1], [0, 0.1, 0.2, 0.3])
+        ]
+        for value in cases {
+            let program = try compileFixture(t, value.source)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.size, SkinSize(width: value.width, height: 1))
+            t.equal(scene.drawingItems.count, value.sizes.count)
+            for (i, element) in scene.elements.dropFirst().enumerated() {
+                t.close(element.frame.width, value.sizes[i]); t.close(element.frame.x, value.origins[i])
+                t.check(element.frame.x >= 0 && element.frame.x + element.frame.width <= value.width)
+            }
+        }
+        let program = try compileFixture(t, #"widget { Row(spacing: 0) { Rectangle().width(.fill, min: 0.3); Rectangle().width(.fill, min: 0.31); Rectangle().width(.fill, min: 0.3) }.width(0.9).height(1) }"#)
+        var runtime = try ProgramRuntime(program: program)
+        do {
+            _ = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.check(false, "a genuine minimum larger than the exact budget must fail")
+        } catch { t.equal(error as? ProgramRuntimeError, .layoutOverflow(program.root.id)) }
+        t.equal(runtime.generation, 0)
     }
 }

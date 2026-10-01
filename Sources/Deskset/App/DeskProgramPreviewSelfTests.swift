@@ -409,7 +409,7 @@ enum DeskProgramPreviewSelfTests {
                                                    (#"widget { Rectangle().size(24, 18).hidden() }"#, true),
                                                    (#"widget { Rectangle().size(24, 18).rounded(3) }"#, false),
                                                    (#"widget { Rectangle().size(24, 18).stroke(.accent) }"#, false),
-                                                   (#"widget { Rectangle() }"#, false),
+                                                   (#"widget { Rectangle().margin(1) }"#, false),
                                                    (#"widget { Rectangle().size(24, 18).unknownModifier() }"#, false)]
             for (replacement, empty) in replacements {
                 replace(replacement, in: f)
@@ -436,6 +436,101 @@ enum DeskProgramPreviewSelfTests {
             f.controller.window?.close()
             t.equal(p.state, .closed)
             t.check(p.scene == nil && f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: flex preview: catalog defaults and capped shares paint independent native rectangles") {
+            let sources: [(String, NSSize, [SkinRect], [RGBA?])] = [
+                (#"widget { Rectangle() }"#, NSSize(width: 10, height: 10), [SkinRect(width: 10, height: 10)], [nil]),
+                (##"widget { Column(spacing: 4, align: .left) { Rectangle().height(.fill, min: 10, max: 15).fill("#FF0000"); Rectangle().height(.fill, min: 20, max: 30).fill("#00AA88"); Rectangle().height(.fill, min: 5).fill("#0033FF") }.width(20).height(100) }"##,
+                 NSSize(width: 20, height: 100), [SkinRect(width: 20, height: 15), SkinRect(y: 19, width: 20, height: 30),
+                                                SkinRect(y: 53, width: 20, height: 47)],
+                 [RGBA(r: 255, g: 0, b: 0), RGBA(r: 0, g: 170, b: 136), RGBA(r: 0, g: 51, b: 255)])]
+            for (source, size, rects, colors) in sources {
+                let f = try fixture(t, source), p = f.preview
+                for name in [NSAppearance.Name.aqua, .darkAqua] {
+                    p.canvas.appearance = NSAppearance(named: name)
+                    p.refreshEnvironment()
+                    let fallback = MacAppearance.values(for: p.canvas.effectiveAppearance).labelColor
+                    let items: [DrawItem] = rects.indices.map { .fill(rects[$0], Paint(color: colors[$0] ?? fallback)) }
+                    t.equal(p.state, .ready)
+                    t.equal(p.scene?.size, SkinSize(width: size.width, height: size.height))
+                    t.equal(p.scene?.drawingItems, items, "hand-written equal-share/clamp/redistribution geometry")
+                    let reference = ReferenceView(items: items, size: size), blank = ReferenceView(items: [], size: size)
+                    for scale in [1, 2] {
+                        let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        let empty = try paint(blank, scale: scale)
+                        try canaries(t, actual); try canaries(t, expected); try canaries(t, empty)
+                        t.check(try ink(actual) > 0); t.equal(try ink(empty), 0)
+                        t.equal(try bytes(actual), try bytes(expected), "actual flexible native pixels at \(scale)x")
+                    }
+                }
+                t.check(f.app.sortedControllers.isEmpty)
+                t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            }
+        }
+
+        t.suite("Desk: flex preview: assigned text width reflows the native fit cross axis without clipping") {
+            let source = #"widget { Row(spacing: 4, align: .bottom) { Rectangle().height(6).fill(.accent); Text("wrapped 中文😀").font(20).width(.fill) }.width(100) }"#
+            let f = try fixture(t, source), p = f.preview
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                p.canvas.appearance = NSAppearance(named: name)
+                p.refreshEnvironment()
+                let appearance = MacAppearance.values(for: p.canvas.effectiveAppearance)
+                var style = TextStyle()
+                style.fontFace = "System"
+                style.fontSize = 15
+                style.fontWeight = 400
+                style.color = appearance.labelColor
+                style.horizontalAlign = .center
+                style.verticalAlign = .center
+                style.accurateText = true
+                style.antiAlias = true
+                style.trailingSpaces = true
+                style.wrap = true
+                let context = DrawContext(fonts: AppFontResolver())
+                let measured = context.text.layout("wrapped 中文😀", style: style, wrapWidth: 48, cycle: 1).size
+                t.check(measured.height > 6, "the independent native recipe really wraps")
+                let frame = SkinRect(x: 52, width: 48, height: measured.height)
+                let items: [DrawItem] = [.fill(SkinRect(y: measured.height - 6, width: 48, height: 6), Paint(color: appearance.accentColor)),
+                                         .text(TextDraw(text: "wrapped 中文😀", style: style, frame: frame, contentFrame: frame,
+                                                        anchor: SkinPoint(x: 52)))]
+                t.equal(p.state, .ready)
+                t.equal(p.scene?.size, SkinSize(width: 100, height: measured.height))
+                t.equal(p.scene?.drawingItems, items)
+                let reference = ReferenceView(items: items, size: NSSize(width: 100, height: measured.height))
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.check(try ink(actual) > 0)
+                    t.equal(try bytes(actual), try bytes(expected), "native wrapping grows the Row's fit height at \(scale)x")
+                }
+            }
+            t.check(f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: flex preview: minimum overflow and unsupported layout edits clear the previous pixels") {
+            let source = #"widget { Column(spacing: 4) { Rectangle().height(.fill, min: 20); Rectangle().height(.fill, min: 20) }.width(30).height(60) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            t.equal(p.state, .ready)
+            let old = checking.snapshot
+            for replacement in [source.replacingOccurrences(of: "height(60)", with: "height(10)"),
+                                source.replacingOccurrences(of: "height(60)", with: "height(60).margin(1)")] {
+                replace(replacement, in: f)
+                t.check(settled(f)); t.check(!checking.publish(old))
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "minimum overflow/unsupported layout must report an actual reason") }
+                t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8)) // Only qualify the original clear() capture ROI.
+                let cleared = try paint(p.canvas)
+                try canaries(t, cleared); t.equal(try ink(cleared), 0)
+            }
+            replace(source, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            let actual = try paint(p.canvas)
+            try canaries(t, actual); t.check(try ink(actual) > 0)
+            t.check(f.app.sortedControllers.isEmpty)
             t.equal(try Data(contentsOf: f.file), Data(source.utf8))
         }
     }
