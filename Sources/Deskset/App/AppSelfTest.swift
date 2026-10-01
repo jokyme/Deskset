@@ -70,6 +70,7 @@ enum AppSelfTest {
         ImageDrawValueSelfTests.run(t)
         GraphDrawValueSelfTests.run(t)
         ShapeDrawValueSelfTests.run(t)
+        InkBoundsSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)
         SceneBitmapSelfTests.run(t)
