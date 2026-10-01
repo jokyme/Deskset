@@ -156,22 +156,25 @@ final class VarExpansion {
         self.budget = budget
     }
 
-    /// The definitions path supplies strings; it shares the same template evaluator.
-    func run(_ text: String) -> String { run(Template(text)) }
+    /// One-shot strings scan candidates as they are needed, without constructing a retained syntax plan.
+    func run(_ text: String) -> String { run(text, bytes: Array(text.utf8), plan: nil) }
 
-    /// Returns the source itself when nothing was substituted. All budgets and callbacks belong to this run.
     func run(_ template: Template) -> String {
-        let bytes = template.bytes
+        run(template.source, bytes: template.bytes, plan: template.standard)
+    }
+
+    /// Both input forms share the evaluator, budgets and callbacks. Return the source itself when unchanged.
+    private func run(_ source: String, bytes: [UInt8], plan: Template.StandardPlan?) -> String {
         scanLimit = Self.maxScannedBytes + 4 * bytes.count
         var marked = VarMarkedText()
-        expandStandard(bytes, plan: template.standard, into: &marked)
+        expandStandard(bytes, plan: plan, into: &marked)
         if fullSyntax {
             marked = expandNested(marked)
             marked = expandSections(marked)
         } else if nestedVariables {
             marked = expandNested(marked)
         }
-        return changed ? marked.string : template.source
+        return changed ? marked.string : source
     }
 
     // MARK: Stage 1 — #Var#, #*Var*#, $Event$
@@ -184,15 +187,28 @@ final class VarExpansion {
             out.appendLive(b)
             return
         }
-        // Values discovered during evaluation are planned only after the original scan-budget guard.
-        let references = (plan ?? Template.StandardPlan(b)).references
+        let references = plan?.references
         let events = eventLookup != nil
+        var i = 0
         var run = 0
-        for reference in references {
-            let i = reference.start, j = reference.end
-            guard i >= run else { continue }   // consumed by a successful earlier candidate
+        var referenceIndex = 0
+        while i < n {
+            var plannedEnd: Int?
+            if let references {
+                guard referenceIndex < references.count else { break }
+                let reference = references[referenceIndex]
+                referenceIndex += 1
+                guard reference.start >= i else { continue } // consumed by a successful earlier candidate
+                i = reference.start
+                plannedEnd = reference.end
+            }
             let c = b[i]
-            guard c == VarByte.hash || (events && c == VarByte.dollar) else { continue }
+            guard c == VarByte.hash || (events && c == VarByte.dollar) else { i += 1; continue }
+            var j = plannedEnd ?? (i + 1)
+            if plannedEnd == nil {
+                while j < n && b[j] != c { j += 1 }
+                guard j < n else { i += 1; continue } // no closing delimiter: literal
+            }
 
             out.appendLive(b[run..<i])
             run = i
@@ -200,8 +216,13 @@ final class VarExpansion {
             let handled = c == VarByte.hash
                 ? expandHash(content, original: b[i...j], into: &out)
                 : expandEvent(content, into: &out)
-            if handled { run = j + 1 }
-            // Otherwise the closing delimiter may open the next candidate ("#1 and #Var#").
+            if handled {
+                i = j + 1
+                run = i
+            } else {
+                // The closing delimiter may open the next candidate ("#1 and #Var#").
+                i += 1
+            }
         }
         out.appendLive(b[run..<n])
     }

@@ -184,7 +184,8 @@ public struct VariableResolver {
     /// See the type documentation for the complete rules.
     public func resolve(_ text: String) -> String {
         guard Self.mayContainSyntax(text, events: eventLookup != nil) else { return text }
-        return resolve(Template(text))
+        return VarExpansion(variableLookup: variableLookup, sectionLookup: sectionLookup, eventLookup: eventLookup,
+                            fullSyntax: true, rescanValues: true).run(text)
     }
 
     /// Resolves a preplanned source against this call's live lookups. No resolver or result is retained by it.
@@ -209,7 +210,8 @@ public struct VariableResolver {
     /// (`[Variables]` definitions are resolved differently — see `resolveDefinitions`.)
     public func resolveStandardVariables(_ text: String) -> String {
         guard text.utf8.contains(VarByte.hash) else { return text }
-        return resolveStandardVariables(Template(text))
+        return VarExpansion(variableLookup: variableLookup, sectionLookup: nil, eventLookup: nil,
+                            fullSyntax: false, rescanValues: true).run(text)
     }
 
     /// The option-read stage of the same template. Escapes and non-standard syntax keep their original timing.
