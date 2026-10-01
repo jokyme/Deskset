@@ -47,13 +47,14 @@ enum SkinLayerContentSelfTests {
         firstFrameTests(t)
         patchReclaimTests(t)
         patchClaimTests(t)
+        hostValueTests(t)
     }
 
-    private static func app(_ t: AppTestRunner, threading: SkinThreading) throws -> AppController {
+    private static func app(_ t: AppTestRunner, threading: SkinThreading, source: String = text) throws -> AppController {
         guard let app = try AppSelfTest.makeApp(t, threading: threading) else { throw CocoaError(.fileNoSuchFile) }
         let folder = app.skinsDirectory.appendingPathComponent("App/LayerContent", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try text.write(to: folder.appendingPathComponent("Test.ini"), atomically: true, encoding: .utf8)
+        try source.write(to: folder.appendingPathComponent("Test.ini"), atomically: true, encoding: .utf8)
         app.rescanLibrary()
         return app
     }
@@ -583,6 +584,227 @@ enum SkinLayerContentSelfTests {
             window.willApplyScenePatch = nil
         }
     }
+
+    /// Actual host values, including nonempty glass and tooltip regions. The native readback observes only C hit
+    /// content under SkinView, not NSGlassEffectView/NSVisualEffectView pixels or a live desktop background.
+    private static func hostValueTests(_ t: AppTestRunner) {
+        let card = """
+
+        [GlassCard]
+        Meter=Image
+        X=#Left#
+        Y=18
+        W=10
+        H=10
+        DynamicVariables=1
+        MacGlass=Regular
+        MacGlassCornerRadius=2
+        ToolTipTitle=Frame
+        ToolTipText=Card #Left#
+        LeftMouseUpAction=[!SetVariable Selected 1]
+        """
+        for (threading, label) in [(SkinThreading.main, "MainSkinExecutor"), (.engine, "SkinThreadExecutor")] {
+            t.suite("App: layer window host values: \(label) presents glass tooltips and C content through A/B/A") {
+                let app = try app(t, threading: threading, source: text + "\n" + card)
+                defer { app.stopAllForTermination(); app.endEngineThread() }
+                let window = try activate(app, t)
+                prepareWindow(window, t)
+                let executor = window.runtime.executor
+                if threading == .main {
+                    t.check(executor === MainSkinExecutor.shared && executor.isCurrent && Thread.isMainThread,
+                            "the real main executor owns this opt-in skin")
+                } else {
+                    t.check(executor is SkinThreadExecutor && !executor.isCurrent,
+                            "the actual worker owns this opt-in skin outside a lease")
+                }
+                var patches: [SkinScenePatch] = []
+                var insideMainDraw = false, inlineClaims = 0, auditedResizes = 0
+                window.willApplyScenePatch = { patch in
+                    t.check(Thread.isMainThread && patch.content.state == .applying,
+                            "the actual native callback claims before host or tree mutation")
+                    t.check(patch.content.isMainWriter(for: patch.content.root))
+                    t.equal(executor.isCurrent, threading == .main,
+                            "a tree writer never changes the executor's actual ownership")
+                    if threading == .main, insideMainDraw { inlineClaims += 1 }
+                    #if DEBUG
+                    if threading == .main {
+                        t.check(window.runtime.model.frame?.size != window.window.frame.size,
+                                "the real main claim observes the logical resize before host acknowledgment")
+                        let skin = window.runtime.skin!
+                        var reported: [String] = []
+                        SnapshotAudit.capturing({ reported.append($0) }) {
+                            let env = window.runtime.environment(for: skin)
+                            t.equal(env.windowFrame.width, Double(patch.size.width), "the returned logical environment keeps the new size")
+                        }
+                        t.equal(reported, [], "only the known pending resize is reconciled for comparison")
+                        let z = app.state.skin(window.config)?.alwaysOnTop ?? 0
+                        app.state.update(window.config) { $0.alwaysOnTop = z == 0 ? 1 : 0 }
+                        defer { app.state.update(window.config) { $0.alwaysOnTop = z } }
+                        SnapshotAudit.capturing({ reported.append($0) }) {
+                            t.equal(window.runtime.environment(for: skin).zPosition, z,
+                                    "an unrelated live-state discrepancy cannot alter the returned model")
+                        }
+                        t.check(reported.count == 1 && reported[0].contains("environment") && reported[0].contains("zPosition"),
+                                "the pending resize still reports a real Z-position discrepancy: \(reported)")
+                        auditedResizes += 1
+                    }
+                    #endif
+                    patches.append(patch)
+                }
+                defer { window.willApplyScenePatch = nil }
+
+                for (index, state) in [(48, 4, GlassStyle.regular), (60, 12, .clear), (48, 4, .regular)].enumerated() {
+                    let (width, left, style) = state
+                    if index > 0 {
+                        let count = patches.count, inlineBefore = inlineClaims
+                        let update = {
+                            window.runtime.skin.execute("[!SetOption GlassCard MacGlass \(style == .clear ? "Clear" : "Regular")]", from: nil)
+                            resizeRecipe(window, width, left)
+                        }
+                        if threading == .main {
+                            insideMainDraw = true
+                            let completed = window.runtime.exclusive(timeout: 30) { _ -> Bool in
+                                update()
+                                return !window.runtime.frames.hasLayerWriter
+                            }
+                            insideMainDraw = false
+                            t.equal(completed, true, "the real main draw completes its writer ack before returning")
+                            t.equal(inlineClaims, inlineBefore + 1, "the main opt-in callback applied inline, without a worker wait")
+                        } else {
+                            let done = Guarded(false)
+                            executor.async { update(); done.access { $0 = true } }
+                            t.check(AppSelfTest.spin(timeout: 30) { done.current && patches.count > count },
+                                    "real worker drawing and main claim complete while the run loop is served")
+                        }
+                        t.equal(patches.count, count + 1, "one coherent host patch presents each changed frame")
+                        t.check(AppSelfTest.spin(timeout: 30) {
+                            window.runtime.exclusive(timeout: 0.25) { _ in !window.runtime.frames.hasLayerWriter } == true
+                        }, "the actual owner receives the completed main ack")
+                        guard let patch = patches.last else { return t.check(false, "a real captured patch is required") }
+                        t.equal(patch.content.state, .appliedByMain, "this is a main-claimed positive control, not reclaimed fallback")
+                        t.equal(patch.hostAcknowledgment, .complete)
+                        t.equal(patch.size, CGSize(width: width, height: 32))
+                        t.equal(patch.hitMap.toolTipAreas, [SkinRect(x: Double(left), y: 18, width: 10, height: 10)])
+                    }
+                    let rect = SkinRect(x: Double(left), y: 18, width: 10, height: 10)
+                    let expectedGlass = [GlassRegion(id: "GlassCard", rect: rect, cornerRadius: 2, style: style)]
+                    t.equal(window.glass.regions, expectedGlass, "literal nonempty glass values match the presented frame")
+                    t.equal(window.glass.shownPieces.map { $0.frameView.frame }, [rect.cgRect], "real AppKit glass frames follow A/B/A")
+                    t.equal(window.contentView.subviews, window.glass.shownPieces.map(\.frameView) + [window.view],
+                            "the actual glass stays behind the C view")
+                    t.equal(window.view.bounds.size, CGSize(width: width, height: 32))
+                    t.equal(window.window.frame.size, CGSize(width: width, height: 32))
+                    t.equal(window.content.installedLayerRoot?.bounds, CGRect(x: 0, y: 0, width: width, height: 32))
+                    t.equal(window.view.toolTipRects, [rect.cgRect], "nonempty registered tooltip areas follow the presented frame")
+                    t.equal(window.view.toolTipText(x: Double(left + 5), y: 23), "Frame\nCard \(left)")
+                    let outside = left == 4 ? 17.0 : 5.0
+                    t.equal(window.view.toolTipText(x: outside, y: 23), nil, "old or outside card coordinates have no presented tooltip")
+                    t.check(SkinView.hasAction(window, .leftUp, x: Double(left + 5), y: 23), "presented glass has its captured action")
+                    t.check(!SkinView.hasAction(window, .leftUp, x: outside, y: 23), "captured hit map rejects the old or outside coordinates")
+                    t.equal(window.runtime.snapshot.glass, expectedGlass)
+                    t.equal(window.runtime.snapshot.toolTipAreas, [rect.cgRect])
+                    let submitted = window.runtime.exclusive(timeout: 30) { _ -> Bool in
+                        let frames = window.runtime.frames
+                        return frames.layerInstalled && frames.layerFailure == nil && !frames.hasLayerWriter
+                            && frames.lastLayerDrawWasOnSkinThread == (threading != .main)
+                    }
+                    t.equal(submitted, true, "the appropriate real drawing owner has submitted the same C frame")
+                    if index > 0 { t.equal(patches.last?.glass, expectedGlass) }
+                    try checkCurrentTree(window, width, t)
+                }
+                #if DEBUG
+                if threading == .main {
+                    t.equal(auditedResizes, 2, "both actual main resize claims exercised the audit controls")
+                    auditResizeMapping(t)
+                    let frame = window.window.frame, delegate = window.window.delegate
+                    let facts = window.runtime.model.facts
+                    var reported: [String] = []
+                    SnapshotAudit.capturing({ reported.append($0) }) {
+                        // The existing window-model negative control: a real move with no facts publication.
+                        window.window.delegate = nil
+                        defer { window.window.setFrame(frame, display: false); window.window.delegate = delegate }
+                        window.window.setFrameOrigin(CGPoint(x: frame.minX + 33, y: frame.minY))
+                        _ = window.runtime.environment(for: window.runtime.skin)
+                    }
+                    t.equal(window.runtime.model.facts, facts, "the unannounced move did not replace the acknowledged facts")
+                    t.check(reported.count == 1 && reported[0].contains("environment") && reported[0].contains("window model"),
+                            "after acknowledgment, a real geometry mismatch remains audited: \(reported)")
+                    t.equal(window.runtime.environment(for: window.runtime.skin), window.environment,
+                            "restoring the actual panel restores full environment equality")
+                }
+                #endif
+                let root = window.content.installedLayerRoot
+                t.check(root != nil)
+                window.stop(fadeOut: false)
+                t.check(AppSelfTest.spin(timeout: 30) { window.content.state.tornDown }, "actual close receives owner cleanup and main removal")
+                t.check(window.content.installedLayerRoot == nil && root?.superlayer == nil)
+                t.check(root?.sublayers?.isEmpty != false, "closed owner releases all C image children")
+                t.equal(window.runtime.exclusive(timeout: 30) { _ in window.runtime.frames.layerRuntime == nil }, true)
+                t.check(!window.window.isVisible)
+                t.equal(window.view.toolTipText(x: 9, y: 23), nil, "the closed host cannot expose its last tooltip")
+            }
+        }
+    }
+
+    #if DEBUG
+    private static func auditResizeMapping(_ t: AppTestRunner) {
+        // A controlled two-screen geometry check, separate from the real one-window native controls above.
+        let screens = [CGRect(x: 0, y: 0, width: 100, height: 100), CGRect(x: 100, y: 0, width: 100, height: 100)]
+            .map { WindowGeometry.Screen(frame: $0, visibleFrame: $0) }
+        var settings = SkinWindowSettings()
+        settings.keepOnScreen = false
+        settings.autoSelectScreen = true
+        let old = CGRect(x: 90, y: 68, width: 20, height: 32), new = CGRect(x: 90, y: 68, width: 60, height: 32)
+        let facts = SkinWindowFacts(frame: old, isVisible: true, isOrderedIn: true, scale: 2,
+                                    takesPointer: true, settings: settings, sequence: 1)
+        var model = SkinWindowModel()
+        model.take(facts)
+        model.resize(to: new.size, screens: screens)
+        t.equal(model.frame, new)
+        t.equal(WindowGeometry.screenIndex(for: old, screens: screens), 0, "the equal-overlap tie initially selects primary")
+        t.equal(WindowGeometry.screenIndex(for: new, screens: screens), 1, "the actual resize selects the second screen")
+        func env(_ frame: CGRect, _ selected: Int) -> SkinEnvironment {
+            var value = EnvironmentStore.environment(windowFrame: frame, screens: screens, settingsPath: "test/",
+                programPath: "test/", configEditor: "test", appearance: .light)
+            value.currentScreen = selected
+            return value
+        }
+        let before = env(old, 0), after = env(new, 1)
+        func compared(_ live: SkinEnvironment, _ snapshot: SkinEnvironment = after,
+                      _ current: SkinWindowModel = model, _ size: CGSize? = new.size,
+                      _ layers: Bool = true) -> SkinEnvironment {
+            SkinRuntime.environmentForAudit(live, snapshot: snapshot, model: current,
+                requestedSize: size, usesLayers: layers, screens: screens)
+        }
+        t.equal(compared(before), after, "only the derived frame and selected screen are reconciled")
+        var z = before
+        z.zPosition = 1
+        var expected = after
+        expected.zPosition = 1
+        t.equal(compared(z), expected, "Z-position discrepancies survive the comparison adjustment")
+        var moved = before
+        moved.windowFrame.x += 1
+        t.equal(compared(moved), moved, "unannounced geometry is never reconciled")
+        var wrongScreen = before
+        wrongScreen.currentScreen = 1
+        t.equal(compared(wrongScreen), wrongScreen, "an unexpected live screen is never reconciled")
+        var wrongSnapshot = after
+        wrongSnapshot.currentScreen = 0
+        t.equal(compared(before, wrongSnapshot), before, "an incorrect future selection is not concealed")
+        t.equal(compared(before, after, model, new.size, false), before, "the bitmap audit is unchanged")
+        t.equal(compared(before, after, model, nil), before, "no requested resize means no known comparison debt")
+        t.equal(compared(before, after, model, CGSize(width: 80, height: 32)), before, "the model must match the exact requested resize")
+        var changed = model
+        changed.settings.zPosition = 1
+        t.equal(compared(before, after, changed), before, "unacknowledged settings are not resize-only debt")
+        var acknowledged = model
+        var ack = facts
+        ack.frame = new
+        ack.sequence = 2
+        acknowledged.take(ack)
+        t.equal(compared(before, after, acknowledged), before, "acknowledged geometry is fully audited")
+    }
+    #endif
 
     private static func singleTree(_ content: LayerContentBuilder.Content, scale: CGFloat,
                                    size: CGSize = CGSize(width: 48, height: 32)) -> CALayer {
