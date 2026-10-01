@@ -8,7 +8,8 @@ import UniformTypeIdentifiers
 /// "Deskset (built-in)" chosen in Settings ▸ Editor such files never go to the Launch Services default (on many Macs an
 /// IDE the user never chose for skins): they get this window, the same code editor as the skin editor's code pane —
 /// highlighting, find, encoding and line endings kept byte for byte, commits after a pause, on ⌘S, when the window
-/// stops being key and when it closes — without a canvas. A change made on disk meanwhile is picked up when the window
+/// stops being key and when it closes. Desk documents also show their checked static program as a local preview.
+/// A change made on disk meanwhile is picked up when the window
 /// becomes key (a clean buffer) or asked about before it is written over (see `CodeEditorView.onDiskConflict`).
 final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     let file: URL
@@ -20,6 +21,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     private(set) var deskChecking: DeskCodeDocumentChecking?
     private(set) var readError: String?
     private(set) var deskDecorations: DeskCodeDecorations?
+    private(set) var deskPreview: DeskProgramPreviewController?
 
     /// A native list is bound to both the check and its original caret. Previewing entries never edits a buffer.
     private struct DeskCompletionSession {
@@ -59,6 +61,24 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
             let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue)
             deskChecking = checking
+            let preview = DeskProgramPreviewController { [weak self] snapshot in
+                guard let self, self.readError == nil else { return false }
+                return self.deskChecking?.isCurrent(snapshot) == true
+            }
+            deskPreview = preview
+            let codeController = NSViewController()
+            codeController.view = codeView
+            let split = NSSplitViewController()
+            split.splitView.isVertical = true
+            let codeItem = NSSplitViewItem(viewController: codeController)
+            let previewItem = NSSplitViewItem(viewController: preview)
+            codeItem.minimumThickness = 360
+            previewItem.minimumThickness = 280
+            split.addSplitViewItem(codeItem)
+            split.addSplitViewItem(previewItem)
+            window.contentViewController = split
+            window.contentMinSize = NSSize(width: 700, height: 240)
+            window.setContentSize(NSSize(width: 1040, height: 580))
             codeView.onCompletionRange = { [weak self] in
                 self?.prepareDeskCompletion() ?? NSRange(location: NSNotFound, length: 0)
             }
@@ -74,6 +94,9 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
                 self?.deskCompletion = nil
                 self?.readError = error.localizedDescription
                 self?.deskDecorations?.clear()
+                if let self, let snapshot = self.deskChecking?.snapshot {
+                    self.deskPreview?.show(snapshot, readError: error.localizedDescription)
+                }
                 self?.window?.subtitle = error.localizedDescription
                 Log.write("Code editor: \(error.localizedDescription)", level: .error)
             }
@@ -152,6 +175,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         codeView.onInsertCompletion = nil
         deskChecking?.close()
         deskDecorations?.detach()
+        deskPreview?.close()
         app.codeFileWindowDidClose(self)
     }
 
@@ -159,6 +183,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     /// the previous display; the existing subtitle and document save/conflict behavior remain the same.
     private func showDeskCheck(_ snapshot: DeskSnapshot) {
         deskCompletion = nil
+        deskPreview?.show(snapshot, readError: readError)
         if readError == nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true {
             deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
                                   language: snapshot.options.messageLanguage,

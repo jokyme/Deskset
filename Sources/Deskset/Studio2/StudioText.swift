@@ -122,6 +122,11 @@ enum StudioText {
         case interactTip = "preview.interact.tip"
         case backToLive = "preview.backToLive"
         case previewOnly = "preview.popover.title"
+        case deskPreviewChecking = "desk.preview.checking"
+        case deskPreviewStatic = "desk.preview.static"
+        case deskPreviewEmpty = "desk.preview.empty"
+        case deskPreviewUnavailable = "desk.preview.unavailable"
+        case deskPreviewTooLarge = "desk.preview.tooLarge"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -712,6 +717,12 @@ enum StudioText {
                        "不离开 Studio，在组件里悬停和点按；点按会像在桌面上一样生效"),
         .backToLive: ("Back to Live", "回到实时"),
         .previewOnly: ("Preview only", "只是预览"),
+        .deskPreviewChecking: ("Checking the current document…", "正在检查当前文档…"),
+        .deskPreviewStatic: ("Static preview · this document is not running on the desktop", "静态预览 · 此文档未在桌面运行"),
+        .deskPreviewEmpty: ("No visible content", "没有可见内容"),
+        .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
+        .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",
+                               "排版或字体超出了预览每边 16,384 像素的上限。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),
