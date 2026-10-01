@@ -23,7 +23,10 @@ package enum HistogramRenderer {
         ctx.saveGState()
         defer { ctx.restoreGState() }
         // AntiAlias=0: whole-pixel columns must cover whole device pixels even at X=10.5 (see LineRenderer).
-        if !drawing.antiAlias { LineRenderer.alignGraphToDevicePixels(LineRenderer.graphAnchor(area, drawing.direction), ctx) }
+        if !drawing.antiAlias {
+            let target = DrawTarget.capture(ctx, graphAnchor: LineRenderer.graphAnchor(area, drawing.direction))
+            LineRenderer.alignGraphToDevicePixels(target, ctx)
+        }
         ctx.setShouldAntialias(drawing.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
         ctx.clip(to: area)
         let parts = cache.parts

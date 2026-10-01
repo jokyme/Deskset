@@ -155,7 +155,7 @@ package enum ImageRenderer {
     package static func drawnDecodePath(_ path: String, options: ImageOptions, drawn: CGSize, fit: Bool,
                                 in ctx: CGContext) -> String {
         drawnDecodePath(path, options: options, drawn: drawn, fit: fit,
-                        target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+                        target: DrawTarget.capture(ctx))
     }
 
     package static func drawnDecodePath(_ path: String, options: ImageOptions, drawn: CGSize, fit: Bool,
@@ -265,7 +265,7 @@ package enum ImageRenderer {
     package static func drawMasked(_ prepared: PreparedImage, maskPath: String, maskOptions: ImageOptions, in area: CGRect,
                            _ ctx: CGContext) {
         drawMasked(prepared, maskPath: maskPath, maskOptions: maskOptions, in: area, ctx,
-                   target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+                   target: DrawTarget.capture(ctx))
     }
 
     package static func drawMasked(_ prepared: PreparedImage, maskPath: String, maskOptions: ImageOptions, in area: CGRect,
@@ -358,7 +358,7 @@ extension PreparedImage {
     /// file is prepared as by `init(path:options:)`.
     init?(path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false, in ctx: CGContext) {
         self.init(path: path, options: options, drawn: drawn, fit: fit,
-                  target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+                  target: DrawTarget.capture(ctx))
     }
 
     init?(path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false, target: DrawTarget) {

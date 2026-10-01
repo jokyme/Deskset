@@ -30,7 +30,7 @@ enum SkinRenderer {
 
     /// Captured drawing facts for the owner-side adapters. The execution layer receives only the resulting values.
     static func sceneEnvironment(_ skin: Skin, _ ctx: CGContext) -> AppSceneEnvironment {
-        let target = DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform)
+        let target = DrawTarget.capture(ctx)
         return AppSceneEnvironment(scale: Double(target.maximumPixelsPerPoint),
                                    appearance: skin.host?.environment(for: skin).appearance ?? .light,
                                    appearanceName: NSAppearance.currentDrawing().name.rawValue)

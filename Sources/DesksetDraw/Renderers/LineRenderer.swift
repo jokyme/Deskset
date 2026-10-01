@@ -17,7 +17,8 @@ package enum LineRenderer {
         ctx.saveGState()
         defer { ctx.restoreGState() }
         let aliased = !drawing.antiAlias
-        let snap = aliased ? alignGraphToDevicePixels(graphAnchor(area, drawing.direction), ctx) : .zero
+        let snap = aliased ? alignGraphToDevicePixels(
+            DrawTarget.capture(ctx, graphAnchor: graphAnchor(area, drawing.direction)), ctx) : .zero
         ctx.setShouldAntialias(drawing.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
         ctx.clip(to: area)
 
@@ -52,7 +53,8 @@ package enum LineRenderer {
                 ctx.concatenate(t.inverted())
             }
         }
-        let offset = aliased && transform.isIdentity ? aliasedStrokeOffset(lineWidth: drawing.lineWidth, ctx) : .zero
+        let offset = aliased && transform.isIdentity
+            ? aliasedStrokeOffset(lineWidth: drawing.lineWidth, target: DrawTarget.capture(ctx)) : .zero
 
         ctx.setLineWidth(drawing.lineWidth)
         ctx.setLineJoin(.round)
@@ -89,27 +91,23 @@ package enum LineRenderer {
         return CGPoint(x: d.flip ? area.maxX : area.minX, y: d.startRight ? area.maxY : area.minY)
     }
 
-    /// AntiAlias=0 graphs (Line, Histogram): translates the context so `origin` (the `graphAnchor`) lands on a
+    /// AntiAlias=0 graphs (Line, Histogram): applies the captured translation so the graph anchor lands on a
     /// device pixel corner. Their 1-pixel columns and pixel-center lines then cover whole device pixels even when
     /// the meter's edges are at half pixels (X=10.5, W=50.5, or X=10.25 on a 2x display), instead of being
     /// rasterized two pixels wide. Returns the translation applied (zero when none was possible).
     @discardableResult
-    static func alignGraphToDevicePixels(_ origin: CGPoint, _ ctx: CGContext) -> CGPoint {
-        let device = ctx.convertToDeviceSpace(origin)
-        guard device.x.isFinite, device.y.isFinite, abs(device.x) < 1e9, abs(device.y) < 1e9 else { return .zero }
-        let aligned = ctx.convertToUserSpace(CGPoint(x: device.x.rounded(), y: device.y.rounded()))
-        let dx = aligned.x - origin.x, dy = aligned.y - origin.y
-        guard dx.isFinite, dy.isFinite, abs(dx) < 1, abs(dy) < 1 else { return .zero }
-        ctx.translateBy(x: dx, y: dy)
-        return CGPoint(x: dx, y: dy)
+    static func alignGraphToDevicePixels(_ target: DrawTarget, _ ctx: CGContext) -> CGPoint {
+        guard let translation = target.graphTranslation else { return .zero }
+        ctx.translateBy(x: translation.x, y: translation.y)
+        return translation
     }
 
     /// AntiAlias=0: user-space shift that puts both edges of a stroke centered on a pixel center onto device pixel
     /// boundaries (LineWidth=2 on a 1x display: half a pixel). Zero unless the context maps user space to device
     /// space with an axis-aligned whole-number scale (the only case where every vertex has the same sub-pixel
     /// phase).
-    static func aliasedStrokeOffset(lineWidth: Double, _ ctx: CGContext) -> CGPoint {
-        let t = ctx.userSpaceToDeviceSpaceTransform
+    static func aliasedStrokeOffset(lineWidth: Double, target: DrawTarget) -> CGPoint {
+        let t = target.userToDevice
         guard t.b == 0, t.c == 0 else { return .zero }
         func shift(_ scale: CGFloat) -> CGFloat {
             guard scale.isFinite, scale != 0, abs(scale) <= 16, scale == scale.rounded() else { return 0 }

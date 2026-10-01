@@ -11,7 +11,7 @@ package enum SymbolImages {
     package static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
                             in ctx: CGContext) -> String {
         drawingPath(path, options: options, drawn: drawn, fit: fit,
-                    target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+                    target: DrawTarget.capture(ctx))
     }
 
     package static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,

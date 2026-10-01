@@ -81,7 +81,8 @@ package enum TextRenderer {
             positioned.append((line, CGPoint(x: x + line.indent, y: y + line.ascent)))
             y += line.height
         }
-        layout.draw(positioned, in: ctx, style: style, shadowClip: drawing.frame.cgRect)
+        layout.draw(positioned, in: ctx, style: style, shadowClip: drawing.frame.cgRect,
+                    target: DrawTarget.capture(ctx))
     }
 }
 
@@ -592,7 +593,8 @@ extension TextLayout {
     /// ("the shadow drawing surface [is] the size of the meter itself") and to the area the shadowed text, its
     /// offset copy and the blur can reach — blurring a meter-sized layer per line made shadowed text the most
     /// expensive thing to redraw.
-    func draw(_ lines: [(line: Placed, origin: CGPoint)], in ctx: CGContext, style: TextStyle, shadowClip: CGRect) {
+    func draw(_ lines: [(line: Placed, origin: CGPoint)], in ctx: CGContext, style: TextStyle, shadowClip: CGRect,
+              target: DrawTarget) {
         struct Prepared {
             var origin: CGPoint
             var runs: [(run: CTRun, attributes: RunAttributes)]
@@ -633,7 +635,7 @@ extension TextLayout {
             ctx.saveGState()
             ctx.clip(to: reach)
             // CGContext shadows are specified in device space: map the offset and blur through the CTM.
-            let m = ctx.ctm
+            let m = target.ctm
             let offset = CGSize(width: spec.dx, height: spec.dy)
                 .applying(CGAffineTransform(a: m.a, b: m.b, c: m.c, d: m.d, tx: 0, ty: 0))
             let scale = sqrt(abs(m.a * m.d - m.b * m.c))

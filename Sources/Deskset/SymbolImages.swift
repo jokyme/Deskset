@@ -141,8 +141,7 @@ enum SymbolImages {
     /// symbol.
     static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
                             in ctx: CGContext) -> String {
-        drawingPath(path, options: options, drawn: drawn, fit: fit,
-                    target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+        DesksetDraw.SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, in: ctx)
     }
 
     static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
