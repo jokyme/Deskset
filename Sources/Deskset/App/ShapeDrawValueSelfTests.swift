@@ -1,7 +1,9 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 enum ShapeDrawValueSelfTests {
+    private static let canvasWidth = 200, canvasHeight = 150
     private static let formats = [(scale: 1, bgra: false), (scale: 1, bgra: true),
                                   (scale: 2, bgra: false), (scale: 2, bgra: true)]
 
@@ -13,6 +15,7 @@ enum ShapeDrawValueSelfTests {
     static func run(_ t: AppTestRunner) {
         drawingTests(t)
         cacheTests(t)
+        geometryTests(t)
     }
 
     private static func drawingTests(_ t: AppTestRunner) {
@@ -192,9 +195,190 @@ enum ShapeDrawValueSelfTests {
         }
     }
 
+    private static func geometryTests(_ t: AppTestRunner) {
+        t.suite("Runtime: shape ink geometry: prepared paths cover pixels without changing drawing") {
+            for format in formats {
+                // Verify the active bytes' top-left row order and alpha channel before testing geometry.
+                let rect = CGRect(x: 13, y: 7, width: 2, height: 3)
+                let sentinel = try pixels(format) { ctx in
+                    ctx.setShouldAntialias(false)
+                    ctx.setFillColor(CGColor(gray: 0, alpha: 1))
+                    ctx.fill(rect)
+                }
+                let expected = pixelBounds(rect, scale: format.scale)
+                let first = firstAlpha(sentinel, scale: format.scale, outside: .null)
+                t.check(first?.x == Int(expected.minX) && first?.y == Int(expected.minY) && first?.alpha == 255,
+                        "\(format): the scanner sees the probe's top-left opaque pixel: \(String(describing: first))")
+                let last = ((Int(expected.maxY) - 1) * canvasWidth * format.scale + Int(expected.maxX) - 1) * 4 + 3
+                t.equal(sentinel[last], 255, "\(format): the probe reaches its bottom-right pixel")
+                t.check(firstAlpha(sentinel, scale: format.scale, outside: expected) == nil,
+                        "\(format): the probe has no alpha outside its known rectangle")
+            }
+
+            weak var releasedSkin: Skin?
+            weak var releasedMeter: ShapeMeter?
+            let context = SkinRenderContext()
+            let saved = try autoreleasepool { () throws -> [(draw: ShapeDraw, bounds: CGRect, pixels: [Data])] in
+                let (skin, host) = try MediaUITests.bareSkin(t, """
+                [Rainmeter]
+                Update=-1
+                [Variables]
+                Width=12
+                [Drawing]
+                Meter=Shape
+                X=35.25
+                Y=36.5
+                W=18
+                H=12
+                Padding=3,4,0,0
+                DynamicVariables=1
+                Shape=Path Star | Fill Color 60,130,210,150 | StrokeWidth 8 | Stroke Color 230,60,60,160 | StrokeLineJoin Miter, 8
+                Star=25,0 | LineTo 40,48 | LineTo 0,18 | LineTo 50,18 | LineTo 10,48 | ClosePath 1
+                Shape2=Rectangle 60,16,10,10
+                Shape3=Combine Shape | Union Shape2
+                Shape4=Line -16,62,82,62 | StrokeWidth 10 | Stroke Color 30,90,180,180 | StrokeStartCap Triangle | StrokeEndCap Round | StrokeDashes 2,1 | StrokeDashCap Round
+                Shape5=Ellipse 83,10,12,9 | Fill Color 100,150,80,120 | StrokeWidth 6 | Stroke Color 30,80,40,220 | StrokeType Outer
+                Shape6=Rectangle -18,20,16,15 | Fill Color 200,120,60,160 | StrokeWidth 6 | Stroke Color 120,60,20,200 | StrokeType Inner
+                Shape7=Rectangle 94,35,#Width#,16 | Fill Color 160,90,210,200 | StrokeWidth 2
+                """)
+                defer { withExtendedLifetime(host) { skin.close() } }
+                skin.update()
+                guard let meter = skin.meter(named: "Drawing") as? ShapeMeter else {
+                    throw CocoaError(.coderInvalidValue)
+                }
+                releasedSkin = skin
+                releasedMeter = meter
+                t.equal(meter.shapes.map(\.index), [3, 4, 5, 6, 7], "Combine and each stroke fixture were parsed")
+
+                func capture(_ label: String) throws -> (draw: ShapeDraw, bounds: CGRect, pixels: [Data]) {
+                    let draw = meter.lower()
+                    let bounds = DesksetDraw.ShapeRenderer.geometryBounds(draw, context: context.drawing)
+                    t.check(!bounds.isNull && [bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].allSatisfy(\.isFinite),
+                            "\(label): prepared geometry has finite bounds: \(bounds)")
+                    let frame = CGRect(x: meter.frame.x, y: meter.frame.y,
+                                       width: meter.frame.width, height: meter.frame.height)
+                    let estimate = draw.shapes.reduce(CGRect.null) { result, item in
+                        let rect = item.visualBounds
+                        return result.union(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
+                    }.offsetBy(dx: draw.contentFrame.x, dy: draw.contentFrame.y)
+                    let pictures = try formats.map { format in
+                        let note = "\(label), \(format)"
+                        let direct = try pixels(format) { SkinRenderer.drawShape(draw, $0, SkinRenderContext()) }
+                        let preparedContext = SkinRenderContext()
+                        t.equal(preparedContext.shapes.count, 0, "\(note): this format starts with a cold shape cache")
+                        let preparedBounds = DesksetDraw.ShapeRenderer.geometryBounds(draw, context: preparedContext.drawing)
+                        t.equal(preparedBounds, bounds, "\(note): independent contexts compute the same geometry")
+                        let prepared = try pixels(format) { SkinRenderer.drawShape(draw, $0, preparedContext) }
+                        t.check(prepared == direct, "\(note): querying before drawing preserves every active byte")
+                        t.equal(DesksetDraw.ShapeRenderer.geometryBounds(draw, context: preparedContext.drawing), bounds,
+                                "\(note): querying a warm cache keeps the same bounds")
+                        let warm = try pixels(format) { SkinRenderer.drawShape(draw, $0, preparedContext) }
+                        t.check(warm == prepared, "\(note): repeated queries preserve every active byte")
+                        #if DEBUG
+                        let reference = try pixels(format) { LegacySkinRenderer.drawShape(meter, $0) }
+                        t.check(prepared == reference, "\(note): exact frozen-renderer pixels after preparation")
+                        #endif
+
+                        let deviceBounds = pixelBounds(preparedBounds, scale: format.scale)
+                        let first = firstAlpha(prepared, scale: format.scale, outside: .null)
+                        t.check(first != nil, "\(note): the fixture paints nontransparent pixels")
+                        let escape = firstAlpha(prepared, scale: format.scale, outside: deviceBounds)
+                        t.check(escape == nil, "\(note): alpha outside \(deviceBounds): \(String(describing: escape))")
+                        t.check(firstAlpha(prepared, scale: format.scale, outside: pixelBounds(frame, scale: format.scale)) != nil,
+                                "\(note): actual pixels extend beyond the deliberately small meter frame")
+                        t.check(firstAlpha(prepared, scale: format.scale, outside: pixelBounds(estimate, scale: format.scale)) != nil,
+                                "\(note): the combined miter paints beyond the Core visual estimate")
+                        let interior = CGRect(x: 1, y: 1, width: canvasWidth * format.scale - 2,
+                                              height: canvasHeight * format.scale - 2)
+                        t.check(firstAlpha(prepared, scale: format.scale, outside: interior) == nil,
+                                "\(note): the independent fixed canvas has a transparent outer border")
+                        if let first {
+                            let left = max(deviceBounds.minX, CGFloat(first.x + 1))
+                            let shrunken = CGRect(x: left, y: deviceBounds.minY,
+                                                  width: max(0, deviceBounds.maxX - left), height: deviceBounds.height)
+                            t.check(firstAlpha(prepared, scale: format.scale, outside: shrunken) != nil,
+                                    "\(note): deliberately shrinking the predicted box detects a real pixel escape")
+                        }
+                        return prepared
+                    }
+                    return (draw, bounds, pictures)
+                }
+
+                let original = try capture("original")
+                skin.setVariable("Width", "28")
+                skin.update()
+                let changed = try capture("changed")
+                t.check(changed.draw.revision != original.draw.revision, "a geometry update changes the captured revision")
+                t.check(changed.bounds.maxX > original.bounds.maxX, "the updated rectangle expands the prepared geometry")
+                t.check(changed.pixels != original.pixels, "the geometry update changes visible pixels")
+                t.equal(DesksetDraw.ShapeRenderer.geometryBounds(original.draw, context: context.drawing), original.bounds,
+                        "querying the old value after an update restores its original bounds")
+                t.equal(context.shapes.count, 1, "querying old and new revisions keeps one cache entry for the source")
+
+                skin.perform(Bang(name: "setoption", args: ["Drawing", "X", "44.75"]))
+                skin.perform(Bang(name: "setoption", args: ["Drawing", "Y", "42.25"]))
+                skin.update()
+                let moved = try capture("moved")
+                t.equal(moved.draw.revision, changed.draw.revision, "moving the meter does not change its geometry revision")
+                t.equal(moved.bounds, changed.bounds.offsetBy(dx: 9.5, dy: 5.75),
+                        "the query applies the fractional content origin exactly once")
+
+                let empty = ShapeDraw(shapes: [], contentFrame: original.draw.contentFrame)
+                t.check(DesksetDraw.ShapeRenderer.geometryBounds(empty, context: context.drawing).isNull,
+                        "an empty payload has no geometry")
+                for format in formats {
+                    let blank = try pixels(format) { SkinRenderer.drawShape(empty, $0, context) }
+                    t.check(firstAlpha(blank, scale: format.scale, outside: .null) == nil,
+                            "\(format): the empty payload paints no alpha")
+                }
+                return [original, changed, moved]
+            }
+            t.check(releasedSkin == nil && releasedMeter == nil, "geometry values and the warm cache retain no owner")
+            t.equal(saved.count, 3, "original, changed and moved geometry were captured")
+            for (sampleIndex, sample) in saved.enumerated() {
+                for (index, format) in formats.enumerated() {
+                    let note = "saved \(sampleIndex), \(format)"
+                    weak var releasedCache: ShapeCG.Cache?
+                    try autoreleasepool {
+                        let cold = SkinRenderContext()
+                        releasedCache = cold.shapes
+                        t.equal(cold.shapes.count, 0, "\(note): owner-free replay starts cold")
+                        t.equal(DesksetDraw.ShapeRenderer.geometryBounds(sample.draw, context: cold.drawing), sample.bounds,
+                                "\(note): a cold query reproduces the saved bounds after owner release")
+                        let picture = try pixels(format) { SkinRenderer.drawShape(sample.draw, $0, cold) }
+                        t.check(picture == sample.pixels[index], "\(note): the prepared old value keeps exact pixels")
+                    }
+                    t.check(releasedCache == nil, "\(note): queried paths leave with their drawing context")
+                }
+            }
+        }
+    }
+
+    /// These bitmap fixtures use only the known top-left translation and uniform scale in `pixels`.
+    /// This is test geometry conversion, not the full target-dependent InkBounds calculation.
+    private static func pixelBounds(_ bounds: CGRect, scale: Int) -> CGRect {
+        guard !bounds.isNull else { return .null }
+        return bounds.applying(CGAffineTransform(scaleX: CGFloat(scale), y: CGFloat(scale))).integral
+    }
+
+    /// RGBA and little-endian BGRA both store alpha in byte 3; `geometryTests` verifies the row convention.
+    private static func firstAlpha(_ pixels: Data, scale: Int, outside bounds: CGRect) -> (x: Int, y: Int, alpha: UInt8)? {
+        let width = canvasWidth * scale, height = canvasHeight * scale
+        precondition(pixels.count == width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let alpha = pixels[(y * width + x) * 4 + 3]
+                if alpha > 0 && !bounds.contains(CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)) {
+                    return (x, y, alpha)
+                }
+            }
+        }
+        return nil
+    }
+
     /// Only active pixel bytes are compared, without bitmap row padding.
     private static func pixels(_ format: (scale: Int, bgra: Bool), _ draw: (CGContext) -> Void) throws -> Data {
-        let width = 200 * format.scale, height = 150 * format.scale
+        let width = canvasWidth * format.scale, height = canvasHeight * format.scale
         let info = format.bgra
             ? CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
             : CGImageAlphaInfo.premultipliedLast.rawValue
