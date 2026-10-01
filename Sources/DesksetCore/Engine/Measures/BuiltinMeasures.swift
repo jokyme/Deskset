@@ -866,6 +866,22 @@ func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, sect
         return MemoryMeasure(name: name, section: section, context: context, type: type)
     case ObjectIdentifier(NetMeasure.self):
         return NetMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(CalcMeasure.self):
+        return CalcMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(LoopMeasure.self):
+        return LoopMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(TimeMeasure.self):
+        return TimeMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(UptimeMeasure.self):
+        return UptimeMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(FreeDiskSpaceMeasure.self):
+        return FreeDiskSpaceMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(ProcessMeasure.self):
+        return ProcessMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(SysInfoMeasure.self):
+        return SysInfoMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(PowerPluginMeasure.self):
+        return PowerPluginMeasure(name: name, section: section, context: context, type: type)
     default:
         return nil
     }
