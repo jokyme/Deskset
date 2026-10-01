@@ -77,6 +77,7 @@ enum AppSelfTest {
         OffscreenRendererSelfTests.run(t)
         ComponentGeometrySelfTests.run(t)
         PixelComparisonSelfTests.run(t)
+        LayerContentSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)
         SceneBitmapSelfTests.run(t)
