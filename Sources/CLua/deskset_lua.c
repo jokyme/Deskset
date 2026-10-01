@@ -358,10 +358,11 @@ static struct tm *source_localtime(const deskset_lua_time_source *src, time_t t,
     return out;
 }
 
-/* mktime in the source's zone: the fields read as UTC (timegm normalises them as mktime does), then moved by the
-   zone's offset at that instant, looked up twice for times near a change of offset. `isdst` is not used: the zone
-   decides. */
+/* mktime in the source's zone: normalise the civil fields as UTC, then subtract the zone's offset, looking it up
+   twice near a change. An explicit isdst hint chooses the standard/daylight offset; a missing hint lets the zone
+   decide. Keep the hint before timegm overwrites the struct. */
 static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
+    int requested_is_dst = ts->tm_isdst;
     int is_dst = 0;
     char name[64];
     time_t wall, first;
@@ -369,9 +370,13 @@ static time_t source_mktime(const deskset_lua_time_source *src, struct tm *ts) {
     ts->tm_isdst = 0;
     wall = timegm(ts);
     if (wall == (time_t)(-1)) return wall;
-    offset = src->zone(src->context, (double)wall, &is_dst, name, sizeof(name));
+    offset = requested_is_dst >= 0 && src->offset_for_isdst
+        ? src->offset_for_isdst(src->context, (double)wall, requested_is_dst)
+        : src->zone(src->context, (double)wall, &is_dst, name, sizeof(name));
     first = wall - (time_t)offset;
-    offset = src->zone(src->context, (double)first, &is_dst, name, sizeof(name));
+    offset = requested_is_dst >= 0 && src->offset_for_isdst
+        ? src->offset_for_isdst(src->context, (double)first, requested_is_dst)
+        : src->zone(src->context, (double)first, &is_dst, name, sizeof(name));
     return wall - (time_t)offset;
 }
 
