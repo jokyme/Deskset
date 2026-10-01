@@ -21,6 +21,7 @@ enum LayerRuntimeSelfTests {
         nativeTests(t)
         fallbackTests(t)
         antialiasedLineTests(t)
+        antialiasedFullCircleTests(t)
         lifecycleTests(t)
         workerOwnerTests(t)
         transferTests(t)
@@ -676,13 +677,13 @@ enum LayerRuntimeSelfTests {
 
                 let noPaint = DrawItem.roundline(RoundlineDraw(shape: .none, color: .white, antiAlias: true))
                 let curve = DrawItem.roundline(RoundlineDraw(shape: .sector(centerX: 7, centerY: 7, innerRadius: 2,
-                    outerRadius: 3, startAngle: 0, sweep: 2 * Double.pi), color: .white, antiAlias: true))
+                    outerRadius: 3, startAngle: 0, sweep: Double.pi), color: .white, antiAlias: true))
                 let clip = SkinRect(x: 2, y: 2, width: 10, height: 10)
                 let controls: [(String, [DrawItem])] = [
                     ("the leaf's disabled AA overrides the outer true flag", [.antialias(true, [segment(false)])]),
                     ("a transparent line grants no fallback", [segment(true, alpha: 0)]),
                     ("none is not a stroke", [noPaint]),
-                    ("a sector keeps the existing curve rule", [curve]),
+                    ("a partial sector keeps the existing curve rule", [curve]),
                     ("a container without content never executes its mask", [.container(clip: clip, mask: [segment(true)], content: [])]),
                     ("a zero-width clip does not execute its content", [.container(clip: SkinRect(x: 2, y: 2, width: 0, height: 10),
                         mask: [fill(2, 2, 10, 10, .white)], content: [segment(true)])])
@@ -758,6 +759,180 @@ enum LayerRuntimeSelfTests {
                 try checkRetained(limited, old, oldLayers, oldBounds, limitedTree, renderer, oldPixels, t)
                 t.check(renderer.hasVerifiedCanary)
                 withExtendedLifetime([tree, limitedTree]) {}
+            }
+        }
+    }
+
+    private static func antialiasedFullCircleTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: localized full circles preserve exact Single and allocation failures") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: actual full-circle fallback comparison did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB), turn = RoundMeterMath.fullCircle
+            func circle(_ sweep: Double, aa: Bool = true, alpha: Double = 187, inner: Double = 2.25) -> DrawItem {
+                .roundline(RoundlineDraw(shape: .sector(centerX: 7.25, centerY: 7.75, innerRadius: inner,
+                    outerRadius: 3.5, startAngle: 0.3, sweep: sweep),
+                    color: RGBA(r: 239, g: 173, b: 29, a: alpha), antiAlias: aa))
+            }
+            let segment = DrawItem.roundline(RoundlineDraw(shape: .line(x1: 3.25, y1: 4.5,
+                x2: 9.75, y2: 8.25, width: 1), color: .white, antiAlias: true))
+            let fallback = LayerRuntime.Fallback.localizedAntialiasedFullCircle(group: .group(fileIndex: backID.index))
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                     maximumReadbackBytes: window.width * window.height * 4)
+                let plain = fixture(0, scale, false, gradient: false)
+                var ring = plain
+                ring.elements[1].items = [.antialias(false, [.transformed(
+                    ShapeTransform(a: 1, b: 0, c: 0, d: 1, tx: 0.5, ty: 0.25), [circle(turn)])])]
+
+                func checkNative(_ scene: WidgetScene, _ runtime: LayerRuntime, _ host: CALayer,
+                                 _ expected: LayerRuntime.Fallback?) throws -> (LayerRuntime.Frame, [UInt8]) {
+                    let prepared = try prepare(scene, context, scale, space, .none)
+                    let frame = try submitted(runtime.update(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                        partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                    t.equal(frame.fallback, expected)
+                    let pixels = try renderer.render(host, at: 0, deadline: .now() + .seconds(30)).rgba
+                    let coldContext = DrawContext(fonts: AppFontResolver())
+                    let reference = try baseline(scene, coldContext, 0, scale, space, .none)
+                    t.check(stride(from: 3, to: pixels.count, by: 4).contains { pixels[$0] > 0 })
+                    t.equal(pixels, try renderer.render(cTree(reference, scale), at: 0,
+                        deadline: .now() + .seconds(30)).rgba, "full-circle fallback uses exact native Single bytes")
+                    let fresh = try self.runtime()
+                    let cold = try submitted(fresh.update(prepare(scene, coldContext, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: coldContext,
+                        cycle: 0, glass: .none))
+                    t.equal(try renderer.render(cTree(cold.contents, scale), at: 0,
+                        deadline: .now() + .seconds(30)).rgba, pixels, "fresh/incremental remains exact")
+                    return (frame, pixels)
+                }
+
+                var samples: [[UInt8]] = [], saved: [LayerContentBuilder.Content] = []
+                for (index, scene) in [plain, ring, plain].enumerated() {
+                    let (frame, pixels) = try checkNative(scene, owner, tree, index == 1 ? fallback : nil)
+                    t.equal(frame.sequence, UInt64(index + 1))
+                    if index == 1 { t.equal(frame.plan, SinglePartition.plan(in: window)) }
+                    else { t.equal(frame.plan.baseMembers, [baseID]) }
+                    if index == 0 { saved = frame.contents }
+                    samples.append(pixels)
+                }
+                t.check(samples[0] != samples[1], "the circle changes visible pixels")
+                t.equal(samples[0], samples[2], "A returns exactly after the full-circle Single frame")
+                t.equal(try renderer.render(cTree(saved, scale), at: 0,
+                    deadline: .now() + .seconds(30)).rgba, samples[0], "retained images survive both builder switches")
+
+                // Exact signed threshold and the renderer's disc branch share the same full-circle rule.
+                for sweep in [turn, -turn, turn.nextUp, -turn.nextUp, 6.28318531] {
+                    var scene = plain
+                    scene.elements[1].items = [circle(sweep)]
+                    _ = try checkNative(scene, owner, tree, fallback)
+                }
+                var disc = plain
+                disc.elements[1].items = [circle(turn, inner: 0)]
+                _ = try checkNative(disc, owner, tree, fallback)
+
+                // An unchanged scene/cycle must not reuse a context-dependent circle, and switching back must
+                // keep the original frozen base prefix even after that base has shrunk below half the window.
+                var smallBase = ring
+                smallBase.elements[0].items = [fill(0, 0, 8, 5, RGBA(r: 31, g: 89, b: 151, a: 83))]
+                _ = try checkNative(smallBase, owner, tree, fallback)
+                let (repeated, _) = try checkNative(smallBase, owner, tree, fallback)
+                t.equal(repeated.change, .all(.unversionedRecipe))
+                smallBase.elements[1].items = plain.elements[1].items
+                let (returned, _) = try checkNative(smallBase, owner, tree, nil)
+                t.equal(returned.plan.baseMembers, [baseID])
+
+                let clip = SkinRect(x: 2, y: 2, width: 10, height: 10)
+                let controls: [(String, [DrawItem])] = [
+                    ("positive nextDown is a partial sector", [circle(turn.nextDown)]),
+                    ("negative nextDown magnitude is a partial sector", [circle(-turn.nextDown)]),
+                    ("the leaf's AA flag overrides an enclosing true flag", [.antialias(true, [circle(turn, aa: false)])]),
+                    ("transparent full circles do not request fallback", [circle(turn, alpha: 0)]),
+                    ("none does not request fallback", [.roundline(RoundlineDraw(shape: .none, color: .white, antiAlias: true))]),
+                    ("a container without content never executes its mask", [.container(clip: clip, mask: [circle(turn)], content: [])]),
+                    ("a zero-width clip never executes its content", [.container(clip: SkinRect(x: 2, y: 2, width: 0, height: 10),
+                        mask: [fill(2, 2, 10, 10, .white)], content: [circle(turn)])])
+                ]
+                for (label, items) in controls {
+                    var scene = plain
+                    scene.elements[1].items += items
+                    let control = try runtime()
+                    let frame = try submitted(control.update(prepare(scene, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none))
+                    t.equal(frame.fallback, nil, label)
+                    t.check(frame.plan.layers.contains { if case .group = $0.content { return true }; return false }, label)
+                }
+
+                for inMask in [true, false] {
+                    var scene = plain
+                    scene.elements[inMask ? 3 : 4].items = [.transformed(
+                        ShapeTransform(a: 1, b: 0, c: 0, d: 1, tx: 16, ty: 0), [circle(-turn)])]
+                    let containerOwner = try runtime(), containerTree = host(containerOwner.root, scale)
+                    _ = try checkNative(scene, containerOwner, containerTree,
+                        .localizedAntialiasedFullCircle(group: .group(fileIndex: maskID.index)))
+                }
+                // Adding a circle before a line must preserve the existing line reason, within one recipe
+                // and when the line is in a later, separate container group.
+                for laterGroup in [false, true] {
+                    var scene = ring
+                    if laterGroup {
+                        scene.elements[3].items = [.transformed(
+                            ShapeTransform(a: 1, b: 0, c: 0, d: 1, tx: 16, ty: 0), [segment])]
+                    } else { scene.elements[1].items.append(segment) }
+                    let mixed = try runtime(), mixedTree = host(mixed.root, scale)
+                    _ = try checkNative(scene, mixed, mixedTree,
+                        .localizedAntialiasedLine(group: .group(fileIndex: laterGroup ? maskID.index : backID.index)))
+                }
+
+                var baseOnly = plain
+                baseOnly.elements[0].items.append(circle(turn))
+                var hidden = plain
+                var hiddenElement = element(ElementID(name: "HiddenCircle", index: 20), [circle(turn)])
+                hiddenElement.visibility = .hiddenKeepsSpace
+                hidden.elements.append(hiddenElement)
+                var fullGroup = plain
+                fullGroup.elements = [element(baseID, [fill(0, 0, 2, 2, .white)]), element(backID,
+                    [fill(0, 0, Double(width), Double(height), RGBA(r: 31, g: 89, b: 151)), circle(turn)])]
+                for scene in [baseOnly, hidden, fullGroup] {
+                    let control = try runtime(), controlTree = host(control.root, scale)
+                    _ = try checkNative(scene, control, controlTree, nil)
+                }
+                var atOrigin = plain
+                atOrigin.elements = [element(backID, [fill(0, 0, 12, 12, .white), circle(turn)])]
+                let originOwner = try runtime(), originTree = host(originOwner.root, scale)
+                _ = try checkNative(atOrigin, originOwner, originTree, fallback)
+
+                let limited = try LayerRuntime(executor: MainSkinExecutor.shared,
+                    maximumOwnedBitmapBytes: window.width * window.height * 8 - 1)
+                let limitedTree = host(limited.root, scale)
+                var cheap = plain
+                cheap.elements = [plain.elements[0], element(backID, [circle(turn, aa: false)])]
+                let old = try submitted(limited.update(prepare(cheap, context, scale, space, .none), in: window,
+                    scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                    cycle: 0, glass: .none))
+                t.equal(old.fallback, nil)
+                let oldPixels = try renderer.render(limitedTree, at: 0, deadline: .now() + .seconds(30)).rgba
+                let oldLayers = limited.root.sublayers ?? [], oldBounds = limited.root.bounds
+                var expensive = cheap
+                expensive.elements[1].items = [circle(turn)]
+                try expectRasterizer(.resourceLimit, t) {
+                    _ = try limited.update(prepare(expensive, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none)
+                }
+                try checkRetained(limited, old, oldLayers, oldBounds, limitedTree, renderer, oldPixels, t)
+                var malformed = expensive
+                malformed.size.width -= 1
+                try expectRasterizer(.invalidInput, t) {
+                    _ = try limited.update(prepare(malformed, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none)
+                }
+                try checkRetained(limited, old, oldLayers, oldBounds, limitedTree, renderer, oldPixels, t)
+                t.check(renderer.hasVerifiedCanary)
+                withExtendedLifetime([tree, limitedTree, originTree]) {}
             }
         }
     }
