@@ -79,6 +79,8 @@ private let volatileLabels: Set<String> = [
     "drawGeneration", "updateTick", "needsOptionRead", "readingAfterLoad", "mentionsSectionVariables",
     "reportedMissingMeasures", "updateCount", "history", "historyNext", "primaryHistory", "secondaryHistory",
     "stringCache", "transitionGeneration", "transitionTick", "lastCheckedPath",
+    // Drawing caches distinguish owners with UUIDs; reloading replaces the owner without changing its options.
+    "drawIdentity", "drawingIdentity",
     // Follow the graph's samples, which a patch keeps and a reload starts afresh.
     "autoRangeMin", "autoRangeMax",
     // A Bitmap's transition toward its target frames runs on a timer of its own (the target is compared).
