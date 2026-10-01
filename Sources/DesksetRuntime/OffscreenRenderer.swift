@@ -11,7 +11,8 @@ package final class OffscreenRenderer {
     package struct Readback: Equatable, Sendable {
         package let width: Int
         package let height: Int
-        /// Tightly packed, premultiplied sRGB RGBA bytes, with the top row first. Each result owns its storage.
+        /// Tightly packed, premultiplied RGBA bytes in the configured RGB output space, with the top row first.
+        /// Each result owns its storage.
         package let rgba: [UInt8]
     }
 
@@ -59,7 +60,10 @@ package final class OffscreenRenderer {
 
     /// The budget bounds one readback, not total process/GPU memory. Canary image/provider storage and a raw
     /// scribble also consume memory. Optional native allocations are checked; Swift array OOM is not recoverable.
-    package init(width: Int, height: Int, device: (any MTLDevice)?, maximumReadbackBytes: Int) throws {
+    /// A nil colorSpace preserves the existing sRGB output. A supplied RGB space is retained by the native
+    /// destination and its known-image canary; readback bytes are not subsequently converted to sRGB.
+    package init(width: Int, height: Int, device: (any MTLDevice)?, maximumReadbackBytes: Int,
+                 colorSpace: CGColorSpace? = nil) throws {
         guard width > 0, height > 0 else { throw Failure.invalidInput("Dimensions must be positive") }
         guard maximumReadbackBytes > 0 else { throw Failure.invalidInput("Readback budget must be positive") }
         let (rowBytes, rowOverflow) = width.multipliedReportingOverflow(by: 4)
@@ -75,9 +79,10 @@ package final class OffscreenRenderer {
         guard width <= maximumDimension, height <= maximumDimension else {
             throw Failure.resourceLimit("Dimensions exceed the supported \(maximumDimension)-pixel limit")
         }
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+        guard let colorSpace = colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB) else {
             throw Failure.resourceFailure("Cannot create the sRGB color space")
         }
+        guard colorSpace.model == .rgb else { throw Failure.invalidInput("Output color space must be RGB") }
         guard let queue = device.makeCommandQueue() else { throw Failure.resourceFailure("Cannot create Metal queue") }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width,
                                                                  height: height, mipmapped: false)

@@ -15,6 +15,7 @@ enum OffscreenRendererSelfTests {
         bitmapTests(t)
         allocationInputTests(t)
         frameInputTests(t)
+        outputColorSpaceTests(t)
     }
 
     private static func bitmapTests(_ t: AppTestRunner) {
@@ -121,6 +122,41 @@ enum OffscreenRendererSelfTests {
             t.check(renderer.hasVerifiedCanary, "a pre-submission rejection does not poison later valid work")
             // In-flight GPU failure/timeout invalidation needs real device evidence; do not manufacture it with
             // a tiny scheduling race or fake Metal. Every actual GPU wait above has an explicit 30-second budget.
+        }
+    }
+
+    private static func outputColorSpaceTests(_ t: AppTestRunner) {
+        t.suite("Runtime: offscreen renderer: optional RGB output preserves the default sRGB bytes and rejects gray") {
+            guard let device = MTLCreateSystemDefaultDevice(), let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+                return t.check(false, "actual Metal and named sRGB are required")
+            }
+            t.equal(space.model, .rgb)
+            expect(.invalidInput, t, "a supplied non-RGB space cannot label a BGRA destination") {
+                _ = try OffscreenRenderer(width: logicalWidth, height: logicalHeight, device: device,
+                    maximumReadbackBytes: logicalWidth * logicalHeight * 4, colorSpace: CGColorSpaceCreateDeviceGray())
+            }
+            for scale in [1, 2] {
+                let width = logicalWidth * scale, height = logicalHeight * scale
+                let implicit = try OffscreenRenderer(width: width, height: height, device: device,
+                                                     maximumReadbackBytes: width * height * 4)
+                let explicit = try OffscreenRenderer(width: width, height: height, device: device,
+                                                     maximumReadbackBytes: width * height * 4, colorSpace: space)
+                t.check(!implicit.hasVerifiedCanary)
+                t.check(!explicit.hasVerifiedCanary)
+                var saved: [[UInt8]] = []
+                for variant in [0, 1, 0] {
+                    let expected = sourceBytes(variant: variant, scale: scale)
+                    let first = try implicit.render(tree(bytes: expected, scale: scale), at: 0, deadline: .now() + .seconds(30))
+                    let second = try explicit.render(tree(bytes: expected, scale: scale), at: 0, deadline: .now() + .seconds(30))
+                    check(first, expected, width: width, height: height, t, "default RGB output at \(scale)x variant=\(variant)")
+                    check(second, expected, width: width, height: height, t, "explicit sRGB output at \(scale)x variant=\(variant)")
+                    t.equal(first.rgba, second.rgba, "nil and explicit sRGB output retain strict active-byte identity")
+                    saved.append(second.rgba)
+                }
+                t.check(implicit.hasVerifiedCanary && explicit.hasVerifiedCanary)
+                t.equal(saved[0], saved[2], "configured destination A/B/A returns to the original bytes")
+                t.check(saved[0] != saved[1], "the explicit-output positive control actually changes bytes")
+            }
         }
     }
 
