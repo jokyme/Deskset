@@ -64,7 +64,32 @@ enum AppSelfTest {
         SkinWorkWatchdogSelfTests.run(t)
         EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
+        DrawFontSelfTests.run(t)
+        TextDrawSelfTests.run(t)
+        DrawImageSelfTests.run(t)
+        ImageDrawValueSelfTests.run(t)
+        GraphDrawValueSelfTests.run(t)
+        ShapeDrawValueSelfTests.run(t)
+        InkBoundsSelfTests.run(t)
+        ScenePreparerSelfTests.run(t)
+        RectangleClosureSelfTests.run(t)
+        RectangleComplementSelfTests.run(t)
+        OffscreenRendererSelfTests.run(t)
+        ComponentGeometrySelfTests.run(t)
+        PixelComparisonSelfTests.run(t)
+        LayerContentSelfTests.run(t)
+        ELayerContentSelfTests.run(t)
+        LayerRuntimeSelfTests.run(t)
+        InkEscapeObservationSelfTests.run(t)
+        ClippedRecipeInkSelfTests.run(t)
+        AppSceneEnvironmentSelfTests.run(t)
+        SceneDrawingSelfTests.run(t)
+        SceneBitmapSelfTests.run(t)
+        #if DEBUG
+        SpriteDrawSelfTests.run(t)
+        #endif
         SkinDrawingSelfTests.run(t)
+        SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)
@@ -93,6 +118,7 @@ enum AppSelfTest {
         PluginSideEffectsSelfTests.run(t)
         #if DEBUG
         LegacyRenderSelfTests.run(t)
+        StationeryLayerContentSelfTests.run(t)
         #endif
         // The new Studio window (behind the StudioV2 switch). After the renders: its many widgets leave the process
         // busier, and the renders' checks of what services deliver within one interval are timed in real time.

@@ -29,6 +29,11 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Where the skin's frames go: a layer of their own in `view`'s layer. Only the runtime's frame producer presents
     /// frames; the window tears it down once it has closed.
     let content: LayerContentProvider
+    let contentMode: SkinFrameContentMode
+    private var layerInstallRetryQueued = false
+    private var layerPanelRetryQueued = false
+    private var deferredLayerOrderIn: (alpha: CGFloat, fade: TimeInterval)?
+    private var layerStartPending: SkinStartReport?
     /// The glass behind the skin's drawing (`MacGlass`), in `contentView`.
     let glass = SkinGlassViews()
     /// FrostedGlass's backdrop and InputText's boxes, which the skin's plugins ask for.
@@ -117,10 +122,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
 
     /// A window for `file` of `config` whose skin runs on `executor` (the main executor, unless a self-test puts it on
     /// a thread of its own) and loads when it is sent `.load` (`load(_:fadeIn:)`).
-    init(config: String, file: String, app: AppController, executor: SkinExecutor) {
+    init(config: String, file: String, app: AppController, executor: SkinExecutor,
+         contentMode: SkinFrameContentMode = .bitmap) {
         self.config = config
         self.file = file
         self.app = app
+        self.contentMode = contentMode
         owningApp = app
         view = SkinView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
         contentView = SkinContentView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
@@ -128,7 +135,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         content = LayerContentProvider(in: view)
         window = SkinWindowController.makePanel()
         runtime = SkinRuntime(config: config, file: file, skinsDirectory: app.skinsDirectory, executor: executor,
-                              content: content, defersPeerBangs: app.threading == .pool, watchdog: app.workWatchdog)
+                              content: content, contentMode: contentMode,
+                              defersPeerBangs: app.threading == .pool, watchdog: app.workWatchdog)
         super.init()
         companions = SkinWindowCompanions(host: self, runtime: runtime)
         runtime.window = self
@@ -213,6 +221,16 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Studio of its reload (after the Studio followed the new copy: `AppController.skinStarted`).
     private func started(_ report: SkinStartReport) {
         guard !isStopped, isLoaded, !isStarted else { return }
+        if contentMode.usesLayers, !content.hasLayerFrame, !isHiddenByBang {
+            // A successful load is not a successful content installation. Keep a replacement's old window until
+            // its first actual C frame is attached; failure/missing profile must not settle into an empty window.
+            layerStartPending = report
+            placeWindow(size: report.size)
+            publishFacts(force: true)
+            runtime.send(.firstFrame)
+            return
+        }
+        layerStartPending = nil
         isStarted = true
         show(fadeIn: startFade, size: report.size)
         app.skinStarted(self)
@@ -271,7 +289,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         window.orderOut(nil)
         window.close()
         companions.tearDown()
-        content.teardown()
+        runtime.teardownContent()
     }
 
     /// `.failed`: the skin could not be loaded. The window, never shown, goes; the app unloads the config, and the
@@ -286,7 +304,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         window.delegate = nil
         window.close()
         companions.tearDown()
-        content.teardown()
+        runtime.teardownContent()
         app.skinFailed(self, error: error)
         if let ticket { app.studioReload(ticket, .failed, self) }
         settled()
@@ -328,8 +346,11 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if app.presentsWindows && !isHiddenByBang {
             let target = targetAlpha
             let duration = fadeIn ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
-            orderIn(alpha: duration > 0 ? 0 : target)
-            if duration > 0 { animateAlpha(to: target, duration: duration) }
+            let ordered = orderIn(alpha: duration > 0 ? 0 : target)
+            if duration > 0 {
+                if ordered { animateAlpha(to: target, duration: duration) }
+                else { deferredLayerOrderIn?.fade = duration }
+            }
         }
         publishFacts()
     }
@@ -346,12 +367,19 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Orders the window in at `alpha`, with its first frame drawn already: a skin's window never shows before its
     /// skin has drawn (a skin that started hidden draws its first frame here). The headless self-tests call it to see
     /// what the window would show: without presented windows nothing is ordered in.
-    func orderIn(alpha: CGFloat) {
+    @discardableResult
+    func orderIn(alpha: CGFloat) -> Bool {
         runtime.send(.firstFrame)
+        if contentMode.usesLayers, !content.hasLayerFrame {
+            deferredLayerOrderIn = (alpha, 0)
+            return false
+        }
+        deferredLayerOrderIn = nil
         willOrderIn?()
-        guard app.presentsWindows else { return }
+        guard app.presentsWindows else { return true }
         window.alphaValue = alpha
         window.orderFrontRegardless()
+        return true
     }
 
     /// Stops updating, runs OnCloseAction (the runtime reports `.closed` when it has: `runtime.whenClosed`) and
@@ -370,6 +398,8 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         if let ticket { app.studioReload(ticket, .closing, self) }
         // OnCloseAction runs while the skin can still handle bangs (it cannot reload or unload itself any more).
         isClosing = true
+        layerStartPending = nil
+        deferredLayerOrderIn = nil
         runtime.send(.close(fadeOut: fadeOut, ticket: ticket))
         // This window half stays until the skin has closed (at once on the main executor): OnCloseAction's requests
         // (config, menu and system bangs, what it opens, bangs for configs that are loading) and the Studio's
@@ -384,7 +414,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         fadeGeneration += 1
         let duration = fadeOut && window.isVisible && app.presentsWindows
             ? SkinVisibility.fadeSeconds(state.fadeDuration) : 0
-        let content = self.content, companions = self.companions!
+        let companions = self.companions!
         defer { settled() }
         if keepsWindow {
             isKeptForReplacement = true
@@ -395,7 +425,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             window.orderOut(nil)
             window.close()
             companions.tearDown()
-            content.teardown()
+            runtime.teardownContent()
             return
         }
         NSAnimationContext.runAnimationGroup({ context in
@@ -408,7 +438,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
                 window.orderOut(nil)
                 window.close()
                 companions.tearDown()
-                content.teardown()
+                self.runtime.teardownContent()
             }
         })
     }
@@ -515,6 +545,24 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     private func replacePanel() {
+        if contentMode.usesLayers {
+            // The provider/view move intact. Pause its actual owner before AppKit moves their host layer tree.
+            let changed = runtime.exclusive { _ in self.replacePanelNow() }
+            if changed == nil, !layerPanelRetryQueued {
+                layerPanelRetryQueued = true
+                runtime.whenCaughtUp { [weak self] in
+                    guard let self else { return }
+                    self.layerPanelRetryQueued = false
+                    guard !self.isStopped else { return }
+                    self.applyWindowSettings()
+                }
+            }
+            return
+        }
+        replacePanelNow()
+    }
+
+    private func replacePanelNow() {
         let old = window
         let panel = SkinWindowController.makePanel()
         panel.setFrame(old.frame, display: false)
@@ -589,7 +637,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             if !window.isVisible && app.presentsWindows {
                 // A skin that started hidden shows its first frame; the others one frame, when they redrew meanwhile
                 // (the window's facts tell the runtime it can be seen again).
-                orderIn(alpha: duration > 0 ? 0 : targetAlpha)
+                if !orderIn(alpha: duration > 0 ? 0 : targetAlpha) { deferredLayerOrderIn?.fade = duration }
             }
             applyMouseHandling()
             animateAlpha(to: targetAlpha, duration: duration)
@@ -798,6 +846,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Applies what the runtime asks of the main thread, in the order it asked.
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         switch request {
+        case .installLayerContent:
+            guard runtime === self.runtime else { return }
+            installLayerContent()
         case .loaded(let report):
             loaded(report)
         case .started(let report):
@@ -825,6 +876,46 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             companions.apply(companion)
         case .snapshotChanged(let changes):
             snapshotChanged(changes)
+        }
+    }
+
+    /// A request is just readiness, not a panel/facts acknowledgment. Validate against the current actual window
+    /// after parking its executor. A failed park retains the old contents and retries without extending the lease.
+    private func installLayerContent() {
+        guard contentMode.usesLayers, !isStopped else { return }
+        publishFacts()
+        let result = runtime.installLayerContent(for: facts, size: view.bounds.size)
+        switch result {
+        case .installed:
+            if var report = layerStartPending {
+                // The scene may have recovered from a failed initial size. The installed frame matched the
+                // CURRENT view in the lease above; do not restore the load report's now-obsolete dimensions.
+                report.size = view.bounds.size
+                started(report)
+            }
+            if let pending = deferredLayerOrderIn, !isHiddenByBang {
+                deferredLayerOrderIn = nil
+                if orderIn(alpha: pending.alpha), pending.fade > 0 {
+                    animateAlpha(to: targetAlpha, duration: pending.fade)
+                }
+                publishFacts()
+            }
+        case nil:
+            guard !layerInstallRetryQueued else { return }
+            layerInstallRetryQueued = true
+            // Queue behind the owner's current work instead of repeatedly parking a still-busy worker from main.
+            runtime.whenCaughtUp { [weak self] in
+                guard let self else { return }
+                self.layerInstallRetryQueued = false
+                self.installLayerContent()
+            }
+        case .staleDestination:
+            // Current facts supersede the finished root. Preparation/drawing stay on the owner, including a skin
+            // with Update=-1; its next successful frame requests a new installation rather than certifying this one.
+            publishFacts(force: true)
+            runtime.send(.firstFrame)
+        case .declined, .notReady:
+            break
         }
     }
 
@@ -996,6 +1087,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         now.sequence = factsSequence
         sentFacts = now
         runtime.send(.windowFacts(now))
+        if contentMode.usesLayers, layerStartPending != nil || deferredLayerOrderIn != nil {
+            runtime.send(.firstFrame)
+        }
     }
 
     /// Self-tests: what skins open goes here instead of to the workspace (nil: it opens). Main thread.

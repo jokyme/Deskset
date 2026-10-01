@@ -705,7 +705,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @discardableResult
     func activate(config rawConfig: String, file: String?, fade: Bool = false, restack: Bool = true,
                   continuing previous: SkinRuntime? = nil, ticket: SkinReloadTicket? = nil,
-                  thenMoveTo place: WidgetPosition? = nil) -> SkinWindowController? {
+                  thenMoveTo place: WidgetPosition? = nil,
+                  contentMode selectedContent: SkinFrameContentMode? = nil) -> SkinWindowController? {
         guard !isTerminating else { return nil }
         activating += 1
         defer { activating -= 1 }
@@ -715,6 +716,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard let chosen = self.file(toLoad: file, of: entry) else { return nil }
         let key = entry.name.lowercased()
+        // An internal opt-in only; no user setting or environment switch is inferred. Refreshes keep their actual
+        // controller's selection, while every newly activated config defaults to the original bitmap provider.
+        let contentMode = selectedContent ?? controllers[key]?.contentMode ?? .bitmap
         let replacing = controllers[key] != nil
         // First load of this config: the skin's Default… window settings apply (its runtime reads them).
         let firstLoad = state.skin(entry.name) == nil
@@ -741,7 +745,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             $0.file = chosen
             $0.active = true
         }
-        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: executor)
+        let c = SkinWindowController(config: entry.name, file: chosen, app: self, executor: executor, contentMode: contentMode)
         controllers[key] = c
         c.restacksWhenStarted = restack
         c.moveWhenStarted = place

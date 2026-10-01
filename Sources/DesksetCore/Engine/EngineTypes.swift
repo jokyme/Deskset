@@ -1,5 +1,16 @@
 import Foundation
 
+/// A point in skin coordinates (origin top-left, y grows downward).
+public struct SkinPoint: Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double = 0, y: Double = 0) {
+        self.x = x
+        self.y = y
+    }
+}
+
 /// Rectangle in skin coordinates (origin top-left, y grows downward, 1 unit = 1 point).
 public struct SkinRect: Equatable, Sendable {
     public var x: Double

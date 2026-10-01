@@ -1,5 +1,7 @@
 import Foundation
 
+if let result = runLuaTimeReferenceIfRequested() { exit(result) }
+
 let t = TestRunner(arguments: CommandLine.arguments)
 print("DesksetSelfTest")
 runIniTests(t)
@@ -49,6 +51,7 @@ runSeedingTests(t)
 runWebParserAuthenticationTests(t)
 runWebParserTests(t)
 runLuaTests(t)
+runLuaTimeSourceTests(t)
 runPluginTests(t)
 runSensorPluginTests(t)
 runMousePluginTests(t)
@@ -65,6 +68,7 @@ runVirtualTimeTests(t)
 runSideEffectsSeamTests(t)
 runInputDataTests(t)
 runSendableTests(t)
+runSceneProjectorTests(t)
 runDeskLexerTests(t)
 runDeskParserTests(t)
 runDeskRecoveryTests(t)
