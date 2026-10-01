@@ -46,7 +46,7 @@ final class MeasurePipeline {
         }
         if measure.maxValue < measure.minValue && !warnedAboutRange {
             warnedAboutRange = true
-            measure.skin.log("[\(measure.name)] MaxValue is less than MinValue", level: .debug)
+            measure.sectionContext.log("[\(measure.name)] MaxValue is less than MinValue", level: .debug)
         }
     }
 
@@ -165,7 +165,7 @@ final class MeasurePipeline {
             if condition.formula == nil && !blank && !condition.loggedError
                 && !measure.awaitsSectionVariables("IfCondition\(suffix)") {
                 condition.loggedError = true
-                measure.skin.log("[\(measure.name)] invalid IfCondition\(suffix): \(source)", level: .error)
+                measure.sectionContext.log("[\(measure.name)] invalid IfCondition\(suffix): \(source)", level: .error)
             }
             condition.trueAction = measure.actionOption("IfTrueAction\(suffix)")
             condition.falseAction = measure.actionOption("IfFalseAction\(suffix)")
@@ -206,10 +206,10 @@ final class MeasurePipeline {
     func run(for measure: Measure, execute: (String) -> Void) {
         for i in conditions.indices {
             guard let formula = conditions[i].formula else { continue }
-            guard let number = try? formula.evaluate({ measure.skin.formulaValue(of: $0, from: measure) }) else {
+            guard let number = try? formula.evaluate({ measure.sectionContext.formulaValue(of: $0, from: measure) }) else {
                 if !conditions[i].loggedError {
                     conditions[i].loggedError = true
-                    measure.skin.log("[\(measure.name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
+                    measure.sectionContext.log("[\(measure.name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
                 }
                 continue
             }
@@ -246,7 +246,7 @@ final class MeasurePipeline {
             guard let result = PCRE.matches(matches[i].pattern, in: text) else {
                 if !matches[i].loggedError {
                     matches[i].loggedError = true
-                    measure.skin.log("[\(measure.name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
+                    measure.sectionContext.log("[\(measure.name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
                 }
                 continue
             }

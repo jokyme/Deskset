@@ -12,6 +12,8 @@ protocol SectionContext: AnyObject {
     func mentionsSectionVariable(_ text: String) -> Bool
     func noteSnapshotChange()
     func assertOwned(_ entry: StaticString)
+    func log(_ message: String, level: SkinLogLevel)
+    func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
 }
 
 extension Skin: SectionContext {}
