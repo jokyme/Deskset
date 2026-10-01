@@ -22,6 +22,292 @@ enum LayerRuntimeSelfTests {
         fallbackTests(t)
         lifecycleTests(t)
         workerOwnerTests(t)
+        preparationTests(t)
+        preparationLifecycleTests(t)
+    }
+
+    private static func preparationTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: preparation keeps visible frames until one explicit commit") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: prepare/commit native qualification did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                     maximumReadbackBytes: window.width * window.height * 4)
+                let a = fixture(0, scale, false, gradient: false), b = fixture(1, scale, false, gradient: false)
+                let pa = try prepare(a, context, scale, space, .none), pb = try prepare(b, context, scale, space, .none)
+                let first = try ready(owner.prepare(pa, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                t.equal(owner.state, .loading)
+                t.check(owner.currentFrame == nil && (owner.root.sublayers ?? []).isEmpty)
+                t.equal(owner.root.bounds, .zero, "a complete first preparation does not install any geometry")
+                t.equal(first.frame.sequence, 1)
+                t.check(!first.frame.contents.isEmpty)
+                t.check(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba.allSatisfy { $0 == 0 })
+                let expectedA = try renderer.render(cTree(baseline(a, context, 0, scale, space, .none), scale),
+                                                    at: 0, deadline: .now() + .seconds(30)).rgba
+                checkFixture(expectedA, window, t)
+                t.equal(try renderer.render(cTree(first.frame.contents, scale), at: 0,
+                                            deadline: .now() + .seconds(30)).rgba, expectedA,
+                        "prepared images are complete and independently comparable before installation")
+                let committedA = try owner.commit(first)
+                t.equal(committedA.sequence, 1)
+                t.equal(owner.currentFrame?.sequence, 1)
+                t.equal(owner.state, .live)
+                let aLayers = owner.root.sublayers ?? [], aBounds = owner.root.bounds
+                try checkRetained(owner, committedA, aLayers, aBounds, tree, renderer, expectedA, t)
+
+                // A genuinely different proposed root size catches premature bounds installation as well as pixels.
+                var larger = b
+                larger.size = SkinSize(width: Double(width + 1), height: Double(height))
+                let largerWindow = try rect(0, 0, (width + 1) * scale, height * scale)
+                let resized = try ready(owner.prepare(prepare(larger, context, scale, space, .none), in: largerWindow,
+                    scale: CGFloat(scale), colorSpace: space, partition: .single, context: context, cycle: 1, glass: .none))
+                t.equal(resized.frame.sequence, 2)
+                t.equal(resized.frame.plan.window, largerWindow)
+                t.equal(resized.frame.contents.first?.image.width, largerWindow.width)
+                try checkRetained(owner, committedA, aLayers, aBounds, tree, renderer, expectedA, t)
+                try owner.discard(resized)
+                try expectRuntime(.stalePreparation, t) { _ = try owner.commit(resized) }
+                try checkRetained(owner, committedA, aLayers, aBounds, tree, renderer, expectedA, t)
+
+                let superseded = try ready(owner.prepare(pb, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+                let winner = try ready(owner.prepare(pb, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+                t.equal(winner.frame.sequence, 2, "discard/supersede never advances the committed sequence")
+                t.equal(winner.frame.change, .all(.discardedPreparation))
+                try expectRuntime(.stalePreparation, t) { _ = try owner.commit(superseded) }
+                try expectRuntime(.stalePreparation, t) { try owner.discard(superseded) }
+                t.equal(SkinRuntimeSelfTests.onAnotherThread {
+                    do { _ = try owner.commit(winner); return false }
+                    catch LayerRuntime.Failure.wrongOwner { return !Thread.isMainThread }
+                    catch { return false }
+                }, true, "a finished image token confers no off-owner commit permission")
+                t.equal(SkinRuntimeSelfTests.onAnotherThread {
+                    do { try owner.discard(winner); return false }
+                    catch LayerRuntime.Failure.wrongOwner { return !Thread.isMainThread }
+                    catch { return false }
+                }, true)
+                try checkRetained(owner, committedA, aLayers, aBounds, tree, renderer, expectedA, t)
+                let committedB = try owner.commit(winner)
+                t.equal(committedB.sequence, 2)
+                let expectedB = try renderer.render(cTree(baseline(b, context, 1, scale, space, .none), scale),
+                                                    at: 0, deadline: .now() + .seconds(30)).rgba
+                let bPixels = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+                t.equal(bPixels, expectedB)
+                t.check(bPixels != expectedA, "B is a visible independent native change")
+                let bLayers = owner.root.sublayers ?? [], bBounds = owner.root.bounds
+                try expectRuntime(.stalePreparation, t) { _ = try owner.commit(winner) }
+                try expectRuntime(.stalePreparation, t) { try owner.discard(winner) }
+                try checkRetained(owner, committedB, bLayers, bBounds, tree, renderer, bPixels, t)
+
+                let abandoned = try ready(owner.prepare(pa, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 2, glass: .none))
+                let incomplete = SceneInkCandidates(scene: a, elementInk: [], runInk: [])
+                try expectRasterizer(.invalidPlan, t) {
+                    _ = try owner.prepare(incomplete, in: window, scale: CGFloat(scale), colorSpace: space,
+                        partition: .candidateComponents, context: context, cycle: 2, glass: .none)
+                }
+                try expectRuntime(.stalePreparation, t) { _ = try owner.commit(abandoned) }
+                try expectRuntime(.stalePreparation, t) { try owner.discard(abandoned) }
+                try checkRetained(owner, committedB, bLayers, bBounds, tree, renderer, bPixels, t)
+                let recovered = try ready(owner.prepare(pa, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 2, glass: .none))
+                t.equal(recovered.frame.change, .all(.previousFailure))
+                t.equal(recovered.frame.sequence, 3)
+                let returnedA = try owner.commit(recovered)
+                t.equal(returnedA.sequence, 3)
+                t.equal(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba, expectedA)
+                if case .unchanged(let reused) = try owner.prepare(pa, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 2, glass: .none) {
+                    t.equal(reused.sequence, 3)
+                    t.equal(owner.currentFrame?.change, returnedA.change, "unchanged prepare still changes no committed metadata")
+                } else { t.check(false, "the original context-independent reuse rule remains observable") }
+                let reused = try unchanged(owner.update(pa, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 2, glass: .none))
+                t.equal(reused.change, .unchanged)
+                t.equal(owner.currentFrame?.change, .unchanged, "legacy update preserves its synchronous unchanged observation")
+
+                let compatible = try runtime(), compatibleTree = host(compatible.root, scale)
+                for (cycle, prepared) in [pa, pb, pa].enumerated() {
+                    _ = try submitted(compatible.update(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                        partition: .candidateComponents, context: context, cycle: cycle, glass: .none))
+                }
+                t.equal(compatible.currentFrame?.sequence, returnedA.sequence)
+                t.equal(try renderer.render(compatibleTree, at: 0, deadline: .now() + .seconds(30)).rgba, expectedA,
+                        "the legacy synchronous wrapper and explicit commit produce the same strict native A return")
+                let pendingB = try ready(owner.prepare(pb, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 3, glass: .none))
+                let foreign = try ready(compatible.prepare(pb, in: window, scale: CGFloat(scale), colorSpace: space,
+                    partition: .candidateComponents, context: context, cycle: 3, glass: .none))
+                try expectRuntime(.stalePreparation, t) { _ = try owner.commit(foreign) }
+                try expectRuntime(.stalePreparation, t) { try owner.discard(foreign) }
+                t.equal(try owner.commit(pendingB).sequence, 4, "a foreign token cannot clear the current valid candidate")
+                t.equal(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba, expectedB)
+                try compatible.discard(foreign)
+                t.check(renderer.hasVerifiedCanary)
+                withExtendedLifetime([tree, compatibleTree]) {}
+            }
+        }
+    }
+
+    private static func preparationLifecycleTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: pending content obeys owner lifecycle and does not retain drawing owners") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: pending lifecycle native qualification did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB), window = try rect(0, 0, width, height)
+            let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, 1)
+            let renderer = try OffscreenRenderer(width: width, height: height, device: device,
+                                                 maximumReadbackBytes: width * height * 4)
+            let a = fixture(0, 1, false, gradient: false), b = fixture(1, 1, false, gradient: false)
+            let pa = try prepare(a, context, 1, space, .none), pb = try prepare(b, context, 1, space, .none)
+            let first = try submitted(owner.update(pa, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            let original = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+            checkFixture(original, window, t)
+            let layers = owner.root.sublayers ?? [], bounds = owner.root.bounds
+            let staleRefresh = try ready(owner.prepare(pb, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+            try owner.beginRefresh()
+            t.equal(owner.state, .refreshing)
+            try expectRuntime(.stalePreparation, t) { _ = try owner.commit(staleRefresh) }
+            try expectRuntime(.stalePreparation, t) { try owner.discard(staleRefresh) }
+            try checkRetained(owner, first, layers, bounds, tree, renderer, original, t)
+            let refreshed = try ready(owner.prepare(pb, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+            t.equal(refreshed.frame.change, .all(.refresh))
+            let changed = try owner.commit(refreshed)
+            t.equal(changed.sequence, 2)
+            let changedPixels = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+            t.equal(changedPixels, try renderer.render(cTree(baseline(b, context, 1, 1, space, .none), 1),
+                                                       at: 0, deadline: .now() + .seconds(30)).rgba)
+            t.check(changedPixels != original)
+            let closeToken = try ready(owner.prepare(pa, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 2, glass: .none))
+            try owner.beginClose()
+            try expectRuntime(.invalidLifecycle(.closing), t) { _ = try owner.commit(closeToken) }
+            try expectRuntime(.invalidLifecycle(.closing), t) { try owner.discard(closeToken) }
+            t.equal(owner.currentFrame?.sequence, 2)
+            t.equal(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba, changedPixels,
+                    "beginClose keeps actual final pixels even with an uncommitted preparation")
+            try owner.close()
+            try expectRuntime(.invalidLifecycle(.closed), t) { _ = try owner.commit(closeToken) }
+            t.check(owner.currentFrame == nil && (owner.root.sublayers ?? []).isEmpty)
+            t.check(try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba.allSatisfy { $0 == 0 })
+
+            let hidden = try runtime(), hiddenTree = host(hidden.root, 1)
+            _ = try submitted(hidden.update(pa, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            let hiddenToken = try ready(hidden.prepare(pb, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+            try hidden.setVisible(false)
+            try expectRuntime(.invalidLifecycle(.hidden), t) { _ = try hidden.commit(hiddenToken) }
+            t.check(hidden.currentFrame == nil && (hidden.root.sublayers ?? []).isEmpty)
+            let malformed = SceneInkCandidates(scene: a, elementInk: [], runInk: [])
+            if case .suppressed = try hidden.prepare(malformed, in: window, scale: 0, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: .none) { t.check(true) }
+            else { t.check(false, "hidden prepare suppresses validation and drawing just like update") }
+            t.check(try renderer.render(hiddenTree, at: 0, deadline: .now() + .seconds(30)).rgba.allSatisfy { $0 == 0 })
+            try hidden.setVisible(true)
+            try expectRuntime(.stalePreparation, t) { _ = try hidden.commit(hiddenToken) }
+            let revealed = try ready(hidden.prepare(pb, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: .none))
+            t.equal(revealed.frame.change, .all(.released))
+            let visible = try hidden.commit(revealed)
+            t.equal(visible.sequence, 2)
+            let visibleLayers = hidden.root.sublayers ?? [], visibleBounds = hidden.root.bounds
+            try checkRetained(hidden, visible, visibleLayers, visibleBounds, hiddenTree, renderer, changedPixels, t)
+
+            let prior = try ready(hidden.prepare(pa, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 2, glass: .none))
+            let fonts = CallbackFonts(), textContext = DrawContext(fonts: fonts)
+            var textScene = b
+            textScene.elements[1].items = [text()]
+            let textInput = try prepare(textScene, textContext, 1, space, .none)
+            fonts.onResolve = {
+                do { _ = try hidden.prepare(pa, in: window, scale: 1, colorSpace: space,
+                    partition: .single, context: context, cycle: 2, glass: .none); t.check(false) }
+                catch LayerRuntime.Failure.reentrant { t.check(true) }
+                catch { t.check(false, "unexpected nested prepare failure") }
+                for work in [{ _ = try hidden.commit(prior) }, { try hidden.discard(prior) },
+                             { try hidden.beginRefresh() }, { try hidden.beginClose() },
+                             { try hidden.setVisible(false) }, { try hidden.close() }] {
+                    do { try work(); t.check(false, "native drawing must not reenter a tree mutation") }
+                    catch LayerRuntime.Failure.reentrant { t.check(true) }
+                    catch { t.check(false, "unexpected reentrant failure") }
+                }
+            }
+            let textToken = try ready(hidden.prepare(textInput, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: textContext, cycle: 2, glass: .none))
+            fonts.onResolve = nil
+            t.check(fonts.requests > 0, "the reentrant guard ran inside real named-font native rendering")
+            try checkRetained(hidden, visible, visibleLayers, visibleBounds, hiddenTree, renderer, changedPixels, t)
+            _ = try hidden.commit(textToken)
+            let textPixels = try renderer.render(hiddenTree, at: 0, deadline: .now() + .seconds(30)).rgba
+            checkFixture(textPixels, window, t)
+            t.equal(textPixels, try renderer.render(cTree(baseline(textScene, textContext, 2, 1, space, .none), 1),
+                                                    at: 0, deadline: .now() + .seconds(30)).rgba)
+
+            // Canceled loading candidates must not freeze the future base membership.
+            let uncommitted = try runtime()
+            let full = try ready(uncommitted.prepare(pa, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(full.frame.plan.baseMembers, [baseID])
+            try uncommitted.discard(full)
+            var small = a
+            small.elements[0].items = [fill(0, 0, 3, 2, RGBA(r: 31, g: 89, b: 151, a: 83))]
+            let smallToken = try ready(uncommitted.prepare(prepare(small, context, 1, space, .none), in: window,
+                scale: 1, colorSpace: space, partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(smallToken.frame.plan.baseMembers, [])
+            t.equal(try uncommitted.commit(smallToken).sequence, 1)
+
+            var escaped: LayerRuntime.PreparedFrame?
+            weak var weakContext: DrawContext?
+            var transientOwner: LayerRuntime? = try runtime()
+            weak var weakOwner = transientOwner
+            try autoreleasepool {
+                let transientContext = DrawContext(fonts: AppFontResolver())
+                weakContext = transientContext
+                escaped = try ready(transientOwner!.prepare(prepare(a, transientContext, 1, space, .none), in: window,
+                    scale: 1, colorSpace: space, partition: .single, context: transientContext, cycle: 0, glass: .none))
+            }
+            t.check(weakContext == nil, "pending keys and the exported token do not retain a DrawContext")
+            transientOwner = nil
+            t.check(weakOwner == nil, "an externally retained preparation cannot keep its mutable owner alive")
+            guard let escaped else { throw CocoaError(.coderInvalidValue) }
+            t.equal(try renderer.render(cTree(escaped.frame.contents, 1), at: 0, deadline: .now() + .seconds(30)).rgba, original,
+                    "released owners leave only complete immutable images in the token")
+            t.check(renderer.hasVerifiedCanary)
+            withExtendedLifetime([tree, hiddenTree]) {}
+        }
+    }
+
+    private static func ready(_ prepared: LayerRuntime.Preparation) throws -> LayerRuntime.PreparedFrame {
+        guard case let .ready(value) = prepared else { throw CocoaError(.coderInvalidValue) }
+        return value
+    }
+
+    private static func expectRuntime(_ expected: LayerRuntime.Failure, _ t: AppTestRunner, _ body: () throws -> Void) throws {
+        do { try body(); t.check(false, "expected a typed LayerRuntime failure") }
+        catch let failure as LayerRuntime.Failure { t.equal(failure, expected) }
+    }
+
+    private final class CallbackFonts: FontResolving {
+        var requests = 0
+        var onResolve: (() -> Void)?
+        var generation: Int { 0 }
+        func registerFolder(_ folder: String) {}
+        func resolve(_ request: FontRequest) -> ResolvedFont {
+            requests += 1
+            onResolve?()
+            return ResolvedFont(font: CTFontCreateWithName("Helvetica" as CFString, request.size, nil),
+                                syntheticBold: false, characterMap: nil, slant: 0, lineMetrics: nil)
+        }
     }
 
     private static func nativeTests(_ t: AppTestRunner) {

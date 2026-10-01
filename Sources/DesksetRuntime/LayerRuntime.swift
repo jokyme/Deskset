@@ -16,6 +16,7 @@ package final class LayerRuntime {
         case invalidLifecycle(State)
         case reentrant
         case sequenceOverflow
+        case stalePreparation
     }
     package enum Fallback: Equatable {
         case unresolvedInk(ElementID, InkBounds.Unknown)
@@ -23,6 +24,7 @@ package final class LayerRuntime {
     package enum Reason: Equatable {
         case initial, refresh, released, previousFailure, destination, partition, cycle, scene, preparation
         case drawingContext, unversionedRecipe
+        case discardedPreparation
         case missingImageStamp(String)
     }
     package enum Change: Equatable { case all(Reason), unchanged }
@@ -36,6 +38,14 @@ package final class LayerRuntime {
         package let change: Change
     }
     package enum Update { case submitted(Frame), unchanged(Frame), suppressed }
+
+    /// Finished immutable contents, not a committed frame or a cross-thread ownership lease. The proposed sequence
+    /// can occur again after cancellation; only commit advances the owner's sequence. No owner/context is retained.
+    package final class PreparedFrame {
+        package let frame: Frame
+        fileprivate init(_ frame: Frame) { self.frame = frame }
+    }
+    package enum Preparation { case ready(PreparedFrame), unchanged(Frame), suppressed }
 
     private final class NoActionsLayer: CALayer {
         override func action(forKey event: String) -> CAAction? { nil }
@@ -75,6 +85,15 @@ package final class LayerRuntime {
         }
     }
 
+    private struct Pending {
+        let presentation: PreparedFrame
+        let builder: LayerContentBuilder
+        let key: Key
+        let bounds: CGRect
+        let layerFrames: [CGRect]
+        let retainedBase: [ElementID]?
+    }
+
     package let root: CALayer
     /// These mutable observations are read only on the executor. Finished images do not retain this owner.
     package private(set) var state = State.loading
@@ -83,6 +102,7 @@ package final class LayerRuntime {
     private let maximumOwnedBitmapBytes: Int
     private var builder: LayerContentBuilder?
     private var configuration: Configuration?
+    private var pending: Pending?
     private var key: Key?
     private var sequence: UInt64 = 0
     private var updating = false
@@ -106,12 +126,28 @@ package final class LayerRuntime {
         root.contentsFormat = .RGBA8Uint
     }
 
-    /// Preparation must come from this scene's owner and the same actual destination mapping/profile.
-    /// SceneInkCandidates cannot prove that provenance, or native ink coverage, retrospectively.
-    /// A hidden call does no validation or drawing; closing/closed and wrong-owner calls are rejected first.
+    /// The original synchronous operation: prepare complete images, then commit them on the same owner.
     package func update(_ prepared: SceneInkCandidates, in window: InkBounds.DeviceRect,
                         scale: CGFloat, colorSpace: CGColorSpace, partition: Partition,
                         context: DrawContext, cycle: Int, glass: GlassPaint) throws -> Update {
+        switch try prepare(prepared, in: window, scale: scale, colorSpace: colorSpace, partition: partition,
+                           context: context, cycle: cycle, glass: glass) {
+        case .ready(let presentation): return .submitted(try commit(presentation))
+        case .unchanged(let reused):
+            currentFrame = reused
+            return .unchanged(reused)
+        case .suppressed: return .suppressed
+        }
+    }
+
+    /// Preparation must come from this scene's owner and the same actual destination mapping/profile.
+    /// SceneInkCandidates cannot prove that provenance, or native ink coverage, retrospectively.
+    /// No visible tree, current frame, committed sequence or frozen base is changed, even after successful drawing.
+    /// One pending preparation is retained: a new call supersedes it. A hidden call does no validation or drawing;
+    /// closing/closed and wrong-owner calls are rejected first. This is not the App's ScenePatch handoff protocol.
+    package func prepare(_ prepared: SceneInkCandidates, in window: InkBounds.DeviceRect,
+                        scale: CGFloat, colorSpace: CGColorSpace, partition: Partition,
+                        context: DrawContext, cycle: Int, glass: GlassPaint) throws -> Preparation {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
         switch state {
@@ -119,6 +155,7 @@ package final class LayerRuntime {
         case .closing, .closed: throw Failure.invalidLifecycle(state)
         case .loading, .live, .refreshing: break
         }
+        discardPending()
         updating = true
         defer { updating = false }
         do {
@@ -165,7 +202,6 @@ package final class LayerRuntime {
             if let old = currentFrame, let key, self.reason(from: key, to: incoming, plan: plan) == nil {
                 let reused = Frame(sequence: old.sequence, plan: old.plan, contents: old.contents,
                                    scale: old.scale, colorSpace: old.colorSpace, fallback: old.fallback, change: .unchanged)
-                currentFrame = reused
                 return .unchanged(reused)
             }
             let invalidation = key.flatMap { self.reason(from: $0, to: incoming, plan: plan) } ?? forcedReason ?? .initial
@@ -181,47 +217,14 @@ package final class LayerRuntime {
                                                        maximumOwnedBitmapBytes: maximumOwnedBitmapBytes)
             }
             let contents = try nextBuilder.build(scene, context: context, cycle: cycle, glass: glass)
-            // Every image is ready before touching the currently shown tree. CA callbacks never use DrawContext.
-            let layers = contents.enumerated().map { index, content -> CALayer in
-                let layer = NoActionsLayer()
-                layer.anchorPoint = .zero
-                layer.frame = frames[index]
-                layer.contents = content.image
-                layer.contentsRect = content.contentsRect
-                layer.contentsScale = scale
-                layer.contentsFormat = .RGBA8Uint
-                layer.contentsGravity = .resize
-                layer.needsDisplayOnBoundsChange = false
-                layer.drawsAsynchronously = false
-                layer.isOpaque = false
-                layer.magnificationFilter = .nearest
-                layer.minificationFilter = .nearest
-                return layer
-            }
-            transaction {
-                root.bounds = rootBounds
-                root.sublayers = layers
-            }
             let frame = Frame(sequence: nextSequence, plan: plan, contents: contents, scale: scale,
                               colorSpace: colorSpace, fallback: fallback, change: .all(invalidation))
-            builder = nextBuilder
-            configuration = Configuration(plan: plan, scale: scale, colorSpace: colorSpace)
-            key = incoming
-            sequence = nextSequence
-            currentFrame = frame
-            state = .live
-            forcedReason = nil
-            if partition == .candidateComponents {
-                if fallback == nil { frozenBase = plan.baseMembers }
-                else { frozenBase = retainedBase }
-                baseWindow = window
-                baseScale = scale
-                basePartition = partition
-            } else {
-                clearBase()
-            }
-            return .submitted(frame)
+            let presentation = PreparedFrame(frame)
+            pending = Pending(presentation: presentation, builder: nextBuilder, key: incoming, bounds: rootBounds,
+                              layerFrames: frames, retainedBase: retainedBase)
+            return .ready(presentation)
         } catch {
+            pending = nil
             key = nil
             builder = nil
             configuration = nil
@@ -230,11 +233,83 @@ package final class LayerRuntime {
         }
     }
 
+    /// Only the actual owner may install the current candidate. Stale/foreign/repeated tokens are rejected before
+    /// tree/cache changes; this does not confer permission to commit from main while a worker owns the runtime.
+    package func commit(_ presentation: PreparedFrame) throws -> Frame {
+        try checkOwner()
+        guard !updating else { throw Failure.reentrant }
+        switch state {
+        case .hidden, .closing, .closed: throw Failure.invalidLifecycle(state)
+        case .loading, .live, .refreshing: break
+        }
+        guard let pending, pending.presentation === presentation else { throw Failure.stalePreparation }
+        updating = true
+        defer { updating = false }
+        let frame = presentation.frame
+        // No native draw or drawing callback runs here; all contents are ready before changing the shown tree.
+        let layers = frame.contents.enumerated().map { index, content -> CALayer in
+            let layer = NoActionsLayer()
+            layer.anchorPoint = .zero
+            layer.frame = pending.layerFrames[index]
+            layer.contents = content.image
+            layer.contentsRect = content.contentsRect
+            layer.contentsScale = frame.scale
+            layer.contentsFormat = .RGBA8Uint
+            layer.contentsGravity = .resize
+            layer.needsDisplayOnBoundsChange = false
+            layer.drawsAsynchronously = false
+            layer.isOpaque = false
+            layer.magnificationFilter = .nearest
+            layer.minificationFilter = .nearest
+            return layer
+        }
+        transaction {
+            root.bounds = pending.bounds
+            root.sublayers = layers
+        }
+        builder = pending.builder
+        configuration = Configuration(plan: frame.plan, scale: frame.scale, colorSpace: frame.colorSpace)
+        key = pending.key
+        sequence = frame.sequence
+        currentFrame = frame
+        state = .live
+        forcedReason = nil
+        if pending.key.partition == .candidateComponents {
+            if frame.fallback == nil { frozenBase = frame.plan.baseMembers }
+            else { frozenBase = pending.retainedBase }
+            baseWindow = pending.key.window
+            baseScale = pending.key.scale
+            basePartition = pending.key.partition
+        } else {
+            clearBase()
+        }
+        self.pending = nil
+        return frame
+    }
+
+    /// Explicit cancellation keeps the displayed frame. Drawing may already have warmed caches, so reuse is
+    /// conservatively invalidated. A stale caller cannot discard the newer candidate retained by this owner.
+    package func discard(_ presentation: PreparedFrame) throws {
+        try checkMutable()
+        guard pending?.presentation === presentation else { throw Failure.stalePreparation }
+        discardPending()
+    }
+
+    private func discardPending() {
+        guard pending != nil else { return }
+        pending = nil
+        key = nil
+        builder = nil
+        configuration = nil
+        forcedReason = .discardedPreparation
+    }
+
     /// Retain the successful old frame while the replacement is prepared. A failed update stays refreshing.
     package func beginRefresh() throws {
         try checkMutable()
         guard state == .live || state == .refreshing || state == .hidden else { throw Failure.invalidLifecycle(state) }
         if state != .hidden { state = .refreshing }
+        pending = nil
         key = nil
         forcedReason = .refresh
         clearBase()
@@ -258,6 +333,7 @@ package final class LayerRuntime {
         guard !updating else { throw Failure.reentrant }
         guard state != .closed else { throw Failure.invalidLifecycle(state) }
         state = .closing
+        pending = nil
         key = nil
         builder = nil
         configuration = nil
@@ -284,6 +360,7 @@ package final class LayerRuntime {
     }
 
     private func clearContents() {
+        pending = nil
         transaction {
             for layer in root.sublayers ?? [] { layer.contents = nil }
             root.sublayers = []
