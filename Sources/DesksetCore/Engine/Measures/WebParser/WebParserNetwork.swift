@@ -297,6 +297,8 @@ final class WebParserNetwork: NSObject, URLSessionDataDelegate {
             if let fallback = sessions[key] { return fallback }
         }
         let configuration = URLSessionConfiguration.default
+        // URL credentials belong to their request; later NoAuth fetches must not reuse them.
+        configuration.urlCredentialStorage = nil
         configuration.timeoutIntervalForRequest = Self.requestTimeout
         configuration.timeoutIntervalForResource = Self.resourceTimeout
         configuration.waitsForConnectivity = false
