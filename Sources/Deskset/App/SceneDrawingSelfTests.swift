@@ -218,7 +218,8 @@ enum SceneDrawingSelfTests {
                             let initialTransform = ctx.ctm
                             let initialClip = ctx.boundingBoxOfClipPath
                             DesksetDraw.DrawExecutor.draw(scene: sample.scene, in: ctx, context: drawing,
-                                                         cycle: sample.cycle, glass: .placeholder(dark: false))
+                                                         cycle: sample.cycle,
+                                                         target: .capture(ctx, glass: .placeholder(dark: false)))
                             t.equal(ctx.ctm, initialTransform, "mixed drawing restores the incoming transform, \(variant)")
                             t.equal(ctx.boundingBoxOfClipPath, initialClip,
                                     "mixed drawing restores the incoming clip, \(variant)")
@@ -241,7 +242,8 @@ enum SceneDrawingSelfTests {
                 for (index, variant) in variants.enumerated() {
                     let picture = try pixels(variant) {
                         DesksetDraw.DrawExecutor.draw(scene: saved.sample.scene, in: $0, context: saved.context,
-                                                     cycle: saved.sample.cycle, glass: .placeholder(dark: false))
+                                                     cycle: saved.sample.cycle,
+                                                     target: .capture($0, glass: .placeholder(dark: false)))
                     }
                     t.equal(picture, saved.sample.pictures[index], "owner-free library replay with cold images, \(variant)")
                 }
@@ -257,7 +259,8 @@ enum SceneDrawingSelfTests {
                             && cold.histogram.crops.isEmpty
                         let picture = try pixels(variant) {
                             DesksetDraw.DrawExecutor.draw(scene: saved.sample.scene, in: $0, context: cold,
-                                                         cycle: saved.sample.cycle, glass: .placeholder(dark: false))
+                                                         cycle: saved.sample.cycle,
+                                                         target: .capture($0, glass: .placeholder(dark: false)))
                         }
                         t.equal(picture, saved.sample.pictures[index],
                                 "owner-free library replay with all caches cold, \(variant)")

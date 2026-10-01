@@ -1,8 +1,22 @@
 import CoreGraphics
 
-/// The current mapping from drawing points to device pixels. Each caller keeps its existing scale limits.
+/// Captured destination facts, without retaining or changing its graphics context.
+/// Each drawing operation captures its current mapping after applying its local transforms.
 public struct DrawTarget {
     public let userToDevice: CGAffineTransform
+    /// The actual destination space, when CoreGraphics exposes it. Nil is not a request for an sRGB fallback.
+    public let colorSpace: CGColorSpace?
+    public let glassPaint: GlassPaint
+    /// Readable graphics state at capture time; nil for a target constructed from a mapping alone.
+    /// Font rasterization flags and the current blend mode have no CoreGraphics getters and are not inferred here.
+    public let state: State?
+
+    public struct State {
+        public let interpolationQuality: CGInterpolationQuality
+        public let textMatrix: CGAffineTransform
+        public let textPosition: CGPoint
+    }
+
     /// CoreGraphics' current transform, which can differ from the device mapping in a display-list context.
     package let ctm: CGAffineTransform
     /// The native round-trip correction for the captured graph anchor. Nil means no anchor or a rejected snap;
@@ -12,13 +26,27 @@ public struct DrawTarget {
     /// An explicit mapping for density calculations. Its CTM describes the same supplied mapping; drawing that
     /// needs the context's actual CTM, such as inline text shadows, uses `capture` instead.
     public init(userToDevice: CGAffineTransform) {
-        self.init(ctm: userToDevice, userToDevice: userToDevice, graphTranslation: nil)
+        self.init(ctm: userToDevice, userToDevice: userToDevice, graphTranslation: nil,
+                  colorSpace: nil, glassPaint: .none, state: nil)
     }
 
-    private init(ctm: CGAffineTransform, userToDevice: CGAffineTransform, graphTranslation: CGPoint?) {
+    private init(ctm: CGAffineTransform, userToDevice: CGAffineTransform, graphTranslation: CGPoint?,
+                 colorSpace: CGColorSpace?, glassPaint: GlassPaint, state: State?) {
         self.ctm = ctm
         self.userToDevice = userToDevice
         self.graphTranslation = graphTranslation
+        self.colorSpace = colorSpace
+        self.glassPaint = glassPaint
+        self.state = state
+    }
+
+    /// Capture the drawing destination at its entry point. Borrowed AppKit contexts keep their inherited
+    /// state and coordinate system; capturing never resets flags, substitutes a color space or adds a y flip.
+    public static func capture(_ ctx: CGContext, glass: GlassPaint) -> DrawTarget {
+        DrawTarget(ctm: ctx.ctm, userToDevice: ctx.userSpaceToDeviceSpaceTransform, graphTranslation: nil,
+                   colorSpace: ctx.colorSpace, glassPaint: glass,
+                   state: State(interpolationQuality: ctx.interpolationQuality,
+                                textMatrix: ctx.textMatrix, textPosition: ctx.textPosition))
     }
 
     /// Capture at the drawing operation's current transform, after its local transforms have been applied.
@@ -35,7 +63,8 @@ public struct DrawTarget {
             guard dx.isFinite, dy.isFinite, abs(dx) < 1, abs(dy) < 1 else { return nil }
             return CGPoint(x: dx, y: dy)
         }
-        return DrawTarget(ctm: ctm, userToDevice: userToDevice, graphTranslation: graphTranslation)
+        return DrawTarget(ctm: ctm, userToDevice: userToDevice, graphTranslation: graphTranslation,
+                          colorSpace: nil, glassPaint: .none, state: nil)
     }
 
     /// Length of the transformed horizontal unit vector, used by image-mask composites.

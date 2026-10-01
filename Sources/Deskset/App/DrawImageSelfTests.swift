@@ -38,6 +38,52 @@ enum DrawImageSelfTests {
                 t.check(!target.horizontalPixelsPerPoint.isFinite)
                 t.check(!target.maximumPixelsPerPoint.isFinite, "callers keep their own fallback")
             }
+            let densityOnly = DrawTarget(userToDevice: .identity)
+            t.check(densityOnly.colorSpace == nil && densityOnly.state == nil,
+                    "a mapping alone supplies no destination space or graphics state")
+        }
+
+        t.suite("App: draw image boundary: captured destinations keep their space and inherited state") {
+            for name in [CGColorSpace.sRGB, CGColorSpace.displayP3] {
+                guard let space = CGColorSpace(name: name),
+                      let ctx = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    return t.check(false, "destination context")
+                }
+                ctx.translateBy(x: 3.25, y: 47.5)
+                ctx.scaleBy(x: 1.5, y: -2)
+                ctx.clip(to: CGRect(x: 2, y: 4, width: 10, height: 8))
+                ctx.interpolationQuality = .none
+                let position = CGPoint(x: 4.5, y: 6.25)
+                // CoreGraphics' text position shares the text matrix's translation.
+                let matrix = CGAffineTransform(a: 1, b: 0, c: 0.25, d: -1, tx: position.x, ty: position.y)
+                ctx.textMatrix = matrix
+                ctx.textPosition = position
+                let mapping = ctx.userSpaceToDeviceSpaceTransform, ctm = ctx.ctm, clip = ctx.boundingBoxOfClipPath
+                for glass in [GlassPaint.none, .hitArea, .placeholder(dark: nil), .placeholder(dark: false),
+                              .placeholder(dark: true)] {
+                    let target = DrawTarget.capture(ctx, glass: glass)
+                    t.check(target.colorSpace == space, "the destination keeps its actual profile, \(name)")
+                    t.equal(target.glassPaint, glass)
+                    t.equal(target.userToDevice, mapping)
+                    t.equal(target.ctm, ctm)
+                    t.equal(target.state?.interpolationQuality, CGInterpolationQuality.none)
+                    t.equal(target.state?.textMatrix, matrix)
+                    t.equal(target.state?.textPosition, position)
+                    t.equal(ctx.ctm, ctm, "capture adds no flip or alignment")
+                    t.equal(ctx.boundingBoxOfClipPath, clip, "capture keeps the inherited clip")
+                    ctx.interpolationQuality = .high
+                    ctx.textMatrix = .identity
+                    ctx.textPosition = .zero
+                    t.equal(target.state?.interpolationQuality, CGInterpolationQuality.none,
+                            "later context changes do not change captured state")
+                    t.equal(target.state?.textMatrix, matrix)
+                    t.equal(target.state?.textPosition, position)
+                    ctx.interpolationQuality = .none
+                    ctx.textMatrix = matrix
+                    ctx.textPosition = position
+                }
+            }
         }
 
         t.suite("App: draw image boundary: symbols use the largest scale") {

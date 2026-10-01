@@ -9,31 +9,32 @@ public enum GlassPaint: Equatable, Sendable {
 }
 
 /// Executes captured drawing values synchronously inside the current graphics state.
+/// The target comes from this destination's entry point; local transforms are captured again by their consumers.
 public enum DrawExecutor {
     public static func draw(scene: WidgetScene, in ctx: CGContext, context: DrawContext, cycle: Int,
-                            glass: GlassPaint) {
-        draw(scene.drawingItems, in: ctx, context: context, cycle: cycle, glass: glass)
+                            target: DrawTarget) {
+        draw(scene.drawingItems, in: ctx, context: context, cycle: cycle, target: target)
     }
 
     /// Studio selections keep the requested order and draw each element itself, including a selected container's
     /// own mask. All selected glass is behind all selected content; visibility and container expansion do not apply.
     public static func draw(elements: [SceneElement], in ctx: CGContext, context: DrawContext, cycle: Int,
-                            glass: GlassPaint) {
+                            target: DrawTarget) {
         for element in elements {
-            if let region = element.glass { drawGlass(region, in: ctx, glass: glass) }
+            if let region = element.glass { drawGlass(region, in: ctx, glass: target.glassPaint) }
         }
         for element in elements {
-            draw(element.items, in: ctx, context: context, cycle: cycle, glass: glass)
+            draw(element.items, in: ctx, context: context, cycle: cycle, target: target)
         }
     }
 
     public static func draw(element: SceneElement, in ctx: CGContext, context: DrawContext, cycle: Int,
-                            glass: GlassPaint) {
-        draw(elements: [element], in: ctx, context: context, cycle: cycle, glass: glass)
+                            target: DrawTarget) {
+        draw(elements: [element], in: ctx, context: context, cycle: cycle, target: target)
     }
 
     public static func draw(_ items: [DrawItem], in ctx: CGContext, context: DrawContext, cycle: Int,
-                            glass: GlassPaint) {
+                            target: DrawTarget) {
         for item in items {
             switch item {
             case let .fill(rect, paint):
@@ -60,18 +61,18 @@ public enum DrawExecutor {
             case let .sprite(sprite):
                 SpriteRenderer.draw(sprite, in: ctx)
             case let .glass(region):
-                drawGlass(region, in: ctx, glass: glass)
+                drawGlass(region, in: ctx, glass: target.glassPaint)
             case let .transformed(transform, contents):
                 // Even identity groups isolate the state changed by a meter's background or content.
                 ctx.saveGState()
                 ctx.concatenate(CGAffineTransform(a: transform.a, b: transform.b, c: transform.c,
                                                   d: transform.d, tx: transform.tx, ty: transform.ty))
-                draw(contents, in: ctx, context: context, cycle: cycle, glass: glass)
+                draw(contents, in: ctx, context: context, cycle: cycle, target: target)
                 ctx.restoreGState()
             case let .antialias(enabled, contents):
                 ctx.saveGState()
                 ctx.setShouldAntialias(enabled)
-                draw(contents, in: ctx, context: context, cycle: cycle, glass: glass)
+                draw(contents, in: ctx, context: context, cycle: cycle, target: target)
                 ctx.restoreGState()
             case let .container(clip, mask, content):
                 let rect = clip.cgRect
@@ -80,10 +81,10 @@ public enum DrawExecutor {
                 ctx.saveGState()
                 ctx.clip(to: rect)
                 ctx.beginTransparencyLayer(in: rect, auxiliaryInfo: nil)
-                draw(content, in: ctx, context: context, cycle: cycle, glass: glass)
+                draw(content, in: ctx, context: context, cycle: cycle, target: target)
                 ctx.setBlendMode(.destinationIn)
                 ctx.beginTransparencyLayer(in: rect, auxiliaryInfo: nil)
-                draw(mask, in: ctx, context: context, cycle: cycle, glass: glass)
+                draw(mask, in: ctx, context: context, cycle: cycle, target: target)
                 ctx.endTransparencyLayer()
                 ctx.endTransparencyLayer()
                 ctx.restoreGState()

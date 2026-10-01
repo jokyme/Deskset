@@ -7,24 +7,25 @@ enum DrawExecutor {
     static func draw(scene: WidgetScene, in ctx: CGContext, context: SkinRenderContext, cycle: Int,
                      glass: SkinRenderer.GlassDrawing) {
         DesksetDraw.DrawExecutor.draw(scene: scene, in: ctx, context: context.drawing, cycle: cycle,
-                                     glass: paint(glass))
+                                     target: .capture(ctx, glass: paint(glass)))
     }
 
     static func draw(elements: [SceneElement], in ctx: CGContext, context: SkinRenderContext, cycle: Int,
                      glass: SkinRenderer.GlassDrawing) {
         DesksetDraw.DrawExecutor.draw(elements: elements, in: ctx, context: context.drawing, cycle: cycle,
-                                     glass: paint(glass))
+                                     target: .capture(ctx, glass: paint(glass)))
     }
 
     static func draw(element: SceneElement, in ctx: CGContext, context: SkinRenderContext, cycle: Int,
                      glass: SkinRenderer.GlassDrawing) {
         DesksetDraw.DrawExecutor.draw(element: element, in: ctx, context: context.drawing, cycle: cycle,
-                                     glass: paint(glass))
+                                     target: .capture(ctx, glass: paint(glass)))
     }
 
     static func draw(_ items: [DrawItem], in ctx: CGContext, context: SkinRenderContext, cycle: Int,
                      glass: SkinRenderer.GlassDrawing) {
-        DesksetDraw.DrawExecutor.draw(items, in: ctx, context: context.drawing, cycle: cycle, glass: paint(glass))
+        DesksetDraw.DrawExecutor.draw(items, in: ctx, context: context.drawing, cycle: cycle,
+                                     target: .capture(ctx, glass: paint(glass)))
     }
 
     private static func paint(_ glass: SkinRenderer.GlassDrawing) -> GlassPaint {
