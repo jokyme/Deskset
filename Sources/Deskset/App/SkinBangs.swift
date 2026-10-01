@@ -11,33 +11,13 @@ import DesksetCore
 
 /// Which bangs the host handles, and of what kind: the request the runtime makes for them.
 enum HostBangs {
-    enum Kind: Equatable {
-        case window, lifecycle, group, ui, system
-    }
+    typealias Kind = ActionCatalog.HostKind
 
     /// The kind of a bang the engine left to the host (`Bang.name`); nil when it is not supported on macOS
     /// (!LoadLayout, !ResetStats, blur bangs, !SetAnchor…).
     static func kind(of name: String) -> Kind? {
-        switch name {
-        case "refresh", "refreshapp", "refreshgroup", "activateconfig", "deactivateconfig", "deactivateconfiggroup",
-             "toggleconfig", "quit":
-            return .lifecycle
-        case "disablemouseactionskingroup", "clearmouseactionskingroup", "enablemouseactionskingroup",
-             "togglemouseactionskingroup", "updategroup", "redrawgroup", "setvariablegroup":
-            return .group
-        case "move", "setwindowposition", "zpos", "zposgroup", "settransparency", "settransparencygroup", "draggable",
-             "draggablegroup", "clickthrough", "clickthroughgroup", "keeponscreen", "keeponscreengroup", "snapedges",
-             "snapedgesgroup", "autoselectscreen", "autoselectscreengroup", "show", "hide", "toggle", "showfade",
-             "hidefade", "togglefade", "showgroup", "hidegroup", "togglegroup", "showfadegroup", "hidefadegroup",
-             "togglefadegroup", "fadeduration", "fadedurationgroup":
-            return .window
-        case "skinmenu", "skincustommenu", "traymenu", "manage", "about", "editskin":
-            return .ui
-        case "setclip", "setwallpaper", "play", "playloop", "playstop":
-            return .system
-        default:
-            return nil
-        }
+        guard case .host(let kind)? = ActionCatalog.handler(for: name) else { return nil }
+        return kind
     }
 
     /// The bang as the main thread needs it: the file of !SetWallpaper, !Play and !PlayLoop as an absolute path (the

@@ -55,6 +55,7 @@ enum AppSelfTest {
         MediaUITests.run(t)
         SectionHostSelfTests.run(t)
         ServiceHostLookupSelfTests.run(t)
+        ActionCatalogSelfTests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)

@@ -11,26 +11,10 @@ internal enum ActionExecutor {
         case localThenForward(Bang, toConfig: String)
     }
 
-    /// Bangs the engine performs itself. Their `Config` argument (found with `BangCatalog`) routes them to another
-    /// skin through the host, or to every skin for `*`.
-    private static let localBangs: Set<String> = [
-        "setoption", "setoptiongroup", "setvariable", "writekeyvalue",
-        "update", "redraw",
-        "updatemeter", "updatemetergroup", "updatemeasure", "updatemeasuregroup", "movemeter",
-        "showmeter", "hidemeter", "togglemeter", "showmetergroup", "hidemetergroup", "togglemetergroup",
-        "enablemeasure", "disablemeasure", "togglemeasure",
-        "enablemeasuregroup", "disablemeasuregroup", "togglemeasuregroup",
-        "pausemeasure", "unpausemeasure", "togglepausemeasure",
-        "pausemeasuregroup", "unpausemeasuregroup", "togglepausemeasuregroup",
-        "commandmeasure", "pluginbang",
-        "disablemouseaction", "clearmouseaction", "enablemouseaction", "togglemouseaction",
-        "disablemouseactiongroup", "clearmouseactiongroup", "enablemouseactiongroup", "togglemouseactiongroup",
-        "log",
-    ]
-
     static func route(_ bang: Bang, currentConfig: String) -> Route {
-        guard localBangs.contains(bang.name) else {
-            return bang.name == "delay" ? .ignored : .host(bang)
+        let handler = ActionCatalog.handler(for: bang.name)
+        guard handler == .engineLocal else {
+            return handler == .delayRunOnly ? .ignored : .host(bang)
         }
         var args = bang.args
         if let definition = BangCatalog.definition(for: bang.name), let configIndex = definition.configParameterIndex {
