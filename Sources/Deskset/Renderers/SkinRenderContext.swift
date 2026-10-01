@@ -21,7 +21,7 @@ final class SkinRenderContext {
     }
 
     /// The skin's text layouts.
-    let text = TextLayoutCache()
+    let text = TextLayoutCache(fonts: AppFontResolver())
     /// The skin's Rotator images with the general image options applied.
     let rotatorImages = RotatorImageCache()
     /// Scratch buffers for the Histogram's column rectangles (primary only, secondary only, overlap), reused from one

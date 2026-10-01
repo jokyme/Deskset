@@ -1,6 +1,7 @@
 import AppKit
 import CoreText
 import DesksetCore
+import DesksetDraw
 
 // String meter measuring and drawing with CoreText. `textSize` (the host's SkinHost.textSize) and `drawString`
 // both go through the skin's `TextLayoutCache`, so the measured size is exactly what gets drawn.
@@ -126,6 +127,12 @@ private enum RunKey {
 /// cycles as the skin shows texts for each new one (a hundred labels and a counter: about a hundred updates). A skin
 /// whose texts all keep changing keeps about four cycles' worth, and at least a few dozen layouts, not thousands.
 final class TextLayoutCache {
+    private let fonts: any FontResolving
+
+    init(fonts: any FontResolving) {
+        self.fonts = fonts
+    }
+
     private struct Key: Hashable {
         var text: String
         var style: TextStyle
@@ -150,14 +157,14 @@ final class TextLayoutCache {
     /// The layout of `text` in `style`, wrapped to `wrapWidth` when given. `cycle` is the skin's update count.
     func layout(_ text: String, style: TextStyle, wrapWidth: CGFloat?, cycle: Int) -> TextLayout {
         // The skin's @Resources/Fonts must be loaded before FontFace is resolved (a no-op after the first time).
-        if let folder = style.fontFolder { Fonts.registerFolder(folder) }
+        if let folder = style.fontFolder { fonts.registerFolder(folder) }
         if cycle != self.cycle {
             self.cycle = cycle
             usedLastCycle = usedThisCycle
             usedThisCycle = 0
             if current.count >= min(max(Self.turnoverFloor, 2 * usedLastCycle), Self.cacheLimit) { turnOver() }
         }
-        let key = Key(text: text, style: style, wrapWidth: wrapWidth, generation: Fonts.generation)
+        let key = Key(text: text, style: style, wrapWidth: wrapWidth, generation: fonts.generation)
         if let hit = current[key] {
             noteUse(hit)
             return hit
@@ -166,7 +173,7 @@ final class TextLayoutCache {
         if let kept = previous[key] {
             layout = kept
         } else {
-            layout = TextLayout.build(text, style: style, wrapWidth: wrapWidth)
+            layout = TextLayout.build(text, style: style, wrapWidth: wrapWidth, fonts: fonts)
             builds += 1
         }
         noteUse(layout)
@@ -250,8 +257,9 @@ final class TextLayout {
 
     // MARK: Building
 
-    fileprivate static func build(_ text: String, style: TextStyle, wrapWidth: CGFloat?) -> TextLayout {
-        let built = attributedString(text, style: style)
+    fileprivate static func build(_ text: String, style: TextStyle, wrapWidth: CGFloat?,
+                                  fonts: any FontResolving) -> TextLayout {
+        let built = attributedString(text, style: style, fonts: fonts)
         let attributed = built.string
         let units = built.units
         let n = units.count
@@ -260,7 +268,7 @@ final class TextLayout {
         guard n > 0 else {
             return TextLayout(attributed: attributed, units: units, lines: [], pad: pad, shadows: [], gradients: [])
         }
-        let base = Fonts.resolve(Fonts.request(for: style))
+        let base = fonts.resolve(FontRequest(style: style))
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         let available = wrapWidth.map { max($0 - 2 * pad, 1) }
         var lines: [Line] = []
@@ -290,7 +298,7 @@ final class TextLayout {
                           gradients: built.gradients)
     }
 
-    private static func makeLine(_ ctLine: CTLine, range: CFRange, keepTrailing: Bool, base: Fonts.Resolved) -> Line {
+    private static func makeLine(_ ctLine: CTLine, range: CFRange, keepTrailing: Bool, base: ResolvedFont) -> Line {
         var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
         let width = CGFloat(CTLineGetTypographicBounds(ctLine, nil, nil, nil))
         // Line metrics = the largest of its runs' metrics, using the stand-in metrics where a run carries them.
@@ -337,7 +345,7 @@ final class TextLayout {
 
     /// Applies the base style and the inline spans. Spans are applied in order, so a later span of the same kind
     /// wins where two overlap.
-    private static func attributedString(_ text: String, style: TextStyle) -> Built {
+    private static func attributedString(_ text: String, style: TextStyle, fonts: any FontResolving) -> Built {
         var units = Array(text.utf16)
         let n = units.count
         let spans = style.inlineSpans.filter { $0.length > 0 && $0.location >= 0 && $0.location < n }
@@ -353,7 +361,7 @@ final class TextLayout {
 
         struct Segment {
             var range: CFRange
-            var resolved: Fonts.Resolved
+            var resolved: ResolvedFont
             var color: RGBA
             var underline = false
             var strikethrough = false
@@ -368,7 +376,7 @@ final class TextLayout {
         /// Span index → gradient slot: every selected range gets its own gradient box (Judgment: "a color gradient
         /// ... to be used on the selected text"; two matches of one pattern are two selections).
         var gradientIndex: [Int: Int] = [:]
-        let baseRequest = Fonts.request(for: style)
+        let baseRequest = FontRequest(style: style)
 
         for (a, b) in zip(bounds, bounds.dropFirst()) where b > a {
             active.removeAll { spans[$0].end <= a }
@@ -378,7 +386,7 @@ final class TextLayout {
             }
             active.sort()
             var request = baseRequest
-            var segment = Segment(range: CFRange(location: a, length: b - a), resolved: Fonts.resolve(baseRequest),
+            var segment = Segment(range: CFRange(location: a, length: b - a), resolved: fonts.resolve(baseRequest),
                                   color: style.color)
             for index in active {
                 switch spans[index].setting {
@@ -393,7 +401,7 @@ final class TextLayout {
                 case .stretch(let stretch): request.stretch = stretch
                 case .typography(let feature, let value):
                     request.features.removeAll { $0.tag == feature }
-                    request.features.append(Fonts.Feature(tag: feature, value: value))
+                    request.features.append(FontFeature(tag: feature, value: value))
                 case .characterSpacing(let leading, let trailing, let minimum):
                     segment.spacing = (leading, trailing, minimum)
                 case .shadow(let dx, let dy, let blur, let color):
@@ -417,7 +425,7 @@ final class TextLayout {
                     break
                 }
             }
-            if request != baseRequest { segment.resolved = Fonts.resolve(request) }
+            if request != baseRequest { segment.resolved = fonts.resolve(request) }
             if let map = segment.resolved.characterMap {
                 for i in a..<b { if let m = map[units[i]] { units[i] = m } }
             }
