@@ -3,7 +3,7 @@ import DeskLanguage
 import DesksetCore
 
 /// The checker of one explicitly opened Desk document. The main thread owns the service; only its pending checks
-/// run elsewhere. This does not load the parent folder or create a widget runtime.
+/// run elsewhere. Only compiled literal images may read the widget folder; no sibling Desk text or Skin is loaded.
 final class DeskCodeDocumentChecking {
     let file: URL
     let fileID: DeskFileID
@@ -11,6 +11,10 @@ final class DeskCodeDocumentChecking {
     private let service: DeskLanguageService
     private let checkQueue: DispatchQueue
     private var closed = false
+    private var resourceRequest: UInt64 = 0
+    private var prepared: DeskProgramResources.Prepared?
+    private var resourceGeneration: Int?
+    private var imageInput = DeskProgramResources.Input.ready([:])
     private(set) var snapshot: DeskSnapshot
     var onSnapshot: ((DeskSnapshot) -> Void)?
 
@@ -26,6 +30,7 @@ final class DeskCodeDocumentChecking {
         service = DeskLanguageService(openFile: fileID, files: [fileID: editor.text], options: options,
                                       version: editor.textRevision)
         snapshot = service.snapshot
+        prepareImages(for: snapshot)
         editor.onTextRevision = { [weak self] url, revision, text in
             self?.update(file: url, revision: revision, text: text)
         }
@@ -88,6 +93,7 @@ final class DeskCodeDocumentChecking {
         precondition(Thread.isMainThread)
         guard isCurrent(candidate) else { return false }
         snapshot = candidate
+        prepareImages(for: candidate)
         onSnapshot?(candidate)
         return true
     }
@@ -99,6 +105,53 @@ final class DeskCodeDocumentChecking {
               candidate.version == editor.textRevision, candidate.text.utf8.elementsEqual(editor.text.utf8),
               candidate.generation == service.snapshot.generation else { return false }
         return true
+    }
+
+    /// Drawing receives only this current checked generation's inputs. A replaced source clears the canvas
+    /// before the background preparation starts; the previous private copy is never presented as current.
+    func imageResources(for candidate: DeskSnapshot) -> DeskProgramResources.Input {
+        precondition(Thread.isMainThread)
+        guard isCurrent(candidate), candidate.isChecked else { return .pending }
+        if let prepared, resourceGeneration == candidate.generation, prepared.failure == nil, !prepared.unchanged() {
+            prepareImages(for: candidate)
+        }
+        return imageInput
+    }
+
+    private func prepareImages(for candidate: DeskSnapshot) {
+        precondition(Thread.isMainThread)
+        prepared?.removeCopies()
+        prepared = nil
+        resourceGeneration = nil
+        let next = resourceRequest.addingReportingOverflow(1)
+        guard !next.overflow else { imageInput = .failed("Image resource generation overflow"); return }
+        resourceRequest = next.partialValue
+        imageInput = .ready([:])
+        guard candidate.isChecked else { return }
+        let sources = Desk.compile(candidate.checked, catalog: candidate.options.catalog).imageSources
+        guard !sources.isEmpty else { return }
+        imageInput = .pending
+        let request = resourceRequest, root = file.deletingLastPathComponent()
+        let limits = candidate.options.catalog.limits
+        checkQueue.async { [weak self] in
+            let result = DeskProgramResources.prepare(root: root, literals: sources,
+                                                      maximumBytes: limits.maximumPackageBytes,
+                                                      maximumFiles: limits.maximumPackageFiles)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.resourceRequest == request, self.isCurrent(candidate) else {
+                    result.removeCopies(); return
+                }
+                // A curated resource package supplies the existing checker with existence/size facts. Its sole
+                // Desk text is the already-open buffer; setPackage does not read sibling files or a manifest.
+                let package = DeskPackage(files: result.files, texts: [self.fileID: candidate.text], isSingleFile: true)
+                let checked = self.service.setPackage(package)
+                self.prepared = result
+                self.resourceGeneration = checked.generation
+                self.imageInput = result.failure.map(DeskProgramResources.Input.failed) ?? .ready(result.images)
+                self.snapshot = checked
+                self.onSnapshot?(checked)
+            }
+        }
     }
 
     /// A standalone document accepts only a complete edit of the file it already opened.
@@ -171,6 +224,9 @@ final class DeskCodeDocumentChecking {
     func close() {
         precondition(Thread.isMainThread)
         closed = true
+        prepared?.removeCopies()
+        prepared = nil
+        imageInput = .pending
         editor?.onTextRevision = nil
         onSnapshot = nil
     }

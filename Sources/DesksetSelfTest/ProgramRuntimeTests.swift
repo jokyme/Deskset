@@ -581,4 +581,73 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         programFailure(t, .layoutOverflow(id)) { _ = try runtime.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) } }
         t.equal(runtime.generation, 0)
     }
+
+    t.suite("Program: images: supplied natural inputs lower four modes without host measurement") {
+        let stamp = ImageStamp(seconds: 7, nanoseconds: 8, size: 123, inode: 9)
+        let resource = ProgramImageResource(path: "/fixture/picture.png", naturalSize: SkinSize(width: 20, height: 10), stamp: stamp)
+        let id = ElementID(name: "picture", index: 0)
+        for (mode, aspect, tiled) in [(ProgramImageMode.fit, 1, false), (.fill, 2, false), (.stretch, 0, false), (.tile, 0, true)] {
+            let image = ProgramElement(id: id, content: .image(ProgramImage(source: "picture.png", mode: mode)),
+                                       padding: SkinInsets(left: 2, top: 3, right: 2, bottom: 3))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Picture", root: image))
+            let scene = try runtime.project(environment: programEnvironment(), images: ["picture.png": resource]) { _, _, _ in
+                throw ProgramRuntimeError.invalidMeasurement(id)
+            }
+            t.equal(scene.size, SkinSize(width: 24, height: 16)); t.equal(scene.elements[0].id, id)
+            guard case .image(let drawing)? = scene.drawingItems.first else { t.check(false); return }
+            t.equal(drawing.contentFrame, SkinRect(x: 2, y: 3, width: 20, height: 10))
+            t.equal(drawing.path, resource.path); t.check(drawing.options.useExifOrientation)
+            t.equal(drawing.preserveAspectRatio, aspect); t.equal(drawing.tile, tiled)
+            t.equal(drawing.naturalSize, resource.naturalSize)
+            t.equal(scene.elements[0].imageDependencies, [ImageDependency(path: resource.path, stamp: stamp)])
+            let resized = ProgramImageResource(path: "/fixture/next.png", naturalSize: SkinSize(width: 30, height: 12), stamp: stamp)
+            let next = try runtime.project(environment: programEnvironment(.dark), images: ["picture.png": resized]) { _, _, _ in SkinSize() }
+            t.equal(next.size, SkinSize(width: 34, height: 18)); t.equal(scene.size, SkinSize(width: 24, height: 16))
+        }
+    }
+
+    t.suite("Program: images: shared proposals hidden boxes and startup remain transactional") {
+        let first = ElementID(name: "first", index: 1), second = ElementID(name: "second", index: 2)
+        let root = ProgramElement(id: ElementID(name: "row", index: 0), content: .row(spacing: 4, align: .center, children: [
+            ProgramElement(id: first, content: .image(ProgramImage(source: "a")), width: .fill, height: .fill),
+            ProgramElement(id: second, content: .image(ProgramImage(source: "a")), width: .fill, height: .fill, hidden: true)
+        ]), width: .fixed(60), height: .fixed(20), padding: SkinInsets(left: 2, top: 2, right: 2, bottom: 2))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Flexible pictures", root: root))
+        let input = ProgramImageResource(path: "/fixture/a", naturalSize: SkinSize(width: 16, height: 8),
+                                         stamp: ImageStamp(seconds: 1, nanoseconds: 0, size: 12, inode: 3))
+        let scene = try runtime.project(environment: programEnvironment(), images: ["a": input]) { _, _, _ in SkinSize() }
+        t.equal(scene.elements[1].frame, SkinRect(x: 2, y: 2, width: 26, height: 16))
+        t.equal(scene.elements[2].frame, SkinRect(x: 32, y: 2, width: 26, height: 16))
+        t.equal(scene.elements[2].visibility, .hiddenKeepsSpace); t.check(scene.elements[2].items.isEmpty)
+        t.equal(scene.drawingItems.count, 1)
+        programFailure(t, .invalidImage(first)) { _ = try runtime.project(environment: programEnvironment()) { _, _, _ in SkinSize() } }
+        t.equal(runtime.generation, 1)
+        let zero = ProgramElement(id: first, content: .image(ProgramImage(source: "a")), width: .fixed(0), height: .fixed(8))
+        var empty = try ProgramRuntime(program: WidgetProgram(name: "Empty", root: zero))
+        t.check(try empty.project(environment: programEnvironment(), images: ["a": input]) { _, _, _ in SkinSize() }.drawingItems.isEmpty)
+    }
+
+    t.suite("Program: images: invalid direct sources inputs and overflow never publish a partial scene") {
+        let id = ElementID(name: "image", index: 0)
+        for source in ["", "a\0b", String(repeating: "x", count: 32_769)] {
+            programFailure(t, .invalidImage(id)) {
+                _ = try ProgramRuntime(program: WidgetProgram(name: "Bad", root: ProgramElement(id: id, content: .image(ProgramImage(source: source)))))
+            }
+        }
+        let image = ProgramElement(id: id, content: .image(ProgramImage(source: "a")))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Image", root: image))
+        for size in [SkinSize(width: 0, height: 1), SkinSize(width: 1, height: -1), SkinSize(width: .nan, height: 2), SkinSize(width: 2, height: .infinity)] {
+            let input = ProgramImageResource(path: "/fixture/a", naturalSize: size, stamp: ImageStamp(seconds: 0, nanoseconds: 0, size: 1, inode: 1))
+            programFailure(t, .invalidImage(id)) { _ = try runtime.project(environment: programEnvironment(), images: ["a": input]) { _, _, _ in SkinSize() } }
+            t.equal(runtime.generation, 0)
+        }
+        let bad = ProgramImageResource(path: "", naturalSize: SkinSize(width: 8, height: 8), stamp: ImageStamp(seconds: 0, nanoseconds: 0, size: 1, inode: 1))
+        programFailure(t, .invalidImage(id)) { _ = try runtime.project(environment: programEnvironment(), images: ["a": bad]) { _, _, _ in SkinSize() } }
+        let padded = ProgramElement(id: id, content: .image(ProgramImage(source: "a")), padding: SkinInsets(left: .greatestFiniteMagnitude, top: 0, right: 1, bottom: 0))
+        var overflowing = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: padded))
+        let huge = ProgramImageResource(path: "/fixture/a", naturalSize: SkinSize(width: .greatestFiniteMagnitude, height: 1), stamp: bad.stamp)
+        programFailure(t, .layoutOverflow(id)) { _ = try overflowing.project(environment: programEnvironment(), images: ["a": huge]) { _, _, _ in SkinSize() } }
+        t.equal(overflowing.generation, 0)
+    }
+
 }

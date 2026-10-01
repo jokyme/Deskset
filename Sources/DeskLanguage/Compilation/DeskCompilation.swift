@@ -23,29 +23,43 @@ public struct DeskCompilationResult: Sendable {
     /// Original checker diagnostics, including useful warnings and notes; never rewritten or suppressed.
     public let diagnostics: [Diagnostic]
     public let issues: [DeskCompilationIssue]
+    /// Literal demands of a fully supported program, also before missing assets have been supplied. Missing-file
+    /// diagnostics are retained and still prevent program publication; a host can prepare these inputs and recheck.
+    public let imageSources: [String]
 }
 
 public extension Desk {
     /// Checked source → the shared Core program. It supports String/Bool declarations and text expressions,
     /// system.dark, root onLoad variable assignments, proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
-    /// their solid centered outlines, Rectangle uniform corner radii, and constant box/style properties.
+    /// their solid centered outlines, Rectangle uniform corner radii, literal local Images with imageMode, and constant box/style properties.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
     /// Other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
-        guard !checked.diagnostics.contains(where: { $0.severity == .error }) else {
-            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [])
+        let errors = checked.diagnostics.filter { $0.severity == .error }
+        guard errors.allSatisfy({ $0.id == .fileNotFound }) else {
+            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [], imageSources: [])
         }
         do {
             var compiler = StaticProgramCompiler(checked: checked, catalog: catalog)
-            return DeskCompilationResult(program: try compiler.compile(), diagnostics: checked.diagnostics, issues: [])
+            let program = try compiler.compile()
+            var pending = [program.root], images = Set<String>()
+            while let node = pending.popLast() {
+                switch node.content {
+                case .image(let image): images.insert(image.source)
+                case .column(_, _, let children), .row(_, _, let children): pending.append(contentsOf: children)
+                default: break
+                }
+            }
+            return DeskCompilationResult(program: errors.isEmpty ? program : nil, diagnostics: checked.diagnostics,
+                                         issues: [], imageSources: images.sorted(by: DeskPackagePath.precedes))
         } catch let issue as DeskCompilationIssue {
-            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue])
+            return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics, issues: [issue], imageSources: [])
         } catch {
             return DeskCompilationResult(program: nil, diagnostics: checked.diagnostics,
                                          issues: [DeskCompilationIssue(kind: .invalidProgram, file: checked.tree.file,
                                                                        range: checked.tree.rootNode.textRange,
-                                                                       message: "Invalid shared program: \(error)")])
+                                                                       message: "Invalid shared program: \(error)")], imageSources: [])
         }
     }
 }

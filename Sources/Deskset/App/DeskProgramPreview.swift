@@ -19,16 +19,20 @@ final class DeskProgramPreviewController: NSViewController {
     private let actualButton = NSButton(title: StudioText[.actualSizeShort], target: nil, action: nil)
     private var snapshot: DeskSnapshot?
     private var runtime: ProgramRuntime?
+    private var resources: ((DeskSnapshot) -> DeskProgramResources.Input)?
     private var accepts: ((DeskSnapshot) -> Bool)?
     private var projecting = false
     private(set) var state: State = .checking
     private(set) var scene: WidgetScene?
 
-    init(accepts: @escaping (DeskSnapshot) -> Bool) {
+    init(resources: @escaping (DeskSnapshot) -> DeskProgramResources.Input = { _ in .ready([:]) },
+         accepts: @escaping (DeskSnapshot) -> Bool) {
+        self.resources = resources
         self.accepts = accepts
         super.init(nibName: nil, bundle: nil)
         canvas.beforeDrawing = { [weak self] in self?.prepareToDraw() ?? false }
         canvas.onEnvironmentChange = { [weak self] in self?.refreshEnvironment() }
+        canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -88,6 +92,13 @@ final class DeskProgramPreviewController: NSViewController {
         guard state != .closed else { return }
         if let readError { clear(.unavailable(readError)); return }
         guard accepts?(candidate) == true, candidate.isChecked else { clear(.checking); return }
+        // A supported new literal can still have DK4029 in the old resource package while its actual bytes are
+        // being prepared. Keep that diagnostic, but present loading until the curated package is rechecked.
+        switch resources?(candidate) ?? .pending {
+        case .pending: clear(.checking); return
+        case .failed(let message): clear(.unavailable(message)); return
+        case .ready: break
+        }
         let result = Desk.compile(candidate.checked, catalog: candidate.options.catalog)
         guard let program = result.program else {
             if let diagnostic = result.diagnostics.first(where: { $0.severity == .error }) {
@@ -123,7 +134,13 @@ final class DeskProgramPreviewController: NSViewController {
         canvas.context = context
         let stamp = environment()
         do {
-            let next = try runtime.project(environment: stamp) { text, style, width in
+            let images: [String: ProgramImageResource]
+            switch resources?(snapshot) ?? .pending {
+            case .pending: clear(.checking); return
+            case .failed(let message): clear(.unavailable(message)); return
+            case .ready(let values): images = values
+            }
+            let next = try runtime.project(environment: stamp, images: images) { text, style, width in
                 // Reject an impossible native font before constructing it; never clamp the program's point size.
                 let pixels = style.fontSize * (96.0 / 72.0) * stamp.scale
                 guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else {
@@ -153,6 +170,7 @@ final class DeskProgramPreviewController: NSViewController {
                 switch $0 {
                 case .text(let value): return !value.text.isEmpty
                 case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
+                case .image(let image): return image.path != nil && image.contentFrame.width > 0 && image.contentFrame.height > 0
                 case .shape(let shape):
                     return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains {
                         $0.fill.isVisible || ($0.stroke.isVisible && $0.strokePlan?.isEmpty == false)
@@ -203,6 +221,11 @@ final class DeskProgramPreviewController: NSViewController {
         guard state != .closed, let snapshot, accepts?(snapshot) == true else {
             if state != .closed { clear(.checking) }
             return false
+        }
+        switch resources?(snapshot) ?? .pending {
+        case .pending: clear(.checking); return false
+        case .failed(let message): clear(.unavailable(message)); return false
+        case .ready: break
         }
         refreshEnvironment()
         return state == .ready && scene != nil
@@ -261,8 +284,10 @@ final class DeskProgramPreviewController: NSViewController {
         precondition(Thread.isMainThread)
         clear(.closed)
         accepts = nil
+        resources = nil
         canvas.beforeDrawing = nil
         canvas.onEnvironmentChange = nil
+        canvas.onImageFailure = nil
     }
 }
 
@@ -273,11 +298,27 @@ final class DeskProgramPreviewCanvas: NSView {
     fileprivate var context: DrawContext?
     fileprivate var beforeDrawing: (() -> Bool)?
     fileprivate var onEnvironmentChange: (() -> Void)?
+    fileprivate var onImageFailure: (() -> Void)?
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         guard beforeDrawing?() == true, let scene, let context,
               let destination = NSGraphicsContext.current?.cgContext else { return }
+        // Qualify the actual renderer's drawn-size input before borrowing any destination pixels. A real
+        // decoding failure clears the owner, rather than treating a valid header/thumbnail as a successful draw.
+        for item in scene.drawingItems {
+            guard case .image(let image) = item, var path = image.path else { continue }
+            if image.naturalSize != nil {
+                guard ImageRenderer.preparedNaturalImage(image, in: destination) != nil else { onImageFailure?(); return }
+                continue
+            }
+            let fit = image.preserveAspectRatio == 1
+            if image.decodesAtDrawnSize, !image.tile {
+                path = ImageRenderer.drawnDecodePath(path, options: image.options, drawn: image.contentFrame.cgRect.size,
+                                                    fit: fit, in: destination)
+            }
+            guard PreparedImage(path: path, options: image.options) != nil else { onImageFailure?(); return }
+        }
         destination.saveGState()
         defer { destination.restoreGState() }
         DesksetDraw.DrawExecutor.draw(scene: scene, in: destination, context: context, cycle: 1,

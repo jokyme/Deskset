@@ -18,17 +18,38 @@ package struct PreparedImage {
     package let size: CGSize
     /// Opacity 0…1 (ImageAlpha, else ImageTint's alpha; 1 with a ColorMatrix).
     let alpha: CGFloat
+    fileprivate let explicitNaturalSize: CGSize?
 
-    package init?(path: String, options: ImageOptions) {
+    package init?(path: String, options: ImageOptions, naturalSize: SkinSize? = nil) {
+        let entry: Images.Entry?
+        if let naturalSize {
+            // This explicit contract is the supported Desk file path, not a replacement for ImageCrop/matrix or
+            // symbol semantics. The immutable entry must be the very generation subsequently prepared below.
+            guard naturalSize.width.isFinite, naturalSize.height.isFinite,
+                  naturalSize.width > 0, naturalSize.height > 0, options.useExifOrientation,
+                  options.crop == nil, options.processingMatrix == nil, options.flip == .none, options.rotate == 0,
+                  !MacSymbol.isSymbolPath(path), let value = Images.entry(atPath: path) else { return nil }
+            entry = value
+        } else { entry = nil }
         guard let p = Images.prepared(atPath: path, options: options) else { return nil }
+        if let entry {
+            guard entry.generation == p.generation else { return nil }
+            // The legacy orientation helper returns the raw image when deriving fails. A new bitmap identity
+            // from this same entry proves orientation actually ran, including mirrors and square sources.
+            guard entry.exifOrientation == 1 || p.image !== entry.image else { return nil }
+        }
         self.path = path
         self.options = options
         image = p.image
         generation = p.generation
         recipe = p.recipe
-        density = p.density
-        let rotated = ImageOptions.rotatedSize(width: Double(p.image.width) / Double(p.density.x),
-                                               height: Double(p.image.height) / Double(p.density.y),
+        if let naturalSize {
+            explicitNaturalSize = CGSize(width: naturalSize.width, height: naturalSize.height)
+            density = Images.Density(x: CGFloat(p.image.width) / CGFloat(naturalSize.width),
+                                     y: CGFloat(p.image.height) / CGFloat(naturalSize.height))
+        } else { explicitNaturalSize = nil; density = p.density }
+        let rotated = ImageOptions.rotatedSize(width: naturalSize?.width ?? Double(p.image.width) / Double(p.density.x),
+                                               height: naturalSize?.height ?? Double(p.image.height) / Double(p.density.y),
                                                degrees: options.rotate)
         size = CGSize(width: rotated.width, height: rotated.height)
         alpha = CGFloat(options.drawAlpha / 255)
@@ -36,7 +57,8 @@ package struct PreparedImage {
 
     /// The prepared image's size in points before ImageRotate.
     var unrotatedSize: CGSize {
-        CGSize(width: CGFloat(image.width) / density.x, height: CGFloat(image.height) / density.y)
+        if let explicitNaturalSize { return explicitNaturalSize }
+        return CGSize(width: CGFloat(image.width) / density.x, height: CGFloat(image.height) / density.y)
     }
 
     var hasTransform: Bool { options.flip != .none || options.rotate != 0 }
@@ -116,6 +138,11 @@ package enum ImageRenderer {
 
     package static func draw(_ draw: ImageDraw, in ctx: CGContext) {
         let area = draw.contentFrame.cgRect
+        if draw.naturalSize != nil {
+            guard let prepared = preparedNaturalImage(draw, in: ctx), area.width > 0, area.height > 0 else { return }
+            drawImageFile(prepared, in: area, preserveAspectRatio: draw.preserveAspectRatio, tile: draw.tile, ctx)
+            return
+        }
         if draw.placement != .meter {
             guard let path = draw.path,
                   let prepared = PreparedImage(path: path, options: draw.options, drawn: nil, in: ctx) else { return }
@@ -146,6 +173,31 @@ package enum ImageRenderer {
         }
         drawImageFile(prepared, in: area, preserveAspectRatio: draw.preserveAspectRatio, tile: draw.tile,
                       scaleMargins: draw.scaleMargins, ctx)
+    }
+
+    /// Opt-in upright file preparation shared by Desk preflight and actual drawing. Decode resolution may be
+    /// bounded, while the declared natural points still govern both aspect ratio and the exact tile period.
+    package static func preparedNaturalImage(_ draw: ImageDraw, in ctx: CGContext) -> PreparedImage? {
+        guard let natural = draw.naturalSize, draw.placement == .meter, draw.maskPath == nil,
+              draw.scaleMargins == nil, let original = draw.path else { return nil }
+        var path = original
+        if draw.decodesAtDrawnSize, !draw.tile {
+            path = drawnDecodePath(path, options: draw.options, drawn: draw.contentFrame.cgRect.size,
+                                   fit: draw.preserveAspectRatio == 1, in: ctx)
+        }
+        if let header = Images.header(atPath: original), header.orientation != 1,
+           header.width > 0, header.height > 0 {
+            let limit = min(Images.decodeRequest(path)?.side ?? Images.maxDecodeSide, Images.maxDecodeSide)
+            let scale = min(1, Double(limit) / Double(max(header.width, header.height)))
+            let pixels = (Double(header.width) * scale).rounded(.up) * (Double(header.height) * scale).rounded(.up)
+            if pixels > Double(Images.maxDerivedPixels) {
+                // A square at this decode side fits the existing orientation-bitmap budget. This is a bounded
+                // decode, not a rejection or a new natural-size cap; skinny pictures keep their larger decode.
+                let side = Int(Double(Images.maxDerivedPixels).squareRoot().rounded(.down))
+                path = Images.drawnPath(original, maxPixelSide: side)
+            }
+        }
+        return PreparedImage(path: path, options: draw.options, naturalSize: natural)
     }
 
     /// `MacDecodeSize=Drawn`: the path that decodes the file `path` at the pixels it covers when drawn over `drawn`
@@ -193,7 +245,7 @@ package enum ImageRenderer {
         if tile {
             guard let image = prepared.flattened() else { return }
             ctx.setAlpha(prepared.alpha)
-            tileImage(image, in: rect, ctx, density: prepared.density)
+            tileImage(image, in: rect, ctx, density: prepared.density, naturalSize: prepared.explicitNaturalSize)
             return
         }
         if preserveAspectRatio == 0, let margins = scaleMargins {
@@ -226,7 +278,8 @@ package enum ImageRenderer {
 
     /// Repeats `image` at its size (pixels / `density` points) over `rect`, starting at the top-left corner (one
     /// CoreGraphics call).
-    static func tileImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: Images.Density = .one) {
+    static func tileImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: Images.Density = .one,
+                          naturalSize: CGSize? = nil) {
         guard image.width > 0, image.height > 0, rect.width > 0, rect.height > 0 else { return }
         ctx.saveGState()
         ctx.clip(to: rect)
@@ -235,8 +288,9 @@ package enum ImageRenderer {
         ctx.translateBy(x: rect.minX, y: rect.minY)
         ctx.scaleBy(x: 1, y: -1)
         ctx.interpolationQuality = .high
-        let h = CGFloat(image.height) / density.y
-        ctx.draw(image, in: CGRect(x: 0, y: -h, width: CGFloat(image.width) / density.x, height: h), byTiling: true)
+        let h = naturalSize?.height ?? CGFloat(image.height) / density.y
+        let w = naturalSize?.width ?? CGFloat(image.width) / density.x
+        ctx.draw(image, in: CGRect(x: 0, y: -h, width: w, height: h), byTiling: true)
         ctx.restoreGState()
     }
 

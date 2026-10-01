@@ -39,6 +39,10 @@ mono.systemUptime	Sources/Deskset/App/CodeEditorRouter.swift	*	Skin Studio, Mana
 
 zone.localizedText	Sources/Deskset/App/CodeEditorSettings.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 
+background.mainHop	Sources/Deskset/App/DeskCodeDocumentChecking.swift	1	one explicitly opened Desk document's image preparation; current request/text/revision/service generation publishes on main, never a skin input
+effect.fileWrite	Sources/Deskset/App/DeskProgramResources.swift	4	only the owner's 0700 temporary image directory, exact private copies and cleanup; user resources are read only
+random.UUID	Sources/Deskset/App/DeskProgramResources.swift	1	unique private temporary image directory name, not program semantics or a skin input
+
 background.mainHop	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 event.notification	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin
 timer.Timer	Sources/Deskset/App/CodeEditorView.swift	*	Skin Studio, Manage or Settings UI; never runs inside a skin

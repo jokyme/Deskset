@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid shape paints, scalar text bindings and root startup assignments through the shared executor.
+/// proposal-based stacks, solid shape paints, local images, scalar text bindings and root startup assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -39,10 +39,30 @@ public enum ProgramCornerRadius: Equatable, Sendable {
     case points(Double), full
 }
 
+/// The picture fills its final content box. ImageSource resolution and decoding remain with the host.
+public enum ProgramImageMode: Equatable, Sendable { case fit, fill, stretch, tile }
+
+public struct ProgramImage: Equatable, Sendable {
+    public let source: String
+    public let mode: ProgramImageMode
+    public init(source: String, mode: ProgramImageMode = .fit) { self.source = source; self.mode = mode }
+}
+
+/// One approved, upright image input. These are scene values, not a graphics object or a retained resource owner.
+public struct ProgramImageResource: Equatable, Sendable {
+    public let path: String
+    public let naturalSize: SkinSize
+    public let stamp: ImageStamp
+    public init(path: String, naturalSize: SkinSize, stamp: ImageStamp) {
+        self.path = path; self.naturalSize = naturalSize; self.stamp = stamp
+    }
+}
+
 /// A box in points. Child order is drawing order; identity is assigned by the producer, never by a syntax version.
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
+        case image(ProgramImage)
         /// An unrounded solid rectangle in its content box. Nonfixed dimensions need an explicit ideal size.
         case rectangle(fill: ProgramColor)
         /// A solid curved shape. Like Rectangle, nonfixed dimensions require the producer's ideal size.

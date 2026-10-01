@@ -3,7 +3,7 @@ import Foundation
 public enum ProgramRuntimeError: Error, Equatable {
     case elementLimit, depthLimit, emptyProgram, duplicateIdentity(ElementID)
     case invalidGeometry(ElementID), invalidText(ElementID), invalidMeasurement(ElementID)
-    case invalidPaint(ElementID)
+    case invalidPaint(ElementID), invalidImage(ElementID)
     case layoutOverflow(ElementID), invalidEnvironment, generationOverflow
     case expressionLimit, expressionDepth, invalidExpression
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
@@ -67,6 +67,12 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 if case .literal(let color) = text.color, !Self.valid(color) { throw ProgramRuntimeError.invalidText(node.id) }
+            case .image(let image):
+                contentCount += 1
+                guard node.idealSize == nil, !image.source.isEmpty,
+                      image.source.utf16.count <= ProgramLimits.maximumTextLength, !image.source.contains("\0") else {
+                    throw ProgramRuntimeError.invalidImage(node.id)
+                }
             case .rectangle(let fill), .shape(_, let fill):
                 contentCount += 1
                 if node.idealSize == nil {
@@ -88,7 +94,7 @@ public struct ProgramRuntime: Sendable {
 
     /// The closure must measure the supplied style exactly as it draws it, under the optional wrapping width.
     /// It is used synchronously and is not retained. Graphics/font resources stay outside Core.
-    public mutating func project(environment: EnvironmentStamp,
+    public mutating func project(environment: EnvironmentStamp, images: [String: ProgramImageResource] = [:],
                                  measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> WidgetScene {
         let appearance = environment.appearance.value
         guard environment.scale.isFinite, environment.scale > 0,
@@ -105,7 +111,7 @@ public struct ProgramRuntime: Sendable {
             // may be retried after failed measurement/layout; no external action is admitted here.
             for assignment in program.onLoad { try ActionExecutor.perform(assignment, on: &evaluation) }
         }
-        var layoutState = LayoutState()
+        var layoutState = LayoutState(images: images)
         _ = flexibility(program.root, into: &layoutState)
         let box = try layout(program.root, proposedWidth: nil, proposedHeight: nil, appearance: appearance,
                              resolve: { try evaluation.text($0) }, measure: measure, state: &layoutState)
@@ -135,6 +141,7 @@ public struct ProgramRuntime: Sendable {
         let text: String?
         let fill: RGBA?
         let stroke: RGBA?
+        let image: ProgramImageResource?
         let children: [(Box, SkinPoint)]
     }
 
@@ -145,6 +152,7 @@ public struct ProgramRuntime: Sendable {
     /// Only this projection's pure results. Repeating a proposal uses the same measured style/size;
     /// no font or graphics resource, closure, cache or partial scene survives publication or failure.
     private struct LayoutState {
+        let images: [String: ProgramImageResource]
         var flex: [ElementID: Flexibility] = [:]
         var boxes: [ProposalKey: Box] = [:]
         var text: [ElementID: TextInput] = [:]
@@ -155,7 +163,7 @@ public struct ProgramRuntime: Sendable {
         let children: [ProgramElement]
         switch node.content {
         case .column(_, _, let nodes), .row(_, _, let nodes): children = nodes
-        case .text, .rectangle, .shape: children = []
+        case .text, .image, .rectangle, .shape: children = []
         }
         let descendants = children.map { flexibility($0, into: &state) }
         let value = Flexibility(width: node.width == .fill || (node.width == .fit && descendants.contains { $0.width }),
@@ -191,7 +199,7 @@ public struct ProgramRuntime: Sendable {
         let requestedHeight = requested(node.height, proposal: proposedHeight, flex: flexible.height, minimum: node.minHeight, maximum: node.maxHeight)
         let offeredWidth = requestedWidth ?? proposedWidth.map { clamp($0, minimum: node.minWidth, maximum: node.maxWidth) } ?? node.maxWidth
         let offeredHeight = requestedHeight ?? proposedHeight.map { clamp($0, minimum: node.minHeight, maximum: node.maxHeight) } ?? node.maxHeight
-        var width: Double, height: Double, style: TextStyle?, resolvedText: String?, fill: RGBA?
+        var width: Double, height: Double, style: TextStyle?, resolvedText: String?, fill: RGBA?, image: ProgramImageResource?
         var children: [(Box, SkinPoint)] = []
         var minimumContent = SkinSize()
         switch node.content {
@@ -227,6 +235,16 @@ public struct ProgramRuntime: Sendable {
             guard height >= naturalHeight else { throw ProgramRuntimeError.layoutOverflow(node.id) }
             style = finalStyle
             minimumContent = SkinSize(width: actual.width, height: actual.height)
+        case .image(let input):
+            guard let resource = state.images[input.source], !resource.path.isEmpty, !resource.path.contains("\0"),
+                  resource.naturalSize.width.isFinite, resource.naturalSize.height.isFinite,
+                  resource.naturalSize.width > 0, resource.naturalSize.height > 0 else {
+                throw ProgramRuntimeError.invalidImage(node.id)
+            }
+            image = resource
+            width = try requestedWidth ?? clamp(sum([resource.naturalSize.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
+            height = try requestedHeight ?? clamp(sum([resource.naturalSize.height, vertical]), minimum: node.minHeight, maximum: node.maxHeight)
+            minimumContent = SkinSize(width: max(0, width - horizontal), height: max(0, height - vertical))
         case .rectangle(let color), .shape(_, let color):
             let ideal = node.idealSize ?? SkinSize()
             width = try requestedWidth ?? clamp(sum([ideal.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
@@ -396,12 +414,12 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .rectangle, .shape: break
+            case .text, .image, .rectangle, .shape: break
             }
         }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight),
-                      style: style, text: resolvedText, fill: fill, stroke: node.stroke?.color.resolved(in: appearance), children: children)
+                      style: style, text: resolvedText, fill: fill, stroke: node.stroke?.color.resolved(in: appearance), image: image, children: children)
         state.boxes[key] = box
         return box
     }
@@ -414,6 +432,7 @@ public struct ProgramRuntime: Sendable {
         }
         var items: [DrawItem] = []
         let kind: ElementKind
+        var imageDependencies: [ImageDependency] = []
         switch box.node.content {
         case .text:
             kind = .string
@@ -425,6 +444,26 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.layoutOverflow(box.node.id)
                 }
                 items = [.text(TextDraw(text: text, style: style, frame: frame, contentFrame: content, anchor: point))]
+            }
+        case .image(let input):
+            kind = .image
+            guard let resource = box.image else { throw ProgramRuntimeError.invalidImage(box.node.id) }
+            if !hidden {
+                let content = SkinRect(x: point.x + box.content.x, y: point.y + box.content.y,
+                                       width: box.content.width, height: box.content.height)
+                guard [content.x, content.y, content.width, content.height, content.maxX, content.maxY].allSatisfy(\.isFinite) else {
+                    throw ProgramRuntimeError.layoutOverflow(box.node.id)
+                }
+                if content.width > 0, content.height > 0 {
+                    var options = ImageOptions()
+                    options.useExifOrientation = true
+                    let aspect = input.mode == .fit ? 1 : (input.mode == .fill ? 2 : 0)
+                    items = [.image(ImageDraw(contentFrame: content, path: resource.path, options: options,
+                                              maskPath: nil, maskOptions: ImageOptions(), preserveAspectRatio: aspect,
+                                              tile: input.mode == .tile, scaleMargins: nil, decodesAtDrawnSize: true,
+                                              naturalSize: resource.naturalSize))]
+                    imageDependencies = [ImageDependency(path: resource.path, stamp: resource.stamp)]
+                }
             }
         case .column: kind = .unknown("Column")
         case .row: kind = .unknown("Row")
@@ -449,7 +488,7 @@ public struct ProgramRuntime: Sendable {
         }
         elements.append(SceneElement(id: box.node.id, kind: kind, frame: frame, anchor: point,
                                      visibility: hidden ? .hiddenKeepsSpace : .visible, container: nil, isContainer: false,
-                                     items: items, glass: nil, imageDependencies: []))
+                                     items: items, glass: nil, imageDependencies: imageDependencies))
         for (child, offset) in box.children {
             try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden, into: &elements)
         }
