@@ -48,6 +48,7 @@ enum SkinLayerContentSelfTests {
         patchReclaimTests(t)
         patchClaimTests(t)
         hostValueTests(t)
+        eWindowQualificationTests(t)
     }
 
     private static func app(_ t: AppTestRunner, threading: SkinThreading, source: String = text) throws -> AppController {
@@ -805,6 +806,204 @@ enum SkinLayerContentSelfTests {
         t.equal(compared(before, after, acknowledged), before, "acknowledged geometry is fully audited")
     }
     #endif
+
+    /// Native qualification only: a separate E subtree is attached to an actual, never-ordered window.
+    /// The window's C provider remains installed; this does not select E as its production delivery mode.
+    private static func eWindowQualificationTests(_ t: AppTestRunner) {
+        t.suite("App: layer window E qualification: actual window profile and worker CA callbacks agree with C Single") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            // The usual activate helper intentionally sets sRGB. Here the actual window supplies its profile.
+            guard let window = app.activate(config: "App\\LayerContent", file: "Test.ini", contentMode: mode),
+                  let executor = window.runtime.executor as? SkinThreadExecutor else {
+                return t.check(false, "actual window and physical worker are required")
+            }
+            t.check(AppSelfTest.spin(timeout: 30) { window.isStarted }, "actual C activation finishes before E qualification")
+            window.pauseUpdates()
+            window.visibilityForTesting = true
+            window.publishFacts(force: true)
+            window.runtime.send(.firstFrame)
+            window.runtime.send(.frameWanted)
+            t.check(AppSelfTest.spin(timeout: 30) { window.content.installedLayerRoot != nil }, "the existing C frame is installed")
+            let facts = window.facts, size = window.view.bounds.size
+            guard let space = facts.colorSpace, space.model == .rgb, let viewLayer = window.view.layer,
+                  let device = MTLCreateSystemDefaultDevice(), size == CGSize(width: 48, height: 32) else {
+                return t.check(false, "actual RGB profile, known logical size and native Metal are required")
+            }
+            let scale = facts.scale
+            let w = (size.width * scale).rounded(.up), h = (size.height * scale).rounded(.up)
+            guard scale.isFinite, scale > 0, w.isFinite, h.isFinite,
+                  w > 0, h > 0, w <= CGFloat(Rasterizer.maximumDimension), h <= CGFloat(Rasterizer.maximumDimension),
+                  let rect = InkBounds.DeviceRect(minX: 0, minY: 0, maxX: Int(w), maxY: Int(h)) else {
+                return t.check(false, "actual window device geometry qualifies without inventing a scale")
+            }
+            let plan = SinglePartition.plan(in: rect)
+            var owner: ELayerContent?
+            let created = Guarded<Result<(CALayer, ELayerContent.CallbackReport, Bool), Error>?>(nil)
+            executor.async {
+                created.access { value in value = Result {
+                    let e = try ELayerContent(plan: plan, scale: scale, colorSpace: space,
+                        maximumBaseBitmapBytes: 1_000_000, maximumCallbackBitmapBytes: 1_000_000, executor: executor)
+                    owner = e
+                    return (e.root, e.callbackReport, executor.isOnThread && SkinThreadExecutor.isSkinThread && !Thread.isMainThread)
+                } }
+            }
+            t.check(AppSelfTest.spin(timeout: 30) { created.current != nil }, "the real worker creates the E owner")
+            guard let creation = created.current else { return }
+            let (root, report, createdOnWorker) = try creation.get()
+            t.check(createdOnWorker)
+            let host = CALayer()
+            defer {
+                let cleaned = executor.exclusive(timeout: 30) { () -> Bool in
+                    t.check(Thread.isMainThread && executor.isCurrent && !executor.isOnThread,
+                            "actual owner lease fences E cleanup before main detachment")
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    host.removeFromSuperlayer()
+                    root.removeFromSuperlayer()
+                    owner = nil
+                    CATransaction.commit()
+                    return true
+                }
+                t.equal(cleaned, true, "bounded real owner cleanup and main detach complete")
+            }
+            let attached = executor.exclusive(timeout: 30) { () -> Bool in
+                guard !window.runtime.frames.hasLayerWriter, owner?.root === root else { return false }
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                host.anchorPoint = .zero
+                host.position = .zero
+                host.bounds = CGRect(origin: .zero, size: size)
+                // SkinView already supplies an implicit flip. Unlike C's image wrapper, a native-drawing
+                // subtree must inherit that flip once; another explicit flip cancels the callback's y-down map.
+                host.isGeometryFlipped = false
+                host.contentsFormat = .RGBA8Uint
+                host.addSublayer(root)
+                viewLayer.addSublayer(host)
+                CATransaction.commit()
+                let c = window.content.installedLayerRoot
+                let leaf = root.sublayers?.first
+                print("E-WINDOW hierarchy viewFlipped=\(window.view.isFlipped)")
+                let hierarchy: [(String, CALayer?)] = [("viewLayer", viewLayer), ("provider", c?.superlayer),
+                    ("Croot", c), ("host", host), ("Eroot", root), ("leaf", leaf)]
+                for (name, layer) in hierarchy {
+                    print("E-WINDOW hierarchy \(name) geometryFlipped=\(String(describing: layer?.isGeometryFlipped)) contentsFlipped=\(String(describing: layer?.contentsAreFlipped()))")
+                }
+                return root.superlayer === host && host.superlayer === window.view.layer && window.view.window === window.window
+            }
+            t.equal(attached, true, "main mounts and commits the candidate under the real window's view layer")
+            guard attached == true else { return }
+            t.check(!window.window.isVisible, "this test never orders the actual window on screen")
+            print("E-WINDOW scale=\(scale) device=\(rect) profilePresent=true profileName=\(String(describing: space.name)) windowSpace=\(String(describing: window.window.colorSpace?.localizedName)) panel=\(facts.panelGeneration)")
+            let renderer = try OffscreenRenderer(width: 48, height: 32, device: device,
+                                                 maximumReadbackBytes: 48 * 32 * 4, colorSpace: space)
+            var saved: [[UInt8]] = []
+            typealias Sample = (Result<LayerContentBuilder.Content, Error>, Bool, Bool, Bool)
+            for (cycle, left) in [4, 12, 4].enumerated() {
+                let sampled = Guarded<Sample?>(nil)
+                executor.async {
+                    let physicalBefore = executor.isOnThread && SkinThreadExecutor.isSkinThread && !Thread.isMainThread
+                    let before = window.runtime.frames.layerRuntime?.currentFrame
+                    let result = Result<LayerContentBuilder.Content, Error> {
+                        guard let owner else { throw CocoaError(.coderReadCorrupt) }
+                        let skin = window.runtime.skin!
+                        skin.execute("[!SetVariable Left \(left)][!UpdateMeter *]", from: nil)
+                        let context = SkinRenderContext.of(skin)
+                        let scene = context.sceneProjector.project(skin,
+                            environment: AppSceneEnvironment(scale: Double(scale),
+                                appearance: skin.host?.environment(for: skin).appearance ?? .light,
+                                appearanceName: facts.appearance), glassSource: .published)
+                        // The main attach transaction has already committed; drawing is the next worker transaction.
+                        CATransaction.begin()
+                        CATransaction.setDisableActions(true)
+                        do { try owner.display(scene, context: context.drawing, cycle: skin.updateCount, glass: .hitArea) }
+                        catch { CATransaction.commit(); throw error }
+                        CATransaction.commit()
+                        CATransaction.flush()
+                        let c = try LayerContentBuilder(plan: plan, scale: scale, colorSpace: space,
+                                                       maximumOwnedBitmapBytes: 1_000_000)
+                        guard let content = try c.build(scene, context: context.drawing, cycle: skin.updateCount,
+                                                        glass: .hitArea).first else { throw CocoaError(.coderReadCorrupt) }
+                        return content
+                    }
+                    let after = window.runtime.frames.layerRuntime?.currentFrame
+                    let preserved = before?.sequence == after?.sequence &&
+                        sameImages(before?.contents.map(\.image), after?.contents.map(\.image))
+                    let physicalAfter = executor.isOnThread && SkinThreadExecutor.isSkinThread && !Thread.isMainThread
+                    sampled.access { $0 = (result, physicalBefore, physicalAfter, preserved) }
+                }
+                t.check(AppSelfTest.spin(timeout: 30) { sampled.current != nil }, "real next-transaction worker display reaches its completion fence")
+                guard let sample = sampled.current else { return }
+                t.check(sample.1 && sample.2, "the synchronous E display was bracketed on the physical owner")
+                t.check(sample.3, "native E qualification does not mutate the existing C frame, including on rejection")
+                let observation = report.observation
+                print("E-WINDOW cycle=\(cycle) callbacks=\(observation.callbacks) failure=\(String(describing: observation.failure))")
+                if let destination = observation.destinations.first ?? nil {
+                    print("E-WINDOW bitmap=\(destination.width)x\(destination.height) row=\(destination.bytesPerRow) bpc=\(destination.bitsPerComponent) bpp=\(destination.bitsPerPixel) info=\(destination.bitmapInfo.rawValue) profilePresent=\(destination.entry.colorSpace != nil) matchesWindow=\(destination.entry.colorSpace.map { CFEqual($0, space) } == true) spaceName=\(String(describing: destination.entry.colorSpace?.name)) ctm=\(destination.entry.ctm) device=\(destination.entry.userToDevice)")
+                }
+                t.equal(observation.callbacks, [cycle + 1], "one actual CA callback occurs per worker display")
+                t.equal(observation.failure, nil, "native callback qualification cannot fall back to an empty success")
+                let reference = try sample.0.get()
+                guard let destination = observation.destinations.first ?? nil, let target = destination.target else {
+                    return t.check(false, "actual callback metadata and qualified target are required")
+                }
+                t.check(destination.hasBitmapData && destination.width == rect.width && destination.height == rect.height)
+                t.check(destination.bitsPerComponent == 8 && destination.bitsPerPixel == 32 &&
+                        destination.bitmapInfo.rawValue & CGBitmapInfo.byteOrderMask.rawValue == CGBitmapInfo.byteOrder32Little.rawValue)
+                t.check(destination.entry.colorSpace.map { CFEqual($0, space) } == true && target.colorSpace.map { CFEqual($0, space) } == true,
+                        "the borrowed native callback retains the actual window profile")
+                t.equal(destination.entry.userToDevice, CGAffineTransform(scaleX: scale, y: scale))
+                t.equal(target.userToDevice, CGAffineTransform(scaleX: scale, y: scale))
+                t.check(target.state?.rasterization == nil && target.state?.blendMode == nil,
+                        "borrowed native state is observed, never inferred as owned defaults")
+                t.check(reference.image.width == rect.width && reference.image.height == rect.height &&
+                        reference.image.colorSpace.map { CFEqual($0, space) } == true)
+                let readback = executor.exclusive(timeout: 30) { () -> Result<([UInt8], [UInt8]), Error> in
+                    Result {
+                        t.check(Thread.isMainThread && executor.isCurrent && !executor.isOnThread,
+                                "native observation parks the real owner after display")
+                        guard let parent = host.superlayer,
+                              let index = parent.sublayers?.firstIndex(where: { $0 === host }),
+                              let slot = UInt32(exactly: index), let leaf = root.sublayers?.first else {
+                            throw CocoaError(.coderReadCorrupt)
+                        }
+                        let beforeFlips = [host, root, leaf].map { $0.contentsAreFlipped() }
+                        print("E-WINDOW cycle=\(cycle) observerBefore index=\(index) flips=\(beforeFlips)")
+                        let single = singleTree(reference, scale: scale, size: size)
+                        let actual = try renderer.render(host, at: 0, deadline: .now() + .seconds(30))
+                        let expected = try renderer.render(single, at: 0, deadline: .now() + .seconds(30))
+                        print("E-WINDOW cycle=\(cycle) observerDetached flips=\([host, root, leaf].map { $0.contentsAreFlipped() })")
+                        // CARenderer assigns its own implicit container. Restore the exact actual-window
+                        // tree membership after its completed GPU fence; the next worker must requalify.
+                        CATransaction.begin()
+                        CATransaction.setDisableActions(true)
+                        host.removeFromSuperlayer()
+                        parent.insertSublayer(host, at: slot)
+                        CATransaction.commit()
+                        let afterFlips = [host, root, leaf].map { $0.contentsAreFlipped() }
+                        print("E-WINDOW cycle=\(cycle) observerRestored parent=\(host.superlayer === parent) index=\(String(describing: parent.sublayers?.firstIndex(where: { $0 === host }))) flips=\(afterFlips)")
+                        t.check(host.superlayer === parent)
+                        t.equal(parent.sublayers?.firstIndex(where: { $0 === host }), Optional(index))
+                        t.equal(afterFlips, beforeFlips, "the actual inherited flip is restored through tree membership")
+                        return (actual.rgba, expected.rgba)
+                    }
+                }
+                t.check(readback != nil, "bounded native readback completes")
+                guard let readback else { return }
+                let (actual, expected) = try readback.get()
+                let difference = try PixelComparison.compare(reference: expected, candidate: actual, width: 48, height: 32)
+                print("E-WINDOW cycle=\(cycle) difference=\(difference)")
+                t.check(difference.isExact, "actual attached E / independent C Single strict point-resolution active bytes: \(difference)")
+                t.check(stride(from: 3, to: actual.count, by: 4).contains { actual[$0] > 0 && actual[$0] < 255 }, "actual nonempty translucent ink is required")
+                t.equal(report.observation.failure, nil, "native readback cannot trigger a silent unexpected callback")
+                t.equal(report.observation.callbacks, [cycle + 1], "readback uses the completed backing, not another draw")
+                saved.append(actual)
+            }
+            t.check(saved[0] != saved[1], "B changes actual E pixels")
+            t.equal(saved[0], saved[2], "actual E A/B/A returns byte for byte")
+            t.check(renderer.hasVerifiedCanary, "unchanged native canary, fence and 30-second deadline qualify the readback")
+        }
+    }
 
     private static func singleTree(_ content: LayerContentBuilder.Content, scale: CGFloat,
                                    size: CGSize = CGSize(width: 48, height: 32)) -> CALayer {
