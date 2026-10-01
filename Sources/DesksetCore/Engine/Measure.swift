@@ -269,6 +269,22 @@ open class Measure: SkinSection {
     }
 }
 
+// MARK: - Action pipeline inputs
+
+extension Measure: MeasureActionSource {
+    func numberedActionOptions(_ key: String) -> [(index: Int, value: String)] {
+        numberedOptions(key)
+    }
+
+    func logActionPipeline(_ message: String, level: SkinLogLevel) {
+        sectionContext.log(message, level: level)
+    }
+
+    func actionFormulaValue(of identifier: String) -> Double? {
+        sectionContext.formulaValue(of: identifier, from: self)
+    }
+}
+
 // MARK: - Seeding (Session/Seeding.swift)
 
 extension Measure {
