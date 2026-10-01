@@ -1,9 +1,102 @@
 import Foundation
 
-/// The action state of one measure, confined to the skin's owner. A synchronous action may update this measure
-/// again, so both invocations use this same state and commit each edge before calling the action. The measure and
-/// the non-escaping action callback are call arguments only; the pipeline keeps neither of them.
+/// The numerical and action state of one measure, confined to the skin's owner. Synchronous hooks or actions may
+/// reenter this measure; each call uses the same state at the original read/write points. The measure and the
+/// non-escaping action callback are call arguments only; the pipeline keeps neither of them.
 final class MeasurePipeline {
+    // MARK: - Numerical values
+
+    private var history: [Double] = []
+    private var historyNext = 0
+    /// MinValue / MaxValue as written (nil = not set), already scaled by `rangeOptionScale`.
+    private var minValueOption: Double?
+    private var maxValueOption: Double?
+    private var observedMin: Double?
+    private var observedMax: Double?
+    private var warnedAboutRange = false
+
+    func readValueOptions(for measure: Measure) {
+        let scale = measure.rangeOptionScale
+        minValueOption = measure.allowsMinValueOption ? measure.optionalDouble("MinValue").map { $0 * scale } : nil
+        maxValueOption = measure.allowsMaxValueOption ? measure.optionalDouble("MaxValue").map { $0 * scale } : nil
+        measure.refreshRange()
+        measure.invert = measure.allowsInvert && measure.bool("InvertMeasure", false)
+        let size = measure.allowsAverage ? measure.int("AverageSize", 1) : 1
+        measure.averageSize = min(max(size, 0), Measure.maxAverageSize)
+        if measure.averageSize <= 1 || history.count > measure.averageSize {
+            history = []
+            historyNext = 0
+        }
+    }
+
+    func refreshRange(for measure: Measure) {
+        if let minValueOption {
+            measure.minValue = minValueOption
+        } else if measure.tracksValueRange, let observedMin {
+            measure.minValue = Swift.min(measure.automaticMinValue, observedMin)
+        } else {
+            measure.minValue = measure.automaticMinValue
+        }
+        if let maxValueOption {
+            measure.maxValue = maxValueOption
+        } else if measure.tracksValueRange, let observedMax {
+            measure.maxValue = Swift.max(measure.automaticMaxValue, observedMax)
+        } else {
+            measure.maxValue = measure.automaticMaxValue
+        }
+        if measure.maxValue < measure.minValue && !warnedAboutRange {
+            warnedAboutRange = true
+            measure.skin.log("[\(measure.name)] MaxValue is less than MinValue", level: .debug)
+        }
+    }
+
+    func finishValue(_ rawValue: Double, for measure: Measure) {
+        var v = rawValue
+        if !v.isFinite { v = 0 }
+        let placeholder = measure.computedPlaceholder
+        if measure.averageSize > 1 && !placeholder {
+            if history.count < measure.averageSize {
+                history.append(v)
+            } else {
+                history[historyNext % history.count] = v
+            }
+            historyNext = (historyNext + 1) % measure.averageSize
+            v = history.reduce(0, +) / Double(history.count)
+        }
+        if measure.tracksValueRange && !placeholder {
+            observedMin = Swift.min(observedMin ?? v, v)
+            observedMax = Swift.max(observedMax ?? v, v)
+        }
+        measure.refreshRange()
+        if measure.invert && !placeholder { v = measure.maxValue - (v - measure.minValue) }
+        measure.value = v.isFinite ? v : 0
+    }
+
+    func runtimeSnapshot(for measure: Measure) -> SkinRuntimeState.MeasureState {
+        SkinRuntimeState.MeasureState(
+            type: measure.type, kind: String(describing: Swift.type(of: measure)), own: measure.own, value: measure.value, rawString: measure.rawString,
+            average: measure.averageSize > 1 && !history.isEmpty
+                ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
+            observedMin: observedMin, observedMax: observedMax, webParser: nil)
+    }
+
+    func seed(_ state: SkinRuntimeState.MeasureState, for measure: Measure) {
+        measure.value = state.value.isFinite ? state.value : 0
+        measure.rawString = state.rawString
+        if let average = state.average, measure.averageSize > 1, !average.samples.isEmpty,
+           average.samples.count <= measure.averageSize {
+            history = average.samples
+            historyNext = min(max(average.next, 0), measure.averageSize - 1)
+        }
+        if measure.tracksValueRange {
+            observedMin = state.observedMin
+            observedMax = state.observedMax
+            measure.refreshRange()
+        }
+    }
+
+    // MARK: - Actions
+
     private struct Condition {
         /// N of `IfConditionN` (1 for `IfCondition`): the "became true/false" state belongs to the option, so a
         /// dynamic formula whose text changes keeps its state.

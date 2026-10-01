@@ -57,12 +57,10 @@ open class Measure: SkinSection {
 
     var invert = false
     var averageSize = 0
-    private var history: [Double] = []
     /// Set by `computeValue` for an update that has no reading yet and returns a placeholder instead (FreeDiskSpace
     /// `MacAvailable=1` gives −1 before its first reading): the number is kept as it is — not averaged, not inverted and
     /// not counted in the observed range — so a skin can tell "not read yet" from any value. Cleared before each update.
     var computedPlaceholder = false
-    private var historyNext = 0
     private var substitute: SubstituteRules? {
         didSet { stringCache = nil }
     }
@@ -73,14 +71,8 @@ open class Measure: SkinSection {
     /// Disabled / Paused option texts last applied (bang state lasts until they change or are set again).
     var lastDisabledOption: String?
     var lastPausedOption: String?
-    /// MinValue / MaxValue as written (nil = not set), already scaled by `rangeOptionScale`.
-    private var minValueOption: Double?
-    private var maxValueOption: Double?
-    private var observedMin: Double?
-    private var observedMax: Double?
-    private var warnedAboutRange = false
 
-    private let actionPipeline = MeasurePipeline()
+    private let pipeline = MeasurePipeline()
     /// Whether `liveInputs` were noted (virtual time).
     private var notedInputs = false
 
@@ -159,17 +151,7 @@ open class Measure: SkinSection {
         if disabled || paused { return }
 
         readMeasureOptions()
-        let scale = rangeOptionScale
-        minValueOption = allowsMinValueOption ? optionalDouble("MinValue").map { $0 * scale } : nil
-        maxValueOption = allowsMaxValueOption ? optionalDouble("MaxValue").map { $0 * scale } : nil
-        refreshRange()
-        invert = allowsInvert && bool("InvertMeasure", false)
-        let size = allowsAverage ? int("AverageSize", 1) : 1
-        averageSize = min(max(size, 0), Measure.maxAverageSize)
-        if averageSize <= 1 || history.count > averageSize {
-            history = []
-            historyNext = 0
-        }
+        pipeline.readValueOptions(for: self)
 
         let substituteOption = string("Substitute")
         let regex = bool("RegExpSubstitute", false)
@@ -181,30 +163,13 @@ open class Measure: SkinSection {
             substituteSource = (substituteOption, regex)
         }
 
-        actionPipeline.readOptions(for: self)
+        pipeline.readOptions(for: self)
         needsOptionRead = false
     }
 
     /// Recomputes `minValue` / `maxValue` from the options, the automatic range and the tracked range.
     func refreshRange() {
-        if let minValueOption {
-            minValue = minValueOption
-        } else if tracksValueRange, let observedMin {
-            minValue = Swift.min(automaticMinValue, observedMin)
-        } else {
-            minValue = automaticMinValue
-        }
-        if let maxValueOption {
-            maxValue = maxValueOption
-        } else if tracksValueRange, let observedMax {
-            maxValue = Swift.max(automaticMaxValue, observedMax)
-        } else {
-            maxValue = automaticMaxValue
-        }
-        if maxValue < minValue && !warnedAboutRange {
-            warnedAboutRange = true
-            skin.log("[\(name)] MaxValue is less than MinValue", level: .debug)
-        }
+        pipeline.refreshRange(for: self)
     }
 
     // MARK: Update
@@ -223,25 +188,8 @@ open class Measure: SkinSection {
         // The Studio's sample data (`MeasureValueOverride`): its value in place of the computed one; the rules still run.
         if let sample = skin.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
         computedPlaceholder = false
-        var v = computeValue()
-        if !v.isFinite { v = 0 }
-        let placeholder = computedPlaceholder
-        if averageSize > 1 && !placeholder {
-            if history.count < averageSize {
-                history.append(v)
-            } else {
-                history[historyNext % history.count] = v
-            }
-            historyNext = (historyNext + 1) % averageSize
-            v = history.reduce(0, +) / Double(history.count)
-        }
-        if tracksValueRange && !placeholder {
-            observedMin = Swift.min(observedMin ?? v, v)
-            observedMax = Swift.max(observedMax ?? v, v)
-        }
-        refreshRange()
-        if invert && !placeholder { v = maxValue - (v - minValue) }
-        value = v.isFinite ? v : 0
+        let v = computeValue()
+        pipeline.finishValue(v, for: self)
         updateCount += 1
         runActions()
     }
@@ -253,14 +201,14 @@ open class Measure: SkinSection {
     }
 
     private func runActions() {
-        actionPipeline.run(for: self) { skin.execute($0, from: self) }
+        pipeline.run(for: self) { skin.execute($0, from: self) }
     }
 
     /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch
     /// (`Skin.patch(sources:)`) updates a measure whose options changed this way — a reload would not report its new
     /// string as a change either.
     func forgetChangeBaseline() {
-        actionPipeline.forgetChangeBaseline()
+        pipeline.forgetChangeBaseline()
     }
 
     // MARK: Values for meters and section variables
@@ -326,28 +274,13 @@ open class Measure: SkinSection {
 extension Measure {
     /// What this measure has seen so far, for a new instance of the widget (`SkinRuntimeState.MeasureState`).
     var runtimeSnapshot: SkinRuntimeState.MeasureState {
-        SkinRuntimeState.MeasureState(
-            type: type, kind: String(describing: Swift.type(of: self)), own: own, value: value, rawString: rawString,
-            average: averageSize > 1 && !history.isEmpty
-                ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
-            observedMin: observedMin, observedMax: observedMax, webParser: nil)
+        pipeline.runtimeSnapshot(for: self)
     }
 
     /// Takes what the same measure of another instance of the widget has seen (loaded, before the first update): its
     /// value and string, the samples it averages (when it averages as many) and the range it observed. The first update
     /// then computes the next value from there.
     func seed(_ state: SkinRuntimeState.MeasureState) {
-        value = state.value.isFinite ? state.value : 0
-        rawString = state.rawString
-        if let average = state.average, averageSize > 1, !average.samples.isEmpty,
-           average.samples.count <= averageSize {
-            history = average.samples
-            historyNext = min(max(average.next, 0), averageSize - 1)
-        }
-        if tracksValueRange {
-            observedMin = state.observedMin
-            observedMax = state.observedMax
-            refreshRange()
-        }
+        pipeline.seed(state, for: self)
     }
 }
