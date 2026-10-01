@@ -145,7 +145,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     static let textExtensions: Set<String> = [
         "ini", "inc", "lua", "txt", "text", "cfg", "conf", "config", "json", "xml", "css", "js", "html", "htm", "md",
         "markdown", "nfo", "log", "csv", "tsv", "yaml", "yml", "toml", "bat", "cmd", "ps1", "ahk", "vbs", "sh", "py",
-        "rainmeter", "list", "dat",
+        "rainmeter", "list", "dat", "desk",
     ]
 
     /// Whether the built-in code editor can show `url`: a known text extension, a type macOS knows as plain text or

@@ -1102,6 +1102,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 controller = try CodeFileWindowController(file: file, app: self)
             } catch {
                 Log.write("Code editor: cannot open \(file.path): \(error.localizedDescription)", level: .warning)
+                if file.isFileURL, file.pathExtension.lowercased() == "desk" {
+                    let title = StudioText.language == .chinese
+                        ? "无法打开“\(file.lastPathComponent)”" : "Can’t open “\(file.lastPathComponent)”"
+                    alert(title, error.localizedDescription, style: .critical)
+                }
                 return false
             }
             codeFileWindows.append(controller)
