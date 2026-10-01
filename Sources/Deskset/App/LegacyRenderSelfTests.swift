@@ -40,6 +40,9 @@ enum LegacyRenderSelfTests {
             t.check(set.count >= 30, "the TestSkins set is there: \(set.count) skins")
             let files = set.map { ($0, true) } + extraSkins.map { ($0, false) }
             let data = skins.appendingPathComponent("Runtime/Data/mac.json")
+            let manifest = ProcessInfo.processInfo.environment["DESKSET_LEGACY_RENDER_WEB_FIXTURES"]
+                .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            let webFixtures = try manifest.map { try LegacyRenderWebFixtures(manifest: $0) }
             let savedAppearance = NSApp.appearance
             defer {
                 NSApp.appearance = savedAppearance
@@ -53,7 +56,8 @@ enum LegacyRenderSelfTests {
                     let name = file.path.replacingOccurrences(of: skins.path + "/", with: "")
                         + " (\(appearance.rawValue))"
                     do {
-                        let checked = try withInputs(file, skinsDir: inSet ? skins.path : nil, data: data) {
+                        let checked = try withInputs(file, skinsDir: inSet ? skins.path : nil, data: data,
+                                                     webFixtures: webFixtures) {
                             skin, _, _ in compare(skin, name, t)
                         }
                         drawn += checked.value.drawn
@@ -78,6 +82,7 @@ enum LegacyRenderSelfTests {
         }
 
         inputTests(t)
+        LegacyRenderWebFixtureSelfTests.run(t)
 
         t.suite("Runtime: legacy renderer: image histories are reset before comparison") {
             guard let canvas = Images.bitmapContext(width: 14, height: 14) else { return t.check(false, "a bitmap") }
@@ -201,9 +206,9 @@ enum LegacyRenderSelfTests {
 
     /// The same render host and skin serve both paths. Shared inputs are replaced before loading the skin;
     /// per-measure backends are replaced after loading and before the first update.
-    private static func withInputs<Value>(_ file: URL, skinsDir: String? = nil, data dataURL: URL,
-                                          closeTimeout: TimeInterval = 5,
-                                          _ body: (Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Value)
+    static func withInputs<Value>(_ file: URL, skinsDir: String? = nil, data dataURL: URL,
+                                  webFixtures: LegacyRenderWebFixtures? = nil, closeTimeout: TimeInterval = 5,
+                                  _ body: (Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Value)
         throws -> (value: Value, missing: [String]) {
         let data = try SkinInputData.load(dataURL.path, directory: dataURL.deletingLastPathComponent())
         let inputs = RenderData(data)
@@ -290,6 +295,13 @@ enum LegacyRenderSelfTests {
             return allowed.contains { resolved == $0 || resolved.hasPrefix($0 + "/") } ? resolved : nil
         }
         let web = BackgroundFake.script { request -> BackgroundFakeValue in
+            do {
+                if let bytes = try webFixtures?.response(for: request) { return .data(bytes) }
+            } catch {
+                let reason = "\(request.kind.rawValue): \(request.subject): \(error.localizedDescription)"
+                missing.append(reason)
+                return .failure(reason)
+            }
             // WebParser reports its normalized target as file:// plus the absolute path (possibly unescaped).
             if request.subject.hasPrefix("file://") {
                 let path = String(request.subject.dropFirst(7))
@@ -344,16 +356,7 @@ enum LegacyRenderSelfTests {
 
     /// Match WebParserNetwork's regular-file requirement and its 16 MiB page / 64 MiB download limits.
     private static func webFixture(_ path: String, kind: BackgroundWorkKind) -> Data? {
-        let limit = (kind == .webParserDownload ? 64 : 16) * 1_048_576
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-              attributes[.type] as? FileAttributeType == .typeRegular,
-              let size = attributes[.size] as? NSNumber, size.int64Value <= Int64(limit),
-              let handle = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { try? handle.close() }
-        do {
-            let data = try handle.read(upToCount: limit + 1) ?? Data()
-            return data.count <= limit ? data : nil
-        } catch { return nil }
+        LegacyRenderWebFixtures.readFixture(path, kind: kind)
     }
 
     /// A real, partly transparent PNG. FileView still writes it through the recording's normal file path.
