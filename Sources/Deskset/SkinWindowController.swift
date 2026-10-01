@@ -871,6 +871,20 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Applies what the runtime asks of the main thread, in the order it asked.
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         switch request {
+        case .attachNativeStage(let stage):
+            guard runtime === self.runtime else {
+                runtime.completeNativeStage(stage, result: .failure(.cancelled))
+                return
+            }
+            attachNativeStage(stage)
+        case .nativeStageCompleted(let stage, let result):
+            guard runtime === self.runtime, !isStopped, stage.provider === content else {
+                runtime.completeNativeStage(stage, result: .failure(.cancelled))
+                return
+            }
+            runtime.completeNativeStage(stage, result: result, facts: facts, size: view.bounds.size)
+        case .nativeStageReleased, .nativeStageRejected:
+            break // SkinRuntime handles cleanup/rejection before window delivery, including a released window.
         case .scenePatch(let patch):
             guard runtime === self.runtime else { _ = patch.content.reclaim(.invalidated); return }
             applyScenePatch(patch)
@@ -910,6 +924,32 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         case .snapshotChanged(let changes):
             snapshotChanged(changes)
         }
+    }
+
+    /// Explicit experimental native qualification only. Default bitmap, every-frame drawing and user settings
+    /// never call this entry. The successful result is a scoped observation, not E publication or a ready cache.
+    func requestNativeStage(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        precondition(Thread.isMainThread)
+        guard !isStopped else { return completion(.failure(.cancelled)) }
+        runtime.requestNativeStage(maximumCallbackBitmapBytes: maximumCallbackBitmapBytes, completion: completion)
+    }
+
+    private func attachNativeStage(_ stage: SkinNativeStage) {
+        let current = facts
+        guard !isStopped, !isHiddenByBang, applyingScenePatch == nil, stage.provider === content,
+              stage.epoch.matches(current, size: view.bounds.size) else {
+            runtime.completeNativeStage(stage, result: .failure(.staleDestination))
+            return
+        }
+        // Main parks BEFORE the provider takes its lock. No C root, host values or presentation count changes.
+        let attached = runtime.attachNativeStage(stage, facts: current, size: view.bounds.size)
+        guard attached == true else {
+            runtime.completeNativeStage(stage, result: .failure(attached == nil ? .attachmentTimedOut : .cancelled))
+            return
+        }
+        // The transparent real-window attachment transaction has committed. Native display is the next physical
+        // worker message, never main redraw or a hand-written CGContext standing in for a CA callback.
+        runtime.nativeStageAttached(stage)
     }
 
     /// A tree-only claim never parks an executor or grants access to its Skin/cache metadata.

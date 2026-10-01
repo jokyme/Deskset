@@ -106,6 +106,11 @@ enum SkinMessage {
     case frameWanted
     /// An already-released tree writer; owner metadata and deferred cleanup are finalized on the executor.
     case scenePatchFinished(SkinScenePatch)
+    /// Explicit experimental native staging, never requested automatically by a C frame.
+    case nativeStageRequested(SkinNativeStageRequest)
+    case nativeStageAttached(SkinNativeStage)
+    case nativeStageRelease(SkinNativeStage)
+    case nativeStageDetached(SkinNativeStage)
 }
 
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
@@ -197,6 +202,10 @@ struct SkinStartReport {
 
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
 enum SkinRequest {
+    case attachNativeStage(SkinNativeStage)
+    case nativeStageCompleted(SkinNativeStage, SkinNativeStageResult)
+    case nativeStageReleased(SkinNativeStage)
+    case nativeStageRejected(SkinNativeStageRequest, SkinNativeStageFailure)
     /// A finished owner C root awaits main attachment. No live owner or stale panel is carried by this request.
     case installLayerContent
     /// Completed C values with an authentic tree-only writer capability, never a live drawing owner.
@@ -312,4 +321,112 @@ final class SkinScenePatch {
 
 extension SkinScenePatch {
     enum HostAcknowledgment: Equatable { case none, controls, complete }
+}
+
+enum SkinNativeStageFailure: Error, Equatable {
+    case unsupportedMode, unsupportedExecutor, notReady, busy, cancelled, staleDestination, attachmentTimedOut
+    case rendering(String)
+}
+
+/// A finite observation of one hidden backing. It grants no access to a layer, owner, cache, or reusable ready frame.
+struct SkinNativeStageObservation {
+    let sourceSequence: UInt64
+    let native: ELayerContent.Observation
+    let drewOnPhysicalOwner: Bool
+}
+typealias SkinNativeStageResult = Result<SkinNativeStageObservation, SkinNativeStageFailure>
+
+final class SkinNativeStageRequest {
+    let maximumCallbackBitmapBytes: Int
+    private let completion: (SkinNativeStageResult) -> Void
+    private let lock = NSLock()
+    private var cancelled = false
+    private var completed = false
+
+    init(maximumCallbackBitmapBytes: Int, completion: @escaping (SkinNativeStageResult) -> Void) {
+        self.maximumCallbackBitmapBytes = maximumCallbackBitmapBytes
+        self.completion = completion
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    /// Exactly once on main, with cancellation taking precedence over an already queued observation.
+    @discardableResult
+    func complete(_ result: SkinNativeStageResult) -> Bool {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        guard !completed else { lock.unlock(); return false }
+        completed = true
+        let delivered: SkinNativeStageResult = cancelled ? .failure(.cancelled) : result
+        lock.unlock()
+        completion(delivered)
+        return true
+    }
+}
+
+/// The attachment envelope retains no live E owner, Skin or DrawContext. Its immutable epoch must be checked
+/// against CURRENT AppKit facts inside actual owner access, not merely against a queued request's facts sequence.
+final class SkinNativeStage {
+    struct Epoch {
+        let panelGeneration: UInt64
+        let size: CGSize
+        let scale: CGFloat
+        let colorSpace: CGColorSpace
+        let appearance: String
+        let presentationGeneration: UInt64
+
+        func matches(_ facts: SkinWindowFacts, size: CGSize) -> Bool {
+            facts.panelGeneration == panelGeneration && self.size == size && facts.scale == scale &&
+                facts.appearance == appearance && !facts.settings.hidden &&
+                facts.colorSpace.map { CFEqual($0, colorSpace) } == true
+        }
+    }
+    let attachment: LayerRuntime.NativeStage
+    let provider: LayerContentProvider
+    let epoch: Epoch
+    let request: SkinNativeStageRequest
+    private let releaseLock = NSLock()
+    private var ownerReleased = false
+    private var stoppedOwnerReleased = false
+    /// The real executor alone changes this flag. Main completes through the request's locked once gate.
+    var completionQueued = false
+
+    init(attachment: LayerRuntime.NativeStage, provider: LayerContentProvider, epoch: Epoch,
+         request: SkinNativeStageRequest) {
+        self.attachment = attachment
+        self.provider = provider
+        self.epoch = epoch
+        self.request = request
+    }
+
+    /// Published only after this exact attachment's E owner has actually been released on its executor.
+    /// Permanent stop additionally closes the owner slot; main must not request a stopped executor's lease/ack.
+    func recordOwnerRelease(permanentStop: Bool) {
+        releaseLock.lock()
+        ownerReleased = true
+        stoppedOwnerReleased = stoppedOwnerReleased || permanentStop
+        releaseLock.unlock()
+    }
+
+    var hasOwnerRelease: Bool {
+        releaseLock.lock()
+        defer { releaseLock.unlock() }
+        return ownerReleased
+    }
+
+    var hasStoppedOwnerRelease: Bool {
+        releaseLock.lock()
+        defer { releaseLock.unlock() }
+        return stoppedOwnerReleased
+    }
 }

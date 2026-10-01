@@ -79,6 +79,9 @@ final class LayerContentProvider: ContentProvider {
     private var retirementRequested = false
     private var retirementScheduled = false
     private var layerFrameReady = false
+    /// Allocated only by an explicit experimental staging request. It never replaces the visible C wrapper.
+    private var nativeStage: LayerRuntime.NativeStage?
+    private var nativeStageHost: CALayer?
 
     /// Main thread: the content layer goes into `view`'s layer, which the view makes (and keeps: AppKit keeps a layer the
     /// view asked for when the view moves to another window, as when a skin's panel is replaced).
@@ -255,6 +258,54 @@ final class LayerContentProvider: ContentProvider {
         lock.lock()
         defer { lock.unlock() }
         return ownerRoot
+    }
+
+    /// Main with a real executor lease, acquired before taking this lock. A neutral transparent sibling inherits
+    /// SkinView's native flip once. It is not presented, counted as a frame, or retained as a ready cache.
+    func attachNativeStage(_ stage: LayerRuntime.NativeStage, executor: SkinExecutor) -> Bool {
+        precondition(Thread.isMainThread && executor.isCurrent)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot != nil, layerFrameReady, nativeStage == nil,
+              let parent = contentLayer.superlayer else { return false }
+        let host = CALayer()
+        host.anchorPoint = .zero
+        host.position = .zero
+        host.bounds = stage.root.bounds
+        host.contentsScale = stage.scale
+        host.contentsFormat = .RGBA8Uint
+        host.isGeometryFlipped = false
+        host.opacity = 0
+        host.actions = Self.noActions
+        transaction {
+            host.addSublayer(stage.root)
+            parent.addSublayer(host)
+        }
+        nativeStage = stage
+        nativeStageHost = host
+        return true
+    }
+
+    /// Only after the owner has released the matching E candidate. A late ack cannot detach a newer attachment.
+    func detachNativeStage(_ stage: LayerRuntime.NativeStage) {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard nativeStage === stage else { return }
+        transaction {
+            stage.root.removeFromSuperlayer()
+            nativeStageHost?.removeFromSuperlayer()
+        }
+        nativeStage = nil
+        nativeStageHost = nil
+    }
+
+    /// Self-tests observe the hidden attachment only while holding the same actual executor lease as main.
+    var stagedNativeHost: CALayer? {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        return nativeStageHost
     }
 
     /// An explicit transaction with actions disabled (docs/skin-threading.md §7.3, rule 2). Inside a turn of frames it
