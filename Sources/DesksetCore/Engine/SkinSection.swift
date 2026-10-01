@@ -16,7 +16,14 @@ import Foundation
 ///   so they keep the value they had then (see `readOptionsIfNeeded`).
 open class SkinSection {
     public let name: String
-    public unowned let skin: Skin
+    /// Compatibility for sections constructed by Skin. Independent kernels use sectionContext instead;
+    /// they have no Skin to return. The owner must remain alive while any section is used.
+    public final var skin: Skin {
+        guard let skin = sectionContext as? Skin else {
+            preconditionFailure("A section constructed with an independent context has no Skin")
+        }
+        return skin
+    }
     unowned let sectionContext: any SectionContext
     /// The current host, read on this section's owner when an app plugin asks for a service.
     package var serviceHost: SkinHost? { sectionContext.host }
@@ -60,8 +67,14 @@ open class SkinSection {
     init(name: String, section: IniSection, skin: Skin) {
         self.name = name
         self.optionStack = OptionStack(own: section)
-        self.skin = skin
         self.sectionContext = skin
+    }
+
+    /// The context owns its sections; this reverse reference is borrowed, just as it is for Skin.
+    init(name: String, section: IniSection, context: any SectionContext) {
+        self.name = name
+        self.optionStack = OptionStack(own: section)
+        self.sectionContext = context
     }
 
     // MARK: Raw option lookup
