@@ -217,6 +217,15 @@ public final class MemoryMeasure: Measure {
         }
     }
 
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
+        switch type {
+        case "physicalmemory": kind = .physical
+        case "swapmemory": kind = .swap
+        default: kind = .total
+        }
+    }
+
     private func amounts() -> (total: Double, used: Double) {
         let m = sectionContext.system.memoryStatus()
         switch kind {
@@ -274,6 +283,15 @@ public final class NetMeasure: Measure {
 
     public required init(name: String, section: IniSection, skin: Skin, type: String) {
         super.init(name: name, section: section, skin: skin, type: type)
+        switch type {
+        case "netin": direction = .incoming
+        case "netout": direction = .outgoing
+        default: direction = .total
+        }
+    }
+
+    override init(name: String, section: IniSection, context: any SectionContext, type: String) {
+        super.init(name: name, section: section, context: context, type: type)
         switch type {
         case "netin": direction = .incoming
         case "netout": direction = .outgoing
@@ -833,4 +851,22 @@ public final class UnsupportedMeasure: Measure {
     }
 
     public override func execute(command: String) {}
+}
+
+/// Only qualified final kernels may use the nonrequired context initializer. Match the already selected class,
+/// rather than its name, so a registry override keeps its own required initializer and dynamic behavior.
+func makeContextBuiltinMeasure(_ selectedClass: Measure.Type, name: String, section: IniSection,
+                               context: any SectionContext, type: String) -> Measure? {
+    switch ObjectIdentifier(selectedClass) {
+    case ObjectIdentifier(CPUMeasure.self):
+        return CPUMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(StringMeasure.self):
+        return StringMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(MemoryMeasure.self):
+        return MemoryMeasure(name: name, section: section, context: context, type: type)
+    case ObjectIdentifier(NetMeasure.self):
+        return NetMeasure(name: name, section: section, context: context, type: type)
+    default:
+        return nil
+    }
 }
