@@ -23,17 +23,24 @@ open class SkinSection {
     /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
     /// in its place; the lookup below follows.
     var own: IniSection {
-        didSet { ownValues = SkinSection.index(own) }
+        get { optionStack.own }
+        set { optionStack.own = newValue }
     }
-    /// `own` keyed by lowercased option name (first definition wins, like `IniSection.value(forKey:)`). Option
-    /// lookups are the hottest path of dynamic sections, which re-read every option on every update; a linear
-    /// case-insensitive scan per lookup dominated the update time of large skins.
-    private lazy var ownValues: [String: String] = SkinSection.index(own)
+    let optionStack: OptionStack
     /// `!SetOption` values, keyed by lowercased option name (raw, resolved when read). An empty value marks an
     /// option removed with `!SetOption … ""`.
-    var overrides: [String: String] = [:]
+    var overrides: [String: String] {
+        get { optionStack.overrides }
+        set { optionStack.overrides = newValue }
+        // Preserve direct dictionary mutations without a get/copy/set round trip.
+        _modify { yield &optionStack.overrides }
+    }
     /// MeterStyle section names (meters only), resolved at option-read time.
-    var styles: [String] = []
+    var styles: [String] {
+        get { optionStack.styles }
+        set { optionStack.styles = newValue }
+        _modify { yield &optionStack.styles }
+    }
 
     public internal(set) var dynamicVariables = false
     public internal(set) var updateDivider = 1
@@ -52,7 +59,7 @@ open class SkinSection {
 
     init(name: String, section: IniSection, skin: Skin) {
         self.name = name
-        self.own = section
+        self.optionStack = OptionStack(own: section)
         self.skin = skin
         self.sectionContext = skin
     }
@@ -70,95 +77,35 @@ open class SkinSection {
     /// lookup continues with the (earlier) styles. When no style has a value, an empty own / style value is returned
     /// as `""` (the option is present but empty); an option removed with `!SetOption` is nil.
     public func rawOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        if let found = rawOption(lowercased: lower) { return found }
-        guard let alias = SkinSection.optionAliases[lower] else { return nil }
-        return rawOption(lowercased: alias)
+        optionStack.rawOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
-    /// Misspelled or legacy option names that skins known to work in Rainmeter use in place of the documented name
-    /// (lowercased documented name → lowercased alias). The documented spelling wins when both are set.
-    /// - `ValueReminder` for `ValueRemainder` (Roundline, Rotator): the analog clocks of Enigma (21 uses in its
-    ///   Sidebar / Taskbar / World clocks) and Elegant Watch set only this spelling, and their hands move on
-    ///   Windows.
-    static let optionAliases: [String: String] = [
-        "valueremainder": "valuereminder",
-    ]
+    static let optionAliases = OptionStack.optionAliases
 
     /// The value of `key` as the skin's files define it — the section's own value, else its MeterStyles' (the last
     /// listed first) — ignoring what is set while the skin runs (`!SetOption`, the editor's live previews). nil when
     /// no file sets it; `""` for an empty value.
     public func fileOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        var foundEmpty = false
-        if let v = ownValues[lower] {
-            if !v.isEmpty { return v }
-            foundEmpty = true
-        }
-        for style in styles.reversed() {
-            if let v = sectionContext.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.fileOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
     /// The value of `key` the section's MeterStyles give it (the last listed first) — what `fileOption(key)` becomes
     /// when the section's own key is removed. nil when no style sets it; `""` for an empty value.
     public func styleFileOption(_ key: String) -> String? {
-        let lower = key.lowercased()
-        var foundEmpty = false
-        for style in styles.reversed() {
-            if let v = sectionContext.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.styleFileOption(key, styleValues: { self.sectionContext.styleValues(named: $0) })
     }
 
     /// Where `fileOption(key)` is defined: the section itself or the MeterStyle it inherits it from (nil when no file
     /// sets it). Unlike `optionOrigin`, never `.setOption`.
     public func fileOrigin(_ key: String) -> OptionOrigin? {
-        let lower = key.lowercased()
-        if ownValues[lower] != nil { return .own(sectionContext.sources.location(section: name, key: lower)) }
-        for style in styles.reversed() where sectionContext.styleValues(named: style)?[lower] != nil {
-            return .style(sectionContext.styleSection(named: style)?.name ?? style, sectionContext.sources.location(section: style, key: lower))
-        }
-        return nil
-    }
-
-    private func rawOption(lowercased lower: String) -> String? {
-        var ownRemoved = false
-        var foundEmpty = false
-        if let v = overrides[lower] {
-            if !v.isEmpty { return v }
-            ownRemoved = true
-        }
-        if !ownRemoved, let v = ownValues[lower] {
-            if !v.isEmpty { return v }
-            foundEmpty = true
-        }
-        for style in styles.reversed() {
-            if let v = sectionContext.styleValues(named: style)?[lower] {
-                if !v.isEmpty { return v }
-                foundEmpty = true
-            }
-        }
-        return foundEmpty ? "" : nil
+        optionStack.fileOrigin(key, sectionName: name,
+                               styleValues: { self.sectionContext.styleValues(named: $0) },
+                               styleName: { self.sectionContext.styleSection(named: $0)?.name },
+                               location: { self.sectionContext.sources.location(section: $0, key: $1) })
     }
 
     /// Entries keyed by lowercased name; the first definition of a key wins.
-    static func index(_ section: IniSection) -> [String: String] {
-        var values: [String: String] = [:]
-        values.reserveCapacity(section.entries.count)
-        for entry in section.entries {
-            let key = entry.key.lowercased()
-            if values[key] == nil { values[key] = entry.value }
-        }
-        return values
-    }
+    static func index(_ section: IniSection) -> [String: String] { OptionStack.index(section) }
 
     /// Option value with variables and — for dynamic sections, and in every read after the skin loaded — section
     /// variables resolved (see `readOptionsIfNeeded`).
