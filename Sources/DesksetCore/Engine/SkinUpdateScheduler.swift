@@ -65,12 +65,12 @@ public final class SkinUpdateScheduler {
             return work
         }
         assert(executor.isCurrent, "Register skin updates on their executor")
+        let interval = max(interval, VirtualTimeExecutor.minimumRepeatInterval)
         let now = clock.uptime()
         guard now.isFinite, (now + interval).isFinite, now + interval > now else {
             work.cancel()
             return work
         }
-        let interval = max(interval, 0.0001)
         let slack = leeway.isFinite ? max(0, min(leeway, interval)) : 0
         guard (now + interval + slack).isFinite else {
             work.cancel()

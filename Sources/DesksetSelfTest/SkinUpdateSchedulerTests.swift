@@ -118,12 +118,17 @@ func runSkinUpdateSchedulerTests(_ t: TestRunner) {
         executor.advance(by: 10)
         t.equal(fired, 100, "decimal deadlines agree with the virtual executor's nanosecond grid")
         small.cancel()
+        let shortest = scheduler!.schedule(interval: Double.leastNonzeroMagnitude, leeway: 0) { fired += 1 }
+        t.check(shortest.isPending, "a positive interval is clamped before checking precision at nonzero uptime")
+        executor.advance(by: 0.0002)
+        t.equal(fired, 102, "the shortest interval uses the executor's 0.1 ms minimum")
+        shortest.cancel()
         let remaining = scheduler!.schedule(interval: 1, leeway: 0) { fired += 1 }
         scheduler = nil
         t.check(remaining.isCancelled, "the scheduler releases its clocks")
         t.equal(executor.pendingCount, 0)
         executor.advance(by: 10)
-        t.equal(fired, 100)
+        t.equal(fired, 102)
     }
 
     t.suite("Executor: update clocks: cancellation from another thread removes the shared wake") {
