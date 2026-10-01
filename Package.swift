@@ -25,7 +25,7 @@ let package = Package(
         // Rendering values and capabilities; AppKit implementations stay in the app.
         .target(name: "DesksetDraw", dependencies: ["DesksetCore"]),
         // Layer planning and presentation values, without AppKit.
-        .target(name: "DesksetRuntime", dependencies: ["DesksetDraw"]),
+        .target(name: "DesksetRuntime", dependencies: ["DesksetCore", "DesksetDraw"]),
         // AppKit menu bar app.
         .executableTarget(
             name: "Deskset",

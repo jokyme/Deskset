@@ -658,3 +658,6 @@ random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache 
 random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
 
 random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
+
+mono.DispatchTime.now	Sources/DesksetRuntime/OffscreenRenderer.swift	2	real GPU completion deadline, independent of the skin's explicit animation clock; expired frames cannot be read back
+wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for the caller's Metal queue tail; submission timeout invalidates the renderer without reading its texture
