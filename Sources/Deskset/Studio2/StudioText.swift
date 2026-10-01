@@ -495,6 +495,7 @@ enum StudioText {
         case statusEditing = "code.status.editing"
         case statusLine = "code.status.line"
         case fix = "code.fix"
+        case completeNamed = "code.complete.named"
         case stepTyping = "step.typing"
         case stepFix = "step.fix"
         case stepRefresh = "step.refresh"
@@ -1080,6 +1081,7 @@ enum StudioText {
         .statusEditing: ("Editing · saved when you pause", "正在编辑 · 停下来就存储"),
         .statusLine: ("Line %d", "第 %d 行"),
         .fix: ("Fix", "改正"),
+        .completeNamed: ("Complete %@", "补全 %@"),
         .stepTyping: ("Typing", "输入"),
         .stepFix: ("Fix %@", "改正 %@"),
         .stepRefresh: ("Refresh", "刷新"),

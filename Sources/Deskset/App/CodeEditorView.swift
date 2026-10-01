@@ -47,6 +47,11 @@ final class CodeEditorView: NSView {
     var onFileChange: ((URL) -> Void)?
     /// The user changed the font size with ⌘+ / ⌘− / ⌘0 (for the host to remember).
     var onFontSizeChange: ((CGFloat) -> Void)?
+    /// A host may supply checked language completions. Nil preserves NSTextView's original completion path.
+    var onCompletionRange: (() -> NSRange)?
+    var onCompletions: ((NSRange) -> [String])?
+    var onInsertCompletion: ((String, NSRange, Int, Bool) -> Void)?
+
     /// Asked before an ANSI file that cannot hold the new text is converted to UTF-16 LE with BOM; return true to
     /// convert and commit. When nil, an alert asks in a visible window, and headless use converts (like `IniWriter`)
     /// unless the user declined before.
@@ -1438,6 +1443,31 @@ private final class JumpBarView: NSView {
 /// equivalents run while it is focused, and the background shows the section tint and the current line.
 final class CodeTextView: NSTextView {
     weak var editor: CodeEditorView?
+
+    override var rangeForUserCompletion: NSRange {
+        if let range = editor?.onCompletionRange { return range() }
+        return super.rangeForUserCompletion
+    }
+
+    override func completions(forPartialWordRange range: NSRange,
+                              indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
+        guard let completions = editor?.onCompletions else {
+            return super.completions(forPartialWordRange: range, indexOfSelectedItem: index)
+        }
+        let words = completions(range)
+        index.pointee = words.isEmpty ? -1 : 0
+        return words
+    }
+
+    override func insertCompletion(_ word: String, forPartialWordRange range: NSRange,
+                                   movement: Int, isFinal: Bool) {
+        guard let insert = editor?.onInsertCompletion else {
+            super.insertCompletion(word, forPartialWordRange: range, movement: movement, isFinal: isFinal)
+            return
+        }
+        insert(word, range, movement, isFinal)
+    }
+
     /// The line ending Return inserts (the file's dominant one).
     var lineEnding = "\r\n"
     /// Characters of the tinted section (drawn as a full-width band).
@@ -1491,6 +1521,11 @@ final class CodeTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.intersection([.command, .shift, .option, .control]) == [.control],
+           event.charactersIgnoringModifiers == " ", editor?.onCompletionRange != nil, !hasMarkedText() {
+            complete(nil)
+            return
+        }
         if event.modifierFlags.contains(.command), editor?.handleKeyEquivalent(event) == true { return }
         super.keyDown(with: event)
     }

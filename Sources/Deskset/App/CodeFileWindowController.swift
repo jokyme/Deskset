@@ -21,6 +21,16 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     private(set) var readError: String?
     private(set) var deskDecorations: DeskCodeDecorations?
 
+    /// A native list is bound to both the check and its original caret. Previewing entries never edits a buffer.
+    private struct DeskCompletionSession {
+        let snapshot: DeskSnapshot
+        let selection: NSRange
+        let range: NSRange
+        let items: [DeskCompletionItem]
+        let titles: [String]
+    }
+    private var deskCompletion: DeskCompletionSession?
+
     init(file: URL, app: AppController, deskCheckQueue: DispatchQueue? = nil) throws {
         self.file = file.standardizedFileURL
         self.app = app
@@ -49,11 +59,19 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
             let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue)
             deskChecking = checking
+            codeView.onCompletionRange = { [weak self] in
+                self?.prepareDeskCompletion() ?? NSRange(location: NSNotFound, length: 0)
+            }
+            codeView.onCompletions = { [weak self] range in self?.deskCompletionWords(for: range) ?? [] }
+            codeView.onInsertCompletion = { [weak self] word, range, movement, isFinal in
+                self?.insertDeskCompletion(word, range: range, movement: movement, isFinal: isFinal)
+            }
             let decorations = DeskCodeDecorations()
             decorations.attach(to: codeView)
             deskDecorations = decorations
             checking.onSnapshot = { [weak self] snapshot in self?.showDeskCheck(snapshot) }
             codeView.onReadError = { [weak self] _, error in
+                self?.deskCompletion = nil
                 self?.readError = error.localizedDescription
                 self?.deskDecorations?.clear()
                 self?.window?.subtitle = error.localizedDescription
@@ -128,6 +146,10 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        deskCompletion = nil
+        codeView.onCompletionRange = nil
+        codeView.onCompletions = nil
+        codeView.onInsertCompletion = nil
         deskChecking?.close()
         deskDecorations?.detach()
         app.codeFileWindowDidClose(self)
@@ -136,6 +158,7 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     /// Only the current finished check supplies cards, ranges and actions. Pending checks and failed reads clear
     /// the previous display; the existing subtitle and document save/conflict behavior remain the same.
     private func showDeskCheck(_ snapshot: DeskSnapshot) {
+        deskCompletion = nil
         if readError == nil, snapshot.isChecked, deskChecking?.isCurrent(snapshot) == true {
             deskDecorations?.show(snapshot.diagnostics, file: snapshot.file, text: snapshot.text,
                                   language: snapshot.options.messageLanguage,
@@ -160,6 +183,68 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
     func applyDeskAction(_ action: DeskCodeAction, from snapshot: DeskSnapshot) -> Bool {
         guard readError == nil, window != nil, let checking = deskChecking else { return false }
         return checking.apply(action.edit, from: snapshot, actionName: action.title)
+    }
+
+    // MARK: Native checked completions
+
+    private func prepareDeskCompletion() -> NSRange {
+        deskCompletion = nil
+        let absent = NSRange(location: NSNotFound, length: 0)
+        guard readError == nil, window != nil, let checking = deskChecking,
+              codeView.textView.isEditable, !codeView.textView.hasMarkedText() else { return absent }
+        let snapshot = checking.snapshot
+        let selection = codeView.textView.selectedRange()
+        guard snapshot.isChecked, checking.isCurrent(snapshot), selection.length == 0,
+              selection.location != NSNotFound, selection.location >= 0,
+              selection.location <= snapshot.index.utf16Count,
+              snapshot.index.clampedUTF16(selection.location) == selection.location else { return absent }
+        let list = snapshot.completions(at: snapshot.index.position(utf16: selection.location))
+        let start = list.context.range.start.offset, end = list.context.range.end.offset
+        guard !list.items.isEmpty, start >= 0, start <= selection.location, selection.location <= end,
+              end <= snapshot.index.utf16Count, snapshot.index.clampedUTF16(start) == start,
+              snapshot.index.clampedUTF16(end) == end else { return absent }
+        // AppKit completes the prefix before the caret; the accepted service edit still replaces the whole word.
+        let range = NSRange(location: start, length: selection.location - start)
+        var used: Set<String> = []
+        let titles = list.items.map { item -> String in
+            let base = item.label + " — " + item.detail.text(in: snapshot.options.messageLanguage)
+            var title = base, ordinal = 2
+            while !used.insert(title).inserted {
+                title = base + " (\(ordinal))"
+                ordinal += 1
+            }
+            return title
+        }
+        deskCompletion = DeskCompletionSession(snapshot: snapshot, selection: selection, range: range,
+                                              items: list.items, titles: titles)
+        return range
+    }
+
+    private func deskCompletionWords(for range: NSRange) -> [String] {
+        guard let session = deskCompletion, range == session.range, readError == nil,
+              codeView.textView.selectedRange() == session.selection, codeView.textView.isEditable,
+              !codeView.textView.hasMarkedText(), session.snapshot.isChecked,
+              deskChecking?.isCurrent(session.snapshot) == true else { deskCompletion = nil; return [] }
+        return session.titles
+    }
+
+    private func insertDeskCompletion(_ word: String, range: NSRange, movement: Int, isFinal: Bool) {
+        // Native keyboard navigation previews labels. Only a final selection may create one complete user edit;
+        // AppKit also sends a final insertion of the original text when the list is cancelled.
+        guard isFinal else { return }
+        defer { deskCompletion = nil }
+        guard movement != NSCancelTextMovement, let session = deskCompletion, range == session.range,
+              readError == nil, window != nil, codeView.textView.selectedRange() == session.selection,
+              !codeView.textView.hasMarkedText(), let checking = deskChecking,
+              let selected = session.titles.firstIndex(of: word), session.items.indices.contains(selected) else { return }
+        let item = session.items[selected]
+        // Use the catalog's plain fallback. Snippet markers never become document text; all extra edits address
+        // the same original buffer and are validated before normalization by the checker.
+        let edits = ([DeskTextEditU16(range: item.range, newText: item.plainText)] + item.additionalEdits).map { edit in
+            DeskTextEditU16(range: edit.range,
+                            newText: CodeTextView.convertingLineEndings(edit.newText, to: codeView.textView.lineEnding))
+        }
+        _ = checking.apply(edits, from: session.snapshot, actionName: StudioText.format(.completeNamed, item.label))
     }
 
     // MARK: Which files
