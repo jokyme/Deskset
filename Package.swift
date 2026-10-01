@@ -24,10 +24,12 @@ let package = Package(
         .target(name: "DeskLanguage", path: "Sources/DeskLanguage"),
         // Rendering values and capabilities; AppKit implementations stay in the app.
         .target(name: "DesksetDraw", dependencies: ["DesksetCore"]),
+        // Layer planning and presentation values, without AppKit.
+        .target(name: "DesksetRuntime", dependencies: ["DesksetDraw"]),
         // AppKit menu bar app.
         .executableTarget(
             name: "Deskset",
-            dependencies: ["DesksetCore", "DesksetDraw"],
+            dependencies: ["DesksetCore", "DesksetDraw", "DesksetRuntime"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("IOKit"),
