@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetRuntime
 
 /// The half of a running skin that owns the `Skin` (docs/skin-threading.md §5.4): it is the skin's `SkinHost`, runs its
 /// update clock, pause and wake, draws its frames (`frames`), handles the messages sent to it (`send`), publishes what
@@ -91,6 +92,14 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         self.skin = skin
         owner = { [weak self] in self?.skin }
         frames.requestLayerInstallation = { [weak self] in self?.request(.installLayerContent) }
+        frames.requestScenePatch = { [weak self] patch in
+            guard let self else { _ = patch.content.reclaim(.invalidated); return }
+            self.request(.scenePatch(patch))
+        }
+        frames.publishLayerHitMap = { [weak self] map, generation, panel in
+            self?.request(.layerHitMap(map, generation: generation, panelGeneration: panel))
+        }
+        frames.writerReleased = { [weak self] in self?.finishLayerTeardown() }
         frames.start(on: executor)
     }
 
@@ -235,6 +244,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         defer { workActivity?.end() }
         messageObserver?(message)
         switch message {
+        case .scenePatchFinished(let patch):
+            frames.finishScenePatch(patch)
+            return true
         case .mirrorInput(let mirror):
             skin.inputMirror = mirror
             return true
@@ -324,7 +336,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             frames.drawFirstFrame()
         case .frameWanted:
             frames.setNeedsFrame()
-        case .mirrorInput, .windowFacts, .patch:
+        case .mirrorInput, .windowFacts, .patch, .scenePatchFinished:
             break
         }
         return true
@@ -370,7 +382,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         snapshotLock.lock()
         publishedSnapshot = next
         snapshotLock.unlock()
-        let changes = next.changes(from: old)
+        var changes = next.changes(from: old)
+        // Layer tooltips/hit maps are the values of a completed frame, not an independently posted work snapshot.
+        if frames.contentMode.usesLayers { changes.remove(.toolTips) }
         if !changes.isEmpty { request(.snapshotChanged(changes)) }
     }
 
@@ -406,13 +420,24 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
             return
         }
         guard provider.beginLayerTeardown() else { return }
-        let cleanup = { [self, provider] in
-            guard frames.retireLayerContent() else { return }
-            if Thread.isMainThread { provider.completeLayerTeardown() }
-            else { DispatchQueue.main.async { provider.completeLayerTeardown() } }
+        let cleanup = { [self] in
+            layerCleanupRequested = true
+            finishLayerTeardown()
         }
         if executor.isCurrent { cleanup() }
         else { executor.async(cleanup) }
+    }
+
+    private var layerCleanupRequested = false
+
+    /// An applying main writer may outlive the deadline. Its ack triggers this owner cleanup without an upward wait.
+    private func finishLayerTeardown() {
+        precondition(executor.isCurrent)
+        guard layerCleanupRequested, !frames.hasLayerWriter,
+              let provider = frames.provider as? LayerContentProvider, frames.retireLayerContent() else { return }
+        layerCleanupRequested = false
+        if Thread.isMainThread { provider.completeLayerTeardown() }
+        else { DispatchQueue.main.async { provider.completeLayerTeardown() } }
     }
 
     /// Runs `body` on the main thread once the work the skin's executor has now — the piece it is running and what is
@@ -427,15 +452,20 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// Asks the main thread: at once when on it, else queued there in order.
     func request(_ request: SkinRequest) {
         if Thread.isMainThread {
-            window?.apply(request, from: self)
+            if let window { window.apply(request, from: self) }
+            else if case .scenePatch(let patch) = request { _ = patch.content.reclaim(.invalidated) }
             return
         }
         // A load the main thread has not scheduled yet: bangs for that config wait for it (`isLoadPending`).
         let load = SkinRuntime.configLoaded(by: request)
         if let load { loadsInFlight.access { $0[load, default: 0] += 1 } }
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.window?.apply(request, from: self)
+            guard let self else {
+                if case .scenePatch(let patch) = request { _ = patch.content.reclaim(.invalidated) }
+                return
+            }
+            if let window = self.window { window.apply(request, from: self) }
+            else if case .scenePatch(let patch) = request { _ = patch.content.reclaim(.invalidated) }
             if let load {
                 self.loadsInFlight.access {
                     let left = ($0[load] ?? 1) - 1
@@ -758,7 +788,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         if size != requestedSize {
             requestedSize = size
             model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
-            request(.resize(size))
+            if !frames.contentMode.usesLayers { request(.resize(size)) }
         }
         frames.setNeedsFrame()
     }
@@ -841,7 +871,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func skinGlassRegionsChanged(_ skin: Skin, regions: [GlassRegion]) {
         HostCallAudit.note(self, "skinGlassRegionsChanged")
         guard !isClosed else { return }
-        request(.glass(regions))
+        if !frames.contentMode.usesLayers { request(.glass(regions)) }
     }
 
     /// From the window's facts. Debug builds compare with the live window while the skin runs on the main executor.

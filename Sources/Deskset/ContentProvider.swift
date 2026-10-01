@@ -174,6 +174,25 @@ final class LayerContentProvider: ContentProvider {
         return true
     }
 
+    /// Main holds an authentic contentRoot writer, not the live SkinExecutor. This never accesses owner caches.
+    /// Both the wrapper and root change inside the caller's one disabled-actions transaction.
+    func applyScenePatch(_ patch: ScenePatch) -> Bool {
+        precondition(Thread.isMainThread && patch.isMainWriter(for: patch.root))
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot == nil || ownerRoot === patch.root else { return false }
+        guard patch.applyContentOnMain() else { return false }
+        contentLayer.contents = nil
+        contentLayer.isGeometryFlipped = true
+        contentLayer.bounds = patch.bounds
+        contentLayer.contentsScale = patch.frame.scale
+        if ownerRoot == nil { contentLayer.addSublayer(patch.root) }
+        ownerRoot = patch.root
+        layerFrameReady = true
+        presented += 1
+        return true
+    }
+
     /// The owner updates only its root; this method keeps the provider's private wrapper with that finished frame.
     func presentedLayerRoot(_ root: CALayer, frame: LayerRuntime.Frame) -> Bool {
         lock.lock()

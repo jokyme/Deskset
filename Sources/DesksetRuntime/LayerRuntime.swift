@@ -6,7 +6,7 @@ import Foundation
 import QuartzCore
 
 /// C content and a small lifecycle on one SkinExecutor. This mutable owner is not Sendable.
-/// The caller attaches root on the main thread; only this owner changes root and its children afterwards.
+/// The caller attaches root on main. Its writer is this owner, or an explicitly claimed ScenePatch until ack.
 /// Candidate Components remain geometry, not certified raster coverage or a default window presentation policy.
 package final class LayerRuntime {
     package enum State: Equatable { case loading, live, hidden, refreshing, closing, closed }
@@ -17,6 +17,7 @@ package final class LayerRuntime {
         case reentrant
         case sequenceOverflow
         case stalePreparation
+        case transferredWriter
     }
     package enum Fallback: Equatable {
         case unresolvedInk(ElementID, InkBounds.Unknown)
@@ -24,7 +25,7 @@ package final class LayerRuntime {
     package enum Reason: Equatable {
         case initial, refresh, released, previousFailure, destination, partition, cycle, scene, preparation
         case drawingContext, unversionedRecipe
-        case discardedPreparation
+        case discardedPreparation, hostPresentation
         case missingImageStamp(String)
     }
     package enum Change: Equatable { case all(Reason), unchanged }
@@ -103,6 +104,7 @@ package final class LayerRuntime {
     private var builder: LayerContentBuilder?
     private var configuration: Configuration?
     private var pending: Pending?
+    private var transferred: ScenePatch?
     private var key: Key?
     private var sequence: UInt64 = 0
     private var updating = false
@@ -147,9 +149,11 @@ package final class LayerRuntime {
     /// closing/closed and wrong-owner calls are rejected first. This is not the App's ScenePatch handoff protocol.
     package func prepare(_ prepared: SceneInkCandidates, in window: InkBounds.DeviceRect,
                         scale: CGFloat, colorSpace: CGColorSpace, partition: Partition,
-                        context: DrawContext, cycle: Int, glass: GlassPaint) throws -> Preparation {
+                        context: DrawContext, cycle: Int, glass: GlassPaint,
+                        forcePresentation: Bool = false) throws -> Preparation {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
         switch state {
         case .hidden: return .suppressed
         case .closing, .closed: throw Failure.invalidLifecycle(state)
@@ -199,12 +203,12 @@ package final class LayerRuntime {
             }
             let incoming = Key(prepared, window: window, scale: scale, colorSpace: colorSpace,
                                partition: partition, context: context, cycle: cycle, glass: glass)
-            if let old = currentFrame, let key, self.reason(from: key, to: incoming, plan: plan) == nil {
+            if !forcePresentation, let old = currentFrame, let key, self.reason(from: key, to: incoming, plan: plan) == nil {
                 let reused = Frame(sequence: old.sequence, plan: old.plan, contents: old.contents,
                                    scale: old.scale, colorSpace: old.colorSpace, fallback: old.fallback, change: .unchanged)
                 return .unchanged(reused)
             }
-            let invalidation = key.flatMap { self.reason(from: $0, to: incoming, plan: plan) } ?? forcedReason ?? .initial
+            let invalidation = key.flatMap { self.reason(from: $0, to: incoming, plan: plan) } ?? forcedReason ?? (forcePresentation ? .hostPresentation : .initial)
             let (nextSequence, overflow) = sequence.addingReportingOverflow(1)
             guard !overflow else { throw Failure.sequenceOverflow }
             // Drawing may warm caches even if a later allocation fails. An attempt invalidates reuse first.
@@ -238,6 +242,7 @@ package final class LayerRuntime {
     package func commit(_ presentation: PreparedFrame) throws -> Frame {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
         switch state {
         case .hidden, .closing, .closed: throw Failure.invalidLifecycle(state)
         case .loading, .live, .refreshing: break
@@ -246,11 +251,58 @@ package final class LayerRuntime {
         updating = true
         defer { updating = false }
         let frame = presentation.frame
-        // No native draw or drawing callback runs here; all contents are ready before changing the shown tree.
-        let layers = frame.contents.enumerated().map { index, content -> CALayer in
+        let layers = makeLayers(frame, frames: pending.layerFrames)
+        transaction {
+            root.bounds = pending.bounds
+            root.sublayers = layers
+        }
+        accept(pending)
+        return frame
+    }
+
+    /// Only the owner may export its exact pending token. PreparedFrame itself never grants tree access.
+    package func transfer(_ presentation: PreparedFrame) throws -> ScenePatch {
+        try checkMutable()
+        guard let pending, pending.presentation === presentation else { throw Failure.stalePreparation }
+        let patch = ScenePatch(frame: presentation.frame, root: root, bounds: pending.bounds,
+                               layers: makeLayers(presentation.frame, frames: pending.layerFrames))
+        transferred = patch
+        return patch
+    }
+
+    /// Owner-only metadata acknowledgment. Applying keeps the preparation and its caches intact, without waiting.
+    /// A timeout may use the original ordinary commit; an invalidation (or closing) only discards its candidate.
+    package func finish(_ patch: ScenePatch, commitReclaimed: Bool) throws -> Update? {
+        try checkOwner()
+        guard !updating else { throw Failure.reentrant }
+        guard transferred === patch, let pending else { throw Failure.stalePreparation }
+        switch patch.state {
+        case .pending, .applying: return nil
+        case .appliedByMain:
+            transferred = nil
+            accept(pending)
+            return .submitted(patch.frame)
+        case .reclaimedBySkin:
+            transferred = nil
+            if commitReclaimed && patch.reclamation == .timeout {
+                return .submitted(try commit(pending.presentation))
+            }
+            discardPending()
+            return .suppressed
+        }
+    }
+
+    /// A currently transferred tree cannot be cleared, re-prepared or acquired through an ordinary executor park.
+    package var hasTransferredWriter: Bool {
+        precondition(executor.isCurrent)
+        return transferred != nil
+    }
+
+    private func makeLayers(_ frame: Frame, frames: [CGRect]) -> [CALayer] {
+        frame.contents.enumerated().map { index, content in
             let layer = NoActionsLayer()
             layer.anchorPoint = .zero
-            layer.frame = pending.layerFrames[index]
+            layer.frame = frames[index]
             layer.contents = content.image
             layer.contentsRect = content.contentsRect
             layer.contentsScale = frame.scale
@@ -263,10 +315,10 @@ package final class LayerRuntime {
             layer.minificationFilter = .nearest
             return layer
         }
-        transaction {
-            root.bounds = pending.bounds
-            root.sublayers = layers
-        }
+    }
+
+    private func accept(_ pending: Pending) {
+        let frame = pending.presentation.frame
         builder = pending.builder
         configuration = Configuration(plan: frame.plan, scale: frame.scale, colorSpace: frame.colorSpace)
         key = pending.key
@@ -284,7 +336,6 @@ package final class LayerRuntime {
             clearBase()
         }
         self.pending = nil
-        return frame
     }
 
     /// Explicit cancellation keeps the displayed frame. Drawing may already have warmed caches, so reuse is
@@ -331,6 +382,7 @@ package final class LayerRuntime {
     package func beginClose() throws {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
         guard state != .closed else { throw Failure.invalidLifecycle(state) }
         state = .closing
         pending = nil
@@ -344,6 +396,7 @@ package final class LayerRuntime {
     package func close() throws {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
         if state == .closed { return }
         clearContents()
         state = .closed
@@ -356,6 +409,7 @@ package final class LayerRuntime {
     private func checkMutable() throws {
         try checkOwner()
         guard !updating else { throw Failure.reentrant }
+        guard transferred == nil else { throw Failure.transferredWriter }
         guard state != .closing, state != .closed else { throw Failure.invalidLifecycle(state) }
     }
 

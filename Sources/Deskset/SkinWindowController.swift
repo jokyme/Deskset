@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetRuntime
 
 /// The main-thread half of a running skin (docs/skin-threading.md §5.4): its window (`SkinPanel`, `SkinView`, the
 /// glass), fades, hover polling, placement, dragging, snapping and keeping on screen, and the skin's `AppState`. The
@@ -544,7 +545,26 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         }
     }
 
+    private(set) var panelGeneration: UInt64 = 0
+    private var applyingScenePatch: SkinScenePatch?
+    private var lastLayerGeneration: UInt64 = 0
+    #if DEBUG
+    /// Controlled native fixture: entered only after the real main callback owns this contentRoot writer.
+    var willApplyScenePatch: ((SkinScenePatch) -> Void)?
+    #endif
+
     private func replacePanel() {
+        if applyingScenePatch != nil {
+            guard !layerPanelRetryQueued else { return }
+            layerPanelRetryQueued = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.layerPanelRetryQueued = false
+                guard !self.isStopped else { return }
+                self.applyWindowSettings()
+            }
+            return
+        }
         if contentMode.usesLayers {
             // The provider/view move intact. Pause its actual owner before AppKit moves their host layer tree.
             let changed = runtime.exclusive { _ in self.replacePanelNow() }
@@ -563,6 +583,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     }
 
     private func replacePanelNow() {
+        let (generation, overflow) = panelGeneration.addingReportingOverflow(1)
+        guard !overflow else { return }
+        panelGeneration = generation
         let old = window
         let panel = SkinWindowController.makePanel()
         panel.setFrame(old.frame, display: false)
@@ -846,6 +869,14 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Applies what the runtime asks of the main thread, in the order it asked.
     func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
         switch request {
+        case .scenePatch(let patch):
+            guard runtime === self.runtime else { _ = patch.content.reclaim(.invalidated); return }
+            applyScenePatch(patch)
+        case .layerHitMap(let map, let generation, let panel):
+            guard runtime === self.runtime, !isStopped, panel == panelGeneration,
+                  generation > lastLayerGeneration else { return }
+            lastLayerGeneration = generation
+            view.takeLayerHitMap(map)
         case .installLayerContent:
             guard runtime === self.runtime else { return }
             installLayerContent()
@@ -879,6 +910,61 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         }
     }
 
+    /// A tree-only claim never parks an executor or grants access to its Skin/cache metadata.
+    private func applyScenePatch(_ patch: SkinScenePatch) {
+        defer { runtime.send(.scenePatchFinished(patch)) }
+        guard contentMode.usesLayers, !isStopped, patch.panelGeneration == panelGeneration,
+              patch.generation > lastLayerGeneration, content.acceptsLayerFrames else {
+            _ = patch.content.reclaim(.invalidated)
+            return
+        }
+        if patch.content.state == .reclaimedBySkin {
+            guard patch.content.reclamation == .timeout else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            glass.apply(patch.glass, in: contentView, below: view)
+            resize(to: patch.size, updateTips: false)
+            CATransaction.commit()
+            lastLayerGeneration = patch.generation
+            patch.acknowledgeHost(.controls)
+            Log.write("Layer frame reclaimed after its main deadline; glass/window caught up without touching content", source: config)
+            return
+        }
+        // A first attachment must still have the current actual profile/scale. Later coherent old frames may
+        // finish while new facts wait on the owner, whose next frame is then a full destination redraw.
+        if content.installedLayerRoot == nil {
+            guard let space = facts.colorSpace, CFEqual(space, patch.content.frame.colorSpace),
+                  facts.scale == patch.content.frame.scale else {
+                _ = patch.content.reclaim(.invalidated)
+                publishFacts(force: true)
+                return
+            }
+        }
+        guard patch.content.claimOnMain() else { return }
+        applyingScenePatch = patch
+        #if DEBUG
+        willApplyScenePatch?(patch)
+        #endif
+        var installed = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if !isStopped, patch.panelGeneration == panelGeneration, content.acceptsLayerFrames {
+            glass.apply(patch.glass, in: contentView, below: view)
+            resize(to: patch.size, updateTips: false)
+            if !isStopped, content.acceptsLayerFrames, content.applyScenePatch(patch.content) {
+                lastLayerGeneration = patch.generation
+                view.takeLayerHitMap(patch.hitMap)
+                installed = true
+            }
+        }
+        CATransaction.commit()
+        if installed { patch.acknowledgeHost(.complete) }
+        patch.content.finishOnMain()
+        applyingScenePatch = nil
+        if installed { layerContentInstalled() }
+        publishFacts()
+    }
+
     /// A request is just readiness, not a panel/facts acknowledgment. Validate against the current actual window
     /// after parking its executor. A failed park retains the old contents and retries without extending the lease.
     private func installLayerContent() {
@@ -887,19 +973,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         let result = runtime.installLayerContent(for: facts, size: view.bounds.size)
         switch result {
         case .installed:
-            if var report = layerStartPending {
-                // The scene may have recovered from a failed initial size. The installed frame matched the
-                // CURRENT view in the lease above; do not restore the load report's now-obsolete dimensions.
-                report.size = view.bounds.size
-                started(report)
-            }
-            if let pending = deferredLayerOrderIn, !isHiddenByBang {
-                deferredLayerOrderIn = nil
-                if orderIn(alpha: pending.alpha), pending.fade > 0 {
-                    animateAlpha(to: targetAlpha, duration: pending.fade)
-                }
-                publishFacts()
-            }
+            layerContentInstalled()
         case nil:
             guard !layerInstallRetryQueued else { return }
             layerInstallRetryQueued = true
@@ -919,6 +993,22 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
         }
     }
 
+    private func layerContentInstalled() {
+        if var report = layerStartPending {
+            // The scene may have recovered from a failed initial size. The installed frame matched the
+            // CURRENT view in the lease above; do not restore the load report's now-obsolete dimensions.
+            report.size = view.bounds.size
+            started(report)
+        }
+        if let pending = deferredLayerOrderIn, !isHiddenByBang {
+            deferredLayerOrderIn = nil
+            if orderIn(alpha: pending.alpha), pending.fade > 0 {
+                animateAlpha(to: targetAlpha, duration: pending.fade)
+            }
+            publishFacts()
+        }
+    }
+
     /// The skin published a snapshot in which something changed that the main thread acts on.
     private func snapshotChanged(_ changes: SkinSnapshotChanges) {
         if changes.contains(.toolTips) { view.updateToolTips() }
@@ -930,7 +1020,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// The skin's size changed: the window follows (the top-left corner stays). The frames go to the content layer
     /// from the skin's executor, which skips them while the window cannot be seen (energy: a skin hidden behind other
     /// windows, on a locked screen or ordered out is not drawn until it can be seen again; its measures keep updating).
-    private func resize(to size: CGSize) {
+    private func resize(to size: CGSize, updateTips: Bool = true) {
         guard !isStopped else { return }
         let before = factsSequence
         if window.frame.size != size {
@@ -941,7 +1031,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             window.setFrame(frame, display: false)
             view.frame = NSRect(origin: .zero, size: size)
         }
-        view.updateToolTips()
+        if updateTips { view.updateToolTips() }
         // Different requested sizes can round to the same frame. Acknowledge that actual frame even when AppKit
         // made no change; a delegate notification that already published it needs no second acknowledgement.
         if factsSequence == before { publishFacts(force: true) }
@@ -1071,7 +1161,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
                                                                                                  base: $0.base) }),
                         // While a move of the skin's waits, its model keeps that move and what came after it.
                         modelSequence: heldMove.map { min(appliedModelSequence, $0.sequence - 1) } ?? appliedModelSequence,
-                        sequence: factsSequence)
+                        sequence: factsSequence, panelGeneration: panelGeneration)
     }
 
     /// Tells the runtime what the window is (`SkinWindowFacts`) when that changed since it was last told: after every

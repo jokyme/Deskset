@@ -335,6 +335,20 @@ final class SkinFrameProducer {
     let contentMode: SkinFrameContentMode
     /// Requests only cross to main. Main parks the real executor before installing the finished owner root.
     var requestLayerInstallation: (() -> Void)?
+    var requestScenePatch: ((SkinScenePatch) -> Void)?
+    var publishLayerHitMap: ((SkinHitMap, UInt64, UInt64) -> Void)?
+    private var pendingScenePatch: SkinScenePatch?
+    private var panelGeneration: UInt64 = 0
+    private var presentationGeneration: UInt64 = 0
+    private var presentedSize: CGSize?
+    private var presentedGlass: [GlassRegion]?
+    private var presentedToolTipAreas: [SkinRect]?
+    private var hostAcknowledgedGeneration: UInt64 = 0
+    private var releaseAfterWriter = false
+    private var explicitlyHidden = false
+    /// Owner-only notification lets teardown wait for a claimed tree writer without parking either thread.
+    var writerReleased: (() -> Void)?
+    var hasLayerWriter: Bool { pendingScenePatch != nil }
     private(set) var layerRuntime: LayerRuntime?
     private(set) var layerInstalled = false
     private(set) var layerFailure: LayerFailure?
@@ -399,7 +413,8 @@ final class SkinFrameProducer {
     private(set) var framesDrawn = 0
     /// Turns that ended with a frame wanted but not drawn because the window could not be seen (tests).
     private(set) var framesSkipped = 0
-    /// Seconds spent drawing frames, in all and the longest frame (tests and measurements; on the executor).
+    /// Elapsed frame work, total and longest (on the executor). Layer handoff adds its bounded wait; this is not CPU.
+    /// A claimed main transaction can finish later; its complete presentation latency is recorded by the ack.
     private(set) var drawingTime: TimeInterval = 0
     private(set) var longestFrame: TimeInterval = 0
     /// What `FrameTimingLog` reports next: when each frame was presented, and the longest drawing, since the last report.
@@ -456,7 +471,11 @@ final class SkinFrameProducer {
             current = nil
         }
         layerInstallRequested = false
-        if let layerRuntime, layerRuntime.state != .closed {
+        if let patch = pendingScenePatch {
+            _ = patch.content.reclaim(.invalidated)
+            finishScenePatch(patch)
+        }
+        if pendingScenePatch == nil, let layerRuntime, layerRuntime.state != .closed {
             do { try layerRuntime.beginClose() }
             catch { layerFailure = .rendering(String(describing: error)) }
         }
@@ -475,7 +494,12 @@ final class SkinFrameProducer {
     /// The window's facts, as the runtime's window model took them.
     func take(_ facts: SkinWindowFacts?) {
         guard let facts, !isStopped else { return }
+        explicitlyHidden = facts.settings.hidden
         var redraw = false
+        if panelGeneration != facts.panelGeneration {
+            panelGeneration = facts.panelGeneration
+            if contentMode.usesLayers { redraw = true }
+        }
         if actualSpace != facts.colorSpace {
             actualSpace = facts.colorSpace
             if contentMode.usesLayers { redraw = true }
@@ -532,6 +556,7 @@ final class SkinFrameProducer {
             releases.pictures += 1
         }
         if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
+            guard pendingScenePatch == nil else { releaseAfterWriter = true; return }
             if let layerRuntime {
                 do { try layerRuntime.setVisible(false) }
                 catch { layerFailure = .rendering(String(describing: error)); return }
@@ -571,7 +596,10 @@ final class SkinFrameProducer {
 
     private func drawIfSeen() {
         guard needsFrame else { return }
-        guard canBeSeen else {
+        // Layer resize/glass no longer posts ahead of the frame. A failed Loading frame must be able to recover
+        // before orderIn; ordinary unseen/hidden live skins still do no drawing.
+        let loading = contentMode.usesLayers && !layerInstalled && framesDrawn == 0 && !explicitlyHidden
+        guard canBeSeen || loading else {
             framesSkipped += 1
             return
         }
@@ -580,6 +608,8 @@ final class SkinFrameProducer {
 
     /// Draws the skin as it is now and presents it; a picture that cannot be made keeps the last one on screen.
     private func draw() {
+        // Applying can outlive the deadline. Keep a single dirty request, never overwrite the exported preparation.
+        guard pendingScenePatch == nil else { return }
         needsFrame = false
         guard let provider, let skin = skin() else { return }
         workActivity?.begin(.drawing)
@@ -645,9 +675,11 @@ final class SkinFrameProducer {
             let context = SkinRenderContext.of(skin)
             let environment = AppSceneEnvironment(scale: Double(scale),
                 appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: appearance)
-            var result: LayerRuntime.Update?
+            var preparation: LayerRuntime.Preparation?
+            var capturedScene: WidgetScene?
             try SkinFrameProducer.withAppearanceThrowing(appearance) {
                 let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+                capturedScene = scene
                 // A one-pixel owned query destination captures the exact canonical whole-window userToDevice
                 // mapping and actual supplied profile. It draws no pixels and does not provide raster coverage.
                 guard let bitmap = SkinBitmapDrawing.makeContext(1, 1, space) else {
@@ -659,22 +691,46 @@ final class SkinFrameProducer {
                 guard target.userToDevice == CGAffineTransform(scaleX: scale, y: scale),
                       target.colorSpace.map({ CFEqual($0, space) }) == true else { throw Rasterizer.Failure.invalidMapping }
                 let prepared = ScenePreparer.prepare(scene, context: context.drawing, target: target)
-                result = try layerRuntime.update(prepared, in: window, scale: scale, colorSpace: space,
-                    partition: partition, context: context.drawing, cycle: skin.updateCount, glass: .hitArea)
+                preparation = try layerRuntime.prepare(prepared, in: window, scale: scale, colorSpace: space,
+                    partition: partition, context: context.drawing, cycle: skin.updateCount, glass: .hitArea,
+                    forcePresentation: !layerInstalled || size != presentedSize || scene.glass != presentedGlass
+                        || scene.hitMap.toolTipAreas != presentedToolTipAreas)
             }
+            guard let scene = capturedScene else { return }
+            let (generation, overflow) = presentationGeneration.addingReportingOverflow(1)
+            guard !overflow else { throw LayerRuntime.Failure.sequenceOverflow }
+            presentationGeneration = generation
+            layerDestination = LayerDestination(size: size, scale: scale, space: space, appearance: appearance)
             let frame: LayerRuntime.Frame
-            switch result ?? .suppressed {
-            case .submitted(let completed):
-                frame = completed
+            switch preparation ?? .suppressed {
+            case .ready(let prepared):
+                let needsMain = !layerInstalled || size != presentedSize || scene.glass != presentedGlass
+                    || scene.hitMap.toolTipAreas != presentedToolTipAreas
+                if needsMain {
+                    let patch = SkinScenePatch(content: try layerRuntime.transfer(prepared),
+                        panelGeneration: panelGeneration, generation: generation, size: size, began: began,
+                        glass: scene.glass, hitMap: scene.hitMap)
+                    pendingScenePatch = patch
+                    if let requestScenePatch { requestScenePatch(patch) }
+                    else { _ = patch.content.reclaim(.invalidated) }
+                    if !Thread.isMainThread { _ = patch.content.waitForMain() }
+                    else if patch.content.state == .pending { _ = patch.content.reclaim(.invalidated) }
+                    finishScenePatch(patch)
+                    return
+                }
+                frame = try layerRuntime.commit(prepared)
                 lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
             case .unchanged(let completed): frame = completed
             case .suppressed: return
             }
-            layerDestination = LayerDestination(size: size, scale: scale, space: space, appearance: appearance)
+            presentedSize = size
+            presentedGlass = scene.glass
+            presentedToolTipAreas = scene.hitMap.toolTipAreas
             layerFailure = nil
             let wasReleased = contentsReleased
             if layerInstalled, let provider = provider as? LayerContentProvider,
                provider.presentedLayerRoot(layerRuntime.root, frame: frame) {
+                publishLayerHitMap?(scene.hitMap, generation, panelGeneration)
                 recordPresented(began: began, source: skin.config)
                 if wasReleased { requestLayerInstallation?() }
             } else if !layerInstallRequested {
@@ -686,12 +742,58 @@ final class SkinFrameProducer {
         }
     }
 
+    /// Acknowledgment is always processed on the actual owner, including after close. Duplicate/late acks are inert.
+    func finishScenePatch(_ patch: SkinScenePatch) {
+        precondition(executor?.isCurrent == true)
+        if patch.panelGeneration == panelGeneration, patch.generation > hostAcknowledgedGeneration {
+            switch patch.hostAcknowledgment {
+            case .none: break
+            case .controls, .complete:
+                hostAcknowledgedGeneration = patch.generation
+                presentedSize = patch.size
+                presentedGlass = patch.glass
+                if patch.hostAcknowledgment == .complete { presentedToolTipAreas = patch.hitMap.toolTipAreas }
+            }
+        }
+        guard pendingScenePatch?.content === patch.content, let layerRuntime else { return }
+        do {
+            guard let result = try layerRuntime.finish(patch.content, commitReclaimed: !isStopped) else { return }
+            pendingScenePatch = nil
+            switch result {
+            case .submitted(let frame):
+                lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+                layerFailure = nil
+                if patch.content.state == .appliedByMain {
+                    layerInstalled = true
+                    layerInstallRequested = false
+                    if !isStopped { recordPresented(began: patch.began, source: skin()?.config ?? "") }
+                } else if !isStopped {
+                    // A reclaimed first frame still requires main attachment; a late patch only updates glass/size.
+                    if layerInstalled, let provider = provider as? LayerContentProvider,
+                       provider.presentedLayerRoot(layerRuntime.root, frame: frame) {
+                        recordPresented(began: patch.began, source: skin()?.config ?? "")
+                    } else if !layerInstallRequested {
+                        layerInstallRequested = true
+                        requestLayerInstallation?()
+                    }
+                }
+            case .suppressed:
+                if !isStopped { layerFailure = .staleDestination; setNeedsFrame() }
+            case .unchanged: break
+            }
+            if isStopped, layerRuntime.state != .closed { try layerRuntime.beginClose() }
+            else if needsFrame { executor?.async { [weak self] in self?.runLoopTurn(.beforeWaiting) } }
+            writerReleased?()
+            if releaseAfterWriter { releaseAfterWriter = false; releaseUnseen() }
+        } catch { layerFailure = .rendering(String(describing: error)) }
+    }
+
     /// Main, with a real exclusive lease. Readiness is checked against the CURRENT window, not a queued request's
     /// old panel or facts sequence. Moving the same provider to another panel cannot install for the old destination.
     func installLayerContent(for facts: SkinWindowFacts, size: CGSize) -> LayerInstallation {
         guard Thread.isMainThread, let executor, executor.isCurrent, !isStopped,
               let provider = provider as? LayerContentProvider, let layerRuntime, let frame = layerRuntime.currentFrame,
-              let destination = layerDestination else { return .notReady }
+              let destination = layerDestination, pendingScenePatch == nil else { return .notReady }
         guard let space = facts.colorSpace, CFEqual(destination.space, space), destination.scale == facts.scale,
               destination.appearance == facts.appearance, destination.size == size else {
             layerFailure = .staleDestination
@@ -722,6 +824,7 @@ final class SkinFrameProducer {
     func retireLayerContent() -> Bool {
         precondition(executor?.isCurrent == true)
         stop()
+        guard pendingScenePatch == nil else { return false }
         if let layerRuntime {
             do { try layerRuntime.close() }
             catch { layerFailure = .rendering(String(describing: error)); return false }

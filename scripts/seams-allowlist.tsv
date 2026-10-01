@@ -664,3 +664,5 @@ random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for inde
 
 mono.DispatchTime.now	Sources/DesksetRuntime/OffscreenRenderer.swift	2	real GPU completion deadline, independent of the skin's explicit animation clock; expired frames cannot be read back
 wait.deadline	Sources/DesksetRuntime/OffscreenRenderer.swift	1	bounded wait for the caller's Metal queue tail; submission timeout invalidates the renderer without reading its texture
+background.mainHop	Sources/Deskset/SkinWindowController.swift	1	reentrant panel replacement is deferred until an applying ScenePatch releases its contentRoot writer; no executor wait inside a claim
+wait.deadline	Sources/DesksetRuntime/ScenePatch.swift	1	50ms pending-only main-frame handoff deadline; an already applying main writer is never stolen and owner logic resumes with coalesced frame debt

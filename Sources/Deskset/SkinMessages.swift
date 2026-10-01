@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetRuntime
 
 // What crosses between a skin's two halves (docs/skin-threading.md §5.4): messages from the main thread (or another
 // skin) to the runtime, which owns the `Skin` on its executor, and requests from the runtime to the main thread, which
@@ -103,6 +104,8 @@ enum SkinMessage {
     case firstFrame
     /// The window wants its frame again at the end of the turn (its content went to a new panel).
     case frameWanted
+    /// An already-released tree writer; owner metadata and deferred cleanup are finalized on the executor.
+    case scenePatchFinished(SkinScenePatch)
 }
 
 /// A bang the engine left to its host (`SkinHost.skin(_:handle:)`), as the runtime hands it to the main thread.
@@ -196,6 +199,10 @@ struct SkinStartReport {
 enum SkinRequest {
     /// A finished owner C root awaits main attachment. No live owner or stale panel is carried by this request.
     case installLayerContent
+    /// Completed C values with an authentic tree-only writer capability, never a live drawing owner.
+    case scenePatch(SkinScenePatch)
+    /// A completed ordinary frame publishes its immutable hit map without any drawing on main.
+    case layerHitMap(SkinHitMap, generation: UInt64, panelGeneration: UInt64)
     /// The skin loaded (`SkinMessage.load`): the main thread saves a first load's Default… settings, StartHidden and
     /// the window settings apply, before the window is placed.
     case loaded(SkinLoadReport)
@@ -263,4 +270,46 @@ protocol SkinRuntimeWindow: AnyObject {
     /// Debug builds: whether the live window takes the pointer, which the published facts must say (nil: nothing to
     /// compare). Main thread.
     var liveTakesPointer: Bool? { get }
+}
+
+/// The AppKit portion of a captured scene. Panel and presentation generations are separate from facts sequence.
+final class SkinScenePatch {
+    let content: ScenePatch
+    let panelGeneration: UInt64
+    let generation: UInt64
+    let size: CGSize
+    /// Original draw start: frame presentation elapsed time includes the handoff wait, never CPU time.
+    let began: TimeInterval
+    let glass: [GlassRegion]
+    let hitMap: SkinHitMap
+    private let lock = NSLock()
+    private var hostAck = HostAcknowledgment.none
+
+    init(content: ScenePatch, panelGeneration: UInt64, generation: UInt64, size: CGSize, began: TimeInterval,
+         glass: [GlassRegion], hitMap: SkinHitMap) {
+        self.content = content
+        self.panelGeneration = panelGeneration
+        self.generation = generation
+        self.size = size
+        self.began = began
+        self.glass = glass
+        self.hitMap = hitMap
+    }
+
+    var hostAcknowledgment: HostAcknowledgment {
+        lock.lock()
+        defer { lock.unlock() }
+        return hostAck
+    }
+
+    func acknowledgeHost(_ value: HostAcknowledgment) {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        hostAck = value
+        lock.unlock()
+    }
+}
+
+extension SkinScenePatch {
+    enum HostAcknowledgment: Equatable { case none, controls, complete }
 }
