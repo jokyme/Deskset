@@ -5,26 +5,30 @@ extension SkinRenderer {
     // MARK: Line
 
     /// Draws the HorizontalLines markers, then each line (oldest sample to newest) clipped to the content area.
-    /// Sample positions and scaling come from `LineMeter` (DesksetCore).
+    /// Sample positions and scaling come from the captured history and range (DesksetCore).
     ///
     /// AntiAlias=0 draws aliased and crisp: the graph's anchor corner (GraphStart edge, baseline) is moved onto a
     /// device pixel corner, vertices sit on whole-pixel values (pixel centers) and even line widths are shifted by
     /// half a pixel, so no stroke edge lies exactly between two device pixels (such an edge is rasterized on both
     /// sides: one pixel too thick).
     static func drawLine(_ meter: LineMeter, _ ctx: CGContext) {
-        let area = meter.contentFrame.cgRect
+        drawLine(meter.lower(), ctx)
+    }
+
+    static func drawLine(_ drawing: LineDraw, _ ctx: CGContext) {
+        let area = drawing.contentFrame.cgRect
         guard area.width > 0, area.height > 0 else { return }
         ctx.saveGState()
         defer { ctx.restoreGState() }
-        let aliased = !meter.antiAlias
-        let snap = aliased ? alignGraphToDevicePixels(graphAnchor(area, meter.direction), ctx) : .zero
-        ctx.setShouldAntialias(meter.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
+        let aliased = !drawing.antiAlias
+        let snap = aliased ? alignGraphToDevicePixels(graphAnchor(area, drawing.direction), ctx) : .zero
+        ctx.setShouldAntialias(drawing.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
         ctx.clip(to: area)
 
-        if meter.horizontalLines, meter.horizontalLineColor.a > 0 {
-            let vertical = meter.direction.vertical
+        if drawing.horizontalLines, drawing.horizontalLineColor.a > 0 {
+            let vertical = drawing.direction.vertical
             var segments: [CGPoint] = []
-            for coordinate in meter.markerCoordinates {
+            for coordinate in drawing.markerCoordinates {
                 // Markers are on pixel centers of the skin; undo the alignment shift so they stay there.
                 let c = coordinate - (vertical ? snap.y : snap.x)
                 if vertical {
@@ -34,17 +38,17 @@ extension SkinRenderer {
                 }
             }
             ctx.setLineWidth(1)
-            ctx.setStrokeColor(meter.horizontalLineColor.cgColor)
+            ctx.setStrokeColor(drawing.horizontalLineColor.cgColor)
             ctx.strokeLineSegments(between: segments)
         }
 
-        let count = meter.historyLength
-        guard count > 0, meter.lineWidth > 0 else { return }
+        let count = drawing.historyLength
+        guard count > 0, drawing.lineWidth > 0 else { return }
 
         // TransformStroke=Fixed: map the vertices through the meter's TransformationMatrix ourselves and stroke
         // with that matrix undone, so the pen width is not scaled or skewed (the clip above stays transformed).
         var transform = CGAffineTransform.identity
-        if meter.transformStrokeFixed, let m = meter.transformationMatrix {
+        if drawing.transformStrokeFixed, let m = drawing.transformationMatrix {
             let t = CGAffineTransform(a: m[0], b: m[1], c: m[2], d: m[3], tx: m[4], ty: m[5])
             let determinant = t.a * t.d - t.b * t.c
             if determinant.isFinite, abs(determinant) > 1e-9 {
@@ -52,16 +56,16 @@ extension SkinRenderer {
                 ctx.concatenate(t.inverted())
             }
         }
-        let offset = aliased && transform.isIdentity ? aliasedStrokeOffset(lineWidth: meter.lineWidth, ctx) : .zero
+        let offset = aliased && transform.isIdentity ? aliasedStrokeOffset(lineWidth: drawing.lineWidth, ctx) : .zero
 
-        ctx.setLineWidth(meter.lineWidth)
+        ctx.setLineWidth(drawing.lineWidth)
         ctx.setLineJoin(.round)
         ctx.setLineCap(count == 1 ? .round : .butt)
-        let geometry = meter.geometry
-        for (index, line) in meter.lines.enumerated() where line.measure != nil && line.color.a > 0 {
+        let geometry = drawing.geometry
+        for (index, line) in drawing.lines.enumerated() where line.isBound && line.color.a > 0 {
             let path = CGMutablePath()
             for age in stride(from: count - 1, through: 0, by: -1) {
-                let p = geometry.point(age: age, fraction: meter.fraction(line: index, age: age), wholePixels: aliased)
+                let p = geometry.point(age: age, fraction: drawing.fraction(line: index, age: age), wholePixels: aliased)
                 let mapped = CGPoint(x: p.x, y: p.y).applying(transform)
                 let point = CGPoint(x: mapped.x + offset.x, y: mapped.y + offset.y)
                 if age == count - 1 {

@@ -4,17 +4,21 @@ import DesksetCore
 extension SkinRenderer {
     // MARK: Histogram
 
-    /// Collects the primary-only / secondary-only / overlap rectangles of every column (from `HistogramMeter`)
+    /// Collects the primary-only / secondary-only / overlap rectangles of every captured column
     /// and paints each part with its image (revealed through the rectangles) or its color. The rectangles go into
     /// the skin's scratch buffers (`SkinRenderContext.histogramParts`), reused from frame to frame.
     static func drawHistogram(_ meter: HistogramMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
-        let area = meter.contentFrame.cgRect
-        let count = meter.historyLength
+        drawHistogram(meter.lower(), ctx, context)
+    }
+
+    static func drawHistogram(_ drawing: HistogramDraw, _ ctx: CGContext, _ context: SkinRenderContext) {
+        let area = drawing.contentFrame.cgRect
+        let count = drawing.historyLength
         guard area.width > 0, area.height > 0, count > 0 else { return }
 
         for i in context.histogramParts.indices { context.histogramParts[i].removeAll(keepingCapacity: true) }
         for age in 0..<count {
-            let c = meter.columnRects(age: age)
+            let c = drawing.columnRects(age: age)
             if c.primary.width > 0, c.primary.height > 0 { context.histogramParts[0].append(c.primary.cgRect) }
             if c.secondary.width > 0, c.secondary.height > 0 { context.histogramParts[1].append(c.secondary.cgRect) }
             if c.both.width > 0, c.both.height > 0 { context.histogramParts[2].append(c.both.cgRect) }
@@ -23,13 +27,13 @@ extension SkinRenderer {
         ctx.saveGState()
         defer { ctx.restoreGState() }
         // AntiAlias=0: whole-pixel columns must cover whole device pixels even at X=10.5 (see LineRenderer).
-        if !meter.antiAlias { alignGraphToDevicePixels(graphAnchor(area, meter.direction), ctx) }
-        ctx.setShouldAntialias(meter.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
+        if !drawing.antiAlias { alignGraphToDevicePixels(graphAnchor(area, drawing.direction), ctx) }
+        ctx.setShouldAntialias(drawing.antiAlias)  // before clipping: an aliased graph gets an aliased clip edge
         ctx.clip(to: area)
         let parts = context.histogramParts
-        drawHistogramPart(parts[0], meter.primaryColor, meter.primaryImage, area, ctx, context)
-        drawHistogramPart(parts[1], meter.secondaryColor, meter.secondaryImage, area, ctx, context)
-        drawHistogramPart(parts[2], meter.bothColor, meter.bothImage, area, ctx, context)
+        drawHistogramPart(parts[0], drawing.primaryColor, drawing.primaryImage, area, ctx, context)
+        drawHistogramPart(parts[1], drawing.secondaryColor, drawing.secondaryImage, area, ctx, context)
+        drawHistogramPart(parts[2], drawing.bothColor, drawing.bothImage, area, ctx, context)
     }
 
     private static func drawHistogramPart(_ rects: [CGRect], _ color: RGBA, _ image: HistogramMeter.HistogramImage?,

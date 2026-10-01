@@ -68,6 +68,7 @@ enum AppSelfTest {
         TextDrawSelfTests.run(t)
         DrawImageSelfTests.run(t)
         ImageDrawValueSelfTests.run(t)
+        GraphDrawValueSelfTests.run(t)
         #if DEBUG
         SpriteDrawSelfTests.run(t)
         #endif
