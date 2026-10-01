@@ -1567,60 +1567,47 @@ public final class Skin {
     /// `literalArguments`: indices of arguments written in `"""magic quotes"""`, which are "treated strictly
     /// literal" — no `(formula)` evaluation for `!SetVariable` / `!WriteKeyValue` / `!SetOption` values.
     func perform(_ bang: Bang, from section: SkinSection?, literalArguments: Set<Int>) {
-        switch ActionExecutor.route(bang, currentConfig: config) {
-        case .ignored:
-            return
-        case .host(let bang):
-            forwardToHost(bang)
-        case .local(let bang):
-            performLocally(bang, from: section, literal: literalArguments)
-        case .forward(let bang, let target):
-            host?.skin(self, forward: bang, toConfig: target)
-        case .localThenForward(let bang, let target):
-            performLocally(bang, from: section, literal: literalArguments)
-            // Local actions may replace or release the host, or close the skin. Read it at the original point.
-            host?.skin(self, forward: bang, toConfig: target)
-        }
+        ActionExecutor.perform(bang, literalArguments: literalArguments, on: self)
     }
 
-    private func performLocally(_ bang: Bang, from section: SkinSection?, literal: Set<Int> = []) {
-        let a = bang.args
-        func arg(_ i: Int) -> String { i < a.count ? a[i] : "" }
-        /// Argument `i` as a value: formulas evaluated unless magic-quoted.
-        func valueArg(_ i: Int, _ evaluate: (String) -> String) -> String {
-            literal.contains(i) ? arg(i) : evaluate(arg(i))
+    func handleHostAction(_ bang: Bang) { forwardToHost(bang) }
+
+    func forwardAction(_ bang: Bang, toConfig config: String) {
+        // Read after the local action: it may replace or release the host, or close the skin.
+        host?.skin(self, forward: bang, toConfig: config)
+    }
+
+    func performLocalAction(_ action: ResolvedLocalAction) {
+        func valueArg(_ value: ActionValue, _ evaluate: (String) -> String) -> String {
+            value.isLiteral ? value.text : evaluate(value.text)
         }
 
-        switch bang.name {
-        case "setoption":
-            if let s = self.section(named: arg(0)) {
-                setOption(s, key: arg(1), value: Skin.readsMeasureNames(arg(1)) ? arg(2) : valueArg(2, bangFormulaValue))
+        switch action {
+        case .setOption(.name(let name), let key, let value):
+            if let s = self.section(named: name) {
+                setOption(s, key: key, value: Skin.readsMeasureNames(key) ? value.text : valueArg(value, bangFormulaValue))
             } else {
-                log("!SetOption: section [\(arg(0))] not found", level: .warning)
+                log("!SetOption: section [\(name)] not found", level: .warning)
             }
-        case "setoptiongroup":
-            let v = Skin.readsMeasureNames(arg(1)) ? arg(2) : valueArg(2, bangFormulaValue)
-            for s in sections(inGroup: arg(0)) { setOption(s, key: arg(1), value: v) }
-        case "setvariable":
-            setVariable(arg(0), valueArg(1, evaluatedValue))
-        case "writekeyvalue":
-            writeKeyValue(section: arg(0), key: arg(1), value: valueArg(2, evaluatedValue), file: arg(3))
-        case "update":
+        case .setOption(.group(let group), let key, let value):
+            let v = Skin.readsMeasureNames(key) ? value.text : valueArg(value, bangFormulaValue)
+            for s in sections(inGroup: group) { setOption(s, key: key, value: v) }
+        case .setVariable(let name, let value):
+            setVariable(name, valueArg(value, evaluatedValue))
+        case .writeKeyValue(let section, let key, let value, let file):
+            writeKeyValue(section: section, key: key, value: valueArg(value, evaluatedValue), file: file)
+        case .update:
             update()
-        case "redraw":
+        case .redraw:
             redraw()
-        case "updatemeter":
-            updateMetersNow(meters(matching: arg(0)))
-        case "updatemetergroup":
-            updateMetersNow(meters.filter { $0.isInGroup(arg(0)) })
-        case "updatemeasure":
-            measures(matching: arg(0)).forEach(updateMeasureNow)
-        case "updatemeasuregroup":
-            measures.filter { $0.isInGroup(arg(0)) }.forEach(updateMeasureNow)
-        case "movemeter":
-            if let m = meter(named: arg(2)) {
-                m.overrides["x"] = arg(0).trimmingCharacters(in: .whitespaces)
-                m.overrides["y"] = arg(1).trimmingCharacters(in: .whitespaces)
+        case .updateMeter(let selection):
+            updateMetersNow(meters(matching: selection))
+        case .updateMeasure(let selection):
+            measures(matching: selection).forEach(updateMeasureNow)
+        case .moveMeter(let name, let x, let y):
+            if let m = meter(named: name) {
+                m.overrides["x"] = x.trimmingCharacters(in: .whitespaces)
+                m.overrides["y"] = y.trimmingCharacters(in: .whitespaces)
                 m.needsOptionRead = true
                 m.readOptionsIfNeeded()
                 layout()
@@ -1628,62 +1615,47 @@ public final class Skin {
                 updateSize(force: true)
                 needsDisplay()
             } else {
-                log("!MoveMeter: meter [\(arg(2))] not found", level: .warning)
+                log("!MoveMeter: meter [\(name)] not found", level: .warning)
             }
-        case "showmeter": meters(matching: arg(0)).forEach { $0.setHidden(false) }
-        case "hidemeter": meters(matching: arg(0)).forEach { $0.setHidden(true) }
-        case "togglemeter": meters(matching: arg(0)).forEach { $0.setHidden(!$0.hidden) }
-        case "showmetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(false) }
-        case "hidemetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(true) }
-        case "togglemetergroup": meters.filter { $0.isInGroup(arg(0)) }.forEach { $0.setHidden(!$0.hidden) }
-        case "enablemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(false) }
-        case "disablemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(true) }
-        case "togglemeasure": measures(matching: arg(0)).forEach { $0.setDisabled(!$0.disabled) }
-        case "enablemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(false) }
-        case "disablemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(true) }
-        case "togglemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setDisabled(!$0.disabled) }
-        case "pausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(true) }
-        case "unpausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(false) }
-        case "togglepausemeasure": measures(matching: arg(0)).forEach { $0.setPaused(!$0.paused) }
-        case "pausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(true) }
-        case "unpausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(false) }
-        case "togglepausemeasuregroup": measures.filter { $0.isInGroup(arg(0)) }.forEach { $0.setPaused(!$0.paused) }
-        case "commandmeasure":
-            commandMeasure(arg(0), arg(1))
-        case "pluginbang":
-            // Deprecated form of !CommandMeasure; also written as one argument "Measure Arguments".
-            if a.count >= 2 {
-                commandMeasure(arg(0), arg(1))
-            } else {
-                let parts = arg(0).trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
-                commandMeasure(parts.first.map(String.init) ?? "", parts.count > 1 ? String(parts[1]) : "")
+        case .meterHidden(let change, let selection):
+            meters(matching: selection).forEach {
+                switch change {
+                case .set(let hidden): $0.setHidden(hidden)
+                case .toggle: $0.setHidden(!$0.hidden)
+                }
             }
-        case "disablemouseaction", "clearmouseaction", "enablemouseaction", "togglemouseaction":
+        case .measureDisabled(let change, let selection):
+            measures(matching: selection).forEach {
+                switch change {
+                case .set(let disabled): $0.setDisabled(disabled)
+                case .toggle: $0.setDisabled(!$0.disabled)
+                }
+            }
+        case .measurePaused(let change, let selection):
+            measures(matching: selection).forEach {
+                switch change {
+                case .set(let paused): $0.setPaused(paused)
+                case .toggle: $0.setPaused(!$0.paused)
+                }
+            }
+        case .commandMeasure(let name, let command):
+            commandMeasure(name, command)
+        case .mouseAction(let operation, .name(let rawName), let actions):
             let targets: [SkinSection]
-            let name = arg(0).trimmingCharacters(in: .whitespaces)
+            let name = rawName.trimmingCharacters(in: .whitespaces)
             if name == "*" {
                 targets = meters
             } else if let s = self.section(named: name), s is Meter || s is RainmeterSection {
                 targets = [s]
             } else {
-                log("!\(bang.name): meter [\(name)] not found", level: .warning)
+                log("!\(operation.rawValue): meter [\(name)] not found", level: .warning)
                 targets = []
             }
-            setMouseActions(bang.name, targets: targets, actions: arg(1))
-        case "disablemouseactiongroup", "clearmouseactiongroup", "enablemouseactiongroup", "togglemouseactiongroup":
-            setMouseActions(String(bang.name.dropLast("group".count)), targets: meters.filter { $0.isInGroup(arg(1)) },
-                            actions: arg(0))
-        case "log":
-            let level: SkinLogLevel
-            switch arg(1).trimmingCharacters(in: .whitespaces).lowercased() {
-            case "warning": level = .warning
-            case "error": level = .error
-            case "debug": level = .debug
-            default: level = .notice
-            }
-            log(arg(0), level: level)
-        default:
-            forwardToHost(bang)
+            setMouseActions(operation, targets: targets, actions: actions)
+        case .mouseAction(let operation, .group(let group), let actions):
+            setMouseActions(operation, targets: meters.filter { $0.isInGroup(group) }, actions: actions)
+        case .log(let message, let level):
+            log(message, level: level)
         }
     }
 
@@ -1797,16 +1769,16 @@ public final class Skin {
         }
     }
 
-    private func setMouseActions(_ bangName: String, targets: [SkinSection], actions: String) {
+    private func setMouseActions(_ operation: ActionMouseOperation, targets: [SkinSection], actions: String) {
         let kinds = BangCatalog.mouseActions(in: actions).compactMap(MouseEventKind.init(rawValue:))
-        if kinds.isEmpty { log("!\(bangName): no valid mouse action in \"\(actions)\"", level: .warning) }
+        if kinds.isEmpty { log("!\(operation.rawValue): no valid mouse action in \"\(actions)\"", level: .warning) }
         for target in targets {
             for kind in kinds {
-                switch bangName {
-                case "disablemouseaction": target.setMouseActionState(kind, .disabled)
-                case "clearmouseaction": target.setMouseActionState(kind, .cleared)
-                case "enablemouseaction": target.setMouseActionState(kind, .enabled)
-                default: target.toggleMouseActionState(kind)
+                switch operation {
+                case .disable: target.setMouseActionState(kind, .disabled)
+                case .clear: target.setMouseActionState(kind, .cleared)
+                case .enable: target.setMouseActionState(kind, .enabled)
+                case .toggle: target.toggleMouseActionState(kind)
                 }
             }
         }
@@ -1814,6 +1786,20 @@ public final class Skin {
 
     private func sections(inGroup group: String) -> [SkinSection] {
         (measures as [SkinSection] + meters as [SkinSection]).filter { $0.isInGroup(group) }
+    }
+
+    private func meters(matching selection: ActionSelection) -> [Meter] {
+        switch selection {
+        case .name(let name): return meters(matching: name)
+        case .group(let group): return meters.filter { $0.isInGroup(group) }
+        }
+    }
+
+    private func measures(matching selection: ActionSelection) -> [Measure] {
+        switch selection {
+        case .name(let name): return measures(matching: name)
+        case .group(let group): return measures.filter { $0.isInGroup(group) }
+        }
     }
 
     private func meters(matching name: String) -> [Meter] {
@@ -2424,3 +2410,5 @@ extension Skin {
         variables[key] = value
     }
 }
+
+extension Skin: ActionTarget {}
