@@ -21,6 +21,30 @@ enum CorpusLayerContentSelfTests {
         let reportDirectory: String
         let skins: [String]
         let expectedSkinsRoots: [String: String]?
+        let configuration: ConfigurationInputs?
+    }
+    /// Explicit offline scenarios, never an implicit repair of the original corpus.
+    private struct ConfigurationInputs: Decodable {
+        let dataSHA256: String
+        let webManifestSHA256: String
+        let webPayloadSHA256: [String: String]
+        let skins: [String: Configuration]
+    }
+    private struct Configuration: Decodable {
+        let originalIndex: Int
+        let source: String
+        let sourceSHA256: String
+        let variables: [String: String]
+        let galleryFiles: [String: String]?
+    }
+    private struct Provenance: Encodable {
+        let manifestSHA256: String
+        let originalIndex: Int
+        let source: String
+        let originalSourceSHA256: String
+        let preparedSourceSHA256: String
+        let variables: [String: String]
+        let galleryFiles: [String: String]?
     }
     private struct Difference: Encodable {
         let pixels: Int
@@ -94,7 +118,8 @@ enum CorpusLayerContentSelfTests {
     private struct Report: Encodable {
         let schemaVersion = 1
         let skin: String
-        let inputMode = "original"
+        var inputMode = "original"
+        var configuration: Provenance?
         let scale: Int
         let appearance: String
         var status = "notRun"
@@ -122,6 +147,7 @@ enum CorpusLayerContentSelfTests {
 
     static func run(_ t: AppTestRunner) {
         layerComparisonTests(t)
+        configurationTests(t)
         t.suite("Runtime: corpus layer content: geometry area reporting matches bitmap modes") {
             guard let empty = Rect(minX: 0, minY: 0, maxX: 0, maxY: 9),
                   let window = Rect(minX: 0, minY: 0, maxX: 7, maxY: 9) else {
@@ -142,7 +168,8 @@ enum CorpusLayerContentSelfTests {
         // No manifest means no corpus test was requested, not a skipped or passing corpus qualification.
         guard let path = ProcessInfo.processInfo.environment["DESKSET_LAYER_CORPUS_MANIFEST"] else { return }
         t.suite("Runtime: corpus layer content: explicit manifest qualification") {
-            let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+            let manifestBytes = try Data(contentsOf: URL(fileURLWithPath: path))
+            let manifest = try JSONDecoder().decode(Manifest.self, from: manifestBytes)
             let root = canonical(manifest.corpusRoot), output = canonical(manifest.reportDirectory)
             guard manifest.schemaVersion == 1, !manifest.skins.isEmpty,
                   Set(manifest.skins).count == manifest.skins.count,
@@ -166,6 +193,7 @@ enum CorpusLayerContentSelfTests {
                 throw Failure.invalidManifest("Use the complete isolated input fixture; missing services must not read the host")
             }
             let web = try manifest.webFixtures.map { try LegacyRenderWebFixtures(manifest: canonical($0)) }
+            try validateConfigurationInputs(manifest, data: data)
             let device = MTLCreateSystemDefaultDevice()
             let saved = NSApp.appearance
             defer { NSApp.appearance = saved; MacAppearance.current.refresh(); DesktopInputs.appearance.refresh() }
@@ -175,6 +203,8 @@ enum CorpusLayerContentSelfTests {
                     let appearance = dark ? "dark" : "light"
                     RenderCommand.applyAppearance(dark ? .dark : .light)
                     var pair = [1, 2].map { Report(skin: manifest.skins[index], scale: $0, appearance: appearance) }
+                    let configuration = manifest.configuration?.skins[manifest.skins[index]]
+                    for i in pair.indices { pair[i].inputMode = configuration == nil ? "original" : "configured" }
                     do {
                         guard let device else { throw Failure.unavailable("Metal unavailable; native qualification did not run") }
                         Images.purge()
@@ -190,8 +220,17 @@ enum CorpusLayerContentSelfTests {
                             }
                             t.check(true, "the explicit nested-root positive control uses its original include root")
                         }
+                        var prepare: ((Skin, RecordingSideEffects, VirtualTimeExecutor) throws -> Void)?
+                        if let configuration {
+                            prepare = { skin, recording, virtual in
+                                let provenance = try prepareConfiguration(configuration, root: root,
+                                    fixtureRoot: data.deletingLastPathComponent(), manifestSHA256: hash(manifestBytes),
+                                    skin: skin, recording: recording, virtual: virtual)
+                                for i in pair.indices { pair[i].configuration = provenance }
+                            }
+                        }
                         let checked = try LegacyRenderSelfTests.withInputs(file, skinsDir: skinsRoot.path, data: data,
-                            webFixtures: web) { skin, recording, virtual in
+                            webFixtures: web, prepare: prepare) { skin, recording, virtual in
                             guard skin.executor === virtual, virtual.isCurrent, !skin.skinClock.isLive,
                                   !skin.sideEffects.isLive, skin.sideEffects === recording,
                                   !virtual.background.allowsUnfakedWork,
@@ -265,6 +304,9 @@ enum CorpusLayerContentSelfTests {
                             for i in pair.indices { pair[i].issues += skin.issues }
                             return Array(missing).sorted()
                         }
+                        if let configuration {
+                            _ = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+                        }
                         for i in pair.indices {
                             pair[i].missing = Array(Set(checked.missing + checked.value)).sorted()
                             let exact = pair[i].errors.isEmpty && !pair[i].frames.isEmpty && pair[i].frames.allSatisfy {
@@ -290,7 +332,191 @@ enum CorpusLayerContentSelfTests {
                     print("    CORPUS \(manifest.skins[index]) \(appearance): \(pair.map { "\($0.scale)x \($0.status)" }.joined(separator: ", "))")
                 }
             }
+            try validateConfigurationInputs(manifest, data: data)
             t.equal(reports.count, manifest.skins.count * 4, "every requested scale and appearance has an explicit report")
+        }
+    }
+
+    private static func validateConfigurationInputs(_ manifest: Manifest, data: URL) throws {
+        guard let configuration = manifest.configuration else { return }
+        guard !configuration.skins.isEmpty, Set(configuration.skins.keys).isSubset(of: Set(manifest.skins)),
+              Set(configuration.skins.values.map(\.originalIndex)).count == configuration.skins.count,
+              let webPath = manifest.webFixtures else {
+            throw Failure.invalidManifest("Configured inputs require unique original indices, selected skins, and explicit web fixtures")
+        }
+        let root = data.deletingLastPathComponent(), web = canonical(webPath)
+        _ = try verifiedFile(data.lastPathComponent, under: root, sha256: configuration.dataSHA256)
+        guard isInside(web, root) else { throw Failure.invalidManifest("Configured web fixtures leave the data fixture root") }
+        let (_, bytes) = try verifiedFile(web.lastPathComponent, under: web.deletingLastPathComponent(),
+                                          sha256: configuration.webManifestSHA256)
+        let responses = try JSONDecoder().decode([String: [String: String]].self, from: bytes)
+        guard Set(responses.values.flatMap { $0.values }) == Set(configuration.webPayloadSHA256.keys) else {
+            throw Failure.invalidManifest("Every mapped response needs exactly one explicit payload hash")
+        }
+        for (path, expected) in configuration.webPayloadSHA256 {
+            _ = try verifiedFile(path, under: web.deletingLastPathComponent(), sha256: expected)
+        }
+    }
+
+    private static func verifiedFile(_ relative: String, under root: URL, sha256: String) throws -> (URL, Data) {
+        let file = canonical(root.appendingPathComponent(relative).path)
+        guard !relative.isEmpty, !(relative as NSString).isAbsolutePath, !relative.hasPrefix("~"),
+              !relative.split(separator: "/").contains(".."), file != root, isInside(file, root),
+              try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+            throw Failure.invalidManifest("Missing, nonregular, or escaping configured input: \(relative)")
+        }
+        let bytes = try Data(contentsOf: file)
+        guard !bytes.isEmpty, hash(bytes) == sha256 else {
+            throw Failure.invalidManifest("Configured input hash mismatch: \(relative)")
+        }
+        return (file, bytes)
+    }
+
+    private static func prepareConfiguration(_ configuration: Configuration, root: URL, fixtureRoot: URL,
+                                             manifestSHA256: String, skin: Skin, recording: RecordingSideEffects,
+                                             virtual: VirtualTimeExecutor) throws -> Provenance {
+        guard configuration.originalIndex >= 0, skin.measures.isEmpty, skin.executor === virtual, virtual.isCurrent,
+              skin.sourceProvider === recording, skin.sideEffects === recording,
+              !virtual.background.allowsUnfakedWork, !skin.skinClock.isLive,
+              !configuration.variables.isEmpty || configuration.galleryFiles?.isEmpty == false,
+              configuration.variables.keys.allSatisfy({ !$0.isEmpty && !$0.contains("\n") && !$0.contains("\r") }),
+              configuration.variables.values.allSatisfy({ !$0.contains("\n") && !$0.contains("\r") }) else {
+            throw Failure.invalidManifest("Configuration requires explicit Variables values at the isolated pre-load seam")
+        }
+        let (source, original) = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+        var variables = configuration.variables
+        if let files = configuration.galleryFiles {
+            guard !files.isEmpty, variables.keys.allSatisfy({ $0.lowercased() != "gallerypath" }),
+                  Set(files.keys.map { URL(fileURLWithPath: $0).lastPathComponent.lowercased() }).count == files.count else {
+                throw Failure.invalidManifest("Gallery needs unique fixture names and owns the GalleryPath value")
+            }
+            let inputs = try files.keys.sorted().map { path -> (URL, Data) in
+                guard let expected = files[path] else { throw Failure.invalidManifest("Missing Gallery hash") }
+                return try verifiedFile(path, under: fixtureRoot, sha256: expected)
+            }
+            let directory = canonical(EnvironmentStore.shared.settingsPath).appendingPathComponent("CorpusInputs/Gallery")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for (file, bytes) in inputs {
+                try bytes.write(to: directory.appendingPathComponent(file.lastPathComponent), options: .atomic)
+            }
+            virtual.background.allowFixtureReads(under: directory)
+            variables["GalleryPath"] = directory.path
+        }
+        let copy = canonical(recording.files.path(for: source.path, access: .update))
+        guard recording.files.contains(copy.path), copy != source, try Data(contentsOf: copy) == original else {
+            throw Failure.invalidResult("Configuration did not start from an independent recorded source copy")
+        }
+        for key in variables.keys.sorted() {
+            guard let value = variables[key] else { throw Failure.invalidManifest("Missing configured value") }
+            try IniWriter.writeValue(value, key: key, section: "Variables", fileURL: copy)
+        }
+        _ = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+        return Provenance(manifestSHA256: manifestSHA256, originalIndex: configuration.originalIndex,
+            source: configuration.source, originalSourceSHA256: hash(original),
+            preparedSourceSHA256: hash(try Data(contentsOf: copy)), variables: variables,
+            galleryFiles: configuration.galleryFiles)
+    }
+
+    private static func hash(_ bytes: Data) -> String {
+        SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func configurationTests(_ t: AppTestRunner) {
+        t.suite("Runtime: corpus layer content: configured copies precede load and retain input provenance") {
+            guard let testSkins = Paths.repositoryFolder("TestSkins") else {
+                throw Failure.invalidResult("The existing isolated input fixture is required")
+            }
+            let root = canonical(t.temporaryDirectory("corpus-configuration").path)
+            let fixtureRoot = root.appendingPathComponent("inputs")
+            try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+            let source = root.appendingPathComponent("options.inc"), file = root.appendingPathComponent("Test.ini")
+            let original = Data("[Variables]\nLabel=original\nUnrelated=preserved\nGalleryPath=\n".utf8)
+            try original.write(to: source)
+            try """
+            [Rainmeter]
+            OnRefreshAction=[!SetVariable SeenAtRefresh "#Label#"]
+            [Variables]
+            @Include=#CURRENTPATH#options.inc
+            [Photo]
+            Measure=Plugin
+            Plugin=QuotePlugin
+            PathName=#GalleryPath#
+            FileFilter=*.txt
+            UpdateDivider=-1
+            [Text]
+            Meter=String
+            Text=#Label#
+            """.write(to: file, atomically: true, encoding: .utf8)
+            let photo = Data("owned fixture".utf8), ignored = Data("ignored by the original filter".utf8)
+            try photo.write(to: fixtureRoot.appendingPathComponent("photo.txt"))
+            try ignored.write(to: fixtureRoot.appendingPathComponent("ignored.bin"))
+            let configuration = Configuration(originalIndex: 11, source: "options.inc", sourceSHA256: hash(original),
+                variables: ["Label": "configured"], galleryFiles: ["photo.txt": hash(photo), "ignored.bin": hash(ignored)])
+            let data = testSkins.appendingPathComponent("Runtime/Data/mac.json")
+            let unprepared = try LegacyRenderSelfTests.withInputs(file, skinsDir: root.path, data: data) { skin, _, _ in
+                t.equal(skin.variable("SeenAtRefresh"), "original", "no preparation keeps the original refresh input")
+                t.equal((skin.measure(named: "Photo") as? QuoteMeasure)?.itemCount, 0)
+            }
+            t.equal(unprepared.missing, [])
+            var provenance: Provenance?
+            let prepared = try LegacyRenderSelfTests.withInputs(file, skinsDir: root.path, data: data,
+                prepare: { skin, recording, virtual in
+                    provenance = try prepareConfiguration(configuration, root: root, fixtureRoot: fixtureRoot,
+                        manifestSHA256: hash(Data("private control manifest".utf8)),
+                        skin: skin, recording: recording, virtual: virtual)
+                }) { skin, _, virtual in
+                    t.equal(skin.variable("SeenAtRefresh"), "configured", "the first refresh already reads the recorded include")
+                    t.equal(skin.variable("Unrelated"), "preserved")
+                    t.equal((skin.meter(named: "Text") as? StringMeter)?.text, "configured")
+                    t.equal((skin.measure(named: "Photo") as? QuoteMeasure)?.itemCount, 1,
+                            "the real Quote fixture reads the private directory and retains its file filter")
+                    let path = skin.measure(named: "Photo")?.stringValue ?? ""
+                    t.equal(try Data(contentsOf: URL(fileURLWithPath: path)), photo)
+                    t.equal(virtual.background.outstanding, 0)
+                    t.equal(virtual.background.unverifiable.count, 0)
+                }
+            t.equal(prepared.missing, [])
+            guard let provenance else { throw Failure.invalidResult("Configured preparation did not produce provenance") }
+            t.equal(provenance.originalSourceSHA256, hash(original))
+            t.check(provenance.preparedSourceSHA256 != hash(original) && provenance.originalIndex == 11,
+                    "the report distinguishes prepared bytes from the original occurrence")
+            t.equal(try Data(contentsOf: source), original, "the configured include never replaces original bytes")
+
+            func rejects(_ operation: () throws -> Void, _ note: String) {
+                do { try operation(); t.check(false, note) }
+                catch Failure.invalidManifest { t.check(true, note) }
+                catch { t.check(false, "Unexpected configuration failure: \(error)") }
+            }
+            rejects({ _ = try verifiedFile("options.inc", under: root, sha256: hash(photo)) },
+                    "a mismatched original hash cannot become a configured scenario")
+            rejects({ _ = try verifiedFile("../options.inc", under: fixtureRoot, sha256: hash(original)) },
+                    "a fixture cannot borrow a file outside its declared root")
+            try FileManager.default.createSymbolicLink(at: fixtureRoot.appendingPathComponent("escape.inc"),
+                                                       withDestinationURL: source)
+            rejects({ _ = try verifiedFile("escape.inc", under: fixtureRoot, sha256: hash(original)) },
+                    "an apparently local fixture symlink cannot escape its root")
+
+            let inputBytes = Data("{}".utf8)
+            let webBytes = Data("{\"webParserPage\":{\"https://fixtures.invalid/control\":\"photo.txt\"}}".utf8)
+            let inputFile = fixtureRoot.appendingPathComponent("data.json"), webFile = fixtureRoot.appendingPathComponent("web.json")
+            try inputBytes.write(to: inputFile)
+            try webBytes.write(to: webFile)
+            func manifest(_ inputHash: String, _ webHash: String, _ payloads: [String: String]) -> Manifest {
+                Manifest(schemaVersion: 1, corpusRoot: root.path, data: inputFile.path, webFixtures: webFile.path,
+                    reportDirectory: root.deletingLastPathComponent().appendingPathComponent("unused-report").path,
+                    skins: ["Test.ini"], expectedSkinsRoots: nil,
+                    configuration: ConfigurationInputs(dataSHA256: inputHash, webManifestSHA256: webHash,
+                        webPayloadSHA256: payloads, skins: ["Test.ini": configuration]))
+            }
+            try validateConfigurationInputs(manifest(hash(inputBytes), hash(webBytes), ["photo.txt": hash(photo)]), data: inputFile)
+            rejects({ try validateConfigurationInputs(manifest(hash(photo), hash(webBytes), ["photo.txt": hash(photo)]), data: inputFile) },
+                    "data bytes must match the configured input binding")
+            rejects({ try validateConfigurationInputs(manifest(hash(inputBytes), hash(photo), ["photo.txt": hash(photo)]), data: inputFile) },
+                    "the exact response mapping is bound before a configured load")
+            rejects({ try validateConfigurationInputs(manifest(hash(inputBytes), hash(webBytes), [:]), data: inputFile) },
+                    "an unhashed mapped response cannot silently pass configured validation")
+            rejects({ try validateConfigurationInputs(manifest(hash(inputBytes), hash(webBytes), ["photo.txt": hash(ignored)]), data: inputFile) },
+                    "a response payload with changed bytes cannot silently pass configured validation")
         }
     }
 
