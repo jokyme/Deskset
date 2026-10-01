@@ -2,6 +2,7 @@ import Accelerate
 import AppKit
 import ImageIO
 import DesksetCore
+import DesksetDraw
 
 /// Decoded image files and images derived from them (EXIF-oriented, cropped, color-transformed, flattened,
 /// strip frames, masks), all cached. A file is re-checked with one `stat` per lookup and reloaded — and its
@@ -33,6 +34,9 @@ import DesksetCore
 /// - A result made from a version of the file that was replaced (or purged) meanwhile is handed to its caller but not
 ///   kept.
 enum Images {
+    /// One backend for the lifetime of the shared cache: a cached path must never mix platform renderers.
+    private static let symbolRasterizer: any SymbolRasterizing = AppSymbolRasterizer()
+
     /// Decoded files are limited to this many pixels per side (larger files are downsampled while decoding).
     static let maxDecodeSide = 8192
     /// Files that declare more pixels than this are not decoded at all (a hostile or corrupt header must not make
@@ -297,7 +301,7 @@ enum Images {
             let purged = purges
             condition.unlock()
 
-            let rendered = MacSymbol(path: path).flatMap(SymbolImages.render)
+            let rendered = MacSymbol(path: path).flatMap(symbolRasterizer.render)
 
             condition.lock()
             defer { condition.unlock() }

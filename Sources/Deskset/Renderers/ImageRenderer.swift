@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 /// An image file prepared with its general image options (see `ImageOptions`): EXIF orientation, ImageCrop and the
 /// color transform are baked into `image` (cached by `Images`); ImageFlip, ImageRotate and the alpha are applied
@@ -140,13 +141,18 @@ extension SkinRenderer {
     /// changes a little reuses the decode. The file's own path when that is no smaller than the file, or for a symbol.
     static func drawnDecodePath(_ path: String, options: ImageOptions, drawn: CGSize, fit: Bool,
                                 in ctx: CGContext) -> String {
+        drawnDecodePath(path, options: options, drawn: drawn, fit: fit,
+                        target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+    }
+
+    static func drawnDecodePath(_ path: String, options: ImageOptions, drawn: CGSize, fit: Bool,
+                                target: DrawTarget) -> String {
         guard !MacSymbol.isSymbolPath(path), drawn.width > 0, drawn.height > 0, drawn.width.isFinite,
               drawn.height.isFinite, let header = Images.header(atPath: path) else { return path }
         let shown = options.displaySize(imageWidth: Double(header.width), imageHeight: Double(header.height),
                                         exifOrientation: header.orientation)
         guard shown.width > 0, shown.height > 0 else { return path }
-        let t = ctx.userSpaceToDeviceSpaceTransform
-        let device = Double(max(hypot(t.a, t.b), hypot(t.c, t.d)))
+        let device = Double(target.maximumPixelsPerPoint)
         let scale = device.isFinite ? min(max(device, 1), 4) : 1
         let sx = Double(drawn.width) / shown.width, sy = Double(drawn.height) / shown.height
         let side = scale * (fit ? min(sx, sy) : max(sx, sy)) * Double(max(header.width, header.height))
@@ -245,10 +251,16 @@ extension SkinRenderer {
     /// composite is rendered at the context's device scale and cached.
     static func drawMasked(_ prepared: PreparedImage, maskPath: String, maskOptions: ImageOptions, in area: CGRect,
                            _ ctx: CGContext) {
-        guard let mask = PreparedImage(path: maskPath, options: maskOptions, drawn: area.size, in: ctx) else { return }
-        let t = ctx.userSpaceToDeviceSpaceTransform
+        drawMasked(prepared, maskPath: maskPath, maskOptions: maskOptions, in: area, ctx,
+                   target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+    }
+
+    static func drawMasked(_ prepared: PreparedImage, maskPath: String, maskOptions: ImageOptions, in area: CGRect,
+                           _ ctx: CGContext, target: DrawTarget) {
+        guard let mask = PreparedImage(path: maskPath, options: maskOptions, drawn: area.size, target: target)
+        else { return }
         // Device pixels per point, 1…4 (clamped before converting: TransformationMatrix can scale by anything).
-        let deviceScale = Double(hypot(t.a, t.b))
+        let deviceScale = Double(target.horizontalPixelsPerPoint)
         let scale = deviceScale.isFinite ? Int(ceil(min(max(deviceScale, 1), 4) - 0.01)) : 1
         // Sizes are checked in floating point first: a hostile W/H (e.g. W=(10**300)) must not trap in Int().
         guard let (pw, ph) = ImageGeometry.pixelSize(width: Double(area.width), height: Double(area.height),

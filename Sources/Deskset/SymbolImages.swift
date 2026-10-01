@@ -1,5 +1,13 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
+
+/// The app's symbol rasterizer preserves AppKit's rendering and the image cache's sRGB bitmap format.
+struct AppSymbolRasterizer: SymbolRasterizing {
+    func render(_ symbol: MacSymbol) -> RasterizedSymbol? {
+        SymbolImages.render(symbol).map { RasterizedSymbol(image: $0.image, pointSize: $0.pointSize) }
+    }
+}
 
 /// SF Symbols as images (`ImageName=sf:cpu.fill`, Deskset extension; the engine side is `MacSymbol`).
 ///
@@ -133,9 +141,14 @@ enum SymbolImages {
     /// symbol.
     static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
                             in ctx: CGContext) -> String {
+        drawingPath(path, options: options, drawn: drawn, fit: fit,
+                    target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+    }
+
+    static func drawingPath(_ path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false,
+                            target: DrawTarget) -> String {
         guard let symbol = MacSymbol(path: path) else { return path }
-        let t = ctx.userSpaceToDeviceSpaceTransform
-        let device = Double(max(hypot(t.a, t.b), hypot(t.c, t.d)))
+        let device = Double(target.maximumPixelsPerPoint)
         var density = device.isFinite && device > 0 ? device : 1
         guard let natural = Images.size(atPath: symbol.measuringPath), natural.width > 0, natural.height > 0
         else { return symbol.withDensity(density).path }
@@ -157,7 +170,12 @@ extension PreparedImage {
     /// `path` prepared with `options` for drawing into `ctx` over `drawn` points (see `SymbolImages.drawingPath`); a
     /// file is prepared as by `init(path:options:)`.
     init?(path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false, in ctx: CGContext) {
-        self.init(path: SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, in: ctx),
+        self.init(path: path, options: options, drawn: drawn, fit: fit,
+                  target: DrawTarget(userToDevice: ctx.userSpaceToDeviceSpaceTransform))
+    }
+
+    init?(path: String, options: ImageOptions, drawn: CGSize?, fit: Bool = false, target: DrawTarget) {
+        self.init(path: SymbolImages.drawingPath(path, options: options, drawn: drawn, fit: fit, target: target),
                   options: options)
     }
 }
