@@ -14,6 +14,7 @@ protocol SectionContext: AnyObject {
     var random: SkinRandom { get }
     var skinClock: SkinClock { get }
     var clock: () -> TimeInterval { get }
+    var executor: SkinExecutor { get }
     var locale: Locale { get }
 
     func styleSection(named name: String) -> IniSection?
@@ -30,6 +31,8 @@ protocol SectionContext: AnyObject {
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
     func noteService(_ kind: BackgroundWorkKind)
     func execute(_ actionText: String, from section: SkinSection?)
+    func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
+                              relativeToSkin: Bool)
 }
 
 extension Skin: SectionContext {}
