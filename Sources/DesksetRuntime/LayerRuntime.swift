@@ -22,6 +22,7 @@ package final class LayerRuntime {
     package enum Fallback: Equatable {
         case unresolvedInk(ElementID, InkBounds.Unknown)
         case localizedAntialiasedLine(group: LayerPlan.Identity)
+        case localizedAntialiasedFullCircle(group: LayerPlan.Identity)
     }
     package enum Reason: Equatable {
         case initial, refresh, released, previousFailure, destination, partition, cycle, scene, preparation
@@ -235,16 +236,24 @@ package final class LayerRuntime {
             }
             let mode = try LayerContentBuilder.validateGeometry(plan)
             let recipes = try LayerContentBuilder.resolve(scene, plan: plan, scale: scale, mode: mode)
-            // A localized AA butt-cap segment can differ from the full-window raster before composition.
+            // Localized AA segments and full-circle fills can differ before composition, at the same global geometry.
             // Validate the complete candidate first: choosing Single must not hide malformed geometry/recipes.
+            var localizedFallback: Fallback?
             for (layer, items) in zip(plan.layers, recipes.layers) {
                 guard case .group = layer.content, layer.rect != window,
-                      Self.containsAntialiasedLine(items) else { continue }
-                fallback = .localizedAntialiasedLine(group: layer.id)
+                      let reason = Self.localizedRoundlineFallback(items, group: layer.id) else { continue }
+                if localizedFallback == nil { localizedFallback = reason }
+                // Preserve the original first-line reason even when a full circle occurs in an earlier group.
+                if case .localizedAntialiasedLine = reason {
+                    localizedFallback = reason
+                    break
+                }
+            }
+            if let localizedFallback {
+                fallback = localizedFallback
                 plan = SinglePartition.plan(in: window)
                 let singleMode = try LayerContentBuilder.validateGeometry(plan)
                 _ = try LayerContentBuilder.resolve(scene, plan: plan, scale: scale, mode: singleMode)
-                break
             }
             let rootBounds = CGRect(x: 0, y: 0, width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale)
             let frames = plan.layers.map { layer in
@@ -598,9 +607,10 @@ package final class LayerRuntime {
     }
 
     /// Inspect the resolved atomic recipe without adding recursive call depth. Roundline sets its own AA flag,
-    /// so an enclosing antialias wrapper cannot exempt the line. Both executed container branches matter.
-    private static func containsAntialiasedLine(_ items: [DrawItem]) -> Bool {
+    /// so an enclosing antialias wrapper cannot exempt it. Both executed container branches matter.
+    private static func localizedRoundlineFallback(_ items: [DrawItem], group: LayerPlan.Identity) -> Fallback? {
         var pending = [items.makeIterator()]
+        var fullCircle: Fallback?
         while !pending.isEmpty {
             guard let item = pending[pending.count - 1].next() else {
                 pending.removeLast()
@@ -608,7 +618,14 @@ package final class LayerRuntime {
             }
             switch item {
             case let .roundline(draw):
-                if draw.antiAlias, draw.color.a > 0, case .line = draw.shape { return true }
+                guard draw.antiAlias, draw.color.a > 0 else { continue }
+                switch draw.shape {
+                case .line: return .localizedAntialiasedLine(group: group)
+                case let .sector(_, _, _, _, _, sweep) where abs(sweep) >= RoundMeterMath.fullCircle:
+                    // Exactly RoundlineRenderer's ellipse/evenOdd branch, without an angular tolerance.
+                    fullCircle = .localizedAntialiasedFullCircle(group: group)
+                case .none, .sector: break
+                }
             case let .transformed(_, children), let .antialias(_, children):
                 pending.append(children.makeIterator())
             case let .container(clip, mask, content):
@@ -621,7 +638,7 @@ package final class LayerRuntime {
                 break
             }
         }
-        return false
+        return fullCircle
     }
 
     private static func contextIndependent(_ item: DrawItem) -> Bool {
