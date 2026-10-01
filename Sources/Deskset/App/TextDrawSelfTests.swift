@@ -88,6 +88,7 @@ enum TextDrawSelfTests {
             }
             t.check(released == nil, "the drawing and its context keep no skin alive")
             guard let captured else { return t.check(false, "the value was captured") }
+            let fresh = SkinRenderContext()
             for scale in [1, 2] {
                 for bgra in [false, true] {
                     let key = "\(scale)-\(bgra)"
@@ -95,6 +96,10 @@ enum TextDrawSelfTests {
                         SkinRenderer.drawString(captured, canvas, context, cycle: 100)
                     }
                     t.equal(picture, expected[key], "the captured value draws after its owner is gone at \(key)")
+                    let rebuilt = pixels(scale: scale, bgra: bgra) { canvas in
+                        SkinRenderer.drawString(captured, canvas, fresh, cycle: 100)
+                    }
+                    t.equal(rebuilt, expected[key], "a new layout cache draws the value without its owner at \(key)")
                 }
             }
         }
