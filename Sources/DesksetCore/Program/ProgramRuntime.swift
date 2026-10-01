@@ -41,6 +41,18 @@ public struct ProgramRuntime: Sendable {
                   node.idealSize.map({ $0.width.isFinite && $0.height.isFinite && $0.width >= 0 && $0.height >= 0 }) ?? true else {
                 throw ProgramRuntimeError.invalidGeometry(node.id)
             }
+            if let stroke = node.stroke {
+                guard stroke.width.isFinite, stroke.width >= 0 else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                if case .literal(let color) = stroke.color, !Self.valid(color) { throw ProgramRuntimeError.invalidPaint(node.id) }
+                switch node.content {
+                case .rectangle, .shape: break
+                default: throw ProgramRuntimeError.invalidGeometry(node.id)
+                }
+            }
+            if let radius = node.cornerRadius {
+                guard case .rectangle = node.content else { throw ProgramRuntimeError.invalidGeometry(node.id) }
+                if case .points(let value) = radius, !value.isFinite || value < 0 { throw ProgramRuntimeError.invalidGeometry(node.id) }
+            }
             switch node.content {
             case .text(let text):
                 guard node.idealSize == nil else { throw ProgramRuntimeError.invalidGeometry(node.id) }
@@ -122,6 +134,7 @@ public struct ProgramRuntime: Sendable {
         let style: TextStyle?
         let text: String?
         let fill: RGBA?
+        let stroke: RGBA?
         let children: [(Box, SkinPoint)]
     }
 
@@ -388,7 +401,7 @@ public struct ProgramRuntime: Sendable {
         }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
                       content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight),
-                      style: style, text: resolvedText, fill: fill, children: children)
+                      style: style, text: resolvedText, fill: fill, stroke: node.stroke?.color.resolved(in: appearance), children: children)
         state.boxes[key] = box
         return box
     }
@@ -425,8 +438,12 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.layoutOverflow(box.node.id)
                 }
                 if content.width > 0, content.height > 0 {
-                    if case .shape(let shape, _) = box.node.content { items = [.shape(shapeDrawing(shape, fill: fill, in: content))] }
-                    else { items = [.fill(content, Paint(color: fill))] }
+                    if case .rectangle = box.node.content, box.node.stroke == nil,
+                       box.node.cornerRadius == nil || box.node.cornerRadius == .points(0) {
+                        items = [.fill(content, Paint(color: fill))]
+                    } else {
+                        items = [.shape(try shapeDrawing(box.node, fill: fill, stroke: box.stroke, in: content))]
+                    }
                 }
             }
         }
@@ -439,27 +456,56 @@ public struct ProgramRuntime: Sendable {
     }
 
     /// Pure local geometry; each new immutable payload gets its own correct renderer cache identity.
-    private func shapeDrawing(_ kind: ProgramShapeKind, fill: RGBA, in content: SkinRect) -> ShapeDraw {
+    private func shapeDrawing(_ node: ProgramElement, fill: RGBA, stroke: RGBA?, in content: SkinRect) throws -> ShapeDraw {
         let w = content.width, h = content.height
         let path: ShapeSubpath
         let bounds: ShapeRect
-        switch kind {
-        case .circle:
+        switch node.content {
+        case .shape(.circle, _):
             let radius = min(w, h) / 2
             path = ShapeGeometryBuilder.ellipse(centerX: w / 2, centerY: h / 2, radiusX: radius)
             bounds = ShapeRect(minX: w / 2 - radius, minY: h / 2 - radius, maxX: w / 2 + radius, maxY: h / 2 + radius)
-        case .ellipse:
+        case .shape(.ellipse, _):
             path = ShapeGeometryBuilder.ellipse(centerX: w / 2, centerY: h / 2, radiusX: w / 2, radiusY: h / 2)
             bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
-        case .capsule:
+        case .shape(.capsule, _):
             path = ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: w, height: h, radiusX: min(w, h) / 2)
             bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
+        case .rectangle:
+            let radius: Double
+            switch node.cornerRadius {
+            case .points(let n): radius = min(n, min(w, h) / 2)
+            case .full: radius = min(w, h) / 2
+            case nil: radius = 0
+            }
+            path = ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: w, height: h, radiusX: radius)
+            bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
+        default: throw ProgramRuntimeError.invalidGeometry(node.id)
         }
-        var stroke = ShapeStrokeStyle()
-        stroke.width = 0
-        let item = ShapeItem(index: 1, geometry: .path(ShapePath(subpaths: [path], fillRule: .nonZero)), closed: true,
-                             fill: .color(fill), stroke: .none, strokeStyle: stroke, strokePlan: nil,
-                             paintTransform: .identity, bounds: bounds, visualBounds: bounds)
+        let outline = ShapePath(subpaths: [path], fillRule: .nonZero)
+        var style = ShapeStrokeStyle()
+        style.width = node.stroke?.width ?? 0
+        let strokePaint: ShapePaint = stroke.map { .color($0) } ?? .none
+        var visual = bounds
+        var plan: ShapeStrokePlan?
+        if style.width > 0, strokePaint.isVisible {
+            visual = bounds.insetBy(-style.width / 2)
+            guard [visual.minX, visual.minY, visual.maxX, visual.maxY, visual.width, visual.height,
+                   content.x + visual.minX, content.y + visual.minY,
+                   content.x + visual.maxX, content.y + visual.maxY].allSatisfy(\.isFinite) else {
+                throw ProgramRuntimeError.layoutOverflow(node.id)
+            }
+            plan = ShapeStroker.plan(for: outline, style: style)
+            if let plan, let widened = ShapeStroker.bounds(of: plan) { visual = visual.union(widened) }
+            guard [visual.minX, visual.minY, visual.maxX, visual.maxY, visual.width, visual.height,
+                   content.x + visual.minX, content.y + visual.minY,
+                   content.x + visual.maxX, content.y + visual.maxY].allSatisfy(\.isFinite) else {
+                throw ProgramRuntimeError.layoutOverflow(node.id)
+            }
+        }
+        let item = ShapeItem(index: 1, geometry: .path(outline), closed: true,
+                             fill: .color(fill), stroke: strokePaint, strokeStyle: style, strokePlan: plan,
+                             paintTransform: .identity, bounds: bounds, visualBounds: visual)
         return ShapeDraw(shapes: [item], contentFrame: content)
     }
 }

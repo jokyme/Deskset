@@ -498,4 +498,87 @@ func runProgramRuntimeTests(_ t: TestRunner) {
             t.equal(runtime.generation, 0)
         }
     }
+
+    t.suite("Program: shape style: centered outlines retain layout and immutable appearance recipes") {
+        let contents: [ProgramElement.Content] = [.rectangle(fill: .literal(.clear)), .shape(kind: .circle, fill: .literal(.clear)),
+            .shape(kind: .ellipse, fill: .literal(.clear)), .shape(kind: .capsule, fill: .literal(.clear))]
+        for (index, content) in contents.enumerated() {
+            let id = ElementID(name: "outline", index: index)
+            let root = ProgramElement(id: id, content: content, width: .fixed(24), height: .fixed(18),
+                                      padding: SkinInsets(left: 2, top: 2, right: 2, bottom: 2),
+                                      stroke: ProgramShapeStroke(color: .accent, width: 4))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Outline", root: root))
+            var captured: ShapeDraw?
+            for appearance in [SkinAppearance.light, .dark] {
+                let scene = try runtime.project(environment: programEnvironment(appearance)) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+                t.equal(scene.size, SkinSize(width: 24, height: 18))
+                t.equal(scene.elements[0].frame, SkinRect(width: 24, height: 18))
+                guard case .shape(let draw)? = scene.drawingItems.first else { return t.check(false, "actual outline recipe") }
+                let item = draw.shapes[0]
+                t.equal(draw.contentFrame, SkinRect(x: 2, y: 2, width: 20, height: 14))
+                t.check(!item.fill.isVisible && item.strokePlan?.isEmpty == false)
+                t.equal(item.stroke, .color(appearance.accentColor)); t.equal(item.strokePlan?.width, 4)
+                t.equal(item.strokePlan?.placement, .center)
+                let expected = index == 1 ? ShapeRect(minX: 1, minY: -2, maxX: 19, maxY: 16)
+                                          : ShapeRect(minX: -2, minY: -2, maxX: 22, maxY: 16)
+                t.check(item.visualBounds.minX <= expected.minX && item.visualBounds.minY <= expected.minY)
+                t.check(item.visualBounds.maxX >= expected.maxX && item.visualBounds.maxY >= expected.maxY)
+                if let old = captured {
+                    t.check(old.sourceID != draw.sourceID)
+                    t.equal(old.shapes[0].stroke, .color(SkinAppearance.light.accentColor))
+                    t.equal(old.shapes[0].geometry, item.geometry)
+                } else { captured = draw }
+            }
+        }
+    }
+
+    t.suite("Program: shape style: uniform corner radii clamp without changing empty or fixed boxes") {
+        let id = ElementID(name: "rounded", index: 0)
+        for (radius, expected) in [(ProgramCornerRadius.points(3), 3.0), (.full, 7.0), (.points(100), 7.0)] {
+            let root = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(20), height: .fixed(14), cornerRadius: radius)
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rounded", root: root))
+            let scene = try runtime.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+            guard case .shape(let draw)? = scene.drawingItems.first, case .path(let path) = draw.shapes[0].geometry,
+                  let sub = path.subpaths.first else { return t.check(false, "rounded native recipe") }
+            t.equal(scene.size, SkinSize(width: 20, height: 14))
+            t.equal(sub.start, ShapePoint(expected, 0))
+            t.equal(sub.segments[0].kind.end, ShapePoint(20 - expected, 0))
+            t.equal(sub.segments[1].kind.end, ShapePoint(20, expected))
+            t.check(draw.shapes[0].strokePlan == nil)
+        }
+        let plain = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(20), height: .fixed(14), cornerRadius: .points(0))
+        var original = try ProgramRuntime(program: WidgetProgram(name: "Zero radius", root: plain))
+        let scene = try original.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+        t.equal(scene.drawingItems, [.fill(SkinRect(width: 20, height: 14), Paint(color: SkinAppearance.light.accentColor))])
+        for (width, hidden) in [(0.0, false), (20.0, true)] {
+            let empty = ProgramElement(id: id, content: plain.content, width: .fixed(width), height: .fixed(14), hidden: hidden,
+                                       stroke: ProgramShapeStroke(color: .accent, width: 4), cornerRadius: .full)
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Empty outline", root: empty))
+            let output = try runtime.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+            t.equal(output.size, SkinSize(width: width, height: 14)); t.check(output.drawingItems.isEmpty)
+        }
+    }
+
+    t.suite("Program: shape style: illegal direct styles and overflowing stroke extents fail transactionally") {
+        let id = ElementID(name: "invalid-style", index: 0)
+        for value in [-1.0, .nan, .infinity] {
+            for root in [ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(20), height: .fixed(14),
+                                        stroke: ProgramShapeStroke(color: .accent, width: value)),
+                         ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(20), height: .fixed(14), cornerRadius: .points(value))] {
+                programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid", root: root)) }
+            }
+        }
+        let badColor = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(20), height: .fixed(14),
+                                      stroke: ProgramShapeStroke(color: .literal(RGBA(r: 256, g: 0, b: 0)), width: 1))
+        programFailure(t, .invalidPaint(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid color", root: badColor)) }
+        let badText = ProgramElement(id: id, content: .text(ProgramText("A")), stroke: ProgramShapeStroke(color: .accent, width: 1))
+        programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Not a shape", root: badText)) }
+        let badCircle = ProgramElement(id: id, content: .shape(kind: .circle, fill: .accent), width: .fixed(20), height: .fixed(14), cornerRadius: .full)
+        programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Not a rectangle", root: badCircle)) }
+        let huge = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(.greatestFiniteMagnitude), height: .fixed(8),
+                                  stroke: ProgramShapeStroke(color: .accent, width: .greatestFiniteMagnitude))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Finite paint overflow", root: huge))
+        programFailure(t, .layoutOverflow(id)) { _ = try runtime.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) } }
+        t.equal(runtime.generation, 0)
+    }
 }

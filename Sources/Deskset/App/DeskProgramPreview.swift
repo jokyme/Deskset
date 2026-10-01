@@ -133,25 +133,30 @@ final class DeskProgramPreviewController: NSViewController {
                 return SkinSize(width: layout.size.width, height: layout.size.height)
             }
             let size = next.size
-            let side = max(size.width, size.height) * stamp.scale
-            guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0,
-                  side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw PreviewFailure.extent }
+            guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0 else { throw PreviewFailure.extent }
+            let extent = try paintExtent(next)
+            let side = max(extent.width, extent.height) * stamp.scale
+            guard side.isFinite, side <= Double(RenderOptions.maxPixels) else { throw PreviewFailure.extent }
             guard accepts?(snapshot) == true else { clear(.checking); return }
             self.runtime = runtime
             scene = next
             canvas.scene = next
-            canvas.frame = NSRect(x: 0, y: 0, width: max(size.width, 1), height: max(size.height, 1))
+            // AppKit maps this enclosing paint viewport; the shared scene and its layout coordinates stay intact.
+            canvas.frame = NSRect(origin: .zero, size: extent.size)
+            canvas.bounds = extent
             scrollView.maxMagnification = min(RenderOptions.scaleRange.upperBound,
                                               Double(RenderOptions.maxPixels) / max(side, 1))
             if scrollView.magnification > scrollView.maxMagnification {
-                scrollView.setMagnification(scrollView.maxMagnification, centeredAt: NSPoint(x: size.width / 2, y: size.height / 2))
+                scrollView.setMagnification(scrollView.maxMagnification, centeredAt: NSPoint(x: extent.midX, y: extent.midY))
             }
             let hasContent = next.drawingItems.contains {
                 switch $0 {
                 case .text(let value): return !value.text.isEmpty
                 case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
                 case .shape(let shape):
-                    return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains { $0.fill.isVisible }
+                    return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains {
+                        $0.fill.isVisible || ($0.stroke.isVisible && $0.strokePlan?.isEmpty == false)
+                    }
                 default: return false
                 }
             }
@@ -166,6 +171,28 @@ final class DeskProgramPreviewController: NSViewController {
     }
 
     private enum PreviewFailure: Error { case extent }
+
+    /// These static programs emit known path geometry, so its captured visual bounds can enclose centered strokes.
+    /// This is a preview viewport, not a new layout, clipping rule or generic ink-coverage claim.
+    private func paintExtent(_ scene: WidgetScene) throws -> CGRect {
+        var result = CGRect(x: 0, y: 0, width: max(scene.size.width, 1), height: max(scene.size.height, 1))
+        for item in scene.drawingItems {
+            guard case .shape(let draw) = item else { continue }
+            for shape in draw.shapes where shape.fill.isVisible || (shape.stroke.isVisible && shape.strokePlan?.isEmpty == false) {
+                let b = shape.visualBounds
+                let x0 = draw.contentFrame.x + b.minX, y0 = draw.contentFrame.y + b.minY
+                let x1 = draw.contentFrame.x + b.maxX, y1 = draw.contentFrame.y + b.maxY
+                guard [x0, y0, x1, y1, x1 - x0, y1 - y0].allSatisfy(\.isFinite), x1 >= x0, y1 >= y0 else {
+                    throw PreviewFailure.extent
+                }
+                result = result.union(CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0))
+            }
+        }
+        guard [result.minX, result.minY, result.maxX, result.maxY, result.width, result.height].allSatisfy(\.isFinite) else {
+            throw PreviewFailure.extent
+        }
+        return result
+    }
 
     func refreshEnvironment() {
         guard !projecting, let snapshot, accepts?(snapshot) == true else { return }
@@ -194,6 +221,7 @@ final class DeskProgramPreviewController: NSViewController {
         canvas.context = nil
         canvas.isHidden = true
         canvas.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
+        canvas.setBoundsOrigin(.zero)
         canvas.needsDisplay = true
         updateStatus()
     }
@@ -214,19 +242,19 @@ final class DeskProgramPreviewController: NSViewController {
     }
 
     @objc func fit() {
-        guard let scene, state == .ready, scene.size.width > 0, scene.size.height > 0 else { return }
+        guard scene != nil, state == .ready, canvas.bounds.width > 0, canvas.bounds.height > 0 else { return }
         view.layoutSubtreeIfNeeded()
         let visible = scrollView.contentView.frame.size
-        let scale = min(visible.width / scene.size.width, visible.height / scene.size.height)
+        let scale = min(visible.width / canvas.bounds.width, visible.height / canvas.bounds.height)
         setZoom(min(1, scale))
     }
 
     @objc func actualSize() { setZoom(1) }
 
     func setZoom(_ value: CGFloat) {
-        guard state == .ready, value.isFinite, let scene else { return }
+        guard state == .ready, value.isFinite, scene != nil else { return }
         let zoom = min(max(value, scrollView.minMagnification), scrollView.maxMagnification)
-        scrollView.setMagnification(zoom, centeredAt: NSPoint(x: scene.size.width / 2, y: scene.size.height / 2))
+        scrollView.setMagnification(zoom, centeredAt: NSPoint(x: canvas.bounds.midX, y: canvas.bounds.midY))
     }
 
     func close() {
