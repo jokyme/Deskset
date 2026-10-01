@@ -48,6 +48,10 @@ extension SkinRenderer {
 
     /// `cycle` only governs layout-cache turnover; it is not an input to the picture or part of the text's value.
     static func drawString(_ drawing: TextDraw, _ ctx: CGContext, _ context: SkinRenderContext, cycle: Int) {
+        drawString(drawing, ctx, context.resources, cycle: cycle)
+    }
+
+    static func drawString(_ drawing: TextDraw, _ ctx: CGContext, _ context: AppDrawResources, cycle: Int) {
         let text = drawing.text
         let style = drawing.style
         guard !text.isEmpty, style.fontSize > 0 else { return }

@@ -14,6 +14,10 @@ extension SkinRenderer {
     }
 
     static func drawRotator(_ draw: RotatorDraw, _ ctx: CGContext, _ context: SkinRenderContext) {
+        drawRotator(draw, ctx, context.resources)
+    }
+
+    static func drawRotator(_ draw: RotatorDraw, _ ctx: CGContext, _ context: AppDrawResources) {
         let (processing, opacity) = draw.processing.opacitySplit
         guard opacity > 0, let path = draw.path,
               let source = Images.cgImage(atPath: path, exifOriented: processing.useExifOrientation),

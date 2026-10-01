@@ -12,6 +12,10 @@ extension SkinRenderer {
     }
 
     static func drawHistogram(_ drawing: HistogramDraw, _ ctx: CGContext, _ context: SkinRenderContext) {
+        drawHistogram(drawing, ctx, context.resources)
+    }
+
+    static func drawHistogram(_ drawing: HistogramDraw, _ ctx: CGContext, _ context: AppDrawResources) {
         let area = drawing.contentFrame.cgRect
         let count = drawing.historyLength
         guard area.width > 0, area.height > 0, count > 0 else { return }
@@ -37,7 +41,7 @@ extension SkinRenderer {
     }
 
     private static func drawHistogramPart(_ rects: [CGRect], _ color: RGBA, _ image: HistogramMeter.HistogramImage?,
-                                          _ area: CGRect, _ ctx: CGContext, _ context: SkinRenderContext) {
+                                          _ area: CGRect, _ ctx: CGContext, _ context: AppDrawResources) {
         guard !rects.isEmpty else { return }
         guard let image, var cg = Images.cgImage(atPath: image.path) else {
             guard color.a > 0 else { return }
@@ -50,7 +54,7 @@ extension SkinRenderer {
             if let hit = context.histogramCrops[image.path], hit.source === cg, hit.rect == rect {
                 cg = hit.cropped
             } else if let cropped = cg.cropping(to: rect) {
-                if context.histogramCrops.count >= SkinRenderContext.maxHistogramCrops {
+                if context.histogramCrops.count >= AppDrawResources.maxHistogramCrops {
                     context.histogramCrops.removeAll()
                 }
                 context.histogramCrops[image.path] = (cg, rect, cropped)

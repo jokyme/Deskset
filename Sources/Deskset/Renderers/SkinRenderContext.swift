@@ -1,17 +1,10 @@
 import CoreGraphics
 import DesksetCore
+import DesksetDraw
 
-/// What measuring and drawing one skin keep from frame to frame (docs/skin-threading.md §4.3, §5.4):
-/// - its text layouts, used both by `textSize` while the skin lays out its meters and by the String meter's drawing,
-///   so the measured size is exactly what gets drawn;
-/// - its Rotator images with the image options applied;
-/// - its prepared Shape paths, keyed by drawing identity and revision;
-/// - the Histogram's scratch space and cropped images.
-///
-/// One context per skin rather than caches shared by the whole app, so that skins updating and drawing on threads of
-/// their own never share one. Like everything reachable from the skin, a context is touched only by the skin's owner,
-/// its executor (`Skin.renderContext` checks that in debug builds), and what it keeps goes with the skin: a refreshed
-/// skin starts with an empty context, and an unloaded skin's layouts and images are released with it.
+/// Measuring and drawing one skin share its text, Rotator, Shape and Histogram caches. Only the skin's owner uses
+/// this context; refreshing or unloading the skin releases it. The library context owns no engine objects, and
+/// the resource bridge owns no context, so retained drawing values can be replayed with an independent context.
 final class SkinRenderContext {
     /// The context of `skin`, made on first use. Only the skin's owner may call this.
     static func of(_ skin: Skin) -> SkinRenderContext {
@@ -21,23 +14,28 @@ final class SkinRenderContext {
         return context
     }
 
-    /// The owner-side projection sequence; it holds no engine objects.
     let sceneProjector = SceneProjector()
+    let resources: AppDrawResources
+    let drawing: DesksetDraw.DrawContext
 
-    /// The skin's text layouts.
-    let text = TextLayoutCache(fonts: AppFontResolver())
-    /// The skin's Rotator images with the general image options applied.
-    let rotatorImages = RotatorImageCache()
-    /// Prepared shape paths; entries contain only drawing values and CoreGraphics objects.
-    let shapes = ShapeCG.Cache()
-    /// At most this many sources, with only one revision per source; least recently drawn sources are evicted.
-    static let maxShapeSources = 256
-    /// Scratch buffers for the Histogram's column rectangles (primary only, secondary only, overlap), reused from one
-    /// Histogram and one frame to the next.
-    var histogramParts: [[CGRect]] = [[], [], []]
-    /// Histogram images cropped by ImageCrop, by path: reused while the decoded image and the crop rectangle stay the
-    /// same.
-    var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] = [:]
-    /// Bound on `histogramCrops`: a skin whose Histogram image keeps changing does not pile up crops.
-    static let maxHistogramCrops = 64
+    init() {
+        let resources = AppDrawResources()
+        self.resources = resources
+        drawing = DesksetDraw.DrawContext(resources: resources)
+    }
+
+    var text: TextLayoutCache { resources.text }
+    var rotatorImages: RotatorImageCache { resources.rotatorImages }
+    var shapes: ShapeCG.Cache { drawing.shapes }
+    static let maxShapeSources = DesksetDraw.DrawContext.maxShapeSources
+
+    var histogramParts: [[CGRect]] {
+        get { resources.histogramParts }
+        set { resources.histogramParts = newValue }
+    }
+    var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] {
+        get { resources.histogramCrops }
+        set { resources.histogramCrops = newValue }
+    }
+    static let maxHistogramCrops = AppDrawResources.maxHistogramCrops
 }

@@ -1,5 +1,6 @@
-import AppKit
+import CoreGraphics
 import DesksetCore
+import DesksetDraw
 
 extension SkinRenderer {
     // MARK: Shape
@@ -11,14 +12,6 @@ extension SkinRenderer {
     }
 
     static func drawShape(_ draw: ShapeDraw, _ ctx: CGContext, _ context: SkinRenderContext) {
-        let shapes = ShapeCG.built(for: draw, in: context)
-        guard !shapes.isEmpty else { return }
-        let origin = draw.contentFrame
-        ctx.saveGState()
-        ctx.translateBy(x: origin.x, y: origin.y)
-        ctx.setAllowsAntialiasing(true)
-        ctx.setShouldAntialias(true)
-        for shape in shapes { ShapeCG.draw(shape, ctx) }
-        ctx.restoreGState()
+        DesksetDraw.ShapeRenderer.draw(draw, in: ctx, context: context.drawing)
     }
 }
