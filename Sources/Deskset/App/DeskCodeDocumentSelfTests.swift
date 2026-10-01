@@ -6,6 +6,7 @@ import DesksetCore
 enum DeskCodeDocumentSelfTests {
     static func run(_ t: AppTestRunner) {
         checkingTests(t)
+        resourceLanguageTests(t)
         encodingTests(t)
         reloadTests(t)
         staleTests(t)
@@ -99,6 +100,58 @@ enum DeskCodeDocumentSelfTests {
             t.check(f.editor.commitNow(explicit: true), "the existing commit path saves")
             t.equal(try Data(contentsOf: f.file), Data(f.editor.text.utf8), "UTF8/BOM/CRLF save without double BOM or conversion")
             t.equal(f.app.sortedControllers.count, 0, "editing did not activate or reload a widget")
+        }
+    }
+
+    private static func resourceLanguageTests(_ t: AppTestRunner) {
+        t.suite("Desk: document checking: image failures retain the checked document language across queued work") {
+            let oldLanguage = StudioText.languageOverride
+            defer { StudioText.languageOverride = oldLanguage }
+            let name = "missing%2F图片😀.png"
+            let source = "widget { Image(\"\(name)\").size(48, 40) }"
+            for language in StudioLanguage.allCases {
+                StudioText.languageOverride = language
+                let queue = DispatchQueue(label: "desk.document.test.resource-language")
+                queue.suspend()
+                var suspended = true
+                defer { if suspended { queue.resume() } }
+                let f = try fixture(t, data: Data(source.utf8), queue: queue)
+                guard let checking = f.controller.deskChecking, let preview = f.controller.deskPreview else {
+                    return t.check(false, "the real document has its checker and preview")
+                }
+                t.check(checking.snapshot.isChecked)
+                if case .pending = checking.imageResources(for: checking.snapshot) {} else {
+                    return t.check(false, "the suspended queue must retain real pending image work")
+                }
+                // The queued task must use the language captured with its checked source, even if the UI changes.
+                StudioText.languageOverride = language == .chinese ? .english : .chinese
+                queue.resume(); suspended = false
+                var failure: String?
+                let completed = AppSelfTest.spin(timeout: 10) {
+                    if case .failed(let message) = checking.imageResources(for: checking.snapshot) {
+                        failure = message
+                        return true
+                    }
+                    return false
+                }
+                guard completed, let failure else { return t.check(false, "the actual background resource failure was not delivered") }
+                let prefix = language == .chinese ? "无法读取小组件文件夹内的图片文件：" : "Cannot read a regular image in the widget folder: "
+                t.equal(failure, prefix + name, "CJK, emoji and percent sequences remain literal path text")
+                t.equal(preview.state, .unavailable(failure), "the preview displays the resource failure without replacing it")
+                t.check(preview.scene == nil && preview.canvas.isHidden)
+                t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+                t.equal(f.app.sortedControllers.count, 0)
+
+                let brokenName = "broken%25图片.png"
+                let root = f.file.deletingLastPathComponent()
+                try Data("not an image".utf8).write(to: root.appendingPathComponent(brokenName))
+                let inputs = DeskProgramResources.prepare(root: root, literals: [brokenName], maximumBytes: 1_024,
+                                                          maximumFiles: 1, language: language)
+                defer { inputs.removeCopies() }
+                let invalidPrefix = language == .chinese ? "图片过大或无法解码：" : "Image is too large or cannot be decoded: "
+                t.equal(inputs.failure, invalidPrefix + brokenName)
+                t.check(inputs.images.isEmpty && inputs.folder == nil, "localization does not publish partial inputs")
+            }
         }
     }
 

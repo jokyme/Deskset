@@ -46,16 +46,27 @@ enum DeskProgramResources {
 
     private enum Failure: Error, CustomStringConvertible {
         case outside(String), unreadable(String), ambiguous(String), changed(String), oversized(String), invalidImage(String)
-        var description: String {
+        var description: String { message(in: .english) }
+
+        func message(in language: StudioLanguage) -> String {
+            let key: StudioText.Key
+            let path: String
             switch self {
-            case .outside(let path): return "Image must stay inside the widget folder: \(path)"
-            case .unreadable(let path): return "Cannot read a regular image in the widget folder: \(path)"
-            case .ambiguous(let path): return "Image path has clashing case or Unicode spellings: \(path)"
-            case .changed(let path): return "Image changed while being read: \(path)"
-            case .oversized(let path): return "Referenced images exceed the package resource budget: \(path)"
-            case .invalidImage(let path): return "Cannot decode image within the renderer's bounds: \(path)"
+            case .outside(let value): (key, path) = (.deskImageOutside, value)
+            case .unreadable(let value): (key, path) = (.deskImageUnreadable, value)
+            case .ambiguous(let value): (key, path) = (.deskImageAmbiguous, value)
+            case .changed(let value): (key, path) = (.deskImageChanged, value)
+            case .oversized(let value): (key, path) = (.deskImageTooLarge, value)
+            case .invalidImage(let value): (key, path) = (.deskImageInvalid, value)
             }
+            return DeskProgramResources.message(key, path, language: language)
         }
+    }
+
+    /// Resource work receives the document language; it never queries AppKit's language policy off the main thread.
+    private static func message(_ key: StudioText.Key, _ detail: String, language: StudioLanguage) -> String {
+        let template = StudioText.string(key, in: language)
+        return language == .chinese ? StudioText.spacedFormat(template, [detail]) : String(format: template, detail)
     }
 
     private struct Opened {
@@ -126,7 +137,8 @@ enum DeskProgramResources {
 
     /// File count/bytes are the referenced collection's package budget, not the separate web image limits.
     /// A failed collection retains existence metadata for DK4029, but publishes no partial render inputs.
-    static func prepare(root: URL, literals: [String], maximumBytes: Int, maximumFiles: Int) -> Prepared {
+    static func prepare(root: URL, literals: [String], maximumBytes: Int, maximumFiles: Int,
+                        language: StudioLanguage = .english) -> Prepared {
         var folder: URL?
         var files: [String: DeskPackageFile] = [:], images: [String: ProgramImageResource] = [:]
         var sourceRecords: [Source] = [], resolved: [String: ProgramImageResource] = [:]
@@ -137,7 +149,7 @@ enum DeskProgramResources {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
             folder = destination
-        } catch { failure = "Cannot create private image inputs: \(error.localizedDescription)" }
+        } catch { failure = message(.deskImagePreparationFailed, error.localizedDescription, language: language) }
         for literal in literals {
             do {
                 let file = try openFile(in: root, literal: literal)
@@ -174,7 +186,12 @@ enum DeskProgramResources {
                 resolved[file.path] = value
                 images[literal] = value
                 files[file.path]?.pixelSize = DeskPixelSize(width: Int(natural.width), height: Int(natural.height))
-            } catch { if failure == nil { failure = String(describing: error) } }
+            } catch {
+                if failure == nil {
+                    failure = (error as? Failure)?.message(in: language)
+                        ?? message(.deskImagePreparationFailed, error.localizedDescription, language: language)
+                }
+            }
         }
         if failure != nil {
             if let folder { try? FileManager.default.removeItem(at: folder) }

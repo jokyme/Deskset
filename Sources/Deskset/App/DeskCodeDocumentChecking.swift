@@ -124,7 +124,7 @@ final class DeskCodeDocumentChecking {
         prepared = nil
         resourceGeneration = nil
         let next = resourceRequest.addingReportingOverflow(1)
-        guard !next.overflow else { imageInput = .failed("Image resource generation overflow"); return }
+        guard !next.overflow else { imageInput = .failed(StudioText[.deskImageRefreshFailed]); return }
         resourceRequest = next.partialValue
         imageInput = .ready([:])
         guard candidate.isChecked else { return }
@@ -133,10 +133,11 @@ final class DeskCodeDocumentChecking {
         imageInput = .pending
         let request = resourceRequest, root = file.deletingLastPathComponent()
         let limits = candidate.options.catalog.limits
+        let language: StudioLanguage = candidate.options.messageLanguage == .simplifiedChinese ? .chinese : .english
         checkQueue.async { [weak self] in
             let result = DeskProgramResources.prepare(root: root, literals: sources,
                                                       maximumBytes: limits.maximumPackageBytes,
-                                                      maximumFiles: limits.maximumPackageFiles)
+                                                      maximumFiles: limits.maximumPackageFiles, language: language)
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.resourceRequest == request, self.isCurrent(candidate) else {
                     result.removeCopies(); return

@@ -127,6 +127,14 @@ enum StudioText {
         case deskPreviewEmpty = "desk.preview.empty"
         case deskPreviewUnavailable = "desk.preview.unavailable"
         case deskPreviewTooLarge = "desk.preview.tooLarge"
+        case deskImageOutside = "desk.image.outside"
+        case deskImageUnreadable = "desk.image.unreadable"
+        case deskImageAmbiguous = "desk.image.ambiguous"
+        case deskImageChanged = "desk.image.changed"
+        case deskImageTooLarge = "desk.image.tooLarge"
+        case deskImageInvalid = "desk.image.invalid"
+        case deskImagePreparationFailed = "desk.image.preparationFailed"
+        case deskImageRefreshFailed = "desk.image.refreshFailed"
         case macAppearance = "preview.popover.appearance"
         case followMac = "preview.popover.followMac"
         case appearanceLight = "preview.popover.light"
@@ -723,6 +731,14 @@ enum StudioText {
         .deskPreviewUnavailable: ("Preview unavailable", "无法预览"),
         .deskPreviewTooLarge: ("The layout or font exceeds the preview’s 16,384-pixel side limit.",
                                "排版或字体超出了预览每边 16,384 像素的上限。"),
+        .deskImageOutside: ("Image must stay inside the widget folder: %@", "图片必须位于小组件文件夹内：%@"),
+        .deskImageUnreadable: ("Cannot read a regular image in the widget folder: %@", "无法读取小组件文件夹内的图片文件：%@"),
+        .deskImageAmbiguous: ("Image path has clashing case or Unicode spellings: %@", "图片路径的大小写或 Unicode 拼写存在冲突：%@"),
+        .deskImageChanged: ("Image changed while being read: %@", "读取期间图片已更改：%@"),
+        .deskImageTooLarge: ("Referenced images exceed the widget’s size or file limit: %@", "引用的图片超出了小组件的大小或文件数量上限：%@"),
+        .deskImageInvalid: ("Image is too large or cannot be decoded: %@", "图片过大或无法解码：%@"),
+        .deskImagePreparationFailed: ("Cannot prepare images: %@", "无法准备图片：%@"),
+        .deskImageRefreshFailed: ("Images could not be refreshed. Reopen the document to try again.", "无法刷新图片。请重新打开文档后再试。"),
         .macAppearance: ("Mac appearance", "Mac 的外观"),
         .followMac: ("Follow Mac", "跟随 Mac"),
         .appearanceLight: ("Light", "浅色"),
