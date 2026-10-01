@@ -17,6 +17,7 @@ import Foundation
 open class SkinSection {
     public let name: String
     public unowned let skin: Skin
+    unowned let sectionContext: any SectionContext
     /// The section as the skin's files write it. A patch of the running skin (`Skin.patch`) puts the new text's section
     /// in its place; the lookup below follows.
     var own: IniSection {
@@ -41,7 +42,7 @@ open class SkinSection {
 
     /// Mouse action state bangs (meters and `[Rainmeter]` only). Missing entries are `.enabled`.
     var mouseActionStates: [MouseEventKind: MouseActionState] = [:] {
-        didSet { if mouseActionStates != oldValue { skin.noteSnapshotChange() } }
+        didSet { if mouseActionStates != oldValue { sectionContext.noteSnapshotChange() } }
     }
     /// The last non-enabled state per action, used by `!ToggleMouseAction` ("remembers the last non-enabled
     /// state"; disabled by default).
@@ -51,6 +52,7 @@ open class SkinSection {
         self.name = name
         self.own = section
         self.skin = skin
+        self.sectionContext = skin
     }
 
     // MARK: Raw option lookup
@@ -92,7 +94,7 @@ open class SkinSection {
             foundEmpty = true
         }
         for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
+            if let v = sectionContext.styleValues(named: style)?[lower] {
                 if !v.isEmpty { return v }
                 foundEmpty = true
             }
@@ -106,7 +108,7 @@ open class SkinSection {
         let lower = key.lowercased()
         var foundEmpty = false
         for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
+            if let v = sectionContext.styleValues(named: style)?[lower] {
                 if !v.isEmpty { return v }
                 foundEmpty = true
             }
@@ -118,9 +120,9 @@ open class SkinSection {
     /// sets it). Unlike `optionOrigin`, never `.setOption`.
     public func fileOrigin(_ key: String) -> OptionOrigin? {
         let lower = key.lowercased()
-        if ownValues[lower] != nil { return .own(skin.sources.location(section: name, key: lower)) }
-        for style in styles.reversed() where skin.styleValues(named: style)?[lower] != nil {
-            return .style(skin.styleSection(named: style)?.name ?? style, skin.sources.location(section: style, key: lower))
+        if ownValues[lower] != nil { return .own(sectionContext.sources.location(section: name, key: lower)) }
+        for style in styles.reversed() where sectionContext.styleValues(named: style)?[lower] != nil {
+            return .style(sectionContext.styleSection(named: style)?.name ?? style, sectionContext.sources.location(section: style, key: lower))
         }
         return nil
     }
@@ -137,7 +139,7 @@ open class SkinSection {
             foundEmpty = true
         }
         for style in styles.reversed() {
-            if let v = skin.styleValues(named: style)?[lower] {
+            if let v = sectionContext.styleValues(named: style)?[lower] {
                 if !v.isEmpty { return v }
                 foundEmpty = true
             }
@@ -161,7 +163,7 @@ open class SkinSection {
     public func option(_ key: String) -> String? {
         guard let raw = rawOption(key) else { return nil }
         let sectionVariables = resolvesSectionVariables
-        let value = skin.resolve(raw, in: self, sectionVariables: sectionVariables)
+        let value = sectionContext.resolve(raw, in: self, sectionVariables: sectionVariables)
         noteSectionVariables(raw: raw, resolved: value, sectionVariablesResolved: sectionVariables)
         return value
     }
@@ -172,11 +174,11 @@ open class SkinSection {
     func noteSectionVariables(raw: String, resolved: String, sectionVariablesResolved: Bool) {
         guard !mentionsSectionVariables else { return }
         if !sectionVariablesResolved {
-            if resolved.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(resolved) }
+            if resolved.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = sectionContext.mentionsSectionVariable(resolved) }
         } else if tracksSectionVariables,
                   raw.utf8.contains(UInt8(ascii: "[")) || raw.utf8.contains(UInt8(ascii: "#")) {
-            let plain = skin.resolve(raw, in: self, sectionVariables: false)
-            if plain.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = skin.mentionsSectionVariable(plain) }
+            let plain = sectionContext.resolve(raw, in: self, sectionVariables: false)
+            if plain.utf8.contains(UInt8(ascii: "[")) { mentionsSectionVariables = sectionContext.mentionsSectionVariable(plain) }
         }
     }
 
@@ -209,16 +211,16 @@ open class SkinSection {
     /// was loading (no measure has a value and no meter a position yet). Such options are read again at the first
     /// update, so "invalid …" log lines wait for that read instead of reporting a mistake the skin does not have.
     func awaitsSectionVariables(_ key: String) -> Bool {
-        if resolvesSectionVariables && skin.optionsLoaded { return false }
+        if resolvesSectionVariables && sectionContext.optionsLoaded { return false }
         guard let raw = rawOption(key), raw.utf8.contains(UInt8(ascii: "[")) else { return false }
-        return skin.mentionsSectionVariable(skin.resolve(raw, in: self, sectionVariables: false))
+        return sectionContext.mentionsSectionVariable(sectionContext.resolve(raw, in: self, sectionVariables: false))
     }
 
     /// Action option (`LeftMouseUpAction`, `IfTrueAction`, …): only `#Var#` is replaced when the option is read;
     /// escapes, nesting syntax and section variables are resolved once, when the action runs (see `Skin.execute`).
     public func actionOption(_ key: String) -> String {
         guard let raw = rawOption(key) else { return "" }
-        return skin.resolveStandardVariables(raw, in: self)
+        return sectionContext.resolveStandardVariables(raw, in: self)
     }
 
     public func string(_ key: String, _ defaultValue: String = "") -> String {
@@ -270,7 +272,7 @@ open class SkinSection {
     /// Reads options common to every section. Subclasses override, call super, then read their own.
     open func readOptions() {
         dynamicVariables = bool("DynamicVariables", false)
-        updateDivider = int("UpdateDivider", skin.settings.defaultUpdateDivider)
+        updateDivider = int("UpdateDivider", sectionContext.settings.defaultUpdateDivider)
         groups = OptionValue.list(string("Group")).map { $0.lowercased() }
     }
 
@@ -287,9 +289,9 @@ open class SkinSection {
     /// updated and the meters above it were placed (Mac timing; Rainmeter presumably resolves them at load).
     func readOptionsIfNeeded() {
         if needsOptionRead || dynamicVariables {
-            skin.assertOwned()
+            sectionContext.assertOwned(#function)
             needsOptionRead = false
-            readingAfterLoad = skin.optionsLoaded
+            readingAfterLoad = sectionContext.optionsLoaded
             defer { readingAfterLoad = false }
             readOptions()
         }
