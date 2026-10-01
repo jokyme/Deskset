@@ -54,6 +54,7 @@ enum AppSelfTest {
         AudioSelfTests.run(t)
         MediaUITests.run(t)
         SectionHostSelfTests.run(t)
+        ServiceHostLookupSelfTests.run(t)
         WeatherSelfTests.run(t)
         SkinThreadingSelfTests.run(t)
         SkinRuntimeSelfTests.run(t)
