@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// rigid stacks, fixed solid rectangles, scalar text bindings and root startup assignments through the shared executor.
+/// proposal-based stacks, solid rectangles, scalar text bindings and root startup assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -17,6 +17,7 @@ public struct WidgetProgram: Equatable, Sendable {
 
 public enum ProgramLength: Equatable, Sendable {
     case fit
+    case fill
     case fixed(Double)
 }
 
@@ -24,7 +25,7 @@ public enum ProgramLength: Equatable, Sendable {
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
-        /// An unrounded solid rectangle in its content box. Both outer dimensions must be fixed.
+        /// An unrounded solid rectangle in its content box. Nonfixed dimensions need an explicit ideal size.
         case rectangle(fill: ProgramColor)
         case column(spacing: Double, align: HorizontalTextAlign, children: [ProgramElement])
         case row(spacing: Double, align: VerticalTextAlign, children: [ProgramElement])
@@ -34,16 +35,29 @@ public struct ProgramElement: Equatable, Sendable {
     public let content: Content
     public let width: ProgramLength
     public let height: ProgramLength
+    public let minWidth: Double
+    public let maxWidth: Double?
+    public let minHeight: Double
+    public let maxHeight: Double?
+    /// Intrinsic content size for a leaf without native measurement, supplied by its producer's catalog.
+    public let idealSize: SkinSize?
     public let padding: SkinInsets
     /// Hiding keeps layout space. This is not Rainmeter's collapsed visibility.
     public let hidden: Bool
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
-                padding: SkinInsets = .zero, hidden: Bool = false) {
+                padding: SkinInsets = .zero, hidden: Bool = false,
+                minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
+                idealSize: SkinSize? = nil) {
         self.id = id
         self.content = content
         self.width = width
         self.height = height
+        self.minWidth = minWidth
+        self.maxWidth = maxWidth
+        self.minHeight = minHeight
+        self.maxHeight = maxHeight
+        self.idealSize = idealSize
         self.padding = padding
         self.hidden = hidden
     }

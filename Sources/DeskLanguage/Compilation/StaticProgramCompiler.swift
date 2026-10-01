@@ -117,8 +117,8 @@ struct StaticProgramCompiler {
             }
         }
         let allowedFacets: Set<String> = rectangle
-            ? ["width", "height", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "hidden", "name"]
-            : ["width", "height", "padding.left", "padding.right", "padding.top", "padding.bottom",
+            ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "hidden", "name"]
+            : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
@@ -131,12 +131,12 @@ struct StaticProgramCompiler {
         let index = try reserveIndex(at: node, depth: depth)
         // Text styles are inherited only by text and containers; a shape's fill is its own facet/default.
         let appearance = rectangle ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
-        let width = try length(facts, "width", at: node), height = try length(facts, "height", at: node)
-        if rectangle {
-            guard case .fixed = width, case .fixed = height else {
-                throw issue(.unsupported, node, "Rectangle requires explicit fixed width and height; flexible sizing is not implemented")
-            }
-        }
+        let width = try length(facts, "width", default: spec.sizing.width, at: node)
+        let height = try length(facts, "height", default: spec.sizing.height, at: node)
+        let minWidth = try number(facts, "width.min", default: 0, at: node)
+        let minHeight = try number(facts, "height.min", default: 0, at: node)
+        let maxWidth = try optionalNumber(facts, "width.max", at: node)
+        let maxHeight = try optionalNumber(facts, "height.max", at: node)
         let padding = try SkinInsets(left: number(facts, "padding.left", default: 0, at: node),
                                      top: number(facts, "padding.top", default: 0, at: node),
                                      right: number(facts, "padding.right", default: 0, at: node),
@@ -209,7 +209,9 @@ struct StaticProgramCompiler {
             }
         }
         return ProgramElement(id: ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index),
-                              content: content, width: width, height: height, padding: padding, hidden: hidden)
+                              content: content, width: width, height: height, padding: padding, hidden: hidden,
+                              minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
+                              idealSize: rectangle ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil)
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {
@@ -332,17 +334,24 @@ struct StaticProgramCompiler {
         }
     }
 
-    private func length(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> ProgramLength {
-        guard let value = try facet(facts, key, at: node) else { return .fit }
+    private func length(_ facts: ElementFacts, _ key: String, default source: String, at node: PositionedNode) throws -> ProgramLength {
+        let value = try facet(facts, key, at: node) ?? fixed(source, at: node)
         switch value {
         case .choice("fit"): return .fit
+        case .choice("fill"): return .fill
         case .number(let n) where n >= 0: return .fixed(n)
-        default: throw issue(.unsupported, node, "Static \(key) must be nonnegative or .fit; .fill/min/max are not implemented")
+        default: throw issue(.unsupported, node, "Static \(key) must be nonnegative, .fit or .fill")
         }
     }
 
     private func number(_ facts: ElementFacts, _ key: String, default fallback: Double, at node: PositionedNode) throws -> Double {
         guard let value = try facet(facts, key, at: node) else { return fallback }
+        guard case .number(let n) = value, n >= 0 else { throw issue(.unsupported, node, "Static \(key) must be nonnegative") }
+        return n
+    }
+
+    private func optionalNumber(_ facts: ElementFacts, _ key: String, at node: PositionedNode) throws -> Double? {
+        guard let value = try facet(facts, key, at: node) else { return nil }
         guard case .number(let n) = value, n >= 0 else { throw issue(.unsupported, node, "Static \(key) must be nonnegative") }
         return n
     }
