@@ -1666,6 +1666,337 @@ private func runPluginFileViewTests(_ t: TestRunner) {
         t.equal(requests.count, 1, "an icon is written once")
     }
 
+    t.suite("Plugin: FileView icon lane: queued renderers preserve file work and owner delivery") {
+        final class RenderGate: @unchecked Sendable {
+            struct Request {
+                let name: String
+                let size: Int
+                let pathExtension: String
+                let onMain: Bool
+            }
+            private let condition = NSCondition()
+            private let payloads: [String: Data]
+            private var released = false
+            private var entriesBeforeRelease: Int?
+            private var asked: [Request] = []
+            private var returned = 0
+            private var passedConcurrentLane = false
+            private var folderReads = 0
+
+            init(_ payloads: [String: Data]) { self.payloads = payloads }
+
+            var requests: [Request] {
+                condition.lock()
+                defer { condition.unlock() }
+                return asked
+            }
+
+            var returnedCount: Int {
+                condition.lock()
+                defer { condition.unlock() }
+                return returned
+            }
+
+            var heldEntryCount: Int? {
+                condition.lock()
+                defer { condition.unlock() }
+                return entriesBeforeRelease
+            }
+
+            var concurrentLanePassed: Bool {
+                condition.lock()
+                defer { condition.unlock() }
+                return passedConcurrentLane
+            }
+
+            var unexpectedFolderReads: Int {
+                condition.lock()
+                defer { condition.unlock() }
+                return folderReads
+            }
+
+            func markConcurrentLane() {
+                condition.lock()
+                passedConcurrentLane = true
+                condition.broadcast()
+                condition.unlock()
+            }
+
+            func noteFolderRead() {
+                condition.lock()
+                folderReads += 1
+                condition.unlock()
+            }
+
+            func open() {
+                condition.lock()
+                if !released { entriesBeforeRelease = asked.count }
+                released = true
+                condition.broadcast()
+                condition.unlock()
+            }
+
+            func render(_ source: String, _ size: Int, _ pathExtension: String) -> Data? {
+                let name = (source as NSString).lastPathComponent
+                condition.lock()
+                let first = asked.isEmpty
+                asked.append(Request(name: name, size: size, pathExtension: pathExtension,
+                                     onMain: Thread.isMainThread))
+                condition.broadcast()
+                if first {
+                    while !released { condition.wait() }
+                }
+                let data = payloads[name]
+                returned += 1
+                condition.unlock()
+                return data
+            }
+        }
+
+        // Original synthetic bytes: this tests scheduling and complete writes, not AppKit icon rendering.
+        let names = ["a.txt", "b.txt", "c.txt", "d.txt"]
+        let bytes = [
+            Data(("icon-a:" + String(repeating: "a", count: 1024)).utf8),
+            Data(("icon-b:" + String(repeating: "b", count: 2048)).utf8),
+            Data(("icon-c:" + String(repeating: "c", count: 3072)).utf8),
+            Data(("icon-d:" + String(repeating: "d", count: 4096)).utf8),
+        ]
+        let payloads = Dictionary(uniqueKeysWithValues: zip(names, bytes))
+        let gate = RenderGate(payloads)
+        let lateGate = RenderGate(payloads)
+        let owner = ManualExecutor(), canaryOwner = ManualExecutor()
+        let host = FakeHost()
+        let skins = t.temporaryDirectory("icon-lane").appendingPathComponent("Skins")
+        let directory = skins.appendingPathComponent("Root/Sub")
+        let sources = skins.appendingPathComponent("Root/@Resources/Icons")
+        let folder = skins.appendingPathComponent("Root/@Resources/Canary")
+        for dir in [directory, sources, folder] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        for name in names { try Data(("source-" + name).utf8).write(to: sources.appendingPathComponent(name)) }
+        try Data("one".utf8).write(to: folder.appendingPathComponent("one.txt"))
+        try Data("two".utf8).write(to: folder.appendingPathComponent("two.txt"))
+        func load(_ file: String, _ ini: String, on executor: ManualExecutor) throws -> Skin {
+            let url = directory.appendingPathComponent(file)
+            try ini.write(to: url, atomically: true, encoding: .utf8)
+            let skin = Skin(config: "Root\\Sub", fileURL: url, skinsDirectory: skins,
+                            system: FakeSystem(), host: host)
+            skin.executor = executor
+            try skin.load()
+            return skin
+        }
+        var ini = """
+        [P]
+        Measure=Plugin
+        Plugin=FileView
+        Path=#@#Icons
+        Count=4
+        ShowDotDot=0
+
+        """
+        let sizes = ["Small", "Medium", "Large", "ExtraLarge"]
+        for index in 0..<4 {
+            ini += """
+            [I\(index)]
+            Measure=Plugin
+            Plugin=FileView
+            Path=[P]
+            Type=Icon
+            Index=\(index + 1)
+            IconSize=\(sizes[index])
+            IconPath=#CURRENTPATH#icon\(index).ico
+            Disabled=1
+
+            """
+        }
+        ini += """
+        [Late]
+        Measure=Plugin
+        Plugin=FileView
+        Path=[P]
+        Type=Icon
+        Index=1
+        IconPath=#CURRENTPATH#closed.ico
+        Disabled=1
+        """
+        let skin = try load("Icons.ini", ini, on: owner)
+        let canary = try load("Canary.ini", """
+        [Folder]
+        Measure=Plugin
+        Plugin=FolderInfo
+        Folder=#@#Canary
+        InfoType=FileCount
+        [Trash]
+        Measure=RecycleManager
+        """, on: canaryOwner)
+        let savedRenderer = FileViewIcons.renderer
+        let savedFixture = TrashMonitor.fixture
+        let savedFolders = TrashMonitor.folders
+        var expectedOwnerPosts = 0, expectedCanaryPosts = 0
+        var fenceQueued = false, skinClosed = false
+        defer {
+            gate.open()
+            lateGate.open()
+            let drained = spin {
+                owner.runPending()
+                canaryOwner.runPending()
+                return owner.all.filter { $0.kind == .async }.count >= expectedOwnerPosts
+                    && canaryOwner.all.filter { $0.kind == .async }.count >= expectedCanaryPosts
+                    && gate.returnedCount == gate.requests.count
+                    && lateGate.returnedCount == lateGate.requests.count
+                    && (!fenceQueued || gate.concurrentLanePassed)
+            }
+            t.check(drained, "the controlled jobs and their owner callbacks drained after every gate was released")
+            if !skinClosed { skin.close() }
+            canary.close()
+            FileViewIcons.renderer = savedRenderer
+            if drained {
+                TrashMonitor.fixture = savedFixture
+                TrashMonitor.folders = savedFolders
+                TrashMonitor.shared.forget()
+            } else {
+                // A late monitor job must not fall through to the Mac's folders after a failed cleanup.
+                print("    icon lane cleanup did not drain; the synthetic Trash source remains installed; stop this gate")
+            }
+            withExtendedLifetime(host) {}
+        }
+        FileViewIcons.renderer = gate.render
+        TrashMonitor.fixture = TrashMonitor.Status(count: 7, size: 4096)
+        TrashMonitor.folders = { gate.noteFolderRead(); return [] }
+        TrashMonitor.shared.forget()
+
+        let parent = measure(skin, "P", FileViewMeasure.self)
+        let icons = (0..<4).map { measure(skin, "I\($0)", FileViewMeasure.self, read: false) }
+        let late = measure(skin, "Late", FileViewMeasure.self, read: false)
+        if !registryWired {
+            for icon in icons + [late] {
+                icon.parentResolver = { $0.lowercased() == "p" ? parent : nil }
+            }
+        }
+        expectedOwnerPosts += 1
+        update(parent)
+        let listed = spin { !owner.pending.isEmpty }
+        t.check(listed, "the actual source listing handed its result to the owner")
+        guard listed else { return }
+        owner.runPending()
+        t.equal(parent.value, 4, "four distinct synthetic sources were listed")
+        t.check(!parent.isReading)
+        t.equal(gate.requests.count, 0, "disabled children did not submit render work while the listing was applied")
+        guard parent.value == 4, !parent.isReading, gate.requests.isEmpty else { return }
+
+        icons[0].setDisabled(false)
+        expectedOwnerPosts += 1
+        update(icons[0])
+        let firstEntered = spin { gate.requests.count == 1 }
+        t.check(firstEntered, "the first renderer really entered before the other requests were submitted")
+        guard firstEntered else { return }
+        t.equal(gate.returnedCount, 0, "the first renderer is held by the controlled gate")
+        guard gate.returnedCount == 0 else { return }
+        for icon in icons.dropFirst() {
+            icon.setDisabled(false)
+            expectedOwnerPosts += 1
+            update(icon)
+        }
+
+        let info = measure(canary, "Folder", FolderInfoMeasure.self)
+        let trash = measure(canary, "Trash", RecycleManagerMeasure.self)
+        expectedCanaryPosts += 2
+        update(info)
+        update(trash)
+        // A causal checkpoint for the existing concurrent lane. This is not a 64-thread starvation simulation.
+        fenceQueued = true
+        PluginIO.queue.async(flags: .barrier) { gate.markConcurrentLane() }
+        let canariesReturned = spin { canaryOwner.pending.filter { $0.kind == .async }.count >= 2 }
+        t.check(canariesReturned, "the real folder job and synthetic Trash job returned while the first renderer waited")
+        guard canariesReturned else { return }
+        let canariesUnpublished = info.isScanning && !trash.hasReading
+        t.check(canariesUnpublished, "the canaries do not publish before their owner runs")
+        guard canariesUnpublished else { return }
+        canaryOwner.runPending()
+        t.equal(info.latestResult.files, 2, "the original concurrent file lane completed the real temporary folder scan")
+        t.equal(trash.value, 7, "the original concurrent lane completed the synthetic Trash reading")
+        t.equal(TrashMonitor.shared.latest.size, 4096)
+        t.equal(gate.unexpectedFolderReads, 0, "the Trash control never fell through to live folders")
+        t.equal(canaryOwner.all.filter { $0.kind == .async }.count, 2, "each canary delivered once")
+        guard info.latestResult.files == 2, trash.value == 7, TrashMonitor.shared.latest.size == 4096,
+              gate.unexpectedFolderReads == 0,
+              canaryOwner.all.filter({ $0.kind == .async }).count == 2 else { return }
+
+        let phaseObserved = spin { gate.concurrentLanePassed || gate.requests.count > 1 }
+        t.check(phaseObserved, "either the separate-lane checkpoint passed or parallel renderer entry was actually seen")
+        guard phaseObserved else { return }
+        // Freeze the held-phase count under the same lock that admits a renderer, then release the first job.
+        // Both implementations must pass the actual concurrent-lane barrier before that snapshot is examined.
+        gate.open()
+        let laneDrained = spin { gate.concurrentLanePassed }
+        t.check(laneDrained, "the existing concurrent-lane barrier really ran after release")
+        guard laneDrained else { return }
+        let iconCallbacks = spin { owner.pending.filter { $0.kind == .async }.count >= 4 }
+        t.check(iconCallbacks, "all four distinct requests handed completion to their owner after release")
+        guard iconCallbacks else { return }
+        guard let beforeRelease = gate.heldEntryCount else {
+            t.check(false, "the synchronized held-phase count was not captured")
+            return
+        }
+        print("    icon lane controlled phase: held renderer entries=\(beforeRelease), concurrent checkpoint=\(gate.concurrentLanePassed)")
+        t.equal(beforeRelease, 1, "queued icons must not start additional renderer workers before the first completes")
+        let requests = gate.requests
+        t.equal(requests.count, 4)
+        t.equal(gate.returnedCount, 4)
+        t.equal(requests.map(\.name).sorted(), ["a.txt", "b.txt", "c.txt", "d.txt"])
+        t.equal(requests.map(\.size).sorted(), [16, 32, 48, 256])
+        t.check(requests.allSatisfy { !$0.onMain && $0.pathExtension == "ico" })
+        t.equal(owner.all.filter { $0.kind == .async }.count, 5, "the listing and four icons each delivered once")
+        var completeWrites = true
+        for index in 0..<4 {
+            let destination = directory.appendingPathComponent("icon\(index).ico")
+            let written = try? Data(contentsOf: destination)
+            t.check(!bytes[index].isEmpty)
+            t.equal(written, Optional(bytes[index]), "every distinct request wrote its complete bytes")
+            t.equal(icons[index].stringValue, "", "the completed file is not published before the owner hop")
+            completeWrites = completeWrites && written == bytes[index] && icons[index].stringValue.isEmpty
+        }
+        guard requests.count == 4, gate.returnedCount == 4, completeWrites,
+              requests.map(\.name).sorted() == ["a.txt", "b.txt", "c.txt", "d.txt"],
+              requests.map(\.size).sorted() == [16, 32, 48, 256],
+              requests.allSatisfy({ !$0.onMain && $0.pathExtension == "ico" }),
+              owner.all.filter({ $0.kind == .async }).count == 5 else { return }
+        owner.runPending()
+        var published = true
+        for index in 0..<4 {
+            let path = directory.appendingPathComponent("icon\(index).ico").path
+            t.equal(icons[index].stringValue, path)
+            published = published && icons[index].stringValue == path
+            update(icons[index])
+        }
+        t.equal(gate.requests.count, 4, "the existing successful-result cache still avoids another write")
+        guard published, gate.requests.count == 4 else { return }
+
+        FileViewIcons.renderer = lateGate.render
+        late.setDisabled(false)
+        expectedOwnerPosts += 1
+        update(late)
+        let lateEntered = spin { lateGate.requests.count == 1 }
+        t.check(lateEntered, "the close control also has an actual in-flight renderer")
+        guard lateEntered else { return }
+        skin.close()
+        skinClosed = true
+        lateGate.open()
+        let lateCallback = spin { !owner.pending.isEmpty }
+        t.check(lateCallback, "the already-started job still handed its result to the closed owner's queue")
+        guard lateCallback else { return }
+        let closedFile = directory.appendingPathComponent("closed.ico")
+        let lateBytes = try? Data(contentsOf: closedFile)
+        t.equal(lateBytes, Optional(bytes[0]), "closing does not cancel the already-started captured file write")
+        t.equal(late.stringValue, "")
+        guard lateBytes == bytes[0], late.stringValue.isEmpty else { return }
+        owner.runPending()
+        t.equal(late.stringValue, "", "the closed measure never publishes the late completion")
+        t.equal(lateGate.returnedCount, 1)
+        t.equal(owner.all.filter { $0.kind == .async }.count, 6, "the close control also delivered once")
+        guard late.stringValue.isEmpty, lateGate.returnedCount == 1,
+              owner.all.filter({ $0.kind == .async }).count == 6 else { return }
+    }
     t.suite("Plugin: FileView icons follow links and Finder aliases") {
         let fm = FileManager.default
         let dir = t.temporaryDirectory("links")
