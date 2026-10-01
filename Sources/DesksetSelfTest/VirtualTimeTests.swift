@@ -493,6 +493,140 @@ private func runVirtualEngineTests(_ t: TestRunner) {
 // MARK: - Background work
 
 private func runBackgroundWorkTests(_ t: TestRunner) {
+    t.suite("Executor: virtual time — unfaked work defaults to real delivery and can be blocked") {
+        for allowed in [true, false] {
+            let v = virtualExecutor()
+            t.check(v.background.allowsUnfakedWork, "a new executor keeps the existing live fallback")
+            if !allowed { v.background.allowsUnfakedWork = false }
+            t.equal(v.background.allowsUnfakedWork, allowed)
+            let skin = try virtualSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeter=Image\n", executor: v)
+            var starts = 0
+            var deliver: ((Int) -> Void)?
+            var results: [Int] = [], dropped: [Int] = []
+            let job = BackgroundJob<Int>(.resMon, subject: "unfaked", start: {
+                starts += 1
+                deliver = $0
+            })
+            skin.startBackground(job, then: { results.append($0) }, orElse: { dropped.append($0) })
+            t.equal(starts, allowed ? 1 : 0)
+            t.equal(deliver != nil, allowed, "blocked work never enters the job's start closure")
+            t.equal(v.background.outstanding, allowed ? 1 : 0)
+            t.equal(v.background.settle(timeout: 0), !allowed, "only started work needs to settle")
+            t.equal(results, [], "no typed result is invented")
+            t.equal(dropped, [], "blocking has no result to hand to orElse either")
+            deliver?(9)
+            deliver = nil
+            t.equal(results, [], "a real completion is still queued on the executor")
+            v.runUntilIdle()
+            t.equal(results, allowed ? [9] : [])
+            t.equal(v.background.outstanding, 0)
+            t.equal(v.background.unverifiable.map(\.kind), [.resMon])
+            let reason = v.background.unverifiable.first?.reason ?? ""
+            t.check(reason.contains(allowed ? "the real work ran" : "the job was not started"), reason)
+            if !allowed { t.check(reason.contains("no completion is delivered"), reason) }
+            t.check(v.background.reports.allSatisfy { !$0.faked }, "blocked work is never reported as a fake")
+            skin.close()
+            v.runUntilIdle()
+            t.equal(dropped, [])
+        }
+    }
+
+    t.suite("Executor: virtual time — strict verification blocks every unusable fake") {
+        let v = virtualExecutor()
+        v.background.allowsUnfakedWork = false
+        let skin = try virtualSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeter=Image\n", executor: v)
+        let elsewhere = t.temporaryDirectory("virtual-blocked-fixture").appendingPathComponent("data.txt")
+        try "outside fixture".write(to: elsewhere, atomically: true, encoding: .utf8)
+        let cases: [(kind: BackgroundWorkKind, fake: BackgroundFake?, inline: Bool, scripted: Bool,
+                     reads: String?, reason: String)] = [
+            (.resMon, nil, false, false, nil, "no fake"),
+            (.ping, .script { _ in nil }, false, true, nil, "no scripted result for this request"),
+            (.fileViewIcon, .value(.text("unused")), false, false, nil, "it cannot be scripted"),
+            (.runCommandProcess, .script { _ in .text("unused") }, false, false, nil, "it cannot be scripted"),
+            (.webParserPage, .fixture, false, true, nil, "no fixture"),
+            (.quote, .fixture, true, false, elsewhere.path, "outside the skin's own"),
+            (.folderInfo, .fixture, true, false, elsewhere.deletingLastPathComponent().path, "outside the skin's own"),
+            (.fileViewListing, .fixture, true, false, elsewhere.deletingLastPathComponent().path, "outside the skin's own"),
+        ]
+        var started: [BackgroundWorkKind] = [], produced: [BackgroundWorkKind] = []
+        var results: [String] = [], dropped: [String] = []
+        for item in cases {
+            v.background.setFake(item.fake, for: item.kind)
+            let inline: (() -> String)? = item.inline ? { produced.append(item.kind); return "fixture" } : nil
+            let scripted: ((BackgroundFakeValue) -> String)? = item.scripted
+                ? { _ in produced.append(item.kind); return "scripted" } : nil
+            let job = BackgroundJob<String>(item.kind, subject: item.kind.rawValue, start: {
+                started.append(item.kind)
+                $0("live")
+            }, inline: inline, scripted: scripted, reads: item.reads)
+            skin.startBackground(job, then: { results.append($0) }, orElse: { dropped.append($0) })
+            t.equal(v.background.outstanding, 0, "\(item.kind) never starts real work")
+            let report = v.background.unverifiable.first { $0.kind == item.kind }
+            t.equal(report?.subject, item.kind.rawValue)
+            t.check(report?.reason.contains(item.reason) == true, "\(String(describing: report))")
+            t.check(report?.reason.contains("the job was not started and no completion is delivered") == true)
+        }
+        t.equal(started, [], "no live jobs ran; the closures only record calls")
+        t.equal(produced, [], "unusable fakes do not produce a value either")
+        t.equal(v.pendingCount, 0, "blocked requests schedule no invented completions")
+        t.check(v.background.settle(timeout: 0))
+        v.runUntilIdle()
+        t.equal(results, [])
+        t.equal(v.background.unverifiable.map(\.kind), cases.map(\.kind), "every missing input is reported in order")
+        t.equal(v.background.reports.count, cases.count, "none of the blocked requests counts as faked")
+        skin.close()
+        v.runUntilIdle()
+        t.equal(dropped, [])
+    }
+
+    t.suite("Executor: virtual time — strict verification delivers fixtures, scripts and fake services in order") {
+        let v = virtualExecutor()
+        v.background.allowsUnfakedWork = false
+        v.background.setFake(.value(.text("value"), delay: 1), for: .ping)
+        v.background.setFake(.script { $0.subject == "known" ? .text("script") : nil }, for: .runCommandProcess)
+        v.background.setFake(.service, for: .weather)
+        let skin = try virtualSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeter=Image\n",
+                                   files: ["Root/Sub/input.txt": "fixture"], executor: v)
+        let file = skin.directory.appendingPathComponent("input.txt")
+        var unexpectedStarts = 0, fixtureRuns = 0, serviceStarts = 0
+        var serviceResult: ((String) -> Void)?
+        var results: [String] = []
+        let fixture = BackgroundJob<String>(.quote, subject: file.path, start: { _ in unexpectedStarts += 1 },
+                                            inline: {
+                                                fixtureRuns += 1
+                                                return (try? String(contentsOf: file, encoding: .utf8)) ?? "missing"
+                                            }, reads: file.path)
+        skin.startBackground(fixture) { results.append($0) }
+        for (kind, subject) in [(BackgroundWorkKind.ping, "value"), (.runCommandProcess, "known")] {
+            let job = BackgroundJob<String>(kind, subject: subject, start: { _ in unexpectedStarts += 1 },
+                                            scripted: { $0.bytes.flatMap { String(data: $0, encoding: .utf8) } ?? "missing" })
+            skin.startBackground(job) { results.append($0) }
+        }
+        let service = BackgroundJob<String>(.weather, subject: "injected service", start: {
+            serviceStarts += 1
+            serviceResult = $0
+        })
+        skin.startBackground(service) { results.append($0) }
+        t.equal(unexpectedStarts, 0)
+        t.equal(fixtureRuns, 0, "a fixture is still produced when the executor runs its completion")
+        t.equal(serviceStarts, 1, "an explicitly injected service still starts")
+        t.equal(v.background.outstanding, 1, "the fake service keeps its normal settle contract")
+        serviceResult?("service")
+        serviceResult = nil
+        t.equal(results, [], "the service completion also waits for the executor")
+        t.check(v.background.settle(timeout: 0))
+        v.runUntilIdle()
+        t.equal(results, ["fixture", "script", "service"], "completions due now retain their queue order")
+        t.equal(fixtureRuns, 1)
+        v.advance(until: 1)
+        t.equal(results, ["fixture", "script", "service", "value"], "the scripted value retains its delay")
+        t.equal(v.background.reports.map(\.kind), [.quote, .ping, .runCommandProcess, .weather])
+        t.check(v.background.reports.allSatisfy(\.faked))
+        t.equal(v.background.unverifiable, [])
+        t.equal(v.background.outstanding, 0)
+        skin.close()
+    }
+
     t.suite("Executor: virtual time — background work: fixtures, scripted results, work without a fake") {
         let v = virtualExecutor()
         let savedRenderer = FileViewIcons.renderer
