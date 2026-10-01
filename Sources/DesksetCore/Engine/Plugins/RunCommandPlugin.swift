@@ -92,7 +92,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     /// Runs `work` on the skin's executor `seconds` from now, unless the skin is unloaded first.
     private func schedule(after seconds: TimeInterval, _ work: @escaping () -> Void) {
         waits.removeAll { !$0.isPending }
-        waits.append(skin.executor.async(after: seconds, work))
+        waits.append(sectionContext.executor.async(after: seconds, work))
     }
 
     /// Programs still running (the current one and detached ones); tests.
@@ -120,7 +120,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         case "close": terminate(SIGTERM)
         case "kill": terminate(SIGKILL)
         default:
-            skin.log("RunCommand [\(name)]: unknown command \"\(command)\"", level: .warning)
+            sectionContext.log("RunCommand [\(name)]: unknown command \"\(command)\"", level: .warning)
             setState(100)
         }
     }
@@ -148,15 +148,15 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
             startFailed()
             return
         }
-        let folder = startInFolder.isEmpty ? skin.directory.path : PluginPaths.resolve(startInFolder, skin: skin)
+        let folder = startInFolder.isEmpty ? sectionContext.directory.path : PluginPaths.resolve(startInFolder, relativeTo: sectionContext.directory.path)
         var isDirectory: ObjCBool = false
         let directory = FileManager.default.fileExists(atPath: folder, isDirectory: &isDirectory) && isDirectory.boolValue
-            ? folder : skin.directory.path
+            ? folder : sectionContext.directory.path
         let newJob: SkinProcess
         do {
             // The program starts through the skin's side effects: for real, or only recorded.
-            newJob = try skin.sideEffects.startShellCommand(line, directory: directory,
-                                                            maxOutput: RunCommandMeasure.maxOutput, locale: skin.locale)
+            newJob = try sectionContext.sideEffects.startShellCommand(line, directory: directory,
+                                                            maxOutput: RunCommandMeasure.maxOutput, locale: sectionContext.locale)
         } catch RunCommandJob.StartError.pipe {
             output = ""
             setState(106)
@@ -175,12 +175,12 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
         let jobID = ObjectIdentifier(newJob)
         // No fake in virtual time: a real program runs. A recording's program (`RecordingSideEffects`) starts nothing
         // and exits as soon as it is resumed, with the output the recording gives it: a fixture.
-        let recorded = !skin.sideEffects.isLive
+        let recorded = !sectionContext.sideEffects.isLive
         let exit = BackgroundJob<Void>(.runCommandProcess, subject: line, start: { deliver in
             newJob.onExit = { deliver(()) }
             newJob.resume()
         }, inline: recorded ? { newJob.resume() } : nil)
-        skin.startBackground(exit) { [weak self] in self?.jobExited(jobID, generation: generation) }
+        sectionContext.startBackground(exit) { [weak self] in self?.jobExited(jobID, generation: generation) }
         if timeout > 0 {
             let seconds = min(timeout, 86_400_000) / 1000
             schedule(after: seconds) { [weak self] in
@@ -206,15 +206,15 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
     private func startFailed() {
         output = ""
         setState(103)
-        let now = skin.clock()
+        let now = sectionContext.clock()
         let repeated = lastStartFailure.map { now - $0 < 1 } ?? false
         lastStartFailure = now
         guard !repeated, !finishAction.isEmpty else { return }
         runGeneration += 1
         let generation = runGeneration
-        skin.async { [weak self] in
+        sectionContext.async { [weak self] in
             guard let self, !self.closed, self.runGeneration == generation, self.job == nil else { return }
-            self.skin.execute(self.finishAction, from: self)
+            self.sectionContext.execute(self.finishAction, from: self)
         }
     }
 
@@ -227,13 +227,13 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
             self.job = nil
             return
         }
-        if timedOut { skin.log("RunCommand [\(name)]: Timeout reached; the program was stopped", level: .notice) }
+        if timedOut { sectionContext.log("RunCommand [\(name)]: Timeout reached; the program was stopped", level: .notice) }
         finishing = true
         let data = job.outputSnapshot()
-        let path = outputFile.isEmpty ? nil : PluginPaths.resolve(outputFile, skin: skin)
+        let path = outputFile.isEmpty ? nil : PluginPaths.resolve(outputFile, relativeTo: sectionContext.directory.path)
         let type = outputType
         // Written through the skin's side effects: the file itself, or a recording's copy.
-        let effects = skin.sideEffects
+        let effects = sectionContext.sideEffects
         let destination = path.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
         // A fixture: it decodes what the program wrote and saves OutputFile, a file of the skin's.
         let save = BackgroundJob(.runCommandOutput, subject: path ?? "", on: PluginIO.queue, fixture: true) {
@@ -249,7 +249,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
             }
             return (text, failure)
         }
-        skin.startBackground(save) { [weak self] text, failure in
+        sectionContext.startBackground(save) { [weak self] text, failure in
             guard let self else { return }
             self.finishing = false
             guard self.runGeneration == generation, self.job === job else { return }
@@ -258,7 +258,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
             if let failure { self.report("file", "RunCommand [\(self.name)]: \(failure)") }
             self.output = text
             self.setState(failure == nil ? 1 : 104)
-            if !self.finishAction.isEmpty { self.skin.execute(self.finishAction, from: self) }
+            if !self.finishAction.isEmpty { self.sectionContext.execute(self.finishAction, from: self) }
         }
     }
 
@@ -308,7 +308,7 @@ public final class RunCommandMeasure: Measure, PluginLifecycle {
 
     private func report(_ key: String, _ message: String) {
         guard reported.insert(key).inserted else { return }
-        skin.log(message, level: .warning)
+        sectionContext.log(message, level: .warning)
     }
 }
 

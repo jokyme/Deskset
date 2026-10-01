@@ -16,6 +16,8 @@ protocol SectionContext: AnyObject {
     var clock: () -> TimeInterval { get }
     var executor: SkinExecutor { get }
     var locale: Locale { get }
+    var directory: URL { get }
+    var sideEffects: SideEffects { get }
 
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
@@ -27,12 +29,15 @@ protocol SectionContext: AnyObject {
     func log(_ message: String, level: SkinLogLevel)
     func logOnce(_ message: String, level: SkinLogLevel)
     func addIssue(_ issue: String)
+    func removeIssue(_ issue: String)
     func currentEnvironment() -> SkinEnvironment
+    func readablePath(_ path: String) -> String
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
     func noteService(_ kind: BackgroundWorkKind)
     func execute(_ actionText: String, from section: SkinSection?)
     func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
                               relativeToSkin: Bool)
+    func async(_ work: @escaping () -> Void)
     func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
                             orElse dropped: ((T) -> Void)?)
 }
