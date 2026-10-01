@@ -105,7 +105,7 @@ struct StaticProgramCompiler {
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
         let allowedModifiers: Set<String> = solidShape
-            ? ["width", "height", "size", "padding", "fill", "name", "hidden"]
+            ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         for modifier in call.modifiers {
             if modifier.name.token.text == "onLoad" {
@@ -117,7 +117,7 @@ struct StaticProgramCompiler {
             }
         }
         let allowedFacets: Set<String> = solidShape
-            ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "hidden", "name"]
+            ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
@@ -147,13 +147,49 @@ struct StaticProgramCompiler {
             hidden = n
         } else { hidden = false }
         let content: ProgramElement.Content
+        var stroke: ProgramShapeStroke?
+        var radius: ProgramCornerRadius?
         switch facts.component {
         case "Rectangle", "Circle", "Ellipse", "Capsule":
             guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
                 throw issue(.unsupported, node, "\(facts.component) takes no arguments or block")
             }
+            if let paint = try facet(facts, "stroke", at: node) {
+                let width: Double
+                if let explicit = try optionalNumber(facts, "stroke.width", at: node) { width = explicit }
+                else {
+                    guard case .source(let source)? = catalog.modifier(named: "stroke")?.signatures.first?.param(named: "width")?.defaultValue,
+                          case .number(let n) = try fixed(source, at: node), n >= 0 else {
+                        throw issue(.invalidCheckedModel, node, "The checking catalog has no static stroke.width default")
+                    }
+                    width = n
+                }
+                stroke = ProgramShapeStroke(color: try color(paint, at: node), width: width)
+            }
+            if facts.component == "Rectangle" {
+                var corners: [ProgramCornerRadius] = []
+                let keys = ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"]
+                for key in keys {
+                    guard let value = try facet(facts, key, at: node) else { corners.append(.points(0)); continue }
+                    switch value {
+                    case .number(let n) where n >= 0: corners.append(.points(n))
+                    case .choice("full"): corners.append(.full)
+                    default: throw issue(.unsupported, node, "Corner radii require nonnegative constants or .full")
+                    }
+                }
+                if keys.contains(where: { facts.facets[FacetID($0)] != nil }) {
+                    guard let first = corners.first, corners.allSatisfy({ $0 == first }) else {
+                        throw issue(.unsupported, node, "Different corner radii are not implemented")
+                    }
+                    radius = first
+                } else if call.modifiers.contains(where: { $0.name.token.text == "rounded" }) {
+                    throw issue(.unsupported, node, "Rounded requires an explicit radius; the catalog supplies no default")
+                }
+            }
             let value: Value
             if let own = try facet(facts, "fill", at: node) { value = own }
+            // D115: the explicit outline suppresses the implicit fill, including transparent/zero strokes.
+            else if stroke != nil { value = .choice("clear") }
             else {
                 guard let source = spec.defaults[FacetID("fill")] else {
                     throw issue(.invalidCheckedModel, node, "The checking catalog has no \(facts.component) fill default")
@@ -217,7 +253,8 @@ struct StaticProgramCompiler {
         return ProgramElement(id: ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index),
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
-                              idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil)
+                              idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil,
+                              stroke: stroke, cornerRadius: radius)
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {

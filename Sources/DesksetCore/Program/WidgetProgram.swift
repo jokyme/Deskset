@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid shapes, scalar text bindings and root startup assignments through the shared executor.
+/// proposal-based stacks, solid shape paints, scalar text bindings and root startup assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -24,6 +24,19 @@ public enum ProgramLength: Equatable, Sendable {
 /// Filled curves in the final content box. Circle is centered and uses the smaller box dimension.
 public enum ProgramShapeKind: Equatable, Sendable {
     case circle, ellipse, capsule
+}
+
+/// A solid, centered outline in points. The producer decides whether the shape also has a fill.
+public struct ProgramShapeStroke: Equatable, Sendable {
+    public let color: ProgramColor
+    public let width: Double
+
+    public init(color: ProgramColor, width: Double) { self.color = color; self.width = width }
+}
+
+/// A uniform Rectangle radius, resolved against the final content box after layout.
+public enum ProgramCornerRadius: Equatable, Sendable {
+    case points(Double), full
 }
 
 /// A box in points. Child order is drawing order; identity is assigned by the producer, never by a syntax version.
@@ -51,11 +64,15 @@ public struct ProgramElement: Equatable, Sendable {
     public let padding: SkinInsets
     /// Hiding keeps layout space. This is not Rainmeter's collapsed visibility.
     public let hidden: Bool
+    /// Valid only for shape content. A zero-width or transparent stroke paints nothing.
+    public let stroke: ProgramShapeStroke?
+    /// Valid only for Rectangle content. Other box decorations are not implied.
+    public let cornerRadius: ProgramCornerRadius?
 
     public init(id: ElementID, content: Content, width: ProgramLength = .fit, height: ProgramLength = .fit,
                 padding: SkinInsets = .zero, hidden: Bool = false,
                 minWidth: Double = 0, maxWidth: Double? = nil, minHeight: Double = 0, maxHeight: Double? = nil,
-                idealSize: SkinSize? = nil) {
+                idealSize: SkinSize? = nil, stroke: ProgramShapeStroke? = nil, cornerRadius: ProgramCornerRadius? = nil) {
         self.id = id
         self.content = content
         self.width = width
@@ -67,6 +84,8 @@ public struct ProgramElement: Equatable, Sendable {
         self.idealSize = idealSize
         self.padding = padding
         self.hidden = hidden
+        self.stroke = stroke
+        self.cornerRadius = cornerRadius
     }
 }
 

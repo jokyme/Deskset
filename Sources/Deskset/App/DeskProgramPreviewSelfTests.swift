@@ -407,8 +407,8 @@ enum DeskProgramPreviewSelfTests {
             let replacements: [(String, Bool)] = [(#"widget { Rectangle().size(24, 18).fill(.clear) }"#, true),
                                                    (#"widget { Rectangle().size(0, 18) }"#, true),
                                                    (#"widget { Rectangle().size(24, 18).hidden() }"#, true),
-                                                   (#"widget { Rectangle().size(24, 18).rounded(3) }"#, false),
-                                                   (#"widget { Rectangle().size(24, 18).stroke(.accent) }"#, false),
+                                                   (#"widget { Rectangle().size(24, 18).rounded(3, topLeft: 0) }"#, false),
+                                                   (#"widget { Rectangle().size(24, 18).stroke(.accent, dash: [2, 3]) }"#, false),
                                                    (#"widget { Rectangle().margin(1) }"#, false),
                                                    (#"widget { Rectangle().size(24, 18).unknownModifier() }"#, false)]
             for (replacement, empty) in replacements {
@@ -621,7 +621,7 @@ enum DeskProgramPreviewSelfTests {
             t.equal(p.state, .ready)
             let cases: [(String, Bool)] = [(#"widget { Ellipse().size(24, 18).hidden() }"#, true),
                 (#"widget { Capsule().size(0, 18) }"#, true), (#"widget { Circle().size(24, 18).fill(.clear) }"#, true),
-                (#"widget { Circle().size(24, 18).stroke(.accent) }"#, false),
+                (#"widget { Circle().size(24, 18).stroke(.accent, dash: [2, 3]) }"#, false),
                 (#"widget { Ellipse().size(24, 18).fill(.accent, if: true) }"#, false),
                 (#"widget { Capsule().size(24, 18).margin(1) }"#, false),
                 (#"widget { Ellipse().size(24, 18).unknownModifier() }"#, false)]
@@ -640,6 +640,127 @@ enum DeskProgramPreviewSelfTests {
             let actual = try paint(p.canvas); try canaries(t, actual); t.check(try ink(actual) > 0)
             f.controller.window?.close(); t.equal(p.state, .closed); t.check(p.scene == nil)
         }
+
+        t.suite("Desk: styled shape preview: native solid outlines and rounded boxes retain their outside pixels") {
+            let cases: [(String, String, Double, Double)] = [
+                ("Rectangle", ".stroke(.accent, width: 4)", 4, 0), ("Circle", ".stroke(.accent, width: 4)", 4, 0),
+                ("Ellipse", ".stroke(.accent, width: 4)", 4, 0), ("Capsule", ".stroke(.accent, width: 4)", 4, 0),
+                // These are the entire original unavailable-preview literals, now real positive controls.
+                ("Rectangle", ".rounded(3)", 0, 3), ("Rectangle", ".stroke(.accent)", 1, 0),
+                ("Circle", ".stroke(.accent)", 1, 0)]
+            for (name, suffix, width, radius) in cases {
+                let source = "widget { " + name + "().size(24, 18)" + suffix + " }"
+                let f = try fixture(t, source), p = f.preview
+                t.equal(p.state, .ready); t.equal(p.scene?.size, SkinSize(width: 24, height: 18))
+                let path = try styledPath(name, in: CGRect(x: 0, y: 0, width: 24, height: 18), radius: radius)
+                let nativeExtent = width > 0 ? path.copy(strokingWithWidth: width, lineCap: .butt, lineJoin: .miter, miterLimit: 10).boundingBoxOfPath
+                                            : path.boundingBoxOfPath
+                // Independent native stroke geometry must fit; the shared layout is never stretched to hide clipping.
+                t.check(p.canvas.bounds.contains(nativeExtent), "the viewport encloses the actual native paint")
+                if name == "Rectangle", width == 4 { t.equal(p.canvas.bounds, CGRect(x: -2, y: -2, width: 28, height: 22)) }
+                for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+                    p.canvas.appearance = NSAppearance(named: appearanceName); p.refreshEnvironment()
+                    let appearance = MacAppearance.values(for: p.canvas.effectiveAppearance)
+                    let fill = width > 0 ? RGBA.clear : appearance.labelColor
+                    let reference = StyledReferenceView(path: path, fill: fill, stroke: appearance.accentColor, width: width, viewport: p.canvas.bounds)
+                    let wrong = StyledReferenceView(path: path, fill: .clear, stroke: .white, width: width > 0 ? width + 2 : 2, viewport: p.canvas.bounds)
+                    let blank = CurveReferenceView(recipes: [], size: p.canvas.bounds.size)
+                    for scale in [1, 2] {
+                        let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        let missing = try paint(blank, scale: scale), bad = try paint(wrong, scale: scale)
+                        for rep in [actual, expected, missing, bad] { try canaries(t, rep) }
+                        t.check(try outlineInk(actual) > 0, "qualified ink: \(name) width \(width) \(appearanceName.rawValue) \(scale)x")
+                        t.equal(try outlineInk(missing), 0, "literal blank cannot qualify using the two canary corners")
+                        t.equal(try bytes(actual), try bytes(expected), "independent native \(name) outline / corner bytes at \(scale)x")
+                        t.check(try bytes(actual) != bytes(missing), "blank differs: \(name) width \(width) \(scale)x")
+                        t.check(try bytes(actual) != bytes(bad), "wrong paint differs: \(name) width \(width) \(scale)x")
+                        if width > 0 {
+                            guard let center = actual.colorAt(x: actual.pixelsWide / 2, y: actual.pixelsHigh / 2)?.usingColorSpace(.deviceRGB) else { throw Failure.pixel }
+                            t.equal(center.alphaComponent, 0, "D115 stroke-only must not inherit an implicit fill")
+                        }
+                    }
+                }
+                t.check(f.app.sortedControllers.isEmpty); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            }
+        }
+
+        t.suite("Desk: styled shape preview: alpha strokes and changed radii keep immutable warm and cold recipes") {
+            let source = ##"widget { Rectangle().size(32, 26).padding(4).rounded(3).fill("#55667780").stroke("#12345680", width: 4) }"##
+            let f = try fixture(t, source), p = f.preview
+            t.equal(p.state, .ready)
+            guard let captured = p.scene?.drawingItems, case .shape(let old)? = captured.first else { throw Failure.fixture }
+            let path = try styledPath("Rectangle", in: CGRect(x: 4, y: 4, width: 24, height: 18), radius: 3)
+            let viewport = CGRect(x: 0, y: 0, width: 32, height: 26)
+            t.equal(p.canvas.bounds, viewport)
+            let reference = StyledReferenceView(path: path, fill: RGBA(r: 85, g: 102, b: 119, a: 128),
+                                                stroke: RGBA(r: 18, g: 52, b: 86, a: 128), width: 4, viewport: viewport)
+            let warm = ReferenceView(items: captured, size: viewport.size)
+            for scale in [1, 2] {
+                for view in [p.canvas, warm] as [NSView] {
+                    let actual = try paint(view, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.equal(try bytes(actual), try bytes(expected), "translucent solid stroke blends exactly once")
+                }
+            }
+            replace(#"widget { Rectangle().size(32, 24).padding(4).rounded(.full).stroke(.white, width: 2) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            guard case .shape(let next)? = p.scene?.drawingItems.first else { throw Failure.fixture }
+            t.check(next.sourceID != old.sourceID)
+            t.equal(old.shapes[0].stroke, .color(RGBA(r: 18, g: 52, b: 86, a: 128)))
+            let cold = ReferenceView(items: captured, size: viewport.size)
+            let nextReference = StyledReferenceView(path: try styledPath("Rectangle", in: CGRect(x: 4, y: 4, width: 24, height: 16), radius: 8),
+                                                    fill: .clear, stroke: .white, width: 2, viewport: CGRect(x: 0, y: 0, width: 32, height: 24))
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(nextReference, scale: scale)
+                let replay = try paint(cold, scale: scale), original = try paint(reference, scale: scale)
+                for rep in [actual, expected, replay, original] { try canaries(t, rep) }
+                t.equal(try bytes(actual), try bytes(expected)); t.equal(try bytes(replay), try bytes(original))
+            }
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8)); t.check(f.app.sortedControllers.isEmpty)
+        }
+
+        t.suite("Desk: styled shape preview: empty unsupported and oversized outlines clear current pixels and bound zoom") {
+            let source = #"widget { Rectangle().size(24, 18).rounded(3).stroke(.accent, width: 4) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            t.equal(p.state, .ready)
+            let old = checking.snapshot
+            for replacement in [#"widget { Rectangle().size(24, 18).stroke(.accent, width: 0) }"#,
+                                #"widget { Circle().size(24, 18).stroke(.clear) }"#,
+                                #"widget { Ellipse().size(0, 18).stroke(.accent) }"#,
+                                #"widget { Capsule().size(24, 18).stroke(.accent).hidden() }"#] {
+                replace(replacement, in: f); t.check(settled(f)); t.equal(p.state, .empty)
+                t.check(p.scene != nil && p.canvas.isHidden)
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+                let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try ink(cleared), 0)
+            }
+            for replacement in [#"widget { Rectangle().size(24, 18).rounded(3, topLeft: 0) }"#,
+                                #"widget { Rectangle().size(24, 18).rounded() }"#,
+                                #"widget { Circle().size(24, 18).stroke(.accent, dash: [2, 3]) }"#,
+                                #"widget { Ellipse().size(24, 18).stroke(gradient(.black, .white)) }"#] {
+                replace(replacement, in: f); t.check(settled(f))
+                guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported paint has a real reason") }
+                t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+                let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try ink(cleared), 0)
+            }
+            replace(#"widget { Rectangle().size(24, 18).stroke(.accent, width: 1000000) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .unavailable(StudioText[.deskPreviewTooLarge]))
+            t.check(p.scene == nil && p.canvas.isHidden, "paint extent, rather than the 24-point layout, controls the resource budget")
+            replace(#"widget { Rectangle().size(24, 18).stroke(.accent, width: 1000) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            t.equal(p.scene?.size, SkinSize(width: 24, height: 18)); t.equal(p.canvas.bounds.size, NSSize(width: 1024, height: 1018))
+            p.fit(); t.check(p.scrollView.magnification < 1, "fit uses the outside stroke canvas")
+            p.actualSize(); t.close(p.scrollView.magnification, 1)
+            t.check(!checking.publish(old))
+            replace(source, in: f); t.check(settled(f)); t.equal(p.state, .ready)
+            let visible = try paint(p.canvas); try canaries(t, visible); t.check(try ink(visible) > 0)
+            t.check(p.canvas.bounds.minX < 0 && p.canvas.bounds.minY < 0)
+            f.controller.window?.close(); t.equal(p.state, .closed); t.check(p.scene == nil)
+            t.equal(p.canvas.bounds.origin, .zero, "closing releases the old outside-stroke coordinate origin")
+            p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+            let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try outlineInk(cleared), 0)
+        }
     }
 
 
@@ -654,6 +775,39 @@ enum DeskProgramPreviewSelfTests {
             let radius = min(rect.width, rect.height) / 2
             return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
         default: throw Failure.fixture
+        }
+    }
+
+    private static func styledPath(_ name: String, in rect: CGRect, radius: CGFloat) throws -> CGPath {
+        if name == "Rectangle" {
+            return radius == 0 ? CGPath(rect: rect, transform: nil)
+                : CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        }
+        return try curvePath(name, in: rect)
+    }
+
+    /// Native solid-path oracle: no Program geometry, ShapeStroker, ShapeDraw or DrawExecutor is reused.
+    private final class StyledReferenceView: NSView {
+        let path: CGPath, fill: RGBA, stroke: RGBA, width: CGFloat
+        override var isFlipped: Bool { true }
+        init(path: CGPath, fill: RGBA, stroke: RGBA, width: CGFloat, viewport: CGRect) {
+            self.path = path; self.fill = fill; self.stroke = stroke; self.width = width
+            super.init(frame: NSRect(origin: .zero, size: viewport.size))
+            bounds = viewport
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState(); defer { context.restoreGState() }
+            context.setAllowsAntialiasing(true); context.setShouldAntialias(true)
+            func paint(_ path: CGPath, _ color: RGBA) {
+                guard color.a > 0 else { return }
+                context.addPath(path)
+                context.setFillColor(CGColor(srgbRed: color.r / 255, green: color.g / 255, blue: color.b / 255, alpha: color.a / 255))
+                context.fillPath(using: .winding)
+            }
+            paint(path, fill)
+            if width > 0 { paint(path.copy(strokingWithWidth: width, lineCap: .butt, lineJoin: .miter, miterLimit: 10), stroke) }
         }
     }
 
@@ -727,6 +881,20 @@ enum DeskProgramPreviewSelfTests {
         var count = 0
         for y in 2..<(rep.pixelsHigh - 2) {
             for x in 2..<(rep.pixelsWide - 2) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { throw Failure.pixel }
+                if color.alphaComponent > 0 { count += 1 }
+            }
+        }
+        return count
+    }
+
+    /// Outlines can live wholly in the image border. Exclude only the two literal 2×2 device-row canaries,
+    /// rather than the full border used by the older interior-fill fixtures.
+    private static func outlineInk(_ rep: NSBitmapImageRep) throws -> Int {
+        var count = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                if (x < 2 && y < 2) || (x >= rep.pixelsWide - 2 && y >= rep.pixelsHigh - 2) { continue }
                 guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { throw Failure.pixel }
                 if color.alphaComponent > 0 { count += 1 }
             }

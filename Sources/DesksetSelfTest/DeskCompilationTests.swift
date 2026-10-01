@@ -203,13 +203,13 @@ func runDeskCompilationTests(_ t: TestRunner) {
     t.suite("Desk: rectangles: unsupported paint sizing and facets reject the complete checked program") {
         let sources = [#"Rectangle().margin(1)"#, #"Rectangle().width(12).offset(x: 1)"#, #"Rectangle().height(8).margin(1)"#,
                        #"Rectangle().width(.fit).height(8).margin(1)"#, #"Rectangle().width(.fill).height(8).offset(x: 1)"#,
-                       #"Rectangle().width(12, min: 8).height(8).margin(1)"#, #"Rectangle().size(12).rounded(2)"#,
-                       #"Rectangle().size(12).stroke(.accent)"#, #"Rectangle().size(12).fill(.accent).stroke(.white)"#,
+                       #"Rectangle().width(12, min: 8).height(8).margin(1)"#, #"Rectangle().size(12).rounded(2, topLeft: 0)"#,
+                       #"Rectangle().size(12).stroke(.accent, dash: [2, 3])"#, #"Rectangle().size(12).fill(.accent).stroke(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(gradient(.black, .white))"#,
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
                        #"Rectangle().size(12).fill(.red)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
                        #"Rectangle().size(12).background(.accent)"#, #"Rectangle().size(12).opacity(0.5)"#,
-                       #"Circle().size(12).fill(.accent).stroke(.white)"#]
+                       #"Circle().size(12).fill(.accent).stroke(.white, dash: [2, 3])"#]
         for element in sources {
             let source = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
             let checked = deskCheck(source)
@@ -293,7 +293,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
 
     t.suite("Desk: flex layout: conditional geometry margin presets and invalid bounds remain explicit failures") {
         for source in [#"widget { Rectangle().width(.fill, if: true) }"#, #"widget { Rectangle().height(.fill, min: 5).margin(1) }"#,
-                       #"info { size: .small }; widget { Rectangle() }"#, #"widget { Rectangle().height(.fill).rounded(2) }"#] {
+                       #"info { size: .small }; widget { Rectangle() }"#, #"widget { Rectangle().height(.fill).rounded(2, topLeft: 0) }"#] {
             let checked = deskCheck(source)
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             let result = Desk.compile(checked)
@@ -403,7 +403,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
 
     t.suite("Desk: shapes: unimplemented curve facets and other primitives still reject the complete program") {
         for name in ["Circle", "Ellipse", "Capsule"] {
-            for suffix in [".stroke(.accent)", ".fill(gradient(.black, .white))", ".fill(.accent, if: true)", ".opacity(0.5)", ".margin(1)"] {
+            for suffix in [".stroke(.accent, dash: [2, 3])", ".fill(gradient(.black, .white))", ".fill(.accent, if: true)", ".opacity(0.5)", ".margin(1)"] {
                 let source = "widget { Column { Text(\"must not paint partially\"); " + name + "().size(12)" + suffix + " } }"
                 let checked = deskCheck(source), result = Desk.compile(checked)
                 t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
@@ -416,5 +416,85 @@ func runDeskCompilationTests(_ t: TestRunner) {
             t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
             t.check(result.program == nil); t.equal(result.issues.first?.kind, .unsupported)
         }
+    }
+
+    t.suite("Desk: shape style: original outlined and rounded literals become complete shared content") {
+        // Keep the full original negative buffers as positive controls, including their preceding text.
+        let elements = [#"Rectangle().size(12).rounded(2)"#, #"Rectangle().size(12).stroke(.accent)"#,
+                        #"Rectangle().size(12).fill(.accent).stroke(.white)"#, #"Circle().size(12).fill(.accent).stroke(.white)"#,
+                        #"Circle().size(12).stroke(.accent)"#, #"Ellipse().size(12).stroke(.accent)"#, #"Capsule().size(12).stroke(.accent)"#]
+        for element in elements {
+            let source = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
+            let program = try compileFixture(t, source)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(.dark)) { _, _, _ in SkinSize(width: 2, height: 4) }
+            t.equal(scene.drawingItems.count, 2); t.equal(compiledDraws(scene).map(\.text), ["must not paint partially"])
+            guard case .shape(let draw) = scene.drawingItems[1] else { return t.check(false, "actual shared shape lowering") }
+            t.equal(draw.contentFrame, SkinRect(y: 12, width: 12, height: 12))
+            let item = draw.shapes[0]
+            if element.contains("stroke") {
+                t.equal(item.strokePlan?.width, 1)
+                t.equal(item.stroke, .color(element.contains(".white") ? .white : SkinAppearance.dark.accentColor))
+                t.equal(item.fill.isVisible, element.contains("fill"))
+            } else { t.check(item.fill.isVisible && item.strokePlan == nil) }
+            t.equal(try compileFixture(t, "// moved😀\n" + source), program)
+        }
+        let original = #"widget { Rectangle().height(.fill).rounded(2) }"#
+        var runtime = try ProgramRuntime(program: compileFixture(t, original))
+        t.equal(try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }.size,
+                SkinSize(width: 10, height: 10))
+    }
+
+    t.suite("Desk: shape style: catalog stroke width and explicit uniform radii reach real geometry") {
+        var catalog = DeskCatalog.current
+        guard let index = catalog.modifiers.firstIndex(where: { $0.name == "stroke" }),
+              let parameter = catalog.modifiers[index].signatures[0].params.firstIndex(where: { $0.name == "width" }) else {
+            throw CompilationFixtureError.missingProgram
+        }
+        catalog.modifiers[index].signatures[0].params[parameter].defaultValue = .source("3.5")
+        let source = #"widget { Rectangle().size(30, 18).stroke(.accent).rounded(.full) }"#
+        let checked = deskCheck(source, context: CheckContext(catalog: catalog)), result = Desk.compile(checked, catalog: catalog)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked)); t.check(result.issues.isEmpty, "\(result.issues)")
+        guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        guard case .shape(let draw)? = scene.drawingItems.first else { return t.check(false, "real catalog outline") }
+        t.equal(draw.shapes[0].strokePlan?.width, 3.5); t.check(!draw.shapes[0].fill.isVisible)
+        catalog.modifiers[index].signatures[0].params[parameter].defaultValue = nil
+        let missing = Desk.compile(deskCheck(source, context: CheckContext(catalog: catalog)), catalog: catalog)
+        t.check(missing.program == nil); t.equal(missing.issues.first?.kind, .invalidCheckedModel)
+        for (rounding, radius) in [(".rounded(3)", 3.0), (".rounded(.full)", 9.0), (".rounded(100)", 9.0),
+                                  (".rounded(3, topLeft: 3)", 3.0),
+                                  (".rounded(topLeft: 3, topRight: 3, bottomLeft: 3, bottomRight: 3)", 3.0)] {
+            var rounded = try ProgramRuntime(program: compileFixture(t, "widget { Rectangle().size(30, 18)" + rounding + " }"))
+            let value = try rounded.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            guard case .shape(let drawing)? = value.drawingItems.first, case .path(let path) = drawing.shapes[0].geometry else {
+                return t.check(false, "actual uniform corner path")
+            }
+            t.equal(path.subpaths[0].start, ShapePoint(radius, 0))
+            t.equal(path.subpaths[0].segments[1].kind.end, ShapePoint(30, radius))
+        }
+        var zero = try ProgramRuntime(program: compileFixture(t, #"widget { Rectangle().size(12).rounded(0) }"#))
+        t.equal(try zero.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }.drawingItems,
+                [.fill(SkinRect(width: 12, height: 12), Paint(color: SkinAppearance.light.labelColor))])
+    }
+
+    t.suite("Desk: shape style: dash gradients unequal corners and conditional paint reject the whole document") {
+        for suffix in [".stroke(.accent, dash: [2, 3])", ".stroke(gradient(.black, .white))", ".stroke(.accent, if: true)",
+                       ".rounded(3, topLeft: 0)", ".rounded(3, if: true)"] {
+            let source = "widget { Column { Text(\"must not paint partially\"); Rectangle().size(12)" + suffix + " } }"
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil); t.equal(result.issues.first?.kind, .unsupported)
+            t.equal(result.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+        }
+        let noRadius = deskCheck(#"widget { Column { Text("must not paint partially"); Rectangle().size(12).rounded() } }"#)
+        let invalid = Desk.compile(noRadius)
+        t.check(noRadius.diagnostics.contains { $0.id == .missingArgument && $0.severity == .error })
+        t.check(invalid.program == nil && invalid.issues.isEmpty, "the original checker rejects absent radius, without inventing a default")
+        t.equal(invalid.diagnostics.map(\.id), noRadius.diagnostics.map(\.id))
+        let nonRectangle = deskCheck(#"widget { Circle().size(12).rounded(3) }"#)
+        t.check(nonRectangle.diagnostics(.error).isEmpty, deskDescribe(nonRectangle))
+        t.equal(Desk.compile(nonRectangle).issues.first?.kind, .unsupported)
     }
 }
