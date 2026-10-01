@@ -156,39 +156,43 @@ final class VarExpansion {
         self.budget = budget
     }
 
-    /// Resolves `text`; returns `text` itself (no copy) when nothing was substituted.
-    func run(_ text: String) -> String {
-        let bytes = Array(text.utf8)
+    /// The definitions path supplies strings; it shares the same template evaluator.
+    func run(_ text: String) -> String { run(Template(text)) }
+
+    /// Returns the source itself when nothing was substituted. All budgets and callbacks belong to this run.
+    func run(_ template: Template) -> String {
+        let bytes = template.bytes
         scanLimit = Self.maxScannedBytes + 4 * bytes.count
         var marked = VarMarkedText()
-        expandStandard(bytes, into: &marked)
+        expandStandard(bytes, plan: template.standard, into: &marked)
         if fullSyntax {
             marked = expandNested(marked)
             marked = expandSections(marked)
         } else if nestedVariables {
             marked = expandNested(marked)
         }
-        return changed ? marked.string : text
+        return changed ? marked.string : template.source
     }
 
     // MARK: Stage 1 — #Var#, #*Var*#, $Event$
 
-    private func expandStandard(_ b: [UInt8], into out: inout VarMarkedText) {
+    private func expandStandard(_ b: [UInt8], plan: Template.StandardPlan? = nil,
+                                into out: inout VarMarkedText) {
         let n = b.count
         guard scan(n) else {
             // Over the scan budget: the text stays as written.
             out.appendLive(b)
             return
         }
+        // Values discovered during evaluation are planned only after the original scan-budget guard.
+        let references = (plan ?? Template.StandardPlan(b)).references
         let events = eventLookup != nil
-        var i = 0
         var run = 0
-        while i < n {
+        for reference in references {
+            let i = reference.start, j = reference.end
+            guard i >= run else { continue }   // consumed by a successful earlier candidate
             let c = b[i]
-            guard c == VarByte.hash || (events && c == VarByte.dollar) else { i += 1; continue }
-            var j = i + 1
-            while j < n && b[j] != c { j += 1 }
-            guard j < n else { i += 1; continue }   // no closing delimiter: literal
+            guard c == VarByte.hash || (events && c == VarByte.dollar) else { continue }
 
             out.appendLive(b[run..<i])
             run = i
@@ -196,13 +200,8 @@ final class VarExpansion {
             let handled = c == VarByte.hash
                 ? expandHash(content, original: b[i...j], into: &out)
                 : expandEvent(content, into: &out)
-            if handled {
-                i = j + 1
-                run = i
-            } else {
-                // Literal delimiter; the closing one may open the next reference ("#1 and #Var#").
-                i += 1
-            }
+            if handled { run = j + 1 }
+            // Otherwise the closing delimiter may open the next candidate ("#1 and #Var#").
         }
         out.appendLive(b[run..<n])
     }

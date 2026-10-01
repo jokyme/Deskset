@@ -59,19 +59,10 @@ public struct SkinEditTarget: Equatable {
 extension SkinSection {
     /// Where the current raw value of `key` comes from (nil: the option is not set, its default applies).
     public func optionOrigin(_ key: String) -> OptionOrigin? {
-        let lower = key.lowercased()
-        var ownRemoved = false
-        if let v = overrides[lower] {
-            if !v.isEmpty { return .setOption }
-            ownRemoved = true
-        }
-        if !ownRemoved, own.entries.contains(where: { $0.key.lowercased() == lower }) {
-            return .own(sectionContext.sources.location(section: name, key: lower))
-        }
-        for style in styles.reversed() where sectionContext.styleValues(named: style)?[lower] != nil {
-            return .style(sectionContext.styleSection(named: style)?.name ?? style, sectionContext.sources.location(section: style, key: lower))
-        }
-        return nil
+        optionStack.optionOrigin(key, sectionName: name,
+                                 styleValues: { self.sectionContext.styleValues(named: $0) },
+                                 styleName: { self.sectionContext.styleSection(named: $0)?.name },
+                                 location: { self.sectionContext.sources.location(section: $0, key: $1) })
     }
 
     /// Every option that currently has a value: the section's own options in file order, then options inherited
