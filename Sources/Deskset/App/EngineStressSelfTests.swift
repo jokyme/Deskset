@@ -82,7 +82,12 @@ enum EngineStressSelfTests {
             }
             // Earlier suites' skins stop first: the numbers are this suite's, and nothing of theirs polls the players.
             AppSelfTest.stopEarlierSkins()
-            guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
+            // This suite checks bounded progress and compatibility, independent of the runner's speed.
+            // Watchdog timing is tested with advanced clocks in SkinWorkWatchdogSelfTests; live deadlines below remain.
+            let diagnosticClock = SteppedSkinClock(start: Date(timeIntervalSince1970: 0),
+                                                   timeZone: TimeZone(secondsFromGMT: 0)!)
+            let watchdog = SkinWorkWatchdog(clock: diagnosticClock.clock, automaticChecks: false)
+            guard let app = try AppSelfTest.makeApp(t, threading: threading, workWatchdog: watchdog) else { return }
             let skins = app.skinsDirectory.resolvingSymlinksInPath()
             let files = try mergeSkins(from: testSkins, into: skins)
                 + mergeSkins(from: defaultSkins, into: skins).filter {
@@ -289,6 +294,7 @@ enum EngineStressSelfTests {
 
             // Every skin closes and is let go of on the engine thread, which then ends.
             EngineThreadSelfTests.finish(t, app, tracked)
+            t.equal(watchdog.activeCount, 0, "every monitored activity ended with the skins and workers")
         }
     }
 

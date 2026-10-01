@@ -17,13 +17,15 @@ jobs:
         include:
           - arch: arm64
             runner: macos-26
+            timeout: 120
           - arch: x86_64
             runner: macos-26-intel
+            timeout: 180
     runs-on: ${{ matrix.runner }}
     # The Intel runner is several times slower than the Apple silicon one. A suite stuck for 10 minutes stops the run
     # with every thread's stack (the self-tests' watchdog, DESKSET_SUITE_TIMEOUT), and each run ends with its slowest
-    # suites.
-    timeout-minutes: 120
+    # suites. Intel needs a larger total budget to finish the Core tests, App tests and bundle on the same runner.
+    timeout-minutes: ${{ matrix.timeout }}
     steps:
       - uses: actions/checkout@v4
 
