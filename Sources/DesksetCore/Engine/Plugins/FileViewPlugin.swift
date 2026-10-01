@@ -374,7 +374,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         let pathExtension = (destination as NSString).pathExtension
         // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
         // saved.
-        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.queue, fixture: false,
+        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.iconQueue, fixture: false,
                                 scripted: { $0.failureMessage == nil }) { () -> Bool in
             guard let data = renderer(source, size, pathExtension) else { return false }
             do {
