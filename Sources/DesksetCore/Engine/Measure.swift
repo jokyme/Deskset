@@ -109,7 +109,7 @@ open class Measure: SkinSection {
 
     /// `!CommandMeasure` arguments.
     open func execute(command: String) {
-        skin.log("!CommandMeasure is not supported by \(type) measure [\(name)]", level: .warning)
+        sectionContext.log("!CommandMeasure is not supported by \(type) measure [\(name)]", level: .warning)
     }
 
     /// True for measures that cannot know their range and track the observed minimum / maximum instead
@@ -183,10 +183,10 @@ open class Measure: SkinSection {
         if paused { return }
         if !notedInputs {
             notedInputs = true
-            if skin.runsInVirtualTime { for kind in liveInputs { skin.noteService(kind) } }
+            if sectionContext.runsInVirtualTime { for kind in liveInputs { sectionContext.noteService(kind) } }
         }
         // The Studio's sample data (`MeasureValueOverride`): its value in place of the computed one; the rules still run.
-        if let sample = skin.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
+        if let sample = sectionContext.measureValues, sample.isActive, sample.takesOver(self) { return finishOverride() }
         computedPlaceholder = false
         let v = computeValue()
         pipeline.finishValue(v, for: self)
@@ -201,7 +201,7 @@ open class Measure: SkinSection {
     }
 
     private func runActions() {
-        pipeline.run(for: self) { skin.execute($0, from: self) }
+        pipeline.run(for: self) { sectionContext.execute($0, from: self) }
     }
 
     /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch

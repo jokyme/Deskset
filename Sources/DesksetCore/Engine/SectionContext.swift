@@ -4,6 +4,8 @@ protocol SectionContext: AnyObject {
     var settings: SkinSettings { get }
     var sources: IniSourceMap { get }
     var optionsLoaded: Bool { get }
+    var runsInVirtualTime: Bool { get }
+    var measureValues: MeasureValueOverride? { get }
 
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
@@ -14,6 +16,8 @@ protocol SectionContext: AnyObject {
     func assertOwned(_ entry: StaticString)
     func log(_ message: String, level: SkinLogLevel)
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
+    func noteService(_ kind: BackgroundWorkKind)
+    func execute(_ actionText: String, from section: SkinSection?)
 }
 
 extension Skin: SectionContext {}
