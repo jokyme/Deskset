@@ -62,6 +62,7 @@ private func checkedBindingProgram(_ t: TestRunner, _ source: String, catalog: D
 }
 
 func runProgramBindingTests(_ t: TestRunner) {
+    runProgramNumericTests(t)
     t.suite("Program: bindings: initialized variables persist while computed follows appearance") {
         let declarations = [ProgramDeclaration(name: "openedDark", kind: .variable, initial: .appearanceDark),
                             ProgramDeclaration(name: "caption", kind: .computed,
@@ -192,7 +193,7 @@ func runProgramBindingTests(_ t: TestRunner) {
         let cases = [#"widget { variable x = "A"; Text(x).onWake { x = "B" } }"#,
                      #"widget { variable x = false; Text("A").onDoubleClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
-                     #"widget { Text(true) }"#, #"widget { Text(1) }"#,
+                     #"widget { Text(true) }"#, #"widget { Text(1%) }"#,
                      #"widget { variable x = "A"; Text("{x, missing: "–"}") }"#,
                      #"widget { Text(system.name) }"#,
                      #"widget { variable x = true; Text("A").color(.dim, if: x) }"#]
@@ -726,5 +727,199 @@ private func runProgramClickTests(_ t: TestRunner) {
         let altered = deskCheck(source, context: CheckContext(catalog: catalog))
         t.check(altered.diagnostics(.error).isEmpty, deskDescribe(altered))
         t.equal(Desk.compile(altered, catalog: catalog).issues.first?.kind, .invalidCheckedModel)
+    }
+}
+
+
+private func runProgramNumericTests(_ t: TestRunner) {
+    let utc = TimeZone(identifier: "UTC")!
+    func input(_ locale: String) -> ProgramDateInput {
+        ProgramDateInput(instant: Date(timeIntervalSince1970: 0), timeZone: utc, locale: Locale(identifier: locale))
+    }
+    func scalar(_ expression: ProgramExpression, dateInput: ProgramDateInput? = nil) throws -> ProgramScalar {
+        var value = ProgramExpressionEvaluation(declarations: [], dark: false, variables: nil, dateInput: dateInput)
+        return try value.resolveAssignmentValue(expression)
+    }
+    let unavailable = ProgramExpression.divide(.number(1), .number(0))
+    let unknown = ProgramExpression.less(unavailable, .number(1))
+
+    t.suite("Program: numeric: finite arithmetic yields typed missing while invalid producers are rejected") {
+        let cases: [(ProgramExpression, ProgramScalar)] = [
+            (.add(.number(3), .number(0.5)), .number(3.5)), (.subtract(.number(3), .number(5)), .number(-2)),
+            (.multiply(.number(-3), .number(2)), .number(-6)), (.divide(.number(7), .number(2)), .number(3.5)),
+            (.remainder(.number(-7), .number(3)), .number(-1)), (.negate(.number(4)), .number(-4)),
+            (unavailable, .missing(.number)), (.divide(.number(0), .number(0)), .missing(.number)),
+            (.remainder(.number(1), .number(0)), .missing(.number)),
+            (.multiply(.number(.greatestFiniteMagnitude), .number(2)), .missing(.number)),
+            (.add(unavailable, .number(2)), .missing(.number)), (.equal(unavailable, unavailable), .missing(.boolean)),
+            (.less(.number(-2), .number(0)), .boolean(true)), (.lessOrEqual(.number(1), .number(1)), .boolean(true)),
+            (.greater(.number(1), .number(2)), .boolean(false)), (.greaterOrEqual(.number(2), .number(2)), .boolean(true)),
+            (.isMissing(unavailable), .boolean(true)), (.ifMissing(unavailable, .number(9)), .number(9)),
+        ]
+        for (expression, expected) in cases {
+            t.equal(try scalar(expression), expected)
+            let shown = expected.type == .boolean ? ProgramExpression.concatenate([expression]) : .formatNumber(expression, ProgramNumberFormat())
+            _ = try ProgramRuntime(program: WidgetProgram(name: "Numeric", root: bindingText(shown)))
+        }
+        for value in [Double.nan, .infinity, -.infinity] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Nonfinite literal", root: bindingText(.formatNumber(.number(value), ProgramNumberFormat())))) }
+        }
+        for expression in [ProgramExpression.add(.string("1"), .number(1)), .formatNumber(.boolean(true), ProgramNumberFormat()),
+                           .ifMissing(unavailable, .string("9")), .conditional(.boolean(false), then: .number(.infinity), otherwise: .number(1))] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Bad numeric", root: bindingText(.concatenate([expression])))) }
+        }
+    }
+
+    t.suite("Program: numeric: three-valued boolean tables and lazy branches preserve actual dependencies") {
+        let cases: [(ProgramExpression, ProgramScalar)] = [
+            (.not(unknown), .missing(.boolean)), (.and(.boolean(false), unknown), .boolean(false)),
+            (.and(unknown, .boolean(false)), .boolean(false)), (.and(.boolean(true), unknown), .missing(.boolean)),
+            (.and(unknown, .boolean(true)), .missing(.boolean)), (.and(unknown, unknown), .missing(.boolean)),
+            (.or(.boolean(true), unknown), .boolean(true)), (.or(unknown, .boolean(true)), .boolean(true)),
+            (.or(.boolean(false), unknown), .missing(.boolean)), (.or(unknown, .boolean(false)), .missing(.boolean)),
+            (.or(unknown, unknown), .missing(.boolean)), (.conditional(unknown, then: .number(9), otherwise: .number(3)), .number(3)),
+            (.isMissing(.not(unknown)), .boolean(true)), (.ifMissing(.not(unknown), .boolean(false)), .boolean(false)),
+        ]
+        for (expression, expected) in cases { t.equal(try scalar(expression), expected) }
+        // A date without its input would throw. Unchosen branches must not read it or start a clock lease.
+        let live = ProgramExpression.equal(.timeNow, .timeNow)
+        for expression in [ProgramExpression.and(.boolean(false), live), .or(.boolean(true), live),
+                           .conditional(.boolean(true), then: .boolean(true), otherwise: live),
+                           .ifMissing(.number(5), .conditional(live, then: .number(6), otherwise: .number(7)))] {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Lazy", root: bindingText(.concatenate([expression]))))
+            _ = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)
+            t.check(runtime.clockPrecision == nil)
+        }
+        var needed = try ProgramRuntime(program: WidgetProgram(name: "Missing left needs right", root: bindingText(.concatenate([.and(unknown, live)]))))
+        bindingFailure(t, .invalidDateInput) { _ = try needed.project(environment: bindingEnvironment(false), measure: bindingMeasure) }
+        t.equal(needed.generation, 0)
+    }
+
+    t.suite("Program: numeric: locale formatting and frozen UTF16 ranges reach identical measurement and drawing styles") {
+        let cases: [(Double, ProgramNumberFormat, String, String)] = [
+            (12345.678, ProgramNumberFormat(), "en_US", "12,345.68"), (12345.678, ProgramNumberFormat(), "de_DE", "12.345,68"),
+            (-12.3, ProgramNumberFormat(), "en_US", "-12.3"), (1.25, ProgramNumberFormat(decimals: 10), "en_US", "1.2500000000"),
+            (12345.678, ProgramNumberFormat(decimals: 0), "en_US", "12,346"),
+            (1.25, ProgramNumberFormat(decimals: 1), "en_US", "1.2"),
+            (1e20, ProgramNumberFormat(), "en_US", "100,000,000,000,000,000,000"),
+        ]
+        for (number, format, locale, expected) in cases {
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Region", root: bindingText(.formatNumber(.number(number), format))))
+            let scene = try runtime.project(environment: bindingEnvironment(false), dateInput: input(locale), measure: bindingMeasure)
+            t.equal(bindingStrings(scene), [expected])
+        }
+        for decimals in [-1, 11, Int.max] {
+            bindingFailure(t, .invalidExpression) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid places", root: bindingText(.formatNumber(.number(1), ProgramNumberFormat(decimals: decimals))))) }
+        }
+        let large = try scalar(.formatNumber(.number(.greatestFiniteMagnitude), ProgramNumberFormat()), dateInput: input("en_US"))
+        t.check((large.text?.text.utf16.count ?? 0) >= 309 && !(large.text?.text.contains("∞") ?? true))
+        let rendered = ProgramExpression.concatenate([.string("😀7|"), .formatNumber(.number(12.3), ProgramNumberFormat())])
+        let declarations = [ProgramDeclaration(name: "frozen", kind: .variable, initial: rendered)]
+        var measured: [TextStyle] = []
+        let root = ProgramElement(id: ElementID(name: "text", index: 0), content: .text(ProgramText(value: .declaration(0))), width: .fixed(10))
+        var wrapped = try ProgramRuntime(program: WidgetProgram(name: "Ranges", root: root, declarations: declarations))
+        let scene = try wrapped.project(environment: bindingEnvironment(false), dateInput: input("en_US")) { _, style, width in
+            measured.append(style); return SkinSize(width: width ?? 20, height: width == nil ? 10 : 20)
+        }
+        let range = [InlineSpan(location: 4, length: 4, setting: .typography(feature: "tnum", value: 1))]
+        t.equal(measured.map(\.inlineSpans), [range, range], "natural and wrapped native measurement use the same exact numeric range")
+        guard case .text(let drawing)? = scene.drawingItems.first else { throw BindingFixtureFailure.program }
+        t.equal(drawing.style, measured.last!); t.equal(drawing.text, "😀7|12.3")
+        t.equal(try scalar(.equal(rendered, .string("😀7|12.3"))), .boolean(true), "String equality excludes formatting metadata")
+        let missing = try scalar(.formatNumber(unavailable, ProgramNumberFormat(missing: "未知😀")))
+        t.equal(missing.text, ProgramTextValue(text: "未知😀"), "placeholder is not numeric ink")
+    }
+
+    t.suite("Program: numeric: click assignments commit missing and frozen text atomically with the scene") {
+        let declarations = [ProgramDeclaration(name: "count", kind: .variable, initial: .number(0)),
+                            ProgramDeclaration(name: "frozen", kind: .variable, initial: .string("start"))]
+        let value = ProgramExpression.concatenate([.declaration(1), .string("|"), .formatNumber(.declaration(0), ProgramNumberFormat())])
+        let actions = [ProgramAssignment(declaration: 0, value: .add(.ifMissing(.declaration(0), .number(40)), .number(1))),
+                       ProgramAssignment(declaration: 1, value: .concatenate([.string("😀"), .formatNumber(.declaration(0), ProgramNumberFormat())]))]
+        let root = ProgramElement(id: ElementID(name: "text", index: 0), content: .text(ProgramText(value: value)), onClick: actions)
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Counter", root: root, declarations: declarations,
+                                                               onLoad: [ProgramAssignment(declaration: 0, value: unavailable)]))
+        let environment = bindingEnvironment(false), point = SkinPoint(x: 1, y: 1)
+        let first = try runtime.project(environment: environment, measure: bindingMeasure)
+        t.equal(bindingStrings(first), ["start|–"])
+        t.throwsError { _ = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment) { _, _, _ in throw BindingFixtureFailure.measurement } }
+        t.equal(runtime.generation, first.generation)
+        guard let next = try runtime.click(at: point, expectedGeneration: first.generation, environment: environment, measure: bindingMeasure) else { throw BindingFixtureFailure.program }
+        t.equal(bindingStrings(next), ["😀41|41"])
+        guard case .text(let draw)? = next.drawingItems.first else { throw BindingFixtureFailure.program }
+        t.equal(draw.style.inlineSpans, [InlineSpan(location: 2, length: 2, setting: .typography(feature: "tnum", value: 1)),
+                                       InlineSpan(location: 5, length: 2, setting: .typography(feature: "tnum", value: 1))])
+        t.equal(bindingStrings(try runtime.project(environment: environment, measure: bindingMeasure)), ["😀41|41"], "onLoad does not rerun after missing recovers")
+        t.check(try runtime.click(at: point, expectedGeneration: first.generation, environment: environment, measure: bindingMeasure) == nil)
+        bindingFailure(t, .invalidAssignment(0)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Type", root: root, declarations: declarations, onLoad: [ProgramAssignment(declaration: 0, value: .string("0"))])) }
+    }
+
+    t.suite("Desk: numeric: checked plain counters arithmetic formats and missing recovery produce shared scenes") {
+        let original = #"widget { Text(1) }"# // The original unsupported literal now lowers, without dropping its context.
+        let program = try checkedBindingProgram(t, original)
+        var literal = try ProgramRuntime(program: program)
+        t.equal(bindingStrings(try literal.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["1"])
+        let source = "\u{FEFF}" + #"widget { variable count = 0; computed twice = count * 2; Text("😀点按 {count} 次 / {twice}").size(120, 30).onClick { count = count + 1 } }"# + "\r\n"
+        var runtime = try ProgramRuntime(program: checkedBindingProgram(t, source))
+        for expected in ["😀点按 0 次 / 0", "😀点按 1 次 / 2", "😀点按 2 次 / 4"] {
+            let scene = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)
+            t.equal(bindingStrings(scene), [expected])
+            _ = try runtime.click(at: SkinPoint(x: 1, y: 1), expectedGeneration: scene.generation, environment: bindingEnvironment(false), measure: bindingMeasure)
+        }
+        let recovery = #"widget { variable n = 3; computed caption = "{n, decimals: 1, missing: "空😀"}|{n.isMissing}|{n.ifMissing(8)}"; Text(caption).onLoad { n = 1 / 0 } }"#
+        var missing = try ProgramRuntime(program: checkedBindingProgram(t, recovery))
+        t.equal(bindingStrings(try missing.project(environment: bindingEnvironment(false), dateInput: input("en_US"), measure: bindingMeasure)), ["空😀|Yes|8"])
+        let math = #"widget { Text("{-7 % 3}|{-(3 + 2) * 4 / 2}|{2 < 3 and 3 >= 3}|{1 / 0 != 2}|{(1 / 0 < 1) ? 9 : 4}") }"#
+        var operators = try ProgramRuntime(program: checkedBindingProgram(t, math))
+        t.equal(bindingStrings(try operators.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["-1|-10|Yes|–|4"])
+    }
+
+    t.suite("Desk: numeric: checked dimensions and foreign catalog formats reject the complete program") {
+        let sources = [#"widget { Text(1%) }"#, #"widget { Text(1KB) }"#, #"widget { Text(2s / 1s) }"#,
+                       #"widget { variable n = 1%; Text("{n}") }"#, #"widget { Text(cpu.usage) }"#,
+                       #"widget { Text("{time.now < time.now}") }"#,
+                       #"widget { Text(2KB / 1B) }"#, #"widget { Text(100% / 50%) }"#,
+                       #"widget { Text(round(1.2)) }"#, #"widget { variable places = 2; Text("{1, decimals: places}") }"#]
+        for source in sources {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil && !result.issues.isEmpty, source)
+            t.equal(result.issues.first?.kind, .unsupported); t.equal(result.diagnostics, checked.diagnostics)
+            t.check(result.imageSources.isEmpty)
+        }
+        // The original compound-assignment literal is parser-invalid, not a successfully checked unsupported program.
+        let compound = deskCheck(#"widget { variable n = 1; Text(n).onClick { n += 1 } }"#)
+        let refused = Desk.compile(compound)
+        t.check(compound.diagnostics.contains { $0.id == .compoundAssignment && $0.severity == .error })
+        t.check(refused.program == nil && refused.imageSources.isEmpty)
+        t.equal(refused.diagnostics, compound.diagnostics)
+        var catalog = DeskCatalog.current
+        catalog.typeFormats[catalog.typeFormats.firstIndex { $0.type == .plainNumber }!].decimals = 3
+        var checked = deskCheck(#"widget { Text(1) }"#, context: CheckContext(catalog: catalog))
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+        catalog = .current
+        catalog.formatOptions[catalog.formatOptions.firstIndex { $0.label == "decimals" }!].range = 0...11
+        checked = deskCheck(#"widget { Text("{1, decimals: 1}") }"#, context: CheckContext(catalog: catalog))
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+        catalog = .current
+        let any = catalog.typeMembers.firstIndex { $0.type == "Any" }!
+        let fallback = catalog.typeMembers[any].members.firstIndex { $0.name == "ifMissing" }!
+        catalog.typeMembers[any].members[fallback].lowering = .derived("unrecognized")
+        checked = deskCheck(#"widget { Text((1 / 0).ifMissing(2)) }"#, context: CheckContext(catalog: catalog))
+        t.equal(Desk.compile(checked, catalog: catalog).issues.first?.kind, .unsupported)
+    }
+
+    t.suite("Desk: numeric: digit policies inherit without applying automatic ranges to literal digits") {
+        let source = #"widget { Column { Text("😀7|{12.3}"); Text("😀7|{12.3}").digits(.normal); Text("😀7|{12.3}").digits(.equalWidth) } }"#
+        var runtime = try ProgramRuntime(program: checkedBindingProgram(t, source))
+        let scene = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)
+        let spans = scene.drawingItems.compactMap { item -> [InlineSpan]? in if case .text(let draw) = item { return draw.style.inlineSpans }; return nil }
+        t.equal(spans, [[InlineSpan(location: 4, length: 4, setting: .typography(feature: "tnum", value: 1))], [],
+                        [InlineSpan(location: 0, length: 8, setting: .typography(feature: "tnum", value: 1))]])
+        let inherited = #"widget { Column { Text("😀7|{12.3}"); Text("😀7|{12.3}").digits(.normal) }.digits(.equalWidth) }"#
+        runtime = try ProgramRuntime(program: checkedBindingProgram(t, inherited))
+        let nested = try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)
+        let recipes = nested.drawingItems.compactMap { if case .text(let draw) = $0 { return draw.style.inlineSpans }; return nil }
+        t.equal(recipes, [[InlineSpan(location: 0, length: 8, setting: .typography(feature: "tnum", value: 1))], []])
     }
 }

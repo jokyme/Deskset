@@ -27,6 +27,7 @@ struct StaticProgramCompiler {
         var design = "standard"
         var color = ProgramColor.text
         var align = HorizontalTextAlign.center
+        var digits = ProgramText.Digits.automatic
     }
 
     mutating func compile() throws -> WidgetProgram {
@@ -111,6 +112,16 @@ struct StaticProgramCompiler {
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         var onClick: [ProgramAssignment]?
         for modifier in call.modifiers {
+            if modifier.name.token.text == "digits" {
+                guard checked.symbols[checked.tree.id(of: modifier.node)] == .builtIn(.modifier("digits")),
+                      let digits = catalog.modifier(named: "digits"), digits.inheritable, digits.appliesTo.contains(facts.kind),
+                      digits.facets == [FacetID("digits")], digits.signatures.count == 1,
+                      digits.signatures[0].params.count == 1,
+                      digits.signatures[0].params[0].type == .enumeration("Digits"),
+                      digits.signatures[0].params[0].facets == [FacetID("digits")] else {
+                    throw issue(.unsupported, modifier.node, "Unsupported checked digits catalog contract")
+                }
+            }
             if modifier.name.token.text == "onLoad" {
                 try rootOnLoad(modifier, element: node)
                 continue
@@ -252,7 +263,7 @@ struct StaticProgramCompiler {
             }
             content = .text(ProgramText(value: text, fontFamily: family, fontSize: appearance.size,
                                         fontWeight: appearance.weight, italic: appearance.italic,
-                                        color: appearance.color, align: appearance.align))
+                                        color: appearance.color, align: appearance.align, digits: appearance.digits))
         default:
             let arguments = call.arguments?.arguments ?? []
             guard arguments.allSatisfy({ ["spacing", "align"].contains($0.label?.name ?? "") }) else {
@@ -346,7 +357,7 @@ struct StaticProgramCompiler {
 
     private func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, at node: PositionedNode) throws -> Appearance {
         var result = try defaultAppearance(at: node)
-        for key in ["font.family", "font.size", "font.weight", "font.italic", "font.design", "color", "align"] {
+        for key in ["font.family", "font.size", "font.weight", "font.italic", "font.design", "color", "align", "digits"] {
             let value = try facet(facts, key, at: node)
             if value == nil, facts.inherits.contains(FacetID(key)) {
                 switch key {
@@ -357,14 +368,12 @@ struct StaticProgramCompiler {
                 case "font.design": result.design = inherited.design
                 case "color": result.color = inherited.color
                 case "align": result.align = inherited.align
+                case "digits": result.digits = inherited.digits
                 default: break
                 }
             } else if let value {
                 try assign(value, to: key, appearance: &result, at: node)
             }
-        }
-        if let digits = try facet(facts, "digits", at: node) {
-            guard case .choice("normal") = digits else { throw issue(.unsupported, node, "Equal-width digits are not implemented") }
         }
         return result
     }
@@ -392,6 +401,13 @@ struct StaticProgramCompiler {
         case ("font.italic", .boolean(let n)): appearance.italic = n
         case ("font.design", .choice(let n)): appearance.design = n
         case ("align", .choice(let n)): appearance.align = try horizontal(n, at: node)
+        case ("digits", .choice(let n)):
+            guard catalog.enumeration("Digits")?.enumCase(named: n) != nil else { throw issue(.unsupported, node, "Unsupported digits catalog case") }
+            switch n {
+            case "normal": appearance.digits = .normal
+            case "equalWidth": appearance.digits = .equalWidth
+            default: throw issue(.unsupported, node, "Unsupported digits policy")
+            }
         case ("color", let value): appearance.color = try color(value, at: node)
         default: throw issue(.unsupported, node, "Unsupported constant for facet \(key)")
         }

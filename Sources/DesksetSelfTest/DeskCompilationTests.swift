@@ -89,6 +89,30 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.equal(compiledDraws(hiddenScene).map(\.text), ["B"])
     }
 
+    t.suite("Desk: compilation: original numeric and number-preset literals produce exact shared styles") {
+        // These original unsupported controls become positive when plain numbers and equal-width digits are implemented.
+        let number = try compileFixture(t, #"widget { computed value = 1; Text(value) }"#)
+        t.equal(number.declarations, [ProgramDeclaration(name: "value", kind: .computed, initial: .number(1))])
+        var numericRuntime = try ProgramRuntime(program: number)
+        let numericScene = try numericRuntime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 10, height: 16) }
+        guard let numericDraw = compiledDraws(numericScene).first else { throw CompilationFixtureError.missingProgram }
+        t.equal(numericDraw.text, "1")
+        t.equal(numericDraw.style.inlineSpans, [InlineSpan(location: 0, length: 1, setting: .typography(feature: "tnum", value: 1))])
+
+        let preset = try compileFixture(t, #"widget { Text("A").font(.largeNumber) }"#)
+        var presetRuntime = try ProgramRuntime(program: preset)
+        var measuredStyle: TextStyle?
+        let presetScene = try presetRuntime.project(environment: compileEnvironment()) { text, style, _ in
+            t.equal(text, "A"); measuredStyle = style
+            return SkinSize(width: 10, height: 16)
+        }
+        guard let presetDraw = compiledDraws(presetScene).first else { throw CompilationFixtureError.missingProgram }
+        t.equal(presetDraw.text, "A"); t.equal(presetDraw.style.fontFace, "System Rounded")
+        t.close(TextStyle.pixelSize(points: presetDraw.style.fontSize), 34); t.equal(presetDraw.style.fontWeight, 600)
+        t.equal(presetDraw.style.inlineSpans, [InlineSpan(location: 0, length: 1, setting: .typography(feature: "tnum", value: 1))])
+        t.equal(presetDraw.style, measuredStyle, "the equal-width preset is measured with its final drawing style")
+    }
+
     t.suite("Desk: compilation: unsupported semantics fail with original source diagnostics") {
         let cases = [#"info { size: .small }"# + "\n" + #"widget { Text("A") }"#,
                      #"info { description: "Metadata" }"# + "\n" + #"widget { Text("A") }"#,
@@ -101,9 +125,9 @@ func runDeskCompilationTests(_ t: TestRunner) {
                      #"widget { Text("A").offset(x: 2) }"#,
                      #"widget { Text("A").color(.red) }"#,
                      #"widget { Text("A").color(.dim, if: true) }"#,
-                     #"widget { Text("A").font(.largeNumber) }"#,
+                     #"widget { Text("A").font(.largeNumber).margin(1) }"#,
                      #"widget { Text("{cpu.usage}") }"#,
-                     #"widget { computed value = 1; Text(value) }"#,
+                     #"widget { computed value = 1%; Text(value) }"#,
                      #"widget { Row(align: .baseline) { Text("A") } }"#]
         for source in cases {
             let checked = deskCheck(source)

@@ -248,7 +248,7 @@ public struct ProgramRuntime: Sendable {
     }
 
     private func layout(_ node: ProgramElement, proposedWidth: Double?, proposedHeight: Double?, appearance: SkinAppearance,
-                        resolve: (ElementID, ProgramExpression) throws -> String,
+                        resolve: (ElementID, ProgramExpression) throws -> ProgramTextValue,
                         measure: (String, TextStyle, Double?) throws -> SkinSize, state: inout LayoutState) throws -> Box {
         let key = ProposalKey(id: node.id, width: proposedWidth, height: proposedHeight)
         if let old = state.boxes[key] { return old }
@@ -282,7 +282,8 @@ public struct ProgramRuntime: Sendable {
             let input: TextInput
             if let old = state.text[node.id] { input = old }
             else {
-                input = TextInput(value: try resolve(node.id, text.value), style: text.drawingStyle(in: appearance, wrap: false))
+                let value = try resolve(node.id, text.value)
+                input = TextInput(value: value.text, style: text.drawingStyle(in: appearance, wrap: false, text: value))
                 state.text[node.id] = input
             }
             resolvedText = input.value
@@ -302,7 +303,8 @@ public struct ProgramRuntime: Sendable {
             guard width >= horizontal else { throw ProgramRuntimeError.layoutOverflow(node.id) }
             let innerWidth = width - horizontal
             let wraps = innerWidth < ideal.width
-            let finalStyle = text.drawingStyle(in: appearance, wrap: wraps)
+            var finalStyle = input.style
+            finalStyle.wrap = wraps
             let actual = wraps ? try measured(finalStyle, width: innerWidth) : ideal
             guard actual.width <= innerWidth else { throw ProgramRuntimeError.layoutOverflow(node.id) }
             let naturalHeight = try sum([actual.height, vertical])
