@@ -46,8 +46,10 @@ enum SkinLayerContentSelfTests {
         destinationTests(t)
         firstFrameTests(t)
         patchReclaimTests(t)
+        #if DEBUG
         patchClaimTests(t)
         hostValueTests(t)
+        #endif
         eWindowQualificationTests(t)
         nativeStagingTests(t)
         nativeStagingControlTests(t)
@@ -522,6 +524,7 @@ enum SkinLayerContentSelfTests {
         }
     }
 
+    #if DEBUG
     private static func patchClaimTests(_ t: AppTestRunner) {
         t.suite("App: layer window content: claimed main writer survives deadline while owner logic coalesces then closes") {
             let app = try app(t, threading: .engine)
@@ -750,6 +753,8 @@ enum SkinLayerContentSelfTests {
             }
         }
     }
+
+    #endif
 
     #if DEBUG
     private static func auditResizeMapping(_ t: AppTestRunner) {
