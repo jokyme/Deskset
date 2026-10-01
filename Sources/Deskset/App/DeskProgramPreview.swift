@@ -150,6 +150,8 @@ final class DeskProgramPreviewController: NSViewController {
                 switch $0 {
                 case .text(let value): return !value.text.isEmpty
                 case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
+                case .shape(let shape):
+                    return shape.contentFrame.width > 0 && shape.contentFrame.height > 0 && shape.shapes.contains { $0.fill.isVisible }
                 default: return false
                 }
             }

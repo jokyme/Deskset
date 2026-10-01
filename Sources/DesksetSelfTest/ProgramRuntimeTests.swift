@@ -406,4 +406,96 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         }
         t.equal(runtime.generation, 0)
     }
+
+    t.suite("Program: shapes: curved leaves capture bounded paths and independent appearance payloads") {
+        for kind in [ProgramShapeKind.circle, .ellipse, .capsule] {
+            let id = ElementID(name: "curve", index: 0)
+            let root = ProgramElement(id: id, content: .shape(kind: kind, fill: .text), width: .fixed(24), height: .fixed(18),
+                                      padding: SkinInsets(left: 2, top: 3, right: 4, bottom: 5))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Captured curves", root: root))
+            var captured: ShapeDraw?
+            for appearance in [SkinAppearance.light, .dark] {
+                let scene = try runtime.project(environment: programEnvironment(appearance)) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+                t.equal(scene.size, SkinSize(width: 24, height: 18))
+                t.equal(scene.elements.first?.kind, .shape)
+                guard scene.drawingItems.count == 1, case .shape(let draw) = scene.drawingItems[0],
+                      draw.shapes.count == 1, case .path(let path) = draw.shapes[0].geometry,
+                      path.subpaths.count == 1 else { return t.check(false, "a real curved recipe must be captured") }
+                let item = draw.shapes[0], subpath = path.subpaths[0]
+                t.equal(draw.contentFrame, SkinRect(x: 2, y: 3, width: 18, height: 10))
+                t.equal(item.fill, .color(appearance.labelColor)); t.equal(item.stroke, .none)
+                t.check(item.closed && subpath.closed && item.strokePlan == nil)
+                t.equal(path.fillRule, .nonZero)
+                switch kind {
+                case .circle:
+                    t.equal(item.bounds, ShapeRect(minX: 4, minY: 0, maxX: 14, maxY: 10))
+                    t.equal(subpath.start, ShapePoint(14, 5))
+                    t.equal(subpath.segments.map(\.kind.end), [ShapePoint(9, 10), ShapePoint(4, 5), ShapePoint(9, 0), ShapePoint(14, 5)])
+                case .ellipse:
+                    t.equal(item.bounds, ShapeRect(minX: 0, minY: 0, maxX: 18, maxY: 10))
+                    t.equal(subpath.start, ShapePoint(18, 5))
+                    t.equal(subpath.segments.map(\.kind.end), [ShapePoint(9, 10), ShapePoint(0, 5), ShapePoint(9, 0), ShapePoint(18, 5)])
+                case .capsule:
+                    t.equal(item.bounds, ShapeRect(minX: 0, minY: 0, maxX: 18, maxY: 10))
+                    t.equal(subpath.start, ShapePoint(5, 0))
+                    t.equal(subpath.segments.map(\.kind.end), [ShapePoint(13, 0), ShapePoint(18, 5), ShapePoint(13, 10),
+                                                             ShapePoint(5, 10), ShapePoint(0, 5), ShapePoint(5, 0)])
+                }
+                if let old = captured {
+                    t.check(old.sourceID != draw.sourceID, "a new paint payload cannot reuse a different recipe's cache identity")
+                    t.equal(old.shapes[0].fill, .color(SkinAppearance.light.labelColor), "captured old curves are immutable")
+                    t.equal(old.shapes[0].geometry, item.geometry)
+                } else { captured = draw }
+            }
+        }
+    }
+
+    t.suite("Program: shapes: shared layout retains hidden zero and transparent curve semantics") {
+        func shape(_ index: Int, _ kind: ProgramShapeKind, width: Double, height: Double, hidden: Bool = false) -> ProgramElement {
+            ProgramElement(id: ElementID(name: "curve", index: index), content: .shape(kind: kind, fill: .accent),
+                           width: .fixed(width), height: .fixed(height), hidden: hidden)
+        }
+        let text = ProgramElement(id: ElementID(name: "text", index: 4), content: .text(ProgramText("A")))
+        let root = ProgramElement(id: ElementID(name: "column", index: 0), content: .column(spacing: 4, align: .left, children:
+            [shape(1, .circle, width: 12, height: 8), shape(2, .ellipse, width: 0, height: 8),
+             shape(3, .capsule, width: 6, height: 4, hidden: true), text]))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Curve order", root: root))
+        let scene = try runtime.project(environment: programEnvironment()) { value, _, _ in
+            t.equal(value, "A"); return SkinSize(width: 5, height: 10)
+        }
+        t.equal(scene.size, SkinSize(width: 12, height: 42))
+        t.equal(scene.elements.map(\.frame), [SkinRect(width: 12, height: 42), SkinRect(width: 12, height: 8),
+                                              SkinRect(y: 12, width: 0, height: 8), SkinRect(y: 24, width: 6, height: 4),
+                                              SkinRect(y: 32, width: 5, height: 10)])
+        t.equal(scene.elements[3].visibility, .hiddenKeepsSpace)
+        t.equal(scene.drawingItems.count, 2); t.equal(programDraws(scene).map(\.text), ["A"])
+        for kind in [ProgramShapeKind.circle, .ellipse, .capsule] {
+            let leaf = ProgramElement(id: ElementID(name: "clear", index: 0), content: .shape(kind: kind, fill: .literal(.clear)),
+                                      width: .fixed(8), height: .fixed(8))
+            var empty = try ProgramRuntime(program: WidgetProgram(name: "Transparent curve", root: leaf))
+            let blank = try empty.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(leaf.id) }
+            guard let item = blank.drawingItems.first, case .shape(let draw) = item else { return t.check(false, "transparent positive geometry keeps its recipe") }
+            t.check(!draw.shapes[0].fill.isVisible)
+        }
+    }
+
+    t.suite("Program: shapes: invalid direct producers and finite layout overflow fail before publication") {
+        let id = ElementID(name: "invalid-curve", index: 0)
+        for kind in [ProgramShapeKind.circle, .ellipse, .capsule] {
+            let noIdeal = ProgramElement(id: id, content: .shape(kind: kind, fill: .accent), height: .fixed(8))
+            programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Missing ideal", root: noIdeal)) }
+            let badColor = ProgramElement(id: id, content: .shape(kind: kind, fill: .literal(RGBA(r: 256, g: 0, b: 0))),
+                                          width: .fixed(8), height: .fixed(8))
+            programFailure(t, .invalidPaint(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Invalid color", root: badColor)) }
+            let negative = ProgramElement(id: id, content: .shape(kind: kind, fill: .accent), width: .fixed(-1), height: .fixed(8))
+            programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Negative width", root: negative)) }
+            let huge = ProgramElement(id: id, content: .shape(kind: kind, fill: .accent), width: .fixed(Double.greatestFiniteMagnitude), height: .fixed(8),
+                                      padding: SkinInsets(left: Double.greatestFiniteMagnitude, top: 0, right: Double.greatestFiniteMagnitude, bottom: 0))
+            var runtime = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root: huge))
+            programFailure(t, .layoutOverflow(id)) {
+                _ = try runtime.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(id) }
+            }
+            t.equal(runtime.generation, 0)
+        }
+    }
 }

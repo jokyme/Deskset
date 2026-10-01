@@ -533,6 +533,150 @@ enum DeskProgramPreviewSelfTests {
             t.check(f.app.sortedControllers.isEmpty)
             t.equal(try Data(contentsOf: f.file), Data(source.utf8))
         }
+
+        t.suite("Desk: shape preview: text-free curves match independent native paths at both scales and appearances") {
+            for name in ["Circle", "Ellipse", "Capsule"] {
+                for padded in [false, true] {
+                    let source = "widget { " + name + "()" + (padded ? ".size(24, 18).padding(2)" : "") + " }"
+                    let f = try fixture(t, source), p = f.preview
+                    let size = padded ? NSSize(width: 24, height: 18) : NSSize(width: 10, height: 10)
+                    let rect = padded ? CGRect(x: 2, y: 2, width: 20, height: 14) : CGRect(x: 0, y: 0, width: 10, height: 10)
+                    let path = try curvePath(name, in: rect)
+                    t.equal(p.state, .ready); t.equal(p.scene?.size, SkinSize(width: size.width, height: size.height))
+                    t.check(f.app.sortedControllers.isEmpty)
+                    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                        p.canvas.appearance = NSAppearance(named: appearance)
+                        p.refreshEnvironment()
+                        let color = MacAppearance.values(for: p.canvas.effectiveAppearance).labelColor
+                        let reference = CurveReferenceView(recipes: [(path, color)], size: size)
+                        let rectangle = CurveReferenceView(recipes: [(CGPath(rect: rect, transform: nil), color)], size: size)
+                        let wrongColor = CurveReferenceView(recipes: [(path, RGBA(r: 255, g: 0, b: 0))], size: size)
+                        let blank = CurveReferenceView(recipes: [], size: size)
+                        for scale in [1, 2] {
+                            let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                            let empty = try paint(blank, scale: scale), wrongGeometry = try paint(rectangle, scale: scale)
+                            let recolored = try paint(wrongColor, scale: scale)
+                            for rep in [actual, expected, empty, wrongGeometry, recolored] { try canaries(t, rep) }
+                            t.check(try ink(actual) > 0); t.equal(try ink(empty), 0)
+                            t.equal(try bytes(actual), try bytes(expected), "independent CGPath oracle for \(name) at \(scale)x")
+                            t.check(try bytes(actual) != bytes(wrongGeometry), "a rectangular substitute cannot qualify as a curve")
+                            t.check(try bytes(actual) != bytes(recolored), "wrong paint cannot qualify")
+                            if padded {
+                                guard let corner = actual.colorAt(x: 2 * scale, y: 2 * scale)?.usingColorSpace(.deviceRGB),
+                                      let center = actual.colorAt(x: 12 * scale, y: 9 * scale)?.usingColorSpace(.deviceRGB) else { throw Failure.pixel }
+                                t.equal(corner.alphaComponent, 0)
+                                t.equal(Int((center.alphaComponent * 255).rounded()), Int(color.a.rounded()),
+                                        "a fully covered center retains the semantic color's byte alpha")
+                            }
+                        }
+                    }
+                    t.equal(try Data(contentsOf: f.file), Data(source.utf8), "preview never saves or activates this file")
+                }
+            }
+        }
+
+        t.suite("Desk: shape preview: alpha and replaced snapshots retain independent cold curve recipes") {
+            let source = ##"widget { Capsule().size(30, 14).padding(2).fill("#12345680") }"##
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking, let scene = p.scene, let item = scene.drawingItems.first,
+                  case .shape(let first) = item else { throw Failure.fixture }
+            let old = checking.snapshot, captured = scene.drawingItems
+            let oldSize = NSSize(width: 30, height: 14)
+            let path = try curvePath("Capsule", in: CGRect(x: 2, y: 2, width: 26, height: 10))
+            let reference = CurveReferenceView(recipes: [(path, RGBA(r: 18, g: 52, b: 86, a: 128))], size: oldSize)
+            let warmReplay = ReferenceView(items: captured, size: oldSize)
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                let replay = try paint(warmReplay, scale: scale)
+                try canaries(t, actual); try canaries(t, expected); try canaries(t, replay)
+                t.equal(try bytes(actual), try bytes(expected)); t.equal(try bytes(replay), try bytes(expected))
+                guard let center = actual.colorAt(x: 15 * scale, y: 7 * scale)?.usingColorSpace(.deviceRGB) else { throw Failure.pixel }
+                t.check(center.alphaComponent > 0 && center.alphaComponent < 1)
+            }
+            replace(#"widget { Ellipse().size(18, 26).padding(2).fill(.accent) }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            guard let nextItem = p.scene?.drawingItems.first, case .shape(let next) = nextItem else { throw Failure.fixture }
+            t.check(first.sourceID != next.sourceID && first.contentFrame != next.contentFrame)
+            t.check(!checking.publish(old))
+            let coldReplay = ReferenceView(items: captured, size: oldSize)
+            let nextReference = CurveReferenceView(recipes: [(try curvePath("Ellipse", in: CGRect(x: 2, y: 2, width: 14, height: 22)),
+                                                             MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor)],
+                                                  size: NSSize(width: 18, height: 26))
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(nextReference, scale: scale)
+                let replay = try paint(coldReplay, scale: scale), oldExpected = try paint(reference, scale: scale)
+                let warm = try paint(warmReplay, scale: scale)
+                for rep in [actual, expected, replay, oldExpected, warm] { try canaries(t, rep) }
+                t.equal(try bytes(actual), try bytes(expected)); t.equal(try bytes(replay), try bytes(oldExpected))
+                t.equal(try bytes(warm), try bytes(oldExpected), "a newer different geometry/paint cannot poison a captured recipe")
+            }
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8)); t.check(f.app.sortedControllers.isEmpty)
+        }
+
+        t.suite("Desk: shape preview: empty invalid and unsupported curve edits clear actual previous pixels") {
+            let source = #"widget { Circle().size(24, 18).fill(.accent) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            let old = checking.snapshot
+            t.equal(p.state, .ready)
+            let cases: [(String, Bool)] = [(#"widget { Ellipse().size(24, 18).hidden() }"#, true),
+                (#"widget { Capsule().size(0, 18) }"#, true), (#"widget { Circle().size(24, 18).fill(.clear) }"#, true),
+                (#"widget { Circle().size(24, 18).stroke(.accent) }"#, false),
+                (#"widget { Ellipse().size(24, 18).fill(.accent, if: true) }"#, false),
+                (#"widget { Capsule().size(24, 18).margin(1) }"#, false),
+                (#"widget { Ellipse().size(24, 18).unknownModifier() }"#, false)]
+            for (replacement, empty) in cases {
+                replace(replacement, in: f); t.check(settled(f)); t.check(!checking.publish(old))
+                if empty { t.equal(p.state, .empty); t.check(p.scene != nil) }
+                else {
+                    guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported curve must report its actual reason") }
+                    t.check(p.scene == nil && !reason.isEmpty)
+                }
+                t.check(p.canvas.isHidden)
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8)) // Qualified clear ROI, as in the existing rectangle tests.
+                let blank = try paint(p.canvas); try canaries(t, blank); t.equal(try ink(blank), 0)
+            }
+            replace(source, in: f); t.check(settled(f)); t.equal(p.state, .ready)
+            let actual = try paint(p.canvas); try canaries(t, actual); t.check(try ink(actual) > 0)
+            f.controller.window?.close(); t.equal(p.state, .closed); t.check(p.scene == nil)
+        }
+    }
+
+
+    /// Independent native geometry API, not the shared Program lowering or ShapeGeometryBuilder.
+    private static func curvePath(_ name: String, in rect: CGRect) throws -> CGPath {
+        switch name {
+        case "Circle":
+            let side = min(rect.width, rect.height)
+            return CGPath(ellipseIn: CGRect(x: rect.midX - side / 2, y: rect.midY - side / 2, width: side, height: side), transform: nil)
+        case "Ellipse": return CGPath(ellipseIn: rect, transform: nil)
+        case "Capsule":
+            let radius = min(rect.width, rect.height) / 2
+            return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        default: throw Failure.fixture
+        }
+    }
+
+    private final class CurveReferenceView: NSView {
+        let recipes: [(CGPath, RGBA)]
+        override var isFlipped: Bool { true }
+        init(recipes: [(CGPath, RGBA)], size: NSSize) {
+            self.recipes = recipes
+            super.init(frame: NSRect(origin: .zero, size: size))
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let destination = NSGraphicsContext.current?.cgContext else { return }
+            destination.saveGState()
+            defer { destination.restoreGState() }
+            destination.setAllowsAntialiasing(true)
+            destination.setShouldAntialias(true)
+            for (path, color) in recipes {
+                destination.addPath(path)
+                destination.setFillColor(CGColor(srgbRed: color.r / 255, green: color.g / 255, blue: color.b / 255, alpha: color.a / 255))
+                destination.fillPath(using: .winding)
+            }
+        }
     }
 
     private final class ReferenceView: NSView {

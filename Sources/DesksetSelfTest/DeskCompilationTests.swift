@@ -209,7 +209,7 @@ func runDeskCompilationTests(_ t: TestRunner) {
                        #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
                        #"Rectangle().size(12).fill(.red)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
                        #"Rectangle().size(12).background(.accent)"#, #"Rectangle().size(12).opacity(0.5)"#,
-                       #"Circle().size(12).fill(.accent)"#]
+                       #"Circle().size(12).fill(.accent).stroke(.white)"#]
         for element in sources {
             let source = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
             let checked = deskCheck(source)
@@ -339,5 +339,82 @@ func runDeskCompilationTests(_ t: TestRunner) {
             t.check(false, "a genuine minimum larger than the exact budget must fail")
         } catch { t.equal(error as? ProgramRuntimeError, .layoutOverflow(program.root.id)) }
         t.equal(runtime.generation, 0)
+    }
+
+    t.suite("Desk: shapes: checked curve defaults and the original Circle literal become real shared content") {
+        for (name, kind) in [("Circle", ProgramShapeKind.circle), ("Ellipse", .ellipse), ("Capsule", .capsule)] {
+            let program = try compileFixture(t, "widget { " + name + "() }")
+            t.equal(program.root.content, .shape(kind: kind, fill: .text))
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.size, SkinSize(width: 10, height: 10))
+            guard let item = scene.drawingItems.first, case .shape(let draw) = item else { return t.check(false, "checked shape must reach the shared draw consumer") }
+            t.equal(draw.shapes.first?.fill, .color(SkinAppearance.light.labelColor))
+        }
+        // These are the exact old unsupported leaf and its complete original mixed-buffer context.
+        for source in [#"widget { Circle().size(12).fill(.accent) }"#,
+                       #"widget { Column { Text("must not paint partially"); Circle().size(12).fill(.accent) } }"#] {
+            let program = try compileFixture(t, source)
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment()) { _, _, _ in SkinSize(width: 2, height: 4) }
+            guard let item = scene.drawingItems.last, case .shape(let draw) = item else { return t.check(false, "the original Circle literal now paints") }
+            t.equal(draw.shapes[0].fill, .color(SkinAppearance.light.accentColor))
+            t.equal(draw.contentFrame, source.contains("Column") ? SkinRect(y: 12, width: 12, height: 12) : SkinRect(width: 12, height: 12))
+            t.equal(scene.drawingItems.count, source.contains("Column") ? 2 : 1)
+        }
+        let source = #"widget { Row(spacing: 4) { Circle(); Ellipse(); Capsule().hidden() }.width(98).height(20).color(.dim) }"#
+        let program = try compileFixture(t, source)
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment(.dark)) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        t.equal(scene.size, SkinSize(width: 98, height: 20))
+        t.equal(scene.elements.map(\.id.index), [0, 1, 2, 3])
+        t.equal(scene.elements.dropFirst().map(\.frame), [SkinRect(width: 30, height: 20),
+            SkinRect(x: 34, width: 30, height: 20), SkinRect(x: 68, width: 30, height: 20)])
+        let shapes = scene.drawingItems.compactMap { item -> ShapeDraw? in if case .shape(let value) = item { return value }; return nil }
+        t.equal(shapes.count, 2)
+        t.check(shapes.allSatisfy { $0.shapes[0].fill == .color(SkinAppearance.dark.labelColor) }, "container text color is not a shape fill")
+        t.equal(try compileFixture(t, "// moved😀\n" + source), program)
+    }
+
+    t.suite("Desk: shapes: actual curve catalog defaults ideals and missing-default diagnostics are consumed") {
+        for name in ["Circle", "Ellipse", "Capsule"] {
+            var catalog = DeskCatalog.current
+            guard let index = catalog.components.firstIndex(where: { $0.name == name }) else { throw CompilationFixtureError.missingProgram }
+            catalog.components[index].defaults["fill"] = ".accent"
+            catalog.components[index].sizing = SizingDefaults(width: ".fit", height: ".fill", idealWhenUnspecified: IdealSize(width: 13, height: 7))
+            let source = "widget { " + name + "() }"
+            let checked = deskCheck(source, context: CheckContext(catalog: catalog))
+            let result = Desk.compile(checked, catalog: catalog)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked)); t.check(result.issues.isEmpty, "\(result.issues)")
+            guard let program = result.program else { throw CompilationFixtureError.missingProgram }
+            var runtime = try ProgramRuntime(program: program)
+            let scene = try runtime.project(environment: compileEnvironment(.dark)) { _, _, _ in throw CompilationFixtureError.missingProgram }
+            t.equal(scene.size, SkinSize(width: 13, height: 7))
+            guard let item = scene.drawingItems.first, case .shape(let draw) = item else { return t.check(false, "modified catalog really reaches native recipe") }
+            t.equal(draw.shapes[0].fill, .color(SkinAppearance.dark.accentColor))
+            catalog.components[index].defaults.removeValue(forKey: "fill")
+            let absent = deskCheck(source, context: CheckContext(catalog: catalog))
+            let missing = Desk.compile(absent, catalog: catalog)
+            t.check(absent.diagnostics(.error).isEmpty, deskDescribe(absent))
+            t.check(missing.program == nil); t.equal(missing.issues.first?.kind, .invalidCheckedModel)
+            t.equal(missing.diagnostics.map(\.id), absent.diagnostics.map(\.id))
+        }
+    }
+
+    t.suite("Desk: shapes: unimplemented curve facets and other primitives still reject the complete program") {
+        for name in ["Circle", "Ellipse", "Capsule"] {
+            for suffix in [".stroke(.accent)", ".fill(gradient(.black, .white))", ".fill(.accent, if: true)", ".opacity(0.5)", ".margin(1)"] {
+                let source = "widget { Column { Text(\"must not paint partially\"); " + name + "().size(12)" + suffix + " } }"
+                let checked = deskCheck(source), result = Desk.compile(checked)
+                t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+                t.check(result.program == nil); t.equal(result.issues.first?.kind, .unsupported)
+                t.equal(result.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+            }
+        }
+        for primitive in [#"Line().size(12)"#, #"Arc(from: 0, to: 270).size(12)"#, #"Path("M0 0 L10 0 L10 10 Z").size(12)"#] {
+            let checked = deskCheck("widget { " + primitive + " }"), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil); t.equal(result.issues.first?.kind, .unsupported)
+        }
     }
 }

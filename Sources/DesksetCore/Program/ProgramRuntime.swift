@@ -55,7 +55,7 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 if case .literal(let color) = text.color, !Self.valid(color) { throw ProgramRuntimeError.invalidText(node.id) }
-            case .rectangle(let fill):
+            case .rectangle(let fill), .shape(_, let fill):
                 contentCount += 1
                 if node.idealSize == nil {
                     guard case .fixed = node.width, case .fixed = node.height else {
@@ -142,7 +142,7 @@ public struct ProgramRuntime: Sendable {
         let children: [ProgramElement]
         switch node.content {
         case .column(_, _, let nodes), .row(_, _, let nodes): children = nodes
-        case .text, .rectangle: children = []
+        case .text, .rectangle, .shape: children = []
         }
         let descendants = children.map { flexibility($0, into: &state) }
         let value = Flexibility(width: node.width == .fill || (node.width == .fit && descendants.contains { $0.width }),
@@ -214,7 +214,7 @@ public struct ProgramRuntime: Sendable {
             guard height >= naturalHeight else { throw ProgramRuntimeError.layoutOverflow(node.id) }
             style = finalStyle
             minimumContent = SkinSize(width: actual.width, height: actual.height)
-        case .rectangle(let color):
+        case .rectangle(let color), .shape(_, let color):
             let ideal = node.idealSize ?? SkinSize()
             width = try requestedWidth ?? clamp(sum([ideal.width, horizontal]), minimum: node.minWidth, maximum: node.maxWidth)
             height = try requestedHeight ?? clamp(sum([ideal.height, vertical]), minimum: node.minHeight, maximum: node.maxHeight)
@@ -383,7 +383,7 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text, .rectangle: break
+            case .text, .rectangle, .shape: break
             }
         }
         let box = Box(node: node, size: SkinSize(width: width, height: height), minimum: minimumSize,
@@ -415,7 +415,7 @@ public struct ProgramRuntime: Sendable {
             }
         case .column: kind = .unknown("Column")
         case .row: kind = .unknown("Row")
-        case .rectangle:
+        case .rectangle, .shape:
             kind = .shape
             guard let fill = box.fill else { throw ProgramRuntimeError.invalidPaint(box.node.id) }
             if !hidden {
@@ -424,7 +424,10 @@ public struct ProgramRuntime: Sendable {
                 guard [content.x, content.y, content.width, content.height, content.maxX, content.maxY].allSatisfy(\.isFinite) else {
                     throw ProgramRuntimeError.layoutOverflow(box.node.id)
                 }
-                if content.width > 0, content.height > 0 { items = [.fill(content, Paint(color: fill))] }
+                if content.width > 0, content.height > 0 {
+                    if case .shape(let shape, _) = box.node.content { items = [.shape(shapeDrawing(shape, fill: fill, in: content))] }
+                    else { items = [.fill(content, Paint(color: fill))] }
+                }
             }
         }
         elements.append(SceneElement(id: box.node.id, kind: kind, frame: frame, anchor: point,
@@ -433,5 +436,30 @@ public struct ProgramRuntime: Sendable {
         for (child, offset) in box.children {
             try append(child, at: SkinPoint(x: point.x + offset.x, y: point.y + offset.y), inheritedHidden: hidden, into: &elements)
         }
+    }
+
+    /// Pure local geometry; each new immutable payload gets its own correct renderer cache identity.
+    private func shapeDrawing(_ kind: ProgramShapeKind, fill: RGBA, in content: SkinRect) -> ShapeDraw {
+        let w = content.width, h = content.height
+        let path: ShapeSubpath
+        let bounds: ShapeRect
+        switch kind {
+        case .circle:
+            let radius = min(w, h) / 2
+            path = ShapeGeometryBuilder.ellipse(centerX: w / 2, centerY: h / 2, radiusX: radius)
+            bounds = ShapeRect(minX: w / 2 - radius, minY: h / 2 - radius, maxX: w / 2 + radius, maxY: h / 2 + radius)
+        case .ellipse:
+            path = ShapeGeometryBuilder.ellipse(centerX: w / 2, centerY: h / 2, radiusX: w / 2, radiusY: h / 2)
+            bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
+        case .capsule:
+            path = ShapeGeometryBuilder.rectangle(x: 0, y: 0, width: w, height: h, radiusX: min(w, h) / 2)
+            bounds = ShapeRect(minX: 0, minY: 0, maxX: w, maxY: h)
+        }
+        var stroke = ShapeStrokeStyle()
+        stroke.width = 0
+        let item = ShapeItem(index: 1, geometry: .path(ShapePath(subpaths: [path], fillRule: .nonZero)), closed: true,
+                             fill: .color(fill), stroke: .none, strokeStyle: stroke, strokePlan: nil,
+                             paintTransform: .identity, bounds: bounds, visualBounds: bounds)
+        return ShapeDraw(shapes: [item], contentFrame: content)
     }
 }
