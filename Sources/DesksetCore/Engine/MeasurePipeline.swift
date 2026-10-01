@@ -1,7 +1,22 @@
 import Foundation
 
+/// Live inputs for the measure action phase. The owner resolves options and formula identifiers when asked;
+/// synchronous actions may change later reads. The pipeline borrows this source only for the current call.
+protocol MeasureActionSource: AnyObject {
+    var name: String { get }
+    var value: Double { get }
+    var stringValue: String { get }
+    func bool(_ key: String, _ defaultValue: Bool) -> Bool
+    func actionOption(_ key: String) -> String
+    func optionalDouble(_ key: String) -> Double?
+    func awaitsSectionVariables(_ key: String) -> Bool
+    func numberedActionOptions(_ key: String) -> [(index: Int, value: String)]
+    func logActionPipeline(_ message: String, level: SkinLogLevel)
+    func actionFormulaValue(of identifier: String) -> Double?
+}
+
 /// The numerical and action state of one measure, confined to the skin's owner. Synchronous hooks or actions may
-/// reenter this measure; each call uses the same state at the original read/write points. The measure and the
+/// reenter this measure; each call uses the same state at the original read/write points. Input objects and the
 /// non-escaping action callback are call arguments only; the pipeline keeps neither of them.
 final class MeasurePipeline {
     // MARK: - Numerical values
@@ -137,7 +152,7 @@ final class MeasurePipeline {
     private var lastValue: Double?
     private var lastString: String?
 
-    func readOptions(for measure: Measure) {
+    func readOptions(for measure: any MeasureActionSource) {
         readConditions(for: measure)
         readThresholds(for: measure)
         readMatches(for: measure)
@@ -145,9 +160,9 @@ final class MeasurePipeline {
         onChangeAction = measure.actionOption("OnChangeAction")
     }
 
-    private func readConditions(for measure: Measure) {
+    private func readConditions(for measure: any MeasureActionSource) {
         ifConditionMode = measure.bool("IfConditionMode", false)
-        let sources = measure.numberedOptions("IfCondition")
+        let sources = measure.numberedActionOptions("IfCondition")
         var result: [Condition] = []
         for (index, source) in sources {
             let suffix = index == 1 ? "" : String(index)
@@ -165,7 +180,7 @@ final class MeasurePipeline {
             if condition.formula == nil && !blank && !condition.loggedError
                 && !measure.awaitsSectionVariables("IfCondition\(suffix)") {
                 condition.loggedError = true
-                measure.sectionContext.log("[\(measure.name)] invalid IfCondition\(suffix): \(source)", level: .error)
+                measure.logActionPipeline("[\(measure.name)] invalid IfCondition\(suffix): \(source)", level: .error)
             }
             condition.trueAction = measure.actionOption("IfTrueAction\(suffix)")
             condition.falseAction = measure.actionOption("IfFalseAction\(suffix)")
@@ -174,7 +189,7 @@ final class MeasurePipeline {
         conditions = result
     }
 
-    private func readThresholds(for measure: Measure) {
+    private func readThresholds(for measure: any MeasureActionSource) {
         func threshold(_ valueKey: String, _ actionKey: String, _ previous: Threshold?) -> Threshold? {
             let action = measure.actionOption(actionKey)
             guard !action.isEmpty, let v = measure.optionalDouble(valueKey) else { return nil }
@@ -188,10 +203,10 @@ final class MeasurePipeline {
         ifEqual = threshold("IfEqualValue", "IfEqualAction", ifEqual)
     }
 
-    private func readMatches(for measure: Measure) {
+    private func readMatches(for measure: any MeasureActionSource) {
         ifMatchMode = measure.bool("IfMatchMode", false)
         var result: [Match] = []
-        for (index, pattern) in measure.numberedOptions("IfMatch") {
+        for (index, pattern) in measure.numberedActionOptions("IfMatch") {
             let suffix = index == 1 ? "" : String(index)
             var match = matches.first { $0.index == index }
                 ?? Match(index: index, pattern: pattern, matchAction: "", notMatchAction: "", lastResult: nil)
@@ -203,13 +218,13 @@ final class MeasurePipeline {
         matches = result
     }
 
-    func run(for measure: Measure, execute: (String) -> Void) {
+    func run(for measure: any MeasureActionSource, execute: (String) -> Void) {
         for i in conditions.indices {
             guard let formula = conditions[i].formula else { continue }
-            guard let number = try? formula.evaluate({ measure.sectionContext.formulaValue(of: $0, from: measure) }) else {
+            guard let number = try? formula.evaluate({ measure.actionFormulaValue(of: $0) }) else {
                 if !conditions[i].loggedError {
                     conditions[i].loggedError = true
-                    measure.sectionContext.log("[\(measure.name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
+                    measure.logActionPipeline("[\(measure.name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
                 }
                 continue
             }
@@ -246,7 +261,7 @@ final class MeasurePipeline {
             guard let result = PCRE.matches(matches[i].pattern, in: text) else {
                 if !matches[i].loggedError {
                     matches[i].loggedError = true
-                    measure.sectionContext.log("[\(measure.name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
+                    measure.logActionPipeline("[\(measure.name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
                 }
                 continue
             }
