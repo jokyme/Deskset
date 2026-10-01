@@ -432,37 +432,27 @@ open class Meter: SkinSection {
         } else {
             let natural: (width: Double, height: Double) =
                 (widthOption == nil || heightOption == nil) ? naturalSize() : (0, 0)
-            width = finite((widthOption ?? finite(natural.width)) + padding.left + padding.right)
-                .clamped(0, Meter.maxCoordinate)
-            height = finite((heightOption ?? finite(natural.height)) + padding.top + padding.bottom)
-                .clamped(0, Meter.maxCoordinate)
+            width = RainmeterLayout.dimension(option: widthOption, natural: natural.width,
+                                               leading: padding.left, trailing: padding.right)
+            height = RainmeterLayout.dimension(option: heightOption, natural: natural.height,
+                                                leading: padding.top, trailing: padding.bottom)
         }
 
-        func resolve(_ p: PositionValue, origin: Double, start: Double?, end: Double?) -> Double {
-            switch p.mode {
-            case .absolute: return origin + p.value
-            case .relativeToPreviousStart: return (start ?? origin) + p.value
-            // The first content meter: "r is assumed and R is ignored".
-            case .relativeToPreviousEnd: return (end ?? start ?? origin) + p.value
-            }
-        }
         let originX = container?.frame.x ?? 0
         let originY = container?.frame.y ?? 0
         let offset = anchorOffset(width: width, height: height)
-        // `r` / `R` use the previous meter's anchor (its X / Y before StringAlign / BitmapAlign moved the box), and
-        // `R` adds its W / H to it — not the moved box: see the type documentation.
-        let x = resolve(xPosition, origin: originX, start: previous?.anchorX,
-                        end: previous.map { $0.anchorX + $0.frame.width })
-        let y = resolve(yPosition, origin: originY, start: previous?.anchorY,
-                        end: previous.map { $0.anchorY + $0.frame.height })
-        anchorX = finite(x)
-        anchorY = finite(y)
-        frame = SkinRect(x: finite(x + (hidden ? 0 : offset.dx)), y: finite(y + (hidden ? 0 : offset.dy)),
-                         width: width, height: height)
-    }
-
-    private func finite(_ v: Double) -> Double {
-        v.isFinite ? v.clamped(-Meter.maxCoordinate, Meter.maxCoordinate) : 0
+        // Capture current geometry after the hooks, not the output from an earlier placement: a synchronous
+        // action may have moved the previous meter. Commit once so shadowing does not change draw/mouse revisions.
+        let input = RainmeterLayout.Input(
+            x: xPosition, y: yPosition, size: SkinSize(width: width, height: height),
+            origin: SkinPoint(x: originX, y: originY),
+            previous: previous.map { RainmeterLayout.Output(frame: $0.frame,
+                                                             anchor: SkinPoint(x: $0.anchorX, y: $0.anchorY)) },
+            alignShift: SkinPoint(x: offset.dx, y: offset.dy), hidden: hidden)
+        let output = RainmeterLayout.place(input)
+        anchorX = output.anchor.x
+        anchorY = output.anchor.y
+        frame = output.frame
     }
 
     /// `X` / `Y` as read: a missing, unreadable or non-finite value is 0; the offset is within ±`maxCoordinate`.

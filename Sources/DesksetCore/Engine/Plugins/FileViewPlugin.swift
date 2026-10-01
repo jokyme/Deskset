@@ -688,7 +688,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     private func open(_ item: Item) {
         let path = item.isDotDot ? (parentFolder(of: parent?.listing.folder ?? "") ?? item.path) : item.path
-        skin.host?.skin(skin, execute: path, arguments: [])
+        serviceHost?.skin(skin, execute: path, arguments: [])
     }
 
     private func reveal(_ item: Item) { reveal(item.path) }
