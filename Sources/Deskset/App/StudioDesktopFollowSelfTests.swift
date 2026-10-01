@@ -145,13 +145,20 @@ enum StudioDesktopFollowSelfTests {
             func text(_ skin: Skin?, _ meter: String) -> String? { (skin?.meter(named: meter) as? StringMeter)?.text }
             // The desktop copy read its page, counted its updates (one as it loaded) and was clicked to page 3.
             c.skin.update()
-            t.check(AppSelfTest.spin(timeout: 10) { parent(c.skin)?.isFetching == false }, "the page was read")
+            let pageRead = AppSelfTest.spin(timeout: 10) { parent(c.skin)?.isFetching == false }
+            let page = parent(c.skin)
+            t.check(pageRead, "the page was read; parent=\(page != nil), "
+                    + "fetching=\(String(describing: page?.isFetching)), "
+                    + "fetchCount=\(String(describing: page?.fetchCount)), "
+                    + "captures=\(String(describing: page?.captures))")
+            guard pageRead else { return }
             c.skin.update()
             c.skin.update()
             c.skin.mouseEvent(.leftUp, x: 5, y: 5)
             t.equal(c.skin.variable("Page"), "3", "clicked")
             t.equal(text(c.skin, "MeterPage"), "Page 3")
             t.equal(text(c.skin, "MeterChild"), "two")
+            guard text(c.skin, "MeterChild") == "two" else { return }
             let averaged = c.skin.runtimeState(as: .mirror).measures["measuretens"]?.average?.samples
             t.equal(averaged, [0, 10, 20, 30], "the desktop copy averages the samples of its four updates")
 

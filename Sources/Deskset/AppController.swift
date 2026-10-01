@@ -32,6 +32,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Where the desktop skins run (the `SkinThreading` default, read once at launch; `.main` for the self-tests and
     /// every headless mode).
     let threading: SkinThreading
+    /// Production uses the shared live monitor; bounded stress fixtures can supply their own diagnostic clock.
+    let workWatchdog: SkinWorkWatchdog
     /// The engine thread every desktop skin shares with `SkinThreading=engine` (docs/skin-threading.md §15, phase 2):
     /// made with the first skin it runs. nil with `.main`, and before then.
     private(set) var engineThread: SkinThreadExecutor?
@@ -91,8 +93,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     init(state: AppState? = nil, skinsDirectory: URL = Paths.skins, layoutsDirectory: URL = Paths.layouts,
          backupsDirectory: URL = Paths.backups, defaultSkinsSource: URL? = Paths.defaultSkins,
-         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main) {
+         settingsDirectory: URL = Paths.appSupport, presentsWindows: Bool = true, threading: SkinThreading = .main,
+         workWatchdog: SkinWorkWatchdog = .shared) {
         self.threading = threading
+        self.workWatchdog = workWatchdog
         self.state = state ?? AppState()
         self.skinsDirectory = skinsDirectory
         self.layoutsDirectory = layoutsDirectory
