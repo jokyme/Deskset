@@ -28,7 +28,7 @@ enum DrawExecutor {
                                      target: .capture(ctx, glass: paint(glass)))
     }
 
-    private static func paint(_ glass: SkinRenderer.GlassDrawing) -> GlassPaint {
+    static func paint(_ glass: SkinRenderer.GlassDrawing) -> GlassPaint {
         switch glass {
         case let .placeholder(dark): return .placeholder(dark: dark)
         case .window: return .hitArea

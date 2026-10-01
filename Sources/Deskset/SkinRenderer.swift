@@ -14,10 +14,16 @@ enum SkinRenderer {
     ///
     /// Only the skin's owner may draw it: drawing uses and fills the skin's `SkinRenderContext`.
     static func draw(_ skin: Skin, in ctx: CGContext, glass: GlassDrawing = .placeholder(dark: nil)) {
+        draw(skin, in: ctx, target: .capture(ctx, glass: DrawExecutor.paint(glass)))
+    }
+
+    /// An owned bitmap's entry point keeps the scene state explicitly established by its caller.
+    static func draw(_ skin: Skin, in ctx: CGContext, target: DrawTarget) {
         let context = SkinRenderContext.of(skin)
         let scene = context.sceneProjector.project(skin, environment: sceneEnvironment(skin, ctx),
-                                                  glassSource: glass == .window ? .published : .current)
-        DrawExecutor.draw(scene: scene, in: ctx, context: context, cycle: skin.updateCount, glass: glass)
+                                                  glassSource: target.glassPaint == .hitArea ? .published : .current)
+        DesksetDraw.DrawExecutor.draw(scene: scene, in: ctx, context: context.drawing, cycle: skin.updateCount,
+                                     target: target)
     }
 
     /// What `draw` puts under the meters: the glass (or where it catches the mouse) and the skin's background.

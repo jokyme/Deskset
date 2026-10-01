@@ -1,5 +1,6 @@
 import AppKit
 import DesksetCore
+import DesksetDraw
 
 /// Draws a skin window's picture into a bitmap of its own, which the skin's frame producer presents as the contents of
 /// its window's content layer (`SkinFrameProducer`, `LayerContentProvider`).
@@ -201,9 +202,10 @@ final class SkinBitmapDrawing {
         ctx.scaleBy(x: scale, y: -scale)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        let target = DrawTarget.prepareOwnedBitmap(ctx, glass: .hitArea)
         for i in range {
             // Real glass is behind the content layer; these values only catch its mouse input.
-            DrawExecutor.draw(runs[i], in: ctx, context: context, cycle: cycle, glass: .window)
+            DesksetDraw.DrawExecutor.draw(runs[i], in: ctx, context: context.drawing, cycle: cycle, target: target)
         }
         NSGraphicsContext.restoreGraphicsState()
         ctx.restoreGState()
