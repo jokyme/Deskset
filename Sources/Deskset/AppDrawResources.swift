@@ -11,7 +11,7 @@ final class AppDrawResources: ResourceLeafDrawing {
     static let maxHistogramCrops = 64
 
     func draw(_ value: TextDraw, in ctx: CGContext, cycle: Int) {
-        SkinRenderer.drawString(value, ctx, self, cycle: cycle)
+        DesksetDraw.TextRenderer.draw(value, in: ctx, layouts: text, cycle: cycle)
     }
 
     func draw(_ value: ImageDraw, in ctx: CGContext) {
