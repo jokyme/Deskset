@@ -9,6 +9,8 @@ import DesksetCore
 /// `AppController.skinExecutor`) show what happens once they run elsewhere.
 enum SkinWindowModelSelfTests {
     static func run(_ t: AppTestRunner) {
+        fractionalSizeTests(t)
+
         t.suite("App: window model: a skin on a thread reads its clamped place right after !Move, before its window moved") {
             guard let app = try AppSelfTest.makeApp(t) else { return }
             EnvironmentStore.shared.publish()
@@ -371,6 +373,78 @@ enum SkinWindowModelSelfTests {
     }
 
     /// Writes the skins (name → text) as `Model\Name\Name.ini` in the app's Skins folder.
+    static func fractionalSizeTests(_ t: AppTestRunner) {
+        for mode in [SkinThreading.main, .engine, .pool] {
+            t.suite("App: window model: fractional sizes keep the window's acknowledged frame (\(mode.rawValue))") {
+                guard let app = try AppSelfTest.makeApp(t, threading: mode) else { return }
+                try write(app, ["Fractional": """
+                    [Rainmeter]
+                    Update=-1
+                    DynamicWindowSize=1
+                    [Box]
+                    Meter=Image
+                    W=130.3
+                    H=70.7
+                    SolidColor=60,120,180,255
+                    """])
+                var tracked: [() -> Skin?] = []
+                autoreleasepool {
+                    guard let c = app.activate(config: "Model\\Fractional", file: nil) else {
+                        return t.check(false, "the fractional skin loads")
+                    }
+                    tracked = [EngineThreadSelfTests.track(c)]
+                    let runtime = c.runtime
+                    guard AppSelfTest.spin(timeout: 30, until: { c.isStarted }) else {
+                        return t.check(false, "the fractional skin starts")
+                    }
+                    // Its requests reach main before this marker; exclusive then consumes their returned facts.
+                    func settledFrame() -> CGRect? {
+                        var arrived = false
+                        runtime.whenCaughtUp { arrived = true }
+                        t.check(AppSelfTest.spin(timeout: 30) { arrived }, "the window has handled the pending requests")
+                        return runtime.exclusive(timeout: 30) { _ in runtime.model }?.frame
+                    }
+                    func resize(_ width: Double) -> CGSize? {
+                        runtime.send(.execute("[!SetOption Box W \(width)][!UpdateMeter Box][!Redraw]", section: nil))
+                        return runtime.exclusive(timeout: 30) { _ in runtime.model }?.frame?.size
+                    }
+                    t.equal(settledFrame(), c.window.frame, "the first size takes AppKit's actual frame")
+                    let first = c.window.frame
+                    t.equal(runtime.snapshot.size, CGSize(width: 130.3, height: 70.7), "the logical size stays fractional")
+                    t.check(first.size != runtime.snapshot.size, "AppKit rounded this window's frame")
+                    let firstFacts = runtime.exclusive(timeout: 30) { _ in runtime.model.facts } ?? nil
+                    runtime.send(.redraw)
+                    runtime.send(.redraw)
+                    t.equal(settledFrame(), first, "repeated redraws preserve the acknowledged frame")
+
+                    let sameRounded = resize(130.7)
+                    if mode != .main {
+                        t.equal(sameRounded, CGSize(width: 130.7, height: 70.7), "a new size is readable before main follows")
+                        t.equal(c.window.frame, first, "the window has not handled the new request yet")
+                    }
+                    t.equal(settledFrame(), c.window.frame, "a request with the same actual frame is acknowledged too")
+                    t.equal(c.window.frame, first, "both fractional widths round to the same AppKit frame")
+                    t.equal(runtime.snapshot.size, CGSize(width: 130.7, height: 70.7))
+
+                    let firstPending = resize(151.2), lastPending = resize(164.6)
+                    if mode != .main {
+                        t.equal(firstPending, CGSize(width: 151.2, height: 70.7), "the first queued size is visible at once")
+                        t.equal(lastPending, CGSize(width: 164.6, height: 70.7), "the next size replaces it at once")
+                        t.equal(c.window.frame, first, "both requests are still waiting on main")
+                    }
+                    t.equal(settledFrame(), c.window.frame, "the final window acknowledgement wins")
+                    t.check(c.window.frame.width > first.width, "the real window follows the changed size")
+                    t.equal(runtime.snapshot.size, CGSize(width: 164.6, height: 70.7))
+                    if let firstFacts { runtime.send(.windowFacts(firstFacts)) }
+                    runtime.send(.redraw)
+                    t.equal(settledFrame(), c.window.frame, "old facts and another redraw cannot undo the final frame")
+                    app.deactivate(config: "Model\\Fractional")
+                }
+                EngineThreadSelfTests.finish(t, app, tracked)
+            }
+        }
+    }
+
     static func write(_ app: AppController, _ skins: [String: String]) throws {
         for (name, text) in skins {
             let folder = app.skinsDirectory.appendingPathComponent("Model/\(name)", isDirectory: true)

@@ -841,6 +841,7 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// windows, on a locked screen or ordered out is not drawn until it can be seen again; its measures keep updating).
     private func resize(to size: CGSize) {
         guard !isStopped else { return }
+        let before = factsSequence
         if window.frame.size != size {
             // Keep the top-left corner fixed.
             let top = window.frame.maxY
@@ -850,6 +851,9 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             view.frame = NSRect(origin: .zero, size: size)
         }
         view.updateToolTips()
+        // Different requested sizes can round to the same frame. Acknowledge that actual frame even when AppKit
+        // made no change; a delegate notification that already published it needs no second acknowledgement.
+        if factsSequence == before { publishFacts(force: true) }
     }
 
     /// A bang the engine performed, or `*`, for other skins, sent with `hops` (the sender's).
@@ -982,12 +986,12 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
     /// Tells the runtime what the window is (`SkinWindowFacts`) when that changed since it was last told: after every
     /// change the main thread makes or applies. With the main executor the model follows at once. The window's
     /// companions follow the window too. Until the skin started, only the first facts go (`holdsFacts`).
-    func publishFacts() {
+    func publishFacts(force: Bool = false) {
         guard owningApp != nil else { return }
         companions?.windowChanged()
         if holdsFacts && sentFacts != nil { return }
         var now = facts
-        if let sent = sentFacts, sent.hasSameValues(as: now) { return }
+        if !force, let sent = sentFacts, sent.hasSameValues(as: now) { return }
         factsSequence += 1
         now.sequence = factsSequence
         sentFacts = now
