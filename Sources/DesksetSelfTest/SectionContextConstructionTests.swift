@@ -55,6 +55,8 @@ private final class IndependentSectionContext: SectionContext {
     var locale: Locale
     var environment: SkinEnvironment?
     let directory: URL
+    var skinsDirectory: URL { preconditionFailure("Unqualified skins directory in the construction fixture") }
+    var orderedMeasures: [Measure] { preconditionFailure("Unqualified measure order in the construction fixture") }
     let sideEffects: SideEffects
     var styles: [String: IniSection] = [:]
     var variables: [String: String] = [:]
@@ -78,6 +80,16 @@ private final class IndependentSectionContext: SectionContext {
         self.locale = locale
         executor = VirtualTimeExecutor(start: date, timeZone: utc)
         sideEffects = RecordingSideEffects(directory: directory.appendingPathComponent("effects"))
+    }
+
+    func measure(named name: String) -> Measure? {
+        preconditionFailure("Unqualified measure lookup in the construction fixture")
+    }
+    func absolutePath(_ raw: String, relativeTo base: URL?) -> String {
+        preconditionFailure("Unqualified absolute path in the construction fixture")
+    }
+    func allowsWebParserFileAccess(_ path: String) -> Bool {
+        preconditionFailure("Unqualified WebParser file policy in the construction fixture")
     }
 
     func styleSection(named name: String) -> IniSection? { styles[name.lowercased()] }

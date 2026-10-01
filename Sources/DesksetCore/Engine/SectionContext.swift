@@ -17,8 +17,13 @@ protocol SectionContext: AnyObject {
     var executor: SkinExecutor { get }
     var locale: Locale { get }
     var directory: URL { get }
+    var skinsDirectory: URL { get }
+    var orderedMeasures: [Measure] { get }
     var sideEffects: SideEffects { get }
 
+    func measure(named name: String) -> Measure?
+    func absolutePath(_ raw: String, relativeTo base: URL?) -> String
+    func allowsWebParserFileAccess(_ path: String) -> Bool
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
     func resolve(_ text: String, in section: SkinSection?, sectionVariables: Bool) -> String
@@ -48,7 +53,13 @@ extension SectionContext {
     }
 }
 
-extension Skin: SectionContext {}
+extension Skin: SectionContext {
+    var orderedMeasures: [Measure] { measures }
+
+    func allowsWebParserFileAccess(_ path: String) -> Bool {
+        WebParserMeasure.allowsFileAccess(path, self)
+    }
+}
 
 extension Skin {
     /// The current host for app services whose existing hook takes a skin instead of a section.

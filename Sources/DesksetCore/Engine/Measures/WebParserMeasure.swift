@@ -62,7 +62,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private var temporaryDownload: String?
     /// The side effects that saved `temporaryDownload` (the measure's skin may be gone when the measure deletes it).
     private var temporaryDownloadEffects: SideEffects?
-    private lazy var instanceToken = String(skin.random.uuidString().prefix(8))
+    private lazy var instanceToken = String(sectionContext.random.uuidString().prefix(8))
 
     private var finishAction = ""
     private var onConnectErrorAction = ""
@@ -151,7 +151,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         }
         o.flags = WebParserFlags(option: option("Flags"), forceReload: bool("ForceReload", false))
         for flag in o.flags.unsupported {
-            skin.addIssue("WebParser Flags=\(flag) is not supported")
+            sectionContext.addIssue("WebParser Flags=\(flag) is not supported")
         }
         options = o
 
@@ -194,7 +194,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         var text = raw
         var marked = markParent(in: raw)
         if marked == nil {
-            let standard = skin.resolveStandardVariables(raw, in: self)
+            let standard = sectionContext.resolveStandardVariables(raw, in: self)
             if standard != raw, let m = markParent(in: standard) {
                 marked = m
                 text = standard
@@ -207,7 +207,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             parentName = nil
         }
         o.parentName = parentName
-        o.url = skin.resolve(text, in: self, sectionVariables: dynamicVariables)
+        o.url = sectionContext.resolve(text, in: self, sectionVariables: dynamicVariables)
     }
 
     private func markParent(in text: String) -> (text: String, parent: String)? {
@@ -223,7 +223,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             }
             let name = String(text[afterOpen..<close])
             if let first = name.first, !"&#\\$*!".contains(first),
-               let parent = skin.measure(named: name) as? WebParserMeasure, parent !== self {
+               let parent = sectionContext.measure(named: name) as? WebParserMeasure, parent !== self {
                 let replaced = text.replacingOccurrences(of: "[\(name)]", with: WebParserProcessor.parentMark,
                                                          options: .caseInsensitive)
                 return (replaced, parent.name)
@@ -257,7 +257,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         case "update":
             readOptionsIfNeeded()
             guard parentName == nil else {
-                skin.log("WebParser [\(name)]: !CommandMeasure Update is only valid on a parent measure", level: .warning)
+                sectionContext.log("WebParser [\(name)]: !CommandMeasure Update is only valid on a parent measure", level: .warning)
                 return
             }
             // Judgment call: a disabled measure is "never updated", so it does not fetch either.
@@ -267,7 +267,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             advanceCounter()
         case "reset":
             guard parentName == nil else {
-                skin.log("WebParser [\(name)]: !CommandMeasure Reset is only valid on a parent measure", level: .warning)
+                sectionContext.log("WebParser [\(name)]: !CommandMeasure Reset is only valid on a parent measure", level: .warning)
                 return
             }
             reset()
@@ -287,7 +287,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
 
     /// All WebParser measures below this one (children, grandchildren…), in skin order per level.
     private func descendants() -> [WebParserMeasure] {
-        let all = skin.measures.compactMap { $0 as? WebParserMeasure }
+        let all = sectionContext.orderedMeasures.compactMap { $0 as? WebParserMeasure }
         var result: [WebParserMeasure] = []
         var visited: Set<String> = [name.lowercased()]
         var level = [self]
@@ -351,14 +351,14 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         let tree = snapshotTree()
         let codePage = options.codePage
         // The dump is written through the skin's side effects: the file itself, or a recording's copy.
-        let effects = skin.sideEffects
+        let effects = sectionContext.sideEffects
         let dumpPath = options.debug == 2 ? debugDumpPath() : nil
         let dumpDestination = dumpPath.map { effects.destination(forWriting: URL(fileURLWithPath: $0)) }
         var request = requestSettings()
         request.target = readable(target)
         request.maxBytes = WebParserNetwork.maxPageBytes
         if options.debug == 1 {
-            skin.log("WebParser [\(name)]: fetching \(target.displayString)", level: .debug)
+            sectionContext.log("WebParser [\(name)]: fetching \(target.displayString)", level: .debug)
         }
         fetchInFlight = true
         // Background queue: decode and parse, then hand the results to the skin's executor.
@@ -390,7 +390,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         // Weak, like every closure that runs off the skin's thread: the transfer does not keep the measure alive (its
         // deinit cancels the transfer when the skin is dropped), and the measure is never released on the background
         // queue. The results find the measure again on the skin's executor.
-        skin.startBackground(page) { [weak self] outcome in
+        sectionContext.startBackground(page) { [weak self] outcome in
             self?.finishFetch(outcome, generation: generation, base: target)
         }
         fetchHandle = handle
@@ -410,7 +410,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// Options of this measure and its descendants, read now on the skin's thread. Options changed with `!SetOption`
     /// on a child are picked up here (manual: change the child, then `!CommandMeasure Parent Update`).
     private func snapshotTree() -> WebParserNode {
-        let all = skin.measures.compactMap { $0 as? WebParserMeasure }
+        let all = sectionContext.orderedMeasures.compactMap { $0 as? WebParserMeasure }
         for m in all where m !== self { m.readOptionsIfNeeded() }
         var visited: Set<String> = [name.lowercased()]
         func build(_ m: WebParserMeasure, depth: Int) -> WebParserNode {
@@ -429,10 +429,10 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// `Debug=2`: `WebParserDump.txt` in the skin folder, or `Debug2File` ("The folder for the file must already
     /// exist"). Judgment call: Debug2File must lie inside the Skins folder — a skin may not overwrite arbitrary files.
     private func debugDumpPath() -> String? {
-        let fallback = skin.directory.appendingPathComponent("WebParserDump.txt").path
+        let fallback = sectionContext.directory.appendingPathComponent("WebParserDump.txt").path
         guard !options.debug2File.isEmpty else { return fallback }
-        let path = skin.absolutePath(options.debug2File)
-        let root = (skin.skinsDirectory.standardizedFileURL.path as NSString).standardizingPath
+        let path = sectionContext.absolutePath(options.debug2File, relativeTo: nil)
+        let root = (sectionContext.skinsDirectory.standardizedFileURL.path as NSString).standardizingPath
         // Also after following symbolic links: a link inside the Skins folder must not lead the dump elsewhere.
         let realRoot = (root as NSString).resolvingSymlinksInPath
         let realFolder = ((path as NSString).deletingLastPathComponent as NSString).resolvingSymlinksInPath
@@ -449,23 +449,23 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         fetchInFlight = false
         fetchHandle = nil
         guard !closed else { return }
-        let skin = self.skin  // keep the skin alive while actions run
+        let context = sectionContext  // keep the owner alive while actions run
         switch outcome {
         case .failure(.cancelled):
             return
         case .failure(let error):
-            skin.log("WebParser [\(name)]: unable to get \(base.displayString): \(error)", level: .warning)
-            if !onConnectErrorAction.isEmpty { skin.execute(onConnectErrorAction, from: self) }
+            context.log("WebParser [\(name)]: unable to get \(base.displayString): \(error)", level: .warning)
+            if !onConnectErrorAction.isEmpty { context.execute(onConnectErrorAction, from: self) }
         case .success(let result):
             let settings = requestSettings()
-            apply(result, to: self, in: skin)
-            runActions(result, measure: self, isRoot: true, base: base, settings: settings, in: skin)
+            apply(result, to: self, in: context)
+            runActions(result, measure: self, isRoot: true, base: base, settings: settings, in: context)
         }
     }
 
     /// Sets the values of this measure and its children (before any action runs).
-    private func apply(_ result: WebParserNodeResult, to measure: WebParserMeasure, in skin: Skin) {
-        for line in result.logs { skin.log(line.message, level: line.level) }
+    private func apply(_ result: WebParserNodeResult, to measure: WebParserMeasure, in context: any SectionContext) {
+        for line in result.logs { context.log(line.message, level: line.level) }
         if let captures = result.captures {
             measure.captures = captures
             measure.substringCount = result.substringCount
@@ -478,7 +478,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             measure.setResult(value)
         }
         for child in result.children {
-            if let m = skin.measure(named: child.name) as? WebParserMeasure { apply(child, to: m, in: skin) }
+            if let m = context.measure(named: child.name) as? WebParserMeasure { apply(child, to: m, in: context) }
         }
     }
 
@@ -488,24 +488,24 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// - Download=1: FinishAction when the download succeeds, OnDownloadErrorAction when it fails.
     /// - Plain child measures have no actions; a child with its own RegExp or Download=1 acts like a parent for those.
     private func runActions(_ result: WebParserNodeResult, measure: WebParserMeasure, isRoot: Bool,
-                            base: WebParserTarget, settings: WebParserRequest, in skin: Skin) {
+                            base: WebParserTarget, settings: WebParserRequest, in context: any SectionContext) {
         guard !result.inputMissing else { return }
         if result.regExpError != nil {
             if !measure.onRegExpErrorAction.isEmpty {
-                skin.execute(measure.onRegExpErrorAction, from: measure)
+                context.execute(measure.onRegExpErrorAction, from: measure)
             } else if !measure.finishAction.isEmpty {
-                skin.execute(measure.finishAction, from: measure)
+                context.execute(measure.finishAction, from: measure)
             }
             return
         }
         if let source = result.downloadSource {
             measure.startDownload(source: source, base: base, request: settings, isResource: false)
         } else if (isRoot || result.hasRegExp) && !measure.finishAction.isEmpty {
-            skin.execute(measure.finishAction, from: measure)
+            context.execute(measure.finishAction, from: measure)
         }
         for child in result.children {
-            if let m = skin.measure(named: child.name) as? WebParserMeasure {
-                runActions(child, measure: m, isRoot: false, base: base, settings: settings, in: skin)
+            if let m = context.measure(named: child.name) as? WebParserMeasure {
+                runActions(child, measure: m, isRoot: false, base: base, settings: settings, in: context)
             }
         }
     }
@@ -525,12 +525,12 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         if isTemporary {
             destination = WebParserURL.temporaryDestination(prefix: instanceToken, source: target)
         } else {
-            destination = WebParserURL.downloadFileDestination(skinDirectory: skin.directory,
+            destination = WebParserURL.downloadFileDestination(skinDirectory: sectionContext.directory,
                                                                relativePath: options.downloadFile)
         }
         // Saved through the skin's side effects: an instance that must not change the widget's files (the Studio's, a
         // verification run) saves its DownloadFile in a copy of its own, and a temporary file in a scratch folder.
-        let effects = skin.sideEffects
+        let effects = sectionContext.sideEffects
         // The same file is already on its way: let that transfer finish (it runs this measure's actions). Restarting
         // it would starve the download whenever the parent re-reads its resource faster than the file arrives
         // (e.g. UpdateRate=1 and a slow image) — the value would never be set.
@@ -544,7 +544,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         let generation = downloadGeneration
         // DownloadFile must not be written through a symbolic link (see WebParserURL.hasSymbolicLink).
         let linkGuardRoot = isTemporary || !effects.isLive
-            ? nil : skin.directory.appendingPathComponent("DownloadFile", isDirectory: true)
+            ? nil : sectionContext.directory.appendingPathComponent("DownloadFile", isDirectory: true)
         if target.isValid, let real = destination {
             destination = isTemporary ? effects.temporaryDestination(for: real) : effects.destination(forWriting: real)
         }
@@ -554,7 +554,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             let badURL = !target.isValid
             let reason = badURL ? target.displayString : "invalid DownloadFile \(options.downloadFile)"
             // After the current action, like a transfer that fails.
-            skin.async { [weak self] in
+            sectionContext.async { [weak self] in
                 self?.finishDownload(.failure(.connect(reason)), generation: generation, isResource: isResource && badURL,
                                      isTemporary: isTemporary, effects: effects)
             }
@@ -563,7 +563,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         var request = settings
         request.target = readable(target)
         request.maxBytes = WebParserNetwork.maxDownloadBytes
-        if options.debug == 1 { skin.log("WebParser [\(name)]: downloading \(target.displayString)", level: .debug) }
+        if options.debug == 1 { sectionContext.log("WebParser [\(name)]: downloading \(target.displayString)", level: .debug) }
         // Background queue: save what arrived, then hand the outcome to the skin's executor.
         let save = { (result: Result<WebParserResponse, WebParserFetchError>)
             -> (outcome: Result<String, WebParserFetchError>, transportFailure: Bool) in
@@ -601,7 +601,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
         }, inline: WebParserNetwork.readAtOnce(request).map { read in { save(read()) } },
            scripted: { save(WebParserNetwork.scripted($0)) }, reads: target.filePath)
         // Weak, as for the page (see `startFetch`).
-        skin.startBackground(download, then: { [weak self] outcome, transportFailure in
+        sectionContext.startBackground(download, then: { [weak self] outcome, transportFailure in
             guard let self else { return discard(outcome, transportFailure) }
             self.finishDownload(outcome, generation: generation, isResource: isResource && transportFailure,
                                 isTemporary: isTemporary, effects: effects)
@@ -622,14 +622,14 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             }
             return
         }
-        let skin = self.skin
+        let context = sectionContext
         switch outcome {
         case .failure(.cancelled):
             return
         case .failure(let error):
-            skin.log("WebParser [\(name)]: download failed: \(error)", level: .warning)
+            context.log("WebParser [\(name)]: download failed: \(error)", level: .warning)
             let action = isResource ? onConnectErrorAction : onDownloadErrorAction
-            if !action.isEmpty { skin.execute(action, from: self) }
+            if !action.isEmpty { context.execute(action, from: self) }
         case .success(let path):
             if let previous = temporaryDownload, previous != path {
                 temporaryDownloadEffects?.removeTemporaryFile(atPath: previous)
@@ -637,7 +637,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
             temporaryDownload = isTemporary ? path : nil
             temporaryDownloadEffects = isTemporary ? effects : nil
             setResult(path)
-            if !finishAction.isEmpty { skin.execute(finishAction, from: self) }
+            if !finishAction.isEmpty { context.execute(finishAction, from: self) }
         }
     }
 
@@ -645,9 +645,9 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// `OutputFile`, a download), else the file itself (`Skin.readablePath`). The target the skin named stays what
     /// reports and relative URLs use.
     private func readable(_ target: WebParserTarget) -> WebParserTarget {
-        guard case .file(let path) = target, skin.sideEffects.fileSandbox != nil else { return target }
+        guard case .file(let path) = target, sectionContext.sideEffects.fileSandbox != nil else { return target }
         for candidate in [path, path.removingPercentEncoding ?? path] {
-            let read = skin.readablePath(candidate)
+            let read = sectionContext.readablePath(candidate)
             if read != candidate { return .file(read) }
         }
         return target
@@ -657,7 +657,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     private func checkedFileAccess(_ target: WebParserTarget) -> WebParserTarget {
         guard case .file(let path) = target else { return target }
         let standardized = (path as NSString).standardizingPath
-        return Self.allowsFileAccess(standardized, skin) ? target : .invalid("reading \(standardized) is not allowed")
+        return sectionContext.allowsWebParserFileAccess(standardized) ? target : .invalid("reading \(standardized) is not allowed")
     }
 
     // MARK: Logging
@@ -665,7 +665,7 @@ public final class WebParserMeasure: Measure, PluginLifecycle {
     /// Logs a warning once per kind (options are re-read every update with DynamicVariables=1).
     private func report(_ kind: String, _ message: String) {
         guard reported.insert(kind).inserted else { return }
-        skin.log(message, level: .warning)
+        sectionContext.log(message, level: .warning)
     }
 }
 

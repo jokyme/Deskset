@@ -546,6 +546,8 @@ background.dispatch	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swi
 background.executorAsync	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	2	the Trash monitor's callbacks for callers that are not skins (EmptyBin's refresh, the tests); skins get their readings through Skin.startBackground and their hop
 mono.systemUptime	Sources/DesksetCore/Engine/Plugins/RecycleManagerMeasure.swift	1	the Trash monitor's clock (TrashMonitor.clock, a service shared by every skin): faked with the service
 
+background.dispatch	Sources/DesksetCore/Engine/Measures/WebParserMeasure.swift	1	SectionContext.async forwards the existing Skin.async owner-lifetime and next-action delivery for invalid downloads; no new queue or completion path
+
 background.dispatch	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	SectionContext.async forwards the existing Skin.async owner-lifetime and next-action delivery; no new queue or completion path
 timer.executorAfter	Sources/DesksetCore/Engine/Plugins/RunCommandPlugin.swift	1	already on the executor (VirtualTimeExecutor)
 
