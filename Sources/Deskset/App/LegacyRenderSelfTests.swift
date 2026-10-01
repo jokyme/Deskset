@@ -62,9 +62,9 @@ enum LegacyRenderSelfTests {
                         if !checked.missing.isEmpty {
                             print("    input coverage incomplete: \(name): \(checked.missing.joined(separator: "; "))")
                         }
+                        t.check(checked.missing.isEmpty, "\(name): every observed input is covered")
                         if !inSet {
                             t.check(checked.value.hasPixels, "\(name): the extra skin has visible pixels")
-                            t.check(checked.missing.isEmpty, "\(name): every observed extra input is covered")
                         }
                     } catch {
                         t.check(false, "\(name) loads with isolated inputs: \(error)")
