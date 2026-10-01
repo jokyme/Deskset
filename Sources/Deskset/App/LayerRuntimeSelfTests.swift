@@ -21,6 +21,7 @@ enum LayerRuntimeSelfTests {
         nativeTests(t)
         fallbackTests(t)
         lifecycleTests(t)
+        workerOwnerTests(t)
     }
 
     private static func nativeTests(_ t: AppTestRunner) {
@@ -463,6 +464,220 @@ enum LayerRuntimeSelfTests {
             withExtendedLifetime([tree, retainedTree]) {}
         }
     }
+
+    /// Success runs through async on the physical skin thread. Main only attaches and observes the C tree while
+    /// exclusive has actually parked that thread; the lease is not mistaken for worker-side drawing.
+    private static func workerOwnerTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: real skin worker builds C frames before main attachment and strict Single A/B/A") {
+            t.check(Thread.isMainThread && !SkinThreadExecutor.isSkinThread, "the fixture host runs on main")
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: real worker C composition did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                let executor = SkinThreadExecutor(name: "LayerRuntime C owner test \(scale)x")
+                let worker = WorkerFixture(executor: executor)
+                var tree: CALayer?
+                defer {
+                    var released = false, detached = false
+                    do {
+                        if let retirement = try workerResult(executor, t, { try worker.retire() }) {
+                            t.check(retirement.onWorker, "close and release actually run on the physical worker")
+                            t.equal(retirement.sequence, UInt64(3), "all three successful work items preceded cleanup")
+                            t.equal(retirement.closing, LayerRuntime.State.closing)
+                            t.check(retirement.keptFrame, "beginClose keeps the final immutable frame")
+                            t.equal(retirement.closed, LayerRuntime.State.closed)
+                            t.check(retirement.cleared, "owner cleanup clears only its own contents")
+                            t.check(retirement.attached, "owner cleanup leaves main's attachment in place")
+                            t.check(retirement.runtimeReleased, "the root has no callback retaining the owner")
+                            t.check(retirement.contextReleased, "immutable C images retain no drawing context")
+                            released = retirement.runtimeReleased && retirement.contextReleased && retirement.cleared
+                            if released {
+                                let removed = executor.exclusive(timeout: 30) {
+                                    guard Thread.isMainThread && executor.isCurrent && !executor.isOnThread else { return false }
+                                    CATransaction.begin()
+                                    CATransaction.setDisableActions(true)
+                                    for layer in tree?.sublayers ?? [] { layer.removeFromSuperlayer() }
+                                    CATransaction.commit()
+                                    return true
+                                }
+                                t.equal(removed, true, "main removal follows the completed owner cleanup and a real park")
+                                detached = removed == true
+                                if detached { t.check(tree != nil && (tree?.sublayers ?? []).isEmpty, "main's fixture host is empty") }
+                            }
+                        }
+                    } catch {
+                        t.check(false, "worker cleanup failed: \(error)")
+                    }
+                    executor.stop()
+                    let exited = AppSelfTest.spin(timeout: 30) { executor.hasExited }
+                    t.check(exited, "stop runs after the cleanup work and the physical thread exits")
+                    if !released || !detached || !exited {
+                        // A failed drain has no lifetime qualification. Retain its finite fixture until process exit
+                        // instead of tearing down a potentially live owner/context or main attachment from this caller.
+                        failedWorkerFixtures.append(FailedWorkerFixture(worker: worker, tree: tree))
+                    }
+                }
+                t.check(!executor.isCurrent && !executor.isOnThread, "main is not this worker's owner outside a lease")
+                let window = try rect(0, 0, width * scale, height * scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                     maximumReadbackBytes: window.width * window.height * 4)
+                var saved: [[UInt8]] = []
+                for (cycle, variant) in [0, 1, 0].enumerated() {
+                    guard let completed = try workerResult(executor, t, {
+                        try worker.draw(variant: variant, cycle: cycle, scale: scale, space: space)
+                    }) else { return }
+                    t.check(completed.onWorker, "preparation, C bitmap generation and fresh Single finish on the physical worker")
+                    let frame = completed.frame
+                    t.equal(frame.sequence, UInt64(cycle + 1))
+                    t.equal(frame.fallback, nil)
+                    t.equal(frame.plan.baseMembers, [baseID])
+                    t.equal(frame.plan.layers.compactMap { layer -> [ElementID]? in
+                        if case let .group(members) = layer.content { return members }; return nil
+                    }, [[backID, frontID], [maskID]], "ordered overlap and the complete atomic container are retained")
+                    t.check(completed.live)
+                    if case .all = frame.change { t.check(true, "this gradient recipe actually redraws") }
+                    else { t.check(false, "a worker update cannot silently reuse this unversioned recipe") }
+                    t.check(frame.contents.allSatisfy { $0.image.colorSpace.map { CFEqual($0, space) } == true })
+                    let slices = frame.contents.filter { if case .baseSlice = $0.plan.content { return true }; return false }
+                    t.check(slices.count > 1 && slices.allSatisfy { $0.image === slices[0].image })
+                    t.equal(completed.reference.count, 1, "the independent fresh builder has literal Single content")
+
+                    let observation = executor.exclusive(timeout: 30) {
+                        Result<WorkerComparison, Error> {
+                            let mainLease = Thread.isMainThread && executor.isCurrent && !executor.isOnThread && !SkinThreadExecutor.isSkinThread
+                            guard mainLease else { throw CocoaError(.coderInvalidValue) }
+                            let root = try worker.rootForMainAttachment()
+                            if tree == nil { tree = host(root, scale) }
+                            guard let tree else { throw CocoaError(.coderInvalidValue) }
+                            let referenceTree = cTree(completed.reference, scale)
+                            let expected = try renderer.render(referenceTree, at: 0, deadline: .now() + .seconds(30))
+                            let actual = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30))
+                            let attached = tree.sublayers?.count == 1 && tree.sublayers?.first === root && root.superlayer === tree
+                            return WorkerComparison(expected: expected, actual: actual, mainLease: mainLease, attached: attached)
+                        }
+                    }
+                    t.check(observation != nil, "a completed worker update is followed by an actual synchronous park")
+                    guard let observation else { return }
+                    let compared = try observation.get()
+                    t.check(compared.mainLease, "only main assembles the fixture host and observes the parked root")
+                    t.check(compared.attached, "the real owner root, not a second manufactured C tree, is attached")
+                    t.equal(compared.actual.width, window.width)
+                    t.equal(compared.actual.height, window.height)
+                    checkFixture(compared.expected.rgba, window, t)
+                    t.check(stride(from: 3, to: compared.actual.rgba.count, by: 4).contains { compared.actual.rgba[$0] > 0 },
+                            "actual worker content has nonempty native alpha")
+                    t.equal(compared.actual.rgba, compared.expected.rgba, "worker C / worker fresh Single strict active RGBA bytes")
+                    saved.append(compared.actual.rgba)
+                }
+                t.check(saved[0] != saved[1], "B changes native pixels on the same worker and destination")
+                t.equal(saved[0], saved[2], "A returns strictly after B at \(scale)x")
+                t.check(renderer.hasVerifiedCanary, "every worker readback follows the original native canary and fence")
+            }
+        }
+    }
+
+    private struct WorkerCompletion {
+        let frame: LayerRuntime.Frame
+        let reference: [LayerContentBuilder.Content]
+        let onWorker: Bool
+        let live: Bool
+    }
+
+    private struct WorkerComparison {
+        let expected: OffscreenRenderer.Readback
+        let actual: OffscreenRenderer.Readback
+        let mainLease: Bool
+        let attached: Bool
+    }
+
+    private struct WorkerRetirement {
+        let onWorker: Bool
+        let sequence: UInt64?
+        let closing: LayerRuntime.State?
+        let keptFrame: Bool
+        let closed: LayerRuntime.State?
+        let cleared: Bool
+        let attached: Bool
+        let runtimeReleased: Bool
+        let contextReleased: Bool
+    }
+
+    /// A test-only, non-Sendable owner capsule. Mutable owner/context fields are touched only by actual worker work.
+    /// Main's one root access is guarded by the real executor's temporary exclusive lease, never a weak object hop.
+    private final class WorkerFixture {
+        let executor: SkinThreadExecutor
+        private var owner: LayerRuntime?
+        private var context: DrawContext?
+        private weak var weakOwner: LayerRuntime?
+        private weak var weakContext: DrawContext?
+
+        init(executor: SkinThreadExecutor) { self.executor = executor }
+
+        private var onWorker: Bool {
+            executor.isCurrent && executor.isOnThread && SkinThreadExecutor.isSkinThread && !Thread.isMainThread
+        }
+
+        func draw(variant: Int, cycle: Int, scale: Int, space: CGColorSpace) throws -> WorkerCompletion {
+            guard onWorker else { throw CocoaError(.coderInvalidValue) }
+            if owner == nil {
+                owner = try LayerRuntime(executor: executor, maximumOwnedBitmapBytes: LayerRuntimeSelfTests.budget)
+                context = DrawContext(fonts: AppFontResolver())
+                weakOwner = owner
+                weakContext = context
+            }
+            guard let owner, let context else { throw CocoaError(.coderInvalidValue) }
+            let scene = LayerRuntimeSelfTests.fixture(variant, scale, false), glass = GlassPaint.placeholder(dark: false)
+            let window = try LayerRuntimeSelfTests.rect(0, 0, LayerRuntimeSelfTests.width * scale, LayerRuntimeSelfTests.height * scale)
+            let prepared = try LayerRuntimeSelfTests.prepare(scene, context, scale, space, glass)
+            let frame = try LayerRuntimeSelfTests.submitted(owner.update(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: cycle, glass: glass))
+            let reference = try LayerRuntimeSelfTests.baseline(scene, context, cycle, scale, space, glass)
+            return WorkerCompletion(frame: frame, reference: reference, onWorker: onWorker, live: owner.state == .live)
+        }
+
+        func rootForMainAttachment() throws -> CALayer {
+            guard executor.isCurrent && Thread.isMainThread && !executor.isOnThread, let owner else {
+                throw CocoaError(.coderInvalidValue)
+            }
+            return owner.root
+        }
+
+        func retire() throws -> WorkerRetirement {
+            guard onWorker else { throw CocoaError(.coderInvalidValue) }
+            let sequence = owner?.currentFrame?.sequence
+            try owner?.beginClose()
+            let closing = owner?.state, keptFrame = owner?.currentFrame != nil
+            try owner?.close()
+            let closed = owner?.state
+            let cleared = owner?.currentFrame == nil && (owner?.root.sublayers ?? []).isEmpty
+            let attached = owner?.root.superlayer != nil
+            autoreleasepool { owner = nil; context = nil }
+            return WorkerRetirement(onWorker: onWorker, sequence: sequence, closing: closing, keptFrame: keptFrame,
+                closed: closed, cleared: cleared, attached: attached, runtimeReleased: weakOwner == nil, contextReleased: weakContext == nil)
+        }
+    }
+
+    /// Only the completed value/image snapshot crosses this mailbox. The worker never waits for main.
+    private static func workerResult<Value>(_ executor: SkinThreadExecutor, _ t: AppTestRunner,
+                                             _ work: @escaping () throws -> Value) throws -> Value? {
+        let result = Guarded<Result<Value, Error>?>(nil)
+        executor.async {
+            let completed = Result(catching: work)
+            result.access { $0 = completed }
+        }
+        let completed = AppSelfTest.spin(timeout: 30) { result.current != nil }
+        t.check(completed, "the real worker work item posts its completion before main continues")
+        guard let answer = result.current else { return nil }
+        return try answer.get()
+    }
+
+    private struct FailedWorkerFixture {
+        let worker: WorkerFixture
+        let tree: CALayer?
+    }
+    private static var failedWorkerFixtures: [FailedWorkerFixture] = []
+
 
     private enum RasterizerKind { case invalidInput, invalidPlan, resourceLimit, incompatibleColorSpace }
     private static func expectRasterizer(_ expected: RasterizerKind, _ t: AppTestRunner, _ body: () throws -> Void) throws {
