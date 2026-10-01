@@ -175,7 +175,10 @@ extension InspectorWindowController {
         state.rowCache = [:]
         state.builtSkin = skin
         // Slots whose views did not make it into the page (a card dropped by a later rebuild) are left out.
-        state.slots.removeAll { slot in (slot.control ?? slot.part) == nil }
+        state.slots.removeAll { slot in
+            guard let view = slot.control ?? slot.part else { return true }
+            return !view.isDescendant(of: inspectorStack)
+        }
         namingShared {
             for slot in state.slots { if let shown = slot.describe() { slot.shown = shown } }
         }
