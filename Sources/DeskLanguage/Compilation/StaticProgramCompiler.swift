@@ -6,6 +6,7 @@ struct StaticProgramCompiler {
     let catalog: DeskCatalog
     private var nextIndex = 0
     private var expressions: ProgramExpressionCompiler
+    private var onLoad: [ProgramAssignment] = []
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
         self.checked = checked
@@ -73,7 +74,7 @@ struct StaticProgramCompiler {
             root = ProgramElement(id: ElementID(name: "widget", index: index),
                                   content: .column(spacing: spacing, align: try horizontal(align, at: widget.node), children: children))
         }
-        let program = WidgetProgram(name: name, root: root, declarations: declarations)
+        let program = WidgetProgram(name: name, root: root, declarations: declarations, onLoad: onLoad)
         do { _ = try ProgramRuntime(program: program) } // Validate the same contract as every other Core producer.
         catch ProgramRuntimeError.expressionLimit { throw issue(.resourceLimit, widget.node, "Shared program expression limit exceeded") }
         catch ProgramRuntimeError.expressionDepth { throw issue(.resourceLimit, widget.node, "Shared program reference depth exceeded") }
@@ -104,6 +105,10 @@ struct StaticProgramCompiler {
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let allowedModifiers: Set<String> = ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         for modifier in call.modifiers {
+            if modifier.name.token.text == "onLoad" {
+                try rootOnLoad(modifier, element: node)
+                continue
+            }
             guard allowedModifiers.contains(modifier.name.token.text), modifier.block == nil else {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
@@ -182,6 +187,33 @@ struct StaticProgramCompiler {
         }
         return ProgramElement(id: ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index),
                               content: content, width: width, height: height, padding: padding, hidden: hidden)
+    }
+
+    private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {
+        let elementID = checked.tree.id(of: element), modifierID = checked.tree.id(of: modifier.node)
+        guard checked.root == elementID else {
+            throw issue(.unsupported, modifier.node, "Only the widget root's onLoad is implemented")
+        }
+        guard let spec = catalog.modifier(named: "onLoad"), spec.timing == .onLoad,
+              case .actions(required: true) = spec.block, (modifier.arguments?.arguments ?? []).isEmpty,
+              let block = modifier.block else {
+            throw issue(.invalidCheckedModel, modifier.node, "Missing checked root onLoad contract")
+        }
+        let reactions = checked.reactions.filter { $0.modifier == modifierID }
+        guard reactions.count == 1, let reaction = reactions.first, reaction.kind == .onLoad,
+              reaction.element == elementID, reaction.dependencies.isEmpty, reaction.interval == nil else {
+            throw issue(.invalidCheckedModel, modifier.node, "Root onLoad has inconsistent checked reaction identity")
+        }
+        let limit = min(ProgramLimits.maximumExpressions, catalog.limits.maximumTokens)
+        guard onLoad.count <= limit, block.items.count <= limit - onLoad.count else {
+            throw issue(.resourceLimit, block.node, "Shared program assignment limit exceeded")
+        }
+        for statement in block.items {
+            guard let assignment = AssignmentSyntax(statement) else {
+                throw issue(.unsupported, statement, "Only session variable assignments are implemented in root onLoad")
+            }
+            onLoad.append(try expressions.assignment(assignment))
+        }
     }
 
     private func resolvedAppearance(_ facts: ElementFacts, inherited: Appearance, at node: PositionedNode) throws -> Appearance {

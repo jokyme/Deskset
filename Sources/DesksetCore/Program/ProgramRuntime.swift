@@ -6,6 +6,7 @@ public enum ProgramRuntimeError: Error, Equatable {
     case layoutOverflow(ElementID), invalidEnvironment, generationOverflow
     case expressionLimit, expressionDepth, invalidExpression
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
+    case invalidAssignment(Int)
 }
 
 /// The executable part of the shared runtime. It owns a program value, session variables and scene generations,
@@ -17,6 +18,8 @@ public struct ProgramRuntime: Sendable {
 
     public init(program: WidgetProgram) throws {
         var expressions = try ProgramExpressionValidation(declarations: program.declarations)
+        guard program.onLoad.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
+        for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
         var pending = [(program.root, 1)], count = 0, textCount = 0
         var identities = Set<ElementID>()
         while let (node, depth) = pending.popLast() {
@@ -67,7 +70,12 @@ public struct ProgramRuntime: Sendable {
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
         var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables)
-        if variables == nil { try evaluation.initialize() }
+        if variables == nil {
+            try evaluation.initialize()
+            // Root startup is part of the first successful scene transaction. These local-only assignments
+            // may be retried after failed measurement/layout; no external action is admitted here.
+            for assignment in program.onLoad { try ActionExecutor.perform(assignment, on: &evaluation) }
+        }
         let box = try layout(program.root, proposedWidth: nil, appearance: appearance,
                              resolve: { try evaluation.text($0) }, measure: measure)
         var elements: [SceneElement] = []

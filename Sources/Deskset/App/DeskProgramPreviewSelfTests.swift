@@ -259,9 +259,9 @@ enum DeskProgramPreviewSelfTests {
             p.show(checking.snapshot, readError: nil)
             t.check(p.view.subviews.compactMap { ($0 as? NSTextField)?.stringValue }
                 .contains("预览 · 此文档未在桌面运行"))
-            replace(#"widget { variable state = false; Text("unsupported").onLoad { state = true } }"#, in: f)
+            replace(#"widget { variable state = false; Text("unsupported").onWake { state = true } }"#, in: f)
             t.check(settled(f))
-            guard case .unavailable(let reason) = p.state else { return t.check(false, "actions still need the shared ActionExecutor") }
+            guard case .unavailable(let reason) = p.state else { return t.check(false, "onWake still needs its scheduler") }
             t.check(!reason.isEmpty && p.scene == nil && p.canvas.isHidden)
             // clear() deliberately leaves a 1-point canvas. Use an 8-point capture ROI only in this negative
             // fixture; the production frame, cleared scene, helper and pixel expectations stay intact.
@@ -270,6 +270,55 @@ enum DeskProgramPreviewSelfTests {
             try canaries(t, cleared)
             t.equal(try ink(cleared), 0, "an unsupported action cannot leave the previous binding pixels")
             t.check(f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: program preview: root startup assignments use shared state in actual native pixels") {
+            let source = #"widget { variable flag = false; computed caption = flag ? "加载中文😀" : "等待😀"; variable captured = "unset"; Text(captured).font(20).color(.accent).padding(8).onLoad { flag = not flag; captured = caption } }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            p.canvas.appearance = NSAppearance(named: .aqua)
+            p.show(checking.snapshot, readError: nil)
+            let steps: [(NSAppearance.Name, String)] = [(.aqua, "加载中文😀"), (.darkAqua, "加载中文😀"),
+                                                       (.aqua, "加载中文😀"), (.aqua, "等待😀")]
+            for (index, step) in steps.enumerated() {
+                let (name, text) = step
+                if index == 3 {
+                    replace(source.replacingOccurrences(of: "variable flag = false", with: "variable flag = true"), in: f)
+                    t.check(settled(f)) // A new checked snapshot creates a new startup transaction.
+                }
+                p.canvas.appearance = NSAppearance(named: name)
+                p.refreshEnvironment()
+                t.equal(p.state, .ready)
+                let appearance = MacAppearance.values(for: p.canvas.effectiveAppearance)
+                var style = TextStyle()
+                style.fontFace = "System"
+                style.fontSize = 15 // Independent 20-point recipe; never copy the compiler's style.
+                style.fontWeight = 400
+                style.color = appearance.accentColor
+                style.horizontalAlign = .center
+                style.verticalAlign = .center
+                style.accurateText = true
+                style.antiAlias = true
+                style.trailingSpaces = true
+                let context = DrawContext(fonts: AppFontResolver())
+                let size = context.text.layout(text, style: style, wrapWidth: nil, cycle: 1).size
+                let frame = SkinRect(width: size.width + 16, height: size.height + 16)
+                let item = DrawItem.text(TextDraw(text: text, style: style, frame: frame,
+                                                 contentFrame: SkinRect(x: 8, y: 8, width: size.width, height: size.height),
+                                                 anchor: SkinPoint()))
+                t.equal(p.scene?.drawingItems, [item], "onLoad runs on a new program, not on appearance reprojection")
+                let reference = ReferenceView(items: [item], size: NSSize(width: frame.width, height: frame.height))
+                reference.appearance = NSAppearance(named: name)
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual)
+                    try canaries(t, expected)
+                    t.check(try ink(actual) > 0)
+                    t.equal(try bytes(actual), try bytes(expected), "startup literal reference at \(scale)x")
+                }
+            }
+            t.check(f.app.sortedControllers.isEmpty, "startup assignments activate no skin")
             t.equal(try Data(contentsOf: f.file), Data(source.utf8))
         }
     }

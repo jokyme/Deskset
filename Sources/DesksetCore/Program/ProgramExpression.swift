@@ -1,5 +1,5 @@
 /// Executable scalar expressions of the shared program. These are values, not syntax nodes or host services.
-/// The first bindings slice deliberately has no numeric formatting, subscriptions or action executor.
+/// Scalar bindings have no numeric formatting or subscriptions; assignments use the shared action executor.
 public indirect enum ProgramExpression: Equatable, Sendable {
     case string(String), boolean(Bool)
     /// Declaration occurrence in WidgetProgram.declarations, in original source order.
@@ -55,6 +55,16 @@ struct ProgramExpressionValidation {
     mutating func validateText(_ expression: ProgramExpression) throws {
         try register(expression)
         guard try expressionInfo(expression, depth: 1).type == .string else { throw ProgramRuntimeError.invalidExpression }
+    }
+
+    mutating func validateAssignment(_ assignment: ProgramAssignment) throws {
+        let index = assignment.declaration
+        guard declarations.indices.contains(index) else { throw ProgramRuntimeError.invalidDeclaration(index) }
+        guard declarations[index].kind == .variable else { throw ProgramRuntimeError.invalidAssignment(index) }
+        try register(assignment.value)
+        let target = try declarationInfo(index, depth: 1)
+        let value = try expressionInfo(assignment.value, depth: 1)
+        guard target.type == value.type else { throw ProgramRuntimeError.invalidAssignment(index) }
     }
 
     private mutating func register(_ expression: ProgramExpression) throws {
@@ -122,8 +132,8 @@ struct ProgramExpressionValidation {
 }
 
 /// A local evaluation transaction. Only variables survive a successful scene publication; computed values are
-/// pulled once per projection. Failed startup, text measurement or layout discards this entire value.
-struct ProgramExpressionEvaluation {
+/// pulled once per projection or assignment. Failed startup, text measurement or layout discards this value.
+struct ProgramExpressionEvaluation: ProgramAssignmentTarget {
     let declarations: [ProgramDeclaration]
     let dark: Bool
     var variables: [ProgramScalar?]
@@ -147,6 +157,28 @@ struct ProgramExpressionEvaluation {
         guard case .string(let value) = try evaluate(expression, depth: 1),
               value.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
         return value
+    }
+
+    mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar {
+        try evaluate(expression, depth: 1)
+    }
+
+    mutating func setProgramVariable(_ value: ProgramScalar, at index: Int) throws {
+        guard declarations.indices.contains(index), variables.indices.contains(index) else {
+            throw ProgramRuntimeError.invalidDeclaration(index)
+        }
+        guard declarations[index].kind == .variable else { throw ProgramRuntimeError.invalidAssignment(index) }
+        guard let previous = variables[index] else { throw ProgramRuntimeError.uninitializedDeclaration(index) }
+        switch (previous, value) {
+        case (.string, .string(let text)):
+            guard text.utf16.count <= ProgramLimits.maximumTextLength else { throw ProgramRuntimeError.invalidExpression }
+        case (.boolean, .boolean): break
+        default: throw ProgramRuntimeError.invalidAssignment(index)
+        }
+        variables[index] = value
+        // The next statement must pull computed values from these new variables, even when an earlier RHS
+        // populated the cache. Equal-value assignments also begin a new pull interval.
+        computed.removeAll(keepingCapacity: true)
     }
 
     private mutating func boolean(_ expression: ProgramExpression, depth: Int) throws -> Bool {
