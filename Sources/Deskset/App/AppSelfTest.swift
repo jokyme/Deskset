@@ -61,6 +61,7 @@ enum AppSelfTest {
         SkinLifecycleSelfTests.run(t)
         EngineThreadSelfTests.run(t)
         EnginePoolSelfTests.run(t)
+        SkinWorkWatchdogSelfTests.run(t)
         EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
         SkinDrawingSelfTests.run(t)

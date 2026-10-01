@@ -351,6 +351,9 @@ timer.Timer	Sources/Deskset/SkinWindowController.swift	1	hover polling (0.1 s Fo
 timer.animation	Sources/Deskset/SkinWindowController.swift	2	FadeDuration window fades
 timer.runLoopAdd	Sources/Deskset/SkinWindowController.swift	1	hover polling (0.1 s Foundation timer): move to MainSkinExecutor.shared.timer
 
+background.queue	Sources/Deskset/SkinWorkWatchdog.swift	1	one diagnostic queue independent of stalled workers; injected clock and manual checks in tests; not a skin input
+timer.dispatchSource	Sources/Deskset/SkinWorkWatchdog.swift	1	one shared busy-skin diagnostic timer, stopped when idle; injected clock and manual checks in tests; not a skin input
+
 effect.workspace	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 event.notification	Sources/Deskset/Studio2/DesktopLink.swift	*	the Studio window's own UI (timers, sounds, notifications, workspace), not a skin input
 

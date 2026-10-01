@@ -335,6 +335,7 @@ final class SkinFrameProducer {
     let provider: ContentProvider?
     /// The skin, as long as the runtime has it.
     private let skin: () -> Skin?
+    private let workActivity: SkinWorkWatchdog.Activity?
 
     /// The skin redrew since the last frame (or the window's scale, colour space or appearance changed).
     private(set) var needsFrame = false
@@ -391,9 +392,10 @@ final class SkinFrameProducer {
     static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     /// `provider` nil: a runtime without a window (tests), which draws nothing.
-    init(provider: ContentProvider?, skin: @escaping () -> Skin?) {
+    init(provider: ContentProvider?, skin: @escaping () -> Skin?, workActivity: SkinWorkWatchdog.Activity? = nil) {
         self.provider = provider
         self.skin = skin
+        self.workActivity = workActivity
     }
 
     deinit {
@@ -544,6 +546,8 @@ final class SkinFrameProducer {
     private func draw() {
         needsFrame = false
         guard let provider, let skin = skin() else { return }
+        workActivity?.begin(.drawing)
+        defer { workActivity?.end() }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
         let (scale, space, appearance, drawing) = (self.scale, self.space, self.appearance, self.drawing)
         let began = ProcessInfo.processInfo.systemUptime

@@ -25,6 +25,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     let fileURL: URL
     /// Peer messages are always queued in pool mode, also when both skins happen to share a worker.
     let defersPeerBangs: Bool
+    /// The same activity spans Core work, runtime messages and drawing. Main-thread skins do not need a worker log.
+    private let workActivity: SkinWorkWatchdog.Activity?
     /// The skin. Touch it only on its executor (`executor.isCurrent`, or inside `exclusive`).
     private(set) var skin: Skin!
     /// The main-thread side: the skin's window, or a test's stand-in. Not retained: it owns the runtime.
@@ -74,13 +76,15 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`, whose frames go to `content` (nil: none
     /// are drawn). Load it with `load()`, on the executor.
     init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
-         content: ContentProvider? = nil, defersPeerBangs: Bool = false) {
+         content: ContentProvider? = nil, defersPeerBangs: Bool = false,
+         watchdog: SkinWorkWatchdog = .shared) {
         self.config = config
         self.file = file
         self.defersPeerBangs = defersPeerBangs
+        workActivity = executor is SkinThreadExecutor ? SkinWorkWatchdog.Activity(watchdog: watchdog, config: config) : nil
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
         var owner: (() -> Skin?)?
-        frames = SkinFrameProducer(provider: content, skin: { owner?() })
+        frames = SkinFrameProducer(provider: content, skin: { owner?() }, workActivity: workActivity)
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: self)
         skin.executor = executor
@@ -226,6 +230,8 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
 
     @discardableResult
     private func handle(_ message: SkinMessage) -> Bool {
+        workActivity?.begin()
+        defer { workActivity?.end() }
         messageObserver?(message)
         switch message {
         case .mirrorInput(let mirror):
@@ -792,7 +798,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// The needs travel in the snapshot, published when the work ends (`.snapshotChanged(.outsidePointerNeeds)`).
     func skinOutsidePointerNeedsChanged(_ skin: Skin) {}
 
+    func skinWillBeginWork(_ skin: Skin) {
+        HostCallAudit.note(self, "skinWillBeginWork")
+        workActivity?.begin()
+    }
+
     func skinDidFinishWork(_ skin: Skin) {
+        defer { workActivity?.end() }
         HostCallAudit.note(self, "skinDidFinishWork")
         publishSnapshot()
     }

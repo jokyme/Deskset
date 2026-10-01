@@ -6,6 +6,8 @@
 > the main thread, for debugging). §8.5 was revised for the Studio's own instance of the widget it edits.
 > Phase 3 is being validated (2026-10-01): `SkinThreading=pool` is an experimental two-worker mode with stable config
 > placement and shared update clocks. A slow skin holds other skins on its worker, while the other worker can run.
+> A shared watchdog logs skin work and bitmap drawing that take more than two seconds, even when a worker is stuck.
+> It does not cover the shared Core Animation commit/flush after a batch of skins has finished drawing.
 > The original per-skin proposal below is retained as design history; §14 and §15 record the later decisions.
 > The spike is in `scripts/spikes/skin-threading/`.
 > Clean room: every statement about Rainmeter comes from the public manual (docs.rainmeter.net). Deskset's own
