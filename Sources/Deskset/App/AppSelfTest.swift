@@ -89,6 +89,7 @@ enum AppSelfTest {
         SpriteDrawSelfTests.run(t)
         #endif
         SkinDrawingSelfTests.run(t)
+        SkinLayerContentSelfTests.run(t)
         MacLookSelfTests.run(t)
         GlassSelfTests.run(t)
         SharedServiceThreadingSelfTests.run(t)

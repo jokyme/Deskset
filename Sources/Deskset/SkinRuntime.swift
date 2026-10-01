@@ -76,7 +76,7 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     /// A runtime for `file` of `config` under `skinsDirectory`, on `executor`, whose frames go to `content` (nil: none
     /// are drawn). Load it with `load()`, on the executor.
     init(config: String, file: String, skinsDirectory: URL, executor: SkinExecutor = MainSkinExecutor.shared,
-         content: ContentProvider? = nil, defersPeerBangs: Bool = false,
+         content: ContentProvider? = nil, contentMode: SkinFrameContentMode = .bitmap, defersPeerBangs: Bool = false,
          watchdog: SkinWorkWatchdog = .shared) {
         self.config = config
         self.file = file
@@ -84,12 +84,13 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         workActivity = executor is SkinThreadExecutor ? SkinWorkWatchdog.Activity(watchdog: watchdog, config: config) : nil
         fileURL = SkinLibrary.directory(for: config, root: skinsDirectory).appendingPathComponent(file)
         var owner: (() -> Skin?)?
-        frames = SkinFrameProducer(provider: content, skin: { owner?() }, workActivity: workActivity)
+        frames = SkinFrameProducer(provider: content, skin: { owner?() }, contentMode: contentMode, workActivity: workActivity)
         let skin = Skin(config: config, fileURL: fileURL, skinsDirectory: skinsDirectory, system: SystemMonitor.shared,
                         host: self)
         skin.executor = executor
         self.skin = skin
         owner = { [weak self] in self?.skin }
+        frames.requestLayerInstallation = { [weak self] in self?.request(.installLayerContent) }
         frames.start(on: executor)
     }
 
@@ -385,6 +386,33 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
     func exclusive<T>(timeout: TimeInterval = SkinRuntime.defaultExclusiveTimeout, _ body: (Skin) -> T) -> T? {
         let skin: Skin = self.skin
         return skin.executor.exclusive(timeout: timeout) { body(skin) }
+    }
+
+    /// Main parks the executor before touching the provider, never while holding its layer lock. The caller
+    /// supplies CURRENT window facts, including a real optional profile, and its actual content size.
+    func installLayerContent(for facts: SkinWindowFacts, size: CGSize) -> SkinFrameProducer.LayerInstallation? {
+        precondition(Thread.isMainThread)
+        return executor.exclusive(timeout: Self.defaultExclusiveTimeout) {
+            frames.installLayerContent(for: facts, size: size)
+        }
+    }
+
+    /// Main calls this after the window/fade no longer needs its last frame. Cleanup goes behind close on the
+    /// executor. Main removes the attachment only after the owner acknowledges that it is closed and stopped.
+    func teardownContent() {
+        precondition(Thread.isMainThread)
+        guard frames.contentMode.usesLayers, let provider = frames.provider as? LayerContentProvider else {
+            frames.provider?.teardown()
+            return
+        }
+        guard provider.beginLayerTeardown() else { return }
+        let cleanup = { [self, provider] in
+            guard frames.retireLayerContent() else { return }
+            if Thread.isMainThread { provider.completeLayerTeardown() }
+            else { DispatchQueue.main.async { provider.completeLayerTeardown() } }
+        }
+        if executor.isCurrent { cleanup() }
+        else { executor.async(cleanup) }
     }
 
     /// Runs `body` on the main thread once the work the skin's executor has now — the piece it is running and what is

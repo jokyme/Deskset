@@ -194,6 +194,8 @@ struct SkinStartReport {
 
 /// A request from a runtime to the main thread. Applied in the order the runtime made them.
 enum SkinRequest {
+    /// A finished owner C root awaits main attachment. No live owner or stale panel is carried by this request.
+    case installLayerContent
     /// The skin loaded (`SkinMessage.load`): the main thread saves a first load's Default… settings, StartHidden and
     /// the window settings apply, before the window is placed.
     case loaded(SkinLoadReport)

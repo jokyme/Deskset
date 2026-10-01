@@ -333,11 +333,11 @@ mono.systemUptime	Sources/Deskset/SharedState.swift	1	shared service snapshots e
 
 background.executorAsync	Sources/Deskset/SkinDrawing.swift	1	the frame producer joins the run loop of the executor its skin runs on (skin threading: frames are drawn at the end of the executor's turn)
 event.runLoopObserver	Sources/Deskset/SkinDrawing.swift	1	frames are drawn once per turn of the skin executor's run loop, before Core Animation commits (skin threading §7.3); a frame, not a skin input
-mono.systemUptime	Sources/Deskset/SkinDrawing.swift	6	frame pacing and FrameTimingLog: when a frame was asked for and how long drawing took; a frame, not a skin input
+mono.systemUptime	Sources/Deskset/SkinDrawing.swift	7	frame scheduling/timing and the main C-root attachment acknowledgment; the ack is not worker drawing or CPU time
 timer.executorAfter	Sources/Deskset/SkinDrawing.swift	1	a window that cannot be seen lets go of its kept pictures after a while (on the skin's executor); memory, not a skin input
 
-background.executorAsync	Sources/Deskset/SkinRuntime.swift	3	the runtime's messages and its skin's release go to the skin's executor (skin threading §15: the executor seam itself)
-background.mainHop	Sources/Deskset/SkinRuntime.swift	3	the runtime's requests to the main thread, which owns the window (skin threading §15); not a skin input
+background.executorAsync	Sources/Deskset/SkinRuntime.swift	4	runtime owner delivery/lifetime and C-root cleanup after main finishes the last frame; no worker waits for main
+background.mainHop	Sources/Deskset/SkinRuntime.swift	4	runtime FIFO main requests/waiters and the C-root closed-owner acknowledgment before provider removal
 mono.DispatchTime.now	Sources/Deskset/SkinRuntime.swift	2	Skin Studio session timing: how long the desktop copy took to take a patch (reported to the Studio)
 timer.executorTimer	Sources/Deskset/SkinRuntime.swift	1	the update timer, on the executor
 wait.deadline	Sources/Deskset/SkinRuntime.swift	1	quitting and the installer wait for a skin to close, within a budget (app lifecycle, not a skin input)

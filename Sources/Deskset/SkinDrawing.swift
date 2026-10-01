@@ -1,6 +1,7 @@
 import AppKit
 import DesksetCore
 import DesksetDraw
+import DesksetRuntime
 
 /// Draws a skin window's picture into a bitmap of its own, which the skin's frame producer presents as the contents of
 /// its window's content layer (`SkinFrameProducer`, `LayerContentProvider`).
@@ -331,6 +332,27 @@ final class SkinFrameProducer {
     /// The pictures, with the ones kept of meters that did not change.
     let drawing = SkinBitmapDrawing()
     let provider: ContentProvider?
+    let contentMode: SkinFrameContentMode
+    /// Requests only cross to main. Main parks the real executor before installing the finished owner root.
+    var requestLayerInstallation: (() -> Void)?
+    private(set) var layerRuntime: LayerRuntime?
+    private(set) var layerInstalled = false
+    private(set) var layerFailure: LayerFailure?
+    private(set) var lastLayerDrawWasOnSkinThread = false
+    enum LayerFailure: Equatable {
+        case missingProfile, invalidDestination, unsupportedProvider, staleDestination, installDeclined
+        case rendering(String)
+    }
+    enum LayerInstallation { case installed, staleDestination, declined, notReady }
+    private struct LayerDestination {
+        let size: CGSize
+        let scale: CGFloat
+        let space: CGColorSpace
+        let appearance: String
+    }
+    private var layerDestination: LayerDestination?
+    private var actualSpace: CGColorSpace?
+    private var layerInstallRequested = false
     /// The skin, as long as the runtime has it.
     private let skin: () -> Skin?
     private let workActivity: SkinWorkWatchdog.Activity?
@@ -390,9 +412,11 @@ final class SkinFrameProducer {
     static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     /// `provider` nil: a runtime without a window (tests), which draws nothing.
-    init(provider: ContentProvider?, skin: @escaping () -> Skin?, workActivity: SkinWorkWatchdog.Activity? = nil) {
+    init(provider: ContentProvider?, skin: @escaping () -> Skin?, contentMode: SkinFrameContentMode = .bitmap,
+         workActivity: SkinWorkWatchdog.Activity? = nil) {
         self.provider = provider
         self.skin = skin
+        self.contentMode = contentMode
         self.workActivity = workActivity
     }
 
@@ -431,6 +455,11 @@ final class SkinFrameProducer {
             current?.remove(self)
             current = nil
         }
+        layerInstallRequested = false
+        if let layerRuntime, layerRuntime.state != .closed {
+            do { try layerRuntime.beginClose() }
+            catch { layerFailure = .rendering(String(describing: error)) }
+        }
     }
 
     /// Whether the window can be seen, as far as its facts tell.
@@ -447,6 +476,10 @@ final class SkinFrameProducer {
     func take(_ facts: SkinWindowFacts?) {
         guard let facts, !isStopped else { return }
         var redraw = false
+        if actualSpace != facts.colorSpace {
+            actualSpace = facts.colorSpace
+            if contentMode.usesLayers { redraw = true }
+        }
         if facts.scale != scale, facts.scale > 0, facts.scale.isFinite {
             scale = facts.scale
             provider?.setScale(scale)
@@ -471,7 +504,7 @@ final class SkinFrameProducer {
         isOrderedIn = facts.isOrderedIn
         isUnoccluded = facts.isVisible
         // Before the first frame there is nothing to draw again: the skin's first redraw asks for it.
-        if redraw && framesDrawn > 0 { setNeedsFrame() }
+        if redraw && (framesDrawn > 0 || contentMode.usesLayers) { setNeedsFrame() }
         let seen = canBeSeen
         if seen != toldVisible {
             toldVisible = seen
@@ -499,6 +532,11 @@ final class SkinFrameProducer {
             releases.pictures += 1
         }
         if !isOrderedIn && framesDrawn > 0 && !contentsReleased, let provider {
+            if let layerRuntime {
+                do { try layerRuntime.setVisible(false) }
+                catch { layerFailure = .rendering(String(describing: error)); return }
+                (provider as? LayerContentProvider)?.releaseLayerFrame()
+            }
             provider.releaseContents()
             contentsReleased = true
             releases.contents += 1
@@ -555,12 +593,20 @@ final class SkinFrameProducer {
             longestFrame = max(longestFrame, took)
         }
         var picture: CGImage?
+        if case let .layers(partition, budget) = contentMode {
+            drawLayerContent(skin, size: size, partition: partition, budget: budget, began: began)
+            return
+        }
         // The drawing appearance AppKit set while the view drew.
         SkinFrameProducer.withAppearance(appearance) {
             picture = drawing.picture(of: skin, size: size, scale: scale, space: space, appearance: appearance)
         }
         guard let picture else { return }
         provider.present(SkinFrame(image: picture, scale: scale))
+        recordPresented(began: began, source: skin.config)
+    }
+
+    private func recordPresented(began: TimeInterval, source: String) {
         framesDrawn += 1
         drewThisTurn = true
         drawnForShowing = false
@@ -569,9 +615,127 @@ final class SkinFrameProducer {
             let now = ProcessInfo.processInfo.systemUptime
             timing.note(presentedAt: now, drawing: now - began)
             if let report = timing.report(at: now, every: FrameTimingLog.period) {
-                Log.write("Frames: \(report)", source: skin.config)
+                Log.write("Frames: \(report)", source: source)
             }
         }
+    }
+
+    private func drawLayerContent(_ skin: Skin, size: CGSize, partition: LayerRuntime.Partition, budget: Int, began: TimeInterval) {
+        guard let executor, executor.isCurrent, provider is LayerContentProvider else {
+            layerFailure = .unsupportedProvider
+            return
+        }
+        guard (provider as? LayerContentProvider)?.acceptsLayerFrames == true else {
+            layerFailure = .installDeclined
+            return
+        }
+        guard let space = actualSpace else { layerFailure = .missingProfile; return }
+        let w = (size.width * scale).rounded(.up), h = (size.height * scale).rounded(.up)
+        guard size.width.isFinite, size.height.isFinite, scale.isFinite, scale > 0,
+              w.isFinite, h.isFinite, w > 0, h > 0,
+              w <= CGFloat(Rasterizer.maximumDimension), h <= CGFloat(Rasterizer.maximumDimension),
+              let window = InkBounds.DeviceRect(minX: 0, minY: 0, maxX: Int(w), maxY: Int(h)) else {
+            layerFailure = .invalidDestination
+            return
+        }
+        do {
+            if layerRuntime == nil { layerRuntime = try LayerRuntime(executor: executor, maximumOwnedBitmapBytes: budget) }
+            guard let layerRuntime else { return }
+            if layerRuntime.state == .hidden { try layerRuntime.setVisible(true) }
+            let context = SkinRenderContext.of(skin)
+            let environment = AppSceneEnvironment(scale: Double(scale),
+                appearance: skin.host?.environment(for: skin).appearance ?? .light, appearanceName: appearance)
+            var result: LayerRuntime.Update?
+            try SkinFrameProducer.withAppearanceThrowing(appearance) {
+                let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+                // A one-pixel owned query destination captures the exact canonical whole-window userToDevice
+                // mapping and actual supplied profile. It draws no pixels and does not provide raster coverage.
+                guard let bitmap = SkinBitmapDrawing.makeContext(1, 1, space) else {
+                    throw Rasterizer.Failure.resourceFailure("Cannot prepare the owned destination mapping")
+                }
+                bitmap.translateBy(x: 0, y: 1)
+                bitmap.scaleBy(x: scale, y: -scale)
+                let target = DrawTarget.prepareOwnedBitmap(bitmap, glass: .hitArea)
+                guard target.userToDevice == CGAffineTransform(scaleX: scale, y: scale),
+                      target.colorSpace.map({ CFEqual($0, space) }) == true else { throw Rasterizer.Failure.invalidMapping }
+                let prepared = ScenePreparer.prepare(scene, context: context.drawing, target: target)
+                result = try layerRuntime.update(prepared, in: window, scale: scale, colorSpace: space,
+                    partition: partition, context: context.drawing, cycle: skin.updateCount, glass: .hitArea)
+            }
+            let frame: LayerRuntime.Frame
+            switch result ?? .suppressed {
+            case .submitted(let completed):
+                frame = completed
+                lastLayerDrawWasOnSkinThread = SkinThreadExecutor.isSkinThread
+            case .unchanged(let completed): frame = completed
+            case .suppressed: return
+            }
+            layerDestination = LayerDestination(size: size, scale: scale, space: space, appearance: appearance)
+            layerFailure = nil
+            let wasReleased = contentsReleased
+            if layerInstalled, let provider = provider as? LayerContentProvider,
+               provider.presentedLayerRoot(layerRuntime.root, frame: frame) {
+                recordPresented(began: began, source: skin.config)
+                if wasReleased { requestLayerInstallation?() }
+            } else if !layerInstallRequested {
+                layerInstallRequested = true
+                requestLayerInstallation?()
+            }
+        } catch {
+            layerFailure = .rendering(String(describing: error))
+        }
+    }
+
+    /// Main, with a real exclusive lease. Readiness is checked against the CURRENT window, not a queued request's
+    /// old panel or facts sequence. Moving the same provider to another panel cannot install for the old destination.
+    func installLayerContent(for facts: SkinWindowFacts, size: CGSize) -> LayerInstallation {
+        guard Thread.isMainThread, let executor, executor.isCurrent, !isStopped,
+              let provider = provider as? LayerContentProvider, let layerRuntime, let frame = layerRuntime.currentFrame,
+              let destination = layerDestination else { return .notReady }
+        guard let space = facts.colorSpace, CFEqual(destination.space, space), destination.scale == facts.scale,
+              destination.appearance == facts.appearance, destination.size == size else {
+            layerFailure = .staleDestination
+            layerInstallRequested = false
+            setNeedsFrame()
+            return .staleDestination
+        }
+        if layerInstalled {
+            return provider.hasLayerFrame ? .installed : .declined
+        }
+        guard provider.installLayerRoot(layerRuntime.root, frame: frame, executor: executor) else {
+            layerFailure = .installDeclined
+            layerInstallRequested = false
+            return .declined
+        }
+        layerInstalled = true
+        layerInstallRequested = false
+        layerFailure = nil
+        // This is the main attachment acknowledgment, not additional drawing time or worker CPU work. The actual
+        // drawing duration is accounted by draw() on its owner; waiting for installation is not counted there.
+        recordPresented(began: ProcessInfo.processInfo.systemUptime, source: skin()?.config ?? "")
+        drawnForShowing = true
+        return .installed
+    }
+
+    /// Owner cleanup is queued only when main has finished displaying/fading the old frame. Its acknowledgment
+    /// permits main to remove the root even if the executor stops immediately after this work item.
+    func retireLayerContent() -> Bool {
+        precondition(executor?.isCurrent == true)
+        stop()
+        if let layerRuntime {
+            do { try layerRuntime.close() }
+            catch { layerFailure = .rendering(String(describing: error)); return false }
+        }
+        layerRuntime = nil
+        layerDestination = nil
+        layerInstalled = false
+        return true
+    }
+
+    private static func withAppearanceThrowing(_ name: String, _ body: () throws -> Void) throws {
+        var failure: Error?
+        withAppearance(name) { do { try body() } catch { failure = error } }
+        if let failure { throw failure }
     }
 
     /// Runs `body` with the appearance named `name` as the thread's drawing appearance.

@@ -1,5 +1,16 @@
 import AppKit
 import DesksetCore
+import DesksetRuntime
+
+/// Internal, explicit selection at AppController.activate. Bitmap remains the default. The C budget belongs to
+/// LayerRuntime's owned bitmaps, not all retained images, preparation storage or the process. Components remain
+/// candidates; callers opt into that experimental partition independently of the safe Single presentation.
+enum SkinFrameContentMode: Equatable {
+    case bitmap
+    case layers(partition: LayerRuntime.Partition, maximumOwnedBitmapBytes: Int)
+
+    var usesLayers: Bool { if case .layers = self { return true }; return false }
+}
 
 // Where a skin's frames go on screen (docs/skin-threading.md §7.3, §15 "Phase 2: plan"). The skin's runtime draws each
 // frame on its executor (`SkinFrameProducer`) and hands it to its window's content provider, the seam between the two
@@ -64,6 +75,10 @@ final class LayerContentProvider: ContentProvider {
     private var visible = false
     private var scale: CGFloat = 0
     private var presented = 0
+    private var ownerRoot: CALayer?
+    private var retirementRequested = false
+    private var retirementScheduled = false
+    private var layerFrameReady = false
 
     /// Main thread: the content layer goes into `view`'s layer, which the view makes (and keeps: AppKit keeps a layer the
     /// view asked for when the view moves to another window, as when a skin's panel is replaced).
@@ -93,7 +108,7 @@ final class LayerContentProvider: ContentProvider {
     func present(_ frame: SkinFrame) {
         lock.lock()
         defer { lock.unlock() }
-        guard !isTornDown else { return }
+        guard !isTornDown, !retirementRequested, ownerRoot == nil else { return }
         transaction {
             contentLayer.bounds = CGRect(origin: .zero, size: frame.size)
             contentLayer.contentsScale = frame.scale
@@ -128,11 +143,99 @@ final class LayerContentProvider: ContentProvider {
         lock.lock()
         defer { lock.unlock() }
         guard !isTornDown else { return }
+        // A direct late teardown may invalidate an install, but cannot detach a root its executor still updates.
+        // SkinRuntime.teardownContent queues owner cleanup and acknowledges it before completeLayerTeardown.
+        retirementRequested = true
+        guard ownerRoot == nil else { return }
         isTornDown = true
         transaction {
             contentLayer.contents = nil
             contentLayer.removeFromSuperlayer()
         }
+    }
+
+    /// Main, inside the real executor's exclusive scope. The executor is parked BEFORE this lock is taken.
+    /// Root contains completed C images only; no view, drawing context or native drawing callback is installed.
+    func installLayerRoot(_ root: CALayer, frame: LayerRuntime.Frame, executor: SkinExecutor) -> Bool {
+        precondition(Thread.isMainThread && executor.isCurrent)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot == nil || ownerRoot === root else { return false }
+        transaction {
+            contentLayer.contents = nil
+            contentLayer.isGeometryFlipped = true
+            contentLayer.bounds = root.bounds
+            contentLayer.contentsScale = frame.scale
+            if ownerRoot == nil { contentLayer.addSublayer(root) }
+        }
+        ownerRoot = root
+        layerFrameReady = true
+        presented += 1
+        return true
+    }
+
+    /// The owner updates only its root; this method keeps the provider's private wrapper with that finished frame.
+    func presentedLayerRoot(_ root: CALayer, frame: LayerRuntime.Frame) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementRequested, ownerRoot === root else { return false }
+        transaction {
+            contentLayer.bounds = root.bounds
+            contentLayer.contentsScale = frame.scale
+        }
+        presented += 1
+        layerFrameReady = true
+        return true
+    }
+
+    func releaseLayerFrame() {
+        lock.lock()
+        defer { lock.unlock() }
+        layerFrameReady = false
+    }
+
+    var acceptsLayerFrames: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !isTornDown && !retirementRequested
+    }
+
+    var hasLayerFrame: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return ownerRoot != nil && layerFrameReady && !isTornDown && !retirementRequested
+    }
+
+    /// Main invalidates pending installs immediately, while the last image remains available for closing/fading.
+    func beginLayerTeardown() -> Bool {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, !retirementScheduled else { return false }
+        retirementRequested = true
+        retirementScheduled = true
+        return true
+    }
+
+    /// Main, only after the executor has closed its owner and acknowledged that no further update is possible.
+    func completeLayerTeardown() {
+        precondition(Thread.isMainThread)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isTornDown, retirementRequested else { return }
+        isTornDown = true
+        transaction {
+            ownerRoot?.removeFromSuperlayer()
+            ownerRoot = nil
+            contentLayer.contents = nil
+            contentLayer.removeFromSuperlayer()
+        }
+    }
+
+    var installedLayerRoot: CALayer? {
+        lock.lock()
+        defer { lock.unlock() }
+        return ownerRoot
     }
 
     /// An explicit transaction with actions disabled (docs/skin-threading.md §7.3, rule 2). Inside a turn of frames it
