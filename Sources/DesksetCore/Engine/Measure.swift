@@ -80,45 +80,7 @@ open class Measure: SkinSection {
     private var observedMax: Double?
     private var warnedAboutRange = false
 
-    private struct Condition {
-        /// N of `IfConditionN` (1 for `IfCondition`): the "became true/false" state belongs to the option, so a
-        /// dynamic formula whose text changes keeps its state.
-        var index: Int
-        var formula: CompiledFormula?
-        var source: String
-        var trueAction: String
-        var falseAction: String
-        var lastResult: Bool?
-        var loggedError = false
-    }
-    private var conditions: [Condition] = []
-    private var ifConditionMode = false
-
-    private struct Threshold {
-        var value: Double
-        var action: String
-        var active = false
-    }
-    private var ifAbove: Threshold?
-    private var ifBelow: Threshold?
-    private var ifEqual: Threshold?
-
-    private struct Match {
-        /// N of `IfMatchN` (state kept when a dynamic pattern changes).
-        var index: Int
-        var pattern: String
-        var matchAction: String
-        var notMatchAction: String
-        var lastResult: Bool?
-        var loggedError = false
-    }
-    private var matches: [Match] = []
-    private var ifMatchMode = false
-
-    private var onUpdateAction = ""
-    private var onChangeAction = ""
-    private var lastValue: Double?
-    private var lastString: String?
+    private let actionPipeline = MeasurePipeline()
     /// Whether `liveInputs` were noted (virtual time).
     private var notedInputs = false
 
@@ -219,11 +181,7 @@ open class Measure: SkinSection {
             substituteSource = (substituteOption, regex)
         }
 
-        readConditions()
-        readThresholds()
-        readMatches()
-        onUpdateAction = actionOption("OnUpdateAction")
-        onChangeAction = actionOption("OnChangeAction")
+        actionPipeline.readOptions(for: self)
         needsOptionRead = false
     }
 
@@ -247,64 +205,6 @@ open class Measure: SkinSection {
             warnedAboutRange = true
             skin.log("[\(name)] MaxValue is less than MinValue", level: .debug)
         }
-    }
-
-    private func readConditions() {
-        ifConditionMode = bool("IfConditionMode", false)
-        let sources = numberedOptions("IfCondition")
-        var result: [Condition] = []
-        for (index, source) in sources {
-            let suffix = index == 1 ? "" : String(index)
-            let existing = conditions.first { $0.index == index }
-            var condition = existing
-                ?? Condition(index: index, formula: nil, source: source, trueAction: "", falseAction: "", lastResult: nil)
-            let blank = source.trimmingCharacters(in: .whitespaces).isEmpty
-            if existing == nil || condition.source != source {
-                condition.source = source
-                condition.formula = blank ? nil : try? Formula.compile(source)
-            }
-            // Logged once per condition: a dynamic condition whose text changes on every update would otherwise
-            // log on every update. An empty IfCondition is simply ignored; one whose section variables are not
-            // resolved yet (read at load) is checked at the first update.
-            if condition.formula == nil && !blank && !condition.loggedError
-                && !awaitsSectionVariables("IfCondition\(suffix)") {
-                condition.loggedError = true
-                skin.log("[\(name)] invalid IfCondition\(suffix): \(source)", level: .error)
-            }
-            condition.trueAction = actionOption("IfTrueAction\(suffix)")
-            condition.falseAction = actionOption("IfFalseAction\(suffix)")
-            result.append(condition)
-        }
-        conditions = result
-    }
-
-    private func readThresholds() {
-        func threshold(_ valueKey: String, _ actionKey: String, _ previous: Threshold?) -> Threshold? {
-            let action = actionOption(actionKey)
-            guard !action.isEmpty, let v = optionalDouble(valueKey) else { return nil }
-            // Judgment: the armed state survives a (dynamic) change of the threshold value.
-            var t = Threshold(value: v, action: action)
-            if let previous { t.active = previous.active }
-            return t
-        }
-        ifAbove = threshold("IfAboveValue", "IfAboveAction", ifAbove)
-        ifBelow = threshold("IfBelowValue", "IfBelowAction", ifBelow)
-        ifEqual = threshold("IfEqualValue", "IfEqualAction", ifEqual)
-    }
-
-    private func readMatches() {
-        ifMatchMode = bool("IfMatchMode", false)
-        var result: [Match] = []
-        for (index, pattern) in numberedOptions("IfMatch") {
-            let suffix = index == 1 ? "" : String(index)
-            var match = matches.first { $0.index == index }
-                ?? Match(index: index, pattern: pattern, matchAction: "", notMatchAction: "", lastResult: nil)
-            match.pattern = pattern   // an invalid pattern is logged once per IfMatchN, even when it changes
-            match.matchAction = actionOption("IfMatchAction\(suffix)")
-            match.notMatchAction = actionOption("IfNotMatchAction\(suffix)")
-            result.append(match)
-        }
-        matches = result
     }
 
     // MARK: Update
@@ -353,86 +253,14 @@ open class Measure: SkinSection {
     }
 
     private func runActions() {
-        for i in conditions.indices {
-            guard let formula = conditions[i].formula else { continue }
-            guard let number = try? formula.evaluate({ skin.formulaValue(of: $0, from: self) }) else {
-                if !conditions[i].loggedError {
-                    conditions[i].loggedError = true
-                    skin.log("[\(name)] cannot evaluate IfCondition: \(conditions[i].source)", level: .error)
-                }
-                continue
-            }
-            let result = number != 0
-            if ifConditionMode || conditions[i].lastResult != result {
-                conditions[i].lastResult = result
-                let action = result ? conditions[i].trueAction : conditions[i].falseAction
-                if !action.isEmpty { skin.execute(action, from: self) }
-            }
-        }
-
-        func check(_ t: inout Threshold?, _ holds: (Double) -> Bool) {
-            guard var th = t else { return }
-            if holds(th.value) {
-                if !th.active {
-                    th.active = true
-                    t = th
-                    skin.execute(th.action, from: self)
-                    return
-                }
-            } else {
-                th.active = false
-            }
-            t = th
-        }
-        let current = value
-        check(&ifAbove) { current > $0 }
-        check(&ifBelow) { current < $0 }
-        check(&ifEqual) { roundedInt(current) == roundedInt($0) }
-
-        let needsText = !matches.isEmpty || !onChangeAction.isEmpty
-        let text = needsText ? stringValue : ""
-        for i in matches.indices {
-            guard let result = PCRE.matches(matches[i].pattern, in: text) else {
-                if !matches[i].loggedError {
-                    matches[i].loggedError = true
-                    skin.log("[\(name)] invalid IfMatch pattern: \(matches[i].pattern)", level: .error)
-                }
-                continue
-            }
-            if ifMatchMode || matches[i].lastResult != result {
-                matches[i].lastResult = result
-                let action = result ? matches[i].matchAction : matches[i].notMatchAction
-                if !action.isEmpty { skin.execute(action, from: self) }
-            }
-        }
-
-        if !onChangeAction.isEmpty {
-            if let lastValue, lastValue != value || lastString != text {
-                skin.execute(onChangeAction, from: self)
-            }
-            lastValue = value
-            lastString = text
-        } else {
-            // Not tracked while there is no action; a later !SetOption starts from a fresh "initial" value.
-            lastValue = nil
-            lastString = nil
-        }
-
-        if !onUpdateAction.isEmpty { skin.execute(onUpdateAction, from: self) }
-    }
-
-    /// Rounded to the nearest integer (IfEqualValue: "The compared value is rounded to an integer").
-    private func roundedInt(_ v: Double) -> Int64 {
-        guard v.isFinite else { return 0 }
-        return Int64(v.rounded().clamped(-9e18, 9e18))
+        actionPipeline.run(for: self) { skin.execute($0, from: self) }
     }
 
     /// Forgets the value OnChangeAction compares with: the next update counts as the first one after a load. A patch
     /// (`Skin.patch(sources:)`) updates a measure whose options changed this way — a reload would not report its new
     /// string as a change either.
     func forgetChangeBaseline() {
-        lastValue = nil
-        lastString = nil
+        actionPipeline.forgetChangeBaseline()
     }
 
     // MARK: Values for meters and section variables
