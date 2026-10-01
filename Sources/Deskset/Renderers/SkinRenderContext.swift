@@ -5,6 +5,7 @@ import DesksetCore
 /// - its text layouts, used both by `textSize` while the skin lays out its meters and by the String meter's drawing,
 ///   so the measured size is exactly what gets drawn;
 /// - its Rotator images with the image options applied;
+/// - its prepared Shape paths, keyed by drawing identity and revision;
 /// - the Histogram's scratch space and cropped images.
 ///
 /// One context per skin rather than caches shared by the whole app, so that skins updating and drawing on threads of
@@ -24,6 +25,10 @@ final class SkinRenderContext {
     let text = TextLayoutCache(fonts: AppFontResolver())
     /// The skin's Rotator images with the general image options applied.
     let rotatorImages = RotatorImageCache()
+    /// Prepared shape paths; entries contain only drawing values and CoreGraphics objects.
+    let shapes = ShapeCG.Cache()
+    /// At most this many sources, with only one revision per source; least recently drawn sources are evicted.
+    static let maxShapeSources = 256
     /// Scratch buffers for the Histogram's column rectangles (primary only, secondary only, overlap), reused from one
     /// Histogram and one frame to the next.
     var histogramParts: [[CGRect]] = [[], [], []]

@@ -20,29 +20,48 @@ enum ShapeCG {
         let extent: CGRect
     }
 
+    /// Prepared shapes belong to a drawing context, keyed by a value identity rather than a live meter. Only one
+    /// revision per source is kept; old snapshots rebuild changed items when replayed, so history cannot pile up.
     final class Cache {
-        let revision: Int
-        let shapes: [BuiltShape]
+        private struct Entry {
+            let revision: Int
+            let shapes: [BuiltShape]
+            var lastUse: UInt64
+        }
 
-        init(revision: Int, shapes: [BuiltShape]) {
-            self.revision = revision
-            self.shapes = shapes
+        private var entries: [UUID: Entry] = [:]
+        private var useClock: UInt64 = 0
+
+        /// Number of source payloads retained by this context (self-tests).
+        var count: Int { entries.count }
+
+        func built(for draw: ShapeDraw) -> [BuiltShape] {
+            useClock &+= 1
+            let old = entries[draw.sourceID]
+            if var old, old.revision == draw.revision {
+                old.lastUse = useClock
+                entries[draw.sourceID] = old
+                return old.shapes
+            }
+            // A new revision usually changes one or two shapes (a gauge arc) while the rest (tracks, dashed rings)
+            // stay the same: reuse identical items instead of stroking / combining them again.
+            var previous: [Int: BuiltShape] = [:]
+            for s in old?.shapes ?? [] { previous[s.item.index] = s }
+            let shapes = draw.shapes.map { item -> BuiltShape in
+                if let s = previous[item.index], s.item == item { return s }
+                return ShapeCG.build(item)
+            }
+            if old == nil, entries.count >= SkinRenderContext.maxShapeSources,
+               let oldest = entries.min(by: { $0.value.lastUse < $1.value.lastUse }) {
+                entries.removeValue(forKey: oldest.key)
+            }
+            entries[draw.sourceID] = Entry(revision: draw.revision, shapes: shapes, lastUse: useClock)
+            return shapes
         }
     }
 
-    static func built(for meter: ShapeMeter) -> [BuiltShape] {
-        let old = meter.renderCache as? Cache
-        if let old, old.revision == meter.revision { return old.shapes }
-        // A new revision usually changes one or two shapes (a gauge arc) while the rest (tracks, dashed rings) stay
-        // the same: reuse what was built for identical items instead of stroking / combining them again.
-        var previous: [Int: BuiltShape] = [:]
-        for s in old?.shapes ?? [] { previous[s.item.index] = s }
-        let shapes = meter.shapes.map { item -> BuiltShape in
-            if let s = previous[item.index], s.item == item { return s }
-            return build(item)
-        }
-        meter.renderCache = Cache(revision: meter.revision, shapes: shapes)
-        return shapes
+    static func built(for draw: ShapeDraw, in context: SkinRenderContext) -> [BuiltShape] {
+        context.shapes.built(for: draw)
     }
 
     // MARK: Building

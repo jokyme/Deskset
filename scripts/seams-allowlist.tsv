@@ -655,3 +655,7 @@ background.operationQueue	Sources/DesksetCore/Weather/WeatherTransport.swift	1	m
 random.UUID	Sources/DesksetCore/Engine/Meters/HistogramMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
 
 random.UUID	Sources/DesksetCore/Engine/Meters/LineMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Meters/ShapeMeter.swift	1	rendering-cache source identity only; does not alter pixels or represent a canonical program digest
+
+random.UUID	Sources/DesksetCore/Engine/Scene/ShapeDraw.swift	1	identity for independently constructed immutable shape payloads; no random pixel input or canonical program digest
