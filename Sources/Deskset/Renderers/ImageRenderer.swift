@@ -116,23 +116,27 @@ extension SkinRenderer {
     // MARK: Image
 
     static func drawImage(_ meter: ImageMeter, _ ctx: CGContext) {
-        let area = meter.contentFrame.cgRect
+        drawImage(meter.lower(), ctx)
+    }
+
+    static func drawImage(_ draw: ImageDraw, _ ctx: CGContext) {
+        let area = draw.contentFrame.cgRect
         // An SF Symbol is rendered for the area it covers (tiled: at its own size).
-        let fit = meter.maskImagePath == nil && meter.preserveAspectRatio == 1
-        guard var path = meter.imagePath else { return }
-        if meter.decodesAtDrawnSize, !meter.tile {
-            path = drawnDecodePath(path, options: meter.imageOptions, drawn: area.size, fit: fit, in: ctx)
+        let fit = draw.maskPath == nil && draw.preserveAspectRatio == 1
+        guard var path = draw.path else { return }
+        if draw.decodesAtDrawnSize, !draw.tile {
+            path = drawnDecodePath(path, options: draw.options, drawn: area.size, fit: fit, in: ctx)
         }
-        guard let prepared = PreparedImage(path: path, options: meter.imageOptions, drawn: meter.tile ? nil : area.size,
+        guard let prepared = PreparedImage(path: path, options: draw.options, drawn: draw.tile ? nil : area.size,
                                            fit: fit, in: ctx)
         else { return }
         guard area.width > 0, area.height > 0 else { return }
-        if let maskPath = meter.maskImagePath {
-            drawMasked(prepared, maskPath: maskPath, maskOptions: meter.maskOptions, in: area, ctx)
+        if let maskPath = draw.maskPath {
+            drawMasked(prepared, maskPath: maskPath, maskOptions: draw.maskOptions, in: area, ctx)
             return
         }
-        drawImageFile(prepared, in: area, preserveAspectRatio: meter.preserveAspectRatio, tile: meter.tile,
-                      scaleMargins: meter.scaleMargins, ctx)
+        drawImageFile(prepared, in: area, preserveAspectRatio: draw.preserveAspectRatio, tile: draw.tile,
+                      scaleMargins: draw.scaleMargins, ctx)
     }
 
     /// `MacDecodeSize=Drawn`: the path that decodes the file `path` at the pixels it covers when drawn over `drawn`
