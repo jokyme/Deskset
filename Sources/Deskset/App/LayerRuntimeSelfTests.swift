@@ -22,6 +22,7 @@ enum LayerRuntimeSelfTests {
         fallbackTests(t)
         antialiasedLineTests(t)
         antialiasedFullCircleTests(t)
+        elementCountTests(t)
         lifecycleTests(t)
         workerOwnerTests(t)
         transferTests(t)
@@ -935,6 +936,199 @@ enum LayerRuntimeSelfTests {
                 withExtendedLifetime([tree, limitedTree, originTree]) {}
             }
         }
+    }
+
+    private static func elementCountTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: element count guard retains exact Single for the current load") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: element-count native comparison did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB)
+            let fallback = LayerRuntime.Fallback.elementCountExceeded(actual: 5_001, limit: 5_000)
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                     maximumReadbackBytes: window.width * window.height * 4)
+                let small = fixture(0, scale, false, gradient: false)
+                let atLimit = paddingElements(small, to: 5_000)
+                var hiddenExtra = paddingElements(atLimit, to: 5_001)
+                hiddenExtra.elements[5_000].visibility = .hiddenKeepsSpace
+                var overlay = hiddenExtra
+                overlay.elements[5_000].visibility = .visible
+                overlay.elements[5_000].items = [fill(23, 16, 4, 3, RGBA(r: 247, g: 5, b: 193, a: 255))]
+
+                func checkNative(_ scene: WidgetScene, _ expectedFallback: LayerRuntime.Fallback?,
+                                 partition: LayerRuntime.Partition = .candidateComponents) throws -> (LayerRuntime.Frame, [UInt8]) {
+                    let update = try owner.update(prepare(scene, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: partition, context: context, cycle: 0, glass: .none)
+                    let frame: LayerRuntime.Frame
+                    switch update {
+                    case .submitted(let value), .unchanged(let value): frame = value
+                    case .suppressed: throw CocoaError(.coderInvalidValue)
+                    }
+                    t.equal(frame.fallback, expectedFallback)
+                    let actual = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+                    let cold = DrawContext(fonts: AppFontResolver())
+                    let reference = try baseline(scene, cold, 0, scale, space, .none)
+                    let expected = try renderer.render(cTree(reference, scale), at: 0, deadline: .now() + .seconds(30)).rgba
+                    checkFixture(actual, window, t)
+                    t.equal(actual, expected, "every retained element draws exactly as independent fresh Single")
+                    return (frame, actual)
+                }
+
+                let (first, a) = try checkNative(atLimit, nil)
+                t.check(first.plan.layers.contains { if case .group = $0.content { return true }; return false },
+                        "exactly 5000 elements still permits real components")
+                t.equal(first.plan.baseMembers, [baseID])
+                let saved = first.contents
+                let (hidden, hiddenPixels) = try checkNative(hiddenExtra, fallback)
+                t.equal(hidden.plan, SinglePartition.plan(in: window))
+                t.equal(hiddenPixels, a, "a hidden extra still counts, but adds no painted content")
+                let (last, b) = try checkNative(overlay, fallback)
+                t.equal(last.plan, SinglePartition.plan(in: window))
+                let pixel = (17 * scale * window.width + 24 * scale) * 4
+                t.equal(Array(b[pixel..<pixel + 4]), [247, 5, 193, 255],
+                        "the last visible occurrence beyond the limit is actually opaque and painted")
+                t.check(b != a, "omitting that last colored occurrence is detected by native pixels")
+                let (returned, again) = try checkNative(atLimit, fallback)
+                t.equal(returned.plan, SinglePartition.plan(in: window), "the committed guard lasts for this load")
+                t.equal(again, a, "A/B/A is exact while the load remains Single")
+                let (same, _) = try checkNative(atLimit, fallback)
+                t.equal(same.change, .unchanged, "reuse preserves the committed count reason")
+                t.equal(try renderer.render(cTree(saved, scale), at: 0, deadline: .now() + .seconds(30)).rgba, a,
+                        "older component images remain unchanged")
+
+                let (explicit, _) = try checkNative(atLimit, nil, partition: .single)
+                t.equal(explicit.plan, SinglePartition.plan(in: window))
+                let (guardedAgain, _) = try checkNative(atLimit, fallback)
+                t.equal(guardedAgain.change, .all(.partition), "explicit Single cannot erase the prior guard or reuse its nil reason")
+                try owner.setVisible(false)
+                t.check(owner.currentFrame == nil && (owner.root.sublayers ?? []).isEmpty)
+                try owner.setVisible(true)
+                _ = try checkNative(atLimit, fallback)
+                try owner.beginRefresh()
+                let (refreshed, _) = try checkNative(atLimit, nil)
+                t.equal(refreshed.change, .all(.refresh))
+                t.equal(refreshed.plan.baseMembers, [baseID])
+                t.check(refreshed.plan.layers.contains { if case .group = $0.content { return true }; return false },
+                        "a new load retries components")
+                t.check(renderer.hasVerifiedCanary)
+                withExtendedLifetime(tree) {}
+            }
+        }
+        t.suite("Runtime: layer runtime: element count errors and discarded preparation preserve the committed frame") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: element-count error and old-frame comparison did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB), window = try rect(0, 0, width, height)
+            let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, 1)
+            let renderer = try OffscreenRenderer(width: width, height: height, device: device,
+                                                 maximumReadbackBytes: width * height * 4)
+            let small = fixture(0, 1, false, gradient: false), large = paddingElements(small, to: 5_001)
+            let smallPrepared = try prepare(small, context, 1, space, .none)
+            let largePrepared = try prepare(large, context, 1, space, .none)
+            let first = try submitted(owner.update(smallPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            let pixels = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+            checkFixture(pixels, window, t)
+            let layers = owner.root.sublayers ?? [], bounds = owner.root.bounds
+            guard case .ready(let discarded) = try owner.prepare(largePrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none) else { throw CocoaError(.coderInvalidValue) }
+            t.equal(discarded.frame.fallback, .elementCountExceeded(actual: 5_001, limit: 5_000))
+            try checkRetained(owner, first, layers, bounds, tree, renderer, pixels, t)
+            try owner.discard(discarded)
+            let old = try submitted(owner.update(smallPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(old.fallback, nil, "discarding a ready Single cannot latch its guard")
+            let oldLayers = owner.root.sublayers ?? [], oldBounds = owner.root.bounds
+
+            func reject(_ prepared: SceneInkCandidates, _ expected: RasterizerKind,
+                        in destination: Rect, colorSpace: CGColorSpace) throws {
+                try expectRasterizer(expected, t) {
+                    _ = try owner.update(prepared, in: destination, scale: 1, colorSpace: colorSpace,
+                        partition: .candidateComponents, context: context, cycle: 0, glass: .none)
+                }
+                try checkRetained(owner, old, oldLayers, oldBounds, tree, renderer, pixels, t)
+            }
+            try reject(SceneInkCandidates(scene: large, elementInk: [], runInk: largePrepared.runInk),
+                       .invalidPlan, in: window, colorSpace: space)
+            var duplicate = large
+            duplicate.elements[5_000].id = large.elements[0].id
+            try reject(prepare(duplicate, context, 1, space, .none), .invalidPlan, in: window, colorSpace: space)
+            duplicate.elements[5_000].id = ElementID(name: "UniqueNameSameOccurrence", index: large.elements[0].id.index)
+            try reject(prepare(duplicate, context, 1, space, .none), .invalidPlan, in: window, colorSpace: space)
+            try reject(largePrepared, .invalidPlan, in: rect(1, 0, width + 1, height), colorSpace: space)
+            for badWidth in [Double(width - 1), .nan] {
+                var malformed = large
+                malformed.size.width = badWidth
+                try reject(prepare(malformed, context, 1, space, .none), .invalidInput, in: window, colorSpace: space)
+            }
+            try reject(largePrepared, .incompatibleColorSpace, in: window, colorSpace: CGColorSpaceCreateDeviceGray())
+            let recovered = try submitted(owner.update(smallPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(recovered.fallback, nil, "invalid over-limit attempts never latch")
+            t.equal(recovered.change, .all(.previousFailure))
+            guard case .ready(let accepted) = try owner.prepare(largePrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none) else { throw CocoaError(.coderInvalidValue) }
+            t.equal(owner.currentFrame?.sequence, recovered.sequence)
+            t.equal(try owner.commit(accepted).fallback, .elementCountExceeded(actual: 5_001, limit: 5_000))
+
+            let explicit = try runtime()
+            t.equal(try submitted(explicit.update(largePrepared, in: window, scale: 1, colorSpace: space,
+                partition: .single, context: context, cycle: 0, glass: .none)).fallback, nil)
+            t.equal(try submitted(explicit.update(smallPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none)).fallback, nil,
+                    "an intentional Single above the cap does not trigger the component guard")
+
+            let bytes = try Rasterizer.requiredBytes(width: width, height: height)
+            let limited = try LayerRuntime(executor: MainSkinExecutor.shared, maximumOwnedBitmapBytes: bytes * 2 - 1)
+            let limitedTree = host(limited.root, 1)
+            var cheap = small
+            cheap.elements = [small.elements[0]]
+            let cheapPrepared = try prepare(cheap, context, 1, space, .none)
+            let cheapOld = try submitted(limited.update(cheapPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            let cheapPixels = try renderer.render(limitedTree, at: 0, deadline: .now() + .seconds(30)).rgba
+            checkFixture(cheapPixels, window, t)
+            let cheapLayers = limited.root.sublayers ?? [], cheapBounds = limited.root.bounds
+            let oversized = paddingElements(cheap, to: 5_001)
+            for malformed in [false, true] {
+                var attempt = oversized
+                if malformed { attempt.size.width -= 1 }
+                try expectRasterizer(malformed ? .invalidInput : .resourceLimit, t) {
+                    _ = try limited.update(prepare(attempt, context, 1, space, .none), in: window, scale: 1, colorSpace: space,
+                        partition: .candidateComponents, context: context, cycle: 0, glass: .none)
+                }
+                try checkRetained(limited, cheapOld, cheapLayers, cheapBounds, limitedTree, renderer, cheapPixels, t)
+            }
+            let cheapAgain = try submitted(limited.update(cheapPrepared, in: window, scale: 1, colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(cheapAgain.fallback, nil, "failed Single allocation cannot lock the owner into an unaffordable mode")
+            t.equal(cheapAgain.change, .all(.previousFailure))
+
+            var empty = large
+            empty.size = SkinSize(width: 0, height: 0)
+            empty.background = []
+            for i in empty.elements.indices { empty.elements[i].items = [] }
+            let emptyOwner = try runtime()
+            let emptyFrame = try submitted(emptyOwner.update(prepare(empty, context, 1, space, .none), in: rect(0, 0, 0, 0),
+                scale: 1, colorSpace: space, partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+            t.equal(emptyFrame.fallback, .elementCountExceeded(actual: 5_001, limit: 5_000))
+            t.check(emptyFrame.contents.isEmpty && emptyFrame.plan.layers.isEmpty,
+                    "an empty destination has no fictitious bitmap success")
+            t.check(renderer.hasVerifiedCanary)
+            withExtendedLifetime([tree, limitedTree]) {}
+        }
+    }
+
+    /// Fixture padding keeps the original visible recipe and adds unique, empty file occurrences.
+    private static func paddingElements(_ original: WidgetScene, to count: Int) -> WidgetScene {
+        var scene = original
+        for i in scene.elements.count..<count {
+            scene.elements.append(element(ElementID(name: "EmptyUnit\(i)", index: 100 + i), []))
+        }
+        return scene
     }
 
     private static func lifecycleTests(_ t: AppTestRunner) {

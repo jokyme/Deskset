@@ -4,6 +4,8 @@ import DesksetDraw
 /// Ordered component geometry for a canonical device window. This consumes ideal preparation candidates;
 /// the returned plan is not raster admission and cannot authorize production clipping or skipped drawing.
 package enum ComponentPartition {
+    static let maximumElementCount = 5_000
+
     package enum Failure: Error, Equatable {
         case invalidPlan(String)
         case unresolvedInk(ElementID, InkBounds.Unknown)
@@ -18,7 +20,7 @@ package enum ComponentPartition {
     package static func candidatePlan(_ prepared: SceneInkCandidates, in window: InkBounds.DeviceRect,
                                       baseMembers frozenBase: [ElementID]? = nil) throws -> PartitionPlan {
         let scene = prepared.scene
-        guard scene.elements.count <= 5_000 else { throw Failure.resourceLimit("Scene exceeds 5000 elements") }
+        guard scene.elements.count <= maximumElementCount else { throw Failure.resourceLimit("Scene exceeds 5000 elements") }
         guard window.minX == 0, window.minY == 0 else {
             throw Failure.invalidPlan("The device window must have a canonical zero origin")
         }
