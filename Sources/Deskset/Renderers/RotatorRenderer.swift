@@ -10,12 +10,16 @@ extension SkinRenderer {
     /// A plain opacity (ImageAlpha / ImageTint alpha) is applied while drawing, not baked into the cached image.
     /// `UseExifOrientation=1` turns the image upright first (OffsetX / OffsetY are then upright image pixels).
     static func drawRotator(_ meter: RotatorMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
-        let (processing, opacity) = meter.imageProcessing.opacitySplit
-        guard opacity > 0, let path = meter.imagePath,
+        drawRotator(meter.lower(), ctx, context)
+    }
+
+    static func drawRotator(_ draw: RotatorDraw, _ ctx: CGContext, _ context: SkinRenderContext) {
+        let (processing, opacity) = draw.processing.opacitySplit
+        guard opacity > 0, let path = draw.path,
               let source = Images.cgImage(atPath: path, exifOriented: processing.useExifOrientation),
               let image = context.rotatorImages.image(for: source, path: path, processing: processing)
         else { return }
-        let t = meter.imageTransform
+        let t = draw.transform
         guard t.a.isFinite, t.b.isFinite, t.c.isFinite, t.d.isFinite, t.tx.isFinite, t.ty.isFinite else { return }
         ctx.saveGState()
         ctx.concatenate(CGAffineTransform(a: t.a, b: t.b, c: t.c, d: t.d, tx: t.tx, ty: t.ty))

@@ -7,20 +7,24 @@ extension SkinRenderer {
     /// Draws the geometry computed by `RoundlineMeter.shape` (all math lives in DesksetCore). Nothing is clipped to
     /// the meter box: without W/H the box is empty and the skin window does the cutting (manual note).
     static func drawRoundline(_ meter: RoundlineMeter, _ ctx: CGContext) {
-        let shape = meter.shape
-        guard shape != .none, meter.lineColor.a > 0 else { return }
+        drawRoundline(meter.lower(), ctx)
+    }
+
+    static func drawRoundline(_ draw: RoundlineDraw, _ ctx: CGContext) {
+        let shape = draw.shape
+        guard shape != .none, draw.color.a > 0 else { return }
         ctx.saveGState()
-        ctx.setShouldAntialias(meter.antiAlias)
+        ctx.setShouldAntialias(draw.antiAlias)
         switch shape {
         case .none:
             break
         case let .line(x1, y1, x2, y2, width):
-            ctx.setStrokeColor(meter.lineColor.cgColor)
+            ctx.setStrokeColor(draw.color.cgColor)
             ctx.setLineWidth(CGFloat(width))
             ctx.setLineCap(.butt)
             ctx.strokeLineSegments(between: [CGPoint(x: x1, y: y1), CGPoint(x: x2, y: y2)])
         case let .sector(cx, cy, inner, outer, start, sweep):
-            ctx.setFillColor(meter.lineColor.cgColor)
+            ctx.setFillColor(draw.color.cgColor)
             let center = CGPoint(x: cx, y: cy)
             let path = CGMutablePath()
             if abs(sweep) >= RoundMeterMath.fullCircle {

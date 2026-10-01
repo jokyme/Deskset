@@ -65,6 +65,7 @@ enum AppSelfTest {
         EngineReloadSelfTests.run(t)
         RenderContextSelfTests.run(t)
         DrawFontSelfTests.run(t)
+        TextDrawSelfTests.run(t)
         DrawImageSelfTests.run(t)
         SkinDrawingSelfTests.run(t)
         MacLookSelfTests.run(t)

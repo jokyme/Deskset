@@ -43,14 +43,19 @@ extension SkinRenderer {
     }
 
     static func drawString(_ meter: StringMeter, _ ctx: CGContext, _ context: SkinRenderContext) {
-        let text = meter.text
-        let style = meter.style
+        drawString(meter.lower(), ctx, context, cycle: meter.skin.updateCount)
+    }
+
+    /// `cycle` only governs layout-cache turnover; it is not an input to the picture or part of the text's value.
+    static func drawString(_ drawing: TextDraw, _ ctx: CGContext, _ context: SkinRenderContext, cycle: Int) {
+        let text = drawing.text
+        let style = drawing.style
         guard !text.isEmpty, style.fontSize > 0 else { return }
-        let box = meter.contentFrame.cgRect
+        let box = drawing.contentFrame.cgRect
         // Clipped text in an empty box shows nothing (and must not be wrapped one character per line).
         if style.clip != 0, box.width <= 0 || box.height <= 0 { return }
         let layout = context.text.layout(text, style: style, wrapWidth: style.wrap ? box.width : nil,
-                                         cycle: meter.skin.updateCount)
+                                         cycle: cycle)
         guard !layout.lines.isEmpty else { return }
 
         // The text matrix is not part of the graphics state: restore it for whoever draws next.
@@ -61,7 +66,7 @@ extension SkinRenderer {
             ctx.textMatrix = savedTextMatrix
         }
         if style.angle != 0 {
-            let anchor = meter.anchorPoint
+            let anchor = drawing.anchor
             ctx.translateBy(x: anchor.x, y: anchor.y)
             ctx.rotate(by: style.angle)
             ctx.translateBy(x: -anchor.x, y: -anchor.y)
@@ -91,7 +96,7 @@ extension SkinRenderer {
             positioned.append((line, CGPoint(x: x + line.indent, y: y + line.ascent)))
             y += line.height
         }
-        layout.draw(positioned, in: ctx, style: style, shadowClip: meter.frame.cgRect)
+        layout.draw(positioned, in: ctx, style: style, shadowClip: drawing.frame.cgRect)
     }
 }
 
