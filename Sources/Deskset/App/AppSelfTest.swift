@@ -73,6 +73,7 @@ enum AppSelfTest {
         InkBoundsSelfTests.run(t)
         ScenePreparerSelfTests.run(t)
         RectangleClosureSelfTests.run(t)
+        RectangleComplementSelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)
         SceneBitmapSelfTests.run(t)
