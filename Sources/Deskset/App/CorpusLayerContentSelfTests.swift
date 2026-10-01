@@ -401,6 +401,7 @@ enum CorpusLayerContentSelfTests {
             let fallback: String?
             switch frame.fallback {
             case let .some(.unresolvedInk(id, reason)): fallback = identity(id) + ":" + reason.rawValue
+            case let .some(.localizedAntialiasedLine(group)): fallback = "localizedAntialiasedLine:\(group)"
             case .none: fallback = nil
             }
             return Frame(update: sample.cycle, virtualSeconds: sample.seconds, replay: replay,

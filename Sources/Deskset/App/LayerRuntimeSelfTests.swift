@@ -20,6 +20,7 @@ enum LayerRuntimeSelfTests {
     static func run(_ t: AppTestRunner) {
         nativeTests(t)
         fallbackTests(t)
+        antialiasedLineTests(t)
         lifecycleTests(t)
         workerOwnerTests(t)
         transferTests(t)
@@ -600,6 +601,164 @@ enum LayerRuntimeSelfTests {
             t.check(negativePixels.contains { $0 != 0 })
             t.check(negativePixels != fullPixels, "native oracle rejects the forged empty ink candidate")
             withExtendedLifetime([tree, negativeTree]) {}
+        }
+    }
+
+    private static func antialiasedLineTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: local antialiased segments use exact Single without changing curve rules") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: actual local-stroke fallback comparison did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB)
+            func segment(_ aa: Bool, alpha: Double = 187) -> DrawItem {
+                .roundline(RoundlineDraw(shape: .line(x1: 3.25, y1: 4.5, x2: 9.75, y2: 8.25, width: 1),
+                    color: RGBA(r: 239, g: 173, b: 29, a: alpha), antiAlias: aa))
+            }
+            let fallback = LayerRuntime.Fallback.localizedAntialiasedLine(group: .group(fileIndex: backID.index))
+            for scale in [1, 2] {
+                let window = try rect(0, 0, width * scale, height * scale)
+                let context = DrawContext(fonts: AppFontResolver()), owner = try runtime()
+                let tree = host(owner.root, scale)
+                let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                     maximumReadbackBytes: window.width * window.height * 4)
+                let plain = fixture(0, scale, false, gradient: false)
+                var line = plain
+                line.elements[1].items = [.antialias(false, [.transformed(
+                    ShapeTransform(a: 1, b: 0, c: 0, d: 1, tx: 0.5, ty: 0.25), [segment(true)])])]
+
+                func checkNative(_ scene: WidgetScene, _ runtime: LayerRuntime, _ host: CALayer,
+                                 _ expectedFallback: LayerRuntime.Fallback?) throws -> (LayerRuntime.Frame, [UInt8]) {
+                    let prepared = try prepare(scene, context, scale, space, .none)
+                    // Same scene generation, cycle and context: a changed line/plan must still invalidate reuse.
+                    let frame = try submitted(runtime.update(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                        partition: .candidateComponents, context: context, cycle: 0, glass: .none))
+                    t.equal(frame.fallback, expectedFallback)
+                    let actual = try renderer.render(host, at: 0, deadline: .now() + .seconds(30)).rgba
+                    let coldContext = DrawContext(fonts: AppFontResolver())
+                    let reference = try baseline(scene, coldContext, 0, scale, space, .none)
+                    let expected = try renderer.render(cTree(reference, scale), at: 0, deadline: .now() + .seconds(30)).rgba
+                    t.check(stride(from: 3, to: actual.count, by: 4).contains { actual[$0] > 0 })
+                    t.equal(actual, expected, "fallback/native Single uses strict active RGBA bytes")
+                    let fresh = try self.runtime()
+                    let cold = try submitted(fresh.update(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                        partition: .candidateComponents, context: coldContext, cycle: 0, glass: .none))
+                    t.equal(try renderer.render(cTree(cold.contents, scale), at: 0,
+                                               deadline: .now() + .seconds(30)).rgba, actual,
+                            "fresh/incremental remains exact across fallback decisions")
+                    return (frame, actual)
+                }
+
+                var samples: [[UInt8]] = [], saved: [LayerContentBuilder.Content] = []
+                for (index, scene) in [plain, line, plain].enumerated() {
+                    let (frame, pixels) = try checkNative(scene, owner, tree, index == 1 ? fallback : nil)
+                    t.equal(frame.sequence, UInt64(index + 1))
+                    if index == 1 { t.equal(frame.plan, SinglePartition.plan(in: window)) }
+                    else { t.equal(frame.plan.baseMembers, [baseID]) }
+                    if index == 0 { saved = frame.contents }
+                    samples.append(pixels)
+                }
+                t.check(samples[0] != samples[1], "B really changes visible pixels")
+                t.equal(samples[0], samples[2], "A returns exactly after the local-stroke Single frame")
+                t.equal(try renderer.render(cTree(saved, scale), at: 0, deadline: .now() + .seconds(30)).rgba, samples[0],
+                        "saved component images remain unchanged after the builder switches twice")
+
+                // Shrink a frozen base below the initial size threshold while Single is active, then return to
+                // components. A fallback must not replace the retained base prefix with Single's empty prefix.
+                var smallBaseLine = line
+                smallBaseLine.elements[0].items = [fill(0, 0, 8, 5, RGBA(r: 31, g: 89, b: 151, a: 83))]
+                _ = try checkNative(smallBaseLine, owner, tree, fallback)
+                let (repeated, _) = try checkNative(smallBaseLine, owner, tree, fallback)
+                t.equal(repeated.change, .all(.unversionedRecipe), "a line recipe does not gain an unsafe reuse shortcut")
+                var smallBasePlain = smallBaseLine
+                smallBasePlain.elements[1].items = plain.elements[1].items
+                let (returned, _) = try checkNative(smallBasePlain, owner, tree, nil)
+                t.equal(returned.plan.baseMembers, [baseID], "fallback preserves the last component base membership")
+
+                let noPaint = DrawItem.roundline(RoundlineDraw(shape: .none, color: .white, antiAlias: true))
+                let curve = DrawItem.roundline(RoundlineDraw(shape: .sector(centerX: 7, centerY: 7, innerRadius: 2,
+                    outerRadius: 3, startAngle: 0, sweep: 2 * Double.pi), color: .white, antiAlias: true))
+                let clip = SkinRect(x: 2, y: 2, width: 10, height: 10)
+                let controls: [(String, [DrawItem])] = [
+                    ("the leaf's disabled AA overrides the outer true flag", [.antialias(true, [segment(false)])]),
+                    ("a transparent line grants no fallback", [segment(true, alpha: 0)]),
+                    ("none is not a stroke", [noPaint]),
+                    ("a sector keeps the existing curve rule", [curve]),
+                    ("a container without content never executes its mask", [.container(clip: clip, mask: [segment(true)], content: [])]),
+                    ("a zero-width clip does not execute its content", [.container(clip: SkinRect(x: 2, y: 2, width: 0, height: 10),
+                        mask: [fill(2, 2, 10, 10, .white)], content: [segment(true)])])
+                ]
+                for (label, items) in controls {
+                    var scene = plain
+                    scene.elements[1].items += items
+                    let control = try runtime()
+                    let frame = try submitted(control.update(prepare(scene, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none))
+                    t.equal(frame.fallback, nil, label)
+                    t.check(frame.plan.layers.contains { if case .group = $0.content { return true }; return false }, label)
+                }
+
+                for inMask in [true, false] {
+                    var scene = plain
+                    let placed = DrawItem.transformed(ShapeTransform(a: 1, b: 0, c: 0, d: 1, tx: 16, ty: 0), [segment(true)])
+                    scene.elements[inMask ? 3 : 4].items = [placed]
+                    let containerOwner = try runtime(), containerTree = host(containerOwner.root, scale)
+                    _ = try checkNative(scene, containerOwner, containerTree,
+                        .localizedAntialiasedLine(group: .group(fileIndex: maskID.index)))
+                }
+
+                var baseOnly = plain
+                baseOnly.elements[0].items.append(segment(true))
+                var hidden = plain
+                var hiddenElement = element(ElementID(name: "HiddenLine", index: 20), [segment(true)])
+                hiddenElement.visibility = .hiddenKeepsSpace
+                hidden.elements.append(hiddenElement)
+                var fullGroup = plain
+                fullGroup.elements = [element(baseID, [fill(0, 0, 2, 2, .white)]),
+                    element(backID, [fill(0, 0, Double(width), Double(height), RGBA(r: 31, g: 89, b: 151)), segment(true)])]
+                for scene in [baseOnly, hidden, fullGroup] {
+                    let control = try runtime(), controlTree = host(control.root, scale)
+                    _ = try checkNative(scene, control, controlTree, nil)
+                }
+
+                // A local bitmap may start at zero but still have a different height/CTM from the window.
+                var atOrigin = plain
+                atOrigin.elements = [element(backID, [fill(0, 0, 12, 10, .white), segment(true)])]
+                let originOwner = try runtime(), originTree = host(originOwner.root, scale)
+                _ = try checkNative(atOrigin, originOwner, originTree, fallback)
+
+                // A component plan can fit while the two full-window Single buffers cannot. No budget is raised,
+                // and neither that failure nor invalid scene geometry is allowed to replace the visible frame.
+                let limited = try LayerRuntime(executor: MainSkinExecutor.shared,
+                    maximumOwnedBitmapBytes: window.width * window.height * 8 - 1)
+                let limitedTree = host(limited.root, scale)
+                var cheap = plain
+                cheap.elements = [plain.elements[0], element(backID, [segment(false)])]
+                let old = try submitted(limited.update(prepare(cheap, context, scale, space, .none), in: window,
+                    scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                    cycle: 0, glass: .none))
+                t.equal(old.fallback, nil)
+                let oldPixels = try renderer.render(limitedTree, at: 0, deadline: .now() + .seconds(30)).rgba
+                let oldLayers = limited.root.sublayers ?? [], oldBounds = limited.root.bounds
+                var expensive = cheap
+                expensive.elements[1].items = [segment(true)]
+                try expectRasterizer(.resourceLimit, t) {
+                    _ = try limited.update(prepare(expensive, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none)
+                }
+                try checkRetained(limited, old, oldLayers, oldBounds, limitedTree, renderer, oldPixels, t)
+                var malformed = expensive
+                malformed.size.width -= 1
+                try expectRasterizer(.invalidInput, t) {
+                    _ = try limited.update(prepare(malformed, context, scale, space, .none), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents, context: context,
+                        cycle: 0, glass: .none)
+                }
+                try checkRetained(limited, old, oldLayers, oldBounds, limitedTree, renderer, oldPixels, t)
+                t.check(renderer.hasVerifiedCanary)
+                withExtendedLifetime([tree, limitedTree]) {}
+            }
         }
     }
 
