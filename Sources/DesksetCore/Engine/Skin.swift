@@ -1541,23 +1541,6 @@ public final class Skin {
         }
     }
 
-    /// Bangs the engine performs itself. Their `Config` argument (found with `BangCatalog`) routes them to another
-    /// skin through the host, or to every skin for `*`.
-    private static let localBangs: Set<String> = [
-        "setoption", "setoptiongroup", "setvariable", "writekeyvalue",
-        "update", "redraw",
-        "updatemeter", "updatemetergroup", "updatemeasure", "updatemeasuregroup", "movemeter",
-        "showmeter", "hidemeter", "togglemeter", "showmetergroup", "hidemetergroup", "togglemetergroup",
-        "enablemeasure", "disablemeasure", "togglemeasure",
-        "enablemeasuregroup", "disablemeasuregroup", "togglemeasuregroup",
-        "pausemeasure", "unpausemeasure", "togglepausemeasure",
-        "pausemeasuregroup", "unpausemeasuregroup", "togglepausemeasuregroup",
-        "commandmeasure", "pluginbang",
-        "disablemouseaction", "clearmouseaction", "enablemouseaction", "togglemouseaction",
-        "disablemouseactiongroup", "clearmouseactiongroup", "enablemouseactiongroup", "togglemouseactiongroup",
-        "log",
-    ]
-
     /// Performs one bang (arguments already resolved).
     ///
     /// Config argument (manual: "valid values are the config name of a currently loaded skin to be acted upon or
@@ -1584,31 +1567,20 @@ public final class Skin {
     /// `literalArguments`: indices of arguments written in `"""magic quotes"""`, which are "treated strictly
     /// literal" — no `(formula)` evaluation for `!SetVariable` / `!WriteKeyValue` / `!SetOption` values.
     func perform(_ bang: Bang, from section: SkinSection?, literalArguments: Set<Int>) {
-        guard Skin.localBangs.contains(bang.name) else {
-            if bang.name != "delay" { forwardToHost(bang) }
+        switch ActionExecutor.route(bang, currentConfig: config) {
+        case .ignored:
             return
+        case .host(let bang):
+            forwardToHost(bang)
+        case .local(let bang):
+            performLocally(bang, from: section, literal: literalArguments)
+        case .forward(let bang, let target):
+            host?.skin(self, forward: bang, toConfig: target)
+        case .localThenForward(let bang, let target):
+            performLocally(bang, from: section, literal: literalArguments)
+            // Local actions may replace or release the host, or close the skin. Read it at the original point.
+            host?.skin(self, forward: bang, toConfig: target)
         }
-        var args = bang.args
-        if let definition = BangCatalog.definition(for: bang.name), let configIndex = definition.configParameterIndex {
-            let target = definition.configArgument(in: args)
-            if args.count > configIndex { args = Array(args.prefix(configIndex)) }
-            if let target, !isOwnConfig(target) {
-                let local = Bang(name: bang.name, args: args)
-                if target == "*" {
-                    performLocally(local, from: section, literal: literalArguments)
-                    host?.skin(self, forward: local, toConfig: "*")
-                } else {
-                    host?.skin(self, forward: local, toConfig: target)
-                }
-                return
-            }
-        }
-        performLocally(Bang(name: bang.name, args: args), from: section, literal: literalArguments)
-    }
-
-    private func isOwnConfig(_ name: String) -> Bool {
-        let normalized = name.replacingOccurrences(of: "/", with: "\\")
-        return normalized.caseInsensitiveCompare(config) == .orderedSame
     }
 
     private func performLocally(_ bang: Bang, from section: SkinSection?, literal: Set<Int> = []) {
