@@ -30,12 +30,12 @@ final class SkinRenderContext {
     static let maxShapeSources = DesksetDraw.DrawContext.maxShapeSources
 
     var histogramParts: [[CGRect]] {
-        get { resources.histogramParts }
-        set { resources.histogramParts = newValue }
+        get { resources.histogram.parts }
+        set { resources.histogram.parts = newValue }
     }
     var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] {
-        get { resources.histogramCrops }
-        set { resources.histogramCrops = newValue }
+        get { resources.histogram.crops }
+        set { resources.histogram.crops = newValue }
     }
     static let maxHistogramCrops = AppDrawResources.maxHistogramCrops
 }

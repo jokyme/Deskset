@@ -202,7 +202,7 @@ effect.signal	Sources/Deskset/Fonts.swift	1	font registration queue and private 
 mono.systemUptime	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 random.pid	Sources/Deskset/Fonts.swift	2	font registration queue and private font copies; retry throttling
 
-mono.systemUptime	Sources/Deskset/Images.swift	2	image cache ageing; not a skin input
+mono.systemUptime	Sources/DesksetDraw/Images.swift	2	image cache ageing; not a skin input
 
 mono.systemUptime	Sources/Deskset/LegacyRender/LegacyImages.swift	2	the frozen copy of Images (debug builds only): image cache ageing; not a skin input
 

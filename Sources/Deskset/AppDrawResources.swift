@@ -6,34 +6,33 @@ import DesksetDraw
 final class AppDrawResources: ResourceLeafDrawing {
     let text = TextLayoutCache(fonts: AppFontResolver())
     let rotatorImages = RotatorImageCache()
-    var histogramParts: [[CGRect]] = [[], [], []]
-    var histogramCrops: [String: (source: CGImage, rect: CGRect, cropped: CGImage)] = [:]
-    static let maxHistogramCrops = 64
+    let histogram = DesksetDraw.HistogramCache()
+    static let maxHistogramCrops = DesksetDraw.HistogramCache.maxCrops
 
     func draw(_ value: TextDraw, in ctx: CGContext, cycle: Int) {
         DesksetDraw.TextRenderer.draw(value, in: ctx, layouts: text, cycle: cycle)
     }
 
     func draw(_ value: ImageDraw, in ctx: CGContext) {
-        SkinRenderer.drawImage(value, ctx)
+        DesksetDraw.ImageRenderer.draw(value, in: ctx)
     }
 
     func draw(_ value: BarDraw, in ctx: CGContext) {
-        SkinRenderer.drawBar(value, ctx)
+        DesksetDraw.BarRenderer.draw(value, in: ctx)
     }
 
     func draw(_ value: GraphDraw, in ctx: CGContext) {
         switch value {
-        case let .line(line): SkinRenderer.drawLine(line, ctx)
-        case let .histogram(histogram): SkinRenderer.drawHistogram(histogram, ctx, self)
+        case let .line(line): DesksetDraw.LineRenderer.draw(line, in: ctx)
+        case let .histogram(histogram): DesksetDraw.HistogramRenderer.draw(histogram, in: ctx, cache: self.histogram)
         }
     }
 
     func draw(_ value: RotatorDraw, in ctx: CGContext) {
-        SkinRenderer.drawRotator(value, ctx, self)
+        DesksetDraw.RotatorRenderer.draw(value, in: ctx, cache: rotatorImages)
     }
 
     func draw(_ value: SpriteDraw, in ctx: CGContext) {
-        SkinRenderer.drawSprite(value, ctx)
+        DesksetDraw.SpriteRenderer.draw(value, in: ctx)
     }
 }

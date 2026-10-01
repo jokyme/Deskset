@@ -110,34 +110,13 @@ enum SkinRenderer {
 
     /// Draws a CGImage upright into a flipped context.
     static func drawCGImage(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, alpha: CGFloat = 1) {
-        ctx.saveGState()
-        ctx.setAlpha(alpha)
-        ctx.translateBy(x: rect.minX, y: rect.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.interpolationQuality = .high
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: rect.width, height: rect.height))
-        ctx.restoreGState()
+        DesksetDraw.ImageRenderer.drawCGImage(image, in: rect, ctx, alpha: alpha)
     }
 
     /// Tiles `image` over `rect`, the first tile at its top-left corner, tiles upright. CoreGraphics does the tiling
     /// in one call and only for the visible (clipped) area: drawing tile by tile took one draw call per tile, i.e. a
     /// million calls per frame for a 1×1 image on a 1000×1000 skin, and practically forever for huge skin sizes.
     static func tile(_ image: CGImage, in rect: CGRect, _ ctx: CGContext, density: Images.Density = .one) {
-        guard image.width > 0, image.height > 0, rect.width > 0, rect.height > 0,
-              rect.minX.isFinite, rect.minY.isFinite, rect.maxX.isFinite, rect.maxY.isFinite else { return }
-        let area = rect.intersection(ctx.boundingBoxOfClipPath)
-        guard !area.isNull, !area.isEmpty else { return }
-        ctx.saveGState()
-        ctx.clip(to: area)
-        // Flip the context around the rect (top-left origin → bottom-left) so images are drawn upright; the tile
-        // whose top edge is the rect's top edge anchors the pattern.
-        ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        let w = CGFloat(image.width) / density.x, h = CGFloat(image.height) / density.y
-        // Integer tiles at the backing scale: `.none` gives exactly what drawing each tile did (checked pixel by
-        // pixel at 4x); smoothing would blur the pattern. (A symbol, rendered at the backing scale, is smoothed.)
-        ctx.interpolationQuality = density == .one ? .none : .high
-        ctx.draw(image, in: CGRect(x: rect.minX, y: rect.maxY - h, width: w, height: h), byTiling: true)
-        ctx.restoreGState()
+        DesksetDraw.ImageRenderer.tile(image, in: rect, ctx, density: density)
     }
 }
