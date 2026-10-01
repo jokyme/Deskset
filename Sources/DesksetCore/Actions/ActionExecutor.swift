@@ -50,6 +50,13 @@ internal enum ActionExecutor {
         }
     }
 
+    /// The same synchronous execution boundary for compiled scalar assignments. Each RHS sees all preceding
+    /// writes; resolving and applying one assignment never retains its borrowed, value-type transaction.
+    static func perform<T: ProgramAssignmentTarget>(_ assignment: ProgramAssignment, on target: inout T) throws {
+        let value = try target.resolveAssignmentValue(assignment.value)
+        try target.setProgramVariable(value, at: assignment.declaration)
+    }
+
     private static func lower(_ operation: ActionCatalog.LocalOperation, args: [String],
                               literal: Set<Int>) -> ResolvedLocalAction {
         func arg(_ i: Int) -> String { i < args.count ? args[i] : "" }
@@ -114,4 +121,11 @@ internal enum ActionExecutor {
         let normalized = name.replacingOccurrences(of: "/", with: "\\")
         return normalized.caseInsensitiveCompare(currentConfig) == .orderedSame
     }
+}
+
+/// A typed, local-only target, borrowed for one compiled assignment. Legacy Bang targets keep their existing
+/// class/host/forwarding contract; this target has no host capabilities and can fail its caller's transaction.
+internal protocol ProgramAssignmentTarget {
+    mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar
+    mutating func setProgramVariable(_ value: ProgramScalar, at declaration: Int) throws
 }

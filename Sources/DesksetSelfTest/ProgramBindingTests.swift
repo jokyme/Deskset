@@ -2,7 +2,33 @@ import Foundation
 @testable import DesksetCore
 @testable import DeskLanguage
 
-private enum BindingFixtureFailure: Error { case program, measurement }
+private enum BindingFixtureFailure: Error { case program, measurement, assignment }
+
+private struct BindingAssignmentTrace: ProgramAssignmentTarget {
+    enum Event: Equatable {
+        case resolve(ProgramExpression), write(Int, ProgramScalar)
+    }
+    var events: [Event] = []
+    var values: [Int: ProgramScalar] = [:]
+    var failResolve = false
+    var failWrite = false
+
+    mutating func resolveAssignmentValue(_ expression: ProgramExpression) throws -> ProgramScalar {
+        events.append(.resolve(expression))
+        if failResolve { throw BindingFixtureFailure.assignment }
+        switch expression {
+        case .string(let value): return .string(value)
+        case .boolean(let value): return .boolean(value)
+        default: throw ProgramRuntimeError.invalidExpression
+        }
+    }
+
+    mutating func setProgramVariable(_ value: ProgramScalar, at declaration: Int) throws {
+        events.append(.write(declaration, value))
+        if failWrite { throw BindingFixtureFailure.assignment }
+        values[declaration] = value
+    }
+}
 
 private func bindingEnvironment(_ dark: Bool) -> EnvironmentStamp {
     EnvironmentStamp(scale: 1, fontGeneration: 1,
@@ -163,7 +189,7 @@ func runProgramBindingTests(_ t: TestRunner) {
     }
 
     t.suite("Desk: bindings: unsupported data actions persistence and formatting retain source issues") {
-        let cases = [#"widget { variable x = "A"; Text(x).onLoad { x = "B" } }"#,
+        let cases = [#"widget { variable x = "A"; Text(x).onWake { x = "B" } }"#,
                      #"widget { variable x = false; Text("A").onClick { x = true } }"#,
                      #"widget { saved x = "A"; Text(x) }"#,
                      #"widget { Text(true) }"#, #"widget { Text(1) }"#,
@@ -215,5 +241,167 @@ func runProgramBindingTests(_ t: TestRunner) {
         t.check(result.program == nil)
         t.equal(result.issues.first?.kind, .resourceLimit)
         t.equal(result.issues.first?.file, checked.tree.file)
+    }
+
+    t.suite("Program: onLoad: the shared executor borrows typed state and propagates failures synchronously") {
+        let assignment = ProgramAssignment(declaration: 2, value: .string("甲😀"))
+        var target = BindingAssignmentTrace()
+        try ActionExecutor.perform(assignment, on: &target)
+        try ActionExecutor.perform(ProgramAssignment(declaration: 0, value: .boolean(true)), on: &target)
+        t.equal(target.events, [.resolve(.string("甲😀")), .write(2, .string("甲😀")),
+                                .resolve(.boolean(true)), .write(0, .boolean(true))])
+        t.equal(target.values, [2: .string("甲😀"), 0: .boolean(true)])
+        for resolving in [true, false] {
+            var failed = BindingAssignmentTrace(failResolve: resolving, failWrite: !resolving)
+            t.throwsError { try ActionExecutor.perform(assignment, on: &failed) }
+            t.equal(failed.events, resolving ? [.resolve(.string("甲😀"))] : [.resolve(.string("甲😀")), .write(2, .string("甲😀"))])
+            t.check(failed.values.isEmpty)
+        }
+    }
+
+    t.suite("Program: onLoad: ordered assignments invalidate pulled computed values and commit once") {
+        let declarations = [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false)),
+                            ProgramDeclaration(name: "caption", kind: .computed,
+                                               initial: .conditional(.declaration(0), then: .string("启用😀"), otherwise: .string("暂停😀"))),
+                            ProgramDeclaration(name: "before", kind: .variable, initial: .string("unset")),
+                            ProgramDeclaration(name: "after", kind: .variable, initial: .string("unset"))]
+        let children = (1...3).map { ProgramElement(id: ElementID(name: "t\($0)", index: $0), content: .text(ProgramText(value: .declaration($0)))) }
+        let root = ProgramElement(id: ElementID(name: "root", index: 0), content: .column(spacing: 0, align: .left, children: children))
+        let actions = [ProgramAssignment(declaration: 2, value: .declaration(1)),
+                       ProgramAssignment(declaration: 0, value: .not(.declaration(0))),
+                       ProgramAssignment(declaration: 3, value: .declaration(1))]
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Startup", root: root, declarations: declarations, onLoad: actions))
+        for dark in [false, true, false] {
+            let scene = try runtime.project(environment: bindingEnvironment(dark), measure: bindingMeasure)
+            t.equal(bindingStrings(scene), ["启用😀", "暂停😀", "启用😀"], "later statements see computed changes; another projection cannot toggle again")
+        }
+        t.equal(runtime.generation, 3)
+        var hidden = try ProgramRuntime(program: WidgetProgram(name: "Hidden startup", root: bindingText(.declaration(3), hidden: true), declarations: declarations, onLoad: actions))
+        var measured: [String] = []
+        let scene = try hidden.project(environment: bindingEnvironment(false)) { text, _, _ in
+            measured.append(text); return SkinSize(width: 12, height: 18)
+        }
+        t.equal(measured, ["启用😀"])
+        t.check(scene.drawingItems.isEmpty)
+        t.equal(scene.elements[0].visibility, .hiddenKeepsSpace)
+        t.equal(scene.size, SkinSize(width: 12, height: 18))
+    }
+
+    t.suite("Program: onLoad: failed startup and later measurement retain the previous complete transaction") {
+        let declarations = [ProgramDeclaration(name: "flag", kind: .variable, initial: .appearanceDark)]
+        let value = ProgramExpression.conditional(.declaration(0), then: .string("dark"), otherwise: .string("light"))
+        let program = WidgetProgram(name: "Retry", root: bindingText(value), declarations: declarations,
+                                    onLoad: [ProgramAssignment(declaration: 0, value: .not(.declaration(0)))])
+        var runtime = try ProgramRuntime(program: program)
+        t.throwsError { _ = try runtime.project(environment: bindingEnvironment(false)) { _, _, _ in throw BindingFixtureFailure.measurement } }
+        t.equal(runtime.generation, 0)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(true), measure: bindingMeasure)), ["light"], "failed startup kept neither initializers nor its assignment")
+        bindingFailure(t, .invalidMeasurement(ElementID(name: "text", index: 0))) {
+            _ = try runtime.project(environment: bindingEnvironment(false)) { _, _, _ in SkinSize(width: .nan, height: 18) }
+        }
+        t.equal(runtime.generation, 1)
+        t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["light"])
+        t.equal(runtime.generation, 2)
+        var reopened = try ProgramRuntime(program: program)
+        t.equal(bindingStrings(try reopened.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["dark"], "a new instance starts and assigns again")
+    }
+
+    t.suite("Program: onLoad: direct producers reject readonly targets wrong types and aggregate budgets") {
+        let declarations = [ProgramDeclaration(name: "flag", kind: .variable, initial: .boolean(false)),
+                            ProgramDeclaration(name: "caption", kind: .computed, initial: .string("A"))]
+        func make(_ actions: [ProgramAssignment]) throws -> ProgramRuntime {
+            try ProgramRuntime(program: WidgetProgram(name: "Validation", root: bindingText(.string("A")), declarations: declarations, onLoad: actions))
+        }
+        for index in [-1, Int.max] {
+            bindingFailure(t, .invalidDeclaration(index)) { _ = try make([ProgramAssignment(declaration: index, value: .boolean(true))]) }
+        }
+        bindingFailure(t, .invalidAssignment(1)) { _ = try make([ProgramAssignment(declaration: 1, value: .string("B"))]) }
+        bindingFailure(t, .invalidAssignment(0)) { _ = try make([ProgramAssignment(declaration: 0, value: .string("B"))]) }
+        bindingFailure(t, .invalidExpression) { _ = try make([ProgramAssignment(declaration: 0, value: .not(.string("A")))]) }
+        var deep = ProgramExpression.boolean(true)
+        for _ in 0..<ProgramLimits.maximumExpressionDepth { deep = .not(deep) }
+        bindingFailure(t, .expressionDepth) { _ = try make([ProgramAssignment(declaration: 0, value: deep)]) }
+        let bounded = Array(repeating: ProgramAssignment(declaration: 0, value: .boolean(true)), count: ProgramLimits.maximumExpressions - 3)
+        var accepted = try make(bounded) // Two initializer nodes + one Text node + one node per assignment.
+        t.equal(bindingStrings(try accepted.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["A"])
+        bindingFailure(t, .expressionLimit) { _ = try make(bounded + [ProgramAssignment(declaration: 0, value: .boolean(true))]) }
+        bindingFailure(t, .expressionLimit) { _ = try make(Array(repeating: ProgramAssignment(declaration: 0, value: .boolean(true)), count: ProgramLimits.maximumExpressions + 1)) }
+    }
+
+    t.suite("Desk: onLoad: checked root assignments feed shared scenes and preserve original slot identity") {
+        // The previous unsupported-onLoad literal is preserved as a real positive now that it has a consumer.
+        let original = #"widget { variable x = "A"; Text(x).onLoad { x = "B" } }"#
+        var simple = try ProgramRuntime(program: checkedBindingProgram(t, original))
+        t.equal(bindingStrings(try simple.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["B"])
+        let previousPreview = #"widget { variable state = false; Text("unsupported").onLoad { state = true } }"#
+        var previewLiteral = try ProgramRuntime(program: checkedBindingProgram(t, previousPreview))
+        t.equal(bindingStrings(try previewLiteral.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["unsupported"])
+        let source = #"widget { variable flag = false; computed caption = flag ? "启用😀" : "暂停😀"; variable before = "unset"; variable after = "unset"; Column { Text(before); Text(after); Text(caption) }.onLoad { before = caption; flag = not flag; after = caption } }"#
+        let program = try checkedBindingProgram(t, source)
+        t.equal(program, try checkedBindingProgram(t, "// a different syntax version\n" + source))
+        var runtime = try ProgramRuntime(program: program)
+        for dark in [false, true] {
+            t.equal(bindingStrings(try runtime.project(environment: bindingEnvironment(dark), measure: bindingMeasure)), ["暂停😀", "启用😀", "启用😀"])
+        }
+        let empty = try checkedBindingProgram(t, #"widget { Text("A").onLoad { } }"#)
+        var noActions = try ProgramRuntime(program: empty)
+        t.equal(bindingStrings(try noActions.project(environment: bindingEnvironment(false), measure: bindingMeasure)), ["A"])
+    }
+
+    t.suite("Desk: onLoad: child implicit root and other action bodies fail without dropping checked semantics") {
+        let cases = [#"widget { variable x = "A"; Column { Text(x).onLoad { x = "B" } } }"#,
+                     #"widget { variable x = "A"; Text(x).onLoad { x = "B" }; Text("second") }"#,
+                     #"widget { variable x = false; Text("A").onWake { x = true } }"#,
+                     #"widget { saved x = "A"; Text(x).onLoad { x = "B" } }"#,
+                     #"widget { variable x = false; Text("A").onLoad { if x { x = false } } }"#,
+                     #"widget { Text("A").name("details").onLoad { hide("details") } }"#]
+        for source in cases {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            t.check(result.program == nil)
+            t.equal(result.issues.first?.kind, .unsupported)
+            t.equal(result.diagnostics, checked.diagnostics)
+            if let issue = result.issues.first {
+                t.equal(issue.file, checked.tree.file)
+                t.check(!issue.range.isEmpty && issue.range.lowerBound >= 0 && issue.range.upperBound <= source.utf8.count)
+            }
+        }
+        for source in [#"widget { computed x = "A"; Text(x).onLoad { x = "B" } }"#,
+                       #"widget { variable x = false; Text("A").onLoad { x = "B" } }"#] {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(!checked.diagnostics(.error).isEmpty)
+            t.check(result.program == nil && result.issues.isEmpty)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+    }
+
+    t.suite("Desk: onLoad: compilation requires the checker's exact reaction and catalog timing contract") {
+        let source = #"widget { variable x = "A"; Text(x).onLoad { x = "B" } }"#
+        let checked = deskCheck(source)
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        func withReactions(_ reactions: [ReactionFacts]) -> CheckedFile {
+            var value = CheckedFile(tree: checked.tree, diagnostics: checked.diagnostics, symbols: checked.symbols,
+                                    types: checked.types, elements: checked.elements, dataUses: checked.dataUses,
+                                    dependencies: checked.dependencies, reactions: reactions, freeformOrders: checked.freeformOrders,
+                                    stringTable: checked.stringTable, requirements: checked.requirements, root: checked.root)
+            value.declarationTypes = checked.declarationTypes
+            return value
+        }
+        guard let reaction = checked.reactions.first else { throw BindingFixtureFailure.program }
+        var foreignElement = reaction
+        foreignElement.element = checked.tree.id(of: checked.tree.rootNode)
+        for reactions in [[], [reaction, reaction], [foreignElement]] {
+            let result = Desk.compile(withReactions(reactions))
+            t.check(result.program == nil)
+            t.equal(result.issues.first?.kind, .invalidCheckedModel)
+        }
+        var catalog = DeskCatalog.current
+        let index = catalog.modifiers.firstIndex { $0.name == "onLoad" }!
+        catalog.modifiers[index].timing = .onWake
+        let altered = deskCheck(source, context: CheckContext(catalog: catalog))
+        t.check(altered.diagnostics(.error).isEmpty, deskDescribe(altered))
+        let result = Desk.compile(altered, catalog: catalog)
+        t.check(result.program == nil)
+        t.equal(result.issues.first?.kind, .invalidCheckedModel)
     }
 }

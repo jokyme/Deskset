@@ -1,14 +1,17 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// rigid stacks and scalar text bindings. Actions and other content must be added with real shared consumers.
+/// rigid stacks, scalar text bindings and root startup assignments through the shared action executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
     public let declarations: [ProgramDeclaration]
+    public let onLoad: [ProgramAssignment]
 
-    public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = []) {
+    public init(name: String, root: ProgramElement, declarations: [ProgramDeclaration] = [],
+                onLoad: [ProgramAssignment] = []) {
         self.name = name
         self.root = root
         self.declarations = declarations
+        self.onLoad = onLoad
     }
 }
 

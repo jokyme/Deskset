@@ -5,6 +5,7 @@ struct ProgramExpressionCompiler {
     let checked: CheckedFile
     let catalog: DeskCatalog
     private var slots: [NodeID: Int] = [:]
+    private var assignmentTypes: [Int: DeskType] = [:]
     private var count = 0
 
     init(checked: CheckedFile, catalog: DeskCatalog) {
@@ -17,7 +18,8 @@ struct ProgramExpressionCompiler {
             throw issue(.resourceLimit, checked.tree.rootNode, "Shared program declaration limit exceeded")
         }
         slots = Dictionary(uniqueKeysWithValues: declarations.enumerated().map { (checked.tree.id(of: $0.element.node), $0.offset) })
-        return try declarations.map { declaration in
+        assignmentTypes.removeAll(keepingCapacity: true)
+        return try declarations.enumerated().map { index, declaration in
             let kind: ProgramDeclaration.Kind
             switch declaration.keyword.token.text {
             case "variable": kind = .variable
@@ -30,9 +32,22 @@ struct ProgramExpressionCompiler {
             guard type == .string || type == .bool else {
                 throw issue(.unsupported, declaration.node, "Only String and Bool declarations are implemented")
             }
+            if kind == .variable { assignmentTypes[index] = type }
             return ProgramDeclaration(name: declaration.name.token.name, kind: kind,
                                       initial: try lower(declaration.initializer.node, depth: 1))
         }
+    }
+
+    mutating func assignment(_ syntax: AssignmentSyntax) throws -> ProgramAssignment {
+        guard syntax.isPlainAssignment, syntax.target.path.count == 1,
+              case .declaration(let identity)? = checked.symbols[checked.tree.id(of: syntax.target.node)],
+              let index = slots[identity], let expected = assignmentTypes[index] else {
+            throw issue(.unsupported, syntax.target.node, "Only plain assignments to checked session variables are implemented")
+        }
+        guard let actual = checked.types[checked.tree.id(of: syntax.value.node)]?.type, actual == expected else {
+            throw issue(.invalidCheckedModel, syntax.value.node, "Checked assignment type does not match its declaration")
+        }
+        return ProgramAssignment(declaration: index, value: try lower(syntax.value.node, depth: 1))
     }
 
     mutating func text(_ node: PositionedNode) throws -> ProgramExpression {
