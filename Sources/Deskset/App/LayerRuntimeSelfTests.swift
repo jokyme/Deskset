@@ -22,6 +22,7 @@ enum LayerRuntimeSelfTests {
         fallbackTests(t)
         lifecycleTests(t)
         workerOwnerTests(t)
+        transferTests(t)
         preparationTests(t)
         preparationLifecycleTests(t)
     }
@@ -863,6 +864,62 @@ enum LayerRuntimeSelfTests {
         }
     }
 
+    private static func transferTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: exported tree writers retain values without retaining drawing owners") {
+            guard let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "native qualification required") }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                let executor = SkinThreadExecutor(name: "LayerRuntime tree writer test \(scale)x")
+                let worker = WorkerFixture(executor: executor)
+                defer { executor.stop() }
+                guard let initial = try workerResult(executor, t, { try worker.draw(variant: 0, cycle: 0, scale: scale, space: space) }),
+                      let exported = try workerResult(executor, t, { try worker.export(variant: 1, scale: scale, space: space) }) else { return }
+                let patch = exported.patch
+                t.equal(patch.state, .pending)
+                t.equal(patch.frame.sequence, initial.frame.sequence + 1)
+                t.check(!executor.isCurrent, "export never grants main executor ownership")
+                let before = patch.root.sublayers ?? []
+                t.check(patch.reclaim(.invalidated))
+                t.check(!patch.claimOnMain(), "invalidated pending cannot grant a late main writer")
+                guard let rejected = try workerResult(executor, t, { try worker.finish(patch, commitReclaimed: false) }) else { return }
+                t.equal(rejected, initial.frame.sequence, "invalidated content does not advance committed metadata")
+                t.check(before.count == (patch.root.sublayers ?? []).count &&
+                        zip(before, patch.root.sublayers ?? []).allSatisfy { $0.0 === $0.1 })
+                guard let next = try workerResult(executor, t, { try worker.export(variant: 1, scale: scale, space: space) }) else { return }
+                t.equal(next.patch.frame.sequence, patch.frame.sequence, "uncommitted sequence alone is not a lease identity")
+                // Manual protocol negative/positive control; actual main callback handoff is covered by the window suite.
+                t.check(next.patch.claimOnMain())
+                t.check(next.patch.isMainWriter(for: next.patch.root))
+                t.check(!next.patch.reclaim(.timeout))
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                t.check(next.patch.applyContentOnMain())
+                CATransaction.commit()
+                next.patch.finishOnMain()
+                t.equal(next.patch.state, .appliedByMain)
+                guard let accepted = try workerResult(executor, t, { try worker.finish(next.patch, commitReclaimed: true) }) else { return }
+                t.equal(accepted, initial.frame.sequence + 1, "only owner ack advances the completed frame once")
+                let renderer = try OffscreenRenderer(width: width * scale, height: height * scale, device: device,
+                    maximumReadbackBytes: width * height * scale * scale * 4)
+                let compare = executor.exclusive(timeout: 30) { () -> Result<Bool, Error> in
+                    Result {
+                        let actual = try renderer.render(host(next.patch.root, scale), at: 0, deadline: .now() + .seconds(30))
+                        let expected = try renderer.render(cTree(next.reference, scale), at: 0, deadline: .now() + .seconds(30))
+                        return actual.rgba == expected.rgba && stride(from: 3, to: actual.rgba.count, by: 4).contains { actual.rgba[$0] > 0 }
+                    }
+                }
+                t.check(compare != nil)
+                if let compare { t.check(try compare.get(), "transferred native contents strictly equal independently rasterized fresh Single") }
+                t.check(renderer.hasVerifiedCanary)
+                guard let retired = try workerResult(executor, t, { try worker.retire() }) else { return }
+                t.check(retired.runtimeReleased && retired.contextReleased, "retained patches do not hold a runtime or drawing context")
+                t.check(next.patch.frame.contents.allSatisfy { $0.image.width > 0 && $0.image.height > 0 },
+                        "finished image values remain valid after the true owner is released")
+                withExtendedLifetime([patch, next.patch]) {}
+            }
+        }
+    }
+
     private struct WorkerCompletion {
         let frame: LayerRuntime.Frame
         let reference: [LayerContentBuilder.Content]
@@ -920,6 +977,23 @@ enum LayerRuntimeSelfTests {
                 partition: .candidateComponents, context: context, cycle: cycle, glass: glass))
             let reference = try LayerRuntimeSelfTests.baseline(scene, context, cycle, scale, space, glass)
             return WorkerCompletion(frame: frame, reference: reference, onWorker: onWorker, live: owner.state == .live)
+        }
+
+        func export(variant: Int, scale: Int, space: CGColorSpace) throws -> (patch: ScenePatch, reference: [LayerContentBuilder.Content]) {
+            guard onWorker, let owner, let context else { throw CocoaError(.coderInvalidValue) }
+            let scene = LayerRuntimeSelfTests.fixture(variant, scale, false), glass = GlassPaint.placeholder(dark: false)
+            let window = try LayerRuntimeSelfTests.rect(0, 0, LayerRuntimeSelfTests.width * scale, LayerRuntimeSelfTests.height * scale)
+            let prepared = try LayerRuntimeSelfTests.prepare(scene, context, scale, space, glass)
+            guard case .ready(let token) = try owner.prepare(prepared, in: window, scale: CGFloat(scale), colorSpace: space,
+                partition: .candidateComponents, context: context, cycle: 1, glass: glass) else { throw CocoaError(.coderInvalidValue) }
+            let reference = try LayerRuntimeSelfTests.baseline(scene, context, 1, scale, space, glass)
+            return (try owner.transfer(token), reference)
+        }
+
+        func finish(_ patch: ScenePatch, commitReclaimed: Bool) throws -> UInt64? {
+            guard onWorker, let owner else { throw CocoaError(.coderInvalidValue) }
+            _ = try owner.finish(patch, commitReclaimed: commitReclaimed)
+            return owner.currentFrame?.sequence
         }
 
         func rootForMainAttachment() throws -> CALayer {

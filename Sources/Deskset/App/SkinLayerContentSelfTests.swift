@@ -45,6 +45,8 @@ enum SkinLayerContentSelfTests {
         handshakeTests(t)
         destinationTests(t)
         firstFrameTests(t)
+        patchReclaimTests(t)
+        patchClaimTests(t)
     }
 
     private static func app(_ t: AppTestRunner, threading: SkinThreading) throws -> AppController {
@@ -182,6 +184,14 @@ enum SkinLayerContentSelfTests {
         var beforeInstall: (() -> Void)?
         init(_ window: SkinWindowController, _ executor: SkinThreadExecutor) { self.window = window; self.executor = executor }
         func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
+            if case .scenePatch = request, !used {
+                // Exercise the still-supported ordinary-install fallback through a REAL unclaimed 50ms deadline.
+                let deadlinePassed = DispatchSemaphore(value: 0)
+                executor.async { deadlinePassed.signal() }
+                _ = deadlinePassed.wait(timeout: .now() + .seconds(30))
+                window.apply(request, from: runtime)
+                return
+            }
             if case .installLayerContent = request, !used {
                 used = true
                 executor.async { [self] in entered.signal(); release.wait() }
@@ -373,13 +383,215 @@ enum SkinLayerContentSelfTests {
         return zip(a, b).allSatisfy { $0.0 === $0.1 }
     }
 
-    private static func singleTree(_ content: LayerContentBuilder.Content, scale: CGFloat) -> CALayer {
+    /// Only delivery is held. The production runtime still prepares, waits/reclaims and applies on real threads.
+    private final class PatchGate: SkinRuntimeWindow {
+        let window: SkinWindowController
+        var withheld: [SkinScenePatch] = []
+        var holds = true
+        var callbacksOnMain = true
+        var ordinaryGenerations: [UInt64] = []
+        init(_ window: SkinWindowController) { self.window = window }
+        func apply(_ request: SkinRequest, from runtime: SkinRuntime) {
+            if case .layerHitMap(_, let generation, _) = request { ordinaryGenerations.append(generation) }
+            if case .scenePatch(let patch) = request, holds {
+                callbacksOnMain = callbacksOnMain && Thread.isMainThread
+                withheld.append(patch)
+                return
+            }
+            window.apply(request, from: runtime)
+        }
+        func batchingWindowChanges(_ body: () -> Void) { window.batchingWindowChanges(body) }
+        func liveEnvironment(for skin: Skin) -> SkinEnvironment? { window.liveEnvironment(for: skin) }
+        var liveTakesPointer: Bool? { window.liveTakesPointer }
+    }
+
+    private static func ownerWork(_ executor: SkinThreadExecutor, _ t: AppTestRunner,
+                                  _ body: @escaping () -> Void) {
+        let done = DispatchSemaphore(value: 0)
+        executor.async { body(); done.signal() }
+        t.check(done.wait(timeout: .now() + .seconds(30)) == .success, "real owner work reaches its completion fence")
+    }
+
+    private static func resizeRecipe(_ window: SkinWindowController, _ width: Int, _ left: Int) {
+        window.runtime.skin.execute("[!SetOption Back Shape \"Rectangle 0,0,\(width),32 | Fill Color 31,89,151,100 | StrokeWidth 0\"][!SetVariable Left \(left)][!UpdateMeter *][!Redraw]", from: nil)
+        window.runtime.frames.runLoopTurn(.beforeWaiting)
+    }
+
+    private static func checkCurrentTree(_ window: SkinWindowController, _ width: Int, _ t: AppTestRunner) throws {
+        guard let device = MTLCreateSystemDefaultDevice() else { return t.check(false, "native Metal qualification is required") }
+        let renderer = try OffscreenRenderer(width: width, height: 32, device: device,
+                                            maximumReadbackBytes: width * 32 * 4)
+        let comparison = window.runtime.exclusive(timeout: 30) { skin -> Result<Bool, Error> in
+            Result {
+                guard let frame = window.runtime.frames.layerRuntime?.currentFrame, let tree = window.view.layer else {
+                    throw CocoaError(.coderReadCorrupt)
+                }
+                let context = SkinRenderContext.of(skin), frames = window.runtime.frames
+                let environment = AppSceneEnvironment(scale: Double(frames.scale), appearance: .light,
+                                                       appearanceName: frames.appearance)
+                let scene = context.sceneProjector.project(skin, environment: environment, glassSource: .published)
+                let builder = try LayerContentBuilder(plan: SinglePartition.plan(in: frame.plan.window),
+                    scale: frame.scale, colorSpace: frame.colorSpace, maximumOwnedBitmapBytes: 1_000_000)
+                guard let reference = try builder.build(scene, context: context.drawing, cycle: skin.updateCount,
+                                                        glass: .hitArea).first else { throw CocoaError(.coderReadCorrupt) }
+                let single = singleTree(reference, scale: frame.scale, size: CGSize(width: width, height: 32))
+                let expected = try renderer.render(single, at: 0, deadline: .now() + .seconds(30))
+                let actual = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30))
+                return actual.rgba == expected.rgba && stride(from: 3, to: actual.rgba.count, by: 4).contains { actual.rgba[$0] > 0 }
+            }
+        }
+        t.check(comparison != nil, "native readback holds the real owner lease after ack")
+        if let comparison { t.check(try comparison.get(), "installed actual tree equals independent fresh Single bytes with nonempty alpha") }
+        t.check(renderer.hasVerifiedCanary, "native readback retains the original canary and fence")
+    }
+
+    private static func patchReclaimTests(_ t: AppTestRunner) {
+        t.suite("App: layer window content: real pending reclaim keeps host debt until latest apply and rejects old panels") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try activate(app, t)
+            prepareWindow(window, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return t.check(false, "real worker required") }
+            let gate = PatchGate(window)
+            window.runtime.window = gate
+            defer {
+                gate.holds = false
+                for patch in gate.withheld { _ = patch.content.reclaim(.invalidated); window.apply(.scenePatch(patch), from: window.runtime) }
+                window.runtime.window = window
+            }
+            ownerWork(executor, t) { resizeRecipe(window, 60, 12) }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.withheld.count >= 1 }, "real main delivery reaches the held patch")
+            guard let old = gate.withheld.first else { return }
+            t.equal(old.content.state, .reclaimedBySkin)
+            t.equal(old.content.reclamation, .timeout, "actual unclaimed deadline, not a scripted discard")
+            t.equal(window.view.bounds.size, CGSize(width: 48, height: 32), "owner fallback has not pretended to resize the host")
+            let progressed = window.runtime.exclusive(timeout: 30) { _ in
+                window.runtime.frames.layerRuntime?.currentFrame?.plan.window.width == Int(60 * window.runtime.frames.scale)
+            }
+            t.equal(progressed, true, "owner submits completed native content and continues after pending reclaim")
+            ownerWork(executor, t) { resizeRecipe(window, 48, 4) }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.ordinaryGenerations.contains { $0 > old.generation } },
+                    "a REAL newer ordinary frame publishes the already-correct host size")
+            t.equal(gate.withheld.count, 1, "returning to acknowledged host geometry does not request another main frame")
+            window.apply(.scenePatch(old), from: window.runtime)
+            t.equal(old.hostAcknowledgment, .none, "late main delivery cannot roll a newer ordinary frame back to old geometry")
+            t.equal(window.view.bounds.size, CGSize(width: 48, height: 32))
+            ownerWork(executor, t) {}
+            try checkCurrentTree(window, 48, t)
+            gate.withheld.removeAll()
+            ownerWork(executor, t) { resizeRecipe(window, 60, 12) }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.withheld.count == 1 }, "a new host debt really reaches main")
+            ownerWork(executor, t) { resizeRecipe(window, 60, 4) }
+            t.check(AppSelfTest.spin(timeout: 30) { gate.withheld.count >= 2 }, "latest content still carries the unacknowledged host size")
+            guard gate.withheld.count >= 2 else { return }
+            let latest = gate.withheld.last!
+            t.check(latest.generation > old.generation)
+            // Reverse delivery is intentional: an old, reclaimed packet must not roll back the latest host.
+            window.apply(.scenePatch(latest), from: window.runtime)
+            window.apply(.scenePatch(old), from: window.runtime)
+            t.equal(window.view.bounds.size, CGSize(width: 60, height: 32))
+            ownerWork(executor, t) {}
+            try checkCurrentTree(window, 60, t)
+            gate.withheld.removeAll()
+
+            ownerWork(executor, t) { resizeRecipe(window, 70, 12) }
+            t.check(AppSelfTest.spin(timeout: 30) { !gate.withheld.isEmpty }, "old-panel patch really arrived")
+            guard let stale = gate.withheld.first else { return }
+            let panel = window.window, generation = window.panelGeneration
+            ownerWork(executor, t) { window.runtime.skin.execute("[!ClickThrough 1][!ClickThrough 0]", from: nil) }
+            t.check(AppSelfTest.spin(timeout: 30) { window.panelGeneration > generation }, "actual ClickThrough replaces the panel at an owner safe point")
+            t.check(window.window !== panel)
+            window.window.colorSpace = .sRGB
+            window.publishFacts(force: true)
+            window.apply(.scenePatch(stale), from: window.runtime)
+            t.equal(stale.hostAcknowledgment, .none, "stale panel does not acknowledge or mutate the new host")
+            gate.holds = false
+            for patch in gate.withheld { window.apply(.scenePatch(patch), from: window.runtime) }
+            gate.withheld.removeAll()
+            window.runtime.send(.frameWanted)
+            t.check(AppSelfTest.spin(timeout: 30) { window.view.bounds.size.width == 70 }, "new panel receives a qualified current scene")
+            ownerWork(executor, t) {}
+            try checkCurrentTree(window, 70, t)
+            t.check(gate.callbacksOnMain)
+        }
+    }
+
+    private static func patchClaimTests(_ t: AppTestRunner) {
+        t.suite("App: layer window content: claimed main writer survives deadline while owner logic coalesces then closes") {
+            let app = try app(t, threading: .engine)
+            defer { app.stopAllForTermination(); app.endEngineThread() }
+            let window = try activate(app, t)
+            prepareWindow(window, t)
+            guard let executor = window.runtime.executor as? SkinThreadExecutor else { return t.check(false, "real worker required") }
+            var claimed: SkinScenePatch?
+            var sawMain = false, sawWriter = false, sawOwnerProgress = false, guardRejected = false
+            let result = Guarded<(Bool, Bool, Bool)?>(nil)
+            window.willApplyScenePatch = { patch in
+                guard claimed == nil else { return }
+                claimed = patch
+                sawMain = Thread.isMainThread && !executor.isCurrent && !executor.isOnThread
+                let oldChildren = patch.content.root.sublayers ?? []
+                let progressed = DispatchSemaphore(value: 0)
+                executor.async {
+                    let frames = window.runtime.frames
+                    let writer = frames.hasLayerWriter && frames.layerRuntime?.hasTransferredWriter == true
+                    var rejected = false
+                    do { try frames.layerRuntime?.close() }
+                    catch LayerRuntime.Failure.transferredWriter { rejected = true }
+                    catch {}
+                    window.runtime.skin.execute("[!SetVariable Left 4][!UpdateMeter *][!Redraw]", from: nil)
+                    frames.runLoopTurn(.beforeWaiting)
+                    result.access { $0 = (writer, frames.needsFrame, rejected) }
+                    progressed.signal()
+                }
+                t.check(progressed.wait(timeout: .now() + .seconds(30)) == .success,
+                        "actual worker leaves its 50ms wait and executes a canary while main retains the claim")
+                if let observed = result.current { sawWriter = observed.0; sawOwnerProgress = observed.1; guardRejected = observed.2 }
+                t.equal(patch.content.state, .applying)
+                t.check(!patch.content.reclaim(.timeout), "deadline cannot steal an applying writer")
+                t.check(zip(oldChildren, patch.content.root.sublayers ?? []).allSatisfy { $0.0 === $0.1 }
+                        && oldChildren.count == patch.content.root.sublayers?.count,
+                        "owner progress has not cleared, replaced or redrawn the shared tree")
+            }
+            defer { window.willApplyScenePatch = nil }
+            window.runtime.send(.run("[!SetOption Back Shape \"Rectangle 0,0,60,32 | Fill Color 31,89,151,100 | StrokeWidth 0\"][!SetVariable Left 12][!UpdateMeter *][!Redraw]"))
+            t.check(AppSelfTest.spin(timeout: 30) { claimed?.content.state == .appliedByMain }, "real main callback completes and releases the writer")
+            t.check(sawMain && sawWriter && sawOwnerProgress && guardRejected,
+                    "tree-only claim leaves executor ownership on worker, and owner mutations remain guarded")
+            window.willApplyScenePatch = nil
+            ownerWork(executor, t) {}
+            t.check(AppSelfTest.spin(timeout: 30) { window.runtime.exclusive(timeout: 0.25) { _ in !window.runtime.frames.hasLayerWriter } == true }, "late ack returns the writer and drains coalesced latest content")
+            ownerWork(executor, t) {}
+            try checkCurrentTree(window, 60, t)
+            t.equal(window.runtime.exclusive(timeout: 30) { skin in skin.variable("Left") }, "4", "latest logical value survives the main claim")
+
+            var closeClaimed = false
+            window.willApplyScenePatch = { patch in
+                guard !closeClaimed else { return }
+                closeClaimed = true
+                window.stop(fadeOut: false)
+                let reached = DispatchSemaphore(value: 0)
+                executor.async { reached.signal() }
+                t.check(reached.wait(timeout: .now() + .seconds(30)) == .success, "owner close/cleanup work continues while main owns writer")
+                t.equal(patch.content.state, .applying)
+                t.check(window.content.installedLayerRoot != nil, "main teardown has not detached an applying root")
+            }
+            window.runtime.send(.run("[!SetOption Back Shape \"Rectangle 0,0,70,32 | Fill Color 31,89,151,100 | StrokeWidth 0\"][!UpdateMeter *][!Redraw]"))
+            t.check(AppSelfTest.spin(timeout: 30) { closeClaimed && window.content.state.tornDown }, "released writer ack completes deferred close and actual main removal")
+            t.check(window.content.installedLayerRoot == nil)
+            t.equal(window.runtime.exclusive(timeout: 30) { _ in window.runtime.frames.layerRuntime == nil }, true)
+            window.willApplyScenePatch = nil
+        }
+    }
+
+    private static func singleTree(_ content: LayerContentBuilder.Content, scale: CGFloat,
+                                   size: CGSize = CGSize(width: 48, height: 32)) -> CALayer {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         let tree = CALayer(), image = CALayer()
         tree.anchorPoint = .zero
-        tree.bounds = CGRect(x: 0, y: 0, width: 48, height: 32)
+        tree.bounds = CGRect(origin: .zero, size: size)
         tree.isGeometryFlipped = true
         image.anchorPoint = .zero
         image.frame = tree.bounds
