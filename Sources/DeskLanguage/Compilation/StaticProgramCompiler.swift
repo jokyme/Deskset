@@ -99,12 +99,12 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Rectangle"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
-        let rectangle = facts.component == "Rectangle"
-        let allowedModifiers: Set<String> = rectangle
+        let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
+        let allowedModifiers: Set<String> = solidShape
             ? ["width", "height", "size", "padding", "fill", "name", "hidden"]
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         for modifier in call.modifiers {
@@ -116,7 +116,7 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
         }
-        let allowedFacets: Set<String> = rectangle
+        let allowedFacets: Set<String> = solidShape
             ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "hidden", "name"]
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
@@ -130,7 +130,7 @@ struct StaticProgramCompiler {
         }
         let index = try reserveIndex(at: node, depth: depth)
         // Text styles are inherited only by text and containers; a shape's fill is its own facet/default.
-        let appearance = rectangle ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
+        let appearance = solidShape ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
         let width = try length(facts, "width", default: spec.sizing.width, at: node)
         let height = try length(facts, "height", default: spec.sizing.height, at: node)
         let minWidth = try number(facts, "width.min", default: 0, at: node)
@@ -148,19 +148,25 @@ struct StaticProgramCompiler {
         } else { hidden = false }
         let content: ProgramElement.Content
         switch facts.component {
-        case "Rectangle":
+        case "Rectangle", "Circle", "Ellipse", "Capsule":
             guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
-                throw issue(.unsupported, node, "Rectangle takes no arguments or block")
+                throw issue(.unsupported, node, "\(facts.component) takes no arguments or block")
             }
             let value: Value
             if let own = try facet(facts, "fill", at: node) { value = own }
             else {
                 guard let source = spec.defaults[FacetID("fill")] else {
-                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Rectangle fill default")
+                    throw issue(.invalidCheckedModel, node, "The checking catalog has no \(facts.component) fill default")
                 }
                 value = try fixed(source, at: node)
             }
-            content = .rectangle(fill: try color(value, at: node))
+            let fill = try color(value, at: node)
+            switch facts.component {
+            case "Circle": content = .shape(kind: .circle, fill: fill)
+            case "Ellipse": content = .shape(kind: .ellipse, fill: fill)
+            case "Capsule": content = .shape(kind: .capsule, fill: fill)
+            default: content = .rectangle(fill: fill)
+            }
         case "Text":
             guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
                 throw issue(.unsupported, node, "Text requires one String expression")
@@ -211,7 +217,7 @@ struct StaticProgramCompiler {
         return ProgramElement(id: ElementID(name: facts.name ?? "\(facts.component)#\(index)", index: index),
                               content: content, width: width, height: height, padding: padding, hidden: hidden,
                               minWidth: minWidth, maxWidth: maxWidth, minHeight: minHeight, maxHeight: maxHeight,
-                              idealSize: rectangle ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil)
+                              idealSize: solidShape ? spec.sizing.idealWhenUnspecified.map { SkinSize(width: $0.width, height: $0.height) } : nil)
     }
 
     private mutating func rootOnLoad(_ modifier: ModifierAppSyntax, element: PositionedNode) throws {

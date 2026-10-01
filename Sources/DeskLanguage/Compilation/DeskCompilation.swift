@@ -27,7 +27,8 @@ public struct DeskCompilationResult: Sendable {
 
 public extension Desk {
     /// Checked source → the shared Core program. It supports String/Bool declarations and text expressions,
-    /// system.dark, root onLoad variable assignments, proposal-based Column/Row, solid Rectangle and constant box/style properties.
+    /// system.dark, root onLoad variable assignments, proposal-based Column/Row, solid Rectangle/Circle/Ellipse/Capsule,
+    /// and constant box/style properties.
     /// Fit/fill, catalog ideals and min/max use the shared runtime; preset overflow scaling remains unsupported.
     /// Other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).

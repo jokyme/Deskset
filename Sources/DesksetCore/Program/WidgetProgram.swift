@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// proposal-based stacks, solid rectangles, scalar text bindings and root startup assignments through the shared executor.
+/// proposal-based stacks, solid shapes, scalar text bindings and root startup assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -21,12 +21,19 @@ public enum ProgramLength: Equatable, Sendable {
     case fixed(Double)
 }
 
+/// Filled curves in the final content box. Circle is centered and uses the smaller box dimension.
+public enum ProgramShapeKind: Equatable, Sendable {
+    case circle, ellipse, capsule
+}
+
 /// A box in points. Child order is drawing order; identity is assigned by the producer, never by a syntax version.
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
         /// An unrounded solid rectangle in its content box. Nonfixed dimensions need an explicit ideal size.
         case rectangle(fill: ProgramColor)
+        /// A solid curved shape. Like Rectangle, nonfixed dimensions require the producer's ideal size.
+        case shape(kind: ProgramShapeKind, fill: ProgramColor)
         case column(spacing: Double, align: HorizontalTextAlign, children: [ProgramElement])
         case row(spacing: Double, align: VerticalTextAlign, children: [ProgramElement])
     }
