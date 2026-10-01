@@ -33,6 +33,14 @@ protocol SectionContext: AnyObject {
     func execute(_ actionText: String, from section: SkinSection?)
     func executePointerAction(_ action: String, from section: SkinSection, x: Double, y: Double,
                               relativeToSkin: Bool)
+    func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void,
+                            orElse dropped: ((T) -> Void)?)
+}
+
+extension SectionContext {
+    func startBackground<T>(_ job: BackgroundJob<T>, then completion: @escaping (T) -> Void) {
+        startBackground(job, then: completion, orElse: nil)
+    }
 }
 
 extension Skin: SectionContext {}

@@ -814,7 +814,7 @@ extension PowerPluginMeasure {
     /// The rated frequency, else the sensors' current clock of the faster CPU cluster; 0 when neither is known.
     func cpuHertz() -> Double {
         if let rated = sectionContext.system.cpuFrequency() { return rated }
-        if let mhz = HardwareSensors.source(for: skin)?.sensorValue(SensorKeys.frequencyCPU) { return mhz * 1_000_000 }
+        if let mhz = HardwareSensors.source(for: sectionContext.system)?.sensorValue(SensorKeys.frequencyCPU) { return mhz * 1_000_000 }
         return 0
     }
 }
