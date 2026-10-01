@@ -1,4 +1,6 @@
-/// Live, owner-confined services used by a section's option reads and bookkeeping.
+import Foundation
+
+/// Live, owner-confined services used by a section's option reads, measurements and bookkeeping.
 /// Skin supplies them directly so queries keep their current state and synchronous timing.
 protocol SectionContext: AnyObject {
     var settings: SkinSettings { get }
@@ -7,6 +9,12 @@ protocol SectionContext: AnyObject {
     var runsInVirtualTime: Bool { get }
     var measureValues: MeasureValueOverride? { get }
     var host: SkinHost? { get }
+    var system: SystemDataSource { get }
+    var counter: Int { get }
+    var random: SkinRandom { get }
+    var skinClock: SkinClock { get }
+    var clock: () -> TimeInterval { get }
+    var locale: Locale { get }
 
     func styleSection(named name: String) -> IniSection?
     func styleValues(named name: String) -> [String: String]?
@@ -16,6 +24,9 @@ protocol SectionContext: AnyObject {
     func noteSnapshotChange()
     func assertOwned(_ entry: StaticString)
     func log(_ message: String, level: SkinLogLevel)
+    func logOnce(_ message: String, level: SkinLogLevel)
+    func addIssue(_ issue: String)
+    func currentEnvironment() -> SkinEnvironment
     func formulaValue(of identifier: String, from section: SkinSection?) -> Double?
     func noteService(_ kind: BackgroundWorkKind)
     func execute(_ actionText: String, from section: SkinSection?)
