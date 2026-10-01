@@ -76,9 +76,6 @@ open class Measure: SkinSection {
     /// Whether `liveInputs` were noted (virtual time).
     private var notedInputs = false
 
-    /// Upper bound for `AverageSize` (a larger window is pointless and would cost memory).
-    static let maxAverageSize = 10_000
-
     public required init(name: String, section: IniSection, skin: Skin, type: String) {
         self.type = type
         super.init(name: name, section: section, skin: skin)
@@ -269,7 +266,13 @@ open class Measure: SkinSection {
     }
 }
 
-// MARK: - Action pipeline inputs
+// MARK: - Pipeline inputs
+
+extension Measure: MeasureNumericSource {
+    func logNumericPipeline(_ message: String, level: SkinLogLevel) {
+        sectionContext.log(message, level: level)
+    }
+}
 
 extension Measure: MeasureActionSource {
     func numberedActionOptions(_ key: String) -> [(index: Int, value: String)] {
@@ -290,7 +293,8 @@ extension Measure: MeasureActionSource {
 extension Measure {
     /// What this measure has seen so far, for a new instance of the widget (`SkinRuntimeState.MeasureState`).
     var runtimeSnapshot: SkinRuntimeState.MeasureState {
-        pipeline.runtimeSnapshot(for: self)
+        pipeline.runtimeSnapshot(type: type, kind: String(describing: Swift.type(of: self)), own: own,
+                                 value: value, rawString: rawString, averageSize: averageSize)
     }
 
     /// Takes what the same measure of another instance of the widget has seen (loaded, before the first update): its

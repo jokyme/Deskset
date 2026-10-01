@@ -15,12 +15,40 @@ protocol MeasureActionSource: AnyObject {
     func actionFormulaValue(of identifier: String) -> Double?
 }
 
+/// Live numerical inputs and outputs borrowed from an owner for one pipeline call. Automatic bounds and
+/// range refreshes stay at their original read points; publishing a minimum may affect the next maximum.
+protocol MeasureNumericSource: AnyObject {
+    var name: String { get }
+    var value: Double { get set }
+    var rawString: String? { get set }
+    var minValue: Double { get set }
+    var maxValue: Double { get set }
+    var invert: Bool { get set }
+    var averageSize: Int { get set }
+    var computedPlaceholder: Bool { get }
+    var tracksValueRange: Bool { get }
+    var allowsMinValueOption: Bool { get }
+    var allowsMaxValueOption: Bool { get }
+    var allowsInvert: Bool { get }
+    var allowsAverage: Bool { get }
+    var automaticMinValue: Double { get }
+    var automaticMaxValue: Double { get }
+    var rangeOptionScale: Double { get }
+    func bool(_ key: String, _ defaultValue: Bool) -> Bool
+    func int(_ key: String, _ defaultValue: Int) -> Int
+    func optionalDouble(_ key: String) -> Double?
+    func refreshRange()
+    func logNumericPipeline(_ message: String, level: SkinLogLevel)
+}
+
 /// The numerical and action state of one measure, confined to the skin's owner. Synchronous hooks or actions may
 /// reenter this measure; each call uses the same state at the original read/write points. Input objects and the
 /// non-escaping action callback are call arguments only; the pipeline keeps neither of them.
 final class MeasurePipeline {
     // MARK: - Numerical values
 
+    /// Upper bound for the average window, shared by every numerical producer.
+    private static let maxAverageSize = 10_000
     private var history: [Double] = []
     private var historyNext = 0
     /// MinValue / MaxValue as written (nil = not set), already scaled by `rangeOptionScale`.
@@ -30,21 +58,21 @@ final class MeasurePipeline {
     private var observedMax: Double?
     private var warnedAboutRange = false
 
-    func readValueOptions(for measure: Measure) {
+    func readValueOptions(for measure: any MeasureNumericSource) {
         let scale = measure.rangeOptionScale
         minValueOption = measure.allowsMinValueOption ? measure.optionalDouble("MinValue").map { $0 * scale } : nil
         maxValueOption = measure.allowsMaxValueOption ? measure.optionalDouble("MaxValue").map { $0 * scale } : nil
         measure.refreshRange()
         measure.invert = measure.allowsInvert && measure.bool("InvertMeasure", false)
         let size = measure.allowsAverage ? measure.int("AverageSize", 1) : 1
-        measure.averageSize = min(max(size, 0), Measure.maxAverageSize)
+        measure.averageSize = min(max(size, 0), Self.maxAverageSize)
         if measure.averageSize <= 1 || history.count > measure.averageSize {
             history = []
             historyNext = 0
         }
     }
 
-    func refreshRange(for measure: Measure) {
+    func refreshRange(for measure: any MeasureNumericSource) {
         if let minValueOption {
             measure.minValue = minValueOption
         } else if measure.tracksValueRange, let observedMin {
@@ -61,11 +89,11 @@ final class MeasurePipeline {
         }
         if measure.maxValue < measure.minValue && !warnedAboutRange {
             warnedAboutRange = true
-            measure.sectionContext.log("[\(measure.name)] MaxValue is less than MinValue", level: .debug)
+            measure.logNumericPipeline("[\(measure.name)] MaxValue is less than MinValue", level: .debug)
         }
     }
 
-    func finishValue(_ rawValue: Double, for measure: Measure) {
+    func finishValue(_ rawValue: Double, for measure: any MeasureNumericSource) {
         var v = rawValue
         if !v.isFinite { v = 0 }
         let placeholder = measure.computedPlaceholder
@@ -87,15 +115,17 @@ final class MeasurePipeline {
         measure.value = v.isFinite ? v : 0
     }
 
-    func runtimeSnapshot(for measure: Measure) -> SkinRuntimeState.MeasureState {
+    /// Compatibility metadata is supplied as values; the shared pipeline need not own a section or Skin.
+    func runtimeSnapshot(type: String, kind: String, own: IniSection, value: Double, rawString: String?,
+                         averageSize: Int) -> SkinRuntimeState.MeasureState {
         SkinRuntimeState.MeasureState(
-            type: measure.type, kind: String(describing: Swift.type(of: measure)), own: measure.own, value: measure.value, rawString: measure.rawString,
-            average: measure.averageSize > 1 && !history.isEmpty
+            type: type, kind: kind, own: own, value: value, rawString: rawString,
+            average: averageSize > 1 && !history.isEmpty
                 ? SkinRuntimeState.Average(samples: history, next: historyNext) : nil,
             observedMin: observedMin, observedMax: observedMax, webParser: nil)
     }
 
-    func seed(_ state: SkinRuntimeState.MeasureState, for measure: Measure) {
+    func seed(_ state: SkinRuntimeState.MeasureState, for measure: any MeasureNumericSource) {
         measure.value = state.value.isFinite ? state.value : 0
         measure.rawString = state.rawString
         if let average = state.average, measure.averageSize > 1, !average.samples.isEmpty,
