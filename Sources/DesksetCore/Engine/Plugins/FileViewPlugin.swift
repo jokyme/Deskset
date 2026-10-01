@@ -10,7 +10,33 @@ import Foundation
 /// effects (`SideEffects.writeFile`), so a sandboxed instance keeps the file in its copy and records the write.
 /// Without a renderer, Icon measures are empty.
 public enum FileViewIcons {
-    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)?
+    /// A replacement service has its own serial lane. Requests captured by the previous installation can finish
+    /// there without holding up a new service (for example, a synthetic renderer in an isolated virtual run).
+    public static var renderer: ((_ source: String, _ pixelSize: Int, _ pathExtension: String) -> Data?)? {
+        get { snapshot()?.draw }
+        set {
+            let next = newValue.map { Installation(draw: $0) }
+            lock.lock()
+            let previous = installation
+            installation = next
+            lock.unlock()
+            // A captured provider may run arbitrary cleanup when released; never release it under our lock.
+            withExtendedLifetime(previous) {}
+        }
+    }
+
+    fileprivate struct Installation {
+        let draw: (String, Int, String) -> Data?
+        let queue = DispatchQueue(label: "Deskset.FileViewIcons", qos: .utility)
+    }
+    private static let lock = NSLock()
+    private static var installation: Installation?
+
+    fileprivate static func snapshot() -> Installation? {
+        lock.lock()
+        defer { lock.unlock() }
+        return installation
+    }
 
     /// Most links and aliases followed from one item: a longer chain is taken for a loop.
     static let maxLinkHops = 16
@@ -355,7 +381,7 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
 
     /// The icon file path once it is written (written on a background queue; the value updates when done).
     private func icon(for item: Item) -> String {
-        guard let renderer = FileViewIcons.renderer else {
+        guard let installation = FileViewIcons.snapshot() else {
             report("icon", "FileView [\(name)]: file icons are not available")
             return ""
         }
@@ -374,9 +400,9 @@ public final class FileViewMeasure: Measure, PluginLifecycle {
         let pathExtension = (destination as NSString).pathExtension
         // Not a fixture: the icon comes from the system's icon service. Scripted: any value but a failure is an icon
         // saved.
-        let job = BackgroundJob(.fileViewIcon, subject: source, on: PluginIO.iconQueue, fixture: false,
+        let job = BackgroundJob(.fileViewIcon, subject: source, on: installation.queue, fixture: false,
                                 scripted: { $0.failureMessage == nil }) { () -> Bool in
-            guard let data = renderer(source, size, pathExtension) else { return false }
+            guard let data = installation.draw(source, size, pathExtension) else { return false }
             do {
                 try effects.writeFile(data, to: target, makingFolder: true)
                 return true
