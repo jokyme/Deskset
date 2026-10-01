@@ -75,6 +75,7 @@ enum AppSelfTest {
         RectangleClosureSelfTests.run(t)
         RectangleComplementSelfTests.run(t)
         OffscreenRendererSelfTests.run(t)
+        ComponentGeometrySelfTests.run(t)
         AppSceneEnvironmentSelfTests.run(t)
         SceneDrawingSelfTests.run(t)
         SceneBitmapSelfTests.run(t)
