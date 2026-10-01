@@ -4,15 +4,19 @@ public enum ProgramRuntimeError: Error, Equatable {
     case elementLimit, depthLimit, emptyProgram, duplicateIdentity(ElementID)
     case invalidGeometry(ElementID), invalidText(ElementID), invalidMeasurement(ElementID)
     case layoutOverflow(ElementID), invalidEnvironment, generationOverflow
+    case expressionLimit, expressionDepth, invalidExpression
+    case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
 }
 
-/// The executable static part of the shared runtime. It owns a program value and successful scene generations,
+/// The executable part of the shared runtime. It owns a program value, session variables and scene generations,
 /// not a Skin, host, timer or service. A failed measurement/layout never publishes a partial scene.
 public struct ProgramRuntime: Sendable {
     public let program: WidgetProgram
     public private(set) var generation: UInt64 = 0
+    private var variables: [ProgramScalar?]?
 
     public init(program: WidgetProgram) throws {
+        var expressions = try ProgramExpressionValidation(declarations: program.declarations)
         var pending = [(program.root, 1)], count = 0, textCount = 0
         var identities = Set<ElementID>()
         while let (node, depth) = pending.popLast() {
@@ -30,7 +34,11 @@ public struct ProgramRuntime: Sendable {
             switch node.content {
             case .text(let text):
                 textCount += 1
-                guard text.text.utf16.count <= ProgramLimits.maximumTextLength, !text.fontFamily.isEmpty,
+                if case .string(let literal) = text.value, literal.utf16.count > ProgramLimits.maximumTextLength {
+                    throw ProgramRuntimeError.invalidText(node.id)
+                }
+                try expressions.validateText(text.value)
+                guard !text.fontFamily.isEmpty,
                       text.fontSize.isFinite, text.fontSize > 0,
                       text.fontWeight.map({ (1...999).contains($0) }) ?? true else {
                     throw ProgramRuntimeError.invalidText(node.id)
@@ -58,7 +66,10 @@ public struct ProgramRuntime: Sendable {
         }
         let next = generation.addingReportingOverflow(1)
         guard !next.overflow else { throw ProgramRuntimeError.generationOverflow }
-        let box = try layout(program.root, proposedWidth: nil, appearance: appearance, measure: measure)
+        var evaluation = ProgramExpressionEvaluation(declarations: program.declarations, dark: appearance.isDark, variables: variables)
+        if variables == nil { try evaluation.initialize() }
+        let box = try layout(program.root, proposedWidth: nil, appearance: appearance,
+                             resolve: { try evaluation.text($0) }, measure: measure)
         var elements: [SceneElement] = []
         try append(box, at: SkinPoint(), inheritedHidden: false, into: &elements)
         var hitMap = SkinHitMap()
@@ -68,6 +79,7 @@ public struct ProgramRuntime: Sendable {
                                 backgroundImageDependencies: [], glass: [], elements: elements,
                                 hitMap: hitMap, environment: environment)
         generation = next.partialValue
+        variables = evaluation.variables
         return scene
     }
 
@@ -80,10 +92,12 @@ public struct ProgramRuntime: Sendable {
         let size: SkinSize
         let content: SkinRect
         let style: TextStyle?
+        let text: String?
         let children: [(Box, SkinPoint)]
     }
 
     private func layout(_ node: ProgramElement, proposedWidth: Double?, appearance: SkinAppearance,
+                        resolve: (ProgramExpression) throws -> String,
                         measure: (String, TextStyle, Double?) throws -> SkinSize) throws -> Box {
         let p = node.padding
         func sum(_ values: [Double]) throws -> Double {
@@ -95,13 +109,15 @@ public struct ProgramRuntime: Sendable {
         let fixedWidth: Double? = { if case .fixed(let n) = node.width { return n }; return nil }()
         let fixedHeight: Double? = { if case .fixed(let n) = node.height { return n }; return nil }()
         let availableWidth = (fixedWidth ?? proposedWidth).map { max(0, $0 - horizontal) }
-        var contentSize: SkinSize, style: TextStyle?, children: [(Box, SkinPoint)] = []
+        var contentSize: SkinSize, style: TextStyle?, resolvedText: String?, children: [(Box, SkinPoint)] = []
         switch node.content {
         case .text(let text):
+            let value = try resolve(text.value)
+            resolvedText = value
             func measured(_ style: TextStyle, width: Double?) throws -> SkinSize {
-                let result = try measure(text.text, style, width)
+                let result = try measure(value, style, width)
                 guard result.width.isFinite, result.height.isFinite, result.width >= 0, result.height >= 0,
-                      text.text.isEmpty || result.height > 0 else { throw ProgramRuntimeError.invalidMeasurement(node.id) }
+                      value.isEmpty || result.height > 0 else { throw ProgramRuntimeError.invalidMeasurement(node.id) }
                 return result
             }
             let unwrapped = text.drawingStyle(in: appearance, wrap: false)
@@ -114,12 +130,12 @@ public struct ProgramRuntime: Sendable {
             contentSize = SkinSize(width: width, height: result.height)
             style = finalStyle
         case .column(let spacing, _, let nodes):
-            let boxes = try nodes.map { try layout($0, proposedWidth: availableWidth, appearance: appearance, measure: measure) }
+            let boxes = try nodes.map { try layout($0, proposedWidth: availableWidth, appearance: appearance, resolve: resolve, measure: measure) }
             let height = try sum(boxes.map { $0.size.height } + [spacing * Double(max(0, boxes.count - 1))])
             contentSize = SkinSize(width: boxes.map { $0.size.width }.max() ?? 0, height: height)
             children = boxes.map { ($0, SkinPoint()) }
         case .row(let spacing, _, let nodes):
-            let boxes = try nodes.map { try layout($0, proposedWidth: nil, appearance: appearance, measure: measure) }
+            let boxes = try nodes.map { try layout($0, proposedWidth: nil, appearance: appearance, resolve: resolve, measure: measure) }
             let width = try sum(boxes.map { $0.size.width } + [spacing * Double(max(0, boxes.count - 1))])
             contentSize = SkinSize(width: width, height: boxes.map { $0.size.height }.max() ?? 0)
             children = boxes.map { ($0, SkinPoint()) }
@@ -146,7 +162,8 @@ public struct ProgramRuntime: Sendable {
             }
         }
         return Box(node: node, size: SkinSize(width: width, height: height),
-                   content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight), style: style, children: children)
+                   content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight),
+                   style: style, text: resolvedText, children: children)
     }
 
     private func append(_ box: Box, at point: SkinPoint, inheritedHidden: Bool, into elements: inout [SceneElement]) throws {
@@ -158,15 +175,16 @@ public struct ProgramRuntime: Sendable {
         var items: [DrawItem] = []
         let kind: ElementKind
         switch box.node.content {
-        case .text(let text):
+        case .text:
             kind = .string
-            if !hidden, let style = box.style {
+            guard let style = box.style, let text = box.text else { throw ProgramRuntimeError.invalidText(box.node.id) }
+            if !hidden {
                 let content = SkinRect(x: point.x + box.content.x, y: point.y + box.content.y,
                                        width: box.content.width, height: box.content.height)
                 guard [content.x, content.y, content.width, content.height, content.maxX, content.maxY].allSatisfy(\.isFinite) else {
                     throw ProgramRuntimeError.layoutOverflow(box.node.id)
                 }
-                items = [.text(TextDraw(text: text.text, style: style, frame: frame, contentFrame: content, anchor: point))]
+                items = [.text(TextDraw(text: text, style: style, frame: frame, contentFrame: content, anchor: point))]
             }
         case .column: kind = .unknown("Column")
         case .row: kind = .unknown("Row")

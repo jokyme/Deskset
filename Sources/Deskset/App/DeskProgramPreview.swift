@@ -3,7 +3,7 @@ import DeskLanguage
 import DesksetCore
 import DesksetDraw
 
-/// A static program's editor preview. The document checker owns source/version truth; this main-thread owner
+/// A shared program's editor preview. The document checker owns source/version truth; this main-thread owner
 /// only compiles its current finished snapshot and borrows the view's drawing destination. It activates no widget.
 final class DeskProgramPreviewController: NSViewController {
     enum State: Equatable {
