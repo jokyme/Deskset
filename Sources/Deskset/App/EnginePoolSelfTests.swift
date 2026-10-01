@@ -6,6 +6,7 @@ import DesksetCore
 enum EnginePoolSelfTests {
     static func run(_ t: AppTestRunner) {
         lifeTests(t)
+        quitBudgetTests(t)
         bangTests(t)
     }
 
@@ -71,6 +72,43 @@ enum EnginePoolSelfTests {
             }
             app.endEngineThread()
             t.check(AppSelfTest.spin(timeout: 30) { workers.allSatisfy(\.hasExited) }, "both workers exit")
+        }
+    }
+
+    static func quitBudgetTests(_ t: AppTestRunner) {
+        t.suite("App: skin pool: a stalled worker leaves quit time for close actions on the other worker") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .pool) else { return }
+            defer { app.endEngineThread() }
+            let text = "[Rainmeter]\nUpdate=-1\nOnCloseAction=[!SetVariable Closed 1]\n\n"
+                + "[Variables]\nClosed=0\n\n" + EngineThreadSelfTests.box
+            try EngineThreadSelfTests.write(app, ["A": text, "B": text])
+            for (order, name) in ["A", "B"].enumerated() {
+                app.state.update("Engine\\\(name)") { $0.file = "\(name).ini"; $0.loadOrder = order + 1 }
+            }
+            guard let a = app.activate(config: "Engine\\A", file: nil),
+                  let b = app.activate(config: "Engine\\B", file: nil) else { return t.check(false, "loaded") }
+            t.check(AppSelfTest.spin(timeout: 60) { a.isStarted && b.isStarted }, "both started")
+            guard a.runtime.executor !== b.runtime.executor else { return t.check(false, "different workers") }
+            let beganClose = Guarded<TimeInterval?>(nil)
+            _ = a.runtime.exclusive(timeout: 30) { _ in
+                a.runtime.messageObserver = { message in
+                    if case .close = message { beganClose.access { $0 = ProcessInfo.processInfo.systemUptime } }
+                }
+            }
+            let gate = SkinLifecycleSelfTests.Gate()
+            gate.hold(b.runtime.executor)
+            defer { gate.open() }
+            let budget = 1.0
+            let began = ProcessInfo.processInfo.systemUptime
+            let late = app.stopAllForTermination(budget: budget)
+            let fastClosedInBudget = a.runtime.didClose
+            gate.open()
+            t.check(AppSelfTest.spin(timeout: 30) { a.runtime.didClose && b.runtime.didClose }, "both eventually close")
+            t.check(fastClosedInBudget, "the free worker's skin closes before quit returns")
+            t.check(beganClose.current.map { $0 - began < budget } == true,
+                    "its close was sent before the shared deadline, even though the first worker stayed busy")
+            t.equal(late, ["Engine\\B"], "only the stalled skin missed the budget")
+            t.equal(a.runtime.exclusive(timeout: 30) { $0.variable("Closed") }, "1", "its OnCloseAction ran")
         }
     }
 

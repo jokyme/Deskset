@@ -926,7 +926,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   Workers never wait for another worker to perform a bang.
 - Skin impact: in pool mode, perform dependent work in the target skin after its received action; a later bang in the
   sender cannot assume another skin has already changed. On quit, close actions are queued in reverse load order,
-  within the existing two-second total budget, before their targets close.
+  within the existing two-second total budget, before their targets close. When a worker stalls, the final 250 ms
+  are reserved for the other worker; late close actions may then miss a target that has closed. This cutoff is logged.
 - Status: emulated
 
 ### Mouse decisions while the engine thread is busy

@@ -875,7 +875,8 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   finish. Self-directed bangs run in place. The default `engine` mode and `main` keep in-place peer delivery.
 - **Why:** message ordering must not depend on worker placement, and workers never wait for one another.
 - **Skin impact:** put work that depends on a peer bang in the target's action. At quit, close actions are queued in
-  reverse load order before their targets close, within the existing two-second total budget.
+  reverse load order before their targets close, within the existing two-second total budget. If a worker stalls,
+  the last 250 ms are reserved for the other worker; a late close action may miss a closed target (logged).
 - **Status:** emulated
 
 #### Mouse decisions while the engine thread is busy

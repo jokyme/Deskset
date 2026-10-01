@@ -238,6 +238,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// How long quitting waits in all for the skins' OnCloseActions (on their threads).
     static let terminationBudget: TimeInterval = 2
+    /// Once a pool worker cannot close in order, leave the other worker time to run its own close actions.
+    static let terminationWorkerReserve: TimeInterval = 0.25
 
     /// Runs every skin's OnCloseAction and closes it, keeping the loaded set for the next launch: `.close` goes to each
     /// skin in reverse load order, then quitting waits for them to close, at most `terminationBudget` in all (a skin on
@@ -254,12 +256,26 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             session.closeStudioSkin()
         }
         let closing = Array(sortedControllers.reversed())
-        for c in closing {
+        let orderedDeadline = deadline.addingTimeInterval(-min(Self.terminationWorkerReserve, max(0, budget) / 4))
+        var stalledWorkers: Set<ObjectIdentifier> = []
+        for (index, c) in closing.enumerated() {
             c.stop()
             if threading == .pool {
                 // A closing skin may send another skin a bang. Let it enqueue those messages before the next
-                // skin's close is queued, even when the two skins share a worker. The total quit budget is unchanged.
-                _ = c.runtime.waitUntilClosed(before: deadline)
+                // skin's close is queued. Only reserve time when another, independent worker still needs to close.
+                // This is one global cutoff, not a short per-skin timeout: ordinary close actions keep their order.
+                let worker = ObjectIdentifier(c.runtime.executor)
+                guard !stalledWorkers.contains(worker) else { continue }
+                let hasOtherWorker = closing.dropFirst(index + 1).contains {
+                    let other = ObjectIdentifier($0.runtime.executor)
+                    return other != worker && !stalledWorkers.contains(other)
+                }
+                let limit = hasOtherWorker ? orderedDeadline : deadline
+                if !c.runtime.waitUntilClosed(before: limit) {
+                    stalledWorkers.insert(worker)
+                    Log.write("Closing remaining skins without waiting longer for this worker's close action",
+                              level: .warning, source: c.config)
+                }
             }
         }
         let late = closing.filter { !$0.runtime.waitUntilClosed(before: deadline) }.map(\.config)
