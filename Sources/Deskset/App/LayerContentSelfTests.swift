@@ -24,6 +24,7 @@ enum LayerContentSelfTests {
 
     static func run(_ t: AppTestRunner) {
         compositionTests(t)
+        partitionTests(t)
         structureTests(t)
         membershipTests(t)
         rasterizerTests(t)
@@ -120,6 +121,134 @@ enum LayerContentSelfTests {
                     withExtendedLifetime(frames) {}
                 }
             }
+        }
+    }
+
+    private static func partitionTests(_ t: AppTestRunner) {
+        t.suite("Runtime: component partition: prepared recipes generate native Single-equivalent plans and preserve a frozen base") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: the automatic-plan comparison did not run")
+            }
+            let space = try rgb()
+            for scale in [1, 2] {
+                for dark in [false, true] {
+                    let note = "\(scale)x \(dark ? "dark" : "light") automatic plan"
+                    let window = try rect(0, 0, width * scale, height * scale)
+                    guard let queryBitmap = CGContext(data: nil, width: window.width, height: window.height,
+                                                       bitsPerComponent: 8, bytesPerRow: window.width * 4,
+                                                       space: space, bitmapInfo: info) else {
+                        return t.check(false, "the independent preparation target is unavailable")
+                    }
+                    queryBitmap.translateBy(x: 0, y: CGFloat(window.height))
+                    queryBitmap.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+                    let glass = GlassPaint.placeholder(dark: dark)
+                    let target = DrawTarget.prepareOwnedBitmap(queryBitmap, glass: glass)
+                    let queryContext = DrawContext(fonts: AppFontResolver())
+                    func prepare(_ scene: WidgetScene) -> SceneInkCandidates {
+                        ScenePreparer.prepare(scene, context: queryContext, target: target)
+                    }
+                    let scene = fixture(variant: 0, scale: scale, dark: dark)
+                    let prepared = prepare(scene)
+                    let plan = try ComponentPartition.candidatePlan(prepared, in: window)
+                    t.equal(plan, try components(scale: scale), "\(note): the independent literal plan includes only complete visible recipes")
+                    let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                         maximumReadbackBytes: window.width * window.height * 4)
+                    let reference = try builder(SinglePartition.plan(in: window), scale: scale, space: space)
+                    let context = DrawContext(fonts: AppFontResolver())
+                    let oracle = try RawOracle(scale: scale, space: space)
+                    func compare(_ value: WidgetScene, _ valuePlan: PartitionPlan, cycle: Int) throws -> [UInt8] {
+                        let original = try pixels(oracle.draw(value, cycle: cycle, glass: glass, t))
+                        let single = try reference.build(value, context: context, cycle: cycle, glass: glass)
+                        let grouped = try builder(valuePlan, scale: scale, space: space)
+                            .build(value, context: context, cycle: cycle, glass: glass)
+                        let expected = try renderer.render(tree(single, scale: scale), at: 0, deadline: .now() + .seconds(30))
+                        let actual = try renderer.render(tree(grouped, scale: scale), at: 0, deadline: .now() + .seconds(30))
+                        check(expected, original, t, "\(note): Single / raw oracle")
+                        check(actual, expected.rgba, t, "\(note): generated components / Single")
+                        t.check(actual.rgba.contains { $0 != 0 }, "\(note): native output is not an empty pass")
+                        return expected.rgba
+                    }
+                    let expected = try compare(scene, plan, cycle: 0)
+                    var smaller = fixture(variant: 1, scale: scale, dark: dark)
+                    smaller.elements[0].items = [fill(0, 0, 1, Double(height), RGBA(r: 37, g: 137, b: 241, a: 123))]
+                    let frozen = try ComponentPartition.candidatePlan(prepare(smaller), in: window, baseMembers: plan.baseMembers)
+                    t.equal(frozen.baseMembers, [baseID], "the base is not reclassified when its current area shrinks")
+                    t.equal(try ComponentPartition.candidatePlan(prepare(smaller), in: window).baseMembers, [],
+                            "a new classification sees the smaller area; it is not silently used for the frozen plan")
+                    t.check(try compare(smaller, frozen, cycle: 1) != expected, "the new frame changes real pixels")
+
+                    var corrupted = prepared.runInk
+                    corrupted[2] = .rectangle(try rect(10 * scale, 10 * scale, 12 * scale, 11 * scale))
+                    let wrong = SceneInkCandidates(scene: scene, elementInk: prepared.elementInk, runInk: corrupted)
+                    let wrongPlan = try ComponentPartition.candidatePlan(wrong, in: window)
+                    let content = try builder(wrongPlan, scale: scale, space: space)
+                        .build(scene, context: context, cycle: 2, glass: glass)
+                    let negative = try renderer.render(tree(content, scale: scale), at: 0, deadline: .now() + .seconds(30))
+                    t.check(negative.rgba.contains { $0 != 0 } && negative.rgba != expected,
+                            "a complete tiling with false ink metadata is detected by the independent reference")
+                    t.check(renderer.hasVerifiedCanary, "the native comparisons ran after the poisoned-image canary")
+
+                    func rejects(_ input: SceneInkCandidates, base: [ElementID]? = nil,
+                                 expected: ComponentPartition.Failure) {
+                        do {
+                            _ = try ComponentPartition.candidatePlan(input, in: window, baseMembers: base)
+                            t.check(false, "invalid partition metadata unexpectedly succeeded")
+                        } catch let failure as ComponentPartition.Failure { t.equal(failure, expected) }
+                        catch { t.check(false, "unexpected partition failure: \(error)") }
+                    }
+                    var unknown = prepared.runInk
+                    unknown[2] = .unknown(.unresolvedRasterization)
+                    rejects(SceneInkCandidates(scene: scene, elementInk: prepared.elementInk, runInk: unknown),
+                            expected: .unresolvedInk(backID, .unresolvedRasterization))
+                    rejects(prepared, base: [frontID],
+                            expected: .invalidPlan("Frozen base members must be the drawn scene's leading content prefix"))
+                    rejects(SceneInkCandidates(scene: scene, elementInk: [], runInk: prepared.runInk),
+                            expected: .invalidPlan("Preparation must retain the complete element and drawing-run order"))
+                    var duplicate = scene
+                    duplicate.elements[1].id = baseID
+                    rejects(SceneInkCandidates(scene: duplicate, elementInk: prepared.elementInk, runInk: prepared.runInk),
+                            expected: .invalidPlan("Scene identities and file occurrences must be unique"))
+                }
+            }
+        }
+        t.suite("Runtime: component partition: clipping gaps, exact element limits and empty windows retain explicit roles") {
+            let window = try rect(0, 0, width, height)
+            var scene = fixture(variant: 0, scale: 1, dark: false)
+            scene.elements[0].items = [fill(50, 0, 40, 28, RGBA(r: 97, g: 13, b: 219, a: 255))]
+            let run: [InkBounds.Candidate] = [
+                .unknown(.unresolvedRasterization), // Whole-window background needs no component ink admission.
+                .rectangle(try rect(50, 0, 90, 28)), .rectangle(try rect(3, 4, 12, 11)),
+                .rectangle(try rect(7, 8, 16, 15)), .rectangle(try rect(24, 3, 36, 16)),
+            ]
+            let prepared = SceneInkCandidates(scene: scene, elementInk: Array(repeating: .empty, count: scene.elements.count), runInk: run)
+            let plan = try ComponentPartition.candidatePlan(prepared, in: window)
+            t.equal(plan.baseMembers, [])
+            t.equal(plan.skipped, [baseID], "the fully clipped first occurrence leaves a real file-order gap")
+            let groups = plan.layers.filter { if case .group = $0.content { return true }; return false }
+            t.equal(groups.map(\.id), [.group(fileIndex: 1), .group(fileIndex: 3)], "group identity uses original file occurrences")
+            t.equal(groups.map(\.content), [.group(members: [backID, frontID]), .group(members: [maskID])],
+                    "a container child is never independently classified")
+            scene.elements = (0..<5_000).map { element(ElementID(name: "Unit\($0)", index: $0), items: []) }
+            scene.background = []
+            scene.glass = []
+            let atLimit = SceneInkCandidates(scene: scene, elementInk: Array(repeating: .empty, count: 5_000),
+                                            runInk: Array(repeating: .empty, count: 5_001))
+            let accepted = try ComponentPartition.candidatePlan(atLimit, in: window)
+            t.equal(accepted.skipped.count, 5_000, "the exact element cap is accepted without raster work")
+            t.equal(accepted.layers, [LayerPlan(id: .baseSlice(index: 0), rect: window, content: .baseSlice(source: window))])
+            scene.elements.append(element(ElementID(name: "OverLimit", index: 5_000), items: []))
+            do {
+                _ = try ComponentPartition.candidatePlan(SceneInkCandidates(scene: scene, elementInk: [], runInk: []), in: window)
+                t.check(false, "a scene over the fixed cap was accepted")
+            } catch let failure as ComponentPartition.Failure {
+                t.equal(failure, .resourceLimit("Scene exceeds 5000 elements"))
+            } catch { t.check(false, "unexpected cap failure: \(error)") }
+            var emptyScene = atLimit.scene
+            emptyScene.size = SkinSize(width: 0, height: 0)
+            let empty = try rect(0, 0, 0, 0)
+            let emptyPrepared = SceneInkCandidates(scene: emptyScene, elementInk: atLimit.elementInk, runInk: atLimit.runInk)
+            t.equal(try ComponentPartition.candidatePlan(emptyPrepared, in: empty), SinglePartition.plan(in: empty),
+                    "an empty canonical viewport produces no drawing roles or bitmap allocation")
         }
     }
 

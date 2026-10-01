@@ -8,4 +8,10 @@ package struct SceneInkCandidates: Equatable, Sendable {
     package let elementInk: [InkBounds.Candidate]
     /// Complete drawing-run order: background first, then visible top-level compositions with containers atomic.
     package let runInk: [InkBounds.Candidate]
+
+    package init(scene: WidgetScene, elementInk: [InkBounds.Candidate], runInk: [InkBounds.Candidate]) {
+        self.scene = scene
+        self.elementInk = elementInk
+        self.runInk = runInk
+    }
 }
