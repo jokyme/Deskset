@@ -922,11 +922,49 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries, TickTarget {
                                                       autoSelectScreen: settings.autoSelectScreen)
         #if DEBUG
         if SnapshotAudit.isActive(self), let live = window?.liveEnvironment(for: skin) {
-            SnapshotAudit.compare("environment", self, snapshot: env, live: live, sides: SkinRuntime.auditSides)
+            let compared = Self.environmentForAudit(live, snapshot: env, model: model, requestedSize: requestedSize,
+                usesLayers: frames.contentMode.usesLayers, screens: EnvironmentStore.shared.currentScreens)
+            SnapshotAudit.compare("environment", self, snapshot: env, live: compared, sides: SkinRuntime.auditSides)
         }
         #endif
         return env
     }
+
+    #if DEBUG
+    /// A C frame's logical resize precedes its host acknowledgment. Adjust only this known comparison debt;
+    /// the actual window, returned environment and every unrelated audited value stay unchanged.
+    static func environmentForAudit(_ live: SkinEnvironment, snapshot: SkinEnvironment, model: SkinWindowModel,
+                                    requestedSize: CGSize?, usesLayers: Bool,
+                                    screens: [WindowGeometry.Screen]) -> SkinEnvironment {
+        guard usesLayers, let size = requestedSize, let facts = model.facts, let frame = model.frame,
+              facts.frame.size != size, model.sequence == facts.modelSequence, model.settings == facts.settings else {
+            return live
+        }
+        var resized = SkinWindowModel()
+        resized.take(facts)
+        resized.resize(to: size, screens: screens)
+        guard resized.frame == frame else { return live }
+        func geometry(_ frame: CGRect) -> SkinEnvironment {
+            EnvironmentStore.environment(windowFrame: frame, screens: screens, settingsPath: snapshot.settingsPath,
+                programPath: snapshot.programPath, configEditor: snapshot.configEditor, appearance: snapshot.appearance)
+        }
+        func selectedScreen(_ frame: CGRect) -> Int {
+            // The same frame-dependent selection as EnvironmentStore; a resize may change the selected screen.
+            guard model.settings.autoSelectScreen, frame.width > 1 || frame.height > 1 else { return 0 }
+            return WindowGeometry.screenIndex(for: frame, screens: screens) ?? 0
+        }
+        let before = geometry(facts.frame), after = geometry(frame)
+        guard live.windowFrame == before.windowFrame, snapshot.windowFrame == after.windowFrame,
+              live.screens == before.screens, snapshot.screens == after.screens,
+              live.currentScreen == selectedScreen(facts.frame), snapshot.currentScreen == selectedScreen(frame) else {
+            return live
+        }
+        var compared = live
+        compared.windowFrame = after.windowFrame
+        compared.currentScreen = selectedScreen(frame)
+        return compared
+    }
+    #endif
 
     // MARK: SkinImageQueries
 

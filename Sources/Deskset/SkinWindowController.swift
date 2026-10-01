@@ -760,8 +760,10 @@ final class SkinWindowController: NSObject, NSWindowDelegate, SkinRuntimeWindow,
             isNew = true
         }
         frame = constrained(frame)
-        window.setFrame(frame, display: false)
+        // setFrame can synchronously publish facts and install a first layer frame on the main executor.
+        // Its install callback must see the destination view's size, including while this placement is reentrant.
         view.frame = NSRect(origin: .zero, size: size)
+        window.setFrame(frame, display: false)
         defaultPosition = nil
         if isNew { saveFrame(frame, force: true) }
         publishFacts()
