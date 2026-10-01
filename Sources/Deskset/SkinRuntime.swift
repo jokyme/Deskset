@@ -727,9 +727,9 @@ final class SkinRuntime: LiveSkinHost, SkinImageQueries {
         HostCallAudit.note(self, "skinNeedsDisplay")
         guard !isClosed else { return }
         let size = SkinRuntime.windowSize(width: skin.width, height: skin.height)
-        model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
         if size != requestedSize {
             requestedSize = size
+            model.resize(to: size, screens: EnvironmentStore.shared.currentScreens)
             request(.resize(size))
         }
         frames.setNeedsFrame()
