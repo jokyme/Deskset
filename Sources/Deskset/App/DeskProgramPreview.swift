@@ -22,6 +22,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     private var resources: ((DeskSnapshot) -> DeskProgramResources.Input)?
     private var accepts: ((DeskSnapshot) -> Bool)?
     private var projecting = false
+    private var primaryPress: (snapshot: DeskSnapshot, element: ElementID)?
     private let clock: SkinClock
     let executor: SkinExecutor
     private let dateLocale: () -> Locale
@@ -45,6 +46,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.beforeDrawing = { [weak self] in self?.prepareToDraw() ?? false }
         canvas.onEnvironmentChange = { [weak self] in self?.refreshEnvironment() }
         canvas.onImageFailure = { [weak self] in self?.clear(.unavailable("Cannot decode the prepared image for this drawing")) }
+        canvas.onPrimaryPress = { [weak self] point in self?.beginPrimaryPress(at: point) }
+        canvas.onPrimaryRelease = { [weak self] point in self?.endPrimaryPress(at: point) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -62,7 +65,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         precondition(executor.isCurrent && Thread.isMainThread)
         guard state != .closed, visible != value else { return }
         visible = value
-        if value { updateForTick() } else { tickScheduler.cancel() }
+        if value { updateForTick() } else { primaryPress = nil; tickScheduler.cancel() }
     }
 
     func updateForTick() {
@@ -134,6 +137,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
     func show(_ candidate: DeskSnapshot, readError: String?) {
         precondition(Thread.isMainThread)
         guard state != .closed else { return }
+        primaryPress = nil
         if let readError { clear(.unavailable(readError)); return }
         guard accepts?(candidate) == true, candidate.isChecked else { clear(.checking); return }
         // A supported new literal can still have DK4029 in the old resource package while its actual bytes are
@@ -169,7 +173,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                             appearanceName: canvas.effectiveAppearance.name.rawValue).stamp
     }
 
-    private func project() {
+    private func project(click: (point: SkinPoint, generation: UInt64)? = nil) {
         guard !projecting, state != .closed, let snapshot, accepts?(snapshot) == true,
               var runtime else { return }
         projecting = true
@@ -185,7 +189,7 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
             case .failed(let message): clear(.unavailable(message)); return
             case .ready(let values): images = values
             }
-            let next = try runtime.project(environment: stamp, images: images, dateInput: dateInput) { text, style, width in
+            let measure: (String, TextStyle, Double?) throws -> SkinSize = { text, style, width in
                 // Reject an impossible native font before constructing it; never clamp the program's point size.
                 let pixels = style.fontSize * (96.0 / 72.0) * stamp.scale
                 guard pixels.isFinite, pixels > 0, pixels <= Double(RenderOptions.maxPixels) else {
@@ -193,6 +197,14 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 }
                 let layout = context.text.layout(text, style: style, wrapWidth: width.map { CGFloat($0) }, cycle: 1)
                 return SkinSize(width: layout.size.width, height: layout.size.height)
+            }
+            let next: WidgetScene
+            if let click {
+                guard let clicked = try runtime.click(at: click.point, expectedGeneration: click.generation,
+                                                     environment: stamp, images: images, dateInput: dateInput, measure: measure) else { return }
+                next = clicked
+            } else {
+                next = try runtime.project(environment: stamp, images: images, dateInput: dateInput, measure: measure)
             }
             let size = next.size
             guard size.width.isFinite, size.height.isFinite, size.width >= 0, size.height >= 0 else { throw PreviewFailure.extent }
@@ -223,8 +235,9 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
                 default: return false
                 }
             }
-            state = hasContent ? .ready : .empty
-            canvas.isHidden = !hasContent
+            let interactive = !next.hitMap.entries.isEmpty
+            state = hasContent || interactive ? .ready : .empty
+            canvas.isHidden = !(hasContent || interactive)
             canvas.needsDisplay = true
             scrollView.contentView.scroll(to: scrollView.contentView.bounds.origin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -280,7 +293,24 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         return state == .ready && scene != nil
     }
 
+    private func beginPrimaryPress(at point: SkinPoint) {
+        primaryPress = nil
+        guard visible, prepareToDraw(), let snapshot,
+              let id = scene?.hitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil)?.elementID else { return }
+        primaryPress = (snapshot, id)
+    }
+
+    private func endPrimaryPress(at point: SkinPoint?) {
+        let press = primaryPress
+        primaryPress = nil
+        guard visible, let point, let press, accepts?(press.snapshot) == true, prepareToDraw(), let scene,
+              scene.hitMap.entry(at: point.x, point.y, handling: .leftUp, images: nil)?.elementID == press.element else { return }
+        // A legal boundary tick changes the scene, not this checked source session or pressed element identity.
+        project(click: (point, scene.generation))
+    }
+
     private func clear(_ next: State, keepingProgram: Bool = false) {
+        primaryPress = nil
         tickScheduler.cancel()
         state = next
         // A current program can recover when a display/font changes; errors retain no previous scene or cache.
@@ -338,6 +368,8 @@ final class DeskProgramPreviewController: NSViewController, TickTarget {
         canvas.beforeDrawing = nil
         canvas.onEnvironmentChange = nil
         canvas.onImageFailure = nil
+        canvas.onPrimaryPress = nil
+        canvas.onPrimaryRelease = nil
     }
 }
 
@@ -349,7 +381,23 @@ final class DeskProgramPreviewCanvas: NSView {
     fileprivate var beforeDrawing: (() -> Bool)?
     fileprivate var onEnvironmentChange: (() -> Void)?
     fileprivate var onImageFailure: (() -> Void)?
+    fileprivate var onPrimaryPress: ((SkinPoint) -> Void)?
+    fileprivate var onPrimaryRelease: ((SkinPoint?) -> Void)?
     override var isFlipped: Bool { true }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.buttonNumber == 0, !event.modifierFlags.contains(.control) else { onPrimaryRelease?(nil); return }
+        let point = convert(event.locationInWindow, from: nil)
+        onPrimaryPress?(SkinPoint(x: point.x, y: point.y))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard event.buttonNumber == 0, !event.modifierFlags.contains(.control) else { onPrimaryRelease?(nil); return }
+        let point = convert(event.locationInWindow, from: nil)
+        onPrimaryRelease?(SkinPoint(x: point.x, y: point.y))
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard beforeDrawing?() == true, let scene, let context,

@@ -1000,6 +1000,185 @@ enum DeskProgramPreviewSelfTests {
         }
 
         runClockPreviewTests(t)
+        runClickPreviewTests(t)
+    }
+
+    private static func mouse(_ type: NSEvent.EventType, at point: NSPoint, in f: Fixture,
+                              flags: NSEvent.ModifierFlags = []) throws {
+        let canvas = f.preview.canvas
+        let windowPoint = canvas.convert(point, to: nil)
+        guard let event = NSEvent.mouseEvent(with: type, location: windowPoint, modifierFlags: flags, timestamp: 0,
+                                            windowNumber: f.controller.window?.windowNumber ?? 0, context: nil,
+                                            eventNumber: 0, clickCount: 1, pressure: 1) else { throw Failure.fixture }
+        if type == .leftMouseDown { canvas.mouseDown(with: event) } else { canvas.mouseUp(with: event) }
+    }
+
+    private static func click(at point: NSPoint, in f: Fixture) throws {
+        try mouse(.leftMouseDown, at: point, in: f)
+        try mouse(.leftMouseUp, at: point, in: f)
+    }
+
+    private static func runClickPreviewTests(_ t: AppTestRunner) {
+        let start = Date(timeIntervalSince1970: 1_790_586_059.25)
+        let utc = TimeZone(identifier: "UTC")!, locale = Locale(identifier: "en_US_POSIX")
+        let source = #"widget { variable flag = false; computed caption = flag ? "开😀" : "关😀"; Text(caption).font(20).color(.accent).size(280, 60).padding(8).onLoad { flag = true }.onClick { flag = not flag } }"#
+        t.suite("Desk: click preview: native primary events paint shared assignments with independent literal pixels") {
+            let f = try fixture(t, source), p = f.preview
+            p.setVisible(true)
+            try clockPixels(t, "开😀", in: f)
+            let original = p.scene?.generation
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.scene?.generation, original, "release without a press cannot dispatch")
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                f.controller.window?.appearance = NSAppearance(named: name); p.refreshEnvironment()
+                try click(at: NSPoint(x: 20, y: 20), in: f)
+                try clockPixels(t, "关😀", in: f)
+                try click(at: NSPoint(x: 20, y: 20), in: f)
+                try clockPixels(t, "开😀", in: f)
+            }
+            let unchanged = p.scene?.generation
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f, flags: [.control])
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 300, y: 20), in: f)
+            t.equal(p.scene?.generation, unchanged)
+            t.equal(f.editor.text, source); t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+            t.check(f.app.sortedControllers.isEmpty, "preview has no Skin or permission service")
+        }
+
+        t.suite("Desk: click preview: rounded padding transparent curves and zoom scroll use actual box coordinates") {
+            let shapeSource = #"widget { variable flag = false; computed caption = flag ? "开😀" : "关😀"; Row(spacing: 0, align: .top) { Circle().size(40, 30).fill(.clear).onClick { flag = not flag }; Text(caption).font(20).color(.accent).size(280, 60).padding(8).onClick { flag = not flag } } }"#
+            let f = try fixture(t, shapeSource), p = f.preview
+            p.setVisible(true)
+            try clickPairPixels(t, "关😀", in: f)
+            p.setZoom(2)
+            p.scrollView.contentView.scroll(to: NSPoint(x: 8, y: 0))
+            p.scrollView.reflectScrolledClipView(p.scrollView.contentView)
+            t.close(Double(p.scrollView.magnification), 2)
+            t.check(p.scrollView.contentView.bounds.origin.x > 0)
+            try click(at: NSPoint(x: 0.5, y: 0.5), in: f) // Outside the circle's ink, inside its box.
+            try clickPairPixels(t, "开😀", in: f)
+            let sameElement = p.scene?.generation
+            try mouse(.leftMouseDown, at: NSPoint(x: 0.5, y: 0.5), in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 60, y: 20), in: f)
+            t.equal(p.scene?.generation, sameElement, "a different valid leaf handler cannot receive the held press")
+            let rounded = shapeSource.replacingOccurrences(of: "Circle().size(40, 30).fill(.clear)",
+                                                           with: "Rectangle().size(40, 30).fill(.clear).rounded(.full).padding(4)")
+            replace(rounded, in: f); t.check(settled(f))
+            let generation = p.scene?.generation
+            try click(at: NSPoint(x: 0.5, y: 0.5), in: f)
+            t.equal(p.scene?.generation, generation, "rounded box removes the corner")
+            try click(at: NSPoint(x: 1, y: 15), in: f)
+            try clickPairPixels(t, "开😀", in: f) // Padding is hit even though it paints no pixels.
+            let invisible = #"widget { Circle().size(40, 30).fill(.clear).onClick { } }"#
+            replace(invisible, in: f); t.check(settled(f))
+            t.equal(p.state, .ready); t.check(!p.canvas.isHidden)
+            let old = p.scene?.generation
+            try click(at: NSPoint(x: 0.5, y: 0.5), in: f)
+            t.equal(p.scene?.generation, old.map { $0 + 1 }, "empty handlers still consume actual primary releases")
+            let transparent = try paint(p.canvas); try canaries(t, transparent); t.equal(try ink(transparent), 0)
+            replace(#"widget { Circle().size(40, 30).fill(.clear).hidden().onClick { } }"#, in: f)
+            t.check(settled(f)); t.equal(p.state, .empty); t.check(p.canvas.isHidden)
+            t.equal(p.scene?.hitMap.entries.count, 0)
+            replace(#"widget { variable flag = false; Rectangle().size(32, 24).stroke(.white, width: 4).onClick { flag = not flag } }"#, in: f)
+            t.check(settled(f))
+            let viewport = CGRect(x: -2, y: -2, width: 36, height: 28)
+            t.equal(p.canvas.bounds, viewport, "centered stroke retains the actual negative paint origin")
+            let outlined = p.scene?.generation
+            try click(at: NSPoint(x: -1, y: 6), in: f)
+            t.equal(p.scene?.generation, outlined, "stroke outside the box is not a click target")
+            try click(at: NSPoint(x: 1, y: 6), in: f)
+            t.equal(p.scene?.generation, outlined.map { $0 + 1 }, "native conversion retains scene coordinates with negative bounds")
+            let outline = StyledReferenceView(path: CGPath(rect: CGRect(x: 0, y: 0, width: 32, height: 24), transform: nil),
+                                              fill: .clear, stroke: .white, width: 4, viewport: viewport)
+            let blank = ReferenceView(items: [], size: viewport.size); blank.bounds = viewport
+            for scale in [1, 2] {
+                let actual = try paint(p.canvas, scale: scale), expected = try paint(outline, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.check(try outlineInk(actual) > 0); t.equal(try outlineInk(paint(blank, scale: scale)), 0)
+                t.equal(try bytes(actual), try bytes(expected), "independent native outlined box after a negative-origin click at \(scale)x")
+            }
+        }
+
+        t.suite("Desk: click preview: legitimate clock ticks preserve a held press and transactional date assignments") {
+            let executor = VirtualTimeExecutor(start: start, timeZone: utc)
+            let text = #"widget { variable stamp = time.now; variable live = true; computed caption = live ? "{time.now, format: "HH:mm:ss"}😀" : "{stamp, format: "HH:mm:ss"}😀"; Text(caption).font(20).color(.accent).size(280, 60).padding(8).onClick { stamp = time.now; live = false } }"#
+            let f = try fixture(t, text, clock: executor.clock, executor: executor, locale: { locale }), p = f.preview
+            p.setVisible(true); t.equal(executor.pendingCount, 1)
+            try clockPixels(t, "09:00:59😀", in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            let pressed = p.scene?.generation
+            executor.advance(until: 0.75)
+            t.check(p.scene?.generation != pressed); try clockPixels(t, "09:01:00😀", in: f)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(executor.pendingCount, 0); try clockPixels(t, "09:01:00😀", in: f)
+            executor.advance(by: 2); p.refreshDateInput()
+            try clockPixels(t, "09:01:00😀", in: f)
+            p.setVisible(false); let hidden = p.scene?.generation
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            t.equal(p.scene?.generation, hidden)
+        }
+
+        t.suite("Desk: click preview: checked replacement resource failure hide read error and close cancel old presses") {
+            let queue = DispatchQueue(label: "desk.click.pending.check")
+            let pendingSource = source + "\n//" + String(repeating: "x", count: 9_000)
+            let f = try fixture(t, pendingSource, queue: queue), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            p.setVisible(true)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            p.setVisible(false); p.setVisible(true)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try clockPixels(t, "开😀", in: f)
+            let old = checking.snapshot
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            queue.suspend(); var suspended = true
+            defer { if suspended { queue.resume() } }
+            replace(pendingSource.replacingOccurrences(of: "flag = true", with: "flag = false"), in: f)
+            t.check(p.state == .checking && p.scene == nil && p.canvas.isHidden)
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(!checking.publish(old))
+            queue.resume(); suspended = false; t.check(settled(f))
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            try clockPixels(t, "关😀", in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            let failed = #"widget { Image("Missing.png"); Text("unavailable").onClick { } }"#
+            replace(failed, in: f); t.check(imageSettled(f))
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(p.scene == nil && p.canvas.isHidden)
+            replace(source, in: f); t.check(settled(f)); try clockPixels(t, "开😀", in: f)
+            try mouse(.leftMouseDown, at: NSPoint(x: 20, y: 20), in: f)
+            try Data([0xFF, 0xFE, 0x00, 0x00]).write(to: f.file)
+            f.editor.discardUncommittedChanges()
+            f.controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification))
+            try mouse(.leftMouseUp, at: NSPoint(x: 20, y: 20), in: f)
+            t.check(f.controller.readError != nil && p.scene == nil && p.canvas.isHidden)
+            p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+            let clear = try paint(p.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
+            f.controller.window?.close()
+            try click(at: NSPoint(x: 20, y: 20), in: f)
+            p.show(old, readError: nil); p.setVisible(true)
+            t.check(p.state == .closed && p.scene == nil && p.canvas.isHidden)
+        }
+    }
+
+    private static func clickPairPixels(_ t: AppTestRunner, _ text: String, in f: Fixture) throws {
+        var style = TextStyle()
+        style.fontFace = "System"; style.fontSize = 15; style.fontWeight = 400
+        style.color = MacAppearance.values(for: f.preview.canvas.effectiveAppearance).accentColor
+        style.horizontalAlign = .center; style.verticalAlign = .center
+        style.accurateText = true; style.antiAlias = true; style.trailingSpaces = true
+        let item = DrawItem.text(TextDraw(text: text, style: style, frame: SkinRect(x: 40, width: 280, height: 60),
+                                         contentFrame: SkinRect(x: 48, y: 8, width: 264, height: 44), anchor: SkinPoint(x: 40)))
+        let reference = ReferenceView(items: [item], size: NSSize(width: 320, height: 60))
+        reference.appearance = f.preview.canvas.effectiveAppearance
+        let blank = ReferenceView(items: [], size: reference.frame.size)
+        t.equal(clockTexts(f.preview), [text]); t.equal(f.preview.scene?.size, SkinSize(width: 320, height: 60))
+        for scale in [1, 2] {
+            let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+            try canaries(t, actual); try canaries(t, expected)
+            t.check(try ink(actual) > 0); t.equal(try ink(paint(blank, scale: scale)), 0)
+            t.equal(try bytes(actual), try bytes(expected), "transparent hit box plus independent native text at \(scale)x")
+        }
     }
 
     private static func runClockPreviewTests(_ t: AppTestRunner) {

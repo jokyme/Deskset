@@ -149,6 +149,8 @@ public struct SkinHitMap: Equatable, Sendable {
     /// lookups that walk the entries on every mouse move do not copy them.
     public final class Entry: Equatable, Sendable {
         public let name: String
+        /// Shared-program occurrence identity. Legacy meter lookups keep their original name and nil default.
+        public let elementID: ElementID?
         public let frame: SkinRect
         /// `Meter.hitTest`'s area.
         public let shape: MouseShape
@@ -168,8 +170,9 @@ public struct SkinHitMap: Equatable, Sendable {
 
         public init(name: String, frame: SkinRect, shape: MouseShape, container: MouseShape?, glass: GlassRegion?,
                     isButton: Bool, actions: [MouseEventKind: Action], cursor: Bool, cursorName: String,
-                    toolTip: ToolTipInfo?) {
+                    toolTip: ToolTipInfo?, elementID: ElementID? = nil) {
             self.name = name
+            self.elementID = elementID
             self.frame = frame
             self.shape = shape
             self.container = container
@@ -186,7 +189,8 @@ public struct SkinHitMap: Equatable, Sendable {
         public static func == (a: Entry, b: Entry) -> Bool {
             a === b || (a.name == b.name && a.frame == b.frame && a.shape == b.shape && a.container == b.container
                         && a.glass == b.glass && a.isButton == b.isButton && a.actions == b.actions
-                        && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip)
+                        && a.cursor == b.cursor && a.cursorName == b.cursorName && a.toolTip == b.toolTip
+                        && a.elementID == b.elementID)
         }
     }
 

@@ -180,6 +180,27 @@ func hitMapDifferences(_ skin: Skin, _ map: SkinHitMap, _ points: [(Double, Doub
 // MARK: - Focused cases
 
 func runHitMapUnitTests(_ t: TestRunner) {
+    t.suite("Skin threading: hit map typed element identities preserve legacy queries and occurrence zero") {
+        let frame = SkinRect(x: 0, y: 0, width: 20, height: 10)
+        func entry(_ identity: ElementID?) -> SkinHitMap.Entry {
+            SkinHitMap.Entry(name: "Same", frame: frame, shape: .rect(frame), container: nil, glass: nil, isButton: false,
+                             actions: [.leftUp: .runs], cursor: true, cursorName: "TEXT", toolTip: nil, elementID: identity)
+        }
+        let firstID = ElementID(name: "Same", index: 0), secondID = ElementID(name: "Same", index: 1)
+        let legacy = entry(nil), first = entry(firstID), second = entry(secondID)
+        var map = SkinHitMap(); map.entries = [second, first, legacy]
+        t.equal(map.entry(at: 1, 1, handling: .leftUp, images: nil)?.elementID, secondID)
+        t.equal(map.mouseCursorName(at: 1, 1, images: nil), "TEXT")
+        t.check(map.hasAction(.leftUp, x: 1, y: 1, images: nil))
+        t.check(!map.hasAction(.leftUp, x: 20, y: 1, images: nil))
+        map.entries = [first, second]
+        t.equal(map.entry(at: 1, 1, handling: .leftUp, images: nil)?.elementID, firstID)
+        map.entries = [legacy]
+        t.equal(map.entry(at: 1, 1, handling: .leftUp, images: nil)?.name, "Same")
+        t.check(map.entry(at: 1, 1, handling: .leftUp, images: nil)?.elementID == nil)
+        t.check(first != legacy && first != second && first == entry(firstID), "immutable value equality includes the additive identity")
+    }
+
     t.suite("Skin threading: hit map queries use the supplied image service") {
         let frame = SkinRect(x: 10, y: 20, width: 4, height: 3)
         let button = ButtonMouseShape(path: "Strip.png", destination: frame, frameWidth: 4, frameHeight: 3,
