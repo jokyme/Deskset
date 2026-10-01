@@ -368,6 +368,79 @@ private func runVirtualQueueTests(_ t: TestRunner) {
         t.equal(order, [1, 2, 3], "due now, in the order they were posted")
         skin.close()
     }
+
+    t.suite("Executor: virtual time — queued hops do not retain an abandoned executor") {
+        weak var weakExecutor: VirtualTimeExecutor?
+        weak var weakSkin: Skin?
+        weak var captured: Token?
+        let calls = Recorder<String>()
+        func makeHop() throws -> SkinHop {
+            let v = virtualExecutor()
+            weakExecutor = v
+            let skin = try virtualSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeter=Image\n", executor: v)
+            weakSkin = skin
+            let hop = skin.hop()
+            skin.close()
+            return hop
+        }
+        var hop: SkinHop? = try makeHop()
+        t.check(weakSkin == nil, "the pending result does not own the unloaded skin")
+        t.check(weakExecutor != nil, "the hop keeps its destination until it posts")
+        func postResult() {
+            let token = Token()
+            captured = token
+            hop?.post({ withExtendedLifetime(token) { calls.add("work") } },
+                      orElse: { withExtendedLifetime(token) { calls.add("dropped") } })
+        }
+        postResult()
+        t.equal(weakExecutor?.pendingCount, 1)
+        t.check(captured != nil, "the queued result owns its captures")
+        hop = nil
+        t.check(weakExecutor == nil, "an executor without an owner is released without a virtual-time step")
+        t.check(captured == nil, "its unstepped queue releases the result's captures too")
+        t.equal(calls.values, [], "destroying an abandoned queue does not run either callback")
+        // Release a regressed queue after recording the failure, so this canary itself does not leave a leak.
+        weakExecutor?.runUntilIdle()
+        t.check(weakExecutor == nil && captured == nil)
+    }
+
+    t.suite("Executor: virtual time — owned hops preserve FIFO and drop on the owner thread") {
+        let v = virtualExecutor()
+        let ownerThread = pthread_self()
+        var skin: Skin? = try virtualSkin(t, "[Rainmeter]\nUpdate=-1\n[M]\nMeter=Image\n", executor: v)
+        weak var weakSkin: Skin?
+        weakSkin = skin
+        let hop = skin!.hop()
+        let order = Recorder<String>(), onOwner = Recorder<Bool>()
+        func record(_ name: String) {
+            order.add(name)
+            onOwner.add(pthread_equal(ownerThread, pthread_self()) != 0)
+        }
+        func post(_ indices: ClosedRange<Int>) {
+            let posted = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                for index in indices {
+                    hop.post({ record("work \(index)") }, orElse: { record("dropped \(index)") })
+                }
+                posted.signal()
+            }
+            t.check(posted.wait(timeout: .now() + 60) == .success, "background results were handed over")
+        }
+        post(1...2)
+        t.equal(order.values, [], "background posts never deliver inline")
+        v.async { record("after work") }
+        v.runUntilIdle()
+        t.equal(order.values, ["work 1", "work 2", "after work"])
+        skin?.close()
+        skin = nil
+        t.check(weakSkin == nil, "the remaining hop does not retain the skin")
+        post(3...4)
+        t.equal(order.values.count, 3, "dropped results wait for the owner too")
+        v.async { record("after drops") }
+        v.runUntilIdle()
+        t.equal(order.values, ["work 1", "work 2", "after work", "dropped 3", "dropped 4", "after drops"])
+        t.check(onOwner.values.count == 6 && onOwner.values.allSatisfy { $0 }, "every callback ran on the owner")
+    }
 }
 
 // MARK: - The clock
