@@ -208,6 +208,64 @@ enum LayerContentSelfTests {
                     duplicate.elements[1].id = baseID
                     rejects(SceneInkCandidates(scene: duplicate, elementInk: prepared.elementInk, runInk: prepared.runInk),
                             expected: .invalidPlan("Scene identities and file occurrences must be unique"))
+
+                    // A frozen selection is a historical identity list, not a promise to keep hidden ink drawing.
+                    var pair = scene
+                    pair.elements[1].items = [fill(0, 0, Double(width), Double(height), RGBA(r: 191, g: 71, b: 43, a: 113))]
+                    let selected = [baseID, backID]
+                    t.equal(try ComponentPartition.candidatePlan(prepare(pair), in: window).baseMembers, selected)
+                    for visibility in [Visibility.collapsed, .hiddenKeepsSpace] {
+                        var hidden = pair
+                        hidden.elements[1].visibility = visibility
+                        let active = try ComponentPartition.candidatePlan(prepare(hidden), in: window, baseMembers: selected)
+                        t.equal(active.baseMembers, [baseID], "a hidden selected member leaves only the active plan")
+                        t.equal(active.skipped, [], "hidden units are not visible empty units")
+                        t.equal(active.layers.compactMap { layer -> [ElementID]? in
+                            if case let .group(ids) = layer.content { return ids }; return nil
+                        }, [[frontID], [maskID]], "remaining foreground keeps complete file-order recipes")
+                    }
+                    for items in [[DrawItem](), [fill(Double(width + 1), 0, 2, 2, RGBA(r: 17, g: 83, b: 199, a: 255))]] {
+                        var absent = pair
+                        absent.elements[1].items = items
+                        let active = try ComponentPartition.candidatePlan(prepare(absent), in: window, baseMembers: selected)
+                        t.equal(active.baseMembers, [baseID])
+                        t.equal(active.skipped, [backID], "visible empty or off-window selected ink keeps its original occurrence")
+                    }
+                    var smallerPair = pair
+                    smallerPair.elements[1].items = [fill(1, 1, 2, 2, RGBA(r: 17, g: 83, b: 199, a: 255))]
+                    t.equal(try ComponentPartition.candidatePlan(prepare(smallerPair), in: window,
+                                                                baseMembers: selected).baseMembers, selected,
+                            "a returning selected member is not reclassified by its now-small area")
+                    t.equal(try ComponentPartition.candidatePlan(prepare(smallerPair), in: window).baseMembers, [baseID],
+                            "the fresh classification control would not select that small member")
+                    var allHidden = pair
+                    allHidden.elements[0].visibility = .collapsed
+                    allHidden.elements[1].visibility = .collapsed
+                    t.equal(try ComponentPartition.candidatePlan(prepare(allHidden), in: window,
+                                                                baseMembers: selected).baseMembers, [])
+
+                    let invalidBase = ComponentPartition.Failure.invalidPlan("Frozen base members must be the drawn scene's leading content prefix")
+                    let pairPrepared = prepare(pair)
+                    for invalid in [[baseID, baseID], [backID, baseID], [baseID, ElementID(name: "Missing", index: 99)]] {
+                        rejects(pairPrepared, base: invalid, expected: invalidBase)
+                    }
+                    var missing = pair
+                    missing.elements.remove(at: 1)
+                    rejects(prepare(missing), base: selected, expected: invalidBase)
+                    var reordered = pair
+                    reordered.elements.swapAt(0, 1)
+                    rejects(prepare(reordered), base: selected, expected: invalidBase)
+                    var interposed = pair
+                    interposed.elements.swapAt(1, 2)
+                    rejects(prepare(interposed), base: selected, expected: invalidBase)
+                    var native = pair
+                    native.elements[1].backing = .native(.control)
+                    rejects(prepare(native), base: selected, expected: invalidBase)
+                    var child = pair
+                    child.elements[1].container = maskID
+                    rejects(prepare(child), base: selected, expected: invalidBase)
+                    rejects(SceneInkCandidates(scene: scene, elementInk: prepared.elementInk, runInk: unknown),
+                            base: [ElementID(name: "Missing", index: 99)], expected: .unresolvedInk(backID, .unresolvedRasterization))
                 }
             }
         }

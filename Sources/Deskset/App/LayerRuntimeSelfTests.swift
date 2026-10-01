@@ -19,6 +19,7 @@ enum LayerRuntimeSelfTests {
 
     static func run(_ t: AppTestRunner) {
         nativeTests(t)
+        frozenSelectionTests(t)
         fallbackTests(t)
         antialiasedLineTests(t)
         antialiasedFullCircleTests(t)
@@ -401,6 +402,131 @@ enum LayerRuntimeSelfTests {
 
     /// These are literal owner inputs, not a fabricated host acknowledgment or an external resource revision.
     /// An identical scene generation cannot hide changed scene values, a context, glass, scale or strategy.
+    private static func frozenSelectionTests(_ t: AppTestRunner) {
+        t.suite("Runtime: layer runtime: frozen base selection survives hidden empty and restored content") {
+            guard let device = MTLCreateSystemDefaultDevice() else {
+                return t.check(false, "Metal unavailable: frozen-selection native qualification did not run")
+            }
+            let space = try rgb(CGColorSpace.sRGB)
+            for scale in [1, 2] {
+                for dark in [false, true] {
+                    let window = try rect(0, 0, width * scale, height * scale)
+                    let glass = GlassPaint.placeholder(dark: dark)
+                    let context = DrawContext(fonts: AppFontResolver()), owner = try runtime(), tree = host(owner.root, scale)
+                    let renderer = try OffscreenRenderer(width: window.width, height: window.height, device: device,
+                                                         maximumReadbackBytes: window.width * window.height * 4)
+                    let selected = [baseID, backID]
+                    var a = fixture(0, scale, dark, gradient: false)
+                    a.elements[1].items = [fill(0, 0, Double(width), Double(height), RGBA(r: 191, g: 71, b: 43, a: 113))]
+                    func draw(_ scene: WidgetScene, active: [ElementID], cycle: Int) throws -> (LayerRuntime.Frame, [UInt8]) {
+                        let frame = try submitted(owner.update(prepare(scene, context, scale, space, glass), in: window,
+                            scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                            context: context, cycle: cycle, glass: glass))
+                        t.equal(frame.fallback, nil)
+                        t.equal(frame.plan.baseMembers, active)
+                        let single = try baseline(scene, DrawContext(fonts: AppFontResolver()), cycle, scale, space, glass)
+                        let expected = try renderer.render(cTree(single, scale), at: 0, deadline: .now() + .seconds(30)).rgba
+                        let actual = try renderer.render(tree, at: 0, deadline: .now() + .seconds(30)).rgba
+                        checkFixture(actual, window, t)
+                        t.equal(actual, expected, "active frozen-base contents match an independent fresh Single strictly")
+                        return (frame, actual)
+                    }
+                    let (first, aPixels) = try draw(a, active: selected, cycle: 0)
+                    let firstImageTree = cTree(first.contents, scale)
+                    var hidden = a
+                    hidden.elements[1].visibility = .collapsed
+                    hidden.elements[1].frame = SkinRect(x: 0, y: 0, width: 0, height: 0)
+                    let (hiddenFrame, hiddenPixels) = try draw(hidden, active: [baseID], cycle: 1)
+                    t.equal(hiddenFrame.change, .all(.partition))
+                    t.check(hiddenPixels != aPixels, "omitting the real colored base member changes nonempty native pixels")
+                    let (_, restoredPixels) = try draw(a, active: selected, cycle: 2)
+                    t.equal(restoredPixels, aPixels, "A returns exactly after a selected member was hidden")
+
+                    var smaller = a
+                    smaller.elements[1].items = [fill(1, 1, 2, 2, RGBA(r: 17, g: 83, b: 199, a: 255))]
+                    smaller.elements[1].frame = SkinRect(x: 1, y: 1, width: 2, height: 2)
+                    let (_, smallerPixels) = try draw(smaller, active: selected, cycle: 3)
+                    t.check(smallerPixels != aPixels && smallerPixels != hiddenPixels)
+                    t.equal(try ComponentPartition.candidatePlan(prepare(smaller, context, scale, space, glass),
+                                                                in: window).baseMembers, [baseID],
+                            "the small returning member stays selected only because the owner retained its original identity")
+                    var empty = a
+                    empty.elements[1].items = []
+                    let (emptyFrame, emptyPixels) = try draw(empty, active: [baseID], cycle: 4)
+                    t.equal(emptyFrame.plan.skipped, [backID])
+                    t.equal(emptyPixels, hiddenPixels, "visible empty content contributes exactly no pixels")
+                    var outside = a
+                    outside.elements[1].items = [fill(Double(width + 1), 0, 2, 2, RGBA(r: 17, g: 83, b: 199, a: 255))]
+                    let (outsideFrame, outsidePixels) = try draw(outside, active: [baseID], cycle: 5)
+                    t.equal(outsideFrame.plan.skipped, [backID])
+                    t.equal(outsidePixels, hiddenPixels, "off-window selected content contributes exactly no pixels")
+                    let (_, afterEmptyPixels) = try draw(a, active: selected, cycle: 6)
+                    t.equal(afterEmptyPixels, aPixels)
+                    var changed = a
+                    changed.elements[1].items = [fill(0, 0, Double(width), Double(height), RGBA(r: 19, g: 173, b: 211, a: 147))]
+                    let (changedFrame, changedPixels) = try draw(changed, active: selected, cycle: 7)
+                    t.check(changedPixels != aPixels, "retained identity cannot suppress changed base paint")
+                    t.equal(try renderer.render(firstImageTree, at: 0, deadline: .now() + .seconds(30)).rgba, aPixels,
+                            "old immutable base/group images survive hidden, restored and changed content")
+
+                    // Reordering an inactive member is still invalid: complete source order, not only drawn order,
+                    // proves that the retained identity list belongs to this scene.
+                    var reordered = hidden
+                    reordered.elements.swapAt(0, 1)
+                    let oldLayers = owner.root.sublayers ?? [], oldBounds = owner.root.bounds
+                    do {
+                        _ = try owner.update(prepare(reordered, context, scale, space, glass), in: window,
+                            scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                            context: context, cycle: 8, glass: glass)
+                        t.check(false, "a reordered frozen selection must fail before painting")
+                    } catch let error as ComponentPartition.Failure {
+                        t.equal(error, .invalidPlan("Frozen base members must be the drawn scene's leading content prefix"))
+                    }
+                    try checkRetained(owner, changedFrame, oldLayers, oldBounds, tree, renderer, changedPixels, t)
+                    let (recovered, recoveredPixels) = try draw(a, active: selected, cycle: 8)
+                    t.equal(recovered.change, .all(.previousFailure))
+                    t.equal(recoveredPixels, aPixels)
+                    let beforeDiscardLayers = owner.root.sublayers ?? [], beforeDiscardBounds = owner.root.bounds
+                    let discarded = try ready(owner.prepare(prepare(hidden, context, scale, space, glass), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                        context: context, cycle: 9, glass: glass))
+                    t.equal(discarded.frame.plan.baseMembers, [baseID])
+                    try owner.discard(discarded)
+                    try checkRetained(owner, recovered, beforeDiscardLayers, beforeDiscardBounds, tree, renderer, aPixels, t)
+                    _ = try draw(smaller, active: selected, cycle: 9)
+
+                    // The initial small foreground fits below two full-window buffers. Enlarging that foreground
+                    // while hiding the selected overlay needs a full-window group pair and exceeds the same budget.
+                    let bytes = try Rasterizer.requiredBytes(width: window.width, height: window.height)
+                    let limited = try LayerRuntime(executor: MainSkinExecutor.shared, maximumOwnedBitmapBytes: bytes * 2 - 1)
+                    let limitedTree = host(limited.root, scale)
+                    let limitedFrame = try submitted(limited.update(prepare(a, context, scale, space, glass), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                        context: context, cycle: 0, glass: glass))
+                    t.equal(limitedFrame.plan.baseMembers, selected)
+                    let limitedPixels = try renderer.render(limitedTree, at: 0, deadline: .now() + .seconds(30)).rgba
+                    t.equal(limitedPixels, aPixels)
+                    let limitedLayers = limited.root.sublayers ?? [], limitedBounds = limited.root.bounds
+                    var expensive = hidden
+                    expensive.elements[2].items = [fill(0, 0, Double(width), Double(height), RGBA(r: 181, g: 31, b: 233, a: 231))]
+                    try expectRasterizer(.resourceLimit, t) {
+                        _ = try limited.update(prepare(expensive, context, scale, space, glass), in: window,
+                            scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                            context: context, cycle: 1, glass: glass)
+                    }
+                    try checkRetained(limited, limitedFrame, limitedLayers, limitedBounds, limitedTree, renderer, limitedPixels, t)
+                    let affordable = try submitted(limited.update(prepare(smaller, context, scale, space, glass), in: window,
+                        scale: CGFloat(scale), colorSpace: space, partition: .candidateComponents,
+                        context: context, cycle: 1, glass: glass))
+                    t.equal(affordable.plan.baseMembers, selected, "a failed hidden transition cannot replace selected identities")
+                    t.equal(try renderer.render(limitedTree, at: 0, deadline: .now() + .seconds(30)).rgba, smallerPixels)
+                    t.check(renderer.hasVerifiedCanary)
+                    withExtendedLifetime([tree, limitedTree, firstImageTree]) {}
+                }
+            }
+        }
+    }
+
     private static func decisionInputTests(_ t: AppTestRunner, _ device: any MTLDevice, _ space: CGColorSpace) throws {
         let window = try rect(0, 0, width, height), context = DrawContext(fonts: AppFontResolver())
         let owner = try runtime(), tree = host(owner.root, 1), scene = fixture(0, 1, false, gradient: false)
