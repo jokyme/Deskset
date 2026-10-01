@@ -62,6 +62,28 @@ final class HitMapHost: SkinHost, SkinImageQueries {
 
 private var hitMapHosts: [HitMapHost] = []
 
+/// An image service independent of any skin or host, with observable pixel queries.
+private final class HitMapPixels: SkinImageQueries {
+    struct Query: Equatable {
+        let path: String
+        let x: Int
+        let y: Int
+        let oriented: Bool
+    }
+
+    let alpha: (Int, Int) -> Double?
+    var queries: [Query] = []
+
+    init(_ alpha: @escaping (Int, Int) -> Double?) { self.alpha = alpha }
+
+    func imageExifOrientation(atPath path: String) -> Int { 1 }
+
+    func imagePixelAlpha(atPath path: String, x: Int, y: Int, exifOriented: Bool) -> Double? {
+        queries.append(Query(path: path, x: x, y: y, oriented: exifOriented))
+        return alpha(x, y)
+    }
+}
+
 /// `makeSkin` with a `HitMapHost` (kept alive for the run: `Skin.host` is weak).
 func makeHitMapSkin(_ t: TestRunner, _ ini: String) throws -> (Skin, HitMapHost) {
     let host = HitMapHost()
@@ -131,22 +153,23 @@ func hitMapDifferences(_ skin: Skin, _ map: SkinHitMap, _ points: [(Double, Doub
     var kinds = Set(skin.meters.flatMap { $0.mouseActions.keys })
     kinds.formUnion(skin.rainmeterSection?.mouseActions.keys ?? [:].keys)
     let tested = allKinds ? MouseEventKind.allCases : MouseEventKind.allCases.filter(kinds.contains)
+    let images = skin.host as? SkinImageQueries
     for (x, y) in points {
         let at = "at (\(x), \(y))"
-        for kind in tested where map.hasAction(kind, x: x, y: y) != skin.hasAction(kind, x: x, y: y) {
-            note("hasAction(\(kind.rawValue)) \(at): map \(map.hasAction(kind, x: x, y: y))")
+        for kind in tested where map.hasAction(kind, x: x, y: y, images: images) != skin.hasAction(kind, x: x, y: y) {
+            note("hasAction(\(kind.rawValue)) \(at): map \(map.hasAction(kind, x: x, y: y, images: images))")
         }
-        if map.isOnButton(x: x, y: y) != skin.isOnButton(x: x, y: y) { note("isOnButton \(at)") }
+        if map.isOnButton(x: x, y: y, images: images) != skin.isOnButton(x: x, y: y) { note("isOnButton \(at)") }
         let cursor = skin.mouseCursorName(at: x, y)
-        if map.mouseCursorName(at: x, y) != cursor {
-            note("mouseCursorName \(at): map \(String(describing: map.mouseCursorName(at: x, y))), live \(String(describing: cursor))")
+        if map.mouseCursorName(at: x, y, images: images) != cursor {
+            note("mouseCursorName \(at): map \(String(describing: map.mouseCursorName(at: x, y, images: images))), live \(String(describing: cursor))")
         }
         let pointer = skin.pointerCursorName(x: x, y: y)
-        if map.pointerCursorName(at: x, y) != pointer {
-            note("pointerCursorName \(at): map \(String(describing: map.pointerCursorName(at: x, y))), live \(String(describing: pointer))")
+        if map.pointerCursorName(at: x, y, images: images) != pointer {
+            note("pointerCursorName \(at): map \(String(describing: map.pointerCursorName(at: x, y, images: images))), live \(String(describing: pointer))")
         }
-        if map.toolTipInfo(at: x, y) != skin.toolTipInfo(at: x, y) {
-            note("toolTipInfo \(at): map \(String(describing: map.toolTipInfo(at: x, y)?.text)), live \(String(describing: skin.toolTipInfo(at: x, y)?.text))")
+        if map.toolTipInfo(at: x, y, images: images) != skin.toolTipInfo(at: x, y) {
+            note("toolTipInfo \(at): map \(String(describing: map.toolTipInfo(at: x, y, images: images)?.text)), live \(String(describing: skin.toolTipInfo(at: x, y)?.text))")
         }
         if map.isInDragArea(x: x, y: y) != skin.isInDragArea(x: x, y: y) { note("isInDragArea \(at)") }
     }
@@ -157,6 +180,69 @@ func hitMapDifferences(_ skin: Skin, _ map: SkinHitMap, _ points: [(Double, Doub
 // MARK: - Focused cases
 
 func runHitMapUnitTests(_ t: TestRunner) {
+    t.suite("Skin threading: hit map queries use the supplied image service") {
+        let frame = SkinRect(x: 10, y: 20, width: 4, height: 3)
+        let button = ButtonMouseShape(path: "Strip.png", destination: frame, frameWidth: 4, frameHeight: 3,
+                                      flipHorizontal: true, flipVertical: true,
+                                      normalSource: SkinRect(x: 0, y: 0, width: 4, height: 3),
+                                      shownSource: SkinRect(x: 4, y: 0, width: 4, height: 3), exifOriented: true)
+        let entry = SkinHitMap.Entry(name: "Button", frame: frame, shape: .button(button), container: nil,
+                                     glass: nil, isButton: true, actions: [:], cursor: true,
+                                     cursorName: "CROSS", toolTip: nil)
+        var map = SkinHitMap()
+        map.entries = [entry]
+        let original = map
+        let transparent = HitMapPixels { _, _ in 0 }
+        let shown = HitMapPixels { x, _ in x == 7 ? 255 : 0 }
+        let unknown = HitMapPixels { _, _ in nil }
+        t.check(!map.isOnButton(x: 10.25, y: 20.5, images: transparent))
+        t.check(map.isOnButton(x: 10.25, y: 20.5, images: shown), "the shown frame can supply the opaque pixel")
+        t.equal(shown.queries, [HitMapPixels.Query(path: "Strip.png", x: 3, y: 2, oriented: true),
+                               HitMapPixels.Query(path: "Strip.png", x: 7, y: 2, oriented: true)],
+                "normal and shown frames keep rounding, both flips and EXIF orientation")
+        t.check(map.isOnButton(x: 10.25, y: 20.5, images: nil), "no service means unknown, hence opaque")
+        t.check(map.isOnButton(x: 10.25, y: 20.5, images: unknown), "unknown alpha is opaque too")
+        t.equal(map.pointerCursorName(at: 10.25, 20.5, images: transparent), nil)
+        t.equal(map.pointerCursorName(at: 10.25, 20.5, images: shown), "CROSS")
+        t.check(!map.handles(.leftDown, x: 10.25, y: 20.5, images: transparent))
+        t.check(map.handles(.leftDown, x: 10.25, y: 20.5, images: shown))
+        t.check(map.topButton(at: 10.25, 20.5, images: transparent) === entry,
+                "choosing the top Button still uses its frame")
+        t.check(map.isHit(entry, x: 10.25, y: 20.5, images: transparent), "ordinary Button actions use the frame")
+        t.check(!map.isHit(entry, x: 10.25, y: 20.5, precise: true, images: transparent))
+        t.check(map.isHit(entry, x: 10.25, y: 20.5, precise: true, images: shown))
+        t.equal(map, original, "changing the query service does not change the map's values")
+    }
+
+    t.suite("Skin threading: hit map container pixels govern actions, cursors and tooltips") {
+        let frame = SkinRect(x: 0, y: 0, width: 4, height: 3)
+        let button = ButtonMouseShape(path: "Mask.png", destination: frame, frameWidth: 4, frameHeight: 3,
+                                      flipHorizontal: false, flipVertical: false, normalSource: frame,
+                                      shownSource: nil, exifOriented: false)
+        let tip = ToolTipInfo(text: "Inside")
+        let entry = SkinHitMap.Entry(name: "Inside", frame: frame, shape: .rect(frame), container: .button(button),
+                                     glass: nil, isButton: false, actions: [.leftUp: .runs], cursor: true,
+                                     cursorName: "TEXT", toolTip: tip)
+        var map = SkinHitMap()
+        map.entries = [entry]
+        let transparent = HitMapPixels { _, _ in 0 }
+        let opaque = HitMapPixels { _, _ in 255 }
+        for images in [transparent, opaque] {
+            let visible = images === opaque
+            t.equal(map.isHit(entry, x: 1, y: 1, images: images), visible)
+            t.equal(map.isHit(entry, x: 1, y: 1, precise: false, images: images), visible)
+            t.equal(map.entry(at: 1, 1, handling: .leftUp, images: images)?.name, visible ? "Inside" : nil)
+            t.equal(map.hasAction(.leftUp, x: 1, y: 1, images: images), visible)
+            t.equal(map.handles(.leftUp, x: 1, y: 1, images: images), visible)
+            t.equal(map.mouseCursorName(at: 1, 1, images: images), visible ? "TEXT" : nil)
+            t.equal(map.pointerCursorName(at: 1, 1, images: images), visible ? "TEXT" : nil)
+            t.equal(map.toolTipInfo(at: 1, 1, images: images), visible ? tip : nil)
+        }
+        t.check(transparent.queries.allSatisfy { !$0.oriented }, "the container keeps its orientation policy")
+        t.equal(map.entry(at: 1, 1, handling: .leftUp, images: nil)?.name, "Inside")
+        t.equal(map.toolTipInfo(at: 1, 1, images: nil), tip)
+    }
+
     t.suite("Skin threading: hit map answers as the skin does for each kind of meter") {
         let (skin, _) = try makeHitMapSkin(t, """
             [Rainmeter]
@@ -268,13 +354,14 @@ func runHitMapUnitTests(_ t: TestRunner) {
         t.equal(follower.map.entries.map(\.name), ["Glassy", "Inside", "Flat", "Turned", "Disc", "NoCursorLater",
                                                   "Caught", "Back"], "top first, only what the mouse finds")
         t.check(!follower.map.toolTipsReadMeasures)
-        t.equal(follower.map.handles(.leftDown, x: 20, y: 20), true, "caught by []")
-        t.equal(follower.map.handles(.rightUp, x: 150, y: 110), true, "the skin's own action")
-        t.equal(follower.map.handles(.middleUp, x: 150, y: 110), false)
-        t.equal(follower.map.pointerCursorName(at: 20, 20), nil, "caught actions: the arrow")
-        t.equal(follower.map.pointerCursorName(at: 90, 30), "CROSS")
-        t.equal(follower.map.pointerCursorName(at: 45, 15), nil, "MouseActionCursor=0 blocks what is behind")
-        t.equal(follower.map.pointerCursorName(at: 55, 25), "TEXT", "behind: the meter's, from [Rainmeter]")
+        let images = skin.host as? SkinImageQueries
+        t.equal(follower.map.handles(.leftDown, x: 20, y: 20, images: images), true, "caught by []")
+        t.equal(follower.map.handles(.rightUp, x: 150, y: 110, images: images), true, "the skin's own action")
+        t.equal(follower.map.handles(.middleUp, x: 150, y: 110, images: images), false)
+        t.equal(follower.map.pointerCursorName(at: 20, 20, images: images), nil, "caught actions: the arrow")
+        t.equal(follower.map.pointerCursorName(at: 90, 30, images: images), "CROSS")
+        t.equal(follower.map.pointerCursorName(at: 45, 15, images: images), nil, "MouseActionCursor=0 blocks what is behind")
+        t.equal(follower.map.pointerCursorName(at: 55, 25, images: images), "TEXT", "behind: the meter's, from [Rainmeter]")
 
         // State bangs, hidden meters and a hidden container.
         for action in ["[!DisableMouseAction Disc LeftMouseUpAction]", "[!ClearMouseAction Caught *]",
@@ -319,11 +406,12 @@ func runHitMapUnitTests(_ t: TestRunner) {
         skin.update()
         var follower = HitMapFollower(skin)
         t.check(follower.map.toolTipsReadMeasures)
-        let first = follower.map.toolTipInfo(at: 10, 10)?.text
+        let first = follower.map.toolTipInfo(at: 10, 10, images: skin.host as? SkinImageQueries)?.text
         t.equal(first, skin.toolTipInfo(at: 10, 10)?.text)
         skin.update()
         follower.refresh()
-        t.check(follower.map.toolTipInfo(at: 10, 10)?.text != first, "the next update's value")
+        t.check(follower.map.toolTipInfo(at: 10, 10, images: skin.host as? SkinImageQueries)?.text != first,
+                "the next update's value")
         t.equal(hitMapDifferences(skin, follower.map, hitMapPoints(skin, follower.map)), [])
         skin.execute("[!UpdateMeasure MeasureCalc]", from: nil)
         follower.refresh()
