@@ -99,12 +99,13 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row", "Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Rectangle", "Circle", "Ellipse", "Capsule", "Image"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
         let solidShape = ["Rectangle", "Circle", "Ellipse", "Capsule"].contains(facts.component)
-        let allowedModifiers: Set<String> = solidShape
+        let image = facts.component == "Image"
+        let allowedModifiers: Set<String> = image ? ["width", "height", "size", "padding", "imageMode", "name", "hidden"] : solidShape
             ? Set(["width", "height", "size", "padding", "fill", "stroke", "name", "hidden"]).union(facts.component == "Rectangle" ? ["rounded"] : [])
             : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         for modifier in call.modifiers {
@@ -116,7 +117,7 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
         }
-        let allowedFacets: Set<String> = solidShape
+        let allowedFacets: Set<String> = image ? ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "imageMode", "hidden", "name"] : solidShape
             ? Set(["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "stroke", "stroke.width", "hidden", "name"]).union(facts.component == "Rectangle" ? ["rounded.topLeft", "rounded.topRight", "rounded.bottomLeft", "rounded.bottomRight"] : [])
             : ["width", "height", "width.min", "width.max", "height.min", "height.max", "padding.left", "padding.right", "padding.top", "padding.bottom",
                "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
@@ -130,7 +131,7 @@ struct StaticProgramCompiler {
         }
         let index = try reserveIndex(at: node, depth: depth)
         // Text styles are inherited only by text and containers; a shape's fill is its own facet/default.
-        let appearance = solidShape ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
+        let appearance = solidShape || image ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
         let width = try length(facts, "width", default: spec.sizing.width, at: node)
         let height = try length(facts, "height", default: spec.sizing.height, at: node)
         let minWidth = try number(facts, "width.min", default: 0, at: node)
@@ -203,6 +204,30 @@ struct StaticProgramCompiler {
             case "Capsule": content = .shape(kind: .capsule, fill: fill)
             default: content = .rectangle(fill: fill)
             }
+        case "Image":
+            guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1,
+                  case .string(let source) = try constant(arguments[0].value.node), !source.isEmpty,
+                  !source.hasPrefix("/"), !source.hasPrefix("~"), !source.contains("://"),
+                  !source.contains("\\"), !source.split(separator: "/").contains("..") else {
+                throw issue(.unsupported, node, "Image requires a literal file inside the widget folder")
+            }
+            let value: Value
+            if let own = try facet(facts, "imageMode", at: node) { value = own }
+            else {
+                guard case .source(let source)? = catalog.modifier(named: "imageMode")?.signatures.first?.param(named: "mode")?.defaultValue else {
+                    throw issue(.invalidCheckedModel, node, "The checking catalog has no imageMode default")
+                }
+                value = try fixed(source, at: node)
+            }
+            let mode: ProgramImageMode
+            switch value {
+            case .choice("fit"): mode = .fit
+            case .choice("fill"): mode = .fill
+            case .choice("stretch"): mode = .stretch
+            case .choice("tile"): mode = .tile
+            default: throw issue(.unsupported, node, "Unsupported imageMode")
+            }
+            content = .image(ProgramImage(source: source, mode: mode))
         case "Text":
             guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
                 throw issue(.unsupported, node, "Text requires one String expression")

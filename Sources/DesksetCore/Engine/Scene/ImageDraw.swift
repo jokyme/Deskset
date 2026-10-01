@@ -19,10 +19,13 @@ public struct ImageDraw: Equatable, Sendable {
     public var scaleMargins: SkinInsets?
     public var decodesAtDrawnSize: Bool
     public var placement: Placement
+    /// Explicit natural points after EXIF orientation, independent of the decoded thumbnail's pixels. Nil keeps
+    /// the compatibility renderer's existing size/density rules. An explicit size requires unprocessed file input.
+    public var naturalSize: SkinSize?
 
     public init(contentFrame: SkinRect, path: String?, options: ImageOptions, maskPath: String?,
                 maskOptions: ImageOptions, preserveAspectRatio: Int, tile: Bool, scaleMargins: SkinInsets?,
-                decodesAtDrawnSize: Bool, placement: Placement = .meter) {
+                decodesAtDrawnSize: Bool, placement: Placement = .meter, naturalSize: SkinSize? = nil) {
         self.contentFrame = contentFrame
         self.path = path
         self.options = options
@@ -33,6 +36,7 @@ public struct ImageDraw: Equatable, Sendable {
         self.scaleMargins = scaleMargins
         self.decodesAtDrawnSize = decodesAtDrawnSize
         self.placement = placement
+        self.naturalSize = naturalSize
     }
 }
 

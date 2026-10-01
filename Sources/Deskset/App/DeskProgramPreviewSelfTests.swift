@@ -1,5 +1,8 @@
 import AppKit
 import CoreText
+import ImageIO
+import UniformTypeIdentifiers
+import Darwin
 import DeskLanguage
 import DesksetCore
 import DesksetDraw
@@ -761,10 +764,398 @@ enum DeskProgramPreviewSelfTests {
             p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
             let cleared = try paint(p.canvas); try canaries(t, cleared); t.equal(try outlineInk(cleared), 0)
         }
+        t.suite("Desk: image preview: ordinary local pictures match independent native placement at both scales") {
+            let data = try imageData()
+            let decoded = try decodedFixture(data)
+            for mode in ["fit", "fill", "stretch", "tile"] {
+                let source = "widget { Image(\"photos/甲😀.png\").size(48, 40).padding(4).imageMode(." + mode + ") }"
+                let f = try imageFixture(t, source, images: ["photos/甲😀.png": data])
+                t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+                guard let scene = f.preview.scene, case .image(let draw)? = scene.drawingItems.first else { throw Failure.fixture }
+                t.equal(scene.size, SkinSize(width: 48, height: 40)); t.check(draw.options.useExifOrientation)
+                guard let path = draw.path else { throw Failure.fixture }
+                t.equal(try Data(contentsOf: URL(fileURLWithPath: path)), data, "renderer reads exact private approved bytes")
+                t.check(!path.hasPrefix(f.file.deletingLastPathComponent().path + "/"), "scene does not re-read a user asset")
+                let reference = ImageReferenceView(image: decoded, mode: mode, size: NSSize(width: 48, height: 40))
+                let wrong = ImageReferenceView(image: decoded, mode: mode == "fit" ? "stretch" : "fit", size: reference.frame.size)
+                let blank = ReferenceView(items: [], size: reference.frame.size)
+                for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                    f.controller.window?.appearance = NSAppearance(named: appearance)
+                    f.preview.refreshEnvironment()
+                    reference.appearance = NSAppearance(named: appearance)
+                    for scale in [1, 2] {
+                        let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                        let omitted = try paint(blank, scale: scale), bad = try paint(wrong, scale: scale)
+                        try canaries(t, actual); try canaries(t, expected)
+                        t.check(try ink(actual) > 0); t.equal(try ink(omitted), 0)
+                        t.equal(try bytes(actual), try bytes(expected), "full native bytes: \(mode) \(scale)x \(appearance.rawValue)")
+                        t.check(try bytes(actual) != bytes(bad), "wrong placement cannot qualify")
+                    }
+                }
+                t.equal(try Data(contentsOf: f.file.deletingLastPathComponent().appendingPathComponent("photos/甲😀.png")), data)
+                t.check(f.app.sortedControllers.isEmpty, "no compatibility skin or desktop widget")
+            }
+        }
+
+        t.suite("Desk: image preview: upright JPEG natural dimensions and actual flexible layout consume decoded files") {
+            let jpeg = try imageData(jpeg: true, orientation: 6)
+            let raw = try decodedFixture(jpeg)
+            let upright = try rotateFixtureClockwise(raw)
+            let f = try imageFixture(t, #"widget { Image("Photo.JPG").padding(4) }"#, images: ["photo.jpg": jpeg])
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+            t.equal(f.preview.scene?.size, SkinSize(width: 20, height: 28), "raw 20x12 becomes upright 12x20 points before padding")
+            let reference = ImageReferenceView(image: upright, mode: "natural", size: NSSize(width: 20, height: 28))
+            let wrong = ImageReferenceView(image: raw, mode: "natural", size: reference.frame.size)
+            for scale in [1, 2] {
+                let actual = try paint(f.preview.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.equal(try bytes(actual), try bytes(expected), "upright JPEG uses an independent original-data rotation")
+                t.check(try bytes(actual) != bytes(paint(wrong, scale: scale)))
+            }
+            replace(#"widget { Row(spacing: 4) { Image("photo.jpg").width(.fill).height(.fill); Image("photo.jpg").width(.fill).height(.fill).hidden() }.size(60, 20).padding(2) }"#, in: f)
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+            t.equal(f.preview.scene?.elements.map(\.frame), [SkinRect(width: 60, height: 20),
+                    SkinRect(x: 2, y: 2, width: 26, height: 16), SkinRect(x: 32, y: 2, width: 26, height: 16)])
+            t.equal(f.preview.scene?.drawingItems.count, 1)
+            t.equal(f.preview.scene?.elements[2].visibility, .hiddenKeepsSpace)
+            t.equal(try Data(contentsOf: f.file.deletingLastPathComponent().appendingPathComponent("photo.jpg")), jpeg)
+        }
+
+        t.suite("Desk: image preview: explicit natural points retain large tiles upright aspect and derive failures") {
+            let large = try imageData(width: 9600)
+            let tile = try imageFixture(t, #"widget { Image("large.png").size(48, 40).padding(4).imageMode(.tile) }"#,
+                                        images: ["large.png": large])
+            t.check(imageSettled(tile)); t.equal(tile.preview.state, .ready)
+            guard case .image(let tiled)? = tile.preview.scene?.drawingItems.first else { throw Failure.fixture }
+            t.equal(tiled.naturalSize, SkinSize(width: 9600, height: 12))
+            let reduced = try thumbnailFixture(large, side: 8192)
+            let naturalTile = NaturalImageReferenceView(image: reduced, tile: CGSize(width: 9600, height: 12))
+            let truncated = NaturalImageReferenceView(image: reduced, tile: CGSize(width: 8192, height: reduced.height))
+            for scale in [1, 2] {
+                let actual = try paint(tile.preview.canvas, scale: scale), expected = try paint(naturalTile, scale: scale)
+                try canaries(t, actual); try canaries(t, expected); t.check(try ink(actual) > 0)
+                t.equal(try bytes(actual), try bytes(expected), "bounded decode must not truncate the natural tile period")
+                t.check(try bytes(actual) != bytes(paint(truncated, scale: scale)))
+            }
+
+            let jpeg = try imageData(jpeg: true, orientation: 6, width: 101, height: 57)
+            let photo = try imageFixture(t, #"widget { Image("upright.jpg").size(48, 40).padding(4) }"#,
+                                         images: ["upright.jpg": jpeg])
+            t.check(imageSettled(photo)); t.equal(photo.preview.state, .ready)
+            let raw = try thumbnailFixture(jpeg, side: 64)
+            t.check(Double(raw.width) / 101 != Double(raw.height) / 57, "the thumbnail really has unequal density axes")
+            let upright = try rotateFixtureClockwise(raw)
+            let width = 32.0 * 57.0 / 101.0
+            let fit = NaturalImageReferenceView(image: upright, target: CGRect(x: 4 + (40 - width) / 2, y: 4, width: width, height: 32))
+            for scale in [1, 2] {
+                let actual = try paint(photo.preview.canvas, scale: scale), expected = try paint(fit, scale: scale)
+                try canaries(t, actual); try canaries(t, expected)
+                t.equal(try bytes(actual), try bytes(expected), "upright point aspect is independent of thumbnail-axis rounding")
+            }
+
+            // A large mirrored square needs a bounded orientation bitmap, not a raw fallback or a new layout cap.
+            let budgetData = try largeOrientedFixture()
+            guard let budgetSource = CGImageSourceCreateWithData(budgetData as CFData, nil),
+                  let budgetProperties = CGImageSourceCopyPropertiesAtIndex(budgetSource, 0, nil) as? [CFString: Any]
+            else { throw Failure.fixture }
+            t.equal(budgetProperties[kCGImagePropertyOrientation] as? Int, 2, "original fixture really encodes an integer mirror orientation")
+            let bounded = try imageFixture(t, #"widget { Image("mirror.jpg").size(48, 40).padding(4).imageMode(.tile) }"#,
+                                           images: ["mirror.jpg": budgetData])
+            t.check(imageSettled(bounded)); t.equal(bounded.preview.state, .ready)
+            guard case .image(let draw)? = bounded.preview.scene?.drawingItems.first,
+                  let probe = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+                                        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+                  let prepared = ImageRenderer.preparedNaturalImage(draw, in: probe) else { throw Failure.fixture }
+            t.equal(prepared.size, CGSize(width: 4500, height: 4500)); t.check(prepared.image.width <= 4096)
+            let mirrored = try mirrorFixture(try thumbnailFixture(budgetData, side: 4096))
+            let mirror = NaturalImageReferenceView(image: mirrored, tile: CGSize(width: 4500, height: 4500))
+            let actual = try paint(bounded.preview.canvas), expected = try paint(mirror)
+            try canaries(t, actual); try canaries(t, expected); t.equal(try bytes(actual), try bytes(expected))
+
+            // Existing cache failure injection is restricted to this unique private file. Non-nil legacy preparation
+            // still falls back raw; the explicit Desk contract must fail and clear the whole previous scene instead.
+            let failed = try imageFixture(t, #"widget { Image("fail.jpg").size(48, 40).padding(4) }"#,
+                                          images: ["fail.jpg": try imageData(jpeg: true, orientation: 6)])
+            t.check(imageSettled(failed))
+            guard let checking = failed.controller.deskChecking else { throw Failure.fixture }
+            // AppKit may have already painted the actual document's first ready image. Give this failure its own
+            // fresh file/cache generation before constructing another actual preview consumer of the checked file.
+            let fresh = t.temporaryDirectory("image-derive-failure").appendingPathComponent("fresh.jpg")
+            try imageData(jpeg: true, orientation: 6).write(to: fresh)
+            let path = fresh.path
+            guard let entry = Images.entry(atPath: path), let stamp = Images.imageStamp(atPath: path) else { throw Failure.fixture }
+            let key = Images.DerivedKey(path: path, generation: entry.generation, recipe: .oriented)
+            t.check(Images.derived(key) { nil } == nil)
+            let input = ProgramImageResource(path: path, naturalSize: SkinSize(width: 12, height: 20), stamp: stamp)
+            let failurePreview = DeskProgramPreviewController(resources: { _ in .ready(["fail.jpg": input]) }) {
+                [weak checking] in checking?.isCurrent($0) == true
+            }
+            t.atSuiteEnd { failurePreview.close() }
+            failurePreview.show(checking.snapshot, readError: nil)
+            t.equal(failurePreview.state, .ready)
+            guard case .image(let failureDraw)? = failurePreview.scene?.drawingItems.first else { throw Failure.fixture }
+            t.check(PreparedImage(path: path, options: failureDraw.options) != nil, "original fallback behavior is preserved")
+            t.check(ImageRenderer.preparedNaturalImage(failureDraw, in: probe) == nil)
+            let clear = try paint(failurePreview.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
+            t.check(failurePreview.scene == nil && failurePreview.canvas.isHidden)
+        }
+
+        t.suite("Desk: image preview: asset replacement missing bootstrap stale work and close release private generations") {
+            let original = try imageData(), next = try imageData(alternate: true)
+            let queue = DispatchQueue(label: "desk.preview.test.images")
+            let f = try imageFixture(t, #"widget { Image("A.png").size(48, 40).padding(4) }"#, images: ["A.png": original, "B.png": next], queue: queue)
+            t.check(imageSettled(f)); guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            func currentPath() throws -> String {
+                guard case .image(let draw)? = f.preview.scene?.drawingItems.first, let path = draw.path else { throw Failure.fixture }
+                return path
+            }
+            let first = try currentPath(), old = checking.snapshot
+            queue.suspend()
+            var suspended = true
+            defer { if suspended { queue.resume() } }
+            replace(#"widget { Image("B.png").size(48, 40).padding(4) }"#, in: f)
+            t.check(f.preview.scene == nil && f.preview.state == .checking)
+            t.check(!FileManager.default.fileExists(atPath: first), "current revision releases the old private copy")
+            t.check(checking.snapshot.checked.diagnostics.contains { $0.id == .fileNotFound }, "old A metadata cannot claim B exists")
+            t.equal(Desk.compile(checking.snapshot.checked).imageSources, ["B.png"])
+            queue.resume(); suspended = false
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+            t.check(!checking.snapshot.checked.diagnostics.contains { $0.id == .fileNotFound })
+            t.check(!checking.publish(old))
+            let second = try currentPath()
+            t.equal(try Data(contentsOf: URL(fileURLWithPath: second)), next)
+            try original.write(to: f.file.deletingLastPathComponent().appendingPathComponent("B.png"), options: .atomic)
+            let cleared = try paint(f.preview.canvas)
+            try canaries(t, cleared); t.equal(try ink(cleared), 0, "drawing detects source replacement before using any old picture")
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+            let third = try currentPath()
+            t.equal(try Data(contentsOf: URL(fileURLWithPath: third)), original)
+            t.check(!FileManager.default.fileExists(atPath: second))
+            try FileManager.default.removeItem(at: f.file.deletingLastPathComponent().appendingPathComponent("B.png"))
+            f.controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification))
+            t.check(imageSettled(f)); t.check(f.preview.scene == nil && f.preview.canvas.isHidden)
+            t.check(checking.snapshot.checked.diagnostics.contains { $0.id == .fileNotFound })
+            try next.write(to: f.file.deletingLastPathComponent().appendingPathComponent("B.png"))
+            checking.recheck()
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready, "a formerly missing file is actually loaded on recheck")
+            let finalPath = try currentPath()
+            queue.suspend(); suspended = true
+            replace(#"widget { Image("A.png").size(48, 40).padding(4) }"#, in: f)
+            f.editor.onCommit = { _, _ in false }; f.editor.discardUncommittedChanges()
+            f.controller.window?.close()
+            queue.resume(); suspended = false
+            t.check(AppSelfTest.spin(timeout: 10) { f.preview.state == .closed })
+            t.check(!FileManager.default.fileExists(atPath: finalPath))
+            t.check(f.preview.scene == nil)
+            let marker = DispatchSemaphore(value: 0)
+            queue.async { DispatchQueue.main.async { marker.signal() } }
+            t.check(AppSelfTest.spin(timeout: 10) { marker.wait(timeout: .now()) == .success })
+            t.equal(f.preview.state, .closed)
+        }
+
+        t.suite("Desk: image preview: bounded referenced files reject malformed links and outside inputs without partial pixels") {
+            let data = try imageData()
+            let f = try imageFixture(t, #"widget { Image("valid.png").size(48, 40).padding(4) }"#, images: ["valid.png": data])
+            t.check(imageSettled(f)); t.equal(f.preview.state, .ready)
+            let root = f.file.deletingLastPathComponent()
+            try Data("not an image".utf8).write(to: root.appendingPathComponent("broken.png"))
+            try data.prefix(33).write(to: root.appendingPathComponent("spoof.png"))
+            try Data("invalid sibling Desk bytes".utf8).write(to: root.appendingPathComponent("Sibling.desk"))
+            let outside = t.temporaryDirectory("image-outside")
+            try data.write(to: outside.appendingPathComponent("external.png"))
+            try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("link.png"), withDestinationURL: outside.appendingPathComponent("external.png"))
+            try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked"), withDestinationURL: outside)
+            for path in ["broken.png", "spoof.png", "link.png", "linked/external.png", "missing.png", "../external.png", outside.appendingPathComponent("external.png").path] {
+                replace("widget { Image(\"" + path + "\").size(48, 40).padding(4) }", in: f)
+                t.check(imageSettled(f)); t.check(f.preview.scene == nil && f.preview.canvas.isHidden, path)
+                f.preview.canvas.frame = NSRect(x: 0, y: 0, width: 8, height: 8)
+                let clear = try paint(f.preview.canvas); try canaries(t, clear); t.equal(try ink(clear), 0)
+            }
+            for (paths, bytes, count) in [(["valid.png"], data.count - 1, 2), (["valid.png"], data.count, 0),
+                                           (["valid.png", "broken.png"], data.count + 100, 2)] {
+                let inputs = DeskProgramResources.prepare(root: root, literals: paths, maximumBytes: bytes, maximumFiles: count)
+                defer { inputs.removeCopies() }
+                t.check(inputs.failure != nil && inputs.images.isEmpty && inputs.folder == nil, "no partial input on collection failure")
+            }
+            let alias = DeskProgramResources.prepare(root: root, literals: ["./VALID.PNG", "valid.png"], maximumBytes: data.count, maximumFiles: 1)
+            defer { alias.removeCopies() }
+            t.check(alias.failure == nil, "same asset aliases count once: \(String(describing: alias.failure))")
+            t.equal(alias.images.count, 2); t.equal(alias.files.count, 1)
+            let sparse = root.appendingPathComponent("huge.png")
+            let fd = Darwin.open(sparse.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard fd >= 0 else { throw Failure.fixture }
+            defer { Darwin.close(fd) }
+            t.equal(ftruncate(fd, off_t(DeskCatalog.current.limits.maximumPackageBytes + 1)), 0)
+            let tooLarge = DeskProgramResources.prepare(root: root, literals: ["huge.png"], maximumBytes: DeskCatalog.current.limits.maximumPackageBytes,
+                                                       maximumFiles: DeskCatalog.current.limits.maximumPackageFiles)
+            t.check(tooLarge.failure != nil && tooLarge.images.isEmpty && tooLarge.folder == nil)
+            replace(#"widget { Image("valid.png").rounded(3) }"#, in: f)
+            t.check(imageSettled(f)); t.check(f.preview.scene == nil)
+            t.check(Desk.compile(f.controller.deskChecking!.snapshot.checked).imageSources.isEmpty)
+            t.equal(try Data(contentsOf: root.appendingPathComponent("valid.png")), data)
+            t.equal(f.app.sortedControllers.count, 0)
+        }
+
     }
 
 
     /// Independent native geometry API, not the shared Program lowering or ShapeGeometryBuilder.
+    private static func imageSettled(_ f: Fixture) -> Bool {
+        AppSelfTest.spin(timeout: 10) {
+            guard let checking = f.controller.deskChecking, checking.snapshot.isChecked, checking.isCurrent(checking.snapshot) else { return false }
+            if case .pending = checking.imageResources(for: checking.snapshot) { return false }
+            return true
+        }
+    }
+
+    private static func imageFixture(_ t: AppTestRunner, _ text: String, images: [String: Data],
+                                     queue: DispatchQueue = DispatchQueue(label: "desk.preview.test.image.files")) throws -> Fixture {
+        queue.suspend()
+        defer { queue.resume() }
+        let f = try fixture(t, text, queue: queue)
+        for (path, data) in images {
+            let file = f.file.deletingLastPathComponent().appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: file)
+        }
+        return f
+    }
+
+    /// An original nonsquare image, with distinct literal quadrants and premultiplied partial alpha. Encoding is
+    /// native ImageIO; the independent view decodes these original bytes, never a production renderer result.
+    private static func imageData(jpeg: Bool = false, orientation: Int = 1, alternate: Bool = false,
+                                  width: Int = 20, height: Int = 12) throws -> Data {
+        var pixels: [UInt8] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let rgba: [UInt8]
+                if alternate { rgba = x < width / 2 ? [24, 56, 232, 255] : [240, 176, 16, 255] }
+                else if y < height / 2 { rgba = x < width / 2 ? [224, 40, 60, 255] : (jpeg ? [20, 208, 80, 255] : [10, 104, 40, 128]) }
+                else { rgba = x < width / 2 ? [16, 72, 224, 255] : [232, 192, 32, 255] }
+                pixels.append(contentsOf: rgba)
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+              let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue).union(.byteOrder32Big),
+                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { throw Failure.fixture }
+        let output = NSMutableData()
+        guard let encoder = CGImageDestinationCreateWithData(output, (jpeg ? UTType.jpeg : UTType.png).identifier as CFString, 1, nil) else { throw Failure.fixture }
+        CGImageDestinationAddImage(encoder, image, [kCGImagePropertyOrientation: orientation,
+                                                   kCGImageDestinationLossyCompressionQuality: 1.0] as CFDictionary)
+        guard CGImageDestinationFinalize(encoder) else { throw Failure.fixture }
+        return output as Data
+    }
+
+    private static func decodedFixture(_ data: Data) throws -> CGImage {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw Failure.fixture }
+        return image
+    }
+
+    private static func thumbnailFixture(_ data: Data, side: Int) throws -> CGImage {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: false,
+                kCGImageSourceThumbnailMaxPixelSize: side, kCGImageSourceShouldCacheImmediately: true,
+              ] as CFDictionary) else { throw Failure.fixture }
+        return image
+    }
+
+    private static func largeOrientedFixture() throws -> Data {
+        guard let context = CGContext(data: nil, width: 4500, height: 4500, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { throw Failure.fixture }
+        context.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 2250, height: 4500))
+        context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)); context.fill(CGRect(x: 2250, y: 0, width: 2250, height: 4500))
+        let output = NSMutableData()
+        guard let image = context.makeImage(), let encoder = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { throw Failure.fixture }
+        let properties: [CFString: Any] = [kCGImagePropertyOrientation: 2, kCGImageDestinationLossyCompressionQuality: 1.0]
+        CGImageDestinationAddImage(encoder, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(encoder) else { throw Failure.fixture }
+        return output as Data
+    }
+
+    private static func mirrorFixture(_ image: CGImage) throws -> CGImage {
+        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.fixture }
+        context.translateBy(x: CGFloat(image.width), y: 0); context.scaleBy(x: -1, y: 1)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let result = context.makeImage() else { throw Failure.fixture }
+        return result
+    }
+
+    private final class NaturalImageReferenceView: NSView {
+        let image: CGImage, target: CGRect, tile: CGSize?
+        override var isFlipped: Bool { true }
+        init(image: CGImage, target: CGRect = CGRect(x: 4, y: 4, width: 40, height: 32), tile: CGSize? = nil) {
+            self.image = image; self.target = target; self.tile = tile
+            super.init(frame: NSRect(x: 0, y: 0, width: 48, height: 40))
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState(); defer { context.restoreGState() }
+            context.clip(to: CGRect(x: 4, y: 4, width: 40, height: 32)); context.interpolationQuality = .high
+            if let tile {
+                context.translateBy(x: 4, y: 4); context.scaleBy(x: 1, y: -1)
+                context.draw(image, in: CGRect(x: 0, y: -tile.height, width: tile.width, height: tile.height), byTiling: true)
+            } else {
+                context.translateBy(x: target.minX, y: target.maxY); context.scaleBy(x: 1, y: -1)
+                context.draw(image, in: CGRect(origin: .zero, size: target.size))
+            }
+        }
+    }
+
+    private static func rotateFixtureClockwise(_ image: CGImage) throws -> CGImage {
+        guard let context = CGContext(data: nil, width: image.height, height: image.width, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw Failure.fixture }
+        context.translateBy(x: 0, y: CGFloat(image.width))
+        context.rotate(by: -.pi / 2)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let result = context.makeImage() else { throw Failure.fixture }
+        return result
+    }
+
+    private final class ImageReferenceView: NSView {
+        let image: CGImage
+        let mode: String
+        override var isFlipped: Bool { true }
+        init(image: CGImage, mode: String, size: NSSize) {
+            self.image = image; self.mode = mode
+            super.init(frame: NSRect(origin: .zero, size: size))
+        }
+        required init?(coder: NSCoder) { fatalError("not used") }
+        override func draw(_ dirtyRect: NSRect) {
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState()
+            defer { context.restoreGState() }
+            let box = CGRect(x: 4, y: 4, width: bounds.width - 8, height: bounds.height - 8)
+            context.clip(to: box)
+            context.interpolationQuality = .high
+            if mode == "tile" {
+                context.translateBy(x: 4, y: 4)
+                context.scaleBy(x: 1, y: -1)
+                context.draw(image, in: CGRect(x: 0, y: -12, width: 20, height: 12), byTiling: true)
+                return
+            }
+            // Literal expected placement of the 20x12 source inside the 40x32 content box. The natural JPEG
+            // reference has already independently undone its orientation and uses its own 12x20 dimensions.
+            let target: CGRect
+            switch mode {
+            case "fit": target = CGRect(x: 4, y: 8, width: 40, height: 24)
+            case "fill": target = CGRect(x: 4 + (40 - 20 * (32.0 / 12.0)) / 2, y: 4, width: 20 * (32.0 / 12.0), height: 32)
+            case "natural": target = CGRect(x: 4, y: 4, width: image.width, height: image.height)
+            default: target = box
+            }
+            context.translateBy(x: target.minX, y: target.maxY)
+            context.scaleBy(x: 1, y: -1)
+            context.draw(image, in: CGRect(origin: .zero, size: target.size))
+        }
+    }
+
     private static func curvePath(_ name: String, in rect: CGRect) throws -> CGPath {
         switch name {
         case "Circle":

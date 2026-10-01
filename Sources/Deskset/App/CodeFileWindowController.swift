@@ -61,7 +61,9 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
             let queue = deskCheckQueue ?? DispatchQueue(label: "deskset.document.check", qos: .userInitiated)
             let checking = DeskCodeDocumentChecking(file: self.file, editor: codeView, checkingOn: queue)
             deskChecking = checking
-            let preview = DeskProgramPreviewController { [weak self] snapshot in
+            let preview = DeskProgramPreviewController(resources: { [weak checking] snapshot in
+                checking?.imageResources(for: snapshot) ?? .pending
+            }) { [weak self] snapshot in
                 guard let self, self.readError == nil else { return false }
                 return self.deskChecking?.isCurrent(snapshot) == true
             }
@@ -173,9 +175,9 @@ final class CodeFileWindowController: NSWindowController, NSWindowDelegate {
         codeView.onCompletionRange = nil
         codeView.onCompletions = nil
         codeView.onInsertCompletion = nil
+        deskPreview?.close()
         deskChecking?.close()
         deskDecorations?.detach()
-        deskPreview?.close()
         app.codeFileWindowDidClose(self)
     }
 

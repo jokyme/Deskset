@@ -497,4 +497,57 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.check(nonRectangle.diagnostics(.error).isEmpty, deskDescribe(nonRectangle))
         t.equal(Desk.compile(nonRectangle).issues.first?.kind, .unsupported)
     }
+
+    t.suite("Desk: image compilation: literal sources defaults and four modes reach shared scenes") {
+        for (suffix, mode, aspect, tile) in [("", ProgramImageMode.fit, 1, false), (".imageMode(.fill)", .fill, 2, false),
+                                           (".imageMode(.stretch)", .stretch, 0, false), (".imageMode(.tile)", .tile, 0, true)] {
+            let source = "widget { Image(\"photos/甲😀.png\")" + suffix + ".size(32, 24).padding(2).name(picture) }"
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(result.issues.isEmpty, "\(result.issues)")
+            guard let program = result.program, case .image(let image) = program.root.content else { throw CompilationFixtureError.missingProgram }
+            t.equal(image.source, "photos/甲😀.png"); t.equal(image.mode, mode)
+            t.equal(result.imageSources, ["photos/甲😀.png"]); t.equal(checked.assets.images.map(\.path), ["photos/甲😀.png"])
+            t.equal(program.root.id, ElementID(name: "picture", index: 0))
+            var runtime = try ProgramRuntime(program: program)
+            let input = ProgramImageResource(path: "/fixture/original.png", naturalSize: SkinSize(width: 20, height: 10),
+                                             stamp: ImageStamp(seconds: 1, nanoseconds: 2, size: 3, inode: 4))
+            let scene = try runtime.project(environment: compileEnvironment(), images: [image.source: input]) { _, _, _ in SkinSize() }
+            guard case .image(let draw)? = scene.drawingItems.first else { throw CompilationFixtureError.missingProgram }
+            t.equal(draw.contentFrame, SkinRect(x: 2, y: 2, width: 28, height: 20)); t.equal(draw.preserveAspectRatio, aspect)
+            t.equal(draw.tile, tile); t.check(draw.options.useExifOrientation)
+        }
+    }
+
+    t.suite("Desk: image compilation: missing asset demands preserve diagnostics until the actual recheck") {
+        let file = DeskFileID(path: "Image.desk"), text = #"widget { Image("./New.png").width(.fill).height(16) }"#
+        let service = DeskLanguageService(openFile: file, files: [file: text], resources: PackageResources(package: DeskPackage()))
+        let beforeGeneration = service.snapshot.generation
+        let missing = Desk.compile(service.snapshot.checked)
+        t.check(missing.program == nil); t.check(missing.diagnostics.contains { $0.id == .fileNotFound })
+        t.equal(missing.diagnostics, service.snapshot.checked.diagnostics); t.equal(missing.imageSources, ["./New.png"])
+        let package = DeskPackage(files: [DeskPackageFile(path: "new.PNG", kind: .image, size: 10, pixelSize: DeskPixelSize(width: 8, height: 12))],
+                                  texts: [file: text], isSingleFile: true)
+        let checked = service.setPackage(package), ready = Desk.compile(checked.checked)
+        t.check(ready.program != nil, "\(ready.diagnostics)"); t.check(!ready.diagnostics.contains { $0.id == .fileNotFound })
+        t.equal(ready.imageSources, ["./New.png"]); t.check(checked.generation > beforeGeneration)
+        for suffix in [".rounded(2)", ".tint(.accent)", ".margin(1)"] {
+            let source = #"widget { Image("missing.png")"# + suffix + " }"
+            let bad = Desk.compile(deskCheck(source, context: CheckContext(resources: PackageResources(package: DeskPackage()))))
+            t.check(bad.program == nil); t.check(bad.imageSources.isEmpty, "unsupported semantics must not request asset reads")
+            t.check(bad.diagnostics.contains { $0.id == .fileNotFound })
+        }
+    }
+
+    t.suite("Desk: image compilation: unsupported sources facets and other checker errors request no assets") {
+        for source in [#"widget { Image("../outside.png") }"#, #"widget { Image("/tmp/outside.png") }"#,
+                       #"widget { Image("https://example.invalid/a.png") }"#, #"widget { Image(music.cover) }"#,
+                       #"widget { Image("a.png").rounded(3) }"#, #"widget { Image("a.png").grayscale() }"#,
+                       #"widget { Image("a.png").imageMode(.fill, if: true) }"#,
+                       #"widget { Image("a.png").padding(-1) }"#] {
+            let checked = deskCheck(source), result = Desk.compile(checked)
+            t.check(result.program == nil, source); t.check(result.imageSources.isEmpty, source)
+            t.equal(result.diagnostics, checked.diagnostics)
+        }
+    }
+
 }
