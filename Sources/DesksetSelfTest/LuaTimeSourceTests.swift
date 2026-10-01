@@ -127,6 +127,35 @@ private func luaAutomaticTimeSamples(_ zone: String) -> [LuaTimeSample] {
                                         hint: -1, automaticTransition: true))
         }
     }
+    // Native mktime rejects an initial civil year before 1900. Normalizing excess seconds can bring a rejected
+    // year into range, while seconds deferred from 1900 can reach 1899. Preserve those boundaries, not a blanket
+    // rule that every pre-1900 result is invalid.
+    let early: [(String, String)]
+    switch zone {
+    case "America/New_York":
+        early = [
+            ("1883 before standard fold", "{year=1883, month=11, day=18, hour=11, min=59, sec=59}"),
+            ("1883 standard fold start", "{year=1883, month=11, day=18, hour=12, min=0, sec=0}"),
+            ("1883 standard fold middle", "{year=1883, month=11, day=18, hour=12, min=2, sec=0}"),
+            ("1883 standard fold end", "{year=1883, month=11, day=18, hour=12, min=3, sec=58}"),
+            ("1883 excess seconds", "{year=1883, month=11, day=18, hour=12, min=0, sec=2700}"),
+            ("1883 negative seconds", "{year=1883, month=11, day=18, hour=12, min=30, sec=-1800}"),
+            // Accepting this rejected anchor would retain LMT's offset and put the final 1902 result 238s early.
+            ("1883 excess crosses 1900", "{year=1883, month=11, day=18, hour=12, min=0, sec=600000000}"),
+        ]
+    case "UTC":
+        early = [
+            ("1899 canonical last second", "{year=1899, month=12, day=31, hour=23, min=59, sec=59}"),
+            ("1900 negative second crosses 1899", "{year=1900, month=1, day=1, hour=0, min=0, sec=-1}"),
+            ("1899 excess crosses 1900", "{year=1899, month=12, day=31, hour=23, min=59, sec=120}"),
+            ("1899 negative seconds", "{year=1899, month=1, day=1, hour=0, min=0, sec=-1800}"),
+            ("1840 canonical", "{year=1840, month=1, day=1, hour=0, min=0, sec=0}"),
+            ("1840 negative seconds", "{year=1840, month=1, day=1, hour=0, min=0, sec=-1800}"),
+            ("1840 excess crosses 1900", "{year=1840, month=1, day=1, hour=0, min=0, sec=2000000000}"),
+        ]
+    default: early = []
+    }
+    result += early.map { LuaTimeSample(name: $0.0, fields: $0.1, hint: -1, automaticTransition: true) }
     return result
 }
 
