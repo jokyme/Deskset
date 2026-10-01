@@ -79,6 +79,55 @@ enum LegacyRenderSelfTests {
 
         inputTests(t)
 
+        t.suite("Runtime: legacy renderer: image histories are reset before comparison") {
+            guard let canvas = Images.bitmapContext(width: 14, height: 14) else { return t.check(false, "a bitmap") }
+            for y in 0..<14 {
+                for x in 0..<14 {
+                    let color = RGBA(r: Double((x * 17 + y * 7) % 256), g: Double((y * 19 + x * 11) % 256),
+                                     b: Double((x * 23 + y * 13) % 256), a: Double(17 + (x * 13 + y * 19) % 239))
+                    canvas.setFillColor(color.cgColor)
+                    canvas.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+            guard let image = canvas.makeImage(), let png = FileViewIconWriter.encode(image, pathExtension: "png"),
+                  let loaded = SkinDrawingSelfTests.load(t, """
+                    [Rainmeter]
+                    Update=-1
+                    [Image]
+                    Meter=Image
+                    ImageName=alpha.png
+                    X=5
+                    Y=3
+                    """, files: ["alpha.png": png], "legacy-image-history"),
+                  let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+                return t.check(false, "the original translucent image and skin load")
+            }
+            let skin = loaded.skin, path = loaded.folder.appendingPathComponent("alpha.png").path
+            defer { withExtendedLifetime(loaded.host) { skin.close() } }
+            let w = max(Int(skin.width * 2), 1), h = max(Int(skin.height * 2), 1)
+            for legacyFirst in [false, true] {
+                // Different prior formats and scales, in both orders; measuring has also warmed only Images.
+                var options = RenderOptions(input: "")
+                options.colorSpace = .srgb
+                options.legacy = legacyFirst
+                t.check(RenderCommand.draw(skin, width: w / 2, height: h / 2, scale: 1, options: options) != nil)
+                let window = legacyFirst
+                    ? SkinBitmapDrawing.fullDrawing(of: skin, w, h, scale: 2, space: space)
+                    : LegacySkinBitmapDrawing.fullDrawing(of: skin, w, h, scale: 2, space: space)
+                t.check(window?.makeImage() != nil)
+                guard let current = Images.cachedImage(path), let legacy = LegacyImages.cachedImage(path) else {
+                    t.check(false, "both paths have a warmed source image")
+                    continue
+                }
+                t.check(bytesEqual(current, legacy), "the source pixels match despite their different histories")
+                let checked = compare(skin, "image histories, legacy first=\(legacyFirst)", t)
+                t.equal(checked.drawn, 4)
+                t.check(checked.hasPixels, "all four comparisons draw the translucent pattern")
+                t.check(Images.cachedImage(path) !== current, "the comparison starts with a fresh current source")
+                t.check(LegacyImages.cachedImage(path) !== legacy, "the comparison starts with a fresh legacy source")
+            }
+        }
+
         t.suite("Runtime: legacy renderer: a difference is found") {
             guard let loaded = SkinDrawingSelfTests.load(t, """
                 [Rainmeter]
@@ -705,6 +754,10 @@ enum LegacyRenderSelfTests {
     /// and 2x, and at 2x also in device RGB (`--render`'s default) and the skin window's full picture. Returns the
     /// number of pictures compared, and whether it drew anything at all.
     static func compare(_ skin: Skin, _ name: String, _ t: AppTestRunner) -> (drawn: Int, hasPixels: Bool) {
+        // Measuring warms only Images. Equal public CGImage pixels can round differently in BGRA after different
+        // prior drawing histories, so both paths start this comparison with freshly decoded source images.
+        Images.purge()
+        LegacyImages.purge()
         var drawn = 0, hasPixels = false
         for scale in [1.0, 2.0] {
             for space in scale == 2 ? [RenderOptions.ColorSpace.srgb, .device] : [.srgb] {
