@@ -43,6 +43,15 @@ enum CorpusLayerContentSelfTests {
         let rectangle: [Int]
         let members: [String]
     }
+    private struct LayerDifference: Encodable {
+        let role: String
+        let rectangle: [Int]
+        let members: [String]
+        // First-difference coordinates are local to this rectangle, whose origin is in window pixels.
+        // Numeric tolerance is reported only; it does not replace either strict whole-window gate.
+        let singleVsCandidate: Difference
+        let freshVsIncremental: Difference
+    }
     private struct Ink: Encodable {
         let members: [String]
         let rectangle: [Int]
@@ -73,6 +82,7 @@ enum CorpusLayerContentSelfTests {
         let baseMembers: [String]
         let skipped: [String]
         let layers: [Layer]
+        let layerDifferences: [LayerDifference]
         let areas: Areas
         let ink: [Ink]
         let singleVsCandidate: Difference
@@ -111,6 +121,7 @@ enum CorpusLayerContentSelfTests {
     }
 
     static func run(_ t: AppTestRunner) {
+        layerComparisonTests(t)
         t.suite("Runtime: corpus layer content: geometry area reporting matches bitmap modes") {
             guard let empty = Rect(minX: 0, minY: 0, maxX: 0, maxY: 9),
                   let window = Rect(minX: 0, minY: 0, maxX: 7, maxY: 9) else {
@@ -357,6 +368,8 @@ enum CorpusLayerContentSelfTests {
                 try Data(actual.rgba).write(to: failurePrefix.appendingPathExtension("candidate.rgba"))
                 try Data(cold.rgba).write(to: failurePrefix.appendingPathExtension("fresh.rgba"))
             }
+            let layerDifferences = try compareLayers(frame.plan, reference: reference.rgba,
+                                                     candidate: actual.rgba, fresh: cold.rgba)
             var ink: [Ink] = []
             for layer in frame.plan.layers {
                 guard case let .group(ids) = layer.content else { continue }
@@ -394,7 +407,7 @@ enum CorpusLayerContentSelfTests {
                 generation: scene.generation, sequence: frame.sequence, change: String(describing: frame.change),
                 fallback: fallback, unknown: unknown, baseMembers: frame.plan.baseMembers.map(identity),
                 skipped: frame.plan.skipped.map(identity), layers: frame.plan.layers.map(layerReport),
-                areas: try areas(frame.plan, prepared.runInk), ink: ink,
+                layerDifferences: layerDifferences, areas: try areas(frame.plan, prepared.runInk), ink: ink,
                 singleVsCandidate: Difference(a), freshVsIncremental: Difference(b), hasPixels: hasPixels,
                 rgbaSHA256: SHA256.hash(data: Data(actual.rgba)).map { String(format: "%02x", $0) }.joined(),
                 validationFailures: Array(t.failures.dropFirst(failuresBefore)))
@@ -506,6 +519,128 @@ enum CorpusLayerContentSelfTests {
             layer.minificationFilter = .nearest
             layer.magnificationFilter = .nearest
         }
+    }
+
+    private static func layerComparisonTests(_ t: AppTestRunner) {
+        t.suite("Runtime: corpus layer content: layer comparisons use their own rectangles") {
+            guard let window = Rect(minX: 0, minY: 0, maxX: 1000, maxY: 1),
+                  let group = Rect(minX: 0, minY: 0, maxX: 999, maxY: 1),
+                  let slice = Rect(minX: 999, minY: 0, maxX: 1000, maxY: 1),
+                  let smallWindow = Rect(minX: 0, minY: 0, maxX: 3, maxY: 2),
+                  let leftColumn = Rect(minX: 0, minY: 0, maxX: 1, maxY: 2),
+                  let smallCrop = Rect(minX: 1, minY: 0, maxX: 3, maxY: 2) else {
+                throw Failure.invalidResult("Representable layer comparison controls")
+            }
+            let member = ElementID(name: "Control", index: 0)
+            let plan = PartitionPlan(window: window, baseMembers: [], layers: [
+                LayerPlan(id: .group(fileIndex: 0), rect: group, content: .group(members: [member])),
+                LayerPlan(id: .baseSlice(index: 0), rect: slice, content: .baseSlice(source: slice))
+            ], skipped: [])
+            let reference = (0..<1000).flatMap { _ -> [UInt8] in [0, 0, 0, 255] }
+            var changed = reference
+            changed[17 * 4] = 1
+            let whole = try PixelComparison.compare(reference: reference, candidate: changed, width: 1000, height: 1)
+            let layers = try compareLayers(plan, reference: reference, candidate: changed, fresh: reference)
+            guard layers.count == 2 else { throw Failure.invalidResult("Every actual layer must be reported") }
+            t.check(whole.meetsComponentTolerance && !whole.isExact,
+                    "the 1000-pixel window's numeric allowance is not strict equality")
+            t.check(layers[0].singleVsCandidate.pixels == 999 && layers[0].singleVsCandidate.changed == 1 &&
+                    !layers[0].singleVsCandidate.withinComponentTolerance && !layers[0].singleVsCandidate.exact,
+                    "the 999-pixel group cannot borrow the window's larger denominator")
+            t.check(layers[0].role == "group" && layers[0].members == ["0:control"] &&
+                    layers[1].role == "baseSlice" && layers[1].singleVsCandidate.exact,
+                    "the observed change stays associated with its actual group and leaves the other slice exact")
+            let basePlan = PartitionPlan(window: window, baseMembers: [], layers: [
+                LayerPlan(id: .baseSlice(index: 0), rect: window, content: .baseSlice(source: window))
+            ], skipped: [])
+            let base = try compareLayers(basePlan, reference: reference, candidate: changed, fresh: changed)
+            let fresh = try compareLayers(basePlan, reference: reference, candidate: reference, fresh: changed)
+            guard let baseDifference = base.first, let freshDifference = fresh.first else {
+                throw Failure.invalidResult("The full base slice must be reported")
+            }
+            t.check(baseDifference.singleVsCandidate.withinComponentTolerance &&
+                    !baseDifference.singleVsCandidate.exact && baseDifference.freshVsIncremental.exact,
+                    "a nonzero base difference remains a strict failure even when its numeric flag is true")
+            t.check(freshDifference.singleVsCandidate.exact &&
+                    freshDifference.freshVsIncremental.withinComponentTolerance &&
+                    !freshDifference.freshVsIncremental.exact,
+                    "a nonzero fresh/incremental difference remains a strict failure independently of Single")
+
+            let rows = (0..<24).map { UInt8($0) }
+            t.equal(try cropRGBA(rows, in: smallWindow, to: smallCrop),
+                    [4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18, 19, 20, 21, 22, 23],
+                    "top-row RGBA cropping copies active row segments without the skipped left pixels")
+            let smallPlan = PartitionPlan(window: smallWindow, baseMembers: [], layers: [
+                LayerPlan(id: .baseSlice(index: 0), rect: leftColumn, content: .baseSlice(source: leftColumn)),
+                LayerPlan(id: .group(fileIndex: 0), rect: smallCrop, content: .group(members: [member]))
+            ], skipped: [])
+            var lastPixelChanged = rows
+            lastPixelChanged[23] = 24
+            let rowDifference = try compareLayers(smallPlan, reference: rows, candidate: lastPixelChanged, fresh: rows)
+            t.equal(rowDifference.last?.singleVsCandidate.first, [1, 1, 3, 23, 24],
+                    "a lower-row alpha difference uses local layer coordinates, not the window origin")
+
+            func rejects(_ bytes: [UInt8], _ window: Rect, _ rect: Rect, _ note: String) {
+                do {
+                    _ = try cropRGBA(bytes, in: window, to: rect)
+                    t.check(false, note)
+                } catch Failure.invalidResult { t.check(true, note) }
+                catch { t.check(false, "Unexpected crop failure: \(error)") }
+            }
+            rejects(Array(rows.dropLast()), smallWindow, smallCrop, "short source data cannot become an exact crop")
+            rejects(rows + [0], smallWindow, smallCrop, "long source data does not silently become another format")
+            guard let outside = Rect(minX: -1, minY: 0, maxX: 2, maxY: 1),
+                  let empty = Rect(minX: 1, minY: 1, maxX: 1, maxY: 2),
+                  let overflowingRow = Rect(minX: 0, minY: 0, maxX: Int.max, maxY: 1),
+                  let overflowingImage = Rect(minX: 0, minY: 0, maxX: Int.max / 4, maxY: 2) else {
+                throw Failure.invalidResult("Representable rejected crop controls")
+            }
+            rejects(rows, smallWindow, outside, "a layer outside the bitmap is rejected, not clipped")
+            rejects(rows, smallWindow, empty, "an empty layer is not a passing image comparison")
+            rejects([], overflowingRow, group, "row-byte multiplication is checked before source access")
+            rejects([], overflowingImage, group, "total-byte multiplication is checked before source access")
+        }
+    }
+
+    private static func compareLayers(_ plan: PartitionPlan, reference: [UInt8], candidate: [UInt8],
+                                      fresh: [UInt8]) throws -> [LayerDifference] {
+        try plan.layers.map { layer in
+            let a = try cropRGBA(reference, in: plan.window, to: layer.rect)
+            let b = try cropRGBA(candidate, in: plan.window, to: layer.rect)
+            let c = try cropRGBA(fresh, in: plan.window, to: layer.rect)
+            let description = layerReport(layer)
+            return LayerDifference(role: description.role, rectangle: description.rectangle, members: description.members,
+                singleVsCandidate: Difference(try PixelComparison.compare(reference: a, candidate: b,
+                    width: layer.rect.width, height: layer.rect.height)),
+                freshVsIncremental: Difference(try PixelComparison.compare(reference: c, candidate: b,
+                    width: layer.rect.width, height: layer.rect.height)))
+        }
+    }
+
+    private static func cropRGBA(_ rgba: [UInt8], in window: Rect, to rect: Rect) throws -> [UInt8] {
+        guard window.minX == 0, window.minY == 0, !window.isEmpty, !rect.isEmpty,
+              rect.minX >= 0, rect.minY >= 0, rect.maxX <= window.maxX, rect.maxY <= window.maxY else {
+            throw Failure.invalidResult("Layer crop is outside a nonempty zero-origin bitmap")
+        }
+        let row = window.width.multipliedReportingOverflow(by: 4)
+        guard !row.overflow else { throw Failure.invalidResult("Bitmap row bytes overflow") }
+        let total = row.partialValue.multipliedReportingOverflow(by: window.height)
+        guard !total.overflow, rgba.count == total.partialValue else {
+            throw Failure.invalidResult("Bitmap byte count is not tightly packed RGBA")
+        }
+        // The checked full bitmap and contained rectangle bound all following offsets and the crop allocation.
+        let active = rect.width * 4
+        let count = active * rect.height
+        let column = rect.minX * 4
+        var result: [UInt8] = []
+        result.reserveCapacity(count)
+        for y in rect.minY..<rect.maxY {
+            let start = y * row.partialValue + column
+            let end = start + active
+            guard end <= rgba.count else { throw Failure.invalidResult("Layer row exceeds the source bitmap") }
+            result.append(contentsOf: rgba[start..<end])
+        }
+        return result
     }
 
     private static func areas(_ plan: PartitionPlan, _ runs: [InkBounds.Candidate]) throws -> Areas {
