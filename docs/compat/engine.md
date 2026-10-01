@@ -916,6 +916,19 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   after a short `!Delay` (`[!SetWallpaper "#@#Next.jpg"][!Delay 100][!UpdateMeasure MeasureChameleon][!Redraw]`).
 - Status: emulated
 
+### Bangs between skins in the experimental worker pool
+- Windows (Rainmeter): bangs in an action are performed in their written order (/manual/bangs/).
+- Mac (Deskset): `SkinThreading=pool` uses two shared workers. A bang addressed to another skin is queued on its
+  worker, even when both skins share one. Bangs from one sender reach each target in order; their effects need not
+  finish before the sender continues. A bang to the sending skin itself runs in place. The default `engine` mode
+  retains in-place peer bangs on its shared thread, as does `main`.
+- Why: skins keep a stable worker across refreshes; message semantics must not depend on which worker they share.
+  Workers never wait for another worker to perform a bang.
+- Skin impact: in pool mode, perform dependent work in the target skin after its received action; a later bang in the
+  sender cannot assume another skin has already changed. On quit, close actions are queued in reverse load order,
+  within the existing two-second total budget, before their targets close.
+- Status: emulated
+
 ### Mouse decisions while the engine thread is busy
 - Windows (Rainmeter): the manual does not describe it; a skin takes a click with its meters as they are when the
   click comes (a meter a `MouseOverAction` has just shown takes it).
@@ -927,7 +940,8 @@ Contents: 1. Layout and window size · 2. Text and fonts · 3. Options, skin lan
   that time is decided on what the skin looked like before the hover. Example: `MouseOverAction=[!ShowMeter Close]`,
   and Close has a `RightMouseUpAction` and a `LeftMouseDownAction`. A right click on Close before the hover ran opens
   the skin menu (and the RightMouseUpAction still runs when the thread gets to it); a left press there may drag the
-  window. With `SkinThreading=main` these decisions are made on the live skin, after the hover.
+  window. In the experimental `SkinThreading=pool` mode only skins on the busy worker wait; other workers continue.
+  With `SkinThreading=main` these decisions are made on the live skin, after the hover.
 - Why: the window has to answer macOS at once; waiting for a busy skin thread would freeze the app (the snapshot, §5.5
   of docs/skin-threading.md).
 - Skin impact: only while another skin holds the thread for longer than it takes to move the pointer and click; none

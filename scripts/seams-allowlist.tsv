@@ -589,6 +589,8 @@ random.generator	Sources/DesksetCore/Engine/SkinRandom.swift	1	SkinRandom.live()
 random.swift	Sources/DesksetCore/Engine/SkinRandom.swift	2	SkinRandom: Int.random(in:using:) over the skin's generator
 
 background.dispatch	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	2	the skin thread executor itself: work and cancellations go to its own thread
+background.executorAsync	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: cancellation from another thread is removed on its owning executor
+timer.executorAfter	Sources/DesksetCore/Engine/SkinUpdateScheduler.swift	1	the shared update scheduler: one wake-up on the injected executor for every group of due updates
 background.thread	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: the engine thread (8 MB stack, a run loop of its own)
 timer.Timer	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop
 timer.runLoopAdd	Sources/DesksetCore/Engine/SkinThreadExecutor.swift	1	the skin thread executor itself: its timers, on its run loop

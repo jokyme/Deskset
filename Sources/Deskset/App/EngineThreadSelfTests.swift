@@ -9,6 +9,7 @@ import DesksetCore
 enum EngineThreadSelfTests {
     static func run(_ t: AppTestRunner) {
         keyTests(t)
+        updateClockTests(t)
         lifeTests(t)
         orderTests(t)
         frameTests(t)
@@ -25,7 +26,7 @@ enum EngineThreadSelfTests {
     // MARK: The SkinThreading key
 
     static func keyTests(_ t: AppTestRunner) {
-        t.suite("App: engine thread: SkinThreading says main or engine; engine unless it says main, and says so") {
+        t.suite("App: engine thread: SkinThreading accepts main, engine and pool; defaults to engine") {
             func chosen(_ value: Any?) -> (mode: SkinThreading, note: String?) {
                 // Registered values live in memory only: nothing is written to the user's preferences.
                 guard let defaults = UserDefaults(suiteName: "app.deskset.selftest.threading.\(UUID().uuidString)")
@@ -38,12 +39,13 @@ enum EngineThreadSelfTests {
             t.equal(SkinThreading.appDefault, .engine)
             let engine = chosen("engine")
             t.check(engine.mode == .engine && engine.note == nil, "engine")
+            t.equal(chosen(" Pool ").mode, .pool, "the experimental bounded pool")
             let main = chosen("main")
             t.check(main.mode == .main, "main, for debugging")
             t.check(main.note?.contains("main thread") == true, "and the log says so: \(main.note ?? "")")
             t.equal(chosen(" Main ").mode, .main, "in any case, with spaces around")
             let perSkin = chosen("perSkin")
-            t.equal(perSkin.mode, .engine, "a mode of a later phase: the default")
+            t.equal(perSkin.mode, .engine, "an unknown mode: the default")
             t.check(perSkin.note?.contains("\"perSkin\"") == true, "logged: \(perSkin.note ?? "")")
             let number = chosen(1)
             t.check(number.mode == .engine && number.note != nil, "not a word: the default, logged")
@@ -78,6 +80,17 @@ enum EngineThreadSelfTests {
             let thread = engineApp.engineThread
             engineApp.endEngineThread()
             t.check(AppSelfTest.spin(timeout: 30) { thread?.hasExited == true }, "and it ends when asked")
+
+            guard let poolApp = try AppSelfTest.makeApp(t, threading: .pool) else { return }
+            t.check(poolApp.skinThreadPool == nil, "the pool is lazy too")
+            let worker = poolApp.skinExecutor("Any\\Config")
+            t.check(worker === poolApp.skinExecutor("any/config"), "config case and separators do not change placement")
+            for i in 0..<100 { _ = poolApp.skinExecutor("Config\(i)") }
+            let workers = poolApp.skinThreadPool?.activeWorkers ?? []
+            t.equal(workers.count, 2)
+            t.check(poolApp.engineThread == nil, "no extra shared engine thread")
+            poolApp.endEngineThread()
+            t.check(AppSelfTest.spin(timeout: 30) { workers.allSatisfy(\.hasExited) }, "both pool workers end")
         }
 
         t.suite("App: engine thread: debug builds stop a skin thread that would wait for the main thread") {
@@ -116,6 +129,40 @@ enum EngineThreadSelfTests {
     }
 
     // MARK: Load, refresh, unload, quit
+
+    static func updateClockTests(_ t: AppTestRunner) {
+        t.suite("App: engine thread: update clocks share a scheduler and leave it on pause and unload") {
+            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            let names = (0..<10).map { "Clock\($0)" }
+            let text = "[Rainmeter]\nUpdate=1000\n\n[Count]\nMeasure=Calc\nFormula=Counter\n\n" + box
+            try write(app, Dictionary(uniqueKeysWithValues: names.map { ($0, text) }))
+            var tracked: [() -> Skin?] = []
+            autoreleasepool {
+                let skins = names.compactMap { app.activate(config: "Engine\\\($0)", file: nil) }
+                tracked = skins.map(track)
+                t.equal(skins.count, names.count)
+                t.check(AppSelfTest.spin(timeout: 60) { skins.allSatisfy(\.isStarted) }, "every skin started")
+                guard let engine = app.engineThread else { return t.check(false, "the engine thread") }
+                t.equal(onEngine(app) { engine.updateScheduler.pendingCount }, names.count)
+                for skin in skins { skin.runtime.send(.pause) }
+                t.equal(onEngine(app) { engine.updateScheduler.pendingCount }, 0, "pause cancels every update clock")
+                let before = onEngine(app) { skins.map { $0.runtime.skin.counter } } ?? []
+                // Queue the resumes together: their deadlines are within the clock's leeway.
+                _ = onEngine(app) {
+                    for skin in skins { skin.runtime.send(.resume(updateNow: false)) }
+                }
+                t.check(AppSelfTest.spin(timeout: 30) {
+                    let counters = onEngine(app) { skins.map { $0.runtime.skin.counter } } ?? []
+                    return counters.count == before.count && zip(counters, before).allSatisfy { $0 > $1 }
+                }, "all periodic updates ran after resume")
+                t.equal(onEngine(app) { engine.updateScheduler.pendingCount }, names.count)
+                for name in names { app.deactivate(config: "Engine\\\(name)") }
+                t.check(AppSelfTest.spin(timeout: 30) { skins.allSatisfy { $0.runtime.didClose } }, "all closed")
+                t.equal(onEngine(app) { engine.updateScheduler.pendingCount }, 0, "unload leaves no update clock")
+            }
+            finish(t, app, tracked)
+        }
+    }
 
     static func lifeTests(_ t: AppTestRunner) {
         t.suite("App: engine thread: skins load, refresh, unload and quit on the one engine thread") {
@@ -270,7 +317,7 @@ enum EngineThreadSelfTests {
 
                 """ + box
             let gone = "[Rainmeter]\nUpdate=-1\nOnRefreshAction=[!DeactivateConfig]\n\n" + box
-            for threading in [SkinThreading.main, .engine] {
+            for threading in [SkinThreading.main, .engine, .pool] {
                 guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
                 try write(app, ["Dock": dock, "Menu": plain, "Broken": plain, "Gone": gone, "Last": plain])
                 for (order, name) in ["Dock", "Broken", "Gone", "Menu", "Last"].enumerated() {
@@ -283,12 +330,12 @@ enum EngineThreadSelfTests {
                 var finished = 0
                 autoreleasepool {
                     let gate = SkinLifecycleSelfTests.Gate()
-                    if let engine = threading == .engine ? app.skinExecutor("Engine\\Dock") : nil {
+                    if let engine = threading != .main ? app.skinExecutor("Engine\\Dock") : nil {
                         // Held until Broken's file is gone: its window is made (the file was there), its load fails.
                         gate.hold(engine)
                     }
                     app.loadActiveSkins { finished += 1 }
-                    if threading == .engine {
+                    if threading != .main {
                         t.equal(app.sortedControllers.map(\.config), ["Engine\\Dock"], "one window at a time")
                         try? FileManager.default.removeItem(at: app.skinsDirectory
                             .appendingPathComponent("Engine/Broken/Broken.ini"))
@@ -301,13 +348,13 @@ enum EngineThreadSelfTests {
                             "\(threading): the skin that unloads itself is gone")
                     t.equal(finished, 1)
                     let running = app.sortedControllers.filter(\.isStarted).map(\.config)
-                    t.equal(running, threading == .engine ? ["Engine\\Dock", "Engine\\Menu", "Engine\\Last"]
+                    t.equal(running, threading != .main ? ["Engine\\Dock", "Engine\\Menu", "Engine\\Last"]
                                                           : ["Engine\\Dock", "Engine\\Broken", "Engine\\Menu",
                                                              "Engine\\Last"],
                             "\(threading): the Menu loaded after the Dock, as on the main thread")
                     tracked += app.sortedControllers.map(track)
                 }
-                if threading == .engine {
+                if threading != .main {
                     finish(t, app, tracked)
                 } else {
                     app.stopAllForTermination()
@@ -987,14 +1034,14 @@ enum EngineThreadSelfTests {
     /// Unloads what is still loaded, waits for the suite's skins to be let go of (on the engine thread), and ends the
     /// engine thread.
     static func finish(_ t: AppTestRunner, _ app: AppController, _ skins: [() -> Skin?]) {
-        let engine = app.engineThread
+        let workers = (app.engineThread.map { [$0] } ?? []) + (app.skinThreadPool?.activeWorkers ?? [])
         autoreleasepool {
             for c in app.sortedControllers { app.deactivate(config: c.config) }
         }
         t.check(AppSelfTest.spin(timeout: 30) { skins.allSatisfy { $0() == nil } },
                 "the skins are let go of: \(skins.filter { $0() != nil }.count) left")
         app.endEngineThread()
-        if let engine { t.check(AppSelfTest.spin(timeout: 30) { engine.hasExited }, "the engine thread ends") }
+        t.check(AppSelfTest.spin(timeout: 30) { workers.allSatisfy(\.hasExited) }, "the skin threads end")
     }
 
     /// Runs `body` on the app's engine thread as a piece of its work and waits for its answer (the main run loop turns

@@ -868,6 +868,16 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   what depends on them after a short `!Delay` (`[!SetWallpaper …][!Delay 100][!UpdateMeasure MeasureChameleon]`).
 - **Status:** emulated
 
+#### Bangs between skins in the experimental worker pool
+- **Windows:** bangs in an action run in their written order.
+- **Mac:** `SkinThreading=pool` uses two shared workers. Peer bangs are always queued, including between skins on the
+  same worker. Each sender's bangs reach each target in order; the sender continues before their effects necessarily
+  finish. Self-directed bangs run in place. The default `engine` mode and `main` keep in-place peer delivery.
+- **Why:** message ordering must not depend on worker placement, and workers never wait for one another.
+- **Skin impact:** put work that depends on a peer bang in the target's action. At quit, close actions are queued in
+  reverse load order before their targets close, within the existing two-second total budget.
+- **Status:** emulated
+
 #### Mouse decisions while the engine thread is busy
 - **Windows:** not described; a skin takes a click with its meters as they are when the click comes.
 - **Mac:** the skin window decides at once, from the skin's last finished state, whether a press may drag, whether a
@@ -875,7 +885,7 @@ and from judgment calls where the manual is silent. Detailed notes: [`compat/eng
   actions run on the skin's thread. All desktop skins share that thread: while one keeps it busy, the others' hover
   actions wait, and a click then is decided on the skin as it was before the hover (a button a `MouseOverAction` was
   about to show is not there yet: a right click opens the skin menu, a press may drag). With `SkinThreading=main`
-  the live skin decides.
+  the live skin decides. With the experimental `SkinThreading=pool`, only skins sharing a busy worker wait.
 - **Why:** the window must answer macOS at once; waiting for a busy skin thread would freeze the app.
 - **Skin impact:** only while another skin holds the thread longer than a pointer move and a click take.
 - **Status:** emulated

@@ -24,7 +24,8 @@ import DesksetCore
 /// `DESKSET_THREADS_SOAK=N` multiplies the loads and the main thread's churn (a local soak; CI does not set it).
 enum EngineStressSelfTests {
     static func run(_ t: AppTestRunner) {
-        stressTests(t)
+        stressTests(t, threading: .engine)
+        stressTests(t, threading: .pool)
     }
 
     struct Plan {
@@ -71,8 +72,9 @@ enum EngineStressSelfTests {
     /// Services for (a permission prompt; the self-tests never ask).
     static let leftOut: Set<String> = ["mediaui\\wifi"]
 
-    static func stressTests(_ t: AppTestRunner) {
-        t.suite("App: threads: on the engine thread, every test and default skin loads, refreshes, updates and draws "
+    static func stressTests(_ t: AppTestRunner, threading: SkinThreading) {
+        let place = threading == .engine ? "the engine thread" : "the worker pool"
+        t.suite("App: threads: on \(place), every test and default skin loads, refreshes, updates and draws "
                 + "in the app while the main thread is busy") {
             guard let testSkins = Paths.repositoryFolder("TestSkins"), let defaultSkins = Paths.defaultSkins else {
                 print("    (skipped: TestSkins not found; run from the repository)")
@@ -80,7 +82,7 @@ enum EngineStressSelfTests {
             }
             // Earlier suites' skins stop first: the numbers are this suite's, and nothing of theirs polls the players.
             AppSelfTest.stopEarlierSkins()
-            guard let app = try AppSelfTest.makeApp(t, threading: .engine) else { return }
+            guard let app = try AppSelfTest.makeApp(t, threading: threading) else { return }
             let skins = app.skinsDirectory.resolvingSymlinksInPath()
             let files = try mergeSkins(from: testSkins, into: skins)
                 + mergeSkins(from: defaultSkins, into: skins).filter {
@@ -242,7 +244,7 @@ enum EngineStressSelfTests {
                     + "\(drivers.filter { !$0.finished }.map(\.stateDescription))")
             let loads = drivers.flatMap { d in d.loads.map { (d, $0) } }
             let replaced = loads.filter { $0.1.outcome == .replaced }.count
-            print("    engine thread: \(drivers.count) configs, \(fileCount) files, \(loads.count) loads (\(replaced) "
+            print("    \(place): \(drivers.count) configs, \(fileCount) files, \(loads.count) loads (\(replaced) "
                   + "refreshed or unloaded by a skin first) in \(String(format: "%.1f", seconds)) s; meanwhile "
                   + "\(done.photos) photos, \(done.purges) purges, \(done.fontChanges) font changes, \(done.moves) moves, "
                   + "\(done.hovers) hovers, \(done.menus) menus (\(liveMenus) live), \(done.toolTips) tooltip reads, "
@@ -262,7 +264,7 @@ enum EngineStressSelfTests {
 
             // Every load started on the engine thread, updated as asked and drew.
             t.equal(loads.filter { $0.1.onEngine == false }.map { "\($0.0.config)\\\($0.1.file)" }, [],
-                    "every skin ran on the engine thread")
+                    "every skin ran on its selected worker")
             let failed = loads.compactMap { d, load -> String? in
                 guard case .failed(let error) = load.outcome else { return nil }
                 return "\(d.config)\\\(load.file): \(error)"
@@ -444,7 +446,7 @@ enum EngineStressSelfTests {
             }
             guard c.isStarted else { return }
             if base == nil {
-                loads[i].onEngine = c.runtime.executor === app.engineThread
+                loads[i].onEngine = c.runtime.executor === app.skinExecutor(config)
                 c.visibilityForTesting = true
                 base = (c.runtime.snapshot.updateCount, c.content.state.presented)
             }
