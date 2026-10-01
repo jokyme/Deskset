@@ -3,6 +3,7 @@ import Foundation
 public enum ProgramRuntimeError: Error, Equatable {
     case elementLimit, depthLimit, emptyProgram, duplicateIdentity(ElementID)
     case invalidGeometry(ElementID), invalidText(ElementID), invalidMeasurement(ElementID)
+    case invalidPaint(ElementID)
     case layoutOverflow(ElementID), invalidEnvironment, generationOverflow
     case expressionLimit, expressionDepth, invalidExpression
     case invalidDeclaration(Int), cyclicDeclaration(Int), uninitializedDeclaration(Int)
@@ -20,7 +21,7 @@ public struct ProgramRuntime: Sendable {
         var expressions = try ProgramExpressionValidation(declarations: program.declarations)
         guard program.onLoad.count <= ProgramLimits.maximumExpressions else { throw ProgramRuntimeError.expressionLimit }
         for assignment in program.onLoad { try expressions.validateAssignment(assignment) }
-        var pending = [(program.root, 1)], count = 0, textCount = 0
+        var pending = [(program.root, 1)], count = 0, contentCount = 0
         var identities = Set<ElementID>()
         while let (node, depth) = pending.popLast() {
             count += 1
@@ -36,7 +37,7 @@ public struct ProgramRuntime: Sendable {
             else { throw ProgramRuntimeError.invalidGeometry(node.id) }
             switch node.content {
             case .text(let text):
-                textCount += 1
+                contentCount += 1
                 if case .string(let literal) = text.value, literal.utf16.count > ProgramLimits.maximumTextLength {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
@@ -47,13 +48,19 @@ public struct ProgramRuntime: Sendable {
                     throw ProgramRuntimeError.invalidText(node.id)
                 }
                 if case .literal(let color) = text.color, !Self.valid(color) { throw ProgramRuntimeError.invalidText(node.id) }
+            case .rectangle(let fill):
+                contentCount += 1
+                guard case .fixed = node.width, case .fixed = node.height else {
+                    throw ProgramRuntimeError.invalidGeometry(node.id)
+                }
+                if case .literal(let color) = fill, !Self.valid(color) { throw ProgramRuntimeError.invalidPaint(node.id) }
             case .column(let spacing, _, let children), .row(let spacing, _, let children):
                 guard spacing.isFinite, spacing >= 0 else { throw ProgramRuntimeError.invalidGeometry(node.id) }
                 guard children.count <= ProgramLimits.maximumElements - count - pending.count else { throw ProgramRuntimeError.elementLimit }
                 pending.append(contentsOf: children.reversed().map { ($0, depth + 1) })
             }
         }
-        guard textCount > 0 else { throw ProgramRuntimeError.emptyProgram }
+        guard contentCount > 0 else { throw ProgramRuntimeError.emptyProgram }
         self.program = program
     }
 
@@ -101,6 +108,7 @@ public struct ProgramRuntime: Sendable {
         let content: SkinRect
         let style: TextStyle?
         let text: String?
+        let fill: RGBA?
         let children: [(Box, SkinPoint)]
     }
 
@@ -117,7 +125,7 @@ public struct ProgramRuntime: Sendable {
         let fixedWidth: Double? = { if case .fixed(let n) = node.width { return n }; return nil }()
         let fixedHeight: Double? = { if case .fixed(let n) = node.height { return n }; return nil }()
         let availableWidth = (fixedWidth ?? proposedWidth).map { max(0, $0 - horizontal) }
-        var contentSize: SkinSize, style: TextStyle?, resolvedText: String?, children: [(Box, SkinPoint)] = []
+        var contentSize: SkinSize, style: TextStyle?, resolvedText: String?, fill: RGBA?, children: [(Box, SkinPoint)] = []
         switch node.content {
         case .text(let text):
             let value = try resolve(text.value)
@@ -137,6 +145,12 @@ public struct ProgramRuntime: Sendable {
             guard !wraps || result.width <= width else { throw ProgramRuntimeError.layoutOverflow(node.id) }
             contentSize = SkinSize(width: width, height: result.height)
             style = finalStyle
+        case .rectangle(let color):
+            guard let width = fixedWidth, let height = fixedHeight, width >= horizontal, height >= vertical else {
+                throw ProgramRuntimeError.layoutOverflow(node.id)
+            }
+            contentSize = SkinSize(width: width - horizontal, height: height - vertical)
+            fill = color.resolved(in: appearance)
         case .column(let spacing, _, let nodes):
             let boxes = try nodes.map { try layout($0, proposedWidth: availableWidth, appearance: appearance, resolve: resolve, measure: measure) }
             let height = try sum(boxes.map { $0.size.height } + [spacing * Double(max(0, boxes.count - 1))])
@@ -166,12 +180,12 @@ public struct ProgramRuntime: Sendable {
                 switch align { case .top: y = 0; case .center: y = (innerHeight - child.size.height) / 2; case .bottom: y = innerHeight - child.size.height }
                 children[i].1 = SkinPoint(x: p.left + offset, y: p.top + y)
                 offset = try sum([offset, child.size.width, i + 1 < children.count ? spacing : 0])
-            case .text: break
+            case .text, .rectangle: break
             }
         }
         return Box(node: node, size: SkinSize(width: width, height: height),
                    content: SkinRect(x: p.left, y: p.top, width: innerWidth, height: innerHeight),
-                   style: style, text: resolvedText, children: children)
+                   style: style, text: resolvedText, fill: fill, children: children)
     }
 
     private func append(_ box: Box, at point: SkinPoint, inheritedHidden: Bool, into elements: inout [SceneElement]) throws {
@@ -196,6 +210,17 @@ public struct ProgramRuntime: Sendable {
             }
         case .column: kind = .unknown("Column")
         case .row: kind = .unknown("Row")
+        case .rectangle:
+            kind = .shape
+            guard let fill = box.fill else { throw ProgramRuntimeError.invalidPaint(box.node.id) }
+            if !hidden {
+                let content = SkinRect(x: point.x + box.content.x, y: point.y + box.content.y,
+                                       width: box.content.width, height: box.content.height)
+                guard [content.x, content.y, content.width, content.height, content.maxX, content.maxY].allSatisfy(\.isFinite) else {
+                    throw ProgramRuntimeError.layoutOverflow(box.node.id)
+                }
+                if content.width > 0, content.height > 0 { items = [.fill(content, Paint(color: fill))] }
+            }
         }
         elements.append(SceneElement(id: box.node.id, kind: kind, frame: frame, anchor: point,
                                      visibility: hidden ? .hiddenKeepsSpace : .visible, container: nil, isContainer: false,

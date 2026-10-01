@@ -146,9 +146,15 @@ final class DeskProgramPreviewController: NSViewController {
             if scrollView.magnification > scrollView.maxMagnification {
                 scrollView.setMagnification(scrollView.maxMagnification, centeredAt: NSPoint(x: size.width / 2, y: size.height / 2))
             }
-            let hasText = next.drawingItems.contains { if case .text(let value) = $0 { return !value.text.isEmpty }; return false }
-            state = hasText ? .ready : .empty
-            canvas.isHidden = !hasText
+            let hasContent = next.drawingItems.contains {
+                switch $0 {
+                case .text(let value): return !value.text.isEmpty
+                case .fill(let rect, let paint): return rect.width > 0 && rect.height > 0 && paint.color.a > 0
+                default: return false
+                }
+            }
+            state = hasContent ? .ready : .empty
+            canvas.isHidden = !hasContent
             canvas.needsDisplay = true
             scrollView.contentView.scroll(to: scrollView.contentView.bounds.origin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
