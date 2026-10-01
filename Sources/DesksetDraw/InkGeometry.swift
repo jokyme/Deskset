@@ -75,11 +75,85 @@ package enum InkGeometry {
             // Their compositing envelope remains the clip even when individual child geometry is empty or
             // rasterization is unresolved; no inherited blend mode or mask alpha is inferred to tighten it.
             return .bounds(rect)
-        case .text, .image, .rotator, .sprite, .graph:
-            // Font/image metrics and graph snapping do not establish native raster geometry. In particular,
-            // a nil glyph outline is not an empty draw, and image preparation must not run during this query.
+        case let .image(draw):
+            return image(draw)
+        case let .graph(draw):
+            return graph(draw)
+        case .text, .rotator, .sprite:
+            // A nil glyph outline is not an empty draw; unresolved image sizes and unclipped recipes remain
+            // unknown. Image preparation must not run during this query.
             return .unknown(.unresolvedRasterization)
         }
+    }
+
+    private static func image(_ draw: ImageDraw) -> Geometry {
+        switch draw.placement {
+        case .backgroundNatural:
+            // Its prepared natural size is not captured in ImageDraw, and it has no contentFrame clip.
+            return .unknown(.unresolvedRasterization)
+        case .meter:
+            // The mask's composite has a destination quad, but no explicit destination clip in this path.
+            guard draw.maskPath == nil else { return .unknown(.unresolvedRasterization) }
+        case .backgroundTiled:
+            break
+        }
+        let rect = draw.contentFrame.cgRect
+        guard finite(rect) else { return .unknown(.invalidGeometry) }
+        guard rect.width > 0, rect.height > 0, draw.path != nil else { return .empty }
+        // drawImageFile clips the unmasked meter; tile clips the tiled background to a subset of this frame.
+        // Source alpha, fit/fill, margins and image preparation are not needed to retain that ideal upper bound.
+        return .bounds(rect)
+    }
+
+    private static func graph(_ draw: GraphDraw) -> Geometry {
+        let rect: CGRect
+        let antiAlias: Bool
+        switch draw {
+        case let .line(line):
+            rect = line.contentFrame.cgRect
+            antiAlias = line.antiAlias
+            guard line.lineWidth.isFinite,
+                  !line.horizontalLines || !(line.horizontalLineColor.a > 0)
+                    || line.markerCoordinates.allSatisfy(\.isFinite) else {
+                return .unknown(.invalidGeometry)
+            }
+            if line.historyLength > 0, line.lineWidth > 0, line.transformStrokeFixed,
+               let matrix = line.transformationMatrix {
+                // Match the fields actually indexed by the renderer; do not treat malformed input as empty.
+                guard matrix.count >= 6, matrix.prefix(6).allSatisfy(\.isFinite) else {
+                    return .unknown(.invalidMapping)
+                }
+            }
+            // Markers precede the history/pen guards, so those guards cannot empty the whole Line recipe.
+        case let .histogram(histogram):
+            rect = histogram.contentFrame.cgRect
+            antiAlias = histogram.antiAlias
+            guard finite(rect) else { return .unknown(.invalidGeometry) }
+            guard histogram.historyLength > 0 else { return .empty }
+        }
+        guard finite(rect) else { return .unknown(.invalidGeometry) }
+        guard rect.width > 0, rect.height > 0 else { return .empty }
+        guard !antiAlias else { return .bounds(rect) }
+        // Native graph snap precedes clip(to:). Its accepted dx and dy are each strictly less than one user
+        // unit in magnitude; rejected snap is zero. Their union fits this envelope without a native round trip.
+        guard let x0 = exactlyShifted(rect.minX, by: -1), let y0 = exactlyShifted(rect.minY, by: -1),
+              let x1 = exactlyShifted(rect.maxX, by: 1), let y1 = exactlyShifted(rect.maxY, by: 1) else {
+            return .unknown(.invalidGeometry)
+        }
+        let expanded = CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+        guard finite(expanded), expanded.minX <= x0, expanded.minY <= y0,
+              expanded.maxX >= x1, expanded.maxY >= y1 else { return .unknown(.invalidGeometry) }
+        return .bounds(expanded)
+    }
+
+    /// Reject a rounded +/-1 instead of silently losing part of the graph-snap envelope at large coordinates.
+    private static func exactlyShifted(_ edge: CGFloat, by delta: CGFloat) -> CGFloat? {
+        let shifted = edge + delta
+        guard shifted.isFinite else { return nil }
+        // Error-free TwoSum recovers the residual of this finite addition without introducing extra padding.
+        let virtualDelta = shifted - edge
+        let residual = (edge - (shifted - virtualDelta)) + (delta - virtualDelta)
+        return residual == 0 ? shifted : nil
     }
 
     private static func roundline(_ draw: RoundlineDraw) -> Geometry {
