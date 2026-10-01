@@ -36,6 +36,14 @@ enum CorpusLayerContentSelfTests {
         let sourceSHA256: String
         let variables: [String: String]
         let galleryFiles: [String: String]?
+        let optionOverrides: [OptionOverride]?
+        let sourceAssetsSHA256: [String: String]?
+    }
+    private struct OptionOverride: Codable {
+        let section: String
+        let key: String
+        let expectedValue: String
+        let value: String
     }
     private struct Provenance: Encodable {
         let manifestSHA256: String
@@ -45,6 +53,8 @@ enum CorpusLayerContentSelfTests {
         let preparedSourceSHA256: String
         let variables: [String: String]
         let galleryFiles: [String: String]?
+        let optionOverrides: [OptionOverride]?
+        let sourceAssetsSHA256: [String: String]?
     }
     private struct Difference: Encodable {
         let pixels: Int
@@ -148,6 +158,7 @@ enum CorpusLayerContentSelfTests {
     static func run(_ t: AppTestRunner) {
         layerComparisonTests(t)
         configurationTests(t)
+        optionOverrideTests(t)
         t.suite("Runtime: corpus layer content: geometry area reporting matches bitmap modes") {
             guard let empty = Rect(minX: 0, minY: 0, maxX: 0, maxY: 9),
                   let window = Rect(minX: 0, minY: 0, maxX: 7, maxY: 9) else {
@@ -306,6 +317,7 @@ enum CorpusLayerContentSelfTests {
                         }
                         if let configuration {
                             _ = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+                            try verifySourceAssets(configuration, root: root)
                         }
                         for i in pair.indices {
                             pair[i].missing = Array(Set(checked.missing + checked.value)).sorted()
@@ -362,7 +374,7 @@ enum CorpusLayerContentSelfTests {
         let file = canonical(root.appendingPathComponent(relative).path)
         guard !relative.isEmpty, !(relative as NSString).isAbsolutePath, !relative.hasPrefix("~"),
               !relative.split(separator: "/").contains(".."), file != root, isInside(file, root),
-              try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+              (try? file.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else {
             throw Failure.invalidManifest("Missing, nonregular, or escaping configured input: \(relative)")
         }
         let bytes = try Data(contentsOf: file)
@@ -378,12 +390,29 @@ enum CorpusLayerContentSelfTests {
         guard configuration.originalIndex >= 0, skin.measures.isEmpty, skin.executor === virtual, virtual.isCurrent,
               skin.sourceProvider === recording, skin.sideEffects === recording,
               !virtual.background.allowsUnfakedWork, !skin.skinClock.isLive,
-              !configuration.variables.isEmpty || configuration.galleryFiles?.isEmpty == false,
+              !configuration.variables.isEmpty || configuration.galleryFiles?.isEmpty == false ||
+                configuration.optionOverrides?.isEmpty == false,
               configuration.variables.keys.allSatisfy({ !$0.isEmpty && !$0.contains("\n") && !$0.contains("\r") }),
               configuration.variables.values.allSatisfy({ !$0.contains("\n") && !$0.contains("\r") }) else {
-            throw Failure.invalidManifest("Configuration requires explicit Variables values at the isolated pre-load seam")
+            throw Failure.invalidManifest("Configuration requires explicit values at the isolated pre-load seam")
         }
         let (source, original) = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+        try verifySourceAssets(configuration, root: root)
+        let overrides = configuration.optionOverrides ?? []
+        if !overrides.isEmpty {
+            let document = IniDocument.parse(TextDecoding.decode(original))
+            var targets = ["variables": Set(configuration.variables.keys.map { $0.lowercased() })]
+            if configuration.galleryFiles != nil { targets["variables", default: []].insert("gallerypath") }
+            for change in overrides {
+                guard !change.section.isEmpty, !change.key.isEmpty,
+                      [change.section, change.key, change.expectedValue, change.value].allSatisfy({ !$0.contains("\r") && !$0.contains("\n") }),
+                      targets[change.section.lowercased(), default: []].insert(change.key.lowercased()).inserted,
+                      let old = document.section(named: change.section)?.value(forKey: change.key),
+                      old.utf8.elementsEqual(change.expectedValue.utf8) else {
+                    throw Failure.invalidManifest("Missing, duplicate, or mismatched option override: [\(change.section)] \(change.key)")
+                }
+            }
+        }
         var variables = configuration.variables
         if let files = configuration.galleryFiles {
             guard !files.isEmpty, variables.keys.allSatisfy({ $0.lowercased() != "gallerypath" }),
@@ -410,11 +439,26 @@ enum CorpusLayerContentSelfTests {
             guard let value = variables[key] else { throw Failure.invalidManifest("Missing configured value") }
             try IniWriter.writeValue(value, key: key, section: "Variables", fileURL: copy)
         }
+        for change in overrides {
+            try IniWriter.writeValue(change.value, key: change.key, section: change.section, fileURL: copy)
+        }
         _ = try verifiedFile(configuration.source, under: root, sha256: configuration.sourceSHA256)
+        try verifySourceAssets(configuration, root: root)
         return Provenance(manifestSHA256: manifestSHA256, originalIndex: configuration.originalIndex,
             source: configuration.source, originalSourceSHA256: hash(original),
             preparedSourceSHA256: hash(try Data(contentsOf: copy)), variables: variables,
-            galleryFiles: configuration.galleryFiles)
+            galleryFiles: configuration.galleryFiles, optionOverrides: configuration.optionOverrides,
+            sourceAssetsSHA256: configuration.sourceAssetsSHA256)
+    }
+
+    /// Source assets remain at their original paths. An absent or altered file is never substituted.
+    private static func verifySourceAssets(_ configuration: Configuration, root: URL) throws {
+        guard let assets = configuration.sourceAssetsSHA256 else { return }
+        guard !assets.isEmpty else { throw Failure.invalidManifest("Explicit source asset bindings cannot be empty") }
+        for path in assets.keys.sorted() {
+            guard let expected = assets[path] else { throw Failure.invalidManifest("Missing source asset hash") }
+            _ = try verifiedFile(path, under: root, sha256: expected)
+        }
     }
 
     private static func hash(_ bytes: Data) -> String {
@@ -451,7 +495,8 @@ enum CorpusLayerContentSelfTests {
             try photo.write(to: fixtureRoot.appendingPathComponent("photo.txt"))
             try ignored.write(to: fixtureRoot.appendingPathComponent("ignored.bin"))
             let configuration = Configuration(originalIndex: 11, source: "options.inc", sourceSHA256: hash(original),
-                variables: ["Label": "configured"], galleryFiles: ["photo.txt": hash(photo), "ignored.bin": hash(ignored)])
+                variables: ["Label": "configured"], galleryFiles: ["photo.txt": hash(photo), "ignored.bin": hash(ignored)],
+                optionOverrides: nil, sourceAssetsSHA256: nil)
             let data = testSkins.appendingPathComponent("Runtime/Data/mac.json")
             let unprepared = try LegacyRenderSelfTests.withInputs(file, skinsDir: root.path, data: data) { skin, _, _ in
                 t.equal(skin.variable("SeenAtRefresh"), "original", "no preparation keeps the original refresh input")
@@ -517,6 +562,90 @@ enum CorpusLayerContentSelfTests {
                     "an unhashed mapped response cannot silently pass configured validation")
             rejects({ try validateConfigurationInputs(manifest(hash(inputBytes), hash(webBytes), ["photo.txt": hash(ignored)]), data: inputFile) },
                     "a response payload with changed bytes cannot silently pass configured validation")
+        }
+    }
+
+    private static func optionOverrideTests(_ t: AppTestRunner) {
+        t.suite("Runtime: corpus layer content: explicit source corrections require the original option and assets") {
+            guard let testSkins = Paths.repositoryFolder("TestSkins") else {
+                throw Failure.invalidResult("The existing isolated input fixture is required")
+            }
+            let root = canonical(t.temporaryDirectory("corpus-option-override").path)
+            let folder = root.appendingPathComponent("Assets")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let asset = folder.appendingPathComponent("cover.png")
+            try FileManager.default.copyItem(at: testSkins.appendingPathComponent("Runtime/Data/cover.png"), to: asset)
+            let assetBytes = try Data(contentsOf: asset), data = testSkins.appendingPathComponent("Runtime/Data/mac.json")
+            let file = root.appendingPathComponent("Test.ini")
+            let original = Data("""
+            [Frame]
+            Measure=Calc
+            Formula=Counter % 7
+            [Panel]
+            Meter=Image
+            ImageName=#CURRENTPATH#Missing/cover.png
+            DynamicVariables=1
+            """.utf8)
+            try original.write(to: file)
+            let override = OptionOverride(section: "Panel", key: "ImageName",
+                expectedValue: "#CURRENTPATH#Missing/cover.png", value: "#CURRENTPATH#Assets/cover.png")
+            let assets = ["Assets/cover.png": hash(assetBytes)]
+            func configuration(_ changes: [OptionOverride], _ assets: [String: String]) -> Configuration {
+                Configuration(originalIndex: 334, source: "Test.ini", sourceSHA256: hash(original),
+                    variables: [:], galleryFiles: nil, optionOverrides: changes, sourceAssetsSHA256: assets)
+            }
+            var provenance: Provenance?
+            let result = try LegacyRenderSelfTests.withInputs(file, skinsDir: root.path, data: data,
+                prepare: { skin, recording, virtual in
+                    provenance = try prepareConfiguration(configuration([override], assets), root: root, fixtureRoot: root,
+                        manifestSHA256: hash(Data("source correction control".utf8)),
+                        skin: skin, recording: recording, virtual: virtual)
+                }) { skin, recording, _ in
+                    guard let path = (skin.meter(named: "Panel") as? ImageMeter)?.imagePath else {
+                        throw Failure.invalidResult("The image meter must consume the corrected option during load")
+                    }
+                    t.equal(canonical(path), asset, "the real image meter resolves the corrected macro at its original read time")
+                    t.check(Images.size(atPath: path) != nil, "the bound original asset actually decodes")
+                    let copied = IniDocument.parse(recording.sourceText(for: file) ?? "")
+                    t.equal(copied.section(named: "Panel")?.value(forKey: "ImageName"), override.value,
+                            "the harness preserves the literal macro instead of resolving it early")
+                    t.equal(copied.section(named: "Frame")?.value(forKey: "Formula"), "Counter % 7")
+                    t.equal(copied.section(named: "Panel")?.value(forKey: "DynamicVariables"), "1")
+                }
+            t.equal(result.missing, [])
+            t.equal(provenance?.optionOverrides?.first?.expectedValue, override.expectedValue)
+            t.equal(provenance?.sourceAssetsSHA256, assets)
+            t.equal(try Data(contentsOf: file), original, "the original source is unchanged after configured load")
+            t.equal(try Data(contentsOf: asset), assetBytes, "source asset verification does not rewrite its bytes")
+
+            func rejects(_ changes: [OptionOverride], _ bindings: [String: String], _ note: String) throws {
+                var entered = false
+                do {
+                    _ = try LegacyRenderSelfTests.withInputs(file, skinsDir: root.path, data: data,
+                        prepare: { skin, recording, virtual in
+                            do {
+                                _ = try prepareConfiguration(configuration(changes, bindings), root: root, fixtureRoot: root,
+                                    manifestSHA256: "rejected control", skin: skin, recording: recording, virtual: virtual)
+                            } catch {
+                                t.check(recording.files.copy(of: file.path) == nil,
+                                        "all correction preconditions precede creating or modifying a source copy")
+                                throw error
+                            }
+                        }) { _, _, _ in entered = true }
+                    t.check(false, note)
+                } catch Failure.invalidManifest { t.check(true, note) }
+                t.check(!entered, "a rejected correction never reaches the loaded-skin callback")
+                t.equal(try Data(contentsOf: file), original)
+            }
+            try rejects([OptionOverride(section: "Panel", key: "ImageName", expectedValue: "wrong", value: override.value)],
+                        assets, "a wrong original value is not silently replaced")
+            try rejects([override], ["Assets/missing.png": hash(assetBytes)], "a missing bound source asset remains an input failure")
+            try rejects([override, OptionOverride(section: "panel", key: "imagename", expectedValue: override.expectedValue,
+                        value: override.value)], assets, "case-insensitive duplicate targets cannot make the outcome order-dependent")
+            try rejects([OptionOverride(section: "Absent", key: "ImageName", expectedValue: override.expectedValue,
+                        value: override.value)], assets, "an absent section is rejected rather than appended")
+            try rejects([OptionOverride(section: "Panel", key: "Absent", expectedValue: override.expectedValue,
+                        value: override.value)], assets, "an absent option is rejected rather than appended")
         }
     }
 
