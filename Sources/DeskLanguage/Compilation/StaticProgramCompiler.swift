@@ -99,11 +99,14 @@ struct StaticProgramCompiler {
               let spec = catalog.component(named: facts.component), spec.kind == facts.kind else {
             throw issue(.unsupported, node, "Expected a checked, built-in element")
         }
-        guard ["Text", "Column", "Row"].contains(facts.component) else {
+        guard ["Text", "Column", "Row", "Rectangle"].contains(facts.component) else {
             throw issue(.unsupported, node, "Unsupported component: \(facts.component)")
         }
         guard facts.dropped.isEmpty else { throw issue(.invalidCheckedModel, node, "Dropped element semantics cannot be compiled") }
-        let allowedModifiers: Set<String> = ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
+        let rectangle = facts.component == "Rectangle"
+        let allowedModifiers: Set<String> = rectangle
+            ? ["width", "height", "size", "padding", "fill", "name", "hidden"]
+            : ["width", "height", "size", "padding", "font", "bold", "italic", "color", "align", "name", "hidden", "digits"]
         for modifier in call.modifiers {
             if modifier.name.token.text == "onLoad" {
                 try rootOnLoad(modifier, element: node)
@@ -113,9 +116,10 @@ struct StaticProgramCompiler {
                 throw issue(.unsupported, modifier.node, "Unsupported modifier: \(modifier.name.token.text)")
             }
         }
-        let allowedFacets: Set<String> = ["width", "height", "padding.left", "padding.right", "padding.top", "padding.bottom",
-                                         "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits",
-                                         "color", "align", "hidden", "name"]
+        let allowedFacets: Set<String> = rectangle
+            ? ["width", "height", "padding.left", "padding.right", "padding.top", "padding.bottom", "fill", "hidden", "name"]
+            : ["width", "height", "padding.left", "padding.right", "padding.top", "padding.bottom",
+               "font.family", "font.size", "font.weight", "font.design", "font.italic", "digits", "color", "align", "hidden", "name"]
         for (facet, candidates) in facts.facets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             guard allowedFacets.contains(facet.rawValue) else {
                 throw issue(.unsupported, node, "Unsupported effective facet: \(facet.rawValue)")
@@ -125,8 +129,14 @@ struct StaticProgramCompiler {
             }
         }
         let index = try reserveIndex(at: node, depth: depth)
-        let appearance = try resolvedAppearance(facts, inherited: inherited, at: node)
+        // Text styles are inherited only by text and containers; a shape's fill is its own facet/default.
+        let appearance = rectangle ? inherited : try resolvedAppearance(facts, inherited: inherited, at: node)
         let width = try length(facts, "width", at: node), height = try length(facts, "height", at: node)
+        if rectangle {
+            guard case .fixed = width, case .fixed = height else {
+                throw issue(.unsupported, node, "Rectangle requires explicit fixed width and height; flexible sizing is not implemented")
+            }
+        }
         let padding = try SkinInsets(left: number(facts, "padding.left", default: 0, at: node),
                                      top: number(facts, "padding.top", default: 0, at: node),
                                      right: number(facts, "padding.right", default: 0, at: node),
@@ -138,6 +148,19 @@ struct StaticProgramCompiler {
         } else { hidden = false }
         let content: ProgramElement.Content
         switch facts.component {
+        case "Rectangle":
+            guard call.block == nil, (call.arguments?.arguments ?? []).isEmpty else {
+                throw issue(.unsupported, node, "Rectangle takes no arguments or block")
+            }
+            let value: Value
+            if let own = try facet(facts, "fill", at: node) { value = own }
+            else {
+                guard let source = spec.defaults[FacetID("fill")] else {
+                    throw issue(.invalidCheckedModel, node, "The checking catalog has no Rectangle fill default")
+                }
+                value = try fixed(source, at: node)
+            }
+            content = .rectangle(fill: try color(value, at: node))
         case "Text":
             guard call.block == nil, let arguments = call.arguments?.arguments, arguments.count == 1 else {
                 throw issue(.unsupported, node, "Text requires one String expression")
@@ -264,19 +287,26 @@ struct StaticProgramCompiler {
         case ("font.italic", .boolean(let n)): appearance.italic = n
         case ("font.design", .choice(let n)): appearance.design = n
         case ("align", .choice(let n)): appearance.align = try horizontal(n, at: node)
-        case ("color", .choice(let n)):
+        case ("color", let value): appearance.color = try color(value, at: node)
+        default: throw issue(.unsupported, node, "Unsupported constant for facet \(key)")
+        }
+    }
+
+    private func color(_ value: Value, at node: PositionedNode) throws -> ProgramColor {
+        switch value {
+        case .choice(let n):
             switch n {
-            case "text": appearance.color = .text
-            case "dim": appearance.color = .dim
-            case "faint": appearance.color = .faint
-            case "accent": appearance.color = .accent
-            case "separator": appearance.color = .separator
-            case "black": appearance.color = .literal(.black)
-            case "white": appearance.color = .literal(.white)
-            case "clear": appearance.color = .literal(.clear)
+            case "text": return .text
+            case "dim": return .dim
+            case "faint": return .faint
+            case "accent": return .accent
+            case "separator": return .separator
+            case "black": return .literal(.black)
+            case "white": return .literal(.white)
+            case "clear": return .literal(.clear)
             default: throw issue(.unsupported, node, "System palette color \(n) requires a platform color provider")
             }
-        case ("color", .string(let hex)):
+        case .string(let hex):
             let bytes = Array(hex.utf8)
             guard bytes.first == 35, bytes.count == 7 || bytes.count == 9,
                   let value = UInt32(String(hex.dropFirst()), radix: 16) else {
@@ -288,8 +318,8 @@ struct StaticProgramCompiler {
             } else {
                 rgba = RGBA(r: Double((value >> 24) & 255), g: Double((value >> 16) & 255), b: Double((value >> 8) & 255), a: Double(value & 255))
             }
-            appearance.color = .literal(rgba)
-        default: throw issue(.unsupported, node, "Unsupported constant for facet \(key)")
+            return .literal(rgba)
+        default: throw issue(.unsupported, node, "Unsupported constant for facet color")
         }
     }
 

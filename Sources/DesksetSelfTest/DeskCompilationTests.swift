@@ -149,4 +149,83 @@ func runDeskCompilationTests(_ t: TestRunner) {
         t.check(noContent.program == nil)
         t.check(!noContent.issues.isEmpty || noContent.diagnostics.contains { $0.severity == .error })
     }
+
+    t.suite("Desk: rectangles: checked solid boxes retain defaults identity order and text-only inheritance") {
+        let source = ##"widget { Column(spacing: 3, align: .left) { Rectangle().size(12, 8).padding(2).name(first); Rectangle().width(6).height(4).fill("#12345680").hidden(); Text("A") }.font(20).color(.dim) }"##
+        let program = try compileFixture(t, source)
+        var runtime = try ProgramRuntime(program: program)
+        for appearance in [SkinAppearance.light, .dark] {
+            var queries = 0
+            let scene = try runtime.project(environment: compileEnvironment(appearance)) { text, style, _ in
+                queries += 1; t.equal(text, "A"); t.close(TextStyle.pixelSize(points: style.fontSize), 20)
+                return SkinSize(width: 5, height: 10)
+            }
+            t.equal(queries, 1)
+            t.equal(scene.size, SkinSize(width: 12, height: 28))
+            t.equal(scene.elements.map(\.id.index), [0, 1, 2, 3])
+            t.equal(scene.elements[1].id, ElementID(name: "first", index: 1))
+            t.equal(scene.elements[2].frame, SkinRect(x: 0, y: 11, width: 6, height: 4))
+            t.equal(scene.elements[3].frame, SkinRect(x: 0, y: 18, width: 5, height: 10))
+            t.equal(scene.drawingItems.first, .fill(SkinRect(x: 2, y: 2, width: 8, height: 4), Paint(color: appearance.labelColor)))
+            t.equal(scene.drawingItems.count, 2)
+            t.equal(compiledDraws(scene).first?.style.color, appearance.secondaryLabelColor)
+        }
+        let literal = try compileFixture(t, ##"widget { Rectangle().size(18).fill("#12345680") }"##)
+        var literalRuntime = try ProgramRuntime(program: literal)
+        let scene = try literalRuntime.project(environment: compileEnvironment()) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        t.equal(scene.drawingItems, [.fill(SkinRect(width: 18, height: 18), Paint(color: RGBA(r: 18, g: 52, b: 86, a: 128)))])
+        let moved = try compileFixture(t, "// moved UTF8 bytes 😀\n" + source)
+        t.equal(moved, program, "rectangle identity is the original occurrence, not the syntax tree version")
+    }
+
+    t.suite("Desk: rectangles: the actual checking catalog supplies the solid fill default") {
+        var catalog = DeskCatalog.current
+        guard let index = catalog.components.firstIndex(where: { $0.name == "Rectangle" }) else { throw CompilationFixtureError.missingProgram }
+        catalog.components[index].defaults["fill"] = ".accent"
+        let source = #"widget { Rectangle().size(12, 8) }"#
+        let checked = deskCheck(source, context: CheckContext(catalog: catalog))
+        t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+        let compiled = Desk.compile(checked, catalog: catalog)
+        t.check(compiled.issues.isEmpty, "\(compiled.issues)")
+        guard let program = compiled.program else { throw CompilationFixtureError.missingProgram }
+        var runtime = try ProgramRuntime(program: program)
+        let scene = try runtime.project(environment: compileEnvironment(.dark)) { _, _, _ in throw CompilationFixtureError.missingProgram }
+        t.equal(scene.drawingItems, [.fill(SkinRect(width: 12, height: 8), Paint(color: SkinAppearance.dark.accentColor))])
+        catalog.components[index].defaults.removeValue(forKey: "fill")
+        let absent = deskCheck(source, context: CheckContext(catalog: catalog))
+        t.check(absent.diagnostics(.error).isEmpty, deskDescribe(absent))
+        let missing = Desk.compile(absent, catalog: catalog)
+        t.check(missing.program == nil)
+        t.equal(missing.issues.first?.kind, .invalidCheckedModel)
+        t.equal(missing.diagnostics.map(\.id), absent.diagnostics.map(\.id))
+    }
+
+    t.suite("Desk: rectangles: unsupported paint sizing and facets reject the complete checked program") {
+        let sources = [#"Rectangle()"#, #"Rectangle().width(12)"#, #"Rectangle().height(8)"#,
+                       #"Rectangle().width(.fit).height(8)"#, #"Rectangle().width(.fill).height(8)"#,
+                       #"Rectangle().width(12, min: 8).height(8)"#, #"Rectangle().size(12).rounded(2)"#,
+                       #"Rectangle().size(12).stroke(.accent)"#, #"Rectangle().size(12).fill(.accent).stroke(.white)"#,
+                       #"Rectangle().size(12).fill(gradient(.black, .white))"#,
+                       #"Rectangle().size(12).fill(radialGradient(.white, .clear))"#,
+                       #"Rectangle().size(12).fill(.red)"#, #"Rectangle().size(12).fill(.accent, if: true)"#,
+                       #"Rectangle().size(12).background(.accent)"#, #"Rectangle().size(12).opacity(0.5)"#,
+                       #"Circle().size(12).fill(.accent)"#]
+        for element in sources {
+            let source = "widget { Column { Text(\"must not paint partially\"); " + element + " } }"
+            let checked = deskCheck(source)
+            t.check(checked.diagnostics(.error).isEmpty, deskDescribe(checked))
+            let result = Desk.compile(checked)
+            t.check(result.program == nil, source)
+            t.equal(result.issues.first?.kind, .unsupported, source)
+            guard let issue = result.issues.first else { throw CompilationFixtureError.missingProgram }
+            t.equal(issue.file, checked.tree.file)
+            t.check(issue.range.lowerBound >= 0 && issue.range.upperBound <= source.utf8.count && !issue.range.isEmpty)
+            t.equal(result.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+        }
+        let checked = deskCheck(#"widget { Rectangle().size(-1).unknownModifier() }"#)
+        t.check(!checked.diagnostics(.error).isEmpty)
+        let invalid = Desk.compile(checked)
+        t.check(invalid.program == nil && invalid.issues.isEmpty)
+        t.equal(invalid.diagnostics.map(\.id), checked.diagnostics.map(\.id))
+    }
 }

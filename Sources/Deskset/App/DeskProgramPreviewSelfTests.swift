@@ -321,6 +321,123 @@ enum DeskProgramPreviewSelfTests {
             t.check(f.app.sortedControllers.isEmpty, "startup assignments activate no skin")
             t.equal(try Data(contentsOf: f.file), Data(source.utf8))
         }
+
+        t.suite("Desk: rectangle preview: a text-free document paints the independent native solid recipe") {
+            let source = #"widget { Rectangle().size(24, 18).padding(2) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                p.canvas.appearance = NSAppearance(named: name)
+                p.refreshEnvironment()
+                t.equal(p.state, .ready)
+                t.check(!p.canvas.isHidden && p.scene?.elements.count == 1)
+                let color = MacAppearance.values(for: p.canvas.effectiveAppearance).labelColor
+                let rect = SkinRect(x: 2, y: 2, width: 20, height: 14)
+                let item = DrawItem.fill(rect, Paint(color: color))
+                t.equal(p.scene?.drawingItems, [item], "Rectangle does not require a fabricated text leaf")
+                t.equal(p.scene?.size, SkinSize(width: 24, height: 18))
+                let reference = ReferenceView(items: [item], size: NSSize(width: 24, height: 18))
+                let wrongPosition = ReferenceView(items: [.fill(SkinRect(x: 3, y: 2, width: 20, height: 14), Paint(color: color))],
+                                                  size: reference.frame.size)
+                let wrongPaint = ReferenceView(items: [.fill(rect, Paint(color: RGBA(r: 255, g: 0, b: 0)))], size: reference.frame.size)
+                let blank = ReferenceView(items: [], size: reference.frame.size)
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.check(try ink(actual) > 0)
+                    let empty = try paint(blank, scale: scale), shifted = try paint(wrongPosition, scale: scale)
+                    let recolored = try paint(wrongPaint, scale: scale)
+                    try canaries(t, empty); try canaries(t, shifted); try canaries(t, recolored)
+                    t.equal(try ink(empty), 0)
+                    t.equal(try bytes(actual), try bytes(expected), "complete solid native pixels at \(scale)x")
+                    t.check(try bytes(actual) != bytes(shifted), "wrong geometry cannot pass")
+                    t.check(try bytes(actual) != bytes(recolored), "wrong color cannot pass")
+                }
+            }
+            t.check(checking.isCurrent(checking.snapshot) && f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: rectangle preview: mixed native text alpha and hidden boxes keep literal drawing order") {
+            let source = ##"widget { Row(spacing: 6, align: .top) { Rectangle().size(24, 18).padding(2).fill("#12345680"); Text("绘图😀").font(20).color(.accent); Rectangle().size(14, 12).fill("#FF0000").hidden() }.padding(2) }"##
+            let f = try fixture(t, source), p = f.preview
+            for name in [NSAppearance.Name.aqua, .darkAqua] {
+                p.canvas.appearance = NSAppearance(named: name)
+                p.refreshEnvironment()
+                var style = TextStyle()
+                style.fontFace = "System"
+                style.fontSize = 15 // Independent 20-point recipe.
+                style.fontWeight = 400
+                style.color = MacAppearance.values(for: p.canvas.effectiveAppearance).accentColor
+                style.horizontalAlign = .center
+                style.verticalAlign = .center
+                style.accurateText = true
+                style.antiAlias = true
+                style.trailingSpaces = true
+                let context = DrawContext(fonts: AppFontResolver())
+                let measured = context.text.layout("绘图😀", style: style, wrapWidth: nil, cycle: 1).size
+                let textFrame = SkinRect(x: 32, y: 2, width: measured.width, height: measured.height)
+                let items: [DrawItem] = [.fill(SkinRect(x: 4, y: 4, width: 20, height: 14), Paint(color: RGBA(r: 18, g: 52, b: 86, a: 128))),
+                                         .text(TextDraw(text: "绘图😀", style: style, frame: textFrame,
+                                                        contentFrame: textFrame, anchor: SkinPoint(x: 32, y: 2)))]
+                let size = SkinSize(width: measured.width + 54, height: max(18, measured.height) + 4)
+                t.equal(p.state, .ready)
+                t.equal(p.scene?.size, size)
+                t.equal(p.scene?.drawingItems, items)
+                t.equal(p.scene?.elements.last?.frame, SkinRect(x: measured.width + 38, y: 2, width: 14, height: 12))
+                t.equal(p.scene?.elements.last?.visibility, .hiddenKeepsSpace)
+                let reference = ReferenceView(items: items, size: NSSize(width: size.width, height: size.height))
+                for scale in [1, 2] {
+                    let actual = try paint(p.canvas, scale: scale), expected = try paint(reference, scale: scale)
+                    try canaries(t, actual); try canaries(t, expected)
+                    t.check(try ink(actual) > 0)
+                    t.equal(try bytes(actual), try bytes(expected), "alpha fill / native text / hidden gap at \(scale)x")
+                }
+            }
+            t.check(f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
+
+        t.suite("Desk: rectangle preview: empty and unsupported edits clear every previously visible shape") {
+            let source = #"widget { Rectangle().size(24, 18).fill(.accent) }"#
+            let f = try fixture(t, source), p = f.preview
+            guard let checking = f.controller.deskChecking else { throw Failure.fixture }
+            t.equal(p.state, .ready)
+            let old = checking.snapshot
+            let replacements: [(String, Bool)] = [(#"widget { Rectangle().size(24, 18).fill(.clear) }"#, true),
+                                                   (#"widget { Rectangle().size(0, 18) }"#, true),
+                                                   (#"widget { Rectangle().size(24, 18).hidden() }"#, true),
+                                                   (#"widget { Rectangle().size(24, 18).rounded(3) }"#, false),
+                                                   (#"widget { Rectangle().size(24, 18).stroke(.accent) }"#, false),
+                                                   (#"widget { Rectangle() }"#, false),
+                                                   (#"widget { Rectangle().size(24, 18).unknownModifier() }"#, false)]
+            for (replacement, empty) in replacements {
+                replace(replacement, in: f)
+                t.check(settled(f))
+                t.check(!checking.publish(old))
+                if empty {
+                    t.equal(p.state, .empty)
+                    t.check(p.scene != nil, "a supported empty shape retains its layout")
+                } else {
+                    guard case .unavailable(let reason) = p.state else { return t.check(false, "unsupported shape must report a reason") }
+                    t.check(p.scene == nil && !reason.isEmpty)
+                }
+                t.check(p.canvas.isHidden)
+                // A qualified capture ROI only: clear() can leave a 1-point canvas and a zero-width shape is valid.
+                p.canvas.setBoundsSize(NSSize(width: 8, height: 8))
+                let cleared = try paint(p.canvas)
+                try canaries(t, cleared)
+                t.equal(try ink(cleared), 0)
+            }
+            replace(source, in: f)
+            t.check(settled(f)); t.equal(p.state, .ready)
+            let visible = try paint(p.canvas)
+            try canaries(t, visible); t.check(try ink(visible) > 0)
+            f.controller.window?.close()
+            t.equal(p.state, .closed)
+            t.check(p.scene == nil && f.app.sortedControllers.isEmpty)
+            t.equal(try Data(contentsOf: f.file), Data(source.utf8))
+        }
     }
 
     private final class ReferenceView: NSView {

@@ -1,5 +1,5 @@
 /// The shared, typed program consumed without an INI file or a live Skin. This first executable slice has
-/// rigid stacks, scalar text bindings and root startup assignments through the shared action executor.
+/// rigid stacks, fixed solid rectangles, scalar text bindings and root startup assignments through the shared executor.
 public struct WidgetProgram: Equatable, Sendable {
     public let name: String
     public let root: ProgramElement
@@ -24,6 +24,8 @@ public enum ProgramLength: Equatable, Sendable {
 public struct ProgramElement: Equatable, Sendable {
     public indirect enum Content: Equatable, Sendable {
         case text(ProgramText)
+        /// An unrounded solid rectangle in its content box. Both outer dimensions must be fixed.
+        case rectangle(fill: ProgramColor)
         case column(spacing: Double, align: HorizontalTextAlign, children: [ProgramElement])
         case row(spacing: Double, align: VerticalTextAlign, children: [ProgramElement])
     }

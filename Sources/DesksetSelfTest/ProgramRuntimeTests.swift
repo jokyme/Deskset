@@ -139,4 +139,90 @@ func runProgramRuntimeTests(_ t: TestRunner) {
         }
         t.equal(hugeRuntime.generation, 0)
     }
+
+    t.suite("Program: rectangles: solid content uses fixed border boxes without text measurement") {
+        let id = ElementID(name: "paint", index: 0)
+        let root = ProgramElement(id: id, content: .rectangle(fill: .text), width: .fixed(24), height: .fixed(18),
+                                  padding: SkinInsets(left: 2, top: 3, right: 4, bottom: 5))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Rectangle only", root: root))
+        var queries = 0
+        for (appearance, scale) in [(SkinAppearance.light, 1.0), (.dark, 2.0)] {
+            let scene = try runtime.project(environment: programEnvironment(appearance, scale: scale)) { _, _, _ in
+                queries += 1; throw ProgramRuntimeError.invalidMeasurement(id)
+            }
+            t.equal(scene.size, SkinSize(width: 24, height: 18))
+            t.equal(scene.elements.map(\.id), [id])
+            t.equal(scene.elements[0].kind, .shape)
+            t.equal(scene.elements[0].frame, SkinRect(width: 24, height: 18))
+            t.equal(scene.drawingItems, [.fill(SkinRect(x: 2, y: 3, width: 18, height: 10), Paint(color: appearance.labelColor))])
+            t.check(scene.elements[0].imageDependencies.isEmpty && scene.glass.isEmpty)
+        }
+        t.equal(queries, 0); t.equal(runtime.generation, 2)
+    }
+
+    t.suite("Program: rectangles: mixed order hidden and zero area retain their original layout") {
+        let color = RGBA(r: 18, g: 52, b: 86, a: 128)
+        let rect = ProgramElement(id: ElementID(name: "rect", index: 1), content: .rectangle(fill: .literal(color)),
+                                  width: .fixed(12), height: .fixed(8), padding: SkinInsets(left: 2, top: 2, right: 2, bottom: 2))
+        let text = ProgramElement(id: ElementID(name: "text", index: 2), content: .text(ProgramText("A")))
+        let hidden = ProgramElement(id: ElementID(name: "hidden", index: 3), content: .rectangle(fill: .accent),
+                                    width: .fixed(6), height: .fixed(4), hidden: true)
+        let root = ProgramElement(id: ElementID(name: "row", index: 0),
+                                  content: .row(spacing: 4, align: .bottom, children: [rect, text, hidden]),
+                                  padding: SkinInsets(left: 3, top: 5, right: 7, bottom: 1))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Mixed", root: root))
+        var queries = 0
+        let scene = try runtime.project(environment: programEnvironment()) { value, _, _ in
+            queries += 1; t.equal(value, "A"); return SkinSize(width: 5, height: 10)
+        }
+        t.equal(queries, 1)
+        t.equal(scene.size, SkinSize(width: 41, height: 16))
+        t.equal(scene.elements.map(\.id.index), [0, 1, 2, 3])
+        t.equal(scene.elements.map(\.frame), [SkinRect(width: 41, height: 16), SkinRect(x: 3, y: 7, width: 12, height: 8),
+                                              SkinRect(x: 19, y: 5, width: 5, height: 10), SkinRect(x: 28, y: 11, width: 6, height: 4)])
+        t.equal(scene.drawingItems.first, .fill(SkinRect(x: 5, y: 9, width: 8, height: 4), Paint(color: color)))
+        t.equal(programDraws(scene).map(\.text), ["A"])
+        t.equal(scene.drawingItems.count, 2)
+        t.equal(scene.elements[3].visibility, .hiddenKeepsSpace)
+        for (width, height, fill) in [(0.0, 8.0, ProgramColor.accent), (8.0, 0.0, .accent), (8.0, 8.0, .literal(.clear))] {
+            var empty = try ProgramRuntime(program: WidgetProgram(name: "Empty paint", root:
+                ProgramElement(id: rect.id, content: .rectangle(fill: fill), width: .fixed(width), height: .fixed(height))))
+            let blank = try empty.project(environment: programEnvironment()) { _, _, _ in throw ProgramRuntimeError.invalidMeasurement(rect.id) }
+            t.equal(blank.size, SkinSize(width: width, height: height))
+            if width == 0 || height == 0 { t.check(blank.drawingItems.isEmpty) }
+            else { t.equal(blank.drawingItems, [.fill(SkinRect(width: 8, height: 8), Paint(color: .clear))]) }
+        }
+        var hiddenRuntime = try ProgramRuntime(program: WidgetProgram(name: "Hidden parent", root:
+            ProgramElement(id: root.id, content: root.content, padding: root.padding, hidden: true)))
+        let invisible = try hiddenRuntime.project(environment: programEnvironment()) { _, _, _ in SkinSize(width: 5, height: 10) }
+        t.equal(invisible.size, scene.size)
+        t.check(invisible.drawingItems.isEmpty)
+    }
+
+    t.suite("Program: rectangles: direct producers reject invalid paint geometry and overflow transactionally") {
+        let id = ElementID(name: "rect", index: 0)
+        for (width, height) in [(ProgramLength.fit, ProgramLength.fixed(8)), (.fixed(8), .fit),
+                                (.fixed(.nan), .fixed(8)), (.fixed(8), .fixed(.infinity)), (.fixed(-1), .fixed(8))] {
+            let root = ProgramElement(id: id, content: .rectangle(fill: .accent), width: width, height: height)
+            programFailure(t, .invalidGeometry(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Bad box", root: root)) }
+        }
+        for color in [RGBA(r: .nan, g: 0, b: 0), RGBA(r: 0, g: .infinity, b: 0), RGBA(r: -1, g: 0, b: 0),
+                      RGBA(r: 0, g: 0, b: 256), RGBA(r: 0, g: 0, b: 0, a: -1), RGBA(r: 0, g: 0, b: 0, a: 256)] {
+            let root = ProgramElement(id: id, content: .rectangle(fill: .literal(color)), width: .fixed(8), height: .fixed(8))
+            programFailure(t, .invalidPaint(id)) { _ = try ProgramRuntime(program: WidgetProgram(name: "Bad color", root: root)) }
+        }
+        let short = ProgramElement(id: id, content: .rectangle(fill: .accent), width: .fixed(10), height: .fixed(8),
+                                   padding: SkinInsets(left: 5, right: 6))
+        var runtime = try ProgramRuntime(program: WidgetProgram(name: "Too much padding", root: short))
+        programFailure(t, .layoutOverflow(id)) { _ = try runtime.project(environment: programEnvironment()) { _, _, _ in SkinSize() } }
+        t.equal(runtime.generation, 0)
+        let huge = (1...2).map { index in
+            ProgramElement(id: ElementID(name: "huge", index: index), content: .rectangle(fill: .accent),
+                           width: .fixed(Double.greatestFiniteMagnitude), height: .fixed(8))
+        }
+        var overflowing = try ProgramRuntime(program: WidgetProgram(name: "Overflow", root:
+            ProgramElement(id: id, content: .row(spacing: 0, align: .top, children: huge))))
+        programFailure(t, .layoutOverflow(id)) { _ = try overflowing.project(environment: programEnvironment()) { _, _, _ in SkinSize() } }
+        t.equal(overflowing.generation, 0)
+    }
 }

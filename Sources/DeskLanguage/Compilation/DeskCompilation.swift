@@ -27,7 +27,7 @@ public struct DeskCompilationResult: Sendable {
 
 public extension Desk {
     /// Checked source → the shared Core program. It supports String/Bool declarations and text expressions,
-    /// system.dark, root onLoad variable assignments, rigid Column/Row and constant box/style properties.
+    /// system.dark, root onLoad variable assignments, rigid Column/Row, fixed solid Rectangle and constant box/style properties.
     /// Other semantics fail explicitly.
     /// Use the same catalog that checked the file (not a second interpretation of its names).
     static func compile(_ checked: CheckedFile, catalog: DeskCatalog = .current) -> DeskCompilationResult {
