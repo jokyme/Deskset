@@ -373,9 +373,9 @@ final class DeskSymbolIndex: Sendable {
         }
 
         // 3a. Members of values and nested namespaces, from types worked out along each chain (the innermost first).
-        // Nested members start at the same place and share the checker's key, so a key's recorded type is the
-        // outermost node's; the rest come from the catalog: a namespace's members, a record's fields, a list's
-        // projected fields, the members of text, lists, dates and colors.
+        // Canonical expressions include their text ends. For any remaining shared recovery key, use the record
+        // only for its outermost node; infer the rest from the catalog: namespace members, record fields, list
+        // projections, and the members of text, lists, dates and colors.
         var valueTypes: [Int: DeskType] = [:]
         var namespaceOf: [Int: String] = [:]
         func recorded(_ i: Int) -> DeskType? {

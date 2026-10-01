@@ -50,22 +50,36 @@ public struct TextMove: Sendable, Hashable {
     }
 }
 
-/// Identifies a node of one parse of a file: its kind, where its first token's text starts, and the tree version.
+/// Identifies a node of one parse of a file: its kind, text start, tree version, and for canonical expressions, text end.
 /// A reference from an older tree version is refused, never guessed.
 public struct NodeID: Sendable, Hashable, CustomStringConvertible {
     public var kind: SyntaxKind
     /// Start offset of the node's first token text (after its leading trivia) in the parsed text.
     public var utf8Start: Int
+    /// End of a canonical expression's last present token text. Legacy start-only references and non-expression
+    /// keys have no end; they are distinct keys, not wildcard matches for canonical expression keys.
+    public var utf8End: Int?
     /// `SyntaxTree.version` of the tree the node belongs to.
     public var treeVersion: Int
 
     public init(kind: SyntaxKind, utf8Start: Int, treeVersion: Int) {
         self.kind = kind
         self.utf8Start = utf8Start
+        self.utf8End = nil
         self.treeVersion = treeVersion
     }
 
-    public var description: String { "\(kind.rawValue)@\(utf8Start)#\(treeVersion)" }
+    init(kind: SyntaxKind, utf8Start: Int, treeVersion: Int, utf8End: Int) {
+        self.kind = kind
+        self.utf8Start = utf8Start
+        self.utf8End = utf8End
+        self.treeVersion = treeVersion
+    }
+
+    public var description: String {
+        if let utf8End { return "\(kind.rawValue)@\(utf8Start)..<\(utf8End)#\(treeVersion)" }
+        return "\(kind.rawValue)@\(utf8Start)#\(treeVersion)"
+    }
 }
 
 public typealias ElementRef = NodeID
